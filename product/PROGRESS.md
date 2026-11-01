@@ -92,6 +92,18 @@
 
 下面各票"证据"列中的提交号是**本轮修复前**的关闭提交；修复提交见分支历史。
 
+## 关闭票内的两处缺口（已补齐）
+
+复核时承认过：这 6 张票虽然关着，但按它们自己的文字还有两行没兑现。现已补上：
+
+| 缺口 | 票 | 补法 | 证据 |
+|---|---|---|---|
+| 多套依赖锁 | T004 | 三套独立锁：运行时 48 包、测试 8 包、训练 58 包，全部 sha256 锁定并分别验证安装 | `probes/agent_min/requirements.lock.txt`、`tests/requirements-test.lock.txt`、`experiments/routing_sft/requirements-train.lock.txt`、`reports/p01/sbom.json` |
+| supervisor 模块 | T008 | `cmd/supervisor` + `internal/supervisor`：advisory lock 保证单实例，只把死 worker 的 run 置为 `recovery_pending`，**从不重启**；worker 现在会注册与心跳 | `internal/supervisor/supervisor.go`、`db/migrations/0001_worker_lease.sql`、`tests/f00/test_supervisor_integration.py` |
+
+训练锁只做到**解析**：安装验证记 `install_verified: false` / `not_run`，因为没有训练宿主与冻结数据，
+不把"能解析"写成"装过"。
+
 
 ## 记录模板
 

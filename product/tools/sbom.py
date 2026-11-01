@@ -103,18 +103,60 @@ def build(lock_path: Path) -> dict:
         )
 
     return {
-        "sbom": "orchara.probe-sbom/v1",
+        "sbom": "orchara.probe-sbom/v2",
         "task": "P04 evidence for T004",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "interpreter": sys.version.split()[0],
         "lock_file": str(lock_path.relative_to(PRODUCT_ROOT)),
         "package_count": len(packages),
         "packages": packages,
+        "lock_sets": [_summarise_lock(entry) for entry in LOCK_SETS],
         "not_installed_in_this_environment": missing,
         "version_mismatches": mismatched,
         "licenses_not_declared": unknown_license,
         "image_digest": None,
         "image_digest_note": "no application image is built in this phase; not_run, not a placeholder digest",
+    }
+
+
+# T004 asks for production, test and training dependency sets to be locked
+# separately. Each entry records whether the lock was actually *installed*
+# somewhere, because a resolved lock is not the same as a verified install.
+LOCK_SETS: list[dict] = [
+    {
+        "name": "runtime",
+        "path": PRODUCT_ROOT / "probes" / "agent_min" / "requirements.lock.txt",
+        "install_verified": True,
+        "verification": "pip install --require-hashes into probes/agent_min/.venv; pip check clean",
+    },
+    {
+        "name": "test",
+        "path": PRODUCT_ROOT / "tests" / "requirements-test.lock.txt",
+        "install_verified": True,
+        "verification": "pip install --require-hashes into tests/.venv-test; pytest 9.0.3 runs",
+    },
+    {
+        "name": "training",
+        "path": PRODUCT_ROOT / "experiments" / "routing_sft" / "requirements-train.lock.txt",
+        "install_verified": False,
+        "verification": "resolution only; no training host or frozen dataset available -> not_run",
+    },
+]
+
+
+def _summarise_lock(entry: dict) -> dict:
+    path: Path = entry["path"]
+    exists = path.exists()
+    packages = parse_lock(path) if exists else {}
+    hashed = sum(1 for item in packages.values() if item["hashes"])
+    return {
+        "name": entry["name"],
+        "file": str(path.relative_to(PRODUCT_ROOT)),
+        "exists": exists,
+        "package_count": len(packages),
+        "packages_with_hashes": hashed,
+        "install_verified": entry["install_verified"],
+        "verification": entry["verification"],
     }
 
 

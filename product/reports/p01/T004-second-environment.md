@@ -56,6 +56,21 @@ unauthorized_run_failed / retry_detected / bad_input_failed` 在 Linux 上全部
   0 缺失、0 版本不符、0 许可证未声明。
 - 镜像 digest：本阶段**未构建任何应用镜像**，因此显式记 `not_run`，不用占位 digest 冒充。
 
+## 2.2 缺口补齐：生产/测试/训练三套锁
+
+复核还指出本票切片要求"分别锁生产/测试/训练依赖"，而当时只有一套运行时锁。现在三套都在仓库里：
+
+| 集合 | 锁文件 | 包数 | 安装验证 |
+|---|---|---|---|
+| 运行时 | `probes/agent_min/requirements.lock.txt` | 48 | `--require-hashes` 装入 `probes/agent_min/.venv`，`pip check` 干净 |
+| 测试 | `tests/requirements-test.lock.txt` | 8 | `--require-hashes` 装入 `tests/.venv-test`，`pytest 9.0.3` 可运行 |
+| 训练 | `experiments/routing_sft/requirements-train.lock.txt` | 58 | **仅解析**，`install_verified: false` / `not_run`（无训练宿主与冻结数据） |
+
+三套锁各自带 `.in` 顶层约束，均按每版本**全部** artifact 哈希锁定；`reports/p01/sbom.json`
+的 `lock_sets` 记录每套的包数、哈希覆盖率与验证方式。测试
+`tests/tooling/test_lock_sets.py` 断言三套文件存在、互相独立、每包都有哈希，
+且训练那套**不得**被标成已验证安装。
+
 ## 3. 覆盖的验收条件
 
 - [x] 另一干净环境重建最小调用（Linux + 全新依赖树 + 同断言）

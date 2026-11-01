@@ -56,8 +56,33 @@ README 的"可执行命令"一节与实际命令一致（criterion：产品入�
   （`TestErrorsDoNotLeakCredentials`、`test_status_endpoint_never_includes_the_dsn`）。
 - **检查有超时**：每个依赖检查受 2s 超时约束（`TestCheckTimeoutIsApplied`）。
 
+## 5.1 缺口补齐：worker / maintenance / supervisor 三个模块
+
+本票切片原文要求"建立 Go 单体/Web/worker 模块""API/maintenance/supervisor 各自承担职责"，
+复核时只交付了 API + worker + maintenance 两个骨架，**supervisor 缺失**。现已补齐：
+
+| 模块 | 职责（骨架阶段） | 关键约束 |
+|---|---|---|
+| `cmd/api` | 存活/就绪/状态页 | 依赖不可用即 503；错误不含 DSN |
+| `cmd/worker` | 注册自己、按 5s 心跳、退出时记 `stopped_at` | 无 `ORCHARA_WORKER_DSN` 拒绝启动；不声明执行任何业务 |
+| `cmd/maintenance` | 一次维护扫描，报告真实待处理数 | 无 DSN 拒绝运行；无工作可做时如实报 0 |
+| `cmd/supervisor` | 一个 pass：取 supervisor 租约 → 找心跳过期的 worker → 把它们的 `running` run 置为 `recovery_pending` | **从不重启**；`pg_try_advisory_lock` 保证同时只有一个 supervisor |
+
+迁移在 `db/migrations/0001_worker_lease.sql`（`app.workers` / `app.runs`）。
+`recovery_pending` 的语义写进了列注释：**"等旧进程与其写入证明已排空再处理"，不是"重试"**。
+
+实测（`tests/f00/test_supervisor_integration.py`，4 passed）：
+
+- 死 worker 的 run → `recovery_pending`，返回里 `runs_parked >= 1`；
+- 活 worker 的 run **不动**，也不出现在 `stale_workers`；
+- 另一个会话持有 advisory lock 时，supervisor 返回 `skipped: true` 并说明"lease 被占用"；
+- 正常 `stopped_at` 的 worker 不算死。
+
+Go 侧另有 6 个 `internal/supervisor` 单元测试（fake store），覆盖"租约拿不到就不写任何东西"
+和"活 worker 不动"。
+
 ## 6. 边界
 
-- 这是 F00 骨架：没有业务模块、没有认证、没有迁移；`/api/status` 只反映进程与数据库。
+- 这是 F00 骨架：没有业务模块、没有认证；supervisor 只做"停靠"，**不做任何恢复或重启**。
 - Redis、对象存储尚未接入，profile 启动与 CI 复现属 T012（未完成）。
 - 本机 5432 上有无关的 `postgresql-x64-16` 服务；探针一律使用隔离集群 55432，从不接触该服务。

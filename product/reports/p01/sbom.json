@@ -1,7 +1,7 @@
 {
-  "sbom": "orchara.probe-sbom/v1",
+  "sbom": "orchara.probe-sbom/v2",
   "task": "P04 evidence for T004",
-  "generated_at": "2026-11-01T11:09:50+00:00",
+  "generated_at": "2026-11-01T12:19:26+00:00",
   "interpreter": "3.12.2",
   "lock_file": "probes\\agent_min\\requirements.lock.txt",
   "package_count": 48,
@@ -1661,6 +1661,35 @@
         "ffef5a74088f1e09947aecf91011136665152e0b4b359c42be3373897fb39b01"
       ],
       "platform_portable": true
+    }
+  ],
+  "lock_sets": [
+    {
+      "name": "runtime",
+      "file": "probes\\agent_min\\requirements.lock.txt",
+      "exists": true,
+      "package_count": 48,
+      "packages_with_hashes": 48,
+      "install_verified": true,
+      "verification": "pip install --require-hashes into probes/agent_min/.venv; pip check clean"
+    },
+    {
+      "name": "test",
+      "file": "tests\\requirements-test.lock.txt",
+      "exists": true,
+      "package_count": 8,
+      "packages_with_hashes": 8,
+      "install_verified": true,
+      "verification": "pip install --require-hashes into tests/.venv-test; pytest 9.0.3 runs"
+    },
+    {
+      "name": "training",
+      "file": "experiments\\routing_sft\\requirements-train.lock.txt",
+      "exists": true,
+      "package_count": 58,
+      "packages_with_hashes": 58,
+      "install_verified": false,
+      "verification": "resolution only; no training host or frozen dataset available -> not_run"
     }
   ],
   "not_installed_in_this_environment": [],

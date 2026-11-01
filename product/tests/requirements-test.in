@@ -1,0 +1,12 @@
+# Test-runner dependencies for the product test suite (P04 evidence for T004).
+#
+# T004 asks for production, test and training dependency sets to be locked
+# separately, so the test toolchain does not silently share the runtime lock.
+#
+# Resolve with `--ignore-installed`, else `pip --report` only lists packages it
+# would *add* and produces a truncated lock:
+#   python -m pip install --dry-run --ignore-installed \
+#       --report pip-report-test.json -r requirements-test.in
+#   python ../probes/agent_min/lock.py pip-report-test.json requirements-test.lock.txt
+pytest==9.0.3
+pytest-cov==7.1.0

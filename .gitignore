@@ -13,3 +13,8 @@ product/.env.local
 
 # Generated pip resolution dump; the lock file is the artefact of record
 product/probes/agent_min/pip-report.json
+
+# Generated pip resolution dumps (the lock file is the artefact of record)
+product/tests/pip-report-test.json
+product/experiments/routing_sft/pip-report-train.json
+product/tests/.venv-test/
