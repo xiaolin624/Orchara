@@ -1,4 +1,4 @@
-# Top-level pins for the P01 minimal-agent probe.
+﻿# Top-level pins for the P01 minimal-agent probe.
 #
 # Resolve with:
 #   python -m pip install --dry-run --report pip-report.json -r requirements.in
@@ -8,3 +8,5 @@ langgraph==1.2.4
 langgraph-checkpoint-postgres==3.0.5
 pydantic==2.12.4
 jsonschema==4.25.1
+# [binary] ships libpq so probes do not depend on a system PostgreSQL install
+psycopg[binary]==3.3.6

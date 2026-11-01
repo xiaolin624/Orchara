@@ -27,7 +27,8 @@ product/probes/agent_min/.venv/Scripts/python.exe -m pip check
 | jsonschema | 4.25.1 |
 | psycopg | 3.3.6 |
 
-共 47 个包，每个都带 `--hash=sha256:<64 hex>`；锁文件由真实 pip 解析报告生成
+共 47 个包（P02 追加 `psycopg[binary]` 后为 48 个，见下），每个都带
+`--hash=sha256:<64 hex>`；锁文件由真实 pip 解析报告生成
 （`lock.py`），不是手写、不是取当前已装版本。Python 3.12 优先线已实测（3.12.2），
 未出现需要降级的冲突。
 
@@ -36,6 +37,10 @@ product/probes/agent_min/.venv/Scripts/python.exe -m pip check
 1. `pip --report` 的 `archive_info.hash` 在当前 pip 版本形如 `sha256=<hex>`，
    而 requirements 需要 `sha256:<hex>`；`lock.py::_normalise_hash` 负责归一化。
 2. 锁文件若以 CRLF 写入，pip 的行连接（`\`）解析失败；`lock.py` 显式以 LF 写出。
+
+后续在 P02 追加 `psycopg[binary]==3.3.6`：纯 `psycopg` 需要系统 libpq，而本机没有；
+`[binary]` 自带 libpq，使探针不依赖系统 PostgreSQL 安装。锁文件随之变为 48 个包，
+并改为列出每个版本的**全部** artifact 哈希（跨平台可安装），详见 T004 报告。
 
 ## 2. 授权工具集
 

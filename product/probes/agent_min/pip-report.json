@@ -253,6 +253,165 @@
     },
     {
       "download_info": {
+        "url": "https://files.pythonhosted.org/packages/4e/de/748bd7609c71cae5d737f0ba9192f19329f70180ecda8fff3cac02c5abe3/psycopg-3.3.6-py3-none-any.whl",
+        "archive_info": {
+          "hashes": {
+            "sha256": "a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631"
+          },
+          "hash": "sha256=a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631"
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "psycopg",
+        "version": "3.3.6",
+        "dynamic": [
+          "license-file"
+        ],
+        "summary": "PostgreSQL database adapter for Python",
+        "description": "Psycopg 3: PostgreSQL database adapter for Python\n=================================================\n\nPsycopg 3 is a modern implementation of a PostgreSQL adapter for Python.\n\nThis distribution contains the pure Python package ``psycopg``.\n\n.. Note::\n\n    Despite the lack of number in the package name, this package is the\n    successor of psycopg2_.\n\n    Please use the psycopg2 package if you are maintaining an existing program\n    using psycopg2 as a dependency. If you are developing something new,\n    Psycopg 3 is the most current implementation of the adapter.\n\n    .. _psycopg2: https://pypi.org/project/psycopg2/\n\n\nInstallation\n------------\n\nIn short, run the following::\n\n    pip install --upgrade pip           # to upgrade pip\n    pip install \"psycopg[binary,pool]\"  # to install package and dependencies\n\nIf something goes wrong, and for more information about installation, please\ncheck out the `Installation documentation`__.\n\n.. __: https://www.psycopg.org/psycopg3/docs/basic/install.html#\n\n\nHacking\n-------\n\nFor development information check out `the project readme`__.\n\n.. __: https://github.com/psycopg/psycopg#readme\n\n\nCopyright (C) 2020 The Psycopg Team\n",
+        "description_content_type": "text/x-rst",
+        "author_email": "Daniele Varrazzo <daniele.varrazzo@gmail.com>",
+        "license_expression": "LGPL-3.0-only",
+        "license_file": [
+          "LICENSE.txt"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Intended Audience :: Developers",
+          "Operating System :: MacOS :: MacOS X",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: POSIX",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Topic :: Database",
+          "Topic :: Database :: Front-Ends",
+          "Topic :: Software Development",
+          "Topic :: Software Development :: Libraries :: Python Modules"
+        ],
+        "requires_dist": [
+          "typing-extensions>=4.6; python_version < \"3.13\"",
+          "tzdata; sys_platform == \"win32\"",
+          "psycopg-c==3.3.6; implementation_name != \"pypy\" and extra == \"c\"",
+          "psycopg-binary==3.3.6; implementation_name != \"pypy\" and extra == \"binary\"",
+          "psycopg-pool; extra == \"pool\"",
+          "anyio>=4.0; extra == \"test\"",
+          "mypy>=2.1.0; implementation_name != \"pypy\" and extra == \"test\"",
+          "pproxy>=2.7; extra == \"test\"",
+          "pytest>=6.2.5; extra == \"test\"",
+          "pytest-cov>=3.0; extra == \"test\"",
+          "pytest-randomly>=3.5; extra == \"test\"",
+          "ast-comments>=1.1.2; extra == \"dev\"",
+          "black>=26.1.0; extra == \"dev\"",
+          "codespell>=2.2; extra == \"dev\"",
+          "cython-lint>=0.21; extra == \"dev\"",
+          "dnspython>=2.1; extra == \"dev\"",
+          "flake8>=4.0; extra == \"dev\"",
+          "isort[colors]>=6.0; extra == \"dev\"",
+          "isort-psycopg>=0.0.3; extra == \"dev\"",
+          "mypy>=2.1.0; extra == \"dev\"",
+          "pre-commit>=4.0.1; extra == \"dev\"",
+          "types-setuptools>=57.4; extra == \"dev\"",
+          "types-shapely>=2.0; extra == \"dev\"",
+          "wheel>=0.37; extra == \"dev\"",
+          "Sphinx>=9.1; extra == \"docs\"",
+          "furo==2025.12.19; extra == \"docs\"",
+          "sphinx-autobuild>=2025.8.25; extra == \"docs\"",
+          "sphinx-autodoc-typehints>=3.10.2; extra == \"docs\""
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Homepage, https://psycopg.org/",
+          "Documentation, https://psycopg.org/psycopg3/docs/",
+          "Changes, https://psycopg.org/psycopg3/docs/news.html",
+          "Code, https://github.com/psycopg/psycopg",
+          "Issue Tracker, https://github.com/psycopg/psycopg/issues",
+          "Funding, https://github.com/sponsors/dvarrazzo"
+        ],
+        "provides_extra": [
+          "c",
+          "binary",
+          "pool",
+          "test",
+          "dev",
+          "docs"
+        ]
+      },
+      "requested_extras": [
+        "binary"
+      ]
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/1a/9b/94ff7fce53a64d5b286e2ec454e0a025cf3d6e6b4a9189bef16aa5de98b2/psycopg_binary-3.3.6-cp312-cp312-win_amd64.whl",
+        "archive_info": {
+          "hashes": {
+            "sha256": "e23a66a763fbe83fcc210bc77c27e5a5ea380ebf091c06f34d8561b695e5a40f"
+          },
+          "hash": "sha256=e23a66a763fbe83fcc210bc77c27e5a5ea380ebf091c06f34d8561b695e5a40f"
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "psycopg-binary",
+        "version": "3.3.6",
+        "dynamic": [
+          "license-file"
+        ],
+        "summary": "PostgreSQL database adapter for Python -- C optimisation distribution",
+        "description": "Psycopg 3: PostgreSQL database adapter for Python - binary package\n==================================================================\n\nThis distribution package is an optional component of `Psycopg 3`__: it\ncontains the optional optimization package `psycopg_binary`__.\n\n.. __: https://pypi.org/project/psycopg/\n.. __: https://www.psycopg.org/psycopg3/docs/basic/install.html\n       #binary-installation\n\nYou shouldn't install this package directly: use instead ::\n\n    pip install \"psycopg[binary]\"\n\nto install a version of the optimization package matching the ``psycopg``\nversion installed.\n\nInstalling this package requires pip >= 20.3 or newer installed.\n\nThis package is not available for every platform: check out `Binary\ninstallation`__ in the documentation.\n\n.. __: https://www.psycopg.org/psycopg3/docs/basic/install.html\n       #binary-installation\n\nPlease read `the project readme`__ and `the installation documentation`__ for\nmore details.\n\n.. __: https://github.com/psycopg/psycopg#readme\n.. __: https://www.psycopg.org/psycopg3/docs/basic/install.html\n\n\nCopyright (C) 2020 The Psycopg Team\n",
+        "description_content_type": "text/x-rst",
+        "author_email": "Daniele Varrazzo <daniele.varrazzo@gmail.com>",
+        "license_expression": "LGPL-3.0-only",
+        "license_file": [
+          "LICENSE.txt"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Intended Audience :: Developers",
+          "Operating System :: MacOS :: MacOS X",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: POSIX",
+          "Programming Language :: Cython",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Topic :: Database",
+          "Topic :: Database :: Front-Ends",
+          "Topic :: Software Development",
+          "Topic :: Software Development :: Libraries :: Python Modules"
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Homepage, https://psycopg.org/",
+          "Documentation, https://psycopg.org/psycopg3/docs/",
+          "Changes, https://psycopg.org/psycopg3/docs/news.html",
+          "Code, https://github.com/psycopg/psycopg",
+          "Issue Tracker, https://github.com/psycopg/psycopg/issues",
+          "Funding, https://github.com/sponsors/dvarrazzo"
+        ]
+      }
+    },
+    {
+      "download_info": {
         "url": "https://files.pythonhosted.org/packages/86/45/00173a033c801cacf67c190fef088789394feaf88a98a7035b0e40d53dc9/pydantic_core-2.41.5-cp312-cp312-win_amd64.whl",
         "archive_info": {
           "hashes": {
@@ -1817,103 +1976,6 @@
         "project_url": [
           "Documentation, https://packaging.pypa.io/",
           "Source, https://github.com/pypa/packaging"
-        ]
-      }
-    },
-    {
-      "download_info": {
-        "url": "https://files.pythonhosted.org/packages/4e/de/748bd7609c71cae5d737f0ba9192f19329f70180ecda8fff3cac02c5abe3/psycopg-3.3.6-py3-none-any.whl",
-        "archive_info": {
-          "hashes": {
-            "sha256": "a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631"
-          },
-          "hash": "sha256=a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631"
-        }
-      },
-      "is_direct": false,
-      "is_yanked": false,
-      "requested": false,
-      "metadata": {
-        "metadata_version": "2.4",
-        "name": "psycopg",
-        "version": "3.3.6",
-        "dynamic": [
-          "license-file"
-        ],
-        "summary": "PostgreSQL database adapter for Python",
-        "description": "Psycopg 3: PostgreSQL database adapter for Python\n=================================================\n\nPsycopg 3 is a modern implementation of a PostgreSQL adapter for Python.\n\nThis distribution contains the pure Python package ``psycopg``.\n\n.. Note::\n\n    Despite the lack of number in the package name, this package is the\n    successor of psycopg2_.\n\n    Please use the psycopg2 package if you are maintaining an existing program\n    using psycopg2 as a dependency. If you are developing something new,\n    Psycopg 3 is the most current implementation of the adapter.\n\n    .. _psycopg2: https://pypi.org/project/psycopg2/\n\n\nInstallation\n------------\n\nIn short, run the following::\n\n    pip install --upgrade pip           # to upgrade pip\n    pip install \"psycopg[binary,pool]\"  # to install package and dependencies\n\nIf something goes wrong, and for more information about installation, please\ncheck out the `Installation documentation`__.\n\n.. __: https://www.psycopg.org/psycopg3/docs/basic/install.html#\n\n\nHacking\n-------\n\nFor development information check out `the project readme`__.\n\n.. __: https://github.com/psycopg/psycopg#readme\n\n\nCopyright (C) 2020 The Psycopg Team\n",
-        "description_content_type": "text/x-rst",
-        "author_email": "Daniele Varrazzo <daniele.varrazzo@gmail.com>",
-        "license_expression": "LGPL-3.0-only",
-        "license_file": [
-          "LICENSE.txt"
-        ],
-        "classifier": [
-          "Development Status :: 5 - Production/Stable",
-          "Intended Audience :: Developers",
-          "Operating System :: MacOS :: MacOS X",
-          "Operating System :: Microsoft :: Windows",
-          "Operating System :: POSIX",
-          "Programming Language :: Python :: 3 :: Only",
-          "Programming Language :: Python :: 3.10",
-          "Programming Language :: Python :: 3.11",
-          "Programming Language :: Python :: 3.12",
-          "Programming Language :: Python :: 3.13",
-          "Programming Language :: Python :: 3.14",
-          "Programming Language :: Python :: 3.15",
-          "Programming Language :: Python :: Implementation :: CPython",
-          "Programming Language :: Python :: Implementation :: PyPy",
-          "Topic :: Database",
-          "Topic :: Database :: Front-Ends",
-          "Topic :: Software Development",
-          "Topic :: Software Development :: Libraries :: Python Modules"
-        ],
-        "requires_dist": [
-          "typing-extensions>=4.6; python_version < \"3.13\"",
-          "tzdata; sys_platform == \"win32\"",
-          "psycopg-c==3.3.6; implementation_name != \"pypy\" and extra == \"c\"",
-          "psycopg-binary==3.3.6; implementation_name != \"pypy\" and extra == \"binary\"",
-          "psycopg-pool; extra == \"pool\"",
-          "anyio>=4.0; extra == \"test\"",
-          "mypy>=2.1.0; implementation_name != \"pypy\" and extra == \"test\"",
-          "pproxy>=2.7; extra == \"test\"",
-          "pytest>=6.2.5; extra == \"test\"",
-          "pytest-cov>=3.0; extra == \"test\"",
-          "pytest-randomly>=3.5; extra == \"test\"",
-          "ast-comments>=1.1.2; extra == \"dev\"",
-          "black>=26.1.0; extra == \"dev\"",
-          "codespell>=2.2; extra == \"dev\"",
-          "cython-lint>=0.21; extra == \"dev\"",
-          "dnspython>=2.1; extra == \"dev\"",
-          "flake8>=4.0; extra == \"dev\"",
-          "isort[colors]>=6.0; extra == \"dev\"",
-          "isort-psycopg>=0.0.3; extra == \"dev\"",
-          "mypy>=2.1.0; extra == \"dev\"",
-          "pre-commit>=4.0.1; extra == \"dev\"",
-          "types-setuptools>=57.4; extra == \"dev\"",
-          "types-shapely>=2.0; extra == \"dev\"",
-          "wheel>=0.37; extra == \"dev\"",
-          "Sphinx>=9.1; extra == \"docs\"",
-          "furo==2025.12.19; extra == \"docs\"",
-          "sphinx-autobuild>=2025.8.25; extra == \"docs\"",
-          "sphinx-autodoc-typehints>=3.10.2; extra == \"docs\""
-        ],
-        "requires_python": ">=3.10",
-        "project_url": [
-          "Homepage, https://psycopg.org/",
-          "Documentation, https://psycopg.org/psycopg3/docs/",
-          "Changes, https://psycopg.org/psycopg3/docs/news.html",
-          "Code, https://github.com/psycopg/psycopg",
-          "Issue Tracker, https://github.com/psycopg/psycopg/issues",
-          "Funding, https://github.com/sponsors/dvarrazzo"
-        ],
-        "provides_extra": [
-          "c",
-          "binary",
-          "pool",
-          "test",
-          "dev",
-          "docs"
         ]
       }
     },
