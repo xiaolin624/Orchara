@@ -1,0 +1,43 @@
+name: Initialize engineering skill labels
+
+on:
+  push:
+    branches: [setup/engineering-skills]
+    paths: [.github/workflows/setup-skill-labels.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Create missing default labels and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPOSITORY/labels?per_page=100" --jq '.[].name' > /tmp/skill-existing-labels
+          while IFS='|' read -r label color description; do
+            if ! grep -Fxq "$label" /tmp/skill-existing-labels; then
+              gh api --method POST "repos/$REPOSITORY/labels" -f name="$label" -f color="$color" -f description="$description" --silent
+            fi
+          done <<'LABELS'
+          needs-triage|D4C5F9|Maintainer needs to evaluate this issue
+          needs-info|D876E3|Waiting for more information
+          ready-for-agent|0E8A16|Fully specified and ready for an agent
+          ready-for-human|FBCA04|Requires human implementation
+          wontfix|FFFFFF|Will not be actioned
+          LABELS
+          gh api --paginate "repos/$REPOSITORY/labels?per_page=100" --jq '.[].name' > /tmp/skill-verified-labels
+          for label in needs-triage needs-info ready-for-agent ready-for-human wontfix; do
+            grep -Fx "$label" /tmp/skill-verified-labels
+            echo "- Verified: $label" >> "$GITHUB_STEP_SUMMARY"
+          done
