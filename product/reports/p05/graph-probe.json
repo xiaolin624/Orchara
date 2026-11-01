@@ -1,0 +1,84 @@
+{
+  "probe": "p05-graph-branching",
+  "task": "P05 / T011",
+  "engine": "langgraph",
+  "cases": {
+    "route_left": {
+      "route": "left",
+      "executed": [
+        "entry",
+        "left",
+        "join"
+      ],
+      "skipped": [
+        "right"
+      ],
+      "join_count": 1,
+      "structural_reasons": []
+    },
+    "route_right": {
+      "route": "right",
+      "executed": [
+        "entry",
+        "right",
+        "join"
+      ],
+      "skipped": [
+        "left"
+      ],
+      "join_count": 1,
+      "structural_reasons": []
+    },
+    "parallel": {
+      "executed": [
+        "entry",
+        "left",
+        "right",
+        "join"
+      ],
+      "join_count": 1
+    },
+    "nested": {
+      "executed": [
+        "entry",
+        "outer_a",
+        "inner_right",
+        "join"
+      ],
+      "join_count": 1
+    },
+    "failing_branch": {
+      "executed": [
+        "entry",
+        "bad_branch",
+        "ok_branch",
+        "join"
+      ],
+      "join_count": 1,
+      "failed": [
+        "bad_branch:RuntimeError"
+      ]
+    }
+  },
+  "rejections": {
+    "cross_region_edge": [
+      "cross_region_edge:a->b",
+      "no_active_source:a"
+    ],
+    "no_active_source": [
+      "no_active_source:b"
+    ]
+  },
+  "assertions": {
+    "unselected_branch_is_skipped": true,
+    "join_runs_exactly_once": true,
+    "no_deadlock": true,
+    "parallel_runs_both_branches": true,
+    "parallel_join_once": true,
+    "nested_inner_selection_respected": true,
+    "nested_join_once": true,
+    "failure_still_converges": true,
+    "cross_region_rejected": true,
+    "orphan_node_rejected": true
+  }
+}
