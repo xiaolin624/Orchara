@@ -23,7 +23,7 @@
 | T009 | P02 | 升级后恢复旧图或明确报告缺制品 | passed | `reports/p02/T009-artifact-pinning.md`、`db/migrations/0002_artifacts.sql`（11 passed） |
 | T006 | P03 | 启动一个拒绝危险配置的 Linux 沙箱探针 | passed | `reports/p03/T006-sandbox-probe.md`（WSL2 + runsc 20241118.0，15 passed） |
 | T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | passed | `reports/p03/T010-isolation-matrix.md`（最小 OCI bundle，17 passed） |
-| T014 | P03 | 停止超限脚本并证明资源已回收 | blocked | 依赖 T010 |
+| T014 | P03 | 停止超限脚本并证明资源已回收 | passed | `reports/p03/T014-resource-limits.md`（24 passed；OCI 内存上限未生效，改用 ulimit） |
 | T013 | P04 | 模拟租约失联而不启动第二个执行者 | not_started | — |
 | T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | blocked | 依赖 T010/T014 的沙箱证据 |
 | T018 | P04 | 写成功丢回执后恢复仍只写一次 | blocked | 依赖 T016 |

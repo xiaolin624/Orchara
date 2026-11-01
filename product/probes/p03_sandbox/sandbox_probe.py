@@ -234,6 +234,53 @@ def isolation_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
         raise RuntimeError(f"isolation matrix emitted invalid JSON: {exc}") from exc
 
 
+LIMITS_SCRIPT = Path(__file__).with_name("limits_matrix.sh")
+FEATURE_FLAG_PATH = Path(__file__).resolve().parents[2] / "reports" / "p03" / "feature-flag.json"
+
+
+def limits_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
+    """Run the over-limit matrix in the guest and return its JSON result."""
+    guest_script = "/tmp/orchara-limits-matrix.sh"
+    staged = _to_wsl_path(LIMITS_SCRIPT)
+    command = f"tr -d '\\r' < '{staged}' > {guest_script} && bash {guest_script}"
+    completed = run_wsl(command, distro=distro, timeout=600)
+    if completed.returncode != 0:
+        raise RuntimeError(f"limits matrix failed: {completed.stderr.strip()}")
+    try:
+        return json.loads(completed.stdout.strip().splitlines()[-1])
+    except json.JSONDecodeError as exc:  # pragma: no cover - guest failure
+        raise RuntimeError(f"limits matrix emitted invalid JSON: {exc}") from exc
+
+
+def arbitrary_scripts_enabled() -> bool:
+    """Whether user scripts may run at all. Off unless explicitly enabled.
+
+    A failed limit test must never turn this on: the point of the switch is that
+    a failure leaves the capability closed.
+    """
+    if not FEATURE_FLAG_PATH.exists():
+        return False
+    try:
+        payload = json.loads(FEATURE_FLAG_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:  # pragma: no cover - corrupt state is closed
+        return False
+    return bool(payload.get("arbitrary_scripts", False))
+
+
+def record_failure(reason: str) -> dict[str, Any]:
+    """Record a failed sandbox run; the switch stays off."""
+    payload = {
+        "arbitrary_scripts": False,
+        "last_failure": reason,
+        "recorded_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ).isoformat(timespec="seconds"),
+    }
+    FEATURE_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    FEATURE_FLAG_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
+
+
 def probe(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
     """The ticket's evidence bundle: versions, a real run, and refusals."""
     versions = report_versions(distro)

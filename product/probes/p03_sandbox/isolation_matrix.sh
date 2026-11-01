@@ -33,7 +33,7 @@ fi
 rm -rf "$ROOTFS"
 mkdir -p "$ROOTFS"/{bin,proc,tmp,work/input}
 cp "$BUNDLE/busybox" "$ROOTFS/bin/busybox"
-for applet in sh cat ls echo id env mkdir rm sleep wc nc; do
+for applet in sh cat ls echo id env mkdir rm sleep wc nc dd head tail tr seq kill; do
   ln -sf /bin/busybox "$ROOTFS/bin/$applet"
 done
 
