@@ -1,0 +1,3014 @@
+{
+  "repo": "xiaolin624/Orchara",
+  "status": "issues_created_native_relations_pending",
+  "source_drafts": 124,
+  "merged_tickets": 24,
+  "split_sources": 20,
+  "tickets": [
+    {
+      "id": "T001",
+      "key": "D00-01",
+      "number": 2,
+      "url": "https://github.com/xiaolin624/Orchara/issues/2",
+      "blockers": [],
+      "title": "[T001][D00] 在产品工作区复现规格并生成环境报告",
+      "sources": [
+        "D00.01",
+        "D00.02",
+        "D00.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q20",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T002",
+      "key": "P01-01",
+      "number": 3,
+      "url": "https://github.com/xiaolin624/Orchara/issues/3",
+      "title": "[T002][P01] 从锁定依赖运行一个只有授权工具的 Agent",
+      "blockers": [
+        "T001"
+      ],
+      "sources": [
+        "P01.01",
+        "P01.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q27",
+        "Q36",
+        "Q37",
+        "Q41",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T003",
+      "key": "P01-02",
+      "number": 4,
+      "url": "https://github.com/xiaolin624/Orchara/issues/4",
+      "title": "[T003][P01] 让 Go/Python 对同一清单给出相同指纹",
+      "blockers": [
+        "T002"
+      ],
+      "sources": [
+        "P01.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q27",
+        "Q36",
+        "Q37",
+        "Q41",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T004",
+      "key": "P01-03",
+      "number": 5,
+      "url": "https://github.com/xiaolin624/Orchara/issues/5",
+      "title": "[T004][P01] 在第二个干净环境重建核心探针",
+      "blockers": [
+        "T003"
+      ],
+      "sources": [
+        "P01.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q27",
+        "Q36",
+        "Q37",
+        "Q41",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T005",
+      "key": "P02-01",
+      "number": 6,
+      "url": "https://github.com/xiaolin624/Orchara/issues/6",
+      "title": "[T005][P02] 让一个中断任务在新进程中安全继续",
+      "blockers": [
+        "T004"
+      ],
+      "sources": [
+        "P02.01",
+        "P02.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q12",
+        "Q31",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T006",
+      "key": "P03-01",
+      "number": 7,
+      "url": "https://github.com/xiaolin624/Orchara/issues/7",
+      "title": "[T006][P03] 启动一个拒绝危险配置的 Linux 沙箱探针",
+      "blockers": [
+        "T004"
+      ],
+      "sources": [
+        "P03.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q20",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T007",
+      "key": "P05-01",
+      "number": 8,
+      "url": "https://github.com/xiaolin624/Orchara/issues/8",
+      "title": "[T007][P05] 用同一 corpus 校验两语言的变量和类型",
+      "blockers": [
+        "T004"
+      ],
+      "sources": [
+        "P05.01",
+        "P05.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q10",
+        "Q16",
+        "Q29"
+      ]
+    },
+    {
+      "id": "T008",
+      "key": "F00-01",
+      "number": 9,
+      "url": "https://github.com/xiaolin624/Orchara/issues/9",
+      "title": "[T008][F00] 启动产品并在浏览器看到真实健康状态",
+      "blockers": [
+        "T004"
+      ],
+      "sources": [
+        "F00.01",
+        "F00.03"
+      ],
+      "operations": [
+        "liveness",
+        "readiness"
+      ],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T009",
+      "key": "P02-02",
+      "number": 10,
+      "url": "https://github.com/xiaolin624/Orchara/issues/10",
+      "title": "[T009][P02] 升级后恢复旧图或明确报告缺制品",
+      "blockers": [
+        "T005"
+      ],
+      "sources": [
+        "P02.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q12",
+        "Q31",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T010",
+      "key": "P03-02",
+      "number": 11,
+      "url": "https://github.com/xiaolin624/Orchara/issues/11",
+      "title": "[T010][P03] 证明脚本无法读越权文件或绕过网络代理",
+      "blockers": [
+        "T006"
+      ],
+      "sources": [
+        "P03.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q20",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T011",
+      "key": "P05-02",
+      "number": 12,
+      "url": "https://github.com/xiaolin624/Orchara/issues/12",
+      "title": "[T011][P05] 在真实图引擎中验证分支和汇合结果",
+      "blockers": [
+        "T007"
+      ],
+      "sources": [
+        "P05.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q10",
+        "Q16",
+        "Q29"
+      ]
+    },
+    {
+      "id": "T012",
+      "key": "F00-02",
+      "number": 13,
+      "url": "https://github.com/xiaolin624/Orchara/issues/13",
+      "title": "[T012][F00] 按环境 profile 启动并重现一次 CI 验收",
+      "blockers": [
+        "T008"
+      ],
+      "sources": [
+        "F00.02",
+        "F00.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T013",
+      "key": "P04-01",
+      "number": 14,
+      "url": "https://github.com/xiaolin624/Orchara/issues/14",
+      "title": "[T013][P04] 模拟租约失联而不启动第二个执行者",
+      "blockers": [
+        "T009"
+      ],
+      "sources": [
+        "P04.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q30",
+        "Q31"
+      ]
+    },
+    {
+      "id": "T014",
+      "key": "P03-03",
+      "number": 15,
+      "url": "https://github.com/xiaolin624/Orchara/issues/15",
+      "title": "[T014][P03] 停止超限脚本并证明资源已回收",
+      "blockers": [
+        "T010"
+      ],
+      "sources": [
+        "P03.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q20",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T015",
+      "key": "F01-01",
+      "number": 16,
+      "url": "https://github.com/xiaolin624/Orchara/issues/16",
+      "title": "[T015][F01] 从空数据库建立管理员并邀请激活用户",
+      "blockers": [
+        "T012"
+      ],
+      "sources": [
+        "F01.01",
+        "F01.02"
+      ],
+      "operations": [
+        "inviteUser",
+        "activateUser"
+      ],
+      "requirement_ids": [
+        "Q14",
+        "Q15",
+        "Q32",
+        "Q39",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T016",
+      "key": "P04-02",
+      "number": 17,
+      "url": "https://github.com/xiaolin624/Orchara/issues/17",
+      "title": "[T016][P04] 等待旧进程、沙箱和数据库写全部排空再恢复",
+      "blockers": [
+        "T013"
+      ],
+      "sources": [
+        "P04.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q30",
+        "Q31"
+      ]
+    },
+    {
+      "id": "T017",
+      "key": "F01-02",
+      "number": 18,
+      "url": "https://github.com/xiaolin624/Orchara/issues/18",
+      "title": "[T017][F01] 用户登录、刷新身份并安全登出",
+      "blockers": [
+        "T015"
+      ],
+      "sources": [
+        "F01.03"
+      ],
+      "operations": [
+        "login",
+        "logout",
+        "getIdentity"
+      ],
+      "requirement_ids": [
+        "Q14",
+        "Q15",
+        "Q32",
+        "Q39",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T018",
+      "key": "P04-03",
+      "number": 19,
+      "url": "https://github.com/xiaolin624/Orchara/issues/19",
+      "title": "[T018][P04] 写成功丢回执后恢复仍只写一次",
+      "blockers": [
+        "T016"
+      ],
+      "sources": [
+        "P04.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q30",
+        "Q31"
+      ]
+    },
+    {
+      "id": "T019",
+      "key": "F01-03",
+      "number": 20,
+      "url": "https://github.com/xiaolin624/Orchara/issues/20",
+      "title": "[T019][F01] 管理员授予或撤销某个用户的资源访问",
+      "blockers": [
+        "T017"
+      ],
+      "sources": [
+        "F01.04"
+      ],
+      "operations": [
+        "grantResource",
+        "revokeResourceGrant",
+        "setUserRoles"
+      ],
+      "requirement_ids": [
+        "Q14",
+        "Q15",
+        "Q32",
+        "Q39",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T020",
+      "key": "F01-04",
+      "number": 21,
+      "url": "https://github.com/xiaolin624/Orchara/issues/21",
+      "title": "[T020][F01] 创建服务账号并用可撤销 Key 调用授权 API",
+      "blockers": [
+        "T019"
+      ],
+      "sources": [
+        "F01.05"
+      ],
+      "operations": [
+        "createServiceAccount",
+        "createApiKey",
+        "revokeApiKey"
+      ],
+      "requirement_ids": [
+        "Q14",
+        "Q15",
+        "Q32",
+        "Q39",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T021",
+      "key": "F01-05",
+      "number": 22,
+      "url": "https://github.com/xiaolin624/Orchara/issues/22",
+      "title": "[T021][F01] 禁用人员并安全交接未完成待办",
+      "blockers": [
+        "T020"
+      ],
+      "sources": [
+        "F01.06"
+      ],
+      "operations": [
+        "updatePrincipal"
+      ],
+      "requirement_ids": [
+        "Q14",
+        "Q15",
+        "Q32",
+        "Q39",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T022",
+      "key": "F00B-01",
+      "number": 23,
+      "url": "https://github.com/xiaolin624/Orchara/issues/23",
+      "title": "[T022][F00B] 提交一个后台任务并在重启后得到唯一结果",
+      "blockers": [
+        "T021"
+      ],
+      "sources": [
+        "F00B.01",
+        "F00B.02"
+      ],
+      "operations": [
+        "claimBackgroundJob",
+        "heartbeatBackgroundJob",
+        "completeBackgroundJob"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q28",
+        "Q40",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T023",
+      "key": "F02A-01",
+      "number": 24,
+      "url": "https://github.com/xiaolin624/Orchara/issues/24",
+      "title": "[T023][F02A] 创作者编辑用途说明和草稿并处理保存冲突",
+      "blockers": [
+        "T021",
+        "T011"
+      ],
+      "sources": [
+        "F02A.01",
+        "F02A.04"
+      ],
+      "operations": [
+        "createApplication",
+        "getDraft",
+        "saveDraft",
+        "getApplication",
+        "listVersions",
+        "getVersion"
+      ],
+      "requirement_ids": [
+        "Q4",
+        "Q5",
+        "Q7",
+        "Q12",
+        "Q24",
+        "Q27",
+        "Q43"
+      ]
+    },
+    {
+      "id": "T024",
+      "key": "F00B-02",
+      "number": 25,
+      "url": "https://github.com/xiaolin624/Orchara/issues/25",
+      "title": "[T024][F00B] 后台评测只读取获准文件并记账模型调用",
+      "blockers": [
+        "T022"
+      ],
+      "sources": [
+        "F00B.03"
+      ],
+      "operations": [
+        "invokeBackgroundModel",
+        "createBackgroundUpload",
+        "completeBackgroundUpload",
+        "createBackgroundDownload",
+        "getBackgroundArtifactStatus"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q28",
+        "Q40",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T025",
+      "key": "F02A-02",
+      "number": 26,
+      "url": "https://github.com/xiaolin624/Orchara/issues/26",
+      "title": "[T025][F02A] 把当前草稿固化为可核验执行清单",
+      "blockers": [
+        "T023"
+      ],
+      "sources": [
+        "F02A.02"
+      ],
+      "operations": [
+        "validateApplication"
+      ],
+      "requirement_ids": [
+        "Q4",
+        "Q5",
+        "Q7",
+        "Q12",
+        "Q24",
+        "Q27",
+        "Q43"
+      ]
+    },
+    {
+      "id": "T026",
+      "key": "F00B-03",
+      "number": 27,
+      "url": "https://github.com/xiaolin624/Orchara/issues/27",
+      "title": "[T026][F00B] 评测池满载时文件封存仍能完成",
+      "blockers": [
+        "T024"
+      ],
+      "sources": [
+        "F00B.04"
+      ],
+      "operations": [
+        "getBackgroundJob"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q28",
+        "Q40",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T027",
+      "key": "F02A-03",
+      "number": 28,
+      "url": "https://github.com/xiaolin624/Orchara/issues/28",
+      "title": "[T027][F02A] 发布前提交私有草稿并查看固定调试任务",
+      "blockers": [
+        "T025"
+      ],
+      "sources": [
+        "F02A.03"
+      ],
+      "operations": [
+        "debugDraft"
+      ],
+      "requirement_ids": [
+        "Q4",
+        "Q5",
+        "Q7",
+        "Q12",
+        "Q24",
+        "Q27",
+        "Q43"
+      ]
+    },
+    {
+      "id": "T028",
+      "key": "F05-01",
+      "number": 29,
+      "url": "https://github.com/xiaolin624/Orchara/issues/29",
+      "title": "[T028][F05] 上传、校验封存并授权下载不可覆盖的文件",
+      "blockers": [
+        "T026",
+        "T014"
+      ],
+      "sources": [
+        "F05.01"
+      ],
+      "operations": [
+        "createUpload",
+        "completeUpload",
+        "getArtifact",
+        "downloadArtifact",
+        "readArtifactContent"
+      ],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q13",
+        "Q27",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T029",
+      "key": "F03-01",
+      "number": 30,
+      "url": "https://github.com/xiaolin624/Orchara/issues/30",
+      "title": "[T029][F03] 提交运行并只让合格执行者在配额内领取",
+      "blockers": [
+        "T027",
+        "T018"
+      ],
+      "sources": [
+        "F03.01",
+        "F03.02"
+      ],
+      "operations": [
+        "getRun",
+        "listRuns",
+        "claimJob",
+        "heartbeat"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T030",
+      "key": "F05-02",
+      "number": 31,
+      "url": "https://github.com/xiaolin624/Orchara/issues/31",
+      "title": "[T030][F05] 用预置工具对销售表格返回统计或具体输入错误",
+      "blockers": [
+        "T028"
+      ],
+      "sources": [
+        "F05.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q13",
+        "Q27",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T031",
+      "key": "F03-02",
+      "number": 32,
+      "url": "https://github.com/xiaolin624/Orchara/issues/32",
+      "title": "[T031][F03] 运行完成后等待真实退出证据再展示终态",
+      "blockers": [
+        "T029",
+        "T028"
+      ],
+      "sources": [
+        "F03.03",
+        "F03.05"
+      ],
+      "operations": [
+        "submitWorkerResult",
+        "confirmAttemptExit"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T032",
+      "key": "F03-03",
+      "number": 33,
+      "url": "https://github.com/xiaolin624/Orchara/issues/33",
+      "title": "[T032][F03] 断开事件流后从持久时间线继续查看运行",
+      "blockers": [
+        "T029"
+      ],
+      "sources": [
+        "F03.04"
+      ],
+      "operations": [
+        "submitWorkerEvents",
+        "runEvents"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T033",
+      "key": "F05-03",
+      "number": 34,
+      "url": "https://github.com/xiaolin624/Orchara/issues/34",
+      "title": "[T033][F05] 在正式沙箱调试工具并登记可授权下载的产物",
+      "blockers": [
+        "T030"
+      ],
+      "sources": [
+        "F05.03"
+      ],
+      "operations": [
+        "registerRunArtifact",
+        "createWorkerUpload",
+        "completeWorkerUpload",
+        "createWorkerDownload",
+        "getWorkerArtifactStatus",
+        "listRunArtifacts"
+      ],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q13",
+        "Q27",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T034",
+      "key": "F03-05",
+      "number": 35,
+      "url": "https://github.com/xiaolin624/Orchara/issues/35",
+      "title": "[T034][F03] 跨恢复尝试累计活跃耗时并在截止时停止",
+      "blockers": [
+        "T031"
+      ],
+      "sources": [
+        "F03.06"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T035",
+      "key": "F03-06",
+      "number": 36,
+      "url": "https://github.com/xiaolin624/Orchara/issues/36",
+      "title": "[T035][F03] 等待条件和退出乱序到达都只恢复原任务一次",
+      "blockers": [
+        "T031"
+      ],
+      "sources": [
+        "F03.07"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T036",
+      "key": "F03-04",
+      "number": 37,
+      "url": "https://github.com/xiaolin624/Orchara/issues/37",
+      "title": "[T036][F03] 点击取消后等待执行停止且迟到消息不复活任务",
+      "blockers": [
+        "T031",
+        "T032"
+      ],
+      "sources": [
+        "F03.06"
+      ],
+      "operations": [
+        "cancelRun"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T037",
+      "key": "F05-04",
+      "number": 38,
+      "url": "https://github.com/xiaolin624/Orchara/issues/38",
+      "title": "[T037][F05] 提交脚本依赖并审核成可共享固定工具",
+      "blockers": [
+        "T033"
+      ],
+      "sources": [
+        "F05.04",
+        "F05.05"
+      ],
+      "operations": [
+        "submitTool",
+        "listTools",
+        "getTool",
+        "reviewTool"
+      ],
+      "requirement_ids": [
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q13",
+        "Q27",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T038",
+      "key": "F03-07",
+      "number": 39,
+      "url": "https://github.com/xiaolin624/Orchara/issues/39",
+      "title": "[T038][F03] 执行宿主失联后保持恢复等待直到证据充分",
+      "blockers": [
+        "T036",
+        "T034",
+        "T035"
+      ],
+      "sources": [
+        "F03.08"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q12",
+        "Q19",
+        "Q25",
+        "Q30",
+        "Q31",
+        "Q33",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T039",
+      "key": "F06-01",
+      "number": 40,
+      "url": "https://github.com/xiaolin624/Orchara/issues/40",
+      "title": "[T039][F06] 管理员登记模型并查看兼容验证后才共享",
+      "blockers": [
+        "T038",
+        "T037"
+      ],
+      "sources": [
+        "F06.01",
+        "F06.08"
+      ],
+      "operations": [
+        "registerModel",
+        "validateModel",
+        "listModels",
+        "getModel",
+        "listCredentialRefs",
+        "listModelEndpoints"
+      ],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T040",
+      "key": "F04A-01",
+      "number": 41,
+      "url": "https://github.com/xiaolin624/Orchara/issues/41",
+      "title": "[T040][F04A] 在画布配置线性流程并看到服务端校验反馈",
+      "blockers": [
+        "T039"
+      ],
+      "sources": [
+        "F04A.01",
+        "F04A.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q11",
+        "Q29",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T041",
+      "key": "F06-02",
+      "number": 42,
+      "url": "https://github.com/xiaolin624/Orchara/issues/42",
+      "title": "[T041][F06] Agent 经受控模型适配完成一次完整工具调用",
+      "blockers": [
+        "T039"
+      ],
+      "sources": [
+        "F06.02"
+      ],
+      "operations": [
+        "invokeCapability"
+      ],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T042",
+      "key": "F04A-02",
+      "number": 43,
+      "url": "https://github.com/xiaolin624/Orchara/issues/43",
+      "title": "[T042][F04A] 运行固定 Python 节点并查看结构数据与文件",
+      "blockers": [
+        "T040"
+      ],
+      "sources": [
+        "F04A.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q11",
+        "Q29",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T043",
+      "key": "F04A-03",
+      "number": 44,
+      "url": "https://github.com/xiaolin624/Orchara/issues/44",
+      "title": "[T043][F04A] 运行受控 Agent 节点并校验最终输出",
+      "blockers": [
+        "T040",
+        "T041"
+      ],
+      "sources": [
+        "F04A.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q11",
+        "Q29",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T044",
+      "key": "F06-03",
+      "number": 45,
+      "url": "https://github.com/xiaolin624/Orchara/issues/45",
+      "title": "[T044][F06] 流式响应中断后丢弃旧代次且不执行残缺工具",
+      "blockers": [
+        "T041"
+      ],
+      "sources": [
+        "F06.03"
+      ],
+      "operations": [
+        "streamModelCall"
+      ],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T045",
+      "key": "F06-04",
+      "number": 46,
+      "url": "https://github.com/xiaolin624/Orchara/issues/46",
+      "title": "[T045][F06] 供应商故障后只切换兼容备用模型",
+      "blockers": [
+        "T041"
+      ],
+      "sources": [
+        "F06.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T046",
+      "key": "F06-05",
+      "number": 47,
+      "url": "https://github.com/xiaolin624/Orchara/issues/47",
+      "title": "[T046][F06] 并行模型调用共享预算并按实际用量结算",
+      "blockers": [
+        "T041"
+      ],
+      "sources": [
+        "F06.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T047",
+      "key": "F06-06",
+      "number": 48,
+      "url": "https://github.com/xiaolin624/Orchara/issues/48",
+      "title": "[T047][F06] Agent 在上下文上限内使用授权来源和记忆",
+      "blockers": [
+        "T041"
+      ],
+      "sources": [
+        "F06.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T048",
+      "key": "F06-07",
+      "number": 49,
+      "url": "https://github.com/xiaolin624/Orchara/issues/49",
+      "title": "[T048][F06] 管理员登记固定连接器并阻止越界出站",
+      "blockers": [
+        "T041"
+      ],
+      "sources": [
+        "F06.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T049",
+      "key": "F04A-04",
+      "number": 50,
+      "url": "https://github.com/xiaolin624/Orchara/issues/50",
+      "title": "[T049][F04A] 另一使用者运行销售模板并下载正确报告",
+      "blockers": [
+        "T042",
+        "T043"
+      ],
+      "sources": [
+        "F04A.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q11",
+        "Q29",
+        "Q36",
+        "Q37"
+      ]
+    },
+    {
+      "id": "T050",
+      "key": "F06-08",
+      "number": 51,
+      "url": "https://github.com/xiaolin624/Orchara/issues/51",
+      "title": "[T050][F06] 使用者确认真实参数后安全恢复受控操作",
+      "blockers": [
+        "T048"
+      ],
+      "sources": [
+        "F06.06",
+        "F06.08"
+      ],
+      "operations": [
+        "prepareApproval",
+        "getApproval",
+        "decideApproval",
+        "listApprovals"
+      ],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T051",
+      "key": "F06-09",
+      "number": 52,
+      "url": "https://github.com/xiaolin624/Orchara/issues/52",
+      "title": "[T051][F06] 写后丢响应时暂停核对且真实写次数不增加",
+      "blockers": [
+        "T050"
+      ],
+      "sources": [
+        "F06.07"
+      ],
+      "operations": [
+        "reconcileOperation"
+      ],
+      "requirement_ids": [
+        "Q9",
+        "Q30",
+        "Q31",
+        "Q34",
+        "Q41",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T052",
+      "key": "F13A-01",
+      "number": 53,
+      "url": "https://github.com/xiaolin624/Orchara/issues/53",
+      "title": "[T052][F13A] 用正式 API 运行案例并让独立 checker 判定",
+      "blockers": [
+        "T049",
+        "T044",
+        "T045",
+        "T046",
+        "T047",
+        "T051"
+      ],
+      "sources": [
+        "F13A.01",
+        "F13A.02"
+      ],
+      "operations": [
+        "evaluateDraft"
+      ],
+      "requirement_ids": [
+        "Q11",
+        "Q15",
+        "Q31",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T053",
+      "key": "F15A-01",
+      "number": 54,
+      "url": "https://github.com/xiaolin624/Orchara/issues/54",
+      "title": "[T053][F15A] 在候选 S3 上验证封存、匿名拒绝和删除",
+      "blockers": [
+        "T044",
+        "T045",
+        "T046",
+        "T047",
+        "T051"
+      ],
+      "sources": [
+        "F15A.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q3",
+        "Q11",
+        "Q20",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T054",
+      "key": "F09-01",
+      "number": 55,
+      "url": "https://github.com/xiaolin624/Orchara/issues/55",
+      "title": "[T054][F09] 用户确认候选后才保存个人长期记忆",
+      "blockers": [
+        "T044",
+        "T045",
+        "T046",
+        "T047",
+        "T051"
+      ],
+      "sources": [
+        "F09.01"
+      ],
+      "operations": [
+        "createMemory",
+        "proposeMemoryCandidate",
+        "listMemoryCandidates",
+        "decideMemoryCandidate"
+      ],
+      "requirement_ids": [
+        "Q18",
+        "Q35",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T055",
+      "key": "F10-01",
+      "number": 56,
+      "url": "https://github.com/xiaolin624/Orchara/issues/56",
+      "title": "[T055][F10] 上传文本资料后检索到可追溯片段",
+      "blockers": [
+        "T044",
+        "T045",
+        "T046",
+        "T047",
+        "T051"
+      ],
+      "sources": [
+        "F10.01"
+      ],
+      "operations": [
+        "createKnowledgeBase",
+        "listKnowledgeBases",
+        "getKnowledgeBase",
+        "ingestDocument",
+        "listKnowledgeDocuments",
+        "getKnowledgeDocument"
+      ],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T056",
+      "key": "F13A-02",
+      "number": 57,
+      "url": "https://github.com/xiaolin624/Orchara/issues/57",
+      "title": "[T056][F13A] 运行销售与坏输入案例并展示逐例结果",
+      "blockers": [
+        "T052"
+      ],
+      "sources": [
+        "F13A.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q11",
+        "Q15",
+        "Q31",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T057",
+      "key": "F15A-02",
+      "number": 58,
+      "url": "https://github.com/xiaolin624/Orchara/issues/58",
+      "title": "[T057][F15A] 在干净开发环境启动并跑通销售冒烟",
+      "blockers": [
+        "T053",
+        "T049"
+      ],
+      "sources": [
+        "F15A.01",
+        "F15A.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q3",
+        "Q11",
+        "Q20",
+        "Q42"
+      ]
+    },
+    {
+      "id": "T058",
+      "key": "F09-02",
+      "number": 59,
+      "url": "https://github.com/xiaolin624/Orchara/issues/59",
+      "title": "[T058][F09] 用户修订或删除记忆后立即停止旧内容召回",
+      "blockers": [
+        "T054"
+      ],
+      "sources": [
+        "F09.02",
+        "F09.03"
+      ],
+      "operations": [
+        "listMemories",
+        "getMemory",
+        "updateMemory"
+      ],
+      "requirement_ids": [
+        "Q18",
+        "Q35",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T059",
+      "key": "F10-02",
+      "number": 60,
+      "url": "https://github.com/xiaolin624/Orchara/issues/60",
+      "title": "[T059][F10] 摄取 CSV/XLSX 并保留行范围和安全错误",
+      "blockers": [
+        "T055"
+      ],
+      "sources": [
+        "F10.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T060",
+      "key": "F10-03",
+      "number": 61,
+      "url": "https://github.com/xiaolin624/Orchara/issues/61",
+      "title": "[T060][F10] 摄取普通文本 PDF 并对比解析分块方案",
+      "blockers": [
+        "T055"
+      ],
+      "sources": [
+        "F10.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T061",
+      "key": "F10-04",
+      "number": 62,
+      "url": "https://github.com/xiaolin624/Orchara/issues/62",
+      "title": "[T061][F10] 更新资料或 embedding 后不激活陈旧索引",
+      "blockers": [
+        "T055"
+      ],
+      "sources": [
+        "F10.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T062",
+      "key": "F13A-03",
+      "number": 63,
+      "url": "https://github.com/xiaolin624/Orchara/issues/63",
+      "title": "[T062][F13A] 阻止越权、取消和错制品报告通过验收",
+      "blockers": [
+        "T056"
+      ],
+      "sources": [
+        "F13A.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q11",
+        "Q15",
+        "Q31",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T063",
+      "key": "F09-03",
+      "number": 64,
+      "url": "https://github.com/xiaolin624/Orchara/issues/64",
+      "title": "[T063][F09] 运行时按上下文预算召回当前应用的已确认记忆",
+      "blockers": [
+        "T058"
+      ],
+      "sources": [
+        "F09.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q18",
+        "Q35",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T064",
+      "key": "F10-05",
+      "number": 65,
+      "url": "https://github.com/xiaolin624/Orchara/issues/65",
+      "title": "[T064][F10] 回答只引用本次检索且当前可读的资料",
+      "blockers": [
+        "T059",
+        "T060",
+        "T061"
+      ],
+      "sources": [
+        "F10.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T065",
+      "key": "F13A-04",
+      "number": 66,
+      "url": "https://github.com/xiaolin624/Orchara/issues/66",
+      "title": "[T065][F13A] 查询异步评测进展并区分业务与设施失败",
+      "blockers": [
+        "T062"
+      ],
+      "sources": [
+        "F13A.05"
+      ],
+      "operations": [
+        "getEvaluation",
+        "getEvaluationReport"
+      ],
+      "requirement_ids": [
+        "Q11",
+        "Q15",
+        "Q31",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T066",
+      "key": "F09-04",
+      "number": 67,
+      "url": "https://github.com/xiaolin624/Orchara/issues/67",
+      "title": "[T066][F09] 在隔离数据中对比 Mem0 与 PG 并决定是否值得接入",
+      "blockers": [
+        "T063"
+      ],
+      "sources": [
+        "F09.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q18",
+        "Q35",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T067",
+      "key": "F10-06",
+      "number": 68,
+      "url": "https://github.com/xiaolin624/Orchara/issues/68",
+      "title": "[T067][F10] 命中检索缓存也不能读到删除或撤权内容",
+      "blockers": [
+        "T064"
+      ],
+      "sources": [
+        "F10.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q28",
+        "Q35",
+        "Q40",
+        "Q41"
+      ]
+    },
+    {
+      "id": "T068",
+      "key": "F02B-01",
+      "number": 69,
+      "url": "https://github.com/xiaolin624/Orchara/issues/69",
+      "title": "[T068][F02B] 创作者提交评测快照并由管理员发布同一内容",
+      "blockers": [
+        "T065"
+      ],
+      "sources": [
+        "F02B.01",
+        "F02B.02",
+        "F02B.03"
+      ],
+      "operations": [
+        "submitApplication",
+        "reviewPublication",
+        "listPublicationReviews",
+        "getPublicationReview"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q14",
+        "Q15",
+        "Q24",
+        "Q27",
+        "Q43"
+      ]
+    },
+    {
+      "id": "T069",
+      "key": "F11-01",
+      "number": 70,
+      "url": "https://github.com/xiaolin624/Orchara/issues/70",
+      "title": "[T069][F11] 用户删除会话或文件后立即无法再读取",
+      "blockers": [
+        "T066",
+        "T067"
+      ],
+      "sources": [
+        "F11.01"
+      ],
+      "operations": [
+        "deleteConversation",
+        "deleteArtifact",
+        "deleteMemory",
+        "deleteDocument",
+        "getDeletion"
+      ],
+      "requirement_ids": [
+        "Q15",
+        "Q18",
+        "Q28",
+        "Q39",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T070",
+      "key": "F02B-02",
+      "number": 71,
+      "url": "https://github.com/xiaolin624/Orchara/issues/71",
+      "title": "[T070][F02B] 撤销问题版本并阻止陈旧目录继续启动",
+      "blockers": [
+        "T068"
+      ],
+      "sources": [
+        "F02B.04"
+      ],
+      "operations": [
+        "revokeVersion"
+      ],
+      "requirement_ids": [
+        "Q12",
+        "Q14",
+        "Q15",
+        "Q24",
+        "Q27",
+        "Q43"
+      ]
+    },
+    {
+      "id": "T071",
+      "key": "F11-02",
+      "number": 72,
+      "url": "https://github.com/xiaolin624/Orchara/issues/72",
+      "title": "[T071][F11] 异步清理对象和索引并可观察失败重试",
+      "blockers": [
+        "T069"
+      ],
+      "sources": [
+        "F11.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q15",
+        "Q18",
+        "Q28",
+        "Q39",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T072",
+      "key": "F11-03",
+      "number": 73,
+      "url": "https://github.com/xiaolin624/Orchara/issues/73",
+      "title": "[T072][F11] 清理 checkpoint 和上下文副本并登记备份删除范围",
+      "blockers": [
+        "T069"
+      ],
+      "sources": [
+        "F11.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q15",
+        "Q18",
+        "Q28",
+        "Q39",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T073",
+      "key": "F11-04",
+      "number": 74,
+      "url": "https://github.com/xiaolin624/Orchara/issues/74",
+      "title": "[T073][F11] 用户限范围授权诊断且每次正文读取都有审计",
+      "blockers": [
+        "T069"
+      ],
+      "sources": [
+        "F11.03",
+        "F11.04"
+      ],
+      "operations": [
+        "grantDiagnostics",
+        "revokeDiagnostics"
+      ],
+      "requirement_ids": [
+        "Q15",
+        "Q18",
+        "Q28",
+        "Q39",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T074",
+      "key": "F08-01",
+      "number": 75,
+      "url": "https://github.com/xiaolin624/Orchara/issues/75",
+      "title": "[T074][F08] 从目录指定版本提交需求并有序排队",
+      "blockers": [
+        "T070"
+      ],
+      "sources": [
+        "F08.01",
+        "F08.05"
+      ],
+      "operations": [
+        "createConversation",
+        "listConversations",
+        "getConversation",
+        "submitRequest",
+        "getRequest",
+        "cancelRequest"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25"
+      ]
+    },
+    {
+      "id": "T075",
+      "key": "F07-01",
+      "number": 76,
+      "url": "https://github.com/xiaolin624/Orchara/issues/76",
+      "title": "[T075][F07] 在创作台选择固定子应用并校验依赖",
+      "blockers": [
+        "T070"
+      ],
+      "sources": [
+        "F07.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q10",
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q33"
+      ]
+    },
+    {
+      "id": "T076",
+      "key": "F11-05",
+      "number": 77,
+      "url": "https://github.com/xiaolin624/Orchara/issues/77",
+      "title": "[T076][F11] 删除后恢复与组件历史不能让内容复活",
+      "blockers": [
+        "T071",
+        "T072",
+        "T073"
+      ],
+      "sources": [
+        "F11.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q15",
+        "Q18",
+        "Q28",
+        "Q39",
+        "Q40",
+        "Q45"
+      ]
+    },
+    {
+      "id": "T077",
+      "key": "F08-02",
+      "number": 78,
+      "url": "https://github.com/xiaolin624/Orchara/issues/78",
+      "title": "[T077][F08] 浏览授权用途目录并在索引落后时安全检索",
+      "blockers": [
+        "T074"
+      ],
+      "sources": [
+        "F08.02"
+      ],
+      "operations": [
+        "listApplications"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25"
+      ]
+    },
+    {
+      "id": "T078",
+      "key": "F07-02",
+      "number": 79,
+      "url": "https://github.com/xiaolin624/Orchara/issues/79",
+      "title": "[T078][F07] 主应用委派后查看独立子运行并取回结果",
+      "blockers": [
+        "T075"
+      ],
+      "sources": [
+        "F07.02",
+        "F07.03"
+      ],
+      "operations": [
+        "spawnChild"
+      ],
+      "requirement_ids": [
+        "Q10",
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q33"
+      ]
+    },
+    {
+      "id": "T079",
+      "key": "F08-03",
+      "number": 80,
+      "url": "https://github.com/xiaolin624/Orchara/issues/80",
+      "title": "[T079][F08] 自然语言需求通过选择或澄清进入唯一主运行",
+      "blockers": [
+        "T077"
+      ],
+      "sources": [
+        "F08.03",
+        "F08.04"
+      ],
+      "operations": [
+        "replyInteraction"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25"
+      ]
+    },
+    {
+      "id": "T080",
+      "key": "F07-03",
+      "number": 81,
+      "url": "https://github.com/xiaolin624/Orchara/issues/81",
+      "title": "[T080][F07] 并行子调用只消耗同一份父预算",
+      "blockers": [
+        "T078"
+      ],
+      "sources": [
+        "F07.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q10",
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q33"
+      ]
+    },
+    {
+      "id": "T081",
+      "key": "F07-04",
+      "number": 82,
+      "url": "https://github.com/xiaolin624/Orchara/issues/82",
+      "title": "[T081][F07] 父任务满载等待时子任务仍能运行并收敛",
+      "blockers": [
+        "T078"
+      ],
+      "sources": [
+        "F07.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q10",
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q33"
+      ]
+    },
+    {
+      "id": "T082",
+      "key": "F08-04",
+      "number": 83,
+      "url": "https://github.com/xiaolin624/Orchara/issues/83",
+      "title": "[T082][F08] 切换处理应用前确认最少交接信息",
+      "blockers": [
+        "T079"
+      ],
+      "sources": [
+        "F08.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25"
+      ]
+    },
+    {
+      "id": "T083",
+      "key": "F04B-01",
+      "number": 84,
+      "url": "https://github.com/xiaolin624/Orchara/issues/84",
+      "title": "[T083][F04B] 在画布运行条件分支并只汇合已激活路径",
+      "blockers": [
+        "T080",
+        "T081",
+        "T067"
+      ],
+      "sources": [
+        "F04B.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T084",
+      "key": "F08-05",
+      "number": 85,
+      "url": "https://github.com/xiaolin624/Orchara/issues/85",
+      "title": "[T084][F08] 冻结路由案例并由另一用户完成销售旅程",
+      "blockers": [
+        "T082"
+      ],
+      "sources": [
+        "F08.06"
+      ],
+      "operations": [
+        "listMessages"
+      ],
+      "requirement_ids": [
+        "Q13",
+        "Q17",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25"
+      ]
+    },
+    {
+      "id": "T085",
+      "key": "F04B-02",
+      "number": 86,
+      "url": "https://github.com/xiaolin624/Orchara/issues/86",
+      "title": "[T085][F04B] 在画布运行并行嵌套并正确处理分支失败",
+      "blockers": [
+        "T083"
+      ],
+      "sources": [
+        "F04B.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T086",
+      "key": "F04B-03",
+      "number": 87,
+      "url": "https://github.com/xiaolin624/Orchara/issues/87",
+      "title": "[T086][F04B] 配置单次模型节点并验证结构输出",
+      "blockers": [
+        "T083"
+      ],
+      "sources": [
+        "F04B.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T087",
+      "key": "F04B-04",
+      "number": 88,
+      "url": "https://github.com/xiaolin624/Orchara/issues/88",
+      "title": "[T087][F04B] 配置人工审批节点并在重启后继续原决定",
+      "blockers": [
+        "T083"
+      ],
+      "sources": [
+        "F04B.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T088",
+      "key": "F04B-05",
+      "number": 89,
+      "url": "https://github.com/xiaolin624/Orchara/issues/89",
+      "title": "[T088][F04B] 把知识检索节点的真实引用传给后续步骤",
+      "blockers": [
+        "T083"
+      ],
+      "sources": [
+        "F04B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T089",
+      "key": "F04B-06",
+      "number": 90,
+      "url": "https://github.com/xiaolin624/Orchara/issues/90",
+      "title": "[T089][F04B] 在画布调用固定子应用并映射结果",
+      "blockers": [
+        "T083"
+      ],
+      "sources": [
+        "F04B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T090",
+      "key": "F14-01",
+      "number": 91,
+      "url": "https://github.com/xiaolin624/Orchara/issues/91",
+      "title": "[T090][F14] 冻结动态候选路由的强提示基线与合法训练数据",
+      "blockers": [
+        "T084"
+      ],
+      "sources": [
+        "F14.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q17",
+        "Q38",
+        "Q41",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T091",
+      "key": "F04B-07",
+      "number": 92,
+      "url": "https://github.com/xiaolin624/Orchara/issues/92",
+      "title": "[T091][F04B] 保存并恢复含十节点的复杂工作流",
+      "blockers": [
+        "T085",
+        "T086",
+        "T087",
+        "T088",
+        "T089"
+      ],
+      "sources": [
+        "F04B.04",
+        "F04B.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q7",
+        "Q10",
+        "Q16",
+        "Q26",
+        "Q28",
+        "Q29",
+        "Q30"
+      ]
+    },
+    {
+      "id": "T092",
+      "key": "F14-02",
+      "number": 93,
+      "url": "https://github.com/xiaolin624/Orchara/issues/93",
+      "title": "[T092][F14] 在独立训练宿主完成一轮资源和配置探针",
+      "blockers": [
+        "T090"
+      ],
+      "sources": [
+        "F14.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q17",
+        "Q38",
+        "Q41",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T093",
+      "key": "F12-01",
+      "number": 94,
+      "url": "https://github.com/xiaolin624/Orchara/issues/94",
+      "title": "[T093][F12] 从外部客户端验证全量 REST/SSE 共同契约",
+      "blockers": [
+        "T091",
+        "T084",
+        "T076"
+      ],
+      "sources": [
+        "F12.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T094",
+      "key": "F14-03",
+      "number": 95,
+      "url": "https://github.com/xiaolin624/Orchara/issues/95",
+      "title": "[T094][F14] 用三个 seed 训练独立且可追溯的 LoRA 产物",
+      "blockers": [
+        "T092"
+      ],
+      "sources": [
+        "F14.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q17",
+        "Q38",
+        "Q41",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T095",
+      "key": "F12-02",
+      "number": 96,
+      "url": "https://github.com/xiaolin624/Orchara/issues/96",
+      "title": "[T095][F12] 跨角色刷新与撤权后界面保持真实授权状态",
+      "blockers": [
+        "T093"
+      ],
+      "sources": [
+        "F12.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T096",
+      "key": "F12-03",
+      "number": 97,
+      "url": "https://github.com/xiaolin624/Orchara/issues/97",
+      "title": "[T096][F12] 浏览器断线与父子等待时仍能解释真实运行状态",
+      "blockers": [
+        "T093"
+      ],
+      "sources": [
+        "F12.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T097",
+      "key": "F14-04",
+      "number": 98,
+      "url": "https://github.com/xiaolin624/Orchara/issues/98",
+      "title": "[T097][F14] 对强提示与 LoRA 做未见应用和候选乱序对照",
+      "blockers": [
+        "T094"
+      ],
+      "sources": [
+        "F14.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q17",
+        "Q38",
+        "Q41",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T098",
+      "key": "F12-04",
+      "number": 99,
+      "url": "https://github.com/xiaolin624/Orchara/issues/99",
+      "title": "[T098][F12] 手机完成对话、审批和个人数据控制",
+      "blockers": [
+        "T095",
+        "T096"
+      ],
+      "sources": [
+        "F12.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T099",
+      "key": "F14-05",
+      "number": 100,
+      "url": "https://github.com/xiaolin624/Orchara/issues/100",
+      "title": "[T099][F14] 按真实实验结论登记或拒绝上线模型",
+      "blockers": [
+        "T097"
+      ],
+      "sources": [
+        "F14.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q17",
+        "Q38",
+        "Q41",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T100",
+      "key": "F12-05",
+      "number": 101,
+      "url": "https://github.com/xiaolin624/Orchara/issues/101",
+      "title": "[T100][F12] 复现账号到发布和后台执行的关键旅程",
+      "blockers": [
+        "T098"
+      ],
+      "sources": [
+        "F12.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T101",
+      "key": "F12-06",
+      "number": 102,
+      "url": "https://github.com/xiaolin624/Orchara/issues/102",
+      "title": "[T101][F12] 复现请求、审批、记忆、知识及服务账号旅程",
+      "blockers": [
+        "T098"
+      ],
+      "sources": [
+        "F12.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q4",
+        "Q13",
+        "Q14",
+        "Q19",
+        "Q21",
+        "Q30",
+        "Q32",
+        "Q39",
+        "Q40",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T102",
+      "key": "F13B-01",
+      "number": 103,
+      "url": "https://github.com/xiaolin624/Orchara/issues/103",
+      "title": "[T102][F13B] 冻结七类内部案例并证明没有切分泄漏",
+      "blockers": [
+        "T100",
+        "T101"
+      ],
+      "sources": [
+        "F13B.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T103",
+      "key": "F13B-02",
+      "number": 104,
+      "url": "https://github.com/xiaolin624/Orchara/issues/104",
+      "title": "[T103][F13B] 对同一录制结果比较 hard checker 与质量评分",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T104",
+      "key": "F13B-03",
+      "number": 105,
+      "url": "https://github.com/xiaolin624/Orchara/issues/105",
+      "title": "[T104][F13B] 导入 tau2 改编任务并拒绝空判定器",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T105",
+      "key": "F13B-04",
+      "number": 106,
+      "url": "https://github.com/xiaolin624/Orchara/issues/106",
+      "title": "[T105][F13B] 导入 AgentDojo 改编任务并分开报告攻击成功",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T106",
+      "key": "F13B-05",
+      "number": 107,
+      "url": "https://github.com/xiaolin624/Orchara/issues/107",
+      "title": "[T106][F13B] 故障注入审批重启、换参和写后丢回执",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T107",
+      "key": "F13B-06",
+      "number": 108,
+      "url": "https://github.com/xiaolin624/Orchara/issues/108",
+      "title": "[T107][F13B] 故障注入旧图、活旧进程、取消与事件竞争",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T108",
+      "key": "F13B-07",
+      "number": 109,
+      "url": "https://github.com/xiaolin624/Orchara/issues/109",
+      "title": "[T108][F13B] 故障注入子应用并发、满槽与嵌套汇合",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T109",
+      "key": "F13B-08",
+      "number": 110,
+      "url": "https://github.com/xiaolin624/Orchara/issues/110",
+      "title": "[T109][F13B] 故障注入删除、限流、Redis 和权限撤销",
+      "blockers": [
+        "T102"
+      ],
+      "sources": [
+        "F13B.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T110",
+      "key": "F13B-09",
+      "number": 111,
+      "url": "https://github.com/xiaolin624/Orchara/issues/111",
+      "title": "[T110][F13B] 执行平台身份、文件、出站与注入安全回归",
+      "blockers": [
+        "T104",
+        "T105",
+        "T106",
+        "T107",
+        "T108",
+        "T109"
+      ],
+      "sources": [
+        "F13B.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T111",
+      "key": "F13B-10",
+      "number": 112,
+      "url": "https://github.com/xiaolin624/Orchara/issues/112",
+      "title": "[T111][F13B] 在正式 Linux 重跑构建与脚本隔离攻击",
+      "blockers": [
+        "T106",
+        "T107",
+        "T108",
+        "T109"
+      ],
+      "sources": [
+        "F13B.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T112",
+      "key": "F13B-12",
+      "number": 113,
+      "url": "https://github.com/xiaolin624/Orchara/issues/113",
+      "title": "[T112][F13B] 用真实模型小并发重复测量质量、延迟和费用",
+      "blockers": [
+        "T103",
+        "T110"
+      ],
+      "sources": [
+        "F13B.06"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T113",
+      "key": "F13B-13",
+      "number": 114,
+      "url": "https://github.com/xiaolin624/Orchara/issues/114",
+      "title": "[T113][F13B] 对比缓存开关且验证过期越权命中为零",
+      "blockers": [
+        "T110"
+      ],
+      "sources": [
+        "F13B.06"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T114",
+      "key": "F13B-11",
+      "number": 115,
+      "url": "https://github.com/xiaolin624/Orchara/issues/115",
+      "title": "[T114][F13B] 持续执行 20 个顶层替身任务并测量容量",
+      "blockers": [
+        "T110",
+        "T111"
+      ],
+      "sources": [
+        "F13B.06"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T115",
+      "key": "F13B-14",
+      "number": 116,
+      "url": "https://github.com/xiaolin624/Orchara/issues/116",
+      "title": "[T115][F13B] 让未参与开发者完成创作、坏输入和审批任务",
+      "blockers": [
+        "T114",
+        "T112",
+        "T113"
+      ],
+      "sources": [
+        "F13B.07"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q3",
+        "Q11",
+        "Q15",
+        "Q22",
+        "Q26",
+        "Q31",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q46"
+      ]
+    },
+    {
+      "id": "T116",
+      "key": "F15B-01",
+      "number": 117,
+      "url": "https://github.com/xiaolin624/Orchara/issues/117",
+      "title": "[T116][F15B] 在新 Linux 环境部署完整首版并拒绝危险配置",
+      "blockers": [
+        "T115",
+        "T099",
+        "T057"
+      ],
+      "sources": [
+        "F15B.01"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T117",
+      "key": "F15B-02",
+      "number": 118,
+      "url": "https://github.com/xiaolin624/Orchara/issues/118",
+      "title": "[T117][F15B] 升级平台并保持旧任务可安全恢复",
+      "blockers": [
+        "T116"
+      ],
+      "sources": [
+        "F15B.02"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T118",
+      "key": "F15B-03",
+      "number": 119,
+      "url": "https://github.com/xiaolin624/Orchara/issues/119",
+      "title": "[T118][F15B] 将 DB/WAL、对象和镜像恢复到隔离环境",
+      "blockers": [
+        "T117"
+      ],
+      "sources": [
+        "F15B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T119",
+      "key": "F15B-04",
+      "number": 120,
+      "url": "https://github.com/xiaolin624/Orchara/issues/120",
+      "title": "[T119][F15B] 恢复备份后回放删除和撤销账本再开放访问",
+      "blockers": [
+        "T118"
+      ],
+      "sources": [
+        "F15B.03"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T120",
+      "key": "F15B-05",
+      "number": 121,
+      "url": "https://github.com/xiaolin624/Orchara/issues/121",
+      "title": "[T120][F15B] 按运行手册处置积压、失联和依赖故障",
+      "blockers": [
+        "T119"
+      ],
+      "sources": [
+        "F15B.04"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    },
+    {
+      "id": "T121",
+      "key": "F15B-06",
+      "number": 122,
+      "url": "https://github.com/xiaolin624/Orchara/issues/122",
+      "title": "[T121][F15B] 交付可在另一机器复现的完整首版证据包",
+      "blockers": [
+        "T120"
+      ],
+      "sources": [
+        "F15B.05"
+      ],
+      "operations": [],
+      "requirement_ids": [
+        "Q2",
+        "Q20",
+        "Q27",
+        "Q33",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q42",
+        "Q43",
+        "Q44"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+name: Verify tracer ticket dependencies
+on:
+  push:
+    branches: [ops/initialize-tracer-dependencies]
+    paths:
+      - .github/workflows/sync-ticket-relations.yml
+      - planning/published-tickets.json
+      - planning/sync_relations.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      PLAN_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Attach and verify native blockers
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/contents/planning/sync_relations.py?ref=$PLAN_COMMIT" --jq .content | base64 --decode > /tmp/verify-ticket-dependencies.py
+          python /tmp/verify-ticket-dependencies.py
