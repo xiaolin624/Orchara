@@ -15,8 +15,6 @@ from conftest import (
     sql,
 )
 from t017_stack import (  # noqa: F401 - fixtures are used through their names
-    ADMIN_LOGIN,
-    ADMIN_PASSWORD,
     Stack,
     admin_session,
     api_server,
