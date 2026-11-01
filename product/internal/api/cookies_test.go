@@ -69,3 +69,41 @@ func TestSessionCookieAttributes(t *testing.T) {
 		t.Fatalf("a production cookie must carry Secure: %q", secureHeader)
 	}
 }
+
+func TestClearedSessionCookieDeletesTheBrowserCookie(t *testing.T) {
+	cookie := clearedSessionCookie(false)
+	if cookie.Name != identity.SessionCookieName {
+		t.Fatalf("cookie name = %q, want %q", cookie.Name, identity.SessionCookieName)
+	}
+	if cookie.Value != "" {
+		t.Fatalf("a cleared cookie must have an empty value, got %q", cookie.Value)
+	}
+	if cookie.MaxAge != -1 {
+		t.Fatalf("MaxAge = %d, want -1 (delete now)", cookie.MaxAge)
+	}
+	if cookie.Path != "/" {
+		t.Fatalf("Path = %q: a different path would not remove the session cookie", cookie.Path)
+	}
+	if !cookie.HttpOnly {
+		t.Fatal("the cleared cookie must keep HttpOnly")
+	}
+	if cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("SameSite = %v, want Lax", cookie.SameSite)
+	}
+	if cookie.Secure {
+		t.Fatal("dev-stub must not set Secure")
+	}
+	if !cookie.Expires.Before(time.Now()) {
+		t.Fatalf("Expires = %s, want a past time", cookie.Expires)
+	}
+
+	header := cookie.String()
+	for _, attribute := range []string{"Max-Age=0", "Expires=Thu, 01 Jan 1970", "Path=/", "HttpOnly"} {
+		if !strings.Contains(header, attribute) {
+			t.Fatalf("clearing Set-Cookie %q lacks %q", header, attribute)
+		}
+	}
+	if !strings.Contains(clearedSessionCookie(true).String(), "Secure") {
+		t.Fatal("a production clearing cookie must carry Secure")
+	}
+}
