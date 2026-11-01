@@ -25,8 +25,8 @@
 | T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | passed | `reports/p03/T010-isolation-matrix.md`（最小 OCI bundle，17 passed） |
 | T014 | P03 | 停止超限脚本并证明资源已回收 | passed | `reports/p03/T014-resource-limits.md`（24 passed；OCI 内存上限未生效，改用 ulimit） |
 | T013 | P04 | 模拟租约失联而不启动第二个执行者 | not_started | — |
-| T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | blocked | 依赖 T010/T014 的沙箱证据 |
-| T018 | P04 | 写成功丢回执后恢复仍只写一次 | blocked | 依赖 T016 |
+| T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | passed | `reports/p04/T016-drain-gate.md`（9 passed，含真机集成） |
+| T018 | P04 | 写成功丢回执后恢复仍只写一次 | not_started | T016 已通过，依赖已解除 |
 | T007 | P05 | 用同一 corpus 校验两语言的变量和类型 | not_started | — |
 | T011 | P05 | 在真实图引擎中验证分支和汇合结果 | not_started | — |
 | T008 | F00 | 启动产品并在浏览器看到真实健康状态 | passed | `reports/f00/T008-product-skeleton.md`、`cmd/api/`、`internal/health/`（4 passed） |
