@@ -31,6 +31,7 @@
 | T011 | P05 | 在真实图引擎中验证分支和汇合结果 | passed | `reports/p05/T011-graph-branching.md`（8 passed，LangGraph 实跑） |
 | T008 | F00 | 启动产品并在浏览器看到真实健康状态 | passed | `reports/f00/T008-product-skeleton.md`、`cmd/api/`、`internal/health/`（4 passed） |
 | T012 | F00 | 按环境 profile 启动并重现一次 CI 验收 | passed | `reports/f00/T012-profile-and-ci.md`、`internal/config/`、`tools/ci_checks.py`（15 passed） |
+| T015 | F01 | 从空数据库建立管理员并邀请激活用户 | passed | `reports/f01/T015-identity-bootstrap.md`、`db/migrations/0006_identity_core.sql`、`internal/db/migrate.go`、`cmd/admin/`、`internal/identity/`、`internal/api/`、`tests/f01/`（37 passed） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -46,6 +47,18 @@ Profile/CI、沙箱隔离与资源回收、租约与丢回执。
 
 仍未实现（属后续票，不在本批范围）：业务模块（身份/目录/请求/路由/执行/评测/RAG/记忆）、
 前端画布、编译器与十类节点、发布门禁、部署与灾备。仓库 open issue 仍为 108 个。
+
+## F01 身份（进行中，5 票）
+
+F01 按 DESIGN 顺序推进：T015 → T017 → T019 → T020 → T021。T015 是第一个。
+
+| 票 | 状态 | 交付 / 证据 |
+|---|---|---|
+| T015 | passed | 迁移链从空库可执行（0006 身份六表 + 0005 条件授权修复）、`cmd/admin migrate/bootstrap`、邀请/激活/登录三条契约端点、admin/activate 页面；`reports/f01/T015-identity-bootstrap.md`、`tests/f01/`（37 passed，真实 PG + 真实二进制 + 真实 HTTP） |
+| T017–T021 | not_started | 登录完整生命周期/CSRF/限流、授权与 applications 读模型、API key、禁用与 handover |
+
+T015 只交付身份表与三条端点；`applications`、`resource_grants`、`policy_epochs`、`api_keys`
+尚未创建，仍属 T019/T020。CSRF 强制、登出、`/auth/me` 与登录限流属 T017，本票不宣称已完成。
 
 ## 第二轮复核修复（2026-11-01）
 
