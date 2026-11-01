@@ -96,9 +96,19 @@ def test_no_orphan_sandboxes_or_leftover_input(matrix: dict) -> None:
         assert case["leftover_sandboxes_after_cleanup"] == 0, case
 
 
-def test_feature_switch_is_off_by_default_and_stays_off_after_failure() -> None:
-    """A failed limit run must leave arbitrary script execution disabled."""
+def test_feature_switch_is_off_by_default_and_stays_off_after_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed limit run must leave arbitrary script execution disabled.
+
+    The flag file is redirected into tmp so running the suite cannot rewrite the
+    committed evidence under reports/p03/.
+    """
+    monkeypatch.setattr(probe, "FEATURE_FLAG_PATH", tmp_path / "feature-flag.json")
+
     assert probe.arbitrary_scripts_enabled() is False
     record = probe.record_failure("timeout case exceeded its limit")
     assert record["arbitrary_scripts"] is False
     assert probe.arbitrary_scripts_enabled() is False
+    # the failure is recorded, but the capability stays closed
+    assert (tmp_path / "feature-flag.json").exists()

@@ -1,0 +1,6470 @@
+{
+  "probe": "p05_dsl",
+  "probe_version": "1.0.0",
+  "cases": [
+    {
+      "name": "anchor-minimal-linear",
+      "source": "authored: three-node linear graph, normal form pinned as text",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          },
+          {
+            "id": "say",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "hello"
+              }
+            },
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "text": {
+                "ref": "node:say#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "say"
+          },
+          {
+            "source": "say",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f23ae9364d934ac5cd3bfafd53d74589737cb5ff50560d7ad179b5a0a22cc6eb",
+      "expected_hash": "cfe8f69e3137a6f1f770dc559f9332ed589f76009714976521d3458cdb642110",
+      "expected_canonical": "{\"dsl_version\":\"1.0\",\"edges\":[{\"port\":\"default\",\"source\":\"say\",\"target\":\"end\"},{\"port\":\"default\",\"source\":\"start\",\"target\":\"say\"}],\"input_schema\":{\"type\":\"object\"},\"nodes\":[{\"config\":{},\"id\":\"end\",\"inputs\":{\"text\":{\"ref\":\"node:say#/text\"}},\"output_schema\":{\"type\":\"object\"},\"type\":\"end\"},{\"config\":{\"model_profile_version\":\"22222222-2222-4222-8222-222222222222\",\"prompt_template\":\"{{task}}\",\"response_mode\":\"text\"},\"id\":\"say\",\"inputs\":{\"task\":{\"literal\":\"hello\"}},\"output_schema\":{\"type\":\"object\"},\"type\":\"model\"},{\"config\":{},\"id\":\"start\",\"inputs\":{},\"output_schema\":{\"type\":\"object\"},\"type\":\"start\"}],\"output_schema\":{\"additionalProperties\":false,\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"],\"type\":\"object\"},\"policy\":{\"budget_limit\":\"1.00\",\"currency\":\"USD\",\"max_active_seconds\":900,\"max_child_calls\":12,\"max_child_depth\":3}}"
+    },
+    {
+      "name": "linear-sales",
+      "source": "examples/sales/workflow.json",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "7acb7e57d4a7f2c7f45f267708f0000ec8f18c2690124cf76bd089f1033d40f5",
+      "expected_hash": "6c53b1b14650c8a17b66f614e68284b457867b8b445f7163a5e096b2048ced25"
+    },
+    {
+      "name": "linear-sales-nodes-shuffled",
+      "source": "examples/sales/workflow.json with nodes/edges reordered",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "analysis",
+            "target": "end"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "start",
+            "target": "stats"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f7f94a8161941ec2fd4c4b9b4d3802ac063b1ec1ef8301ac46effde466a8fa10",
+      "expected_hash": "6c53b1b14650c8a17b66f614e68284b457867b8b445f7163a5e096b2048ced25"
+    },
+    {
+      "name": "parallel-two-branch",
+      "source": "examples/parallel/workflow.json",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "风险清单"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left",
+                "right"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "8f795849193c46fda207ce226a08c6ec1687ea8e86a951bb0d90315640ed3534",
+      "expected_hash": "de6a95f4090cb44a3a0bd237454b5993668a4b5048b0b1cb9a0a75306efc1aa2"
+    },
+    {
+      "name": "parallel-optional-source",
+      "source": "examples/parallel/workflow.json, right branch declared optional",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "风险清单"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left"
+              ],
+              "optional_sources": [
+                "right"
+              ]
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f756512f00971292b86b0afc0f7c17db8872aa9a6f753000d17f412384601972",
+      "expected_hash": "5535e25a95fdcc71ccb0c628d086b2b16c48dc3e0d7092bf0edc42215d21b81c"
+    },
+    {
+      "name": "condition-branch-approval",
+      "source": "examples/branch-approval/workflow.json",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "3f369d2a2639bd5be5e7ba150f0d1ed59394309993f91ea6122c79b4ed6fba46",
+      "expected_hash": "dc000403f9c830bbfa006d46d3f3444788062ee47d4d31169472aefa35ab0cd3"
+    },
+    {
+      "name": "condition-nested-parallel",
+      "source": "authored: condition region containing a parallel fork/join (spec section 4 nesting)",
+      "verdict": "valid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "flag": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "flag"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "results": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "results"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "flag": {
+                "ref": "input#/flag"
+              }
+            },
+            "config": {
+              "join_id": "outer_join",
+              "cases": [
+                {
+                  "input": "flag",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "prep",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "拆分"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "part": {
+                "ref": "node:prep#/text"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{part}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "part": {
+                "ref": "node:prep#/text"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{part}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "inner_join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "mode": "all_active",
+              "fork_id": "prep",
+              "required_sources": [
+                "left",
+                "right"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "直接输出"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "outer_join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "mode": "all_active",
+              "fork_id": "choose",
+              "required_sources": [
+                "inner_join",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "results": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "results"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:outer_join#/results"
+              }
+            },
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "prep",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "prep",
+            "target": "left"
+          },
+          {
+            "source": "prep",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "inner_join"
+          },
+          {
+            "source": "right",
+            "target": "inner_join"
+          },
+          {
+            "source": "inner_join",
+            "target": "outer_join"
+          },
+          {
+            "source": "direct",
+            "target": "outer_join"
+          },
+          {
+            "source": "outer_join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "161f3ac2ef330b6219328773bc99f64815349d4a6ede4e4ef093f2fa351edc15",
+      "expected_hash": "ca8c668a1a0a9223299a6d418e64c5a2b8207020e9ad9ef0a2ff5649fc0b5153"
+    },
+    {
+      "name": "unknown-node-type",
+      "source": "examples/sales/workflow.json, stats.type := script",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "script",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "d1d9d3af6db3006c37e1415ad307a72a59954f02dfec4e738c806e1bd9d88ce9",
+      "reason": "unknown_type",
+      "reasons": [
+        "unknown_type"
+      ]
+    },
+    {
+      "name": "bad-node-id",
+      "source": "examples/sales/workflow.json, stats.id := 1stats",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "1stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "10523801dbd3ae670345309c0bc1e9c37b0ef65119996b817fec9b1b6981db1f",
+      "reason": "bad_id",
+      "reasons": [
+        "bad_id"
+      ]
+    },
+    {
+      "name": "bad-config-missing-field",
+      "source": "examples/sales/workflow.json, stats.config := {}",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "66fc556cec25d902813d8f43d7cc85209b5375cf92361d2073ffdeb7a37758da",
+      "reason": "bad_config",
+      "reasons": [
+        "bad_config"
+      ]
+    },
+    {
+      "name": "bad-config-extra-field",
+      "source": "examples/sales/workflow.json, analysis.config.temperature := 0.2",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12,
+              "temperature": 0.2
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "506bc52d0bb06797af61b5e76dfef9b0efec127c3161df38a6da69d119812551",
+      "reason": "bad_config",
+      "reasons": [
+        "bad_config"
+      ]
+    },
+    {
+      "name": "bad-binding-expression",
+      "source": "examples/sales/workflow.json, stats.inputs.file := {expr: ...}",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "expr": "$.file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "2e9f4652bc0570b98c828b27b1486eecc175908952e6467921999772ab82fae0",
+      "reason": "bad_binding",
+      "reasons": [
+        "bad_binding"
+      ]
+    },
+    {
+      "name": "start-inputs-forbidden",
+      "source": "examples/sales/workflow.json, start.inputs := {x: literal 1}",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {
+              "x": {
+                "literal": 1
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "76eb0014c42103d7dd3bfe562033f90bd635cbafe10607adab441958d5b4cd73",
+      "reason": "bad_binding",
+      "reasons": [
+        "bad_binding"
+      ]
+    },
+    {
+      "name": "node-output-schema-not-object",
+      "source": "examples/sales/workflow.json, stats.output_schema.type := array",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "array"
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "e85fcef12ecbb09b6475ab429a5ca37a5a6348a88d3a74ce91849e12ebd2b32a",
+      "reason": "bad_schema",
+      "reasons": [
+        "bad_schema"
+      ]
+    },
+    {
+      "name": "bad-edge-extra-key",
+      "source": "examples/sales/workflow.json, stats->analysis edge gains a label",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis",
+            "label": "x"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "ab860448c9a2fecbdef32b850f81c844c52c3b46efd88a70275612440e83727e",
+      "reason": "bad_edge",
+      "reasons": [
+        "bad_edge"
+      ]
+    },
+    {
+      "name": "bad-policy-budget-limit",
+      "source": "examples/sales/workflow.json, policy.budget_limit := 1.000000000",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.000000000",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "b5cca4b641b74989c6fa3c56022d2fa29952899a58dce619c96c646741da5d2e",
+      "reason": "bad_policy",
+      "reasons": [
+        "bad_policy"
+      ]
+    },
+    {
+      "name": "null-inputs-is-not-empty-inputs",
+      "source": "examples/sales/workflow.json, start.inputs := null",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": null,
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "94d4ef735e3f4de6b28248c5b2f5355ac7976ca4a6e461ceceb6aadcb98957bb",
+      "reason": "bad_document",
+      "reasons": [
+        "bad_document"
+      ]
+    },
+    {
+      "name": "duplicate-node-id",
+      "source": "examples/sales/workflow.json, analysis.id := stats",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "stats",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "7542805d43d8945daa5a0ccbb59965a1c882945cdd780d660d5965dfbf37ccdd",
+      "reason": "duplicate_id",
+      "reasons": [
+        "duplicate_id",
+        "unknown_endpoint"
+      ]
+    },
+    {
+      "name": "unknown-edge-endpoint",
+      "source": "examples/sales/workflow.json, analysis->end retargeted to ghost",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "ghost"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "280a465c49b47f92e145f95ab05b55a401da41e639216aa84e3f2e2ed836d349",
+      "reason": "unknown_endpoint",
+      "reasons": [
+        "unknown_endpoint"
+      ]
+    },
+    {
+      "name": "missing-end-node",
+      "source": "examples/sales/workflow.json without the end node and its edge",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f62aa92b3b68580040791d309470564cbd8edb5a6789f12d09128163e8f1c28a",
+      "reason": "start_end_count",
+      "reasons": [
+        "start_end_count"
+      ]
+    },
+    {
+      "name": "cycle",
+      "source": "examples/invalid/cycle.json",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          },
+          {
+            "source": "analysis",
+            "target": "stats"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "bf6e072b082aec85f63744e3300b8770853747c57192101218584de53ae0efc0",
+      "reason": "cycle",
+      "reasons": [
+        "cycle"
+      ]
+    },
+    {
+      "name": "unreachable-node",
+      "source": "examples/sales/workflow.json plus an orphan model node",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "lonely",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "orphan"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "4cdf6326448ef4e965fd19a4f509d4bb633a996113f15da348d491344971c674",
+      "reason": "unreachable_node",
+      "reasons": [
+        "unreachable_node",
+        "cannot_reach_end"
+      ]
+    },
+    {
+      "name": "cannot-reach-end",
+      "source": "examples/sales/workflow.json plus a dead end fed by start",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "dead",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "never reached"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          },
+          {
+            "source": "start",
+            "target": "dead"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "498d1b8bb2a193e6fc7f3eab6d9a82e0c49671c25c41e000277d7aed9b256624",
+      "reason": "cannot_reach_end",
+      "reasons": [
+        "cannot_reach_end"
+      ]
+    },
+    {
+      "name": "merge-without-join",
+      "source": "examples/sales/workflow.json, extra stats->end edge merges two paths at end",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          },
+          {
+            "source": "stats",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "756b14a985be6f85dd8e1a948a8fe500afaf540dfa1433f29a9a89dfb135d3b6",
+      "reason": "merge_without_join",
+      "reasons": [
+        "merge_without_join"
+      ]
+    },
+    {
+      "name": "join-fork-not-a-fork",
+      "source": "examples/branch-approval/workflow.json, join.config.fork_id := direct",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "direct",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "baca3c73a55397ea22e384d1bb7d43fc3e11fe9701a596373b7868355fdff769",
+      "reason": "invalid_region",
+      "reasons": [
+        "invalid_region"
+      ]
+    },
+    {
+      "name": "condition-port-not-declared",
+      "source": "examples/branch-approval/workflow.json, choose->approve port := oops",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "oops"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "c26b69d1b9a66962ec278a4279b3c32be26f4ddcb75b45ac20bd8d2041c2d5b3",
+      "reason": "bad_port",
+      "reasons": [
+        "bad_port"
+      ]
+    },
+    {
+      "name": "condition-branch-escapes-outer-join",
+      "source": "condition-nested-parallel plus a third parallel branch from prep that skips the inner join and feeds the outer join directly",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "flag": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "flag"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "results": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "results"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "flag": {
+                "ref": "input#/flag"
+              }
+            },
+            "config": {
+              "join_id": "outer_join",
+              "cases": [
+                {
+                  "input": "flag",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "prep",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "拆分"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "part": {
+                "ref": "node:prep#/text"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{part}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "part": {
+                "ref": "node:prep#/text"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{part}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "inner_join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "mode": "all_active",
+              "fork_id": "prep",
+              "required_sources": [
+                "left",
+                "right"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "直接输出"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "outer_join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "mode": "all_active",
+              "fork_id": "choose",
+              "required_sources": [
+                "inner_join",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "results": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "results"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:outer_join#/results"
+              }
+            },
+            "output_schema": {
+              "type": "object"
+            },
+            "config": {}
+          },
+          {
+            "id": "escapee",
+            "type": "model",
+            "inputs": {
+              "part": {
+                "ref": "node:prep#/text"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{part}}",
+              "response_mode": "text"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "prep",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "prep",
+            "target": "left"
+          },
+          {
+            "source": "prep",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "inner_join"
+          },
+          {
+            "source": "right",
+            "target": "inner_join"
+          },
+          {
+            "source": "inner_join",
+            "target": "outer_join"
+          },
+          {
+            "source": "direct",
+            "target": "outer_join"
+          },
+          {
+            "source": "outer_join",
+            "target": "end"
+          },
+          {
+            "source": "prep",
+            "target": "escapee"
+          },
+          {
+            "source": "escapee",
+            "target": "outer_join"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "c111a1edb509c38069df1531677d036af61ff491349363f9a0e99e463c9fecd5",
+      "reason": "cross_region_edge",
+      "reasons": [
+        "cross_region_edge"
+      ]
+    },
+    {
+      "name": "join-sources-mismatch",
+      "source": "examples/branch-approval/workflow.json, required_sources drops direct",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "fbc7fb3b3b371f7b3401fad5459c6c12551f5823f8110d95ef0b83f996a6afe9",
+      "reason": "bad_join_sources",
+      "reasons": [
+        "bad_join_sources"
+      ]
+    },
+    {
+      "name": "condition-case-unbound-input",
+      "source": "examples/branch-approval/workflow.json, case.input := never_bound",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "never_bound",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "ef06640634ecc09474f0a48a7647734a0c95fa4a1ffe941f6f0d05d26eddad9a",
+      "reason": "missing_value",
+      "reasons": [
+        "missing_value"
+      ]
+    },
+    {
+      "name": "condition-case-missing-value",
+      "source": "examples/branch-approval/workflow.json, case loses its comparison value",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "1684f67e6a549539a4e22731b4faa83b8248aabb6e737de9ee642f0a60266e30",
+      "reason": "missing_value",
+      "reasons": [
+        "missing_value"
+      ]
+    },
+    {
+      "name": "end-missing-required-output",
+      "source": "examples/sales/workflow.json, end no longer maps required summary",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "e0d0bb82e68263319c712837c68315089ed6a870e3ef3acd617cb6837fc8878f",
+      "reason": "missing_value",
+      "reasons": [
+        "missing_value"
+      ]
+    },
+    {
+      "name": "skipped-branch-reference",
+      "source": "examples/branch-approval/workflow.json, end reads the conditional approve branch",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              },
+              "approval": {
+                "ref": "node:approve#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "ab3230b80390c93641990a6703467b6439e425e7fe9d0a4569a4abe303b25cbf",
+      "reason": "missing_value",
+      "reasons": [
+        "missing_value"
+      ]
+    },
+    {
+      "name": "unbound-template-variable",
+      "source": "examples/parallel/workflow.json, left template gains {{extra}}",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}} {{extra}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "风险清单"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left",
+                "right"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "15de521257ddf262d4c6e7004f072bd00233565f8b813bbc0e02df89de36ea2f",
+      "reason": "missing_value",
+      "reasons": [
+        "missing_value"
+      ]
+    },
+    {
+      "name": "non-ancestor-reference",
+      "source": "examples/parallel/workflow.json, left reads sibling branch right",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              },
+              "peek": {
+                "ref": "node:right#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "风险清单"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left",
+                "right"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "df7a0826d931d2d7fd916d2b91b1aba03f32a25fabcb185a86ccd35be37fcc55",
+      "reason": "non_ancestor_ref",
+      "reasons": [
+        "non_ancestor_ref"
+      ]
+    },
+    {
+      "name": "unknown-node-reference",
+      "source": "examples/sales/workflow.json, stats.inputs.file := node:ghost#",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "node:ghost#"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "bfac816a562099f9c9191cdba038edf897791cc903bd58b01bcc8f18c04880ab",
+      "reason": "unknown_ref",
+      "reasons": [
+        "unknown_ref"
+      ]
+    },
+    {
+      "name": "undeclared-pointer-field",
+      "source": "examples/sales/workflow.json, analysis reads node:stats#/nope",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#/nope"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "e38ccd07aa04705d61f288eca15db01ab3c9b59e7e0812d2fbb0386c1e637647",
+      "reason": "bad_pointer",
+      "reasons": [
+        "bad_pointer"
+      ]
+    },
+    {
+      "name": "numeric-op-on-string-literal",
+      "source": "examples/branch-approval/workflow.json, gt against a string literal",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "level": {
+                "literal": "high"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "level",
+                  "op": "gt",
+                  "value": 3,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve",
+                "direct"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "yes"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "c5ddb81c4e111304049032def8e17e2d96d5ba186fbb7cb600a1ca8d4cb8a97c",
+      "reason": "type_mismatch",
+      "reasons": [
+        "type_mismatch"
+      ]
+    },
+    {
+      "name": "precedence-cycle-over-missing-value",
+      "source": "examples/invalid/cycle.json with the missing summary mapping",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "python",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "analysis",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          },
+          {
+            "source": "analysis",
+            "target": "stats"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "5ee68c1f215d812544e05ff980afab06890653718ca46fde58f883f179e66de8",
+      "reason": "cycle",
+      "reasons": [
+        "cycle"
+      ]
+    },
+    {
+      "name": "precedence-schema-over-duplicate-id",
+      "source": "examples/sales/workflow.json with both an unknown type and a duplicate id",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "object",
+              "properties": {
+                "artifact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "report",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stats",
+            "type": "script",
+            "inputs": {
+              "file": {
+                "ref": "input#/file"
+              }
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "string"
+                },
+                "regions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "order_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "total",
+                "regions",
+                "order_count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "stats",
+            "type": "agent",
+            "inputs": {
+              "stats": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+              "tool_versions": [],
+              "subapp_versions": [],
+              "max_turns": 12
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "report": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "report": {
+                "ref": "node:analysis#/report"
+              },
+              "summary": {
+                "ref": "node:stats#"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "stats"
+          },
+          {
+            "source": "stats",
+            "target": "analysis"
+          },
+          {
+            "source": "analysis",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "ffcd81abc0aed0244b0c198b12ba1ce176a49dded64c7d3e86172a7b762b0e32",
+      "reason": "unknown_type",
+      "reasons": [
+        "unknown_type"
+      ]
+    },
+    {
+      "name": "precedence-port-over-join-sources",
+      "source": "examples/branch-approval/workflow.json with a bad port and short sources",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "requires_approval": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "requires_approval"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "choose",
+            "type": "condition",
+            "inputs": {
+              "requires_approval": {
+                "ref": "input#/requires_approval"
+              }
+            },
+            "config": {
+              "join_id": "join",
+              "cases": [
+                {
+                  "input": "requires_approval",
+                  "op": "eq",
+                  "value": true,
+                  "port": "yes"
+                }
+              ],
+              "default_port": "no"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "approve",
+            "type": "approval",
+            "inputs": {
+              "proposal": {
+                "literal": {
+                  "purpose": "仅示范人工业务确认，不授权任意后续写入"
+                }
+              }
+            },
+            "config": {
+              "title": "业务确认",
+              "expires_seconds": 3600
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "direct",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "输出无需人工确认的说明"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "choose",
+              "mode": "all_active",
+              "required_sources": [
+                "approve"
+              ],
+              "optional_sources": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "choose"
+          },
+          {
+            "source": "choose",
+            "target": "approve",
+            "port": "oops"
+          },
+          {
+            "source": "choose",
+            "target": "direct",
+            "port": "no"
+          },
+          {
+            "source": "approve",
+            "target": "join"
+          },
+          {
+            "source": "direct",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "4956ac7e13aaf4bb492861c672503d298ffd84e7049f15ecb199e6c7bcc99e7a",
+      "reason": "bad_port",
+      "reasons": [
+        "bad_port"
+      ]
+    }
+  ]
+}
