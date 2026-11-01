@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"orchara/platform/internal/config"
@@ -17,10 +18,11 @@ type Server struct {
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
+	limiter      *loginLimiter
 }
 
-// New builds the HTTP surface. webDir is where admin.html, activate.html and
-// assets/app.js are served from (ORCHARA_WEB_DIR).
+// New builds the HTTP surface. webDir is where admin.html, login.html,
+// activate.html and assets/app.js are served from (ORCHARA_WEB_DIR).
 func New(service *identity.Service, webDir string, profile config.Profile, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
@@ -30,15 +32,23 @@ func New(service *identity.Service, webDir string, profile config.Profile, logge
 		webDir:       webDir,
 		secureCookie: SecureCookie(profile),
 		logger:       logger,
+		limiter:      newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
 	}
 }
 
-// Register adds the T015 routes to mux.
+// Register adds the identity routes to mux.
+//
+// Every authenticated route goes through Server.authorize, so the CSRF and role
+// rules live in one place; /auth/login and /auth/activate are unauthenticated by
+// contract and therefore have no session (and no CSRF token) to check.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
+	mux.HandleFunc("GET /api/v1/auth/me", s.handleMe)
 	mux.HandleFunc("POST /api/v1/auth/activate", s.handleActivate)
 	mux.HandleFunc("POST /api/v1/admin/users", s.handleInviteUser)
 
+	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
@@ -62,9 +72,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Throttle before spending an argon2id verification. The key is
+	// (lowercased login, peer address); a tripped key is refused even when the
+	// password is correct, so the refusal itself carries no signal about the
+	// password.
+	throttleKey := loginKeyFor(request.Login, r.RemoteAddr)
+	if blocked, retryAfter := s.limiter.blocked(throttleKey); blocked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter/time.Second)))
+		writeError(w, r, http.StatusTooManyRequests, "rate_limited",
+			"too many failed sign-in attempts; try again later")
+		return
+	}
+
 	session, err := s.service.Login(r.Context(), request.Login, request.Password)
 	switch {
 	case errors.Is(err, identity.ErrInvalidCredentials):
+		s.limiter.fail(throttleKey)
 		// Same answer for an unknown login and a wrong password.
 		writeError(w, r, http.StatusUnauthorized, "invalid_credentials", "login or password is incorrect")
 		return
@@ -76,12 +99,85 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.limiter.succeed(throttleKey)
 	http.SetCookie(w, newSessionCookie(session.Token, s.secureCookie))
 	writeJSON(w, http.StatusOK, sessionResponse{
 		PrincipalID: session.PrincipalID,
 		CSRFToken:   session.CSRFToken,
 		ExpiresAt:   session.ExpiresAt.UTC().Format(time.RFC3339),
 	})
+}
+
+// identityView is the contract's IdentityView: exactly these five fields, with
+// csrf_token null for a credential that does not use browser CSRF.
+type identityView struct {
+	PrincipalID string   `json:"principal_id"`
+	Kind        string   `json:"kind"`
+	Roles       []string `json:"roles"`
+	CSRFToken   *string  `json:"csrf_token"`
+	ExpiresAt   string   `json:"expires_at"`
+}
+
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, identityViewFor(caller))
+}
+
+// identityViewFor projects an identity onto the contract's IdentityView.
+//
+// csrf_token is the plaintext token only for a session cookie, where it is
+// recomputed from the presented cookie inside Authenticate, so a page refresh
+// restores a working identity without any client-side memory and without the
+// plaintext ever being stored server-side. Any other credential (an API key,
+// from T020) reports null: it is not attached by a browser and has no CSRF
+// token to hand out.
+func identityViewFor(caller *identity.Identity) identityView {
+	var csrfToken *string
+	if caller.Method == identity.AuthMethodSessionCookie && caller.CSRFToken != "" {
+		token := caller.CSRFToken
+		csrfToken = &token
+	}
+	roles := caller.Roles
+	if roles == nil {
+		// The contract fixes roles as an array; JSON null would be a different
+		// type. A service principal simply has no roles.
+		roles = []string{}
+	}
+	return identityView{
+		PrincipalID: caller.PrincipalID,
+		Kind:        caller.Kind,
+		Roles:       roles,
+		CSRFToken:   csrfToken,
+		ExpiresAt:   caller.ExpiresAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// A forged logout is still a state change (it ends someone's session), so
+	// it needs the same CSRF proof as any other write. authorize() writes 403
+	// csrf_invalid and leaves the session untouched when the proof is missing.
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+
+	// Only a cookie session has a server-side row to revoke. A future API-key
+	// caller (T020) authenticates but has no browser session: key revocation is
+	// its own admin operation, so this endpoint clears the cookie and reports
+	// the idempotent 204 instead of pretending to revoke the key.
+	if caller.Method == identity.AuthMethodSessionCookie && caller.SessionHash != "" {
+		if _, err := s.service.Logout(r.Context(), caller.SessionHash, caller.PrincipalID); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+	}
+	http.SetCookie(w, clearedSessionCookie(s.secureCookie))
+	// No body, but still auth data: the response must not be cached.
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type inviteRequest struct {
@@ -97,12 +193,11 @@ type invitationResponse struct {
 }
 
 func (s *Server) handleInviteUser(w http.ResponseWriter, r *http.Request) {
-	caller, ok := s.requireIdentity(w, r)
+	// Invitation is a state-changing admin endpoint: one helper enforces the
+	// session, the CSRF proof and the admin role before anything is read or
+	// written.
+	caller, ok := s.authorize(w, r, "admin")
 	if !ok {
-		return
-	}
-	if !caller.HasRole("admin") {
-		writeError(w, r, http.StatusForbidden, "forbidden", "administrator role is required")
 		return
 	}
 
@@ -176,35 +271,6 @@ func (s *Server) handleActivate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, acceptedResponse{ID: principalID, State: "activated"})
-}
-
-// requireIdentity resolves the session cookie, writing the contract error when
-// it cannot. It returns ok=false when a response has already been written.
-func (s *Server) requireIdentity(w http.ResponseWriter, r *http.Request) (*identity.Identity, bool) {
-	cookie, err := r.Cookie(identity.SessionCookieName)
-	if err != nil {
-		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a session cookie is required")
-		return nil, false
-	}
-	caller, err := s.service.Authenticate(r.Context(), cookie.Value)
-	switch {
-	case errors.Is(err, identity.ErrUnauthenticated):
-		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "the session is not recognised")
-		return nil, false
-	case errors.Is(err, identity.ErrSessionExpired):
-		writeError(w, r, http.StatusUnauthorized, "session_expired", "the session has expired")
-		return nil, false
-	case errors.Is(err, identity.ErrSessionRevoked):
-		writeError(w, r, http.StatusUnauthorized, "session_revoked", "the session was revoked")
-		return nil, false
-	case errors.Is(err, identity.ErrPrincipalDisabled):
-		writeError(w, r, http.StatusForbidden, "principal_disabled", "this account is disabled")
-		return nil, false
-	case err != nil:
-		s.internalError(w, r, err)
-		return nil, false
-	}
-	return caller, true
 }
 
 func validationDetails(err error) map[string]any {

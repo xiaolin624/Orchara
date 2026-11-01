@@ -30,17 +30,31 @@
 <body>
   <nav>
     <a href="/">状态</a>
+    <a href="/login">登录</a>
     <a href="/activate">激活账号</a>
   </nav>
 
   <h1>管理台（F01 身份）</h1>
   <p class="sub">
-    先以管理员身份登录，再邀请用户。邀请后返回的一次性激活令牌
+    本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
+    未登录会跳转到登录页。邀请返回的一次性激活令牌
     <strong>只显示一次</strong>，平台只保存它的哈希，请人工转交。
   </p>
 
   <section class="card">
+    <h2>当前身份</h2>
+    <p class="status" id="auth-status" role="status" aria-live="polite">正在读取当前身份…</p>
+    <p>principal：<code id="identity-principal">—</code></p>
+    <p>角色：<span id="identity-roles">—</span></p>
+    <button id="logout-button" type="button">退出登录</button>
+  </section>
+
+  <section class="card">
     <h2>管理员登录</h2>
+    <p class="hint">
+      正式入口是 <a href="/login">/login</a>；未登录访问本页会自动跳转过去。
+      下面的表单供禁用脚本的浏览器使用，登录后本页会重新读取身份。
+    </p>
     <form id="signin-form" autocomplete="on">
       <label for="login">登录名
         <input id="login" name="login" autocomplete="username" required />
@@ -50,7 +64,6 @@
       </label>
       <button type="submit">登录</button>
     </form>
-    <p id="auth-status" class="status" role="status" aria-live="polite"></p>
   </section>
 
   <section id="invite-panel" class="card" hidden>
@@ -84,40 +97,60 @@
 
   <script src="/assets/app.js"></script>
   <script>
+    const authStatus = document.getElementById('auth-status');
+    const identityPrincipal = document.getElementById('identity-principal');
+    const identityRoles = document.getElementById('identity-roles');
+    const logoutButton = document.getElementById('logout-button');
     const signinForm = document.getElementById('signin-form');
     const inviteForm = document.getElementById('invite-form');
     const invitePanel = document.getElementById('invite-panel');
     const inviteResult = document.getElementById('invite-result');
     const activationTokenField = document.getElementById('activation-token');
-    const authStatus = document.getElementById('auth-status');
     const inviteStatus = document.getElementById('invite-status');
-
-    // Held in memory only for this page. T017 replaces this with /auth/me +
-    // X-CSRF-Token on every write; the token is never put in a URL or storage.
-    let csrfToken = null;
 
     function setStatus(element, message, kind) {
       element.textContent = message;
       element.className = 'status ' + (kind || '');
     }
 
+    // Identity comes from the server on every load: the cookie is HttpOnly, so
+    // the page never holds a credential of its own.
+    function renderIdentity(me) {
+      identityPrincipal.textContent = me.principal_id;
+      const roles = me.roles || [];
+      identityRoles.textContent = roles.length ? roles.join('、') : '（无）';
+      invitePanel.hidden = roles.indexOf('admin') === -1;
+      setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
+    }
+
+    // On load: restore the identity after a refresh. A 401 goes to the login
+    // page; any other failure is shown instead of pretending to be signed in.
+    async function restoreIdentity() {
+      try {
+        renderIdentity(await requireLogin());
+      } catch (error) {
+        if (error.status !== 401) {
+          setStatus(authStatus, `无法读取当前身份 [${error.code}] ${error.message}`, 'bad');
+        }
+        // A 401 already navigated to /login; leave whatever is on screen.
+        invitePanel.hidden = true;
+      }
+    }
+
     signinForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       setStatus(authStatus, '正在登录…', 'pending');
       try {
-        const session = await api('/api/v1/auth/login', {
+        await api('/api/v1/auth/login', {
           method: 'POST',
           body: {
             login: document.getElementById('login').value,
             password: document.getElementById('password').value,
           },
         });
-        csrfToken = session.csrf_token;
         document.getElementById('password').value = '';
-        invitePanel.hidden = false;
-        authStatus.innerHTML =
-          '已登录，principal <code>' + escapeHTML(session.principal_id) + '</code>';
-        authStatus.className = 'status ok';
+        // The login response carries no roles, so ask /auth/me again.
+        renderIdentity(await identity(true));
       } catch (error) {
         setStatus(authStatus, `登录失败 [${error.code}] ${error.message}`, 'bad');
       }
@@ -133,7 +166,8 @@
       try {
         const invitation = await api('/api/v1/admin/users', {
           method: 'POST',
-          csrf: csrfToken,
+          // The CSRF token for this session, from /auth/me; never from storage.
+          csrf: await csrf(),
           body: {
             login: document.getElementById('invite-login').value,
             display_name: document.getElementById('invite-display-name').value,
@@ -149,9 +183,25 @@
           'ok',
         );
       } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
         setStatus(inviteStatus, `邀请失败 [${error.code}] ${error.message}`, 'bad');
       }
     });
+
+    logoutButton.addEventListener('click', async () => {
+      setStatus(authStatus, '正在退出…', 'pending');
+      try {
+        await logout();
+        window.location.assign('/login');
+      } catch (error) {
+        setStatus(authStatus, `退出失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    restoreIdentity();
   </script>
 </body>
 </html>

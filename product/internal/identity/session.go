@@ -67,7 +67,10 @@ func (s *Service) Login(ctx context.Context, login, password string) (*Session, 
 	}
 
 	rawToken := NewToken()
-	csrfToken := NewToken()
+	// The CSRF token is bound to the session token (HMAC-SHA256) instead of
+	// being a second random value, so GET /auth/me can recompute it after a page
+	// refresh while the database still stores only a hash.
+	csrfToken := DeriveCSRFToken(rawToken)
 	expiresAt := s.now().Add(SessionTTL)
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO platform.sessions (token_hash, principal_id, csrf_hash, expires_at)
@@ -103,19 +106,20 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (*Identity,
 	var (
 		principalID string
 		kind        string
+		csrfHash    string
 		expiresAt   sql.NullTime
 		revokedAt   sql.NullTime
 		disabledAt  sql.NullTime
 		expired     bool
 	)
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT s.principal_id, p.kind, s.expires_at, s.revoked_at, p.disabled_at,
+		SELECT s.principal_id, p.kind, s.csrf_hash, s.expires_at, s.revoked_at, p.disabled_at,
 		       (s.expires_at <= now()) AS expired
 		  FROM platform.sessions AS s
 		  JOIN platform.principals AS p ON p.id = s.principal_id
 		 WHERE s.token_hash = $1`,
 		HashToken(rawToken),
-	).Scan(&principalID, &kind, &expiresAt, &revokedAt, &disabledAt, &expired)
+	).Scan(&principalID, &kind, &csrfHash, &expiresAt, &revokedAt, &disabledAt, &expired)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthenticated
 	}
@@ -141,7 +145,50 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (*Identity,
 		Kind:        kind,
 		Roles:       roles,
 		ExpiresAt:   expiresAt.Time,
+		Method:      AuthMethodSessionCookie,
+		// Recompute the CSRF token from the presented cookie: the plaintext is
+		// never stored, so this is the only way a refreshed page can get it back.
+		CSRFToken:   DeriveCSRFToken(rawToken),
+		CSRFHash:    csrfHash,
+		SessionHash: HashToken(rawToken),
 	}, nil
+}
+
+// Logout revokes exactly the session identified by its stored token hash.
+//
+// Only one row is touched: signing out in one browser must not sign the user out
+// everywhere. It reports false when the session was already revoked (or gone),
+// which keeps a repeated logout a no-op instead of an error. The audit event is
+// written in the same transaction, so a revoke is never invisible to the trail.
+func (s *Service) Logout(ctx context.Context, sessionHash, principalID string) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("starting the logout transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var revoked string
+	err = tx.QueryRowContext(ctx, `
+		UPDATE platform.sessions
+		   SET revoked_at = now()
+		 WHERE token_hash = $1
+		   AND revoked_at IS NULL
+		RETURNING token_hash`,
+		sessionHash,
+	).Scan(&revoked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("revoking the session: %w", err)
+	}
+	if err := RecordAudit(ctx, tx, &principalID, "auth.logout", "principal", &principalID, nil); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("committing the logout: %w", err)
+	}
+	return true, nil
 }
 
 // LoadRoles reads a principal's role bindings in a stable order.

@@ -39,3 +39,22 @@ func newSessionCookie(value string, secure bool) *http.Cookie {
 		MaxAge:   int(identity.SessionTTL / time.Second),
 	}
 }
+
+// clearedSessionCookie deletes the session cookie in the browser.
+//
+// MaxAge=-1 removes it now; the 1970 Expires does the same for a client that
+// only understands Expires. The remaining attributes must match the cookie being
+// removed (notably Path=/), otherwise the browser keeps the stale cookie and a
+// "logout" silently leaves the session attached.
+func clearedSessionCookie(secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name:     identity.SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+	}
+}

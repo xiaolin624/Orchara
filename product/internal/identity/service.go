@@ -68,12 +68,38 @@ type Session struct {
 	ExpiresAt   time.Time
 }
 
-// Identity is an authenticated principal as resolved from a session cookie.
+// AuthMethod names the credential that proved an identity. Authorization code
+// branches on it instead of guessing from headers, so an API key (T020) is
+// exempt from browser CSRF rules without a special case spread through handlers.
+type AuthMethod string
+
+const (
+	// AuthMethodSessionCookie is the platform_session browser cookie.
+	AuthMethodSessionCookie AuthMethod = "session_cookie"
+	// AuthMethodAPIKey is a scoped bearer API key. A browser never attaches one
+	// automatically, so it carries no CSRF token.
+	AuthMethodAPIKey AuthMethod = "api_key"
+)
+
+// Identity is an authenticated principal as resolved from one credential.
+//
+// The CSRF fields exist only for a session cookie: CSRFToken is the plaintext
+// value (derived from the cookie, never stored) that GET /auth/me may hand back
+// so a page refresh keeps working, and CSRFHash is the stored
+// sessions.csrf_hash used for constant-time verification. Both are empty for a
+// credential type that does not use browser CSRF.
+//
+// SessionHash is the SHA-256 of the presented cookie: it identifies exactly one
+// server-side session for logout without re-reading the raw secret.
 type Identity struct {
 	PrincipalID string
 	Kind        string
 	Roles       []string
 	ExpiresAt   time.Time
+	Method      AuthMethod
+	CSRFToken   string
+	CSRFHash    string
+	SessionHash string
 }
 
 // HasRole reports whether the identity carries role.
