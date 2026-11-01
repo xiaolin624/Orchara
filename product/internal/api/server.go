@@ -66,6 +66,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/api-keys/{key_id}", s.handleRevokeAPIKey)
 	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
 
+	// T021: disable/enable a principal. Disabling revokes the principal's
+	// sessions and API keys (including the keys of service accounts it is
+	// responsible for), bumps the policy epoch and audits, in one transaction.
+	mux.HandleFunc("PATCH /api/v1/admin/principals/{principal_id}", s.handleUpdatePrincipal)
+
 	// T019: resource grants, role updates and the ACL-filtered applications read.
 	mux.HandleFunc("POST /api/v1/admin/grants", s.handleGrant)
 	mux.HandleFunc("DELETE /api/v1/admin/grants/{grant_id}", s.handleRevokeGrant)

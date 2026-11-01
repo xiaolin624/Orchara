@@ -25,8 +25,14 @@ var ErrLastAdmin = errors.New("cannot remove the last enabled human administrato
 // ErrPrincipalNotFound is returned when the target principal does not exist.
 var ErrPrincipalNotFound = errors.New("principal not found")
 
-// rolesLockKey serialises role changes so two concurrent demotions cannot both
-// observe the other administrator and both win. It is not a credential.
+// rolesLockKey serialises every change that affects who may administer the
+// installation: role replacement (SetRoles), principal disable/enable
+// (SetDisabled) and service-account responsibility handover (Handover). Two
+// concurrent changes therefore cannot both observe the other administrator (or
+// the other responsibility owner) and both win. It is not a credential.
+//
+// The key's bytes spell "ROLESET1"; the integration tests hold this exact
+// session-level advisory lock to make concurrent HTTP requests deterministic.
 const rolesLockKey int64 = 0x524f_4c45_5345_5431 // "ROLESET1"
 
 // SetRoles replaces a human user's role bindings.

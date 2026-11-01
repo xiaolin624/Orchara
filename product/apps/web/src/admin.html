@@ -223,6 +223,32 @@
     <p id="api-key-revoke-status" class="status" role="status" aria-live="polite"></p>
   </section>
 
+  <section id="principals-panel" class="card" hidden>
+    <h2>禁用 / 启用主体</h2>
+    <p class="hint">
+      禁用会立即撤销该人的全部浏览器会话与 API key，并撤销 TA 负责的服务账号的 key；启用只清除禁用状态，
+      已撤销的凭据不会恢复（需要重新签发 key、重新登录）。principal 行永远不会被删除，审计仍能定位到原主体。
+      至少保留一个启用中的人类管理员，否则会显示 <code>last_admin</code>；主体不存在或 id 畸形显示
+      <code>principal_not_found</code>。原因必填并写入审计。
+    </p>
+    <form id="disable-form">
+      <label for="disable-principal">principal id
+        <input id="disable-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <label for="disable-state">目标状态
+        <select id="disable-state" name="disabled">
+          <option value="true" selected>禁用</option>
+          <option value="false">启用</option>
+        </select>
+      </label>
+      <label for="disable-reason">原因（必填，写入审计）
+        <input id="disable-reason" name="reason" required placeholder="例如：离职交接" />
+      </label>
+      <button type="submit">提交</button>
+    </form>
+    <p id="disable-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script>
     const authStatus = document.getElementById('auth-status');
@@ -255,6 +281,9 @@
     const apiKeySecretField = document.getElementById('api-key-secret');
     const apiKeyRevokeForm = document.getElementById('api-key-revoke-form');
     const apiKeyRevokeStatus = document.getElementById('api-key-revoke-status');
+    const principalsPanel = document.getElementById('principals-panel');
+    const disableForm = document.getElementById('disable-form');
+    const disableStatus = document.getElementById('disable-status');
 
     function setStatus(element, message, kind) {
       element.textContent = message;
@@ -275,6 +304,7 @@
       rolesPanel.hidden = !isAdmin;
       serviceAccountsPanel.hidden = !isAdmin;
       apiKeysPanel.hidden = !isAdmin;
+      principalsPanel.hidden = !isAdmin;
       setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
     }
 
@@ -519,6 +549,40 @@
           return;
         }
         setStatus(apiKeyRevokeStatus, `撤销失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // PATCH /api/v1/admin/principals/{principal_id}: disable or enable one
+    // principal. Disabling revokes every session and key of that person and of
+    // the service accounts they are responsible for; enabling never restores a
+    // revoked credential. The visible failure shows the contract code, so
+    // last_admin and principal_not_found are readable on the page.
+    disableForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const principalId = document.getElementById('disable-principal').value.trim();
+      const targetDisabled = document.getElementById('disable-state').value === 'true';
+      const reason = document.getElementById('disable-reason').value;
+      setStatus(disableStatus, targetDisabled ? '正在禁用…' : '正在启用…', 'pending');
+      try {
+        const result = await api(
+          '/api/v1/admin/principals/' + encodeURIComponent(principalId),
+          {
+            method: 'PATCH',
+            csrf: await csrf(),
+            body: { disabled: targetDisabled, reason },
+          },
+        );
+        setStatus(
+          disableStatus,
+          `已${result.state === 'disabled' ? '禁用' : '启用'} principal ${result.id}（${result.state}）。`,
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(disableStatus, `操作失败 [${error.code}] ${error.message}`, 'bad');
       }
     });
 
