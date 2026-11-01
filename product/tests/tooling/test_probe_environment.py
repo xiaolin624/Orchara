@@ -127,3 +127,39 @@ def test_report_roundtrips_to_disk(report: dict) -> None:
     md = Path(report["artifacts"]["markdown"])
     assert md.exists()
     assert "D00" in md.read_text(encoding="utf-8")
+
+
+def test_postgres_capability_refers_to_the_owned_cluster(report: dict) -> None:
+    """The machine's own 5432 belongs to another installation and must not be claimed."""
+    sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
+    import pg_dev
+
+    services = {service["name"]: service for service in report["services"]}
+    assert services["postgres"]["port"] == pg_dev.DEFAULT_PORT
+    assert services["postgres"]["owned_by_project"] is True
+    assert report["capabilities"]["postgres"]["port"] == pg_dev.DEFAULT_PORT
+
+    foreign = services["postgres_port_5432_foreign"]
+    assert foreign["port"] == 5432
+    assert foreign["owned_by_project"] is False
+    assert report["capabilities"]["foreign_postgres"]["status"] in {
+        "present_not_owned",
+        "absent",
+    }
+
+
+def test_blockers_are_derived_from_capabilities(report: dict) -> None:
+    """A blocker exists for exactly those capabilities that are unavailable."""
+    blocker_ids = {blocker["id"] for blocker in report["blockers"]}
+    for name, capability in report["capabilities"].items():
+        declared = capability.get("blocker")
+        if not declared:
+            continue
+        if capability["status"] == "available":
+            assert declared["id"] not in blocker_ids, (
+                f"{name} is available but still reported as blocked"
+            )
+        else:
+            assert declared["id"] in blocker_ids, (
+                f"{name} is unavailable but produced no blocker"
+            )

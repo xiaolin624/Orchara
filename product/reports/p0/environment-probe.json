@@ -1,6 +1,6 @@
 {
   "schema_version": "orchara.env-probe/v1",
-  "generated_at": "2026-11-01T09:52:37+00:00",
+  "generated_at": "2026-11-01T11:07:19+00:00",
   "task": "D00 / T001",
   "host": {
     "os": "Windows",
@@ -89,21 +89,35 @@
   "services": [
     {
       "name": "postgres",
+      "probe": "tcp connect 127.0.0.1:55432",
+      "port": 55432,
+      "reachable": true,
+      "owned_by_project": true,
+      "note": "isolated development cluster created by tools/pg_dev.py"
+    },
+    {
+      "name": "postgres_port_5432_foreign",
       "probe": "tcp connect 127.0.0.1:5432",
       "port": 5432,
-      "reachable": true
+      "reachable": true,
+      "owned_by_project": false,
+      "note": "not owned by this project; credentials unknown; never used by probes"
     },
     {
       "name": "redis",
       "probe": "tcp connect 127.0.0.1:6379",
       "port": 6379,
-      "reachable": false
+      "reachable": false,
+      "owned_by_project": true,
+      "note": "expected platform dependency"
     },
     {
       "name": "object_storage",
       "probe": "tcp connect 127.0.0.1:9000",
       "port": 9000,
-      "reachable": false
+      "reachable": false,
+      "owned_by_project": true,
+      "note": "expected platform dependency"
     }
   ],
   "capabilities": {
@@ -119,7 +133,17 @@
       "status": "available",
       "client_binary": true,
       "reachable": true,
-      "detail": "server reachable on 127.0.0.1:5432"
+      "port": 55432,
+      "detail": "owned cluster reachable on 127.0.0.1:55432",
+      "blocker": {
+        "id": "postgres_server",
+        "reason": "no reachable project-owned PostgreSQL server on the configured port; storage tickets cannot be demonstrated",
+        "unblocks": "P02 tickets"
+      }
+    },
+    "foreign_postgres": {
+      "status": "present_not_owned",
+      "detail": "a PostgreSQL listener on 127.0.0.1:5432 belongs to another installation; its credentials are unknown and probes must not use it"
     },
     "redis": {
       "status": "unavailable",
@@ -127,7 +151,12 @@
     },
     "container_runtime": {
       "status": "unavailable",
-      "detail": "no docker CLI/daemon"
+      "detail": "no docker CLI/daemon",
+      "blocker": {
+        "id": "container_runtime",
+        "reason": "no container runtime available; compose-based deployment is not verifiable",
+        "unblocks": "F15A/F15B deployment tickets"
+      }
     },
     "linux_host": {
       "status": "unavailable",
@@ -135,16 +164,31 @@
     },
     "linux_isolation": {
       "status": "unavailable",
-      "detail": "no runsc/gVisor runtime could be started and verified; Windows/WSL results may not be recorded as isolation acceptance"
+      "detail": "no runsc/gVisor runtime could be started and verified; Windows/WSL results may not be recorded as isolation acceptance",
+      "blocker": {
+        "id": "linux_isolation",
+        "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) and root privileges was available for this probe",
+        "unblocks": "P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance"
+      }
     },
     "gpu": {
       "status": "available",
       "detail": "NVIDIA GeForce RTX 3050 Laptop GPU",
       "vram_gib": 4.0,
-      "driver": null
+      "driver": null,
+      "blocker": {
+        "id": "gpu",
+        "reason": "no GPU reported by nvidia-smi; LoRA training experiments cannot run",
+        "unblocks": "F14 training tickets"
+      }
     }
   },
   "blockers": [
+    {
+      "id": "container_runtime",
+      "reason": "no container runtime available; compose-based deployment is not verifiable",
+      "unblocks": "F15A/F15B deployment tickets"
+    },
     {
       "id": "linux_isolation",
       "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) and root privileges was available for this probe",
@@ -154,11 +198,6 @@
       "id": "model_credentials",
       "reason": "no approved model-provider credentials present in the environment; only stub-model paths may be reported as executed",
       "unblocks": "real-model profiles and provider-capacity experiments"
-    },
-    {
-      "id": "container_runtime",
-      "reason": "no container runtime available; compose-based deployment is not verifiable",
-      "unblocks": "F15A/F15B deployment tickets"
     }
   ],
   "credential_env_present": [],

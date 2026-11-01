@@ -3,7 +3,7 @@
 - 任务：P02 / GitHub Issue #6（`T005`）
 - 状态：**passed**
 - 代码：`probes/p02_checkpoint/checkpoint_probe.py`
-- 测试：`python -m pytest product/tests/p02 -q` → **7 passed**
+- 测试：`python -m pytest product/tests/p02 -q` → **8 passed**
 - 环境：隔离开发集群 PostgreSQL 16.4 @ `127.0.0.1:55432`（`tools/pg_dev.py`），
   langgraph 1.2.4 + langgraph-checkpoint-postgres 3.0.5 + psycopg 3.3.6（`[binary]`）
 
@@ -52,7 +52,11 @@ operation_key=op-T2`。
   checkpoint，恢复后就拿不到（本次实现踩到并修掉了）。
 - **幂等写在存储层**：`app.operations.idempotency_key` 主键 + `ON CONFLICT DO NOTHING`，
   重放三次仍只有一行。
-- **权限最小化**：worker 角色只有 `checkpoint` schema 的 DML 与 `app` 的 `SELECT`，
+- **运行身份就是受限角色（复核后修复）**：`run`/`resume`/批准写入现在都用
+  `orchara_worker`，返回结果里的 `runtime_role` 可核对；`resume`/`replay` 也以该角色写
+  自己的 outbox。`app.threads`（身份模块）只读。
+- **权限最小化**：worker 角色只有 `checkpoint` schema 的 DML、`app.operations` 的
+  `SELECT/INSERT` 与 `app.threads` 的 `SELECT`，
   没有任何 schema 的 `CREATE`。
 
 ## 5. 边界

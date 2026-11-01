@@ -44,6 +44,18 @@ unauthorized_run_failed / retry_detected / bad_input_failed` 在 Linux 上全部
 | `get-pip.py` 未锁版 | pip 是工具不是运行时依赖 | 记录局限：第二环境的 pip 版本未纳入锁；被测依赖全部锁版 |
 | Go 侧未在第二环境重建 | WSL 未安装 Go，且无 sudo/无包管理器权限 | 记录为未做；Go↔Python 一致性已由 T003 在 Windows 上逐向量验证。不声称 Go 在 Linux 重建通过 |
 
+## 2.1 复核后补充（可重跑入口与 SBOM）
+
+复核指出"第二环境只有一份 JSON，没有可重跑入口"以及"缺 SBOM/许可清单"。已修：
+
+- `tools/second_env_probe.sh` 是提交进仓库的可重跑脚本：按同一把哈希锁装到隔离
+  `--target` 目录并重跑探针（无需 sudo、无需 venv）。
+- 探针报告现在自带 `profile`、`command`、`host.platform`，新证据见
+  [`agent-min-probe-second-env.json`](agent-min-probe-second-env.json)。
+- `tools/sbom.py` 生成 [`sbom.json`](sbom.json)：48 个包的版本、sha256 与许可证，
+  0 缺失、0 版本不符、0 许可证未声明。
+- 镜像 digest：本阶段**未构建任何应用镜像**，因此显式记 `not_run`，不用占位 digest 冒充。
+
 ## 3. 覆盖的验收条件
 
 - [x] 另一干净环境重建最小调用（Linux + 全新依赖树 + 同断言）

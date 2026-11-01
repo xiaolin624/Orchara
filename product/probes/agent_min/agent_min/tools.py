@@ -12,7 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping
+
+InvocationStatus = Literal["ok", "rejected", "error"]
 
 
 class ToolNotAllowed(PermissionError):
@@ -39,7 +41,7 @@ class ToolInvocation:
     name: str
     arguments: dict[str, Any]
     step: int
-    status: str  # "ok" | "rejected" | "error"
+    status: InvocationStatus
     result: Any = None
     error: str | None = None
 

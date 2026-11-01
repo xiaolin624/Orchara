@@ -8,14 +8,14 @@ anything about model quality.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
 class Action:
     """One scripted model decision."""
 
-    kind: str  # "tool" | "final"
+    kind: Literal["tool", "final"]
     name: str | None = None
     arguments: dict[str, Any] | None = None
     text: str | None = None

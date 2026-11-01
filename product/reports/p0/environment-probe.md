@@ -1,7 +1,7 @@
 # D00 环境探测报告（自动生成）
 
 - schema: `orchara.env-probe/v1`
-- 生成时间(UTC): `2026-11-01T09:52:37+00:00`
+- 生成时间(UTC): `2026-11-01T11:07:19+00:00`
 - 任务: D00 / T001
 
 ## 宿主
@@ -27,17 +27,19 @@
 
 ## 服务可达性
 
-| 服务 | 端口 | 可达 | 探测命令 |
-|---|---|---|---|
-| postgres | 5432 | yes | `tcp connect 127.0.0.1:5432` |
-| redis | 6379 | NO | `tcp connect 127.0.0.1:6379` |
-| object_storage | 9000 | NO | `tcp connect 127.0.0.1:9000` |
+| 服务 | 端口 | 可达 | 本项目所有 | 探测命令 | 说明 |
+|---|---|---|---|---|---|
+| postgres | 55432 | yes | yes | `tcp connect 127.0.0.1:55432` | isolated development cluster created by tools/pg_dev.py |
+| postgres_port_5432_foreign | 5432 | yes | **NO** | `tcp connect 127.0.0.1:5432` | not owned by this project; credentials unknown; never used by probes |
+| redis | 6379 | NO | yes | `tcp connect 127.0.0.1:6379` | expected platform dependency |
+| object_storage | 9000 | NO | yes | `tcp connect 127.0.0.1:9000` | expected platform dependency |
 
 ## 能力分类
 
 - **go_build**: `available` — go version go1.27.3 windows/amd64
 - **node_build**: `available` — v24.13.0
-- **postgres**: `available` — server reachable on 127.0.0.1:5432
+- **postgres**: `available` — owned cluster reachable on 127.0.0.1:55432
+- **foreign_postgres**: `present_not_owned` — a PostgreSQL listener on 127.0.0.1:5432 belongs to another installation; its credentials are unknown and probes must not use it
 - **redis**: `unavailable` — no Redis server accepting connections on 127.0.0.1:6379
 - **container_runtime**: `unavailable` — no docker CLI/daemon
 - **linux_host**: `unavailable` — a WSL distribution is registered but this probe did not run inside it; WSL presence is not Linux isolation acceptance
@@ -48,8 +50,8 @@
 
 | id | 原因 | 解除后可推进 |
 |---|---|---|
+| `container_runtime` | no container runtime available; compose-based deployment is not verifiable | F15A/F15B deployment tickets |
 | `linux_isolation` | no Linux host with an installable sandbox runtime (runsc/gVisor) and root privileges was available for this probe | P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance |
 | `model_credentials` | no approved model-provider credentials present in the environment; only stub-model paths may be reported as executed | real-model profiles and provider-capacity experiments |
-| `container_runtime` | no container runtime available; compose-based deployment is not verifiable | F15A/F15B deployment tickets |
 
 > 静态校验通过不等于平台可运行；本报告只记录探针事实，不改变 P0 状态。

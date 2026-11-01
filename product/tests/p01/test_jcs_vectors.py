@@ -137,7 +137,36 @@ def test_go_and_python_agree_on_bytes_and_sha256(
 
     assert go_result["canonical"] == python_canonical, "canonical bytes differ between Go and Python"
     assert go_result["sha256"] == python_digest, "sha256 differs between Go and Python"
-    assert go_result["sha256"] == case.get("expected_sha256") or True
+    # The pinned digest comes from the RFC-derived canonical text, so agreeing
+    # with it is what makes a *shared* Go/Python bug fail the test.
+    assert case["expected_sha256"], f"{case['name']} has no pinned digest"
+    assert go_result["sha256"] == case["expected_sha256"], (
+        "Go digest differs from the RFC-derived expectation"
+    )
+    assert python_digest == case["expected_sha256"], (
+        "Python digest differs from the RFC-derived expectation"
+    )
+
+
+@pytest.mark.parametrize("case", VALID, ids=_ids(VALID))
+def test_pinned_digest_matches_the_expected_canonical_bytes(case: dict) -> None:
+    """The pin must correspond to the RFC text, not to whatever we produced."""
+    import hashlib
+
+    assert case["expected_sha256"] == hashlib.sha256(
+        case["expected_canonical"].encode("utf-8")
+    ).hexdigest()
+
+
+def test_rfc_sample_digest_is_pinned() -> None:
+    """Digest quoted in the issue closure; asserted here so it cannot drift."""
+    case = next(c for c in VALID if c["name"] == "rfc8785-3.2.2-sample")
+    assert case["expected_sha256"] == (
+        "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb"
+    )
+    assert jcs.sha256_hex(
+        jcs.canonicalize_text(case["input_json"]).encode("utf-8")
+    ) == case["expected_sha256"]
 
 
 @pytest.mark.parametrize("case", INVALID, ids=_ids(INVALID))

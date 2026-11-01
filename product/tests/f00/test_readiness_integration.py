@@ -122,11 +122,27 @@ def test_liveness_and_readiness_with_database_up(api_server) -> None:
     assert payload["checks"]["database"]["status"] == "ok"
 
 
+def test_contract_paths_are_served(api_server) -> None:
+    """contracts/openapi.json declares /health/live and /health/ready."""
+    live_code, live_body = _get("/health/live")
+    assert live_code == 200, live_body
+    assert json.loads(live_body)["status"] == "alive"
+
+    ready_code, ready_body = _get("/health/ready")
+    assert ready_code == 200, ready_body
+    assert json.loads(ready_body)["status"] == "ready"
+
+
 def test_console_page_is_served(api_server) -> None:
     code, body = _get("/")
     assert code == 200
     assert "Orchara 平台状态" in body
-    assert "/api/status" in body, "the page must read the real status endpoint"
+    # Liveness must come from its own endpoint, not be assumed from a successful fetch.
+    assert "/health/live" in body, "the page must read liveness from /health/live"
+    assert "/api/status" in body, "the page must read dependency state from /api/status"
+    assert "运行中" in body and "status === 'alive'" in body, (
+        "liveness text must be derived from the endpoint response, not hardcoded"
+    )
 
 
 def test_readiness_fails_while_database_is_down_and_recovers(api_server) -> None:
@@ -145,7 +161,8 @@ def test_readiness_fails_while_database_is_down_and_recovers(api_server) -> None
         assert live_code == 200
 
         # no credential may appear in the failure path
-        for leaked in ("orchara_dev_only", "postgresql://", "password"):
+        secret = pg_dev.load_secret()
+        for leaked in (secret, "postgresql://", "password"):
             assert leaked not in ready_body.lower(), f"response leaked {leaked!r}"
     finally:
         pg_dev.init_cluster()
@@ -158,5 +175,6 @@ def test_status_endpoint_never_includes_the_dsn(api_server) -> None:
     code, body = _get("/api/status")
     assert code == 200
     lowered = body.lower()
-    for leaked in ("orchara_dev_only", "sslmode", "postgresql://"):
+    secret = pg_dev.load_secret()
+    for leaked in (secret, "sslmode", "postgresql://"):
         assert leaked not in lowered, f"/api/status leaked {leaked!r}"

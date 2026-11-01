@@ -64,12 +64,15 @@
 
     async function refresh() {
       try {
-        const status = await (await fetch('/api/status', { cache: 'no-store' })).json();
-        liveEl.textContent = '运行中';
-        liveEl.className = 'value ok';
-        versionEl.textContent = status.version ?? '…';
-        uptimeEl.textContent = formatUptime(status.uptime_seconds);
+        // Liveness comes from its own endpoint: never assume the process is alive
+        // just because this fetch reached the server.
+        const live = await (await fetch('/health/live', { cache: 'no-store' })).json();
+        liveEl.textContent = live.status === 'alive' ? '运行中' : (live.status ?? '未知');
+        liveEl.className = 'value ' + (live.status === 'alive' ? 'ok' : 'bad');
+        versionEl.textContent = live.version ?? '…';
+        uptimeEl.textContent = formatUptime(live.uptime_seconds);
 
+        const status = await (await fetch('/api/status', { cache: 'no-store' })).json();
         const ready = status.status === 'ready';
         readyEl.textContent = ready ? '就绪' : '未就绪';
         readyEl.className = 'value ' + (ready ? 'ok' : 'bad');

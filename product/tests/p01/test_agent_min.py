@@ -22,7 +22,7 @@ PROBE_ROOT = PRODUCT_ROOT / "probes" / "agent_min"
 LOCK_FILE = PROBE_ROOT / "requirements.lock.txt"
 VENV_PYTHON = PROBE_ROOT / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
 
-from agent_min.__main__ import build_report  # noqa: E402
+from agent_min.__main__ import build_report, validate_report  # noqa: E402
 from agent_min.model import Action, ScriptedModel  # noqa: E402
 from agent_min.runner import run_agent  # noqa: E402
 from agent_min.tools import ToolRegistry, make_tools  # noqa: E402
@@ -123,6 +123,34 @@ def test_all_probe_assertions_hold() -> None:
     for name, value in assertions.items():
         if isinstance(value, bool):
             assert value, f"probe assertion failed: {name}"
+
+
+def test_probe_actually_runs_on_the_locked_stack() -> None:
+    """The lock must be load-bearing, not decorative.
+
+    T002 is "run an agent from the locked dependencies", so the probe has to
+    import packages that are actually pinned in ``requirements.lock.txt``.
+    """
+    import agent_min.__main__ as cli
+    import agent_min.runner as runner
+
+    runner_source = Path(runner.__file__).read_text(encoding="utf-8")
+    cli_source = Path(cli.__file__).read_text(encoding="utf-8")
+    assert "pydantic" in runner_source, "the result model must come from the locked pydantic"
+    assert "jsonschema" in cli_source, "the report must be validated with the locked jsonschema"
+
+    lock = LOCK_FILE.read_text(encoding="utf-8").lower()
+    for package in ("pydantic", "jsonschema"):
+        assert f"{package}==" in lock, f"{package} is imported but not pinned in the lock"
+
+
+def test_report_validation_rejects_a_wrong_status() -> None:
+    import jsonschema
+
+    report = build_report()
+    report["scenarios"]["happy"]["status"] = "maybe"
+    with pytest.raises(jsonschema.ValidationError):
+        validate_report(report)
 
 
 # --------------------------------------------------------------------------

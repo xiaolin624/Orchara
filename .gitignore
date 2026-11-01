@@ -7,3 +7,9 @@ tools/.deps/
 .toolchains/
 **/.venv/
 .pytest_cache/
+
+# Local development secret (read by product/tools/pg_dev.py; never commit)
+product/.env.local
+
+# Generated pip resolution dump; the lock file is the artefact of record
+product/probes/agent_min/pip-report.json

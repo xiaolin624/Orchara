@@ -3,7 +3,7 @@
 - 任务：F00 / GitHub Issue #9（`T008`）
 - 状态：**passed**
 - 代码：`cmd/api/`、`internal/health/`、`apps/web/src/index.html`、`tools/pg_dev.py`
-- 测试：`python -m pytest product/tests/f00 -q` → **4 passed**；
+- 测试：`python -m pytest product/tests/f00 -q` → **5 passed**；
   `go test ./internal/health/` → **ok**
 
 ## 1. 产品入口
@@ -17,7 +17,8 @@ go run ./cmd/api
 ```
 
 - 页面：<http://127.0.0.1:8088/>（显示真实状态，不是静态假页面）
-- 存活：`/healthz`；就绪：`/readyz`；机器可读聚合：`/api/status`
+- 存活：`/health/live`（契约路径，别名 `/healthz`）；就绪：`/health/ready`（别名 `/readyz`）；
+  机器可读聚合：`/api/status`
 
 README 的"可执行命令"一节与实际命令一致（criterion：产品入口链接正确）。
 
@@ -31,7 +32,8 @@ README 的"可执行命令"一节与实际命令一致（criterion：产品入�
 4. `GET /readyz` → **503** `not_ready`，`checks.database = unavailable`；同一时刻
    `GET /healthz` 仍 200 —— 证明"进程活着但依赖不可用"会被区分；
 5. `pg_dev.init_cluster()` 重新拉起 PostgreSQL 后，`/readyz` 回到 **200**；
-6. 断言响应体中不含 `orchara_dev_only` / `postgresql://` / `password` / `sslmode`。
+6. 断言响应体中不含数据库口令（运行时从环境读取，仓库里没有该字面量）/
+   `postgresql://` / `password` / `sslmode`。
 
 对应 criterion：进程活着但 PG 不可用时 readiness 失败、恢复依赖后可就绪、错误不带凭据。
 

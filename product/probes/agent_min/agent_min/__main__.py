@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import sys
 from importlib import metadata
 from pathlib import Path
 from typing import Any
+
+import jsonschema
 
 from .model import Action, ScriptedModel
 from .runner import run_agent
@@ -113,13 +116,76 @@ SCENARIOS = {
 }
 
 
+REPORT_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": [
+        "probe",
+        "task",
+        "stub",
+        "profile",
+        "command",
+        "host",
+        "python",
+        "packages",
+        "authorized_tools",
+        "scenarios",
+        "assertions",
+    ],
+    "properties": {
+        "probe": {"type": "string"},
+        "task": {"type": "string"},
+        "stub": {"const": True},
+        "profile": {"type": "string"},
+        "command": {"type": "string"},
+        "host": {"type": "object"},
+        "python": {"type": "string", "pattern": r"^\d+\.\d+"},
+        "packages": {"type": "object"},
+        "authorized_tools": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "scenarios": {
+            "type": "object",
+            "required": ["happy", "unauthorized", "retry", "bad_input"],
+            "additionalProperties": {
+                "type": "object",
+                "required": ["status", "tool_calls", "allowed_tools", "hidden_retry_detected"],
+                "properties": {
+                    "status": {"enum": ["completed", "failed"]},
+                    "tool_calls": {"type": "integer", "minimum": 0},
+                    "allowed_tools": {"type": "array", "items": {"type": "string"}},
+                    "hidden_retry_detected": {"type": "boolean"},
+                },
+            },
+        },
+        "assertions": {"type": "object", "minProperties": 1},
+    },
+}
+
+
+def validate_report(report: dict[str, Any]) -> None:
+    """Validate the probe report against its schema (locked `jsonschema`).
+
+    The probe exists to show the locked dependency set actually runs; validating
+    its own output with a locked library is part of that, not decoration.
+    """
+    jsonschema.validate(instance=report, schema=REPORT_SCHEMA)
+
+
 def build_report() -> dict[str, Any]:
     scenarios = {name: func().as_dict() for name, func in SCENARIOS.items()}
-    return {
+    report = {
         "probe": "p01-agent-min",
         "task": "P01 / T002",
         "stub": True,
         "note": "No model provider was contacted; control-plane behaviour only.",
+        # Environment profile is part of the evidence: a report without host and
+        # command cannot be reproduced by another deployer.
+        "profile": os.environ.get("ORCHARA_PROFILE", "dev-stub"),
+        "command": "python -m agent_min",
+        "host": {
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "node": platform.node(),
+        },
         "python": platform.python_version(),
         "packages": _package_versions(),
         "authorized_tools": sorted(_registry()),
@@ -136,6 +202,8 @@ def build_report() -> dict[str, Any]:
             "bad_input_failed": scenarios["bad_input"]["status"] == "failed",
         },
     }
+    validate_report(report)
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:

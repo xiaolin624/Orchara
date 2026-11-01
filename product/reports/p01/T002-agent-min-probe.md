@@ -9,8 +9,8 @@
 
 ```powershell
 python -m venv product/probes/agent_min/.venv
-python -m pip install --dry-run --report pip-report.json -r requirements.in   # 47 包解析
-python product/probes/agent_min/lock.py pip-report.json requirements.lock.txt  # 47 个 sha256 锁定
+python -m pip install --dry-run --report pip-report.json -r requirements.in   # 48 包解析
+python product/probes/agent_min/lock.py pip-report.json requirements.lock.txt  # 48 个 sha256 锁定
 product/probes/agent_min/.venv/Scripts/python.exe -m pip install --require-hashes -r requirements.lock.txt
 # exit 0
 product/probes/agent_min/.venv/Scripts/python.exe -m pip check
@@ -27,10 +27,16 @@ product/probes/agent_min/.venv/Scripts/python.exe -m pip check
 | jsonschema | 4.25.1 |
 | psycopg | 3.3.6 |
 
-共 47 个包（P02 追加 `psycopg[binary]` 后为 48 个，见下），每个都带
+共 48 个包，每个都带
 `--hash=sha256:<64 hex>`；锁文件由真实 pip 解析报告生成
 （`lock.py`），不是手写、不是取当前已装版本。Python 3.12 优先线已实测（3.12.2），
 未出现需要降级的冲突。
+
+**锁是承重的（复核后修复）**：早先的探针只 import 标准库，锁文件装了却没用上。
+现在 `runner.py` 用锁定的 `pydantic` 定义 `AgentResult`（`status` 为 Literal，不再是注释），
+`__main__.py` 用锁定的 `jsonschema` 校验探针报告；
+`test_probe_actually_runs_on_the_locked_stack` 断言这些包既被 import 又在锁文件里。
+干净环境可用 `python tools/bootstrap_probe.py` 一键复现。
 
 复现过程中修复的两个真实缺陷（保留证据价值）：
 
@@ -65,7 +71,7 @@ product/probes/agent_min/.venv/Scripts/python.exe -m pip check
 ## 4. 覆盖的验收条件
 
 - [x] 干净环境安装成功（`--require-hashes` + `pip check`）
-- [x] 精确版本/校验和可追溯（47 个 sha256 锁定 + 安装后版本比对测试）
+- [x] 精确版本/校验和可追溯（48 个 sha256 锁定 + 安装后版本比对测试）
 - [x] Python 3.12 优先探测，无冲突需实证
 - [x] 一次最小调用返回结构化结果
 - [x] 实际工具列表符合允许集（子集断言 + 拒绝未注册工具）
@@ -76,4 +82,4 @@ product/probes/agent_min/.venv/Scripts/python.exe -m pip check
 - **stub 模型**：没有调用任何真实供应商，不能据此声明模型质量、延迟或成本。
 - 只验证了控制面（允许集、重试审计、步骤预算、结构化输出），不是平台 worker，
   也尚未接入 LangGraph 图执行或真实 checkpointer（属 P02）。
-- 测试：`python -m pytest product/tests/p01 -q` → 9 passed。
+- 测试：`python -m pytest product/tests/p01 -q` → 11 passed（含"锁必须承重"与"报告 schema 拒绝非法状态"两条新断言）。

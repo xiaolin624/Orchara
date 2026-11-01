@@ -3,6 +3,13 @@
   "task": "P01 / T002",
   "stub": true,
   "note": "No model provider was contacted; control-plane behaviour only.",
+  "profile": "dev-stub",
+  "command": "python -m agent_min",
+  "host": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "node": "AI"
+  },
   "python": "3.12.2",
   "packages": {
     "langgraph": "1.2.4",
@@ -31,13 +38,13 @@
       ],
       "unexpected_calls": [],
       "retries": {},
-      "hidden_retry_detected": false,
       "structured": {
         "total": "200.00",
         "count": 2
       },
       "failures": [],
-      "model_calls": 3
+      "model_calls": 3,
+      "hidden_retry_detected": false
     },
     "unauthorized": {
       "status": "failed",
@@ -60,12 +67,12 @@
         }
       ],
       "retries": {},
-      "hidden_retry_detected": false,
       "structured": null,
       "failures": [
         "unauthorized tool call rejected: delete_records"
       ],
-      "model_calls": 1
+      "model_calls": 1,
+      "hidden_retry_detected": false
     },
     "retry": {
       "status": "completed",
@@ -83,13 +90,13 @@
       "retries": {
         "sum_amounts": 1
       },
-      "hidden_retry_detected": true,
       "structured": {
         "total": "10.00",
         "count": 1
       },
       "failures": [],
-      "model_calls": 3
+      "model_calls": 3,
+      "hidden_retry_detected": true
     },
     "bad_input": {
       "status": "failed",
@@ -103,12 +110,12 @@
       "invoked_tools": [],
       "unexpected_calls": [],
       "retries": {},
-      "hidden_retry_detected": false,
       "structured": null,
       "failures": [
         "tool sum_amounts failed: TypeError: row 0 amount must be a decimal string, got float"
       ],
-      "model_calls": 1
+      "model_calls": 1,
+      "hidden_retry_detected": false
     }
   },
   "assertions": {

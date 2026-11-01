@@ -1,9 +1,15 @@
-﻿# Top-level pins for the P01 minimal-agent probe.
+# Top-level pins for the P01 minimal-agent probe.
 #
-# Resolve with:
-#   python -m pip install --dry-run --report pip-report.json -r requirements.in
-# then lock with:
+# Resolve with `--ignore-installed`: without it, `pip --report` lists only the
+# packages it *would* add, so locking from an already-populated environment
+# silently produces a truncated lock file.
+#
+#   python -m pip install --dry-run --ignore-installed \
+#       --report pip-report.json -r requirements.in
 #   python lock.py pip-report.json requirements.lock.txt
+#
+# pip-report.json is a generated intermediate and is git-ignored; the lock file
+# is the artefact of record.
 langgraph==1.2.4
 langgraph-checkpoint-postgres==3.0.5
 pydantic==2.12.4

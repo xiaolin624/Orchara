@@ -35,10 +35,47 @@ DEFAULT_DATA_DIR = Path(os.environ.get("ORCHARA_PG_DATA", r"E:\orchara-pg"))
 DEFAULT_PORT = int(os.environ.get("ORCHARA_PG_PORT", "55432"))
 DEFAULT_USER = "orchara_owner"
 DEFAULT_DB = "orchara_probe"
-# Development-only credential for a loopback cluster; never used outside dev.
-DEFAULT_PASSWORD = "orchara_dev_only"
+
+# Where a developer keeps the local development secret. Git-ignored on purpose:
+# product/AGENTS.md forbids credentials in the repo, tests, reports or fixtures.
+ENV_FILE = PRODUCT_ROOT / ".env.local"
+SECRET_ENV = "ORCHARA_PG_PASSWORD"
+WORKER_SECRET_ENV = "ORCHARA_PG_WORKER_PASSWORD"
 
 EXE = ".exe" if os.name == "nt" else ""
+
+
+def _read_env_file(key: str) -> str | None:
+    if not ENV_FILE.exists():
+        return None
+    for line in ENV_FILE.read_text(encoding="utf-8-sig").splitlines():
+        stripped = line.strip().lstrip("\ufeff")
+        if stripped.startswith(f"{key}="):
+            return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+def load_secret() -> str:
+    """Return the development password, or fail closed with instructions.
+
+    There is deliberately no default: a checked-in password is a credential in
+    the repository, and a silently-generated one makes runs irreproducible.
+    """
+    value = os.environ.get(SECRET_ENV) or _read_env_file(SECRET_ENV)
+    if not value:
+        raise SystemExit(
+            f"{SECRET_ENV} is not set. Create {ENV_FILE} containing\n"
+            f"  {SECRET_ENV}=<your local development password>\n"
+            "or export it in the environment. This file is git-ignored."
+        )
+    return value
+
+
+def load_worker_secret() -> str:
+    """Password for the restricted runtime role, derived unless overridden."""
+    value = os.environ.get(WORKER_SECRET_ENV) or _read_env_file(WORKER_SECRET_ENV)
+    return value or f"{load_secret()}-worker"
+
 
 
 def _tool(name: str) -> str:
@@ -95,7 +132,7 @@ def init_cluster() -> None:
     else:
         DEFAULT_DATA_DIR.parent.mkdir(parents=True, exist_ok=True)
         pwfile = DEFAULT_DATA_DIR.with_suffix(".pw")
-        pwfile.write_text(DEFAULT_PASSWORD, encoding="utf-8", newline="\n")
+        pwfile.write_text(load_secret(), encoding="utf-8", newline="\n")
         try:
             _run(
                 [
@@ -136,7 +173,7 @@ def init_cluster() -> None:
 
 def _psql(sql: str, database: str = "postgres") -> str:
     env = dict(os.environ)
-    env["PGPASSWORD"] = DEFAULT_PASSWORD
+    env["PGPASSWORD"] = load_secret()
     completed = subprocess.run(
         [
             _tool("psql"),
@@ -171,9 +208,31 @@ def _ensure_database() -> None:
 
 def dsn(database: str = DEFAULT_DB) -> str:
     return (
-        f"postgresql://{DEFAULT_USER}:{DEFAULT_PASSWORD}"
+        f"postgresql://{DEFAULT_USER}:{load_secret()}"
         f"@127.0.0.1:{DEFAULT_PORT}/{database}?sslmode=disable"
     )
+
+
+def dsn_with_schema(schema: str | None, database: str = DEFAULT_DB) -> str:
+    """Owner DSN with the session ``search_path`` pinned to ``schema``."""
+    base = dsn(database)
+    if not schema:
+        return base
+    from urllib.parse import quote
+
+    return f"{base}&options={quote(f'-csearch_path={schema}')}"
+
+
+def worker_dsn(schema: str | None = None) -> str:
+    base = (
+        f"postgresql://orchara_worker:{load_worker_secret()}"
+        f"@127.0.0.1:{DEFAULT_PORT}/{DEFAULT_DB}?sslmode=disable"
+    )
+    if schema:
+        from urllib.parse import quote
+
+        base += f"&options={quote(f'-csearch_path={schema}')}"
+    return base
 
 
 def status() -> dict:
@@ -183,7 +242,7 @@ def status() -> dict:
         "data_dir": str(DEFAULT_DATA_DIR),
         "port": DEFAULT_PORT,
         "database": DEFAULT_DB,
-        "dsn_redacted": dsn().replace(DEFAULT_PASSWORD, "<redacted>"),
+        "dsn_redacted": dsn().replace(load_secret(), "<redacted>"),
     }
     if running:
         payload["server_version"] = _psql("SHOW server_version", "postgres")

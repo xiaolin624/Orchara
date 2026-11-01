@@ -91,6 +91,47 @@ def test_check_detects_added_and_removed(source_tree: Path, tmp_path: Path) -> N
     assert "removed" in kinds
 
 
+def test_manifest_records_both_trees(source_tree: Path, tmp_path: Path) -> None:
+    """A gate that hashes only docs/spec cannot see contract drift."""
+    dest = tmp_path / "product"
+    sync.sync(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts")
+
+    manifest = json.loads((dest / "docs" / "spec" / "SYNC-MANIFEST.json").read_text("utf-8"))
+    assert manifest["files"], "spec tree must be digested"
+    assert manifest["contracts"], "contract snapshot must be digested too"
+    assert "openapi.json" in manifest["contracts"]
+
+
+def test_check_detects_modified_contract(source_tree: Path, tmp_path: Path) -> None:
+    """Editing the runtime contract snapshot must fail the drift gate."""
+    dest = tmp_path / "product"
+    sync.sync(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts")
+
+    (dest / "contracts" / "openapi.json").write_text('{"openapi": "3.1.0", "x": 1}', encoding="utf-8")
+    drift = sync.check(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts")
+
+    assert any(
+        entry["kind"] == "modified" and entry["path"].startswith("contracts/") for entry in drift
+    ), f"contract tampering went unnoticed: {drift}"
+
+
+def test_line_ending_change_is_not_drift(source_tree: Path, tmp_path: Path) -> None:
+    """A CRLF checkout must not look like tampering."""
+    dest = tmp_path / "product"
+    sync.sync(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts")
+
+    target = dest / "docs" / "spec" / "README.md"
+    target.write_bytes(b"# spec\r\nsecond line\r\n")
+
+    drift = sync.check(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts")
+    # The content genuinely changed here, so this must still be drift...
+    assert drift
+
+    # ...but a pure line-ending change to identical content must not be.
+    target.write_bytes(b"# spec\n")
+    assert sync.check(source_tree, dest, spec_subdir="docs/spec", contracts_subdir="contracts") == []
+
+
 def test_cli_check_exit_code_is_non_zero_on_drift(
     source_tree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -36,17 +36,30 @@ GPU 存在（RTX 3050 Laptop，4 GiB），但未运行任何训练；4 GiB 显�
 
 ## 可执行命令
 
+先准备本地开发口令（**不要提交**）：创建 `product/.env.local`，内容一行：
+
+```text
+ORCHARA_PG_PASSWORD=<你自己设的本地口令>
+```
+
+该文件已在 `.gitignore` 中；`tools/pg_dev.py` 读不到时会直接失败（fail closed），
+代码、测试、报告里都不含口令。
+
 ```powershell
-# 规格复现与漂移检查
+# 规格复现与漂移检查（同时校验 docs/spec 与 contracts，按 LF 归一化）
 python tools/sync_spec.py
 python tools/sync_spec.py --check
 
 # 环境探测（生成 reports/p0/environment-probe.{json,md}）
 python tools/probe_environment.py
 
-# 隔离开发数据库（本机 5432 已被无关服务占用，这里用 55432）
+# 隔离开发数据库（本机 5432 已被无关服务占用，本项目固定用 55432）
 python tools/pg_dev.py init
 python tools/pg_dev.py status
+
+# 锁版探针环境：从零创建、按哈希安装、跑探针
+python tools/bootstrap_probe.py            # 或 --recreate 重建
+python tools/sbom.py                       # 生成 reports/p01/sbom.json
 
 # 启动产品骨架（F00）：浏览器打开 http://127.0.0.1:8088/
 $env:ORCHARA_DB_DSN   = (python tools/pg_dev.py dsn)
@@ -55,14 +68,17 @@ $env:ORCHARA_WEB_DIR  = "apps/web/src"
 go run ./cmd/api
 ```
 
-页面每 3 秒读取 `/api/status`，显示**真实**的存活与依赖就绪状态；
-`/readyz` 在数据库不可用时返回 503，不会因为"进程还活着"就报告就绪。
+健康检查同时提供契约路径 `/health/live`、`/health/ready`（`contracts/openapi.json`
+的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。
+页面每 3 秒读 `/health/live` 与 `/api/status`：数据库不可用时 `/health/ready` 返回 503，
+不会因为"进程还活着"就报告就绪。
 
 ## 测试
 
 ```powershell
 python -m pytest tests -q        # 工具 + 探针 + 集成（集成需 Go 与开发库）
-go test ./internal/health/       # 健康检查单元测试
+go test ./...                    # 平台 Go 测试
+cd probes/jcs/go; go test ./...   # JCS 黄金向量（Go 侧）
 ```
 
 规格自带的静态校验（在仓库根目录执行）：

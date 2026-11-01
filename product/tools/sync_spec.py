@@ -7,6 +7,15 @@ keeps its own copy under ``docs/spec`` plus a runtime contract snapshot under
 diverged, so every copy writes a SHA-256 manifest and ``--check`` compares the
 workspace against it.
 
+Two details matter for the check to be trustworthy:
+
+* **Both trees are digested.** Hashing only ``docs/spec`` would let an edit to
+  the runtime contract snapshot pass, which is exactly the drift the gate exists
+  to catch.
+* **Hashing is line-ending insensitive.** Git checks files out with CRLF on
+  Windows, so hashing raw bytes makes a fresh clone look drifted. Text content
+  is normalised to LF before hashing; binary files are hashed as-is.
+
 Usage::
 
     python product/tools/sync_spec.py            # copy + write manifest
@@ -20,13 +29,12 @@ import hashlib
 import json
 import shutil
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 MANIFEST_NAME = "SYNC-MANIFEST.json"
-MANIFEST_SCHEMA = "orchara.spec-sync/v1"
+MANIFEST_SCHEMA = "orchara.spec-sync/v2"
 
 # Paths that are workspace state, never specification content.
 DEFAULT_EXCLUDES = (
@@ -64,12 +72,17 @@ def _iter_files(root: Path) -> Iterable[Path]:
         yield path
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def normalize_content(raw: bytes) -> bytes:
+    """Normalise text line endings so checkout settings cannot fake drift."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw
+    return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(normalize_content(path.read_bytes())).hexdigest()
 
 
 def _source_commit(source: Path) -> str | None:
@@ -88,10 +101,7 @@ def _source_commit(source: Path) -> str | None:
 
 
 def _digest_tree(root: Path) -> dict[str, str]:
-    return {
-        path.relative_to(root).as_posix(): _sha256(path)
-        for path in _iter_files(root)
-    }
+    return {path.relative_to(root).as_posix(): _sha256_file(path) for path in _iter_files(root)}
 
 
 def sync(
@@ -124,6 +134,8 @@ def sync(
         shutil.copytree(contracts_source, contracts_dest)
 
     files = _digest_tree(spec_root)
+    contracts = _digest_tree(contracts_dest) if contracts_dest.is_dir() else {}
+
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -132,11 +144,40 @@ def sync(
         "spec_subdir": spec_subdir,
         "contracts_subdir": contracts_subdir,
         "file_count": len(files),
+        "contract_count": len(contracts),
         "files": files,
+        "contracts": contracts,
     }
     manifest_path = spec_root / MANIFEST_NAME
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
-    return {"copied": copied, "manifest": manifest_path, "files": len(files)}
+    return {
+        "copied": copied,
+        "manifest": manifest_path,
+        "files": len(files),
+        "contracts": len(contracts),
+    }
+
+
+def _compare(
+    recorded: dict[str, str], actual: dict[str, str], prefix: str
+) -> list[dict[str, str]]:
+    drift: list[dict[str, str]] = []
+    for path, digest in sorted(recorded.items()):
+        key = f"{prefix}{path}" if prefix else path
+        if path not in actual:
+            drift.append({"path": key, "kind": "removed", "detail": "in manifest, missing on disk"})
+        elif actual[path] != digest:
+            drift.append(
+                {
+                    "path": key,
+                    "kind": "modified",
+                    "detail": f"sha256 {digest[:12]} -> {actual[path][:12]}",
+                }
+            )
+    for path in sorted(set(actual) - set(recorded)):
+        key = f"{prefix}{path}" if prefix else path
+        drift.append({"path": key, "kind": "added", "detail": "present on disk, not in manifest"})
+    return drift
 
 
 def check(
@@ -146,7 +187,7 @@ def check(
     spec_subdir: str = "docs/spec",
     contracts_subdir: str = "contracts",
 ) -> list[dict[str, str]]:
-    """Return drift entries between the spec copy and the manifest ([] if clean)."""
+    """Return drift entries across both the spec copy and the contract snapshot."""
     manifest_path = dest / spec_subdir / MANIFEST_NAME
     if not manifest_path.exists():
         return [
@@ -158,30 +199,22 @@ def check(
         ]
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    recorded: dict[str, str] = manifest.get("files", {})
-    actual = _digest_tree(dest / spec_subdir)
-    actual.pop(MANIFEST_NAME, None)
-    recorded.pop(MANIFEST_NAME, None)
+    recorded_files = dict(manifest.get("files", {}))
+    recorded_contracts = dict(manifest.get("contracts", {}))
+    recorded_files.pop(MANIFEST_NAME, None)
 
-    drift: list[dict[str, str]] = []
-    for path, digest in sorted(recorded.items()):
-        if path not in actual:
-            drift.append({"path": path, "kind": "removed", "detail": "in manifest, missing on disk"})
-        elif actual[path] != digest:
-            drift.append(
-                {
-                    "path": path,
-                    "kind": "modified",
-                    "detail": f"sha256 {digest[:12]} -> {actual[path][:12]}",
-                }
-            )
-    for path in sorted(set(actual) - set(recorded)):
-        drift.append({"path": path, "kind": "added", "detail": "present on disk, not in manifest"})
+    actual_files = _digest_tree(dest / spec_subdir)
+    actual_files.pop(MANIFEST_NAME, None)
+    contracts_root = dest / contracts_subdir
+    actual_contracts = _digest_tree(contracts_root) if contracts_root.is_dir() else {}
+
+    drift = _compare(recorded_files, actual_files, "")
+    drift += _compare(recorded_contracts, actual_contracts, f"{contracts_subdir}/")
 
     if source.is_dir():
         for path in _iter_files(source):
             relative = path.relative_to(source).as_posix()
-            if relative not in recorded and relative not in actual:
+            if relative not in recorded_files and relative not in actual_files:
                 drift.append(
                     {
                         "path": relative,
@@ -189,6 +222,18 @@ def check(
                         "detail": "spec source has a file the product copy lacks; re-run sync",
                     }
                 )
+        source_contracts = source / "contracts"
+        if source_contracts.is_dir():
+            for path in _iter_files(source_contracts):
+                relative = path.relative_to(source_contracts).as_posix()
+                if relative not in recorded_contracts and relative not in actual_contracts:
+                    drift.append(
+                        {
+                            "path": f"{contracts_subdir}/{relative}",
+                            "kind": "upstream_new",
+                            "detail": "spec contract is missing from the snapshot; re-run sync",
+                        }
+                    )
     return drift
 
 
@@ -209,11 +254,15 @@ def main(argv: list[str] | None = None) -> int:
             if len(drift) > 40:
                 print(f"  ... {len(drift) - 40} more")
             return 1
-        print("no drift: spec copy matches manifest")
+        print("no drift: spec copy and contract snapshot match the manifest")
         return 0
 
     result = sync(args.source, args.dest)
-    print(f"copied {result['copied']} files; manifest {result['manifest']}")
+    print(
+        f"copied {result['copied']} files; "
+        f"manifest {result['manifest']} "
+        f"({result['files']} spec + {result['contracts']} contract digests)"
+    )
     return 0
 
 

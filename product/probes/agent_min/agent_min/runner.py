@@ -8,44 +8,44 @@ that the model did not declare).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 from .model import ScriptedModel
 from .tools import ToolCall, ToolNotAllowed, ToolRegistry
 
+RunStatus = Literal["completed", "failed"]
 
-@dataclass
-class AgentResult:
-    """Auditable outcome of one agent run."""
 
-    status: str  # "completed" | "failed"
+class AgentResult(BaseModel):
+    """Auditable outcome of one agent run.
+
+    A pydantic model on purpose: the probe runs on the locked dependency set
+    (see ``requirements.lock.txt``), so the result is validated rather than
+    assembled by hand. ``status`` is a literal type, not a comment.
+    """
+
+    status: RunStatus = "failed"
     final: str | None = None
     steps: int = 0
     tool_calls: int = 0
-    allowed_tools: list[str] = field(default_factory=list)
-    invoked_tools: list[str] = field(default_factory=list)
-    unexpected_calls: list[dict[str, Any]] = field(default_factory=list)
-    retries: dict[str, int] = field(default_factory=dict)
+    allowed_tools: list[str] = Field(default_factory=list)
+    invoked_tools: list[str] = Field(default_factory=list)
+    unexpected_calls: list[dict[str, Any]] = Field(default_factory=list)
+    retries: dict[str, int] = Field(default_factory=dict)
     structured: dict[str, Any] | None = None
-    failures: list[str] = field(default_factory=list)
+    failures: list[str] = Field(default_factory=list)
     model_calls: int = 0
 
+    @property
+    def hidden_retry_detected(self) -> bool:
+        return bool(self.retries)
+
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "final": self.final,
-            "steps": self.steps,
-            "tool_calls": self.tool_calls,
-            "allowed_tools": self.allowed_tools,
-            "invoked_tools": self.invoked_tools,
-            "unexpected_calls": self.unexpected_calls,
-            "retries": self.retries,
-            "hidden_retry_detected": bool(self.retries),
-            "structured": self.structured,
-            "failures": self.failures,
-            "model_calls": self.model_calls,
-        }
+        payload = self.model_dump()
+        payload["hidden_retry_detected"] = self.hidden_retry_detected
+        return payload
 
 
 def run_agent(

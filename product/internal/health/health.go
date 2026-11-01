@@ -79,14 +79,19 @@ type statusPayload struct {
 	Checks     map[string]CheckResult `json:"checks,omitempty"`
 }
 
-// Live is the liveness handler: it answers 200 while the process can serve.
-func (r *Reporter) Live(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, statusPayload{
-		Status:     "alive",
+func (r *Reporter) payload(status string, checks map[string]CheckResult) statusPayload {
+	return statusPayload{
+		Status:     status,
 		Service:    "orchara-api",
 		Version:    r.version,
 		UptimeSecs: int64(time.Since(r.startedAt).Seconds()),
-	})
+		Checks:     checks,
+	}
+}
+
+// Live is the liveness handler: it answers 200 while the process can serve.
+func (r *Reporter) Live(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, r.payload("alive", nil))
 }
 
 // Ready is the readiness handler: 200 only when every dependency check passes.
@@ -98,13 +103,7 @@ func (r *Reporter) Ready(w http.ResponseWriter, req *http.Request) {
 		status = "not_ready"
 		code = http.StatusServiceUnavailable
 	}
-	writeJSON(w, code, statusPayload{
-		Status:     status,
-		Service:    "orchara-api",
-		Version:    r.version,
-		UptimeSecs: int64(time.Since(r.startedAt).Seconds()),
-		Checks:     results,
-	})
+	writeJSON(w, code, r.payload(status, results))
 }
 
 // Status is the machine-readable aggregate used by the console page.
@@ -114,13 +113,7 @@ func (r *Reporter) Status(w http.ResponseWriter, req *http.Request) {
 	if !ready {
 		status = "not_ready"
 	}
-	writeJSON(w, http.StatusOK, statusPayload{
-		Status:     status,
-		Service:    "orchara-api",
-		Version:    r.version,
-		UptimeSecs: int64(time.Since(r.startedAt).Seconds()),
-		Checks:     results,
-	})
+	writeJSON(w, http.StatusOK, r.payload(status, results))
 }
 
 func writeJSON(w http.ResponseWriter, code int, payload any) {

@@ -16,7 +16,7 @@
 | 票 | 父 | 标题 | 状态 | 证据 |
 |---|---|---|---|---|
 | T001 | D00 | 在产品工作区复现规格并生成环境报告 | passed | `reports/p0/D00-environment-report.md`、`reports/p0/spec-*.txt`、`tools/probe_environment.py` |
-| T002 | P01 | 从锁定依赖运行一个只有授权工具的 Agent | passed | `reports/p01/T002-agent-min-probe.md`、`probes/agent_min/`（锁 47 包 + 探针） |
+| T002 | P01 | 从锁定依赖运行一个只有授权工具的 Agent | passed | `reports/p01/T002-agent-min-probe.md`、`probes/agent_min/`（锁 48 包 + 探针） |
 | T003 | P01 | 让 Go/Python 对同一清单给出相同指纹 | passed | `reports/p01/T003-jcs-parity.md`、`reports/p01/jcs-agreement.json`（40 向量 0 不一致） |
 | T004 | P01 | 在第二个干净环境重建核心探针 | passed | `reports/p01/T004-second-environment.md`（WSL Linux 重建 + 跨平台指纹一致） |
 | T005 | P02 | 让一个中断任务在新进程中安全继续 | passed | `reports/p02/T005-checkpoint-resume.md`（真实 PG，7 passed） |
@@ -67,7 +67,31 @@
 - 无 Docker、无 Redis、WSL 有 Ubuntu-24.04 但**无 sudo**（第二环境用 `--target` 隔离安装）。
 - GPU：RTX 3050 Laptop 4 GiB；未跑训练 → F14 `not_run`。
 - 无模型供应商凭据 → 只能报告 stub。
-- 锁版环境：`probes/agent_min/.venv`（48 包，全部 sha256 锁定）。
+- 锁版环境：`probes/agent_min/.venv`（48 包，全部 sha256 锁定）；SBOM/许可清单见 `reports/p01/sbom.json`。
+- 本地开发口令只放在 **git-ignored 的 `product/.env.local`**（`ORCHARA_PG_PASSWORD`）。
+  仓库、测试、报告均不含口令；`tools/pg_dev.py` 未设置时 fail closed。
+
+## 代码复核修复（2026-11-01）
+
+两轴复核（Standards / Spec）发现的 25 项已逐条修复，其中影响结论的：
+
+- 凭据从代码/测试/报告移除，改由环境或 git-ignored 文件提供；泄漏断言改为匹配 DSN 形状。
+- 漂移检查现在同时校验 `docs/spec` 与 `product/contracts`，并按 LF 归一化哈希
+  （换行差异不再误报，契约被改动会失败）。
+- 环境探测不再把本机 5432 的**无关** PostgreSQL 记为本项目能力，改为
+  `foreign_postgres: present_not_owned`，自有集群用 55432。
+- T003 的 `expected_sha256` 由 RFC 文本独立推导并真正断言（原断言恒真）。
+- T005 的 `run/resume/approve` 现在真的以 `orchara_worker` 受限角色执行，并在运行路径上
+  校验 `search_path`。
+- T008 同时提供契约路径 `/health/live`、`/health/ready`；状态页的存活来自 `/health/live`，
+  不再写死。
+- T002 探针实际使用锁定栈（pydantic 结果模型 + jsonschema 报告校验），并新增
+  `tools/bootstrap_probe.py` 让干净环境可复现。
+- T004 新增 `tools/second_env_probe.sh`（可重跑）与 `reports/p01/sbom.json`；
+  镜像 digest 明确记 `not_run`（本阶段未构建镜像）。
+
+下面各票"证据"列中的提交号是**本轮修复前**的关闭提交；修复提交见分支历史。
+
 
 ## 记录模板
 

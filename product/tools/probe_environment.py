@@ -41,11 +41,31 @@ _CREDENTIAL_ENV_VARS = (
     "DASHSCOPE_API_KEY",
 )
 
-_SERVICE_PORTS = (
-    ("postgres", 5432),
-    ("redis", 6379),
-    ("object_storage", 9000),
-)
+def _service_targets() -> list[dict[str, Any]]:
+    """Ports worth probing, and whether this project owns the listener.
+
+    The machine may already run a PostgreSQL service that belongs to something
+    else. Reporting it as an available platform capability would contradict the
+    environment report, so unowned listeners are labelled explicitly.
+    """
+    import pg_dev
+
+    return [
+        {
+            "name": "postgres",
+            "port": pg_dev.DEFAULT_PORT,
+            "owned": True,
+            "note": "isolated development cluster created by tools/pg_dev.py",
+        },
+        {
+            "name": "postgres_port_5432_foreign",
+            "port": 5432,
+            "owned": False,
+            "note": "not owned by this project; credentials unknown; never used by probes",
+        },
+        {"name": "redis", "port": 6379, "owned": True, "note": "expected platform dependency"},
+        {"name": "object_storage", "port": 9000, "owned": True, "note": "expected platform dependency"},
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -62,10 +82,8 @@ def _decode(raw: bytes) -> str:
     if not raw:
         return ""
     if raw.count(b"\x00") > len(raw) // 4:
-        try:
-            return raw.decode("utf-16-le", errors="replace")
-        except Exception:  # pragma: no cover - defensive
-            pass
+        # errors="replace" cannot fail, so no fallback branch is needed here.
+        return raw.decode("utf-16-le", errors="replace")
     for encoding in ("utf-8", "cp936", locale.getpreferredencoding(False)):
         try:
             return raw.decode(encoding)
@@ -178,8 +196,9 @@ def _candidate_tool_paths(toolchain_dir: Path | None) -> list[dict[str, Any]]:
     return candidates
 
 
-def _probe_service(name: str, port: int, timeout: float = 1.0) -> dict[str, Any]:
+def _probe_service(target: dict[str, Any], timeout: float = 1.0) -> dict[str, Any]:
     """TCP-reachability probe. Reachability is not authentication."""
+    port = target["port"]
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
@@ -187,10 +206,12 @@ def _probe_service(name: str, port: int, timeout: float = 1.0) -> dict[str, Any]
     finally:
         sock.close()
     return {
-        "name": name,
+        "name": target["name"],
         "probe": f"tcp connect 127.0.0.1:{port}",
         "port": port,
         "reachable": reachable,
+        "owned_by_project": target["owned"],
+        "note": target["note"],
     }
 
 
@@ -264,13 +285,35 @@ def _classify(tools: list[dict[str, Any]], services: list[dict[str, Any]]) -> di
             "detail": by_name.get("node", {}).get("version"),
         },
         "postgres": {
-            # A reachable server is what P02 needs; a client binary alone is not enough.
+            # A reachable server *that this project owns* is what P02 needs; a
+            # client binary, or somebody else's listener, is not enough.
             "status": "available" if service_state.get("postgres") else "unavailable",
             "client_binary": postgres_binary,
             "reachable": service_state.get("postgres", False),
-            "detail": "server reachable on 127.0.0.1:5432"
-            if service_state.get("postgres")
-            else "no PostgreSQL server accepting connections on 127.0.0.1:5432",
+            "port": _port_of(services, "postgres"),
+            "detail": (
+                f"owned cluster reachable on 127.0.0.1:{_port_of(services, 'postgres')}"
+                if service_state.get("postgres")
+                else f"no owned PostgreSQL server on 127.0.0.1:{_port_of(services, 'postgres')}"
+            ),
+            "blocker": {
+                "id": "postgres_server",
+                "reason": "no reachable project-owned PostgreSQL server on the configured port; "
+                "storage tickets cannot be demonstrated",
+                "unblocks": "P02 tickets",
+            },
+        },
+        "foreign_postgres": {
+            # Reachable but not ours: report it without claiming the capability.
+            "status": "present_not_owned"
+            if service_state.get("postgres_port_5432_foreign")
+            else "absent",
+            "detail": (
+                "a PostgreSQL listener on 127.0.0.1:5432 belongs to another installation; "
+                "its credentials are unknown and probes must not use it"
+                if service_state.get("postgres_port_5432_foreign")
+                else "no listener on 127.0.0.1:5432"
+            ),
         },
         "redis": {
             "status": "available" if service_state.get("redis") else "unavailable",
@@ -281,6 +324,11 @@ def _classify(tools: list[dict[str, Any]], services: list[dict[str, Any]]) -> di
         "container_runtime": {
             "status": "available" if docker else "unavailable",
             "detail": "docker daemon reachable" if docker else "no docker CLI/daemon",
+            "blocker": {
+                "id": "container_runtime",
+                "reason": "no container runtime available; compose-based deployment is not verifiable",
+                "unblocks": "F15A/F15B deployment tickets",
+            },
         },
         "linux_host": {
             "status": "available" if platform.system() == "Linux" else "unavailable",
@@ -298,14 +346,32 @@ def _classify(tools: list[dict[str, Any]], services: list[dict[str, Any]]) -> di
             "status": "unavailable",
             "detail": "no runsc/gVisor runtime could be started and verified; "
             "Windows/WSL results may not be recorded as isolation acceptance",
+            "blocker": {
+                "id": "linux_isolation",
+                "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) "
+                "and root privileges was available for this probe",
+                "unblocks": "P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance",
+            },
         },
         "gpu": {
             "status": "available" if gpu else "unavailable",
             "detail": gpu_info.get("name") or "no nvidia-smi GPU reported",
             "vram_gib": gpu_info.get("vram_gib"),
             "driver": gpu_info.get("driver"),
+            "blocker": {
+                "id": "gpu",
+                "reason": "no GPU reported by nvidia-smi; LoRA training experiments cannot run",
+                "unblocks": "F14 training tickets",
+            },
         },
     }
+
+
+def _port_of(services: list[dict[str, Any]], name: str) -> int | None:
+    for service in services:
+        if service["name"] == name:
+            return service["port"]
+    return None
 
 
 def _parse_gpu(text: str) -> dict[str, Any]:
@@ -329,24 +395,17 @@ def _parse_gpu(text: str) -> dict[str, Any]:
 
 
 def _blockers(capabilities: dict[str, Any]) -> list[dict[str, str]]:
+    """Collect the blocker each capability carries when it is not available.
+
+    The blocker text lives next to the capability it belongs to, so adding a
+    capability does not mean editing a second, parallel switch here.
+    """
     blockers: list[dict[str, str]] = []
-    if capabilities["linux_isolation"]["status"] != "available":
-        blockers.append(
-            {
-                "id": "linux_isolation",
-                "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) "
-                "and root privileges was available for this probe",
-                "unblocks": "P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance",
-            }
-        )
-    if capabilities["gpu"]["status"] != "available":
-        blockers.append(
-            {
-                "id": "gpu",
-                "reason": "no GPU reported by nvidia-smi; LoRA training experiments cannot run",
-                "unblocks": "F14 training tickets",
-            }
-        )
+    for capability in capabilities.values():
+        blocker = capability.get("blocker")
+        if blocker and capability.get("status") != "available":
+            blockers.append(blocker)
+
     present = [name for name in _CREDENTIAL_ENV_VARS if os.environ.get(name)]
     if not present:
         blockers.append(
@@ -355,22 +414,6 @@ def _blockers(capabilities: dict[str, Any]) -> list[dict[str, str]]:
                 "reason": "no approved model-provider credentials present in the environment; "
                 "only stub-model paths may be reported as executed",
                 "unblocks": "real-model profiles and provider-capacity experiments",
-            }
-        )
-    if capabilities["postgres"]["status"] != "available":
-        blockers.append(
-            {
-                "id": "postgres_server",
-                "reason": "no reachable PostgreSQL server; storage tickets cannot be demonstrated",
-                "unblocks": "P02 tickets",
-            }
-        )
-    if capabilities["container_runtime"]["status"] != "available":
-        blockers.append(
-            {
-                "id": "container_runtime",
-                "reason": "no container runtime available; compose-based deployment is not verifiable",
-                "unblocks": "F15A/F15B deployment tickets",
             }
         )
     return blockers
@@ -396,7 +439,7 @@ def default_toolchain_dir() -> Path:
 def build_report(toolchain_dir: Path | None, out_dir: Path) -> dict[str, Any]:
     """Probe the environment and write JSON + Markdown artifacts."""
     tools = _candidate_tool_paths(toolchain_dir)
-    services = [_probe_service(name, port) for name, port in _SERVICE_PORTS]
+    services = [_probe_service(target) for target in _service_targets()]
     capabilities = _classify(tools, services)
     blockers = _blockers(capabilities)
 
@@ -456,12 +499,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## 服务可达性")
     lines.append("")
-    lines.append("| 服务 | 端口 | 可达 | 探测命令 |")
-    lines.append("|---|---|---|---|")
+    lines.append("| 服务 | 端口 | 可达 | 本项目所有 | 探测命令 | 说明 |")
+    lines.append("|---|---|---|---|---|---|")
     for svc in report["services"]:
         lines.append(
             f"| {svc['name']} | {svc['port']} | {'yes' if svc['reachable'] else 'NO'} "
-            f"| `{svc['probe']}` |"
+            f"| {'yes' if svc['owned_by_project'] else '**NO**'} "
+            f"| `{svc['probe']}` | {svc['note']} |"
         )
     lines.append("")
     lines.append("## 能力分类")

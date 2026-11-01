@@ -64,6 +64,10 @@ func run(logger *log.Logger) error {
 		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton"))
 
 	mux := http.NewServeMux()
+	// Contract paths (contracts/openapi.json: /health/live, /health/ready with
+	// operationIds liveness/readiness) plus the conventional short aliases.
+	mux.HandleFunc("/health/live", reporter.Live)
+	mux.HandleFunc("/health/ready", reporter.Ready)
 	mux.HandleFunc("/healthz", reporter.Live)
 	mux.HandleFunc("/readyz", reporter.Ready)
 	mux.HandleFunc("/api/status", reporter.Status)
