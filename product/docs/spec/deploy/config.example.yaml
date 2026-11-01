@@ -1,0 +1,58 @@
+# Platform configuration field template. Loader/Compose are implementation tasks.
+# Contains references only; deployment supplies real values. Not OpenSandbox server YAML.
+mode: dev-stub
+api:
+  listen: 127.0.0.1:8080
+  public_url: http://localhost:8080
+database:
+  dsn_secret_ref: env:PLATFORM_DATABASE_URL
+  migration_dsn_secret_ref: env:PLATFORM_MIGRATION_DATABASE_URL
+  checkpoint_dsn_secret_ref: env:PLATFORM_CHECKPOINT_DATABASE_URL
+  business_schema: platform
+  checkpoint_schema: checkpoints
+redis:
+  url_secret_ref: env:PLATFORM_REDIS_URL
+object_storage:
+  endpoint: http://localhost:8333
+  bucket: agent-platform
+  access_key_ref: env:PLATFORM_S3_ACCESS_KEY
+  secret_key_ref: env:PLATFORM_S3_SECRET_KEY
+  force_path_style: true
+identity:
+  session_secret_ref: env:PLATFORM_SESSION_SECRET
+  cookie_secure: false # Local HTTP development only; production requires TLS/Secure.
+  activation_ttl_seconds: 86400
+internal:
+  mtls_required: true
+  trusted_ca_ref: file:internal-ca.pem
+  supervisor_identity: supervisor
+  maintenance_identity: maintenance
+  worker_identity: worker
+model_endpoints:
+  - id: stub-chat
+    url: http://localhost:8099
+    data_destination: local-test-stub
+    credential_ref: env:PLATFORM_STUB_TOKEN
+connector_policies: [] # Registered immutable HTTP policies; never user-supplied arbitrary URLs.
+execution:
+  heartbeat_seconds: 5
+  lease_seconds: 30
+  top_run_limit: 20
+  top_execution_slots: 8
+  child_execution_slots: 4
+  default_max_turns: 12
+  automatic_takeover: false
+background:
+  system_io_slots: 2
+  handler_slots: 4
+sandbox:
+  enabled: false # Remains closed until P03/real Linux isolation passes.
+  endpoint: http://localhost:8088
+  api_key_ref: env:PLATFORM_SANDBOX_KEY
+  required_runtime: runsc
+  arbitrary_upload_enabled: false
+retention:
+  durable_events_days: 7
+  cleanup_target_hours: 24
+  backup_days: 30
+  audit_metadata_days: 180

@@ -1,0 +1,10 @@
+tools/.venv/
+tools/.deps/
+**/__pycache__/
+
+# Product workspace / local toolchains (never committed)
+.toolchains/
+.scratch/
+product/tools/.venv/
+product/**/__pycache__/
+.pytest_cache/

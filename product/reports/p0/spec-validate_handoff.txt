@@ -1,0 +1,13 @@
+﻿# command: tools/.venv/Scripts/python.exe tools/validate_handoff.py
+# utc: 2026-11-01T09:51:37Z
+# cwd: E:\Orchara
+# toolchains outside repo: E:\orchara-toolchains
+
+PASS implementation task DAG (27 tasks), required references and milestone targets; tasks NOT executed
+PASS API/table presence for 10 critical journeys and internal role declarations; journeys/auth NOT executed
+PASS bootstrap/model-evaluation/deletion/ETag contract closure and model config boundary fixture; service behavior NOT executed
+PASS execution manifest envelope/embedded DSL and identity-free hashable fixture; JCS/real artifacts NOT validated
+PASS platform config template YAML and closed-by-default development flags; loader/deployment NOT executed
+PASS self-contained entrypoints and no machine-specific absolute Markdown targets
+
+# exit code: 0
