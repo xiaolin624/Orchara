@@ -181,6 +181,15 @@ def quote_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def psql_binary() -> str:
+    """Path to the psql client.
+
+    Public so caller-specific connections (another database, the restricted
+    worker role) do not have to reach into the private ``_tool`` helper.
+    """
+    return _tool("psql")
+
+
 def run_sql(sql: str, *, database: str | None = None) -> str:
     """Run one statement as the owner and return its trimmed output.
 

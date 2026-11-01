@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 账号激活</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 40rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; }
+    label { display: block; margin: .6rem 0; font-size: .9rem; }
+    input, textarea { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
+    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">状态</a> <a href="/admin">管理台</a></nav>
+
+  <h1>账号激活</h1>
+  <p class="sub">
+    把管理员转交的一次性令牌粘贴到下面，设置至少 12 位的新密码。
+    令牌只从请求体提交，绝不放进 URL。
+  </p>
+
+  <section class="card">
+    <form id="activate-form">
+      <label for="activation-token">一次性激活令牌
+        <textarea id="activation-token" name="activation_token" rows="3" autocomplete="off" required></textarea>
+      </label>
+      <label for="password">新密码（至少 12 位）
+        <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required />
+      </label>
+      <label for="confirm-password">确认新密码
+        <input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required />
+      </label>
+      <button type="submit">激活并设置密码</button>
+    </form>
+    <p id="activate-status" class="status" role="status" aria-live="polite"></p>
+    <div id="activate-success" hidden>
+      <p>激活成功，现在可以前往 <a href="/admin">管理台</a> 登录。</p>
+    </div>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const activateForm = document.getElementById('activate-form');
+    const activateStatus = document.getElementById('activate-status');
+    const activateSuccess = document.getElementById('activate-success');
+    const activationTokenField = document.getElementById('activation-token');
+    const passwordField = document.getElementById('password');
+    const confirmField = document.getElementById('confirm-password');
+
+    function setStatus(message, kind) {
+      activateStatus.textContent = message;
+      activateStatus.className = 'status ' + (kind || '');
+    }
+
+    activateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      // The token is read from the textarea, never from the address bar: a
+      // one-time credential must not appear in a URL or a browser history entry.
+      const activationToken = activationTokenField.value.trim();
+      const password = passwordField.value;
+      if (password !== confirmField.value) {
+        setStatus('两次输入的密码不一致', 'bad');
+        return;
+      }
+      setStatus('正在激活…', 'pending');
+      try {
+        await api('/api/v1/auth/activate', {
+          method: 'POST',
+          body: { activation_token: activationToken, password },
+        });
+        activationTokenField.value = '';
+        passwordField.value = '';
+        confirmField.value = '';
+        activateForm.hidden = true;
+        activateSuccess.hidden = false;
+        setStatus('激活成功', 'ok');
+      } catch (error) {
+        setStatus(`激活失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+  </script>
+</body>
+</html>

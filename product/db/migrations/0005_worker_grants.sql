@@ -21,7 +21,19 @@ $$;
 -- Runtime bookkeeping it owns.
 GRANT USAGE ON SCHEMA app TO orchara_worker;
 GRANT SELECT, INSERT, UPDATE ON app.workers TO orchara_worker;
-GRANT SELECT, INSERT ON app.operations TO orchara_worker;
+
+-- `app.operations` is written by later tickets; the table does not exist yet.
+-- An unconditional GRANT here would make the chain impossible to run from an
+-- empty database ("relation app.operations does not exist"), so the grant is
+-- applied only when the table is present. F01/T015 fixed this.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+               WHERE table_schema = 'app' AND table_name = 'operations') THEN
+        EXECUTE 'GRANT SELECT, INSERT ON app.operations TO orchara_worker';
+    END IF;
+END
+$$;
 
 -- Checkpoint schema (DML only; migrations belong to the owner).
 DO $$

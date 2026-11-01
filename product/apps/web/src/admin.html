@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 管理台（F01 身份）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 46rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; margin: .5rem 0; font-size: .9rem; }
+    input:not([type="checkbox"]), textarea { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
+    fieldset { border: 0; padding: 0; margin: .5rem 0; }
+    legend { font-size: .9rem; padding: 0; }
+    fieldset label { display: inline-block; margin-right: 1rem; }
+    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .warn { color: #a16207; font-weight: 600; }
+    .hint { font-size: .82rem; opacity: .7; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/activate">激活账号</a>
+  </nav>
+
+  <h1>管理台（F01 身份）</h1>
+  <p class="sub">
+    先以管理员身份登录，再邀请用户。邀请后返回的一次性激活令牌
+    <strong>只显示一次</strong>，平台只保存它的哈希，请人工转交。
+  </p>
+
+  <section class="card">
+    <h2>管理员登录</h2>
+    <form id="signin-form" autocomplete="on">
+      <label for="login">登录名
+        <input id="login" name="login" autocomplete="username" required />
+      </label>
+      <label for="password">密码
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit">登录</button>
+    </form>
+    <p id="auth-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="invite-panel" class="card" hidden>
+    <h2>邀请新用户</h2>
+    <form id="invite-form">
+      <label for="invite-login">登录名
+        <input id="invite-login" name="login" required />
+      </label>
+      <label for="invite-display-name">显示名
+        <input id="invite-display-name" name="display_name" required />
+      </label>
+      <fieldset>
+        <legend>角色</legend>
+        <label><input type="checkbox" name="roles" value="user" checked /> user</label>
+        <label><input type="checkbox" name="roles" value="creator" /> creator</label>
+        <label><input type="checkbox" name="roles" value="admin" /> admin</label>
+      </fieldset>
+      <button type="submit">生成一次性邀请</button>
+    </form>
+    <p id="invite-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="invite-result" hidden>
+      <p class="warn">一次性激活令牌（只显示一次，离开本页后无法再次获取）：</p>
+      <textarea id="activation-token" readonly rows="3" aria-label="一次性激活令牌"></textarea>
+      <p class="hint">
+        请手动把令牌转交用户；用户打开 <a href="/activate">/activate</a> 设置密码。
+        平台不发送邮件，也不会把令牌写进 URL。
+      </p>
+    </div>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const signinForm = document.getElementById('signin-form');
+    const inviteForm = document.getElementById('invite-form');
+    const invitePanel = document.getElementById('invite-panel');
+    const inviteResult = document.getElementById('invite-result');
+    const activationTokenField = document.getElementById('activation-token');
+    const authStatus = document.getElementById('auth-status');
+    const inviteStatus = document.getElementById('invite-status');
+
+    // Held in memory only for this page. T017 replaces this with /auth/me +
+    // X-CSRF-Token on every write; the token is never put in a URL or storage.
+    let csrfToken = null;
+
+    function setStatus(element, message, kind) {
+      element.textContent = message;
+      element.className = 'status ' + (kind || '');
+    }
+
+    signinForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(authStatus, '正在登录…', 'pending');
+      try {
+        const session = await api('/api/v1/auth/login', {
+          method: 'POST',
+          body: {
+            login: document.getElementById('login').value,
+            password: document.getElementById('password').value,
+          },
+        });
+        csrfToken = session.csrf_token;
+        document.getElementById('password').value = '';
+        invitePanel.hidden = false;
+        authStatus.innerHTML =
+          '已登录，principal <code>' + escapeHTML(session.principal_id) + '</code>';
+        authStatus.className = 'status ok';
+      } catch (error) {
+        setStatus(authStatus, `登录失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    inviteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const roles = Array.from(
+        inviteForm.querySelectorAll('input[name="roles"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(inviteStatus, '正在创建邀请…', 'pending');
+      inviteResult.hidden = true;
+      try {
+        const invitation = await api('/api/v1/admin/users', {
+          method: 'POST',
+          csrf: csrfToken,
+          body: {
+            login: document.getElementById('invite-login').value,
+            display_name: document.getElementById('invite-display-name').value,
+            roles,
+          },
+        });
+        activationTokenField.value = invitation.activation_token;
+        inviteResult.hidden = false;
+        setStatus(
+          inviteStatus,
+          '已创建 principal ' + invitation.principal_id + '，令牌 ' +
+            invitation.expires_at + ' 前有效。',
+          'ok',
+        );
+      } catch (error) {
+        setStatus(inviteStatus, `邀请失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+  </script>
+</body>
+</html>
