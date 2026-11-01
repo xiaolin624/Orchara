@@ -44,6 +44,21 @@
 未实现：DSL 双语言校验（T007）、图引擎分支汇合（T011）、制品升级（T009）、
 租约失联（T013）、profile 启动与 CI（T012）、以及全部业务模块。
 
+## GitHub 闭环（2026-11-01）
+
+本轮 6 票已在 `xiaolin624/Orchara` 关闭（`closed / completed`），每票附实测证据评论：
+
+| 票 | Issue | 分支提交 |
+|---|---|---|
+| T001 | [#2](https://github.com/xiaolin624/Orchara/issues/2) | `110bc6e` |
+| T002 | [#3](https://github.com/xiaolin624/Orchara/issues/3) | `be97f87` |
+| T003 | [#4](https://github.com/xiaolin624/Orchara/issues/4) | `62f96f6` |
+| T004 | [#5](https://github.com/xiaolin624/Orchara/issues/5) | `71da374` |
+| T005 | [#6](https://github.com/xiaolin624/Orchara/issues/6) | `d8e059b` |
+| T008 | [#9](https://github.com/xiaolin624/Orchara/issues/9) | `a4eb7f8` |
+
+代码在 `integration/foundation-p0`（已推送）。仓库 open issue 数由 121 降至 115。
+
 ## 环境事实（D00 实测 + 本轮补充）
 
 - Go 1.27.3、PostgreSQL 16.4（用户态，仓库外 `E:\orchara-toolchains`）、Python 3.12.2、Node 24.13.0、npm 11.13.0。
