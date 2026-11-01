@@ -1,0 +1,25 @@
+{
+  "repo": "xiaolin624/Orchara",
+  "status": "verified",
+  "tickets": 121,
+  "native_blocking_edges": 177,
+  "source_drafts_covered": 124,
+  "api_operations_owned": 106,
+  "merged_ticket_count": 24,
+  "split_source_count": 20,
+  "all_ready_for_agent": true,
+  "textual_fallbacks_remaining": 0,
+  "workflow_url": "https://github.com/xiaolin624/Orchara/actions/runs/41292982852",
+  "workflow_conclusion": "success",
+  "verified_log_rows": 121,
+  "frontier": [
+    {
+      "number": 2,
+      "title": "[T001][D00] 在产品工作区复现规格并生成环境报告",
+      "url": "https://github.com/xiaolin624/Orchara/issues/2"
+    }
+  ],
+  "main_branch_modified": false,
+  "parent_issues_modified": false,
+  "implementation_executed": false
+}
