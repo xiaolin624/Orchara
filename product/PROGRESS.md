@@ -34,6 +34,7 @@
 | T015 | F01 | 从空数据库建立管理员并邀请激活用户 | passed | `reports/f01/T015-identity-bootstrap.md`、`db/migrations/0006_identity_core.sql`、`internal/db/migrate.go`、`cmd/admin/`、`internal/identity/`、`internal/api/`、`tests/f01/`（37 passed） |
 | T017 | F01 | 用户登录、刷新身份并安全登出 | passed | `reports/f01/T017-login-and-csrf.md`、`internal/identity/csrf.go`、`internal/api/authz.go`、`internal/api/loginlimit.go`、`internal/api/server.go`、`apps/web/src/login.html`、`apps/web/src/assets/app.js`、`tests/f01/test_t017_*.py`（63 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T019 | F01 | 管理员授予或撤销某个用户的资源访问 | passed | `reports/f01/T019-resource-grants.md`、`db/migrations/0007_authorization.sql`、`internal/policy/`、`internal/catalog/`、`internal/audit/`、`internal/identity/roles.go`、`internal/api/{grants,roles,applications,server}.go`、`apps/web/src/apps.html`、`apps/web/src/admin.html`、`tests/f01/test_t019_*.py`（`tests/f01` 共 90 passed，真实 PG + 真实二进制 + 真实 HTTP） |
+| T020 | F01 | 创建服务账号并用可撤销 Key 调用授权 API | passed | `reports/f01/T020-service-accounts.md`、`db/migrations/0008_api_keys.sql`、`internal/identity/apikeys.go`、`internal/api/{apikeys,authz,applications,server}.go`、`apps/web/src/admin.html`、`tests/f01/t020_stack.py`、`tests/f01/test_t020_*.py`（`tests/f01` 共 124 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -50,23 +51,28 @@ Profile/CI、沙箱隔离与资源回收、租约与丢回执。
 仍未实现（属后续票，不在本批范围）：业务模块（身份/目录/请求/路由/执行/评测/RAG/记忆）、
 前端画布、编译器与十类节点、发布门禁、部署与灾备。仓库 open issue 仍为 108 个。
 
-## F01 身份（进行中，5 票：T015、T017、T019 已完成）
+## F01 身份（进行中，5 票：T015、T017、T019、T020 已完成）
 
-F01 按 DESIGN 顺序推进：T015 → T017 → T019 → T020 → T021。T015、T017、T019 已完成。
+F01 按 DESIGN 顺序推进：T015 → T017 → T019 → T020 → T021。T015、T017、T019、T020 已完成。
 
 | 票 | 状态 | 交付 / 证据 |
 |---|---|---|
 | T015 | passed | 迁移链从空库可执行（0006 身份六表 + 0005 条件授权修复）、`cmd/admin migrate/bootstrap`、邀请/激活/登录三条契约端点、admin/activate 页面；`reports/f01/T015-identity-bootstrap.md`、`tests/f01/`（37 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T017 | passed | 登出/`GET /auth/me`/页面刷新恢复身份、CSRF 强制（会话绑定的 HMAC 派生 token，零迁移）、统一授权助手 `authorize(w,r,role)`、登录限流 5 次/60 秒；`reports/f01/T017-login-and-csrf.md`、`internal/identity/csrf.go`、`internal/api/{authz,loginlimit,server,cookies}.go`、`apps/web/src/login.html`、`tests/f01/test_t017_*.py`（`tests/f01` 共 63 passed） |
 | T019 | passed | `policy_epochs`/`resource_grants`/`applications` 迁移（0007）、默认拒绝的 `policy.Authorizer`（每次读 epoch + 进程内决策缓存 + 过期重校验）、`catalog` 先 ACL 后分页的读模型、grant/revoke/角色/应用列表与详情五条契约端点、`/apps` 页面与 admin 授权/角色表单；`reports/f01/T019-resource-grants.md`、`tests/f01/test_t019_*.py`（`tests/f01` 共 94 passed） |
-| T020–T021 | not_started | API key 与 bearer 认证、禁用与 handover |
+| T020 | passed | `api_keys` 迁移（0008）、具名负责人的服务账号、scope（F01 仅 `application:read`）+ 资源 ACL 交集、bearer 认证（严格 `Authorization: Bearer`，无 Cookie 回退）、key 明文仅一次且只存 SHA-256、撤销/过期/负责人禁用即时拒绝、`/memories` 对服务账号 403 与对人类的诚实空列表、admin 服务账号/API key 表单；`reports/f01/T020-service-accounts.md`、`tests/f01/test_t020_*.py`（`tests/f01` 共 124 passed） |
+| T021 | not_started | 禁用/启用 principal 与 `cmd/admin handover`（见 T020 报告 §8） |
 
 T015 交付身份表与三条端点；T017 补齐 CSRF 强制、登出、`/auth/me` 与登录限流
 （限流当前是**单进程内存态**，多实例不共享，属 F15B，见 T017 报告 §7）。
 T019 交付 `policy_epochs`/`resource_grants`/`applications` 与默认拒绝的资源 ACL：
 每次动作读当前 epoch，撤销/角色变更在同一事务里 bump epoch，因此进程内缓存不可能
-跨过一次撤销；列表在 SQL 里先 ACL 过滤再分页。T020 仍负责 `api_keys` 与 bearer 认证，
-其插入点只在 `internal/api/authz.go` 的 `authenticate`（见 T019 报告 §8）。
+跨过一次撤销；列表在 SQL 里先 ACL 过滤再分页。
+T020 交付 `api_keys`/服务账号与 bearer 认证：key 只属于 service principal，明文只显示一次、
+库中只有 SHA-256；`Authorization: Bearer` 只加在 `internal/api/authz.go` 的 `authenticate`，
+scope 缺失在 catalog 之前 403、ACL 缺失仍是 404；撤销/过期/负责人禁用在下一次认证即生效。
+T021 仍负责 `PATCH /admin/principals/{id}` 的禁用/启用与 `cmd/admin handover`；禁用必须在
+同一事务撤销该人及其负责的服务账号的 key、bump epoch 并审计（T020 报告 §8）。
 
 ## 第二轮复核修复（2026-11-01）
 
