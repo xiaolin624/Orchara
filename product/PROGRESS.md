@@ -21,11 +21,11 @@
 | T004 | P01 | 在第二个干净环境重建核心探针 | passed | `reports/p01/T004-second-environment.md`（WSL Linux 重建 + 跨平台指纹一致） |
 | T005 | P02 | 让一个中断任务在新进程中安全继续 | passed | `reports/p02/T005-checkpoint-resume.md`（真实 PG，7 passed） |
 | T009 | P02 | 升级后恢复旧图或明确报告缺制品 | passed | `reports/p02/T009-artifact-pinning.md`、`db/migrations/0002_artifacts.sql`（11 passed） |
-| T006 | P03 | 启动一个拒绝危险配置的 Linux 沙箱探针 | blocked | 无 Linux 宿主 + runsc/gVisor + root（D00 报告 §6） |
-| T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | blocked | 依赖 T006 |
-| T014 | P03 | 停止超限脚本并证明资源已回收 | blocked | 依赖 T006/T010 |
+| T006 | P03 | 启动一个拒绝危险配置的 Linux 沙箱探针 | passed | `reports/p03/T006-sandbox-probe.md`（WSL2 + runsc 20241118.0，15 passed） |
+| T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | not_started | T006 已通过，依赖已解除 |
+| T014 | P03 | 停止超限脚本并证明资源已回收 | blocked | 依赖 T010 |
 | T013 | P04 | 模拟租约失联而不启动第二个执行者 | not_started | — |
-| T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | blocked | 需要 Linux 沙箱证据（T006 系） |
+| T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | blocked | 依赖 T010/T014 的沙箱证据 |
 | T018 | P04 | 写成功丢回执后恢复仍只写一次 | blocked | 依赖 T016 |
 | T007 | P05 | 用同一 corpus 校验两语言的变量和类型 | not_started | — |
 | T011 | P05 | 在真实图引擎中验证分支和汇合结果 | not_started | — |

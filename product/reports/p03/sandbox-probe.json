@@ -1,0 +1,42 @@
+﻿{
+  "probe": "p03-sandbox",
+  "task": "P03 / T006",
+  "versions": {
+    "guest_distro": "Ubuntu-24.04",
+    "linux": "Linux",
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "runtime": "runsc version release-20241118.0",
+    "spec": "1.1.0-rc.1",
+    "platform": "default",
+    "runsc_path": "/usr/local/bin/runsc",
+    "capabilities": "CapPrm:\t000001ffffffffff\nCapEff:\t000001ffffffffff",
+    "policy_version": "orchara.sandbox-policy/v1",
+    "notes": "guest is WSL2; the maintainer accepted WSL2 as the acceptance host"
+  },
+  "benign_run": {
+    "command": "runsc --network=none do sh -c \"echo sandbox-ok\"",
+    "exit_code": 0,
+    "stdout": "sandbox-ok",
+    "stderr": "",
+    "network": "none",
+    "policy_version": "orchara.sandbox-policy/v1"
+  },
+  "refusals": {
+    "host_network": [
+      "network 'host' is not allowed; only ('none',) is permitted"
+    ],
+    "disabled_overlay": [
+      "overlay=false would give the sandbox write access to the host filesystem"
+    ],
+    "privileged": [
+      "privileged mode is not available to user scripts"
+    ],
+    "root_inside": [
+      "running as uid 0 inside the sandbox is not allowed"
+    ],
+    "unapproved_mount": [
+      "mount '/etc' is outside the approved root /work/"
+    ]
+  },
+  "all_refused": true
+}
