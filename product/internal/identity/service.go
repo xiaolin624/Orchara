@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"orchara/platform/internal/audit"
 )
 
 // Lifetimes and names fixed by DESIGN.md §4/§5.
@@ -201,7 +203,7 @@ func Bootstrap(ctx context.Context, db *sql.DB, login, displayName, password str
 	); err != nil {
 		return "", fmt.Errorf("granting the administrator role: %w", err)
 	}
-	if err := RecordAudit(ctx, tx, nil, "admin.bootstrap", "principal", &principalID, map[string]any{
+	if err := audit.Record(ctx, tx, nil, "admin.bootstrap", "principal", &principalID, map[string]any{
 		"login": login,
 	}); err != nil {
 		return "", err
@@ -284,7 +286,7 @@ func (s *Service) InviteUser(
 	); err != nil {
 		return nil, fmt.Errorf("creating the activation token: %w", err)
 	}
-	if err := RecordAudit(ctx, tx, &adminID, "user.invited", "principal", &principalID, map[string]any{
+	if err := audit.Record(ctx, tx, &adminID, "user.invited", "principal", &principalID, map[string]any{
 		"login": login,
 		"roles": roles,
 	}); err != nil {

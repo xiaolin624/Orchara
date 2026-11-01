@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"orchara/platform/internal/audit"
 )
 
 // Login verifies credentials and issues a session.
@@ -79,7 +81,7 @@ func (s *Service) Login(ctx context.Context, login, password string) (*Session, 
 	); err != nil {
 		return nil, fmt.Errorf("creating the session: %w", err)
 	}
-	if err := RecordAudit(ctx, tx, &principalID, "auth.login", "principal", &principalID, map[string]any{
+	if err := audit.Record(ctx, tx, &principalID, "auth.login", "principal", &principalID, map[string]any{
 		"login": strings.TrimSpace(login),
 	}); err != nil {
 		return nil, err
@@ -182,7 +184,7 @@ func (s *Service) Logout(ctx context.Context, sessionHash, principalID string) (
 	if err != nil {
 		return false, fmt.Errorf("revoking the session: %w", err)
 	}
-	if err := RecordAudit(ctx, tx, &principalID, "auth.logout", "principal", &principalID, nil); err != nil {
+	if err := audit.Record(ctx, tx, &principalID, "auth.logout", "principal", &principalID, nil); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

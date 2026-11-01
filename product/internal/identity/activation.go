@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"orchara/platform/internal/audit"
 )
 
 // Activate consumes a one-time activation token and sets the user's password.
@@ -88,7 +90,7 @@ func (s *Service) Activate(ctx context.Context, rawToken, password string) (stri
 	); err != nil {
 		return "", fmt.Errorf("setting the password: %w", err)
 	}
-	if err := RecordAudit(ctx, tx, &activatedPrincipal, "user.activated", "principal", &activatedPrincipal, map[string]any{
+	if err := audit.Record(ctx, tx, &activatedPrincipal, "user.activated", "principal", &activatedPrincipal, map[string]any{
 		"login": login,
 	}); err != nil {
 		return "", err

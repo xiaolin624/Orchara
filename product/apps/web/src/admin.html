@@ -31,6 +31,7 @@
   <nav>
     <a href="/">状态</a>
     <a href="/login">登录</a>
+    <a href="/apps">应用目录</a>
     <a href="/activate">激活账号</a>
   </nav>
 
@@ -39,6 +40,7 @@
     本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
     未登录会跳转到登录页。邀请返回的一次性激活令牌
     <strong>只显示一次</strong>，平台只保存它的哈希，请人工转交。
+    资源授权与角色修改也在这里，写入都会带本会话的 CSRF 令牌。
   </p>
 
   <section class="card">
@@ -95,6 +97,67 @@
     </div>
   </section>
 
+  <section id="grants-panel" class="card" hidden>
+    <h2>资源授权（application / read）</h2>
+    <p class="hint">
+      授权后目标用户在 <a href="/apps">应用目录</a> 立即看到该应用；撤销后下一次读取立即被拒绝。
+      F01 只开放 <code>application</code> 资源与 <code>read</code> 动作；过期时间可留空。
+    </p>
+    <form id="grant-form">
+      <label for="grant-principal">被授权 principal id
+        <input id="grant-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <label for="grant-resource">资源 id（application）
+        <input id="grant-resource" name="resource_id" required placeholder="uuid" />
+      </label>
+      <label for="grant-action">动作
+        <select id="grant-action" name="action">
+          <option value="read" selected>read</option>
+        </select>
+      </label>
+      <label for="grant-expires">过期时间（可选，RFC3339，例如 2026-12-31T00:00:00Z）
+        <input id="grant-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z" />
+      </label>
+      <button type="submit">授予 read</button>
+    </form>
+    <p id="grant-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="grant-result" hidden>
+      <p class="ok">已创建授权，grant id：<code id="grant-id">—</code></p>
+      <p class="hint">撤销时把该 id 填入下面的表单；撤销会让下一次读取立即失败，不需要刷新缓存。</p>
+    </div>
+
+    <h2 style="margin-top:1.2rem">撤销授权</h2>
+    <form id="revoke-form">
+      <label for="revoke-grant-id">grant id
+        <input id="revoke-grant-id" name="grant_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">撤销授权</button>
+    </form>
+    <p id="revoke-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="roles-panel" class="card" hidden>
+    <h2>修改用户角色</h2>
+    <p class="hint">
+      目标必须是已存在的人类用户（服务账号没有角色绑定）；角色集合不能为空、不能重复。
+      至少保留一个启用中的人类管理员，否则请求会被拒绝。
+    </p>
+    <form id="roles-form">
+      <label for="roles-principal">principal id
+        <input id="roles-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <fieldset>
+        <legend>角色</legend>
+        <label><input type="checkbox" name="roles" value="user" checked /> user</label>
+        <label><input type="checkbox" name="roles" value="creator" /> creator</label>
+        <label><input type="checkbox" name="roles" value="admin" /> admin</label>
+      </fieldset>
+      <button type="submit">保存角色</button>
+    </form>
+    <p id="roles-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script>
     const authStatus = document.getElementById('auth-status');
@@ -107,6 +170,15 @@
     const inviteResult = document.getElementById('invite-result');
     const activationTokenField = document.getElementById('activation-token');
     const inviteStatus = document.getElementById('invite-status');
+    const grantsPanel = document.getElementById('grants-panel');
+    const rolesPanel = document.getElementById('roles-panel');
+    const grantForm = document.getElementById('grant-form');
+    const grantStatus = document.getElementById('grant-status');
+    const grantResult = document.getElementById('grant-result');
+    const revokeForm = document.getElementById('revoke-form');
+    const revokeStatus = document.getElementById('revoke-status');
+    const rolesForm = document.getElementById('roles-form');
+    const rolesStatus = document.getElementById('roles-status');
 
     function setStatus(element, message, kind) {
       element.textContent = message;
@@ -119,7 +191,12 @@
       identityPrincipal.textContent = me.principal_id;
       const roles = me.roles || [];
       identityRoles.textContent = roles.length ? roles.join('、') : '（无）';
-      invitePanel.hidden = roles.indexOf('admin') === -1;
+      const isAdmin = roles.indexOf('admin') !== -1;
+      invitePanel.hidden = !isAdmin;
+      // The admin endpoints refuse non-admins anyway; hiding the forms is only
+      // feedback, never the authorization.
+      grantsPanel.hidden = !isAdmin;
+      rolesPanel.hidden = !isAdmin;
       setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
     }
 
@@ -198,6 +275,85 @@
         window.location.assign('/login');
       } catch (error) {
         setStatus(authStatus, `退出失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/grants: grant `read` on one application. The write is
+    // authorized by the admin session + CSRF token, never by the page.
+    grantForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(grantStatus, '正在创建授权…', 'pending');
+      grantResult.hidden = true;
+      const expiresAt = document.getElementById('grant-expires').value.trim();
+      const body = {
+        principal_id: document.getElementById('grant-principal').value.trim(),
+        resource_type: 'application',
+        resource_id: document.getElementById('grant-resource').value.trim(),
+        action: document.getElementById('grant-action').value,
+      };
+      if (expiresAt) {
+        body.expires_at = expiresAt;
+      }
+      try {
+        const grant = await api('/api/v1/admin/grants', {
+          method: 'POST',
+          csrf: await csrf(),
+          body,
+        });
+        document.getElementById('grant-id').textContent = grant.id;
+        grantResult.hidden = false;
+        setStatus(grantStatus, `已授权（${grant.state}），grant id ${grant.id}。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(grantStatus, `授权失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // DELETE /api/v1/admin/grants/{grant_id}: revocation takes effect on the
+    // very next authorization decision, so the page says exactly that.
+    revokeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const grantId = document.getElementById('revoke-grant-id').value.trim();
+      setStatus(revokeStatus, '正在撤销授权…', 'pending');
+      try {
+        await api('/api/v1/admin/grants/' + encodeURIComponent(grantId), {
+          method: 'DELETE',
+          csrf: await csrf(),
+        });
+        setStatus(revokeStatus, `已撤销授权 ${grantId}，下一次读取立即生效。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(revokeStatus, `撤销失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // PUT /api/v1/admin/users/{principal_id}/roles: replace the role bindings.
+    rolesForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const principalId = document.getElementById('roles-principal').value.trim();
+      const roles = Array.from(
+        rolesForm.querySelectorAll('input[name="roles"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(rolesStatus, '正在保存角色…', 'pending');
+      try {
+        const update = await api('/api/v1/admin/users/' + encodeURIComponent(principalId) + '/roles', {
+          method: 'PUT',
+          csrf: await csrf(),
+          body: { roles },
+        });
+        setStatus(rolesStatus, `已更新 principal ${update.id} 的角色（${update.state}）。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(rolesStatus, `保存失败 [${error.code}] ${error.message}`, 'bad');
       }
     });
 

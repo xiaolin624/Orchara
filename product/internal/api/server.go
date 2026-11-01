@@ -8,13 +8,17 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/policy"
 )
 
 // Server serves the F01 identity endpoints and the static pages that drive them.
 type Server struct {
 	service      *identity.Service
+	policy       *policy.Authorizer
+	catalog      *catalog.Reader
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
@@ -23,12 +27,19 @@ type Server struct {
 
 // New builds the HTTP surface. webDir is where admin.html, login.html,
 // activate.html and assets/app.js are served from (ORCHARA_WEB_DIR).
+//
+// The policy authorizer and the catalog read model share the identity service's
+// database handle; constructing them here keeps cmd/api's wiring unchanged and
+// makes the decision cache a per-process property of this server.
 func New(service *identity.Service, webDir string, profile config.Profile, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
 	}
+	authorizer := policy.New(service.DB)
 	return &Server{
 		service:      service,
+		policy:       authorizer,
+		catalog:      catalog.New(service.DB, authorizer),
 		webDir:       webDir,
 		secureCookie: SecureCookie(profile),
 		logger:       logger,
@@ -48,9 +59,17 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/activate", s.handleActivate)
 	mux.HandleFunc("POST /api/v1/admin/users", s.handleInviteUser)
 
+	// T019: resource grants, role updates and the ACL-filtered applications read.
+	mux.HandleFunc("POST /api/v1/admin/grants", s.handleGrant)
+	mux.HandleFunc("DELETE /api/v1/admin/grants/{grant_id}", s.handleRevokeGrant)
+	mux.HandleFunc("PUT /api/v1/admin/users/{principal_id}/roles", s.handleSetRoles)
+	mux.HandleFunc("GET /api/v1/applications", s.handleListApplications)
+	mux.HandleFunc("GET /api/v1/applications/{application_id}", s.handleGetApplication)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
+	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 }
 
@@ -274,9 +293,13 @@ func (s *Server) handleActivate(w http.ResponseWriter, r *http.Request) {
 }
 
 func validationDetails(err error) map[string]any {
-	var validation *identity.ValidationError
-	if errors.As(err, &validation) && validation.Field != "" {
-		return map[string]any{"field": validation.Field}
+	var identityValidation *identity.ValidationError
+	if errors.As(err, &identityValidation) && identityValidation.Field != "" {
+		return map[string]any{"field": identityValidation.Field}
+	}
+	var policyValidation *policy.ValidationError
+	if errors.As(err, &policyValidation) && policyValidation.Field != "" {
+		return map[string]any{"field": policyValidation.Field}
 	}
 	return nil
 }
