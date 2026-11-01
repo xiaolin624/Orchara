@@ -1,0 +1,24 @@
+{
+  "probe": "p04-unknown-receipt",
+  "task": "P04 / T018",
+  "initial": {
+    "key": "op-exactly-once",
+    "state": "unknown",
+    "sends": 1,
+    "detail": "RemoteDisconnected: Remote end closed connection without response"
+  },
+  "final": {
+    "key": "op-exactly-once",
+    "state": "completed",
+    "sends": 1,
+    "detail": "reconciled from ledger (1 record(s)); not resent"
+  },
+  "ledger_entries": 1,
+  "assertions": {
+    "receipt_was_lost": true,
+    "unknown_is_not_success_or_failure": true,
+    "ledger_shows_exactly_one_delivery": true,
+    "recovered_without_resending": true,
+    "never_resent": true
+  }
+}
