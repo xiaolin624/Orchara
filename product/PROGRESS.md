@@ -20,7 +20,7 @@
 | T003 | P01 | 让 Go/Python 对同一清单给出相同指纹 | passed | `reports/p01/T003-jcs-parity.md`、`reports/p01/jcs-agreement.json`（40 向量 0 不一致） |
 | T004 | P01 | 在第二个干净环境重建核心探针 | passed | `reports/p01/T004-second-environment.md`（WSL Linux 重建 + 跨平台指纹一致） |
 | T005 | P02 | 让一个中断任务在新进程中安全继续 | passed | `reports/p02/T005-checkpoint-resume.md`（真实 PG，7 passed） |
-| T009 | P02 | 升级后恢复旧图或明确报告缺制品 | not_started | — |
+| T009 | P02 | 升级后恢复旧图或明确报告缺制品 | passed | `reports/p02/T009-artifact-pinning.md`、`db/migrations/0002_artifacts.sql`（11 passed） |
 | T006 | P03 | 启动一个拒绝危险配置的 Linux 沙箱探针 | blocked | 无 Linux 宿主 + runsc/gVisor + root（D00 报告 §6） |
 | T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | blocked | 依赖 T006 |
 | T014 | P03 | 停止超限脚本并证明资源已回收 | blocked | 依赖 T006/T010 |

@@ -28,6 +28,7 @@ Commands (each one is a separate OS process, which is the point):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -200,6 +201,10 @@ class RunState(TypedDict, total=False):
     # Declared as channels so they survive the checkpoint round trip.
     thread_id: str
     owner: str
+    # The published graph this run is pinned to. Resuming must use this exact
+    # artifact, never whatever happens to be the newest version.
+    artifact_id: str
+    graph_version: int
 
 
 def _build_graph(saver: PostgresSaver):
@@ -270,9 +275,76 @@ def _fail(code: str, **extra: Any) -> None:
     raise SystemExit(2)
 
 
+# ---------------------------------------------------------------------------
+# artifacts: a published graph version is immutable and pinned per run
+# ---------------------------------------------------------------------------
+def _manifest(version: int) -> dict[str, Any]:
+    return {"graph": "three-node-approval", "version": version, "nodes": ["prepare", "approve", "finalize"]}
+
+
+def publish(version: int) -> dict[str, Any]:
+    """Publish a graph version. Re-publishing the same version is a no-op."""
+    manifest = _manifest(version)
+    digest = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    artifact_id = f"artifact-v{version}"
+    with _connect(owner_dsn()) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {APP_SCHEMA}.artifacts (artifact_id, graph_version, digest, manifest)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (artifact_id) DO NOTHING
+            """,
+            (artifact_id, version, digest, json.dumps(manifest)),
+        )
+    return {"artifact_id": artifact_id, "graph_version": version, "digest": digest}
+
+
+def latest_artifact() -> dict[str, Any]:
+    with _connect(owner_dsn()) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT artifact_id, graph_version FROM {APP_SCHEMA}.artifacts
+            WHERE deleted_at IS NULL ORDER BY graph_version DESC LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+    if row is None:
+        _fail("no_published_artifact")
+    return {"artifact_id": row[0], "graph_version": row[1]}
+
+
+def resolve_artifact(artifact_id: str) -> dict[str, Any]:
+    """Resolve a pinned artifact, refusing to substitute a newer version."""
+    with _connect(owner_dsn()) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT graph_version, digest, deleted_at FROM {APP_SCHEMA}.artifacts
+            WHERE artifact_id = %s
+            """,
+            (artifact_id,),
+        )
+        row = cur.fetchone()
+    if row is None or row[2] is not None:
+        _fail("artifact_unavailable", artifact_id=artifact_id)
+    return {"artifact_id": artifact_id, "graph_version": row[0], "digest": row[1]}
+
+
+def delete_artifact(version: int) -> dict[str, Any]:
+    artifact_id = f"artifact-v{version}"
+    with _connect(owner_dsn()) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE {APP_SCHEMA}.artifacts SET deleted_at = now() WHERE artifact_id = %s",
+            (artifact_id,),
+        )
+    return {"artifact_id": artifact_id, "deleted": True}
+
+
 def run(thread_id: str, owner: str) -> dict[str, Any]:
     _register_thread(thread_id, owner)
     runtime = assert_runtime_search_path()
+    pinned = latest_artifact()
     with PostgresSaver.from_conn_string(worker_dsn()) as saver:
         graph = _build_graph(saver)
         state = graph.invoke(
@@ -282,6 +354,8 @@ def run(thread_id: str, owner: str) -> dict[str, Any]:
                 "operation_key": f"op-{thread_id}",
                 "thread_id": thread_id,
                 "owner": owner,
+                "artifact_id": pinned["artifact_id"],
+                "graph_version": pinned["graph_version"],
             },
             _config(thread_id),
         )
@@ -305,6 +379,14 @@ def resume(thread_id: str, owner: str, decision: str) -> dict[str, Any]:
         before = graph.get_state(_config(thread_id))
         if not before.next:
             _fail("nothing_to_resume", thread=thread_id)
+
+        # Resolve the artifact this run was pinned to. A newer published version
+        # must not be substituted, and a deleted one must fail loudly.
+        pinned_id = before.values.get("artifact_id")
+        if not pinned_id:
+            _fail("artifact_unpinned", thread=thread_id)
+        artifact = resolve_artifact(pinned_id)
+
         graph.update_state(_config(thread_id), {"decision": decision})
         state = graph.invoke(None, _config(thread_id))
         after = graph.get_state(_config(thread_id))
@@ -321,6 +403,9 @@ def resume(thread_id: str, owner: str, decision: str) -> dict[str, Any]:
         "finished": not after.next,
         "operation_rows": writes,
         "runtime_role": runtime["runtime_role"],
+        "pinned_artifact": artifact["artifact_id"],
+        "loaded_version": artifact["graph_version"],
+        "artifact_digest": artifact["digest"],
     }
 
 
@@ -421,6 +506,12 @@ def main(argv: list[str] | None = None) -> int:
     runtime_check = sub.add_parser("runtime-check")
     runtime_check.add_argument("--schema", default=CHECKPOINT_SCHEMA)
 
+    publish_cmd = sub.add_parser("publish")
+    publish_cmd.add_argument("--version", type=int, required=True)
+    delete_cmd = sub.add_parser("delete-artifact")
+    delete_cmd.add_argument("--version", type=int, required=True)
+    sub.add_parser("latest-artifact")
+
     for name in ("run", "resume", "read", "replay"):
         command = sub.add_parser(name)
         command.add_argument("--thread", required=True)
@@ -436,6 +527,12 @@ def main(argv: list[str] | None = None) -> int:
         payload = init()
     elif args.command == "setup-checkpointer":
         payload = setup_checkpointer()
+    elif args.command == "publish":
+        payload = publish(args.version)
+    elif args.command == "delete-artifact":
+        payload = delete_artifact(args.version)
+    elif args.command == "latest-artifact":
+        payload = latest_artifact()
     elif args.command == "guards":
         payload = guards()
     elif args.command == "runtime-check":
