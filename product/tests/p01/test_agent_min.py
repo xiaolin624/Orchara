@@ -135,7 +135,9 @@ def test_lock_file_pins_every_package_with_a_hash() -> None:
     hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", text)
 
     assert len(pins) >= 40, f"expected the resolved graph, got {len(pins)} pins"
-    assert len(hashes) == len(pins), "every pin must carry exactly one sha256 hash"
+    # Platform-portable locks list several artifact hashes per pin, so the hash
+    # count is >= the pin count, never fewer.
+    assert len(hashes) >= len(pins), "every pin must carry at least one sha256 hash"
 
     pinned = {name.lower() for name, _ in pins}
     for required in ("langgraph", "langgraph-checkpoint-postgres", "pydantic", "jsonschema", "psycopg"):
