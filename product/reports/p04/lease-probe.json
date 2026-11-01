@@ -1,0 +1,377 @@
+{
+  "probe": "p04-lease-loss",
+  "task": "P04 / T013",
+  "status": "passed",
+  "environment": {
+    "python": "3.12.2",
+    "postgres_server": "16.4",
+    "guest": "Ubuntu-24.04"
+  },
+  "run_id": "run-t013-lease-loss",
+  "worker_ids": [
+    "t013-worker-1",
+    "t013-worker-2"
+  ],
+  "process": {
+    "pid": 454,
+    "recorded_start_ticks": 30395,
+    "verdict_after_kill": "exited"
+  },
+  "tokens": [
+    {
+      "token_fingerprint": "tok_341175ccf7fc",
+      "worker_id": "t013-worker-1",
+      "run_id": "run-t013-lease-loss",
+      "attempt": 1,
+      "issued_at": "2026-11-01T21:21:56.0139+08:00",
+      "superseded_at": "2026-11-01T21:21:59.373694+08:00",
+      "superseded_by": "tok_16975856bc2d",
+      "process_pid": 454,
+      "process_start_ticks": 30395
+    },
+    {
+      "token_fingerprint": "tok_16975856bc2d",
+      "worker_id": "t013-worker-2",
+      "run_id": "run-t013-lease-loss",
+      "attempt": 2,
+      "issued_at": "2026-11-01T21:21:59.373909+08:00",
+      "superseded_at": null,
+      "superseded_by": null,
+      "process_pid": 454,
+      "process_start_ticks": 30395
+    }
+  ],
+  "timeline": [
+    {
+      "sequence": 1,
+      "at": "2026-11-01T13:21:56.023212+00:00",
+      "monotonic_ns": 32615765000000,
+      "event": "attempt_started",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-1",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "attempt": 1,
+        "pid": 454,
+        "start_ticks": 30395
+      }
+    },
+    {
+      "sequence": 2,
+      "at": "2026-11-01T13:21:56.133549+00:00",
+      "monotonic_ns": 32615875000000,
+      "event": "capability_allowed",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-1",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "result": "ok",
+        "phase": "before_outage"
+      }
+    },
+    {
+      "sequence": 3,
+      "at": "2026-11-01T13:21:56.250634+00:00",
+      "monotonic_ns": 32615984000000,
+      "event": "heartbeat_lost",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-1",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "last_heartbeat_at": "2026-11-01 21:21:55.113789+08",
+        "cause": "simulated network partition: the supervised process stopped heartbeating"
+      }
+    },
+    {
+      "sequence": 4,
+      "at": "2026-11-01T13:21:56.786822+00:00",
+      "monotonic_ns": 32616531000000,
+      "event": "worker_declared_stale",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-1",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "stale_workers": [
+          "t013-worker-1"
+        ],
+        "runs_parked": 1,
+        "run_state": "recovery_pending",
+        "stale_after_seconds": 600,
+        "source": "probe SQL mirroring internal/supervisor (park only, never restart)"
+      }
+    },
+    {
+      "sequence": 5,
+      "at": "2026-11-01T13:21:57.481435+00:00",
+      "monotonic_ns": 32617218000000,
+      "event": "attempt_requested",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "run_state": "recovery_pending",
+        "old_token": "tok_341175ccf7fc",
+        "requested_pid": 454,
+        "recorded_start_ticks": 30395,
+        "process": {
+          "pid": 454,
+          "recorded_start_ticks": 30395,
+          "observed_start_ticks": 30395,
+          "verdict": "still_running"
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "at": "2026-11-01T13:21:57.482434+00:00",
+      "monotonic_ns": 32617218000001,
+      "event": "attempt_blocked",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "reason": "old worker process 454 is still running (pid + start ticks match)",
+        "decision": {
+          "decision": "blocked",
+          "reason": "old worker process 454 is still running (pid + start ticks match)",
+          "evidence": {
+            "run_state": "recovery_pending",
+            "process": {
+              "pid": 454,
+              "recorded_start_ticks": 30395,
+              "observed_start_ticks": 30395,
+              "verdict": "still_running"
+            }
+          }
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "at": "2026-11-01T13:21:58.529787+00:00",
+      "monotonic_ns": 32618265000000,
+      "event": "old_process_exited",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-1",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "pid": 454,
+        "recorded_start_ticks": 30395,
+        "observed_start_ticks": null,
+        "verdict": "exited"
+      }
+    },
+    {
+      "sequence": 8,
+      "at": "2026-11-01T13:21:59.111725+00:00",
+      "monotonic_ns": 32618843000000,
+      "event": "attempt_requested",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "run_state": "recovery_pending",
+        "old_token": "tok_341175ccf7fc",
+        "requested_pid": 454,
+        "recorded_start_ticks": 30395,
+        "process": {
+          "pid": 454,
+          "recorded_start_ticks": 30395,
+          "observed_start_ticks": null,
+          "verdict": "exited"
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "at": "2026-11-01T13:21:59.112726+00:00",
+      "monotonic_ns": 32618843000001,
+      "event": "attempt_allowed",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "reason": "old process exited; pid + start ticks are no longer present",
+        "decision": {
+          "decision": "start",
+          "reason": "old process exited; pid + start ticks are no longer present",
+          "evidence": {
+            "run_state": "recovery_pending",
+            "process": {
+              "pid": 454,
+              "recorded_start_ticks": 30395,
+              "observed_start_ticks": null,
+              "verdict": "exited"
+            }
+          }
+        }
+      }
+    },
+    {
+      "sequence": 10,
+      "at": "2026-11-01T13:21:59.488805+00:00",
+      "monotonic_ns": 32619218000000,
+      "event": "token_superseded",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "attempt": 2,
+        "old_token": "tok_341175ccf7fc",
+        "new_token": "tok_16975856bc2d",
+        "pid": 454,
+        "start_ticks": 30395,
+        "reason": "old process exited; pid + start ticks are no longer present"
+      }
+    },
+    {
+      "sequence": 11,
+      "at": "2026-11-01T13:21:59.489804+00:00",
+      "monotonic_ns": 32619234000000,
+      "event": "new_attempt_started",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "attempt": 2,
+        "worker_id": "t013-worker-2"
+      }
+    },
+    {
+      "sequence": 12,
+      "at": "2026-11-01T13:21:59.632179+00:00",
+      "monotonic_ns": 32619375000000,
+      "event": "capability_rejected",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_341175ccf7fc",
+      "detail": {
+        "result": "token_superseded",
+        "phase": "old_token_after_supersession"
+      }
+    },
+    {
+      "sequence": 13,
+      "at": "2026-11-01T13:21:59.811427+00:00",
+      "monotonic_ns": 32619546000000,
+      "event": "capability_allowed",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "result": "ok",
+        "phase": "new_token"
+      }
+    },
+    {
+      "sequence": 14,
+      "at": "2026-11-01T13:22:00.009681+00:00",
+      "monotonic_ns": 32619750000000,
+      "event": "capability_rejected",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_0fc0b9ea952e",
+      "detail": {
+        "result": "token_unknown",
+        "phase": "unknown_token"
+      }
+    },
+    {
+      "sequence": 15,
+      "at": "2026-11-01T13:22:00.705064+00:00",
+      "monotonic_ns": 32620437000000,
+      "event": "attempt_requested",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "run_state": "running",
+        "old_token": "tok_16975856bc2d",
+        "requested_pid": 454,
+        "recorded_start_ticks": 30395,
+        "process": {
+          "pid": 454,
+          "recorded_start_ticks": 30395,
+          "observed_start_ticks": null,
+          "verdict": "exited"
+        }
+      }
+    },
+    {
+      "sequence": 16,
+      "at": "2026-11-01T13:22:00.708139+00:00",
+      "monotonic_ns": 32620453000000,
+      "event": "attempt_blocked",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "reason": "run state is 'running', not 'recovery_pending'; a new attempt may not start",
+        "decision": {
+          "decision": "blocked",
+          "reason": "run state is 'running', not 'recovery_pending'; a new attempt may not start",
+          "evidence": {
+            "run_state": "running"
+          }
+        }
+      }
+    },
+    {
+      "sequence": 17,
+      "at": "2026-11-01T13:22:00.710077+00:00",
+      "monotonic_ns": 32620453000001,
+      "event": "recovery_completed",
+      "run_id": "run-t013-lease-loss",
+      "worker_id": "t013-worker-2",
+      "token_fingerprint": "tok_16975856bc2d",
+      "detail": {
+        "attempt_requests": 3,
+        "blocked_attempts": 2,
+        "old_token": "tok_341175ccf7fc",
+        "new_token": "tok_16975856bc2d",
+        "final_attempt": 2,
+        "why_allowed": "old process exited; pid + start ticks are no longer present",
+        "second_start_refused": "run state is 'running', not 'recovery_pending'; a new attempt may not start"
+      }
+    }
+  ],
+  "event_log": "reports/p04/lease-events.jsonl",
+  "event_order": {
+    "ok": true,
+    "problems": [],
+    "count": 17,
+    "events": [
+      "attempt_started",
+      "capability_allowed",
+      "heartbeat_lost",
+      "worker_declared_stale",
+      "attempt_requested",
+      "attempt_blocked",
+      "old_process_exited",
+      "attempt_requested",
+      "attempt_allowed",
+      "token_superseded",
+      "new_attempt_started",
+      "capability_rejected",
+      "capability_allowed",
+      "capability_rejected",
+      "attempt_requested",
+      "attempt_blocked",
+      "recovery_completed"
+    ]
+  },
+  "assertions": {
+    "new_attempt_blocked_while_old_process_alive": true,
+    "no_token_issued_while_blocked": true,
+    "new_attempt_allowed_once_process_exited": true,
+    "supersession_reported_a_single_winner": true,
+    "old_token_rejected_after_supersession": true,
+    "new_token_accepted": true,
+    "unknown_token_rejected": true,
+    "only_one_active_token_after_recovery": true,
+    "second_start_refused_after_new_attempt_began": true,
+    "blocking_reason_recorded": true,
+    "events_time_ordered": true,
+    "process_was_alive_when_first_attempt_was_requested": true
+  }
+}

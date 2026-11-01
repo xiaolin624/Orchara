@@ -1,0 +1,325 @@
+[
+  {
+    "name": "rfc8785-3.2.2-sample",
+    "source": "RFC 8785 sections 3.2.2/3.2.3/3.2.4; expected_hex is the UTF-8 encoding of the RFC's canonical text",
+    "input_json": "{\"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001], \"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\", \"literals\": [null, true, false]}",
+    "expected_canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"\u20ac$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+    "expected_hex": "7b226c69746572616c73223a5b6e756c6c2c747275652c66616c73655d2c226e756d62657273223a5b3333333333333333332e333333333333332c31652b33302c342e352c302e3030322c31652d32375d2c22737472696e67223a22e282ac245c75303030665c6e4127425c225c5c5c5c5c222f227d",
+    "error": null,
+    "expected_sha256": "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb"
+  },
+  {
+    "name": "rfc8785-sort-order",
+    "source": "RFC 8785 section 3.2.3 sort verification data (U+FB33 kept precomposed: JCS does not normalise)",
+    "input_json": "{\"\\u20ac\": \"Euro Sign\", \"\\r\": \"Carriage Return\", \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\", \"1\": \"One\", \"\\ud83d\\ude00\": \"Emoji: Grinning Face\", \"\\u0080\": \"Control\", \"\\u00f6\": \"Latin Small Letter O With Diaeresis\"}",
+    "expected_canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}",
+    "expected_hex": null,
+    "error": null,
+    "expected_sha256": "5e321556d22018a9656991a9e94f77ec175fa193e52a2429d312f8419ec8b08c"
+  },
+  {
+    "name": "utf16-vs-codepoint-sort",
+    "source": "derived: U+1F600 is D83D DE00 in UTF-16, which sorts before U+E000; code-point order is the opposite",
+    "input_json": "{\"\\ue000\": \"private use\", \"\\ud83d\\ude00\": \"emoji\"}",
+    "expected_canonical": "{\"\ud83d\ude00\":\"emoji\",\"\ue000\":\"private use\"}",
+    "expected_hex": null,
+    "error": null,
+    "expected_sha256": "9ad38f6e50794f1ee248b80027707e74932249af207322ceb60994a9f4c0b765"
+  },
+  {
+    "name": "number-zero-and-negative-zero",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 0}",
+    "expected_canonical": "{\"n\":0}",
+    "error": null,
+    "expected_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0"
+  },
+  {
+    "name": "number-minus-zero",
+    "source": "RFC 8785 Appendix B (minus zero serialises as 0)",
+    "input_json": "{\"n\": -0.0}",
+    "expected_canonical": "{\"n\":0}",
+    "error": null,
+    "expected_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0"
+  },
+  {
+    "name": "number-min-positive",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 5e-324}",
+    "expected_canonical": "{\"n\":5e-324}",
+    "error": null,
+    "expected_sha256": "cf4df7d2834198d284947133d3ec7a66f3d94e8d447cac6a0783324211b36d43"
+  },
+  {
+    "name": "number-min-negative",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": -5e-324}",
+    "expected_canonical": "{\"n\":-5e-324}",
+    "error": null,
+    "expected_sha256": "db93947692a55593072b514da386faf1a8c7dc6c49f2d037ac7d9c0f89d5956a"
+  },
+  {
+    "name": "number-max-positive",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 1.7976931348623157e308}",
+    "expected_canonical": "{\"n\":1.7976931348623157e+308}",
+    "error": null,
+    "expected_sha256": "9599e0f9672bfa5d654b432fa5f9b7ee04f35c607b3a3ff01ce97b070f8f2648"
+  },
+  {
+    "name": "number-max-negative",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": -1.7976931348623157e308}",
+    "expected_canonical": "{\"n\":-1.7976931348623157e+308}",
+    "error": null,
+    "expected_sha256": "f1ab4b1ad58d11c148ebb64cc86506290ab42b198162ffd4e1d2f1772d8c3a4b"
+  },
+  {
+    "name": "number-max-positive-int",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 9007199254740992}",
+    "expected_canonical": "{\"n\":9007199254740992}",
+    "error": null,
+    "expected_sha256": "66c87d9cb3014e05a11baa97df62282d89d425f22ee15816577c84534e2ef1bb"
+  },
+  {
+    "name": "number-max-negative-int",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": -9007199254740992}",
+    "expected_canonical": "{\"n\":-9007199254740992}",
+    "error": null,
+    "expected_sha256": "b05a958438727696a33ea9f819b69ca4ea39b5ee89f0f80a61d5f813875f9734"
+  },
+  {
+    "name": "number-2pow68",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 295147905179352830000}",
+    "expected_canonical": "{\"n\":295147905179352830000}",
+    "error": null,
+    "expected_sha256": "325cc4ff312eeb1384e130b9072cebd2eca9ad95e621fb017b1ffcc161ebf477"
+  },
+  {
+    "name": "number-1e22-below",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 9.999999999999997e22}",
+    "expected_canonical": "{\"n\":9.999999999999997e+22}",
+    "error": null,
+    "expected_sha256": "491b1f5976bc87bb471c8095f795c7d51065b16440ccd6dec5c16a28db4f93dc"
+  },
+  {
+    "name": "number-1e23",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 1e23}",
+    "expected_canonical": "{\"n\":1e+23}",
+    "error": null,
+    "expected_sha256": "f8acd93b4d43262e8d22f393b3fc172b2608154644f68bd2295239d62451edef"
+  },
+  {
+    "name": "number-1e23-above",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 1.0000000000000001e23}",
+    "expected_canonical": "{\"n\":1.0000000000000001e+23}",
+    "error": null,
+    "expected_sha256": "7dbb03dffbdbc82effa56050f04ba388db0e16d0084dbe69012440341b65e5a8"
+  },
+  {
+    "name": "number-999999999999999700000",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 999999999999999700000}",
+    "expected_canonical": "{\"n\":999999999999999700000}",
+    "error": null,
+    "expected_sha256": "0a3c0de48065cb644319c57ce0af93c2ef88d1f8d9f228be26bb4831391d0021"
+  },
+  {
+    "name": "number-999999999999999900000",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 999999999999999900000}",
+    "expected_canonical": "{\"n\":999999999999999900000}",
+    "error": null,
+    "expected_sha256": "8e51b9a1b33e4815dbf02451cf409338b6c2e4eaa3399f5fa0b72d162e48dd6e"
+  },
+  {
+    "name": "number-1e21",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 1e21}",
+    "expected_canonical": "{\"n\":1e+21}",
+    "error": null,
+    "expected_sha256": "f1ee2b60ee95a3170fdc07a577e5f3514ced26867443d69da265acadead81007"
+  },
+  {
+    "name": "number-9.999999999999997e-7",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 9.999999999999997e-7}",
+    "expected_canonical": "{\"n\":9.999999999999997e-7}",
+    "error": null,
+    "expected_sha256": "ea0486d765f0e78e3cfd35b0da15c67c6c5f7aefde4dd5bc17ad8b8e95880a1f"
+  },
+  {
+    "name": "number-0.000001",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 0.000001}",
+    "expected_canonical": "{\"n\":0.000001}",
+    "error": null,
+    "expected_sha256": "28343867a0be00aee19f81aa90cfd6c646878b9303fa15410d16bfd3f8894578"
+  },
+  {
+    "name": "number-333333333.3333332",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 333333333.3333332}",
+    "expected_canonical": "{\"n\":333333333.3333332}",
+    "error": null,
+    "expected_sha256": "1e2e5158c5181c3fdce46fb33314ecd3d0d65aa634f728cbf0263dccef9da48a"
+  },
+  {
+    "name": "number-333333333.33333325",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 333333333.33333325}",
+    "expected_canonical": "{\"n\":333333333.33333325}",
+    "error": null,
+    "expected_sha256": "ac4d04fb830b0f5f3c69cbabe1f395fa6461c293693aaac69e31a68d442aefd7"
+  },
+  {
+    "name": "number-333333333.3333334",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 333333333.3333334}",
+    "expected_canonical": "{\"n\":333333333.3333334}",
+    "error": null,
+    "expected_sha256": "3c8fb0b18feffd17c168b36aef586b8984d28808e4ef73f3e3b467085c079972"
+  },
+  {
+    "name": "number-333333333.33333343",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": 333333333.33333343}",
+    "expected_canonical": "{\"n\":333333333.33333343}",
+    "error": null,
+    "expected_sha256": "3bec5b8b8e554841ebdf6460208c624df5fc1674a82a8bf97e0577dbb209cae7"
+  },
+  {
+    "name": "number-negative-small",
+    "source": "RFC 8785 Appendix B",
+    "input_json": "{\"n\": -0.0000033333333333333333}",
+    "expected_canonical": "{\"n\":-0.0000033333333333333333}",
+    "error": null,
+    "expected_sha256": "aae32db884750318e6c338f99586e0d862246d45ad53aafbd7e83dcdd037f8b3"
+  },
+  {
+    "name": "number-round-to-even",
+    "source": "RFC 8785 Appendix B note 4",
+    "input_json": "{\"n\": 1424953923781206.25}",
+    "expected_canonical": "{\"n\":1424953923781206.2}",
+    "error": null,
+    "expected_sha256": "c620a6071bc4870e99e38aeff2dbb0ae03cb7d525d60f0cad1b1abcb5bfafe05"
+  },
+  {
+    "name": "string-escaping-controls",
+    "source": "RFC 8785 section 3.2.2.2",
+    "input_json": "{\"s\": \"\\u0000\\u0001\\u0008\\u0009\\u000a\\u000c\\u000d\\u001f\"}",
+    "expected_canonical": "{\"s\":\"\\u0000\\u0001\\b\\t\\n\\f\\r\\u001f\"}",
+    "error": null,
+    "expected_sha256": "2e5a630b548a5c44e7daa747a7234ddb6039d10c46b9adaf956072a24b4b02ce"
+  },
+  {
+    "name": "string-slash-and-quotes",
+    "source": "RFC 8785 section 3.2.2.2 (slash is not escaped)",
+    "input_json": "{\"s\": \"a/b\\\\c\\\"d\"}",
+    "expected_canonical": "{\"s\":\"a/b\\\\c\\\"d\"}",
+    "error": null,
+    "expected_sha256": "f530cfe2c14c038dc1a4c30cd0bd2d7dee2798f7f2332834e3c8867c275e65b3"
+  },
+  {
+    "name": "empty-object",
+    "source": "structural",
+    "input_json": "{}",
+    "expected_canonical": "{}",
+    "error": null,
+    "expected_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "name": "empty-array",
+    "source": "structural",
+    "input_json": "[]",
+    "expected_canonical": "[]",
+    "error": null,
+    "expected_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "name": "nested-sorting",
+    "source": "RFC 8785 section 3.2.3 (recursive sort, array order preserved)",
+    "input_json": "{\"b\": [{\"z\": 1, \"a\": 2}, 3], \"a\": {\"d\": 4, \"c\": 5}}",
+    "expected_canonical": "{\"a\":{\"c\":5,\"d\":4},\"b\":[{\"a\":2,\"z\":1},3]}",
+    "error": null,
+    "expected_sha256": "af7697ebb155863e0130438b74bde5728cdc62ced69d73386be8e1a6fb3179fc"
+  },
+  {
+    "name": "duplicate-key-rejected",
+    "source": "RFC 8785 section 3.1 (objects MUST NOT exhibit duplicate property names)",
+    "input_json": "{\"a\": 1, \"a\": 2}",
+    "expected_canonical": null,
+    "error": "duplicate_key",
+    "expected_sha256": null
+  },
+  {
+    "name": "nested-duplicate-key-rejected",
+    "source": "RFC 8785 section 3.1",
+    "input_json": "{\"outer\": {\"x\": 1, \"x\": 2}}",
+    "expected_canonical": null,
+    "error": "duplicate_key",
+    "expected_sha256": null
+  },
+  {
+    "name": "nan-rejected",
+    "source": "RFC 8785 section 3.2.2.3",
+    "input_json": "{\"n\": NaN}",
+    "expected_canonical": null,
+    "error": "non_finite",
+    "expected_sha256": null
+  },
+  {
+    "name": "infinity-rejected",
+    "source": "RFC 8785 section 3.2.2.3",
+    "input_json": "{\"n\": Infinity}",
+    "expected_canonical": null,
+    "error": "non_finite",
+    "expected_sha256": null
+  },
+  {
+    "name": "negative-infinity-rejected",
+    "source": "RFC 8785 section 3.2.2.3",
+    "input_json": "{\"n\": -Infinity}",
+    "expected_canonical": null,
+    "error": "non_finite",
+    "expected_sha256": null
+  },
+  {
+    "name": "lone-surrogate-rejected",
+    "source": "RFC 8785 section 3.2.2.2 note",
+    "input_json": "{\"s\": \"\\udead\"}",
+    "expected_canonical": null,
+    "error": "invalid_unicode",
+    "expected_sha256": null
+  },
+  {
+    "name": "lone-high-surrogate-key-rejected",
+    "source": "RFC 8785 section 3.2.2.2 note",
+    "input_json": "{\"\\ud83d\": 1}",
+    "expected_canonical": null,
+    "error": "invalid_unicode",
+    "expected_sha256": null
+  },
+  {
+    "name": "trailing-garbage-rejected",
+    "source": "RFC 8259 / I-JSON parsing",
+    "input_json": "{} {}",
+    "expected_canonical": null,
+    "error": "invalid_json",
+    "expected_sha256": null
+  },
+  {
+    "name": "top-level-scalar",
+    "source": "structural (JCS is not restricted to objects)",
+    "input_json": "42",
+    "expected_canonical": "42",
+    "error": null,
+    "expected_sha256": "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049"
+  }
+]

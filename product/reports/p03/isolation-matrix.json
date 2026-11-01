@@ -1,0 +1,14 @@
+{
+  "profile": "minimal-oci-bundle",
+  "identity": "uid=65534 gid=65534",
+  "approved_input": "alice-data",
+  "foreign_input": "cat: can't open '/work/tenant-b/input.csv': No such file or directory DENIED",
+  "host_filesystem": "cat: can't open '/etc/hostname': No such file or directory DENIED",
+  "write_attempt": "/bin/sh: can't create /work/input/blocked: Permission denied DENIED",
+  "control_network": "Connection to 127.0.0.1 18080 port [tcp/*] succeeded! CONNECTED",
+  "public_network": "EXIT=1",
+  "host_network": "EXIT=1",
+  "proxy_network": "wget: can't connect to remote host (1.1.1.1): Host is unreachable EXIT=1",
+  "proxy_note": "busybox wget ignores HTTP_PROXY; the claim is that the proxy endpoint is unreachable from the sandbox (see host_network) while control_network proves it is live",
+  "sandbox_env": "HOME=/|PATH=/bin|PWD=/|SHLVL=1|"
+}

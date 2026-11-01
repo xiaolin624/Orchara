@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "case_id": "write-receipt-lost-001",
+  "category": "approval_effects",
+  "family_id": "write-receipt-loss",
+  "split": "frozen_test",
+  "target": {
+    "kind": "debug_snapshot",
+    "id": "fixture-approved-write-v1"
+  },
+  "input": {
+    "to": "test-inbox",
+    "body": "synthetic payload"
+  },
+  "fixture_id": "stub-write-then-drop-receipt-v1",
+  "assertions": [
+    {
+      "kind": "run_state",
+      "expected": "needs_reconciliation"
+    },
+    {
+      "kind": "effect_count",
+      "capability": "test.send",
+      "expected": 1,
+      "source": "stub_ledger"
+    }
+  ],
+  "provenance": {
+    "origin": "self_created",
+    "reference": "EVALUATION.md FAULT-03",
+    "license_review": "not_applicable"
+  }
+}

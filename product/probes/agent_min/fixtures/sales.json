@@ -1,0 +1,7 @@
+{
+  "name": "sales",
+  "rows": [
+    {"id": "r1", "region": "华东", "amount": "120.50"},
+    {"id": "r2", "region": "华北", "amount": "79.50"}
+  ]
+}

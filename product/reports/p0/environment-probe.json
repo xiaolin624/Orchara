@@ -1,0 +1,212 @@
+{
+  "schema_version": "orchara.env-probe/v1",
+  "generated_at": "2026-11-01T11:07:19+00:00",
+  "task": "D00 / T001",
+  "host": {
+    "os": "Windows",
+    "release": "11",
+    "version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel",
+    "cpu_count": 12,
+    "memory_gib": 15.8,
+    "python_executable": "D:\\Python\\python.exe",
+    "python_version": "3.12.2",
+    "cwd": "E:\\Orchara"
+  },
+  "tools": [
+    {
+      "name": "go",
+      "command": "E:\\orchara-toolchains\\go\\bin\\go.exe version",
+      "available": true,
+      "version": "go version go1.27.3 windows/amd64",
+      "error": null
+    },
+    {
+      "name": "psql",
+      "command": "E:\\orchara-toolchains\\pgsql\\bin\\psql.exe --version",
+      "available": true,
+      "version": "psql (PostgreSQL) 16.4",
+      "error": null
+    },
+    {
+      "name": "git",
+      "command": "git --version",
+      "available": true,
+      "version": "git version 2.49.0.windows.1",
+      "error": null
+    },
+    {
+      "name": "python",
+      "command": "D:\\Python\\python.exe --version",
+      "available": true,
+      "version": "Python 3.12.2",
+      "error": null
+    },
+    {
+      "name": "node",
+      "command": "node --version",
+      "available": true,
+      "version": "v24.13.0",
+      "error": null
+    },
+    {
+      "name": "npm",
+      "command": "npm.cmd --version",
+      "available": true,
+      "version": "11.13.0",
+      "error": null
+    },
+    {
+      "name": "docker",
+      "command": "docker version --format {{.Server.Version}}",
+      "available": false,
+      "version": null,
+      "error": "not found on PATH and not present at the recorded path"
+    },
+    {
+      "name": "redis-server",
+      "command": "redis-server --version",
+      "available": false,
+      "version": null,
+      "error": "not found on PATH and not present at the recorded path"
+    },
+    {
+      "name": "wsl",
+      "command": "wsl.exe --version",
+      "available": true,
+      "version": "WSL 版本: 2.6.3.0",
+      "error": null
+    },
+    {
+      "name": "nvidia-smi",
+      "command": "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader",
+      "available": true,
+      "version": "NVIDIA GeForce RTX 3050 Laptop GPU, 4096 MiB",
+      "error": null
+    }
+  ],
+  "services": [
+    {
+      "name": "postgres",
+      "probe": "tcp connect 127.0.0.1:55432",
+      "port": 55432,
+      "reachable": true,
+      "owned_by_project": true,
+      "note": "isolated development cluster created by tools/pg_dev.py"
+    },
+    {
+      "name": "postgres_port_5432_foreign",
+      "probe": "tcp connect 127.0.0.1:5432",
+      "port": 5432,
+      "reachable": true,
+      "owned_by_project": false,
+      "note": "not owned by this project; credentials unknown; never used by probes"
+    },
+    {
+      "name": "redis",
+      "probe": "tcp connect 127.0.0.1:6379",
+      "port": 6379,
+      "reachable": false,
+      "owned_by_project": true,
+      "note": "expected platform dependency"
+    },
+    {
+      "name": "object_storage",
+      "probe": "tcp connect 127.0.0.1:9000",
+      "port": 9000,
+      "reachable": false,
+      "owned_by_project": true,
+      "note": "expected platform dependency"
+    }
+  ],
+  "capabilities": {
+    "go_build": {
+      "status": "available",
+      "detail": "go version go1.27.3 windows/amd64"
+    },
+    "node_build": {
+      "status": "available",
+      "detail": "v24.13.0"
+    },
+    "postgres": {
+      "status": "available",
+      "client_binary": true,
+      "reachable": true,
+      "port": 55432,
+      "detail": "owned cluster reachable on 127.0.0.1:55432",
+      "blocker": {
+        "id": "postgres_server",
+        "reason": "no reachable project-owned PostgreSQL server on the configured port; storage tickets cannot be demonstrated",
+        "unblocks": "P02 tickets"
+      }
+    },
+    "foreign_postgres": {
+      "status": "present_not_owned",
+      "detail": "a PostgreSQL listener on 127.0.0.1:5432 belongs to another installation; its credentials are unknown and probes must not use it"
+    },
+    "redis": {
+      "status": "unavailable",
+      "detail": "no Redis server accepting connections on 127.0.0.1:6379"
+    },
+    "container_runtime": {
+      "status": "unavailable",
+      "detail": "no docker CLI/daemon",
+      "blocker": {
+        "id": "container_runtime",
+        "reason": "no container runtime available; compose-based deployment is not verifiable",
+        "unblocks": "F15A/F15B deployment tickets"
+      }
+    },
+    "linux_host": {
+      "status": "unavailable",
+      "detail": "a WSL distribution is registered but this probe did not run inside it; WSL presence is not Linux isolation acceptance"
+    },
+    "linux_isolation": {
+      "status": "unavailable",
+      "detail": "no runsc/gVisor runtime could be started and verified; Windows/WSL results may not be recorded as isolation acceptance",
+      "blocker": {
+        "id": "linux_isolation",
+        "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) and root privileges was available for this probe",
+        "unblocks": "P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance"
+      }
+    },
+    "gpu": {
+      "status": "available",
+      "detail": "NVIDIA GeForce RTX 3050 Laptop GPU",
+      "vram_gib": 4.0,
+      "driver": null,
+      "blocker": {
+        "id": "gpu",
+        "reason": "no GPU reported by nvidia-smi; LoRA training experiments cannot run",
+        "unblocks": "F14 training tickets"
+      }
+    }
+  },
+  "blockers": [
+    {
+      "id": "container_runtime",
+      "reason": "no container runtime available; compose-based deployment is not verifiable",
+      "unblocks": "F15A/F15B deployment tickets"
+    },
+    {
+      "id": "linux_isolation",
+      "reason": "no Linux host with an installable sandbox runtime (runsc/gVisor) and root privileges was available for this probe",
+      "unblocks": "P03 sandbox tickets (T006/T010/T014) and F13B isolation acceptance"
+    },
+    {
+      "id": "model_credentials",
+      "reason": "no approved model-provider credentials present in the environment; only stub-model paths may be reported as executed",
+      "unblocks": "real-model profiles and provider-capacity experiments"
+    }
+  ],
+  "credential_env_present": [],
+  "probe_commands": {
+    "note": "each tool entry records the exact command that produced its version",
+    "rerun": "python product/tools/probe_environment.py --out-dir product/reports/p0"
+  },
+  "artifacts": {
+    "json": "E:\\Orchara\\product\\reports\\p0\\environment-probe.json",
+    "markdown": "E:\\Orchara\\product\\reports\\p0\\environment-probe.md"
+  }
+}

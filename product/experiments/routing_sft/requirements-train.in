@@ -1,0 +1,15 @@
+# Training dependencies for the offline LoRA experiment (P04 evidence for T004).
+#
+# T004 asks the training set to be locked separately from the runtime and test
+# sets. What is locked here is the *resolution*; what has not happened is an
+# install on a training host, because none is available (D00 blocker `gpu` for
+# the full experiment; see product/reports/p01/T004-second-environment.md).
+#
+# Regenerate with:
+#   python -m pip install --dry-run --ignore-installed \
+#       --report pip-report-train.json -r requirements-train.in
+#   python ../../probes/agent_min/lock.py pip-report-train.json requirements-train.lock.txt
+transformers==5.0.0
+peft==0.19.0
+datasets==5.0.0
+accelerate==1.13.0

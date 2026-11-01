@@ -1,0 +1,130 @@
+{
+  "probe": "p01-agent-min",
+  "task": "P01 / T002",
+  "stub": true,
+  "note": "No model provider was contacted; control-plane behaviour only.",
+  "profile": "dev-stub",
+  "command": "python -m agent_min",
+  "host": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "node": "AI"
+  },
+  "python": "3.12.2",
+  "packages": {
+    "langgraph": "1.2.4",
+    "langgraph-checkpoint-postgres": "3.0.5",
+    "pydantic": "2.12.4",
+    "jsonschema": "4.25.1",
+    "psycopg": "3.3.6"
+  },
+  "authorized_tools": [
+    "read_dataset",
+    "sum_amounts"
+  ],
+  "scenarios": {
+    "happy": {
+      "status": "completed",
+      "final": "total computed",
+      "steps": 3,
+      "tool_calls": 2,
+      "allowed_tools": [
+        "read_dataset",
+        "sum_amounts"
+      ],
+      "invoked_tools": [
+        "read_dataset",
+        "sum_amounts"
+      ],
+      "unexpected_calls": [],
+      "retries": {},
+      "structured": {
+        "total": "200.00",
+        "count": 2
+      },
+      "failures": [],
+      "model_calls": 3,
+      "hidden_retry_detected": false
+    },
+    "unauthorized": {
+      "status": "failed",
+      "final": null,
+      "steps": 1,
+      "tool_calls": 1,
+      "allowed_tools": [
+        "read_dataset",
+        "sum_amounts"
+      ],
+      "invoked_tools": [],
+      "unexpected_calls": [
+        {
+          "name": "delete_records",
+          "arguments": {
+            "table": "requests"
+          },
+          "step": 0,
+          "error": "tool 'delete_records' is not in the authorized allowlist"
+        }
+      ],
+      "retries": {},
+      "structured": null,
+      "failures": [
+        "unauthorized tool call rejected: delete_records"
+      ],
+      "model_calls": 1,
+      "hidden_retry_detected": false
+    },
+    "retry": {
+      "status": "completed",
+      "final": "computed twice",
+      "steps": 3,
+      "tool_calls": 2,
+      "allowed_tools": [
+        "read_dataset",
+        "sum_amounts"
+      ],
+      "invoked_tools": [
+        "sum_amounts"
+      ],
+      "unexpected_calls": [],
+      "retries": {
+        "sum_amounts": 1
+      },
+      "structured": {
+        "total": "10.00",
+        "count": 1
+      },
+      "failures": [],
+      "model_calls": 3,
+      "hidden_retry_detected": true
+    },
+    "bad_input": {
+      "status": "failed",
+      "final": null,
+      "steps": 1,
+      "tool_calls": 1,
+      "allowed_tools": [
+        "read_dataset",
+        "sum_amounts"
+      ],
+      "invoked_tools": [],
+      "unexpected_calls": [],
+      "retries": {},
+      "structured": null,
+      "failures": [
+        "tool sum_amounts failed: TypeError: row 0 amount must be a decimal string, got float"
+      ],
+      "model_calls": 1,
+      "hidden_retry_detected": false
+    }
+  },
+  "assertions": {
+    "happy_completed": true,
+    "happy_invoked_subset_of_allowlist": true,
+    "happy_call_count": 2,
+    "unauthorized_rejected": true,
+    "unauthorized_run_failed": true,
+    "retry_detected": true,
+    "bad_input_failed": true
+  }
+}

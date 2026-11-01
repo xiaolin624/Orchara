@@ -1,0 +1,48 @@
+{
+  "probe": "p02-artifact-pinning",
+  "task": "P02 / T009",
+  "published_before_run": {
+    "artifact_id": "artifact-v458342",
+    "graph_version": 458342,
+    "digest": "531b4553b4b03f52a49be8581858a130b1739f983ac084eb23c649a61e262df4"
+  },
+  "run": {
+    "thread": "t-8e9513104c",
+    "stage": "prepared",
+    "interrupted": true,
+    "pending_nodes": [
+      "approve"
+    ],
+    "checkpoint_id": "1f1d5fc1-0d44-6e04-8001-7bc1b09a1824",
+    "runtime_role": "orchara_worker",
+    "search_path": "checkpoint"
+  },
+  "published_after_run": {
+    "artifact_id": "artifact-v458343",
+    "graph_version": 458343,
+    "digest": "ab585a8e1543774f9fcb72936834a84f15aa5318b0ea38d1f7e4418e0fdd0b1c"
+  },
+  "resume": {
+    "thread": "t-8e9513104c",
+    "stage": "done",
+    "decision": "approve",
+    "resumed_from_pending": [
+      "approve"
+    ],
+    "finished": true,
+    "operation_rows": 1,
+    "runtime_role": "orchara_worker",
+    "pinned_artifact": "artifact-v458342",
+    "loaded_version": 458342,
+    "artifact_digest": "531b4553b4b03f52a49be8581858a130b1739f983ac084eb23c649a61e262df4"
+  },
+  "deleted_artifact_resume": {
+    "error": "artifact_unavailable",
+    "artifact_id": "artifact-v458344"
+  },
+  "assertions": {
+    "resumed_on_the_pinned_version": true,
+    "digest_is_the_pinned_one": true,
+    "deleted_artifact_reports_unavailable": true
+  }
+}

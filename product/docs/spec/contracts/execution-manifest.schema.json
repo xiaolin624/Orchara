@@ -1,0 +1,156 @@
+{
+  "type": "object",
+  "properties": {
+    "manifest_version": {
+      "const": "1.0"
+    },
+    "application_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "compiler_version": {
+      "type": "string"
+    },
+    "worker_image_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "runtime_lock_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "state_schema_version": {
+      "type": "string"
+    },
+    "definition": {
+      "type": "object"
+    },
+    "capability_card": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string"
+        },
+        "includes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expected_outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2
+        }
+      },
+      "required": [
+        "purpose",
+        "includes",
+        "excludes",
+        "required_inputs",
+        "expected_outputs",
+        "examples"
+      ],
+      "additionalProperties": false
+    },
+    "tool_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "image_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "image_digest"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "model_profile_versions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "uniqueItems": true
+    },
+    "subapp_versions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "uniqueItems": true
+    },
+    "connector_policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "policy_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "version_id",
+          "policy_sha256"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "manifest_version",
+    "application_id",
+    "source_revision",
+    "compiler_version",
+    "worker_image_digest",
+    "runtime_lock_sha256",
+    "state_schema_version",
+    "definition",
+    "capability_card",
+    "tool_artifacts",
+    "model_profile_versions",
+    "subapp_versions",
+    "connector_policies"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

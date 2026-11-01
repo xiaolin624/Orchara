@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "case_id": "invalid-empty",
+  "category": "sales",
+  "family_id": "sales-three-orders",
+  "split": "dev",
+  "target": {
+    "kind": "published_version",
+    "id": "fixture-sales-v1"
+  },
+  "input": {
+    "file_fixture": "examples/sales/input.csv"
+  },
+  "fixture_id": "sales-three-orders-v1",
+  "assertions": [],
+  "provenance": {
+    "origin": "self_created",
+    "reference": "examples/sales/input.csv",
+    "license_review": "not_applicable"
+  }
+}

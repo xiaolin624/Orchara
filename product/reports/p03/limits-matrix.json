@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "case": "timeout",
+      "exit_code": 124,
+      "stdout_bytes": 0,
+      "leftover_sandboxes_before_cleanup": 1,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": ""
+    },
+    {
+      "case": "disk",
+      "exit_code": 0,
+      "stdout_bytes": 58,
+      "leftover_sandboxes_before_cleanup": 0,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": "16777216 bytes (16.0MB) copied, 0.013612 seconds, 1.1GB/s"
+    },
+    {
+      "case": "memory",
+      "exit_code": 1,
+      "stdout_bytes": 18,
+      "leftover_sandboxes_before_cleanup": 0,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": "sh: out of memory"
+    },
+    {
+      "case": "cpu",
+      "exit_code": 137,
+      "stdout_bytes": 0,
+      "leftover_sandboxes_before_cleanup": 0,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": ""
+    },
+    {
+      "case": "fork",
+      "exit_code": 2,
+      "stdout_bytes": 0,
+      "leftover_sandboxes_before_cleanup": 0,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": ""
+    },
+    {
+      "case": "output",
+      "exit_code": 1,
+      "stdout_bytes": 65536,
+      "leftover_sandboxes_before_cleanup": 0,
+      "leftover_sandboxes_after_cleanup": 0,
+      "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "output_cap_bytes": 65536,
+  "input_removed": true,
+  "final_sandboxes": 0
+}

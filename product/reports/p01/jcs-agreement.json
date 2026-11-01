@@ -1,0 +1,411 @@
+{
+  "probe": "p01-jcs-agreement",
+  "task": "P01 / T003",
+  "spec": "RFC 8785 (JCS)",
+  "go_version": "go version go1.27.3 windows/amd64",
+  "vector_count": 40,
+  "mismatches": [],
+  "all_agree": true,
+  "records": [
+    {
+      "name": "rfc8785-3.2.2-sample",
+      "go_canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+      "go_sha256": "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb",
+      "go_error": null,
+      "python_canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+      "python_sha256": "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "rfc8785-sort-order",
+      "go_canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}",
+      "go_sha256": "5e321556d22018a9656991a9e94f77ec175fa193e52a2429d312f8419ec8b08c",
+      "go_error": null,
+      "python_canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}",
+      "python_sha256": "5e321556d22018a9656991a9e94f77ec175fa193e52a2429d312f8419ec8b08c",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "utf16-vs-codepoint-sort",
+      "go_canonical": "{\"😀\":\"emoji\",\"\":\"private use\"}",
+      "go_sha256": "9ad38f6e50794f1ee248b80027707e74932249af207322ceb60994a9f4c0b765",
+      "go_error": null,
+      "python_canonical": "{\"😀\":\"emoji\",\"\":\"private use\"}",
+      "python_sha256": "9ad38f6e50794f1ee248b80027707e74932249af207322ceb60994a9f4c0b765",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-zero-and-negative-zero",
+      "go_canonical": "{\"n\":0}",
+      "go_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0",
+      "go_error": null,
+      "python_canonical": "{\"n\":0}",
+      "python_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-minus-zero",
+      "go_canonical": "{\"n\":0}",
+      "go_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0",
+      "go_error": null,
+      "python_canonical": "{\"n\":0}",
+      "python_sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-min-positive",
+      "go_canonical": "{\"n\":5e-324}",
+      "go_sha256": "cf4df7d2834198d284947133d3ec7a66f3d94e8d447cac6a0783324211b36d43",
+      "go_error": null,
+      "python_canonical": "{\"n\":5e-324}",
+      "python_sha256": "cf4df7d2834198d284947133d3ec7a66f3d94e8d447cac6a0783324211b36d43",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-min-negative",
+      "go_canonical": "{\"n\":-5e-324}",
+      "go_sha256": "db93947692a55593072b514da386faf1a8c7dc6c49f2d037ac7d9c0f89d5956a",
+      "go_error": null,
+      "python_canonical": "{\"n\":-5e-324}",
+      "python_sha256": "db93947692a55593072b514da386faf1a8c7dc6c49f2d037ac7d9c0f89d5956a",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-max-positive",
+      "go_canonical": "{\"n\":1.7976931348623157e+308}",
+      "go_sha256": "9599e0f9672bfa5d654b432fa5f9b7ee04f35c607b3a3ff01ce97b070f8f2648",
+      "go_error": null,
+      "python_canonical": "{\"n\":1.7976931348623157e+308}",
+      "python_sha256": "9599e0f9672bfa5d654b432fa5f9b7ee04f35c607b3a3ff01ce97b070f8f2648",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-max-negative",
+      "go_canonical": "{\"n\":-1.7976931348623157e+308}",
+      "go_sha256": "f1ab4b1ad58d11c148ebb64cc86506290ab42b198162ffd4e1d2f1772d8c3a4b",
+      "go_error": null,
+      "python_canonical": "{\"n\":-1.7976931348623157e+308}",
+      "python_sha256": "f1ab4b1ad58d11c148ebb64cc86506290ab42b198162ffd4e1d2f1772d8c3a4b",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-max-positive-int",
+      "go_canonical": "{\"n\":9007199254740992}",
+      "go_sha256": "66c87d9cb3014e05a11baa97df62282d89d425f22ee15816577c84534e2ef1bb",
+      "go_error": null,
+      "python_canonical": "{\"n\":9007199254740992}",
+      "python_sha256": "66c87d9cb3014e05a11baa97df62282d89d425f22ee15816577c84534e2ef1bb",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-max-negative-int",
+      "go_canonical": "{\"n\":-9007199254740992}",
+      "go_sha256": "b05a958438727696a33ea9f819b69ca4ea39b5ee89f0f80a61d5f813875f9734",
+      "go_error": null,
+      "python_canonical": "{\"n\":-9007199254740992}",
+      "python_sha256": "b05a958438727696a33ea9f819b69ca4ea39b5ee89f0f80a61d5f813875f9734",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-2pow68",
+      "go_canonical": "{\"n\":295147905179352830000}",
+      "go_sha256": "325cc4ff312eeb1384e130b9072cebd2eca9ad95e621fb017b1ffcc161ebf477",
+      "go_error": null,
+      "python_canonical": "{\"n\":295147905179352830000}",
+      "python_sha256": "325cc4ff312eeb1384e130b9072cebd2eca9ad95e621fb017b1ffcc161ebf477",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-1e22-below",
+      "go_canonical": "{\"n\":9.999999999999997e+22}",
+      "go_sha256": "491b1f5976bc87bb471c8095f795c7d51065b16440ccd6dec5c16a28db4f93dc",
+      "go_error": null,
+      "python_canonical": "{\"n\":9.999999999999997e+22}",
+      "python_sha256": "491b1f5976bc87bb471c8095f795c7d51065b16440ccd6dec5c16a28db4f93dc",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-1e23",
+      "go_canonical": "{\"n\":1e+23}",
+      "go_sha256": "f8acd93b4d43262e8d22f393b3fc172b2608154644f68bd2295239d62451edef",
+      "go_error": null,
+      "python_canonical": "{\"n\":1e+23}",
+      "python_sha256": "f8acd93b4d43262e8d22f393b3fc172b2608154644f68bd2295239d62451edef",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-1e23-above",
+      "go_canonical": "{\"n\":1.0000000000000001e+23}",
+      "go_sha256": "7dbb03dffbdbc82effa56050f04ba388db0e16d0084dbe69012440341b65e5a8",
+      "go_error": null,
+      "python_canonical": "{\"n\":1.0000000000000001e+23}",
+      "python_sha256": "7dbb03dffbdbc82effa56050f04ba388db0e16d0084dbe69012440341b65e5a8",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-999999999999999700000",
+      "go_canonical": "{\"n\":999999999999999700000}",
+      "go_sha256": "0a3c0de48065cb644319c57ce0af93c2ef88d1f8d9f228be26bb4831391d0021",
+      "go_error": null,
+      "python_canonical": "{\"n\":999999999999999700000}",
+      "python_sha256": "0a3c0de48065cb644319c57ce0af93c2ef88d1f8d9f228be26bb4831391d0021",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-999999999999999900000",
+      "go_canonical": "{\"n\":999999999999999900000}",
+      "go_sha256": "8e51b9a1b33e4815dbf02451cf409338b6c2e4eaa3399f5fa0b72d162e48dd6e",
+      "go_error": null,
+      "python_canonical": "{\"n\":999999999999999900000}",
+      "python_sha256": "8e51b9a1b33e4815dbf02451cf409338b6c2e4eaa3399f5fa0b72d162e48dd6e",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-1e21",
+      "go_canonical": "{\"n\":1e+21}",
+      "go_sha256": "f1ee2b60ee95a3170fdc07a577e5f3514ced26867443d69da265acadead81007",
+      "go_error": null,
+      "python_canonical": "{\"n\":1e+21}",
+      "python_sha256": "f1ee2b60ee95a3170fdc07a577e5f3514ced26867443d69da265acadead81007",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-9.999999999999997e-7",
+      "go_canonical": "{\"n\":9.999999999999997e-7}",
+      "go_sha256": "ea0486d765f0e78e3cfd35b0da15c67c6c5f7aefde4dd5bc17ad8b8e95880a1f",
+      "go_error": null,
+      "python_canonical": "{\"n\":9.999999999999997e-7}",
+      "python_sha256": "ea0486d765f0e78e3cfd35b0da15c67c6c5f7aefde4dd5bc17ad8b8e95880a1f",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-0.000001",
+      "go_canonical": "{\"n\":0.000001}",
+      "go_sha256": "28343867a0be00aee19f81aa90cfd6c646878b9303fa15410d16bfd3f8894578",
+      "go_error": null,
+      "python_canonical": "{\"n\":0.000001}",
+      "python_sha256": "28343867a0be00aee19f81aa90cfd6c646878b9303fa15410d16bfd3f8894578",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-333333333.3333332",
+      "go_canonical": "{\"n\":333333333.3333332}",
+      "go_sha256": "1e2e5158c5181c3fdce46fb33314ecd3d0d65aa634f728cbf0263dccef9da48a",
+      "go_error": null,
+      "python_canonical": "{\"n\":333333333.3333332}",
+      "python_sha256": "1e2e5158c5181c3fdce46fb33314ecd3d0d65aa634f728cbf0263dccef9da48a",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-333333333.33333325",
+      "go_canonical": "{\"n\":333333333.33333325}",
+      "go_sha256": "ac4d04fb830b0f5f3c69cbabe1f395fa6461c293693aaac69e31a68d442aefd7",
+      "go_error": null,
+      "python_canonical": "{\"n\":333333333.33333325}",
+      "python_sha256": "ac4d04fb830b0f5f3c69cbabe1f395fa6461c293693aaac69e31a68d442aefd7",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-333333333.3333334",
+      "go_canonical": "{\"n\":333333333.3333334}",
+      "go_sha256": "3c8fb0b18feffd17c168b36aef586b8984d28808e4ef73f3e3b467085c079972",
+      "go_error": null,
+      "python_canonical": "{\"n\":333333333.3333334}",
+      "python_sha256": "3c8fb0b18feffd17c168b36aef586b8984d28808e4ef73f3e3b467085c079972",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-333333333.33333343",
+      "go_canonical": "{\"n\":333333333.33333343}",
+      "go_sha256": "3bec5b8b8e554841ebdf6460208c624df5fc1674a82a8bf97e0577dbb209cae7",
+      "go_error": null,
+      "python_canonical": "{\"n\":333333333.33333343}",
+      "python_sha256": "3bec5b8b8e554841ebdf6460208c624df5fc1674a82a8bf97e0577dbb209cae7",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-negative-small",
+      "go_canonical": "{\"n\":-0.0000033333333333333333}",
+      "go_sha256": "aae32db884750318e6c338f99586e0d862246d45ad53aafbd7e83dcdd037f8b3",
+      "go_error": null,
+      "python_canonical": "{\"n\":-0.0000033333333333333333}",
+      "python_sha256": "aae32db884750318e6c338f99586e0d862246d45ad53aafbd7e83dcdd037f8b3",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "number-round-to-even",
+      "go_canonical": "{\"n\":1424953923781206.2}",
+      "go_sha256": "c620a6071bc4870e99e38aeff2dbb0ae03cb7d525d60f0cad1b1abcb5bfafe05",
+      "go_error": null,
+      "python_canonical": "{\"n\":1424953923781206.2}",
+      "python_sha256": "c620a6071bc4870e99e38aeff2dbb0ae03cb7d525d60f0cad1b1abcb5bfafe05",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "string-escaping-controls",
+      "go_canonical": "{\"s\":\"\\u0000\\u0001\\b\\t\\n\\f\\r\\u001f\"}",
+      "go_sha256": "2e5a630b548a5c44e7daa747a7234ddb6039d10c46b9adaf956072a24b4b02ce",
+      "go_error": null,
+      "python_canonical": "{\"s\":\"\\u0000\\u0001\\b\\t\\n\\f\\r\\u001f\"}",
+      "python_sha256": "2e5a630b548a5c44e7daa747a7234ddb6039d10c46b9adaf956072a24b4b02ce",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "string-slash-and-quotes",
+      "go_canonical": "{\"s\":\"a/b\\\\c\\\"d\"}",
+      "go_sha256": "f530cfe2c14c038dc1a4c30cd0bd2d7dee2798f7f2332834e3c8867c275e65b3",
+      "go_error": null,
+      "python_canonical": "{\"s\":\"a/b\\\\c\\\"d\"}",
+      "python_sha256": "f530cfe2c14c038dc1a4c30cd0bd2d7dee2798f7f2332834e3c8867c275e65b3",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "empty-object",
+      "go_canonical": "{}",
+      "go_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "go_error": null,
+      "python_canonical": "{}",
+      "python_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "empty-array",
+      "go_canonical": "[]",
+      "go_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "go_error": null,
+      "python_canonical": "[]",
+      "python_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "nested-sorting",
+      "go_canonical": "{\"a\":{\"c\":5,\"d\":4},\"b\":[{\"a\":2,\"z\":1},3]}",
+      "go_sha256": "af7697ebb155863e0130438b74bde5728cdc62ced69d73386be8e1a6fb3179fc",
+      "go_error": null,
+      "python_canonical": "{\"a\":{\"c\":5,\"d\":4},\"b\":[{\"a\":2,\"z\":1},3]}",
+      "python_sha256": "af7697ebb155863e0130438b74bde5728cdc62ced69d73386be8e1a6fb3179fc",
+      "python_error": null,
+      "agrees": true
+    },
+    {
+      "name": "duplicate-key-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "duplicate_key",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "duplicate_key",
+      "agrees": true
+    },
+    {
+      "name": "nested-duplicate-key-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "duplicate_key",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "duplicate_key",
+      "agrees": true
+    },
+    {
+      "name": "nan-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "non_finite",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "non_finite",
+      "agrees": true
+    },
+    {
+      "name": "infinity-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "non_finite",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "non_finite",
+      "agrees": true
+    },
+    {
+      "name": "negative-infinity-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "non_finite",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "non_finite",
+      "agrees": true
+    },
+    {
+      "name": "lone-surrogate-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "invalid_unicode",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "invalid_unicode",
+      "agrees": true
+    },
+    {
+      "name": "lone-high-surrogate-key-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "invalid_unicode",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "invalid_unicode",
+      "agrees": true
+    },
+    {
+      "name": "trailing-garbage-rejected",
+      "go_canonical": null,
+      "go_sha256": null,
+      "go_error": "invalid_json",
+      "python_canonical": null,
+      "python_sha256": null,
+      "python_error": "invalid_json",
+      "agrees": true
+    },
+    {
+      "name": "top-level-scalar",
+      "go_canonical": "42",
+      "go_sha256": "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+      "go_error": null,
+      "python_canonical": "42",
+      "python_sha256": "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+      "python_error": null,
+      "agrees": true
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+PASS JSON syntax, JSON Schema meta-validation, 3 legal workflows, cycle and 4 boundary mutations, event fixture
+PASS component inventory references and read-commit format; 2 evaluation-case fixtures valid, empty checker rejected; NOT task/benchmark execution
+PASS OpenAPI 3.1 independent validation, references and unique operation IDs (106 operations)
+PASS PostgreSQL syntax parse (67 statements); NOT executed against a database
+PASS sales CSV/XLSX equivalence and independent Decimal fixture totals; NOT a script/Agent run
+PASS local Markdown file targets exist (heading anchors and remote URLs not verified)

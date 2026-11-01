@@ -1,3 +1,20 @@
 tools/.venv/
 tools/.deps/
 **/__pycache__/
+
+# Product workspace state (never committed)
+.scratch/
+.toolchains/
+**/.venv/
+.pytest_cache/
+
+# Local development secret (read by product/tools/pg_dev.py; never commit)
+product/.env.local
+
+# Generated pip resolution dump; the lock file is the artefact of record
+product/probes/agent_min/pip-report.json
+
+# Generated pip resolution dumps (the lock file is the artefact of record)
+product/tests/pip-report-test.json
+product/experiments/routing_sft/pip-report-train.json
+product/tests/.venv-test/
