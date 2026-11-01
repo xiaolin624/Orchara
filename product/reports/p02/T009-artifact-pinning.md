@@ -40,6 +40,16 @@ resume --thread A2 --decision approve
 PostgreSQL 的 `app.artifacts`、`app.threads`、`app.operations` 与 checkpointer 表中。
 `runtime_role` 显示执行者是受限角色 `orchara_worker`。
 
+机器可读证据：[`T009-artifact-pinning.json`](T009-artifact-pinning.json)，由
+`probes/p02_checkpoint/artifact_evidence.py` 生成（本报告不再是唯一证据）：
+
+```text
+python product/probes/p02_checkpoint/artifact_evidence.py
+→ {"resumed_on_the_pinned_version": true,
+   "digest_is_the_pinned_one": true,
+   "deleted_artifact_reports_unavailable": true}
+```
+
 ## 4. 覆盖的验收条件
 
 - [x] 发布新图后仍加载旧图

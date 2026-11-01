@@ -45,9 +45,15 @@ go -C probes/p05_dsl/go run . -corpus ../corpus.json
 - 负例都是上述文档的**单点命名变异**（`build_corpus.py` 里逐条写明改了什么），`--check` 可检出陈旧 pin。
 - 文件摘要：`corpus.json` = `fcfc0ebb4ba11525…`、`rules.json` = `c36d560d80ae9971…`。
 
-**诚实说明：** normal form 的 digest 没有第三方 oracle（JCS 向量来自 RFC 8785，这里没有对等物）。
-pin 由 Python 参考实现按文档化的规范化规则产出，再由独立的 Go 实现复现；两端共有的 bug 会同时通过，
-单端 bug 不会。canonicalisation 这一层由 T003 的 RFC 向量锚定（`go test` 每次回跑）。
+**诚实说明（复核后补充）：**
+
+- **拒绝原因是手写的，且被强制校验**：33 个负例都在 `build_corpus.py` 里逐条写明 `reason`，
+  builder 一旦发现与实现不符就 `SystemExit`；`test_corpus_is_reproducible` 会跑
+  `build_corpus.py --check`。所以"Python 对 Python 写出的期望"这一说法对**原因码不成立**。
+- **真正由实现产出的**是 valid 例的 `expected_hash`（规范化摘要）与负例的 `reasons` 细目；
+  这两者只有一个手写 canonical 锚点。规范摘要没有第三方 oracle（JCS 那层由 T003 的 RFC 向量锚定）。
+- 因此独立性来自三处：手写并被强制的 33 条原因码、独立的 Go 实现逐例复现、以及那条手写锚点。
+  想让哈希也完全独立，需要为 7 个正例各手写一份规范文本——目前只做了 1 个，属已知欠缺。
 
 ## 3. 拒绝原因与优先级
 

@@ -67,7 +67,8 @@
     ],
     "no_active_source": [
       "no_active_source:b"
-    ]
+    ],
+    "concurrent_write_error": "InvalidUpdateError"
   },
   "assertions": {
     "unselected_branch_is_skipped": true,
@@ -79,6 +80,7 @@
     "nested_join_once": true,
     "failure_still_converges": true,
     "cross_region_rejected": true,
-    "orphan_node_rejected": true
+    "orphan_node_rejected": true,
+    "engine_rejects_concurrent_writes": true
   }
 }

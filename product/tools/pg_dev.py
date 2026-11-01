@@ -30,7 +30,12 @@ import time
 from pathlib import Path
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PG_BIN = Path(os.environ.get("ORCHARA_PG_BIN", r"E:\orchara-toolchains\pgsql\bin"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolchain  # noqa: E402
+
+DEFAULT_PG_BIN = Path(
+    os.environ.get("ORCHARA_PG_BIN", str(toolchain.toolchains_root() / "pgsql" / "bin"))
+)
 DEFAULT_DATA_DIR = Path(os.environ.get("ORCHARA_PG_DATA", r"E:\orchara-pg"))
 DEFAULT_PORT = int(os.environ.get("ORCHARA_PG_PORT", "55432"))
 DEFAULT_USER = "orchara_owner"
@@ -169,6 +174,28 @@ def init_cluster() -> None:
         print(f"started cluster on 127.0.0.1:{DEFAULT_PORT}", flush=True)
 
     _ensure_database()
+
+
+def quote_literal(value: str) -> str:
+    """Quote a value for SQL. Used where a bind parameter is not available."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def run_sql(sql: str, *, database: str | None = None) -> str:
+    """Run one statement as the owner and return its trimmed output.
+
+    Public entry point for probes and tests: they used to copy this psql plumbing
+    and reach into the private `_tool`/`DEFAULT_USER` names.
+    """
+    return _psql(sql, database or DEFAULT_DB)
+
+
+def run_sql_json(sql: str, *, database: str | None = None) -> dict | None:
+    """Run a query that returns a single JSON object (or nothing)."""
+    import json
+
+    raw = run_sql(f"SELECT row_to_json(t) FROM ({sql}) AS t", database=database)
+    return json.loads(raw) if raw else None
 
 
 def _psql(sql: str, database: str = "postgres") -> str:

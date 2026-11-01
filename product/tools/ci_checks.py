@@ -8,8 +8,12 @@ without remembering five separate commands.
 ``--quick`` skips the checks that need a database or the Go toolchain, so the
 script is still useful on a machine that only has Python.
 
-Exit code 0 only when every selected check passed. A skipped check is reported
-as ``skipped`` and does not silently count as success.
+Exit code is 0 only when every selected check **ran and passed**. A skipped
+check makes the verdict ``partial`` and the exit code non-zero, because a green
+exit from a run that never executed the integration checks is exactly the
+"not run recorded as passed" failure this project forbids. ``--allow-skipped``
+exists for machines that legitimately cannot run them, and it marks the summary
+``partial`` rather than ``ok``.
 """
 
 from __future__ import annotations
@@ -24,7 +28,10 @@ from pathlib import Path
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PRODUCT_ROOT.parent
-GO = shutil.which("go") or r"E:\orchara-toolchains\go\bin\go.exe"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolchain  # noqa: E402
+
+GO = toolchain.go_binary()
 
 
 def _run(command: list[str], *, cwd: Path, timeout: int = 1800) -> tuple[int, str]:
@@ -105,10 +112,32 @@ def build_checks(quick: bool) -> list[dict]:
     return checks
 
 
+def summarise(results: list[dict], duration: float) -> dict:
+    """Build the summary. A skipped check makes the verdict ``partial``, not ``ok``."""
+    failed = [item for item in results if item["status"] == "failed"]
+    skipped = [item for item in results if item["status"] == "skipped"]
+    verdict = "failed" if failed else ("partial" if skipped else "ok")
+    return {
+        "checks": results,
+        "passed": sum(1 for item in results if item["status"] == "passed"),
+        "skipped": len(skipped),
+        "failed": [item["name"] for item in failed],
+        "skipped_names": [item["name"] for item in skipped],
+        "duration_seconds": round(duration, 1),
+        "verdict": verdict,
+        "ok": verdict == "ok",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="run the basic acceptance checks")
     parser.add_argument("--quick", action="store_true", help="skip checks needing Go or a database")
     parser.add_argument("--json", action="store_true", help="emit a JSON summary")
+    parser.add_argument(
+        "--allow-skipped",
+        action="store_true",
+        help="exit 0 for a partial run (checks that cannot run on this machine); the summary still says partial",
+    )
     args = parser.parse_args(argv)
 
     have_go = _has_go()
@@ -136,15 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
 
-    failed = [item for item in results if item["status"] == "failed"]
-    summary = {
-        "checks": results,
-        "passed": sum(1 for item in results if item["status"] == "passed"),
-        "skipped": sum(1 for item in results if item["status"] == "skipped"),
-        "failed": [item["name"] for item in failed],
-        "duration_seconds": round(time.time() - started, 1),
-        "ok": not failed,
-    }
+    summary = summarise(results, time.time() - started)
 
     if args.json:
         print(json.dumps(summary, indent=2, ensure_ascii=False))
@@ -154,8 +175,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[{marker:4}] {item['name']}")
             if item["detail"]:
                 print(f"        {item['detail']}")
-        print(f"\n{summary['passed']} passed, {summary['skipped']} skipped, {len(failed)} failed")
-    return 0 if summary["ok"] else 1
+        print(
+            f"\n{summary['passed']} passed, {summary['skipped']} skipped, "
+            f"{len(summary['failed'])} failed -> {summary['verdict']}"
+        )
+    if summary["verdict"] == "ok":
+        return 0
+    if summary["verdict"] == "partial" and args.allow_skipped:
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

@@ -43,9 +43,20 @@ ORCHARA_TEST_SECRET=leakme runsc --network=none do sh -c 'env | grep ORCHARA_TES
 | 读其他租户 `/work/tenant-b/input.csv` | `No such file or directory` → **DENIED** |
 | 读宿主 `/etc/hostname` | `No such file or directory` → **DENIED** |
 | 写 `/work/input/blocked` | `Permission denied` → **DENIED** |
-| 直连公网 `1.1.1.1:443` | **BLOCKED** |
-| 直连宿主 `127.0.0.1:55432` | **BLOCKED** |
-| 设 `HTTP(S)_PROXY` 后连公网 | **BLOCKED** |
+| 对照组：guest 侧 `nc -z` 到受控监听端口 | `succeeded! CONNECTED`（证明检测方法有效） |
+| 直连公网 `1.1.1.1:443` | `EXIT=1`（连接失败） |
+| 直连宿主受控端口 `127.0.0.1:18080` | `EXIT=1`（连接失败） |
+| 设 `HTTP_PROXY` 后 `wget http://1.1.1.1/` | `Host is unreachable`，`EXIT=1` |
+
+**复核修正**：早先这几行是 `nc … && echo CONNECTED || echo BLOCKED`，任何失败都产出同一个
+字符串，无法区分"被阻断"和"检测工具本身不可用"。现在：
+
+1. 增加**对照组**——同一个 `nc -z` 在 guest（沙箱外）对受控监听返回 `CONNECTED`，
+   证明端口活着、检测方法有效；
+2. 沙箱内不再输出布尔值，而是记录**真实退出码与错误文本**；
+3. 代理那一行如实写明：busybox `wget` **不读取** `HTTP_PROXY`，所以无法演示"经代理绕出"。
+   可证明的实质结论是**代理端点从沙箱不可达**（见直连宿主一行），拿不到的代理无法被绕过。
+   这一点写在证据 JSON 的 `proxy_note` 字段里，而不是含糊成"BLOCKED"。
 | 宿主凭据出现在沙箱 env | **不存在**（只有 `HOME/PATH/PWD/SHLVL`） |
 
 `test_isolation_matrix_blocks_every_attack` 逐条断言上述结果；

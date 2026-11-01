@@ -85,6 +85,10 @@ def test_structural_problems_are_rejected_before_execution(report: dict) -> None
 
 
 def test_engine_is_the_real_one(report: dict) -> None:
-    """Guard against the probe quietly replacing LangGraph with a stub."""
+    """A stub could not raise this: concurrent writes to a plain key are rejected."""
     assert report["engine"] == "langgraph"
-    assert report["probe"] == "p05-graph-branching"
+    assert report["rejections"]["concurrent_write_error"] == "InvalidUpdateError", (
+        "the engine did not reject a concurrent write to a non-reducer key, so it is "
+        "probably not the real runtime"
+    )
+    assert report["assertions"]["engine_rejects_concurrent_writes"] is True

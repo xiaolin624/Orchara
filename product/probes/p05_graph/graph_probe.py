@@ -255,6 +255,32 @@ def run_case(route: str) -> dict[str, Any]:
     }
 
 
+def build_racy() -> Any:
+    """Two parallel writers to the same plain key: LangGraph must reject this.
+
+    This is the engine-fidelity check: a hand-rolled stub would happily accept
+    both writes, so the error name is evidence the real engine is in play.
+    """
+
+    class RacyState(TypedDict, total=False):
+        executed: list[str]  # no reducer on purpose
+
+    def left(state: RacyState) -> dict[str, Any]:
+        return {"executed": ["left"]}
+
+    def right(state: RacyState) -> dict[str, Any]:
+        return {"executed": ["right"]}
+
+    graph = StateGraph(RacyState)
+    graph.add_node("left", left)
+    graph.add_node("right", right)
+    graph.add_edge(START, "left")
+    graph.add_edge(START, "right")
+    graph.add_edge("left", END)
+    graph.add_edge("right", END)
+    return graph.compile()
+
+
 def probe() -> dict[str, Any]:
     left = run_case("left")
     right = run_case("right")
@@ -270,6 +296,13 @@ def probe() -> dict[str, Any]:
         {"executed": [], "join_count": 0, "failed": []},
         {"configurable": {"thread_id": "t-failing"}},
     )
+
+    # Engine fidelity: the real engine refuses concurrent writes to a plain key.
+    try:
+        build_racy().invoke({"executed": []}, {"configurable": {"thread_id": "t-racy"}})
+        concurrent_write_error = None
+    except Exception as exc:  # noqa: BLE001 - the type name is the evidence
+        concurrent_write_error = type(exc).__name__
 
     invalid_cross_region = GraphSpec(
         name="cross-region",
@@ -308,6 +341,7 @@ def probe() -> dict[str, Any]:
         "rejections": {
             "cross_region_edge": validate_structure(invalid_cross_region),
             "no_active_source": validate_structure(invalid_no_source),
+            "concurrent_write_error": concurrent_write_error,
         },
         "assertions": {
             "unselected_branch_is_skipped": bool(left["skipped"]) and bool(right["skipped"]),
@@ -321,6 +355,8 @@ def probe() -> dict[str, Any]:
             "failure_still_converges": failing["join_count"] == 1 and bool(failing["failed"]),
             "cross_region_rejected": bool(validate_structure(invalid_cross_region)),
             "orphan_node_rejected": bool(validate_structure(invalid_no_source)),
+            # A stub would accept this; only a real engine rejects it.
+            "engine_rejects_concurrent_writes": concurrent_write_error == "InvalidUpdateError",
         },
     }
 

@@ -8,24 +8,28 @@
 - 证据：[`limits-matrix.json`](limits-matrix.json)
 - 测试：`pytest product/tests/p03 -q` → **24 passed**
 
-## 1. 四种超限的实测结果
+## 1. 六类超限的实测结果（复核后重跑）
 
-| 用例 | 配置 | 实测 |
+所有上限都由**运行时从 OCI spec** 施加，或由**启动器**施加，没有一条写在被测脚本里。
+
+| 用例 | 施加方式 | 实测 |
 |---|---|---|
-| 超时 | 宿主 `timeout 4` + 沙箱内 `sleep 60` | exit **124**；清理前残留 1 个沙箱 → `runsc delete --force` 后 **0** |
-| 磁盘 | `/tmp` tmpfs `size=16m`，尝试写 40 MiB | 只写入 **16,777,216 字节**（被 tmpfs 截断） |
-| 内存（OCI） | 配置 `memory.limit = 64 MiB`，分配 80 MB | **存活**（`survived=80000000`）→ 该上限**未生效** |
-| 内存（ulimit） | 启动前 `ulimit -v 65536` | `sh: out of memory`，exit 非 0 |
-| fork | `pids.limit = 256`，循环后台 `sleep` | exit **2**，迅速终止，无残留 |
+| 超时 | 宿主 `timeout 4` | exit **124**；清理前残留 1 个沙箱 → `runsc delete --force` 后 **0** |
+| 磁盘 | tmpfs `size=16m`（spec） | 只写入 **16,777,216 字节** |
+| 内存 | `process.rlimits: RLIMIT_AS=64MiB`（spec） | `sh: out of memory`，exit **1** |
+| CPU | `process.rlimits: RLIMIT_CPU=2s`（spec） | exit **137**（SIGKILL），2 秒终止 |
+| fork | `pids.limit=256`（spec） | exit **2**，迅速终止，无残留 |
+| 输出 | 启动器按 64 KiB 截断管道 | 捕获 **恰好 65,536 字节** |
 
-## 2. 一个必须写明的坏消息
+## 2. 复核修正的两个错误
 
-**OCI 的 cgroup 内存上限在这台宿主上没有生效**。宿主 `cgroup2fs` 已挂载且
-`memory` 控制器可用，但 `runsc run` 下 64 MiB 限额内仍能分配 80 MB。
+早先版本有两处不成立，已修：
 
-处置：内存改由启动器用 `ulimit -v` 强制（有效，见上表），并在测试里**保留**一条断言
-`test_the_oci_cgroup_limit_is_recorded_as_not_enforced`——如果哪天 cgroup 限额开始生效，
-这条会失败并提醒更新报告，而不是让旧结论悄悄失真。
+1. **内存不是启动器施加的**：`ulimit -v` 曾写在**被测命令里**，等于夹具自己限制自己。
+   现在改用 OCI `process.rlimits`，由 runsc 在启动时施加（`RLIMIT_AS`），实测生效。
+   顺带解决了原先"cgroup 内存上限不生效"的问题——rlimit 路径在这台宿主上可用。
+2. **CPU 与输出用例原先缺失**，而票面切片要求"限制 CPU/内存/PID/磁盘/时间/输出"。
+   现在六类齐全，`test_every_limit_kind_the_ticket_names_is_covered` 断言覆盖集合。
 
 ## 3. 资源回收
 
@@ -37,13 +41,15 @@
 
 ## 4. 失败后功能开关保持关闭
 
-`arbitrary_scripts_enabled()` 默认 **False**；`record_failure()` 只写
-`{"arbitrary_scripts": false, ...}`，不会因为一次失败反而打开开关。
-`test_feature_switch_is_off_by_default_and_stays_off_after_failure` 断言这两点。
+开关只有一个来源：环境变量 `ORCHARA_ALLOW_ARBITRARY_SCRIPTS`（与 `internal/config`
+校验的是同一个变量）。`arbitrary_scripts_enabled()` 默认 False，
+`record_failure()` **不写任何文件**、只回报当前状态——失败不可能反而打开开关，
+运行时的状态也不会再被提交进 `reports/`。早先那个 `reports/p03/feature-flag.json`
+（内容是测试自己写的字面量）已删除。
 
 ## 5. 覆盖的验收条件
 
-- [x] 超时/fork bomb/内存/磁盘超限均可停止
+- [x] 超时/fork bomb/内存/磁盘超限均可停止（另补 CPU 与输出）
 - [x] 无孤儿沙箱或残留可读输入
 - [x] 失败维持功能开关关闭
 

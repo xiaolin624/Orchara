@@ -33,7 +33,7 @@ fi
 rm -rf "$ROOTFS"
 mkdir -p "$ROOTFS"/{bin,proc,tmp,work/input}
 cp "$BUNDLE/busybox" "$ROOTFS/bin/busybox"
-for applet in sh cat ls echo id env mkdir rm sleep wc nc dd head tail tr seq kill; do
+for applet in sh cat ls echo id env mkdir rm sleep wc nc wget dd head tail tr seq kill; do
   ln -sf /bin/busybox "$ROOTFS/bin/$applet"
 done
 
@@ -86,9 +86,23 @@ approved="$(run_sandbox 'cat /work/input/input.csv 2>&1 || echo DENIED')"
 foreign="$(run_sandbox 'cat /work/tenant-b/input.csv 2>&1 || echo DENIED')"
 host_etc="$(run_sandbox 'cat /etc/hostname 2>&1 || echo DENIED')"
 write_attempt="$(run_sandbox 'echo x > /work/input/blocked 2>&1 || echo DENIED')"
-public_net="$(run_sandbox 'nc -w 3 -z 1.1.1.1 443 >/dev/null 2>&1 && echo CONNECTED || echo BLOCKED')"
-host_net="$(run_sandbox 'nc -w 3 -z 127.0.0.1 55432 >/dev/null 2>&1 && echo CONNECTED || echo BLOCKED')"
-proxy_net="$(run_sandbox 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 nc -w 3 -z 1.1.1.1 443 >/dev/null 2>&1 && echo CONNECTED || echo BLOCKED')"
+
+# A controlled listener on the guest proves the probe method itself works: the
+# same `nc -z` that says BLOCKED from inside the sandbox says CONNECTED from
+# outside it. Without this control, "BLOCKED" could just mean "nc is broken".
+PROXY_PORT=18080
+nc -l -p "$PROXY_PORT" >/dev/null 2>&1 &
+LISTENER_PID=$!
+sleep 0.4
+control_net="$(nc -w 2 -z 127.0.0.1 "$PROXY_PORT" 2>&1 && echo CONNECTED || echo BLOCKED)"
+public_net="$(run_sandbox 'nc -w 3 -z 1.1.1.1 443 2>&1; echo EXIT=$?')"
+host_net="$(run_sandbox "nc -w 3 -z 127.0.0.1 $PROXY_PORT 2>&1; echo EXIT=\$?")"
+# Proxy path: busybox wget does NOT honour HTTP_PROXY, so a proxy round-trip
+# cannot be demonstrated with this rootfs. The substantive claim is reachability:
+# the sandbox cannot reach the proxy endpoint at all, so it cannot route through
+# it. `control_network` proves the endpoint is live and the check itself works.
+proxy_net="$(run_sandbox "HTTP_PROXY=http://127.0.0.1:$PROXY_PORT HTTPS_PROXY=http://127.0.0.1:$PROXY_PORT wget -T 3 -qO- http://1.1.1.1/ 2>&1; echo EXIT=\$?")"
+kill "$LISTENER_PID" 2>/dev/null || true
 sandbox_env="$(ORCHARA_TEST_SECRET=leakme run_sandbox 'env' | sort | tr '\n' '|')"
 
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' '; }
@@ -101,9 +115,11 @@ cat <<JSON
   "foreign_input": "$(json_escape "$foreign")",
   "host_filesystem": "$(json_escape "$host_etc")",
   "write_attempt": "$(json_escape "$write_attempt")",
+  "control_network": "$(json_escape "$control_net")",
   "public_network": "$(json_escape "$public_net")",
   "host_network": "$(json_escape "$host_net")",
   "proxy_network": "$(json_escape "$proxy_net")",
+  "proxy_note": "busybox wget ignores HTTP_PROXY; the claim is that the proxy endpoint is unreachable from the sandbox (see host_network) while control_network proves it is live",
   "sandbox_env": "$(json_escape "$sandbox_env")"
 }
 JSON

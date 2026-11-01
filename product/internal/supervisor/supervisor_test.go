@@ -116,18 +116,19 @@ func TestSweepNeverRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
-	// The only verb available to the supervisor is "park".
-	if result.NeverRestartedNote == "" {
-		t.Fatal("result must state that runs are parked, not restarted")
-	}
+	// The only verb available to the supervisor is "park": there is no restart
+	// counter or flag anywhere in the result.
 	if result.RunsParked != 1 {
 		t.Fatalf("RunsParked = %d, want 1", result.RunsParked)
+	}
+	if len(store.parkArgs) != 1 {
+		t.Fatalf("expected exactly one hand-over, got %v", store.parkArgs)
 	}
 }
 
 func TestNewRequiresAStore(t *testing.T) {
-	if _, err := New(nil, Config{}); !errors.Is(err, ErrNoDatabase) {
-		t.Fatalf("expected ErrNoDatabase, got %v", err)
+	if _, err := New(nil, Config{}); !errors.Is(err, ErrNoStore) {
+		t.Fatalf("expected ErrNoStore, got %v", err)
 	}
 }
 

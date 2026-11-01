@@ -34,6 +34,8 @@ EXAMPLES = REPO_ROOT / "examples"
 LINTER = REPO_ROOT / "tools" / "validate_contracts.py"
 
 sys.path.insert(0, str(PROBE / "python"))
+sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
+import toolchain  # noqa: E402
 import validate  # noqa: E402
 
 RULES = validate.Rules.load(RULES_PATH)
@@ -265,12 +267,8 @@ def test_provenance_changes_the_artifact_and_never_the_data() -> None:
 # --------------------------------------------------------------------------
 # Go <-> Python
 # --------------------------------------------------------------------------
-GO = os.environ.get("ORCHARA_GO") or shutil.which("go") or r"E:\orchara-toolchains\go\bin\go.exe"
-GO_ENV = dict(
-    os.environ,
-    GOCACHE=os.environ.get("GOCACHE", r"E:\orchara-toolchains\gocache"),
-    GOMODCACHE=os.environ.get("GOMODCACHE", r"E:\orchara-toolchains\gomodcache"),
-)
+GO = toolchain.go_binary()
+GO_ENV = toolchain.go_env()
 
 
 @pytest.fixture(scope="session")

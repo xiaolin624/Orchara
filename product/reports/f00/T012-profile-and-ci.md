@@ -59,5 +59,7 @@ python product/tools/ci_checks.py --json     # 机器可读
 ## 6. 边界
 
 - 这是骨架：`dev-stub` 下没有真实模型调用，`real-model` 只完成**配置校验**，未接供应商。
-- 迁移目前只有 `0001_worker_lease.sql`；业务表迁移属后续票。
+- 本票只涉及 API 进程；worker / maintenance / supervisor 的骨架与迁移见
+  `reports/f00/T008-product-skeleton.md`。迁移文件随其他票增加（`0001`–`0004`），
+  这里不再逐个数列，以免与本报告写成时的快照分叉。
 - Redis / 对象存储仍未接入，故 profile 的依赖就绪只覆盖 PostgreSQL。

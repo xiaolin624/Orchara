@@ -24,7 +24,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "python"))
 import jcs  # noqa: E402
 
-GO = shutil.which("go") or r"E:\orchara-toolchains\go\bin\go.exe"
+sys.path.insert(0, str(HERE.parents[1] / "tools"))
+import toolchain  # noqa: E402
+
+GO = toolchain.go_binary()
 
 
 def build_go(destination: Path) -> Path:

@@ -86,12 +86,14 @@ def validate(request: SandboxRequest) -> list[str]:
         reasons.append("privileged mode is not available to user scripts")
     if request.uid == 0:
         reasons.append("running as uid 0 inside the sandbox is not allowed")
-    for mount in request.mounts:
-        normalised = mount.replace("\\", "/")
-        if not normalised.startswith(f"{APPROVED_MOUNT_ROOT}/"):
-            reasons.append(
-                f"mount {mount!r} is outside the approved root {APPROVED_MOUNT_ROOT}/"
-            )
+    if request.mounts:
+        # `runsc do` has no mount flag: pretending to honour a mount list would
+        # silently run the script without the input it expects. Real mounts go
+        # through the OCI bundle (probes/p03_sandbox/isolation_matrix.sh).
+        reasons.append(
+            "mounts are not supported by the 'do' launch path; use the OCI bundle "
+            "(isolation_matrix.sh) where the approved input is a read-only bind mount"
+        )
 
     for key, _value in request.env:
         if not key.startswith(APPROVED_ENV_PREFIXES):
@@ -235,7 +237,9 @@ def isolation_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
 
 
 LIMITS_SCRIPT = Path(__file__).with_name("limits_matrix.sh")
-FEATURE_FLAG_PATH = Path(__file__).resolve().parents[2] / "reports" / "p03" / "feature-flag.json"
+# One switch, not two: this is the same variable `internal/config` validates for
+# the linux-sandbox profile, so the probe and the platform cannot disagree.
+ARBITRARY_SCRIPTS_ENV = "ORCHARA_ALLOW_ARBITRARY_SCRIPTS"
 
 
 def limits_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
@@ -243,7 +247,7 @@ def limits_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
     guest_script = "/tmp/orchara-limits-matrix.sh"
     staged = _to_wsl_path(LIMITS_SCRIPT)
     command = f"tr -d '\\r' < '{staged}' > {guest_script} && bash {guest_script}"
-    completed = run_wsl(command, distro=distro, timeout=600)
+    completed = run_wsl(command, distro=distro, timeout=900)
     if completed.returncode != 0:
         raise RuntimeError(f"limits matrix failed: {completed.stderr.strip()}")
     try:
@@ -253,32 +257,22 @@ def limits_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
 
 
 def arbitrary_scripts_enabled() -> bool:
-    """Whether user scripts may run at all. Off unless explicitly enabled.
+    """Whether user scripts may run at all. Off unless the deployer enables it.
 
-    A failed limit test must never turn this on: the point of the switch is that
-    a failure leaves the capability closed.
+    Deliberately not a file the probes write: runtime state must not live in the
+    evidence directory, and a failure can never flip a switch that only the
+    deployer's environment can set.
     """
-    if not FEATURE_FLAG_PATH.exists():
-        return False
-    try:
-        payload = json.loads(FEATURE_FLAG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:  # pragma: no cover - corrupt state is closed
-        return False
-    return bool(payload.get("arbitrary_scripts", False))
+    return os.environ.get(ARBITRARY_SCRIPTS_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
 def record_failure(reason: str) -> dict[str, Any]:
-    """Record a failed sandbox run; the switch stays off."""
-    payload = {
-        "arbitrary_scripts": False,
+    """Describe a failed limit run; the switch is unaffected by design."""
+    return {
+        "arbitrary_scripts": arbitrary_scripts_enabled(),
+        "note": "a failed run never enables arbitrary script execution",
         "last_failure": reason,
-        "recorded_at": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ).isoformat(timespec="seconds"),
     }
-    FEATURE_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    FEATURE_FLAG_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return payload
 
 
 def probe(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:

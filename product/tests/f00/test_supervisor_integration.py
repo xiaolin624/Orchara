@@ -19,9 +19,10 @@ import pytest
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
+import toolchain  # noqa: E402
 import pg_dev  # noqa: E402
 
-GO = shutil.which("go") or r"E:\orchara-toolchains\go\bin\go.exe"
+GO = toolchain.go_binary()
 MIGRATION = PRODUCT_ROOT / "db" / "migrations" / "0001_worker_lease.sql"
 LEASE_KEY = 0x0C4A2E5A  # must match internal/supervisor.LeaseKey
 
@@ -159,7 +160,8 @@ def test_dead_workers_runs_are_parked_not_restarted(supervisor_binary: Path) -> 
     assert _run_state(run) == "recovery_pending", (
         "a dead worker's run must be parked, not left running and not re-executed"
     )
-    assert "parked" in result["note"]
+    # The result exposes no restart verb or flag at all: parking is the only verb.
+    assert "restarted" not in result, result
 
 
 def test_live_workers_runs_are_left_alone(supervisor_binary: Path) -> None:

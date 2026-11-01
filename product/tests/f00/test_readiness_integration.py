@@ -30,9 +30,10 @@ import pytest
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
+import toolchain  # noqa: E402
 import pg_dev  # noqa: E402
 
-GO = shutil.which("go") or r"E:\orchara-toolchains\go\bin\go.exe"
+GO = toolchain.go_binary()
 ADDR = "127.0.0.1:8099"
 BASE = f"http://{ADDR}"
 

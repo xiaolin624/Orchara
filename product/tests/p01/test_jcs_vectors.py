@@ -21,7 +21,9 @@ JCS_ROOT = PRODUCT_ROOT / "probes" / "jcs"
 VECTORS = json.loads((JCS_ROOT / "vectors.json").read_text(encoding="utf-8"))
 
 sys.path.insert(0, str(JCS_ROOT / "python"))
+sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
 import jcs  # noqa: E402
+import toolchain  # noqa: E402
 
 VALID = [case for case in VECTORS if case["expected_canonical"] is not None]
 INVALID = [case for case in VECTORS if case["expected_canonical"] is None]
@@ -90,7 +92,7 @@ def test_ensure_ascii_is_not_jcs_escaping() -> None:
 # --------------------------------------------------------------------------
 # Go <-> Python agreement
 # --------------------------------------------------------------------------
-GO = shutil.which("go") or "E:\\orchara-toolchains\\go\\bin\\go.exe"
+GO = toolchain.go_binary()
 GO_DIR = JCS_ROOT / "go"
 
 

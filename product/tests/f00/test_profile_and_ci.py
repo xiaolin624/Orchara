@@ -52,8 +52,35 @@ def test_ci_checks_quick_reports_a_machine_readable_verdict() -> None:
     summary = json.loads(completed.stdout)
 
     assert summary["ok"] is True
+    assert summary["verdict"] == "ok"
     names = {item["name"] for item in summary["checks"]}
     assert {"spec-drift", "python-tests-fast"} <= names
     assert summary["failed"] == []
-    # A skipped check must never be counted as passed.
     assert summary["passed"] + summary["skipped"] == len(summary["checks"])
+
+
+def test_a_skipped_check_is_never_reported_as_passed() -> None:
+    """The gate must not go green on a run that skipped work."""
+    sys.path.insert(0, str(PRODUCT_ROOT / "tools"))
+    import ci_checks
+
+    mixed = ci_checks.summarise(
+        [
+            {"name": "drift", "status": "passed", "detail": ""},
+            {"name": "integration", "status": "skipped", "detail": "no database"},
+        ],
+        0.1,
+    )
+    assert mixed["verdict"] == "partial"
+    assert mixed["ok"] is False
+    assert mixed["skipped_names"] == ["integration"]
+
+    clean = ci_checks.summarise([{"name": "drift", "status": "passed", "detail": ""}], 0.1)
+    assert clean["verdict"] == "ok"
+    assert clean["ok"] is True
+
+    broken = ci_checks.summarise(
+        [{"name": "drift", "status": "failed", "detail": "boom"}], 0.1
+    )
+    assert broken["verdict"] == "failed"
+    assert broken["ok"] is False

@@ -433,7 +433,10 @@ def default_toolchain_dir() -> Path:
     override = os.environ.get("ORCHARA_TOOLCHAINS")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[3] / "orchara-toolchains"
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import toolchain
+
+    return toolchain.toolchains_root()
 
 
 def build_report(toolchain_dir: Path | None, out_dir: Path) -> dict[str, Any]:

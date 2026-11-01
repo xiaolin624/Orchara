@@ -22,8 +22,8 @@ import (
 // LeaseKey is the advisory-lock key that serialises supervisor passes.
 const LeaseKey int64 = 0x0C4A_2E5A // "orchara" markers; value is arbitrary but stable.
 
-// ErrNoDatabase is returned when the supervisor was not given a database.
-var ErrNoDatabase = errors.New("supervisor requires a database connection")
+// ErrNoStore is returned when the supervisor was not given a store.
+var ErrNoStore = errors.New("supervisor requires a store")
 
 // Store is the persistence the sweep needs. Kept as an interface so the
 // decision logic can be tested without a live PostgreSQL instance.
@@ -36,26 +36,22 @@ type Store interface {
 }
 
 // Result is what one sweep did, and what it refused to do.
+//
+// It never restarts anything: a stale worker's runs are parked in
+// `recovery_pending`, and restarting needs evidence that the old process and its
+// writes drained (see probes/p04_drain).
 type Result struct {
-	Skipped            bool     `json:"skipped"`
-	SkipReason         string   `json:"skip_reason,omitempty"`
-	StaleWorkers       []string `json:"stale_workers"`
-	LiveWorkers        int      `json:"live_workers"`
-	RunsParked         int      `json:"runs_parked"`
-	CutoffSeconds      float64  `json:"cutoff_seconds"`
-	NeverRestartedNote string   `json:"note"`
+	Skipped       bool     `json:"skipped"`
+	SkipReason    string   `json:"skip_reason,omitempty"`
+	StaleWorkers  []string `json:"stale_workers"`
+	LiveWorkers   int      `json:"live_workers"`
+	RunsParked    int      `json:"runs_parked"`
+	CutoffSeconds float64  `json:"cutoff_seconds"`
 }
 
 // Config tunes the staleness window.
 type Config struct {
 	StaleAfter time.Duration
-}
-
-func (c Config) validate() (Config, error) {
-	if c.StaleAfter <= 0 {
-		c.StaleAfter = 60 * time.Second
-	}
-	return c, nil
 }
 
 // Supervisor performs sweep passes against a Store.
@@ -68,13 +64,12 @@ type Supervisor struct {
 // New builds a Supervisor.
 func New(store Store, cfg Config) (*Supervisor, error) {
 	if store == nil {
-		return nil, ErrNoDatabase
+		return nil, ErrNoStore
 	}
-	validated, err := cfg.validate()
-	if err != nil {
-		return nil, err
+	if cfg.StaleAfter <= 0 {
+		cfg.StaleAfter = 60 * time.Second
 	}
-	return &Supervisor{store: store, cfg: validated, now: time.Now}, nil
+	return &Supervisor{store: store, cfg: cfg, now: time.Now}, nil
 }
 
 // WithClock overrides the clock (tests only).
@@ -86,9 +81,8 @@ func (s *Supervisor) WithClock(now func() time.Time) *Supervisor {
 // Sweep runs one pass. It never restarts a run.
 func (s *Supervisor) Sweep(ctx context.Context) (Result, error) {
 	result := Result{
-		StaleWorkers:       []string{},
-		CutoffSeconds:      s.cfg.StaleAfter.Seconds(),
-		NeverRestartedNote: "stale runs are parked in recovery_pending; restart needs evidence that the old process and its writes drained",
+		StaleWorkers:  []string{},
+		CutoffSeconds: s.cfg.StaleAfter.Seconds(),
 	}
 
 	acquired, err := s.store.TryAcquireLease(ctx)

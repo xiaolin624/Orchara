@@ -53,7 +53,8 @@
 
 ## 6. 边界
 
-- 门禁目前是探针层（Python）；把它接进 `cmd/supervisor` 的恢复路径属 T013。
+- 门禁目前是探针层（Python）。T013 交付的是 fencing token 与能力校验，**并未**把它接进
+  `cmd/supervisor` 的恢复路径；`cmd/supervisor` 仍是"只停靠"，恢复决策尚未接线。
 - 数据库"排空"用 `pending_writes` 计数 + `idle in transaction` 会话数近似；
   PostgreSQL 的 WAL 落盘与复制滞后未纳入，属运维层检查。
 - 沙箱判定按 id 精确匹配；同一 run 起了多个沙箱的场景未覆盖。

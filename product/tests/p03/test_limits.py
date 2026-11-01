@@ -1,15 +1,12 @@
 """P03/T014: over-limit scripts are stopped and their resources reclaimed.
 
-The matrix is honest about one gap: the OCI cgroup memory limit is not honoured
-on this host, so an 80 MiB allocation survives a 64 MiB limit. Memory is
-therefore enforced by the launcher with ``ulimit -v``, and the test asserts both
-facts - the enforced path works and the un-enforced path is recorded rather than
-hidden.
+Every limit is applied by the runtime from the OCI spec (rlimits, tmpfs size,
+pids limit) or by the launcher (host timeout, output cap) — never inside the
+script under test, because a fixture that limits itself proves nothing.
 """
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -47,7 +44,7 @@ def _case(matrix: dict, name: str) -> dict:
     for case in matrix["cases"]:
         if case["case"] == name:
             return case
-    raise AssertionError(f"case {name} missing from {list(c['case'] for c in matrix['cases'])}")
+    raise AssertionError(f"case {name} missing from {[c['case'] for c in matrix['cases']]}")
 
 
 @guest
@@ -66,18 +63,27 @@ def test_disk_usage_cannot_exceed_the_tmpfs(matrix: dict) -> None:
 
 
 @guest
-def test_memory_is_enforced_by_the_launcher(matrix: dict) -> None:
-    case = _case(matrix, "memory_ulimit")
+def test_memory_is_enforced_by_the_runtime(matrix: dict) -> None:
+    """RLIMIT_AS comes from the OCI spec, not from the script."""
+    case = _case(matrix, "memory")
     assert case["exit_code"] != 0, "an over-limit allocation must fail"
-    assert "out of memory" in case["tail"].lower()
+    assert "out of memory" in case["tail"].lower(), case["tail"]
 
 
 @guest
-def test_the_oci_cgroup_limit_is_recorded_as_not_enforced(matrix: dict) -> None:
-    """Honesty check: the un-enforced path must stay visible in the evidence."""
-    case = _case(matrix, "memory_oci")
-    assert "survived=80000000" in case["tail"], (
-        "if the cgroup limit starts working, update the report instead of leaving this assertion"
+def test_cpu_is_enforced_by_the_runtime(matrix: dict) -> None:
+    """RLIMIT_CPU kills a busy loop without any help from the script."""
+    case = _case(matrix, "cpu")
+    assert case["exit_code"] != 0, "a CPU-bound loop must be stopped"
+    assert case["exit_code"] == 137, f"expected SIGKILL from RLIMIT_CPU, got {case['exit_code']}"
+
+
+@guest
+def test_output_is_capped_by_the_launcher(matrix: dict) -> None:
+    case = _case(matrix, "output")
+    cap = matrix["output_cap_bytes"]
+    assert case["stdout_bytes"] == cap, (
+        f"captured {case['stdout_bytes']} bytes, expected the {cap}-byte cap"
     )
 
 
@@ -96,19 +102,22 @@ def test_no_orphan_sandboxes_or_leftover_input(matrix: dict) -> None:
         assert case["leftover_sandboxes_after_cleanup"] == 0, case
 
 
-def test_feature_switch_is_off_by_default_and_stays_off_after_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_every_limit_kind_the_ticket_names_is_covered(matrix: dict) -> None:
+    """The ticket asks for CPU / memory / PID / disk / time / output."""
+    covered = {case["case"] for case in matrix["cases"]}
+    assert {"timeout", "disk", "memory", "cpu", "fork", "output"} <= covered
+
+
+def test_feature_switch_is_off_by_default_and_only_the_deployer_can_enable_it(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed limit run must leave arbitrary script execution disabled.
-
-    The flag file is redirected into tmp so running the suite cannot rewrite the
-    committed evidence under reports/p03/.
-    """
-    monkeypatch.setattr(probe, "FEATURE_FLAG_PATH", tmp_path / "feature-flag.json")
-
+    """A failed run must never enable arbitrary script execution."""
+    monkeypatch.delenv(probe.ARBITRARY_SCRIPTS_ENV, raising=False)
     assert probe.arbitrary_scripts_enabled() is False
+
     record = probe.record_failure("timeout case exceeded its limit")
     assert record["arbitrary_scripts"] is False
     assert probe.arbitrary_scripts_enabled() is False
-    # the failure is recorded, but the capability stays closed
-    assert (tmp_path / "feature-flag.json").exists()
+
+    monkeypatch.setenv(probe.ARBITRARY_SCRIPTS_ENV, "true")
+    assert probe.arbitrary_scripts_enabled() is True

@@ -162,32 +162,14 @@ def collect_sandbox(sandbox_id: str) -> SandboxEvidence:
 
 
 def collect_db(run_id: str) -> DbEvidence:
-    import os
-
-    env = dict(os.environ)
-    env["PGPASSWORD"] = pg_dev.load_secret()
+    """Read the write-drain evidence. SQL values are quoted, never interpolated raw."""
 
     def scalar(sql: str) -> int:
-        completed = subprocess.run(
-            [
-                pg_dev._tool("psql"),
-                "-h", "127.0.0.1",
-                "-p", str(pg_dev.DEFAULT_PORT),
-                "-U", pg_dev.DEFAULT_USER,
-                "-d", pg_dev.DEFAULT_DB,
-                "-tAc", sql,
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            timeout=120,
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(f"psql failed: {completed.stderr.strip()}")
-        return int(completed.stdout.strip() or 0)
+        return int(pg_dev.run_sql(sql).strip() or 0)
 
-    pending = scalar(f"SELECT count(*) FROM app.pending_writes WHERE run_id = '{run_id}'")
+    pending = scalar(
+        f"SELECT count(*) FROM app.pending_writes WHERE run_id = {pg_dev.quote_literal(run_id)}"
+    )
     idle = scalar(
         "SELECT count(*) FROM pg_stat_activity "
         "WHERE state = 'idle in transaction' AND usename LIKE 'orchara%'"
