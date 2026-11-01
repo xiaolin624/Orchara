@@ -32,6 +32,7 @@
 | T008 | F00 | 启动产品并在浏览器看到真实健康状态 | passed | `reports/f00/T008-product-skeleton.md`、`cmd/api/`、`internal/health/`（4 passed） |
 | T012 | F00 | 按环境 profile 启动并重现一次 CI 验收 | passed | `reports/f00/T012-profile-and-ci.md`、`internal/config/`、`tools/ci_checks.py`（15 passed） |
 | T015 | F01 | 从空数据库建立管理员并邀请激活用户 | passed | `reports/f01/T015-identity-bootstrap.md`、`db/migrations/0006_identity_core.sql`、`internal/db/migrate.go`、`cmd/admin/`、`internal/identity/`、`internal/api/`、`tests/f01/`（37 passed） |
+| T017 | F01 | 用户登录、刷新身份并安全登出 | passed | `reports/f01/T017-login-and-csrf.md`、`internal/identity/csrf.go`、`internal/api/authz.go`、`internal/api/loginlimit.go`、`internal/api/server.go`、`apps/web/src/login.html`、`apps/web/src/assets/app.js`、`tests/f01/test_t017_*.py`（63 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -48,17 +49,21 @@ Profile/CI、沙箱隔离与资源回收、租约与丢回执。
 仍未实现（属后续票，不在本批范围）：业务模块（身份/目录/请求/路由/执行/评测/RAG/记忆）、
 前端画布、编译器与十类节点、发布门禁、部署与灾备。仓库 open issue 仍为 108 个。
 
-## F01 身份（进行中，5 票）
+## F01 身份（进行中，5 票：T015、T017 已完成）
 
-F01 按 DESIGN 顺序推进：T015 → T017 → T019 → T020 → T021。T015 是第一个。
+F01 按 DESIGN 顺序推进：T015 → T017 → T019 → T020 → T021。T015、T017 已完成。
 
 | 票 | 状态 | 交付 / 证据 |
 |---|---|---|
 | T015 | passed | 迁移链从空库可执行（0006 身份六表 + 0005 条件授权修复）、`cmd/admin migrate/bootstrap`、邀请/激活/登录三条契约端点、admin/activate 页面；`reports/f01/T015-identity-bootstrap.md`、`tests/f01/`（37 passed，真实 PG + 真实二进制 + 真实 HTTP） |
-| T017–T021 | not_started | 登录完整生命周期/CSRF/限流、授权与 applications 读模型、API key、禁用与 handover |
+| T017 | passed | 登出/`GET /auth/me`/页面刷新恢复身份、CSRF 强制（会话绑定的 HMAC 派生 token，零迁移）、统一授权助手 `authorize(w,r,role)`、登录限流 5 次/60 秒；`reports/f01/T017-login-and-csrf.md`、`internal/identity/csrf.go`、`internal/api/{authz,loginlimit,server,cookies}.go`、`apps/web/src/login.html`、`tests/f01/test_t017_*.py`（`tests/f01` 共 63 passed） |
+| T019–T021 | not_started | 授权与 applications 读模型、API key、禁用与 handover |
 
 T015 只交付身份表与三条端点；`applications`、`resource_grants`、`policy_epochs`、`api_keys`
-尚未创建，仍属 T019/T020。CSRF 强制、登出、`/auth/me` 与登录限流属 T017，本票不宣称已完成。
+尚未创建，仍属 T019/T020。T017 已补齐 CSRF 强制、登出、`/auth/me` 与登录限流；
+限流当前是**单进程内存态**（多实例不共享，属 F15B），已记录在 T017 报告 §7。
+T019 的授权入口是 `authorize(w, r, requiredRole)`，bearer key 只在
+`internal/api/authz.go` 的 `authenticate` 内新增分支（见 T017 报告 §8）。
 
 ## 第二轮复核修复（2026-11-01）
 
