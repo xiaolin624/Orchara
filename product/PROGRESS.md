@@ -104,6 +104,21 @@
 训练锁只做到**解析**：安装验证记 `install_verified: false` / `not_run`，因为没有训练宿主与冻结数据，
 不把"能解析"写成"装过"。
 
+## T010 侦察发现（尚未修复，先记录）
+
+在 WSL2 + runsc 上做 T010（越权文件/网络）侦察时，实测到一个真实缺陷：
+
+```text
+ORCHARA_TEST_SECRET=leakme runsc --network=none do sh -c 'env | grep ORCHARA_TEST_SECRET'
+→ ORCHARA_TEST_SECRET=leakme        # 宿主环境变量被继承进沙箱
+```
+
+`runsc do` 会继承宿主环境，因此"脚本读不到凭据"**当前并不成立**。修复方向：沙箱启动时
+清空宿主环境、只传批准的变量（或改用 OCI spec 显式给 env）。这条必须先修，T010 才能如实通过。
+
+同批侦察中已成立的部分：`--network=none` 下外连 `1.1.1.1:443` 与宿主 `127.0.0.1:55432`
+均被阻断（`OSError` / `ConnectionRefusedError`）。
+
 
 ## 记录模板
 
