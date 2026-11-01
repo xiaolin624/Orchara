@@ -62,11 +62,19 @@ python tools/bootstrap_probe.py            # 或 --recreate 重建
 python tools/sbom.py                       # 生成 reports/p01/sbom.json
 
 # 启动产品骨架（F00）：浏览器打开 http://127.0.0.1:8088/
+$env:ORCHARA_PROFILE  = "dev-stub"          # 必填，缺失即拒绝启动
 $env:ORCHARA_DB_DSN   = (python tools/pg_dev.py dsn)
 $env:ORCHARA_HTTP_ADDR = "127.0.0.1:8088"
 $env:ORCHARA_WEB_DIR  = "apps/web/src"
 go run ./cmd/api
 ```
+
+可选 profile：`dev-stub` / `linux-sandbox` / `real-model` / `capacity-stub`。
+非 `linux-sandbox` 下启用 `ORCHARA_ALLOW_ARBITRARY_SCRIPTS=true` 会被拒绝；
+`real-model` 需要 `ORCHARA_MODEL_ENDPOINT` 与 `ORCHARA_MODEL_SECRET_REF`（只接受
+`env:NAME` / `file:NAME`，不接受 URL 或路径）。
+
+一键基础检查：`python tools/ci_checks.py`（无 Go/数据库时加 `--quick`）。
 
 健康检查同时提供契约路径 `/health/live`、`/health/ready`（`contracts/openapi.json`
 的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。

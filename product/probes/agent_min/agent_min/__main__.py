@@ -206,9 +206,40 @@ def build_report() -> dict[str, Any]:
     return report
 
 
+def append_stub_ledger(report: dict[str, Any], ledger_path: Path) -> None:
+    """Record a stub run in a separate, append-only ledger.
+
+    Stub results must be distinguishable from real ones long after the fact, so
+    each run appends one line naming the profile and a digest of the report.
+    """
+    import hashlib
+    from datetime import datetime, timezone
+
+    entry = {
+        "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "probe": report["probe"],
+        "profile": report["profile"],
+        "stub": True,
+        "python": report["python"],
+        "host_platform": report["host"]["platform"],
+        "report_digest": hashlib.sha256(
+            json.dumps(report, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+    }
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with ledger_path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="P01 minimal-agent probe")
     parser.add_argument("--out", type=Path, default=None, help="write JSON report here")
+    parser.add_argument(
+        "--ledger",
+        type=Path,
+        default=PROBE_ROOT.parents[1] / "reports" / "p01" / "stub-ledger.jsonl",
+        help="append-only stub ledger to record this run in",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -216,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        if report["stub"]:
+            append_stub_ledger(report, args.ledger)
     if not args.quiet:
         json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")

@@ -21,6 +21,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
 )
 
@@ -35,33 +36,30 @@ func main() {
 }
 
 func run(logger *log.Logger) error {
-	addr := env("ORCHARA_HTTP_ADDR", defaultAddr)
-	dsn := os.Getenv("ORCHARA_DB_DSN")
-	webDir := env("ORCHARA_WEB_DIR", filepath.Join("apps", "web", "src"))
+	cfg, err := config.Load(config.FromEnv())
+	if err != nil {
+		// Refuse to start rather than serve as a healthy-looking corpse.
+		return fmt.Errorf("configuration rejected: %w", err)
+	}
 
 	var db *sql.DB
-	var dbCheck health.Check
-	if dsn == "" {
-		// Not configured is not the same as healthy: readiness stays failed.
-		logger.Print("ORCHARA_DB_DSN is not set; readiness will report not_configured")
-	} else {
-		opened, err := sql.Open("pgx", dsn)
-		if err != nil {
-			// Deliberately not including the DSN: it carries credentials.
-			return errors.New("cannot open database handle")
-		}
-		opened.SetMaxOpenConns(4)
-		opened.SetConnMaxLifetime(5 * time.Minute)
-		db = opened
-		defer db.Close()
-		dbCheck = func(ctx context.Context) error {
-			var one int
-			return db.QueryRowContext(ctx, "SELECT 1").Scan(&one)
-		}
+	opened, openErr := sql.Open("pgx", cfg.DBDSN)
+	if openErr != nil {
+		// Deliberately not including the DSN: it carries credentials.
+		return errors.New("cannot open database handle")
+	}
+	opened.SetMaxOpenConns(4)
+	opened.SetConnMaxLifetime(5 * time.Minute)
+	db = opened
+	defer db.Close()
+	dbCheck := func(ctx context.Context) error {
+		var one int
+		return db.QueryRowContext(ctx, "SELECT 1").Scan(&one)
 	}
 
 	reporter := health.New(map[string]health.Check{"database": dbCheck}, 2*time.Second).
-		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton"))
+		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton")).
+		WithProfile(string(cfg.Profile), cfg.Stub())
 
 	mux := http.NewServeMux()
 	// Contract paths (contracts/openapi.json: /health/live, /health/ready with
@@ -72,7 +70,7 @@ func run(logger *log.Logger) error {
 	mux.HandleFunc("/readyz", reporter.Ready)
 	mux.HandleFunc("/api/status", reporter.Status)
 
-	indexPath := filepath.Join(webDir, "index.html")
+	indexPath := filepath.Join(cfg.WebDir, "index.html")
 	if _, err := os.Stat(indexPath); err != nil {
 		return fmt.Errorf("web entry not found at %s (set ORCHARA_WEB_DIR)", indexPath)
 	}
@@ -85,7 +83,7 @@ func run(logger *log.Logger) error {
 	})
 
 	server := &http.Server{
-		Addr:              addr,
+		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -100,7 +98,8 @@ func run(logger *log.Logger) error {
 		_ = server.Shutdown(ctx)
 	}()
 
-	logger.Printf("listening on http://%s/ (web: %s)", addr, indexPath)
+	logger.Printf("listening on http://%s/ (profile=%s stub=%t web=%s)",
+		cfg.HTTPAddr, cfg.Profile, cfg.Stub(), indexPath)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http server failed: %w", err)
 	}

@@ -20,6 +20,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -64,15 +65,18 @@ def _get(path: str) -> tuple[int, str]:
         return exc.code, exc.read().decode("utf-8", errors="replace")
 
 
-@pytest.fixture(scope="module")
-def api_server(tmp_path_factory: pytest.TempPathFactory):
+_BINARY: Path | None = None
+
+
+def _build_api(tmp_path: Path | None = None) -> Path:
+    """Build the API once per session; reused by the fixture and failure tests."""
+    global _BINARY
+    if _BINARY is not None and _BINARY.exists():
+        return _BINARY
     if not Path(GO).exists():
         pytest.skip("Go toolchain not available")
-    if not pg_dev.is_running():
-        pytest.skip("isolated development cluster is not running (run tools/pg_dev.py init)")
-
-    binary_dir = tmp_path_factory.mktemp("api")
-    binary = binary_dir / ("orchara-api.exe" if sys.platform == "win32" else "orchara-api")
+    out_dir = tmp_path or Path(tempfile.mkdtemp(prefix="orchara-api-"))
+    binary = out_dir / ("orchara-api.exe" if sys.platform == "win32" else "orchara-api")
     build = subprocess.run(
         [GO, "build", "-o", str(binary), "./cmd/api"],
         cwd=PRODUCT_ROOT,
@@ -82,8 +86,19 @@ def api_server(tmp_path_factory: pytest.TempPathFactory):
     )
     if build.returncode != 0:
         pytest.fail(f"go build failed:\n{build.stdout}\n{build.stderr}")
+    _BINARY = binary
+    return binary
+
+
+@pytest.fixture(scope="module")
+def api_server(tmp_path_factory: pytest.TempPathFactory):
+    if not pg_dev.is_running():
+        pytest.skip("isolated development cluster is not running (run tools/pg_dev.py init)")
+
+    binary = _build_api(tmp_path_factory.mktemp("api"))
 
     env = dict(os.environ)
+    env["ORCHARA_PROFILE"] = "dev-stub"
     env["ORCHARA_DB_DSN"] = pg_dev.dsn()
     env["ORCHARA_HTTP_ADDR"] = ADDR
     env["ORCHARA_WEB_DIR"] = str(PRODUCT_ROOT / "apps" / "web" / "src")
@@ -120,6 +135,60 @@ def test_liveness_and_readiness_with_database_up(api_server) -> None:
     payload = json.loads(ready_body)
     assert payload["status"] == "ready"
     assert payload["checks"]["database"]["status"] == "ok"
+
+
+def test_status_reports_the_profile_and_marks_stub_results(api_server) -> None:
+    """A stub environment must be identifiable from the API, not just the docs."""
+    code, body = _get("/api/status")
+    assert code == 200
+    payload = json.loads(body)
+    assert payload["profile"] == "dev-stub"
+    assert payload["stub_results"] is True
+
+
+def test_status_and_failure_payloads_expose_only_approved_metadata(api_server) -> None:
+    """T012: a failure log must not carry anything beyond the agreed fields."""
+    allowed = {
+        "status",
+        "service",
+        "version",
+        "profile",
+        "stub_results",
+        "uptime_seconds",
+        "checks",
+    }
+    code, body = _get("/api/status")
+    assert code == 200
+    payload = json.loads(body)
+    assert set(payload) <= allowed, f"unexpected fields: {set(payload) - allowed}"
+
+    for check in payload["checks"].values():
+        assert set(check) <= {"status", "detail"}, f"unexpected check fields: {set(check)}"
+
+
+def test_startup_is_refused_without_a_profile() -> None:
+    """T012: missing required configuration must refuse startup, not degrade."""
+    binary = _build_api()
+    env = dict(os.environ)
+    env.pop("ORCHARA_PROFILE", None)
+    env["ORCHARA_DB_DSN"] = pg_dev.dsn()
+    env["ORCHARA_HTTP_ADDR"] = "127.0.0.1:8098"
+    env["ORCHARA_WEB_DIR"] = str(PRODUCT_ROOT / "apps" / "web" / "src")
+
+    completed = subprocess.run(
+        [str(binary)],
+        cwd=PRODUCT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode != 0, "the API started without a profile"
+    output = (completed.stdout or "") + (completed.stderr or "")
+    assert "ORCHARA_PROFILE" in output, output
+    # the refusal must not echo the credential it was given
+    secret = pg_dev.load_secret()
+    assert secret not in output, "the refusal message leaked the database password"
 
 
 def test_contract_paths_are_served(api_server) -> None:

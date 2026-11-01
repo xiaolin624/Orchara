@@ -30,7 +30,7 @@
 | T007 | P05 | 用同一 corpus 校验两语言的变量和类型 | not_started | — |
 | T011 | P05 | 在真实图引擎中验证分支和汇合结果 | not_started | — |
 | T008 | F00 | 启动产品并在浏览器看到真实健康状态 | passed | `reports/f00/T008-product-skeleton.md`、`cmd/api/`、`internal/health/`（4 passed） |
-| T012 | F00 | 按环境 profile 启动并重现一次 CI 验收 | not_started | — |
+| T012 | F00 | 按环境 profile 启动并重现一次 CI 验收 | passed | `reports/f00/T012-profile-and-ci.md`、`internal/config/`、`tools/ci_checks.py`（15 passed） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 

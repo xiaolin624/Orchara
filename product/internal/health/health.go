@@ -29,6 +29,8 @@ type Reporter struct {
 	timeout   time.Duration
 	startedAt time.Time
 	version   string
+	profile   string
+	stub      bool
 }
 
 // New builds a Reporter. A nil check is treated as "dependency not configured"
@@ -43,6 +45,14 @@ func New(checks map[string]Check, timeout time.Duration) *Reporter {
 // WithVersion overrides the reported build version.
 func (r *Reporter) WithVersion(version string) *Reporter {
 	r.version = version
+	return r
+}
+
+// WithProfile records the environment profile and whether its results are stub
+// output, so a status page can never imply real-model behaviour.
+func (r *Reporter) WithProfile(profile string, stub bool) *Reporter {
+	r.profile = profile
+	r.stub = stub
 	return r
 }
 
@@ -72,20 +82,24 @@ func (r *Reporter) Evaluate(ctx context.Context) (bool, map[string]CheckResult) 
 }
 
 type statusPayload struct {
-	Status     string                 `json:"status"`
-	Service    string                 `json:"service"`
-	Version    string                 `json:"version"`
-	UptimeSecs int64                  `json:"uptime_seconds"`
-	Checks     map[string]CheckResult `json:"checks,omitempty"`
+	Status      string                 `json:"status"`
+	Service     string                 `json:"service"`
+	Version     string                 `json:"version"`
+	Profile     string                 `json:"profile,omitempty"`
+	StubResults bool                   `json:"stub_results"`
+	UptimeSecs  int64                  `json:"uptime_seconds"`
+	Checks      map[string]CheckResult `json:"checks,omitempty"`
 }
 
 func (r *Reporter) payload(status string, checks map[string]CheckResult) statusPayload {
 	return statusPayload{
-		Status:     status,
-		Service:    "orchara-api",
-		Version:    r.version,
-		UptimeSecs: int64(time.Since(r.startedAt).Seconds()),
-		Checks:     checks,
+		Status:      status,
+		Service:     "orchara-api",
+		Version:     r.version,
+		Profile:     r.profile,
+		StubResults: r.stub,
+		UptimeSecs:  int64(time.Since(r.startedAt).Seconds()),
+		Checks:      checks,
 	}
 }
 
