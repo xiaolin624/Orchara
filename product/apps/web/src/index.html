@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 平台状态（F00 骨架）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.5; }
+    h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+    .sub { opacity: .65; font-size: .85rem; margin-bottom: 1.5rem; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-width: 60rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem; }
+    .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
+    .value { font-size: 1.5rem; font-weight: 600; margin-top: .35rem; }
+    .ok { color: #15803d; }
+    .bad { color: #b91c1c; }
+    .warn { color: #a16207; }
+    ul { padding-left: 1.1rem; margin: .5rem 0 0; font-size: .85rem; }
+    code { font-size: .8rem; opacity: .8; }
+  </style>
+</head>
+<body>
+  <h1>Orchara 平台状态</h1>
+  <p class="sub">
+    这是 F00 骨架页面：显示真实进程与依赖状态，<strong>不是</strong>业务功能。
+    数据来自 <code>/api/status</code>，每 3 秒刷新。
+  </p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">存活 (liveness)</div>
+      <div class="value" id="live">…</div>
+      <div class="label" style="margin-top:.6rem">版本</div>
+      <div id="version">…</div>
+    </div>
+    <div class="card">
+      <div class="label">就绪 (readiness)</div>
+      <div class="value" id="ready">…</div>
+      <div class="label" style="margin-top:.6rem">已运行</div>
+      <div id="uptime">…</div>
+    </div>
+    <div class="card">
+      <div class="label">依赖检查</div>
+      <ul id="checks"><li>…</li></ul>
+    </div>
+  </div>
+
+  <p class="sub" style="margin-top:1.5rem" id="stamp"></p>
+
+  <script>
+    const liveEl = document.getElementById('live');
+    const readyEl = document.getElementById('ready');
+    const versionEl = document.getElementById('version');
+    const uptimeEl = document.getElementById('uptime');
+    const checksEl = document.getElementById('checks');
+    const stampEl = document.getElementById('stamp');
+
+    function formatUptime(seconds) {
+      if (typeof seconds !== 'number') return '…';
+      const m = Math.floor(seconds / 60);
+      return m > 0 ? `${m} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
+    }
+
+    async function refresh() {
+      try {
+        const status = await (await fetch('/api/status', { cache: 'no-store' })).json();
+        liveEl.textContent = '运行中';
+        liveEl.className = 'value ok';
+        versionEl.textContent = status.version ?? '…';
+        uptimeEl.textContent = formatUptime(status.uptime_seconds);
+
+        const ready = status.status === 'ready';
+        readyEl.textContent = ready ? '就绪' : '未就绪';
+        readyEl.className = 'value ' + (ready ? 'ok' : 'bad');
+
+        checksEl.innerHTML = '';
+        for (const [name, result] of Object.entries(status.checks ?? {})) {
+          const li = document.createElement('li');
+          li.textContent = `${name}: ${result.status}`;
+          li.className = result.status === 'ok' ? 'ok' : (result.status === 'not_configured' ? 'warn' : 'bad');
+          checksEl.appendChild(li);
+        }
+        stampEl.textContent = '最后更新：' + new Date().toLocaleTimeString();
+      } catch (err) {
+        liveEl.textContent = '无法连接';
+        liveEl.className = 'value bad';
+        readyEl.textContent = '未知';
+        readyEl.className = 'value warn';
+        stampEl.textContent = '请求失败：' + err;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

@@ -29,7 +29,7 @@
 | T018 | P04 | 写成功丢回执后恢复仍只写一次 | blocked | 依赖 T016 |
 | T007 | P05 | 用同一 corpus 校验两语言的变量和类型 | not_started | — |
 | T011 | P05 | 在真实图引擎中验证分支和汇合结果 | not_started | — |
-| T008 | F00 | 启动产品并在浏览器看到真实健康状态 | not_started | — |
+| T008 | F00 | 启动产品并在浏览器看到真实健康状态 | passed | `reports/f00/T008-product-skeleton.md`、`cmd/api/`、`internal/health/`（4 passed） |
 | T012 | F00 | 按环境 profile 启动并重现一次 CI 验收 | not_started | — |
 
 ## 环境事实（D00 实测）

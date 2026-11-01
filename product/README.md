@@ -44,8 +44,25 @@ python tools/sync_spec.py --check
 # 环境探测（生成 reports/p0/environment-probe.{json,md}）
 python tools/probe_environment.py
 
-# 工具测试
-python -m pytest tests/tooling -q
+# 隔离开发数据库（本机 5432 已被无关服务占用，这里用 55432）
+python tools/pg_dev.py init
+python tools/pg_dev.py status
+
+# 启动产品骨架（F00）：浏览器打开 http://127.0.0.1:8088/
+$env:ORCHARA_DB_DSN   = (python tools/pg_dev.py dsn)
+$env:ORCHARA_HTTP_ADDR = "127.0.0.1:8088"
+$env:ORCHARA_WEB_DIR  = "apps/web/src"
+go run ./cmd/api
+```
+
+页面每 3 秒读取 `/api/status`，显示**真实**的存活与依赖就绪状态；
+`/readyz` 在数据库不可用时返回 503，不会因为"进程还活着"就报告就绪。
+
+## 测试
+
+```powershell
+python -m pytest tests -q        # 工具 + 探针 + 集成（集成需 Go 与开发库）
+go test ./internal/health/       # 健康检查单元测试
 ```
 
 规格自带的静态校验（在仓库根目录执行）：
