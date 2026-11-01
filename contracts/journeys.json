@@ -1,0 +1,201 @@
+{
+  "schema_version": "1.0",
+  "note": "Static closure matrix. Does not execute journeys or prove business acceptance.",
+  "journeys": [
+    {
+      "id": "bootstrap-login",
+      "operation_ids": [
+        "inviteUser",
+        "activateUser",
+        "login",
+        "getIdentity",
+        "updatePrincipal"
+      ],
+      "tables": [
+        "principals",
+        "users",
+        "activation_tokens",
+        "sessions",
+        "role_bindings"
+      ],
+      "criterion": "首个管理员可创建并激活下一用户；禁用立即阻止新访问",
+      "cli": [
+        "cmd/admin bootstrap"
+      ]
+    },
+    {
+      "id": "model-validation",
+      "operation_ids": [
+        "registerModel",
+        "validateModel",
+        "getEvaluation",
+        "getEvaluationReport",
+        "listModels"
+      ],
+      "tables": [
+        "model_profile_versions",
+        "evaluation_jobs",
+        "background_jobs",
+        "evaluation_reports"
+      ],
+      "criterion": "模型候选先验证再应用引用，无自举循环",
+      "cli": []
+    },
+    {
+      "id": "draft-evaluate-publish",
+      "operation_ids": [
+        "createApplication",
+        "saveDraft",
+        "debugDraft",
+        "evaluateDraft",
+        "getEvaluation",
+        "getEvaluationReport",
+        "submitApplication",
+        "reviewPublication",
+        "getVersion"
+      ],
+      "tables": [
+        "application_drafts",
+        "execution_snapshots",
+        "evaluation_jobs",
+        "publication_reviews",
+        "application_versions"
+      ],
+      "criterion": "相同快照hash报告才能发布，debug不要求先发布",
+      "cli": []
+    },
+    {
+      "id": "request-and-result",
+      "operation_ids": [
+        "createConversation",
+        "submitRequest",
+        "getRequest",
+        "replyInteraction",
+        "getRun",
+        "runEvents",
+        "listMessages",
+        "downloadArtifact"
+      ],
+      "tables": [
+        "conversations",
+        "requests",
+        "interactions",
+        "runs",
+        "run_events",
+        "artifacts"
+      ],
+      "criterion": "202后可选择/澄清，终态产物经授权下载",
+      "cli": []
+    },
+    {
+      "id": "worker-finalization",
+      "operation_ids": [
+        "claimJob",
+        "heartbeat",
+        "submitWorkerResult",
+        "confirmAttemptExit",
+        "getRun"
+      ],
+      "tables": [
+        "jobs",
+        "run_attempts",
+        "quota_allocations"
+      ],
+      "criterion": "结果与退出证据双到齐才终态，缺证据挂起",
+      "cli": []
+    },
+    {
+      "id": "write-approval",
+      "operation_ids": [
+        "invokeCapability",
+        "prepareApproval",
+        "getApproval",
+        "decideApproval",
+        "submitWorkerResult",
+        "confirmAttemptExit",
+        "reconcileOperation"
+      ],
+      "tables": [
+        "operations",
+        "approvals",
+        "run_attempts"
+      ],
+      "criterion": "精确参数批准，写后丢回执不补发",
+      "cli": []
+    },
+    {
+      "id": "personal-memory",
+      "operation_ids": [
+        "proposeMemoryCandidate",
+        "listMemoryCandidates",
+        "decideMemoryCandidate",
+        "getMemory",
+        "updateMemory",
+        "deleteMemory",
+        "getDeletion"
+      ],
+      "tables": [
+        "memory_candidates",
+        "memories",
+        "memory_embeddings",
+        "deletion_jobs"
+      ],
+      "criterion": "确认前不可召回，重复确认幂等，删除传播",
+      "cli": []
+    },
+    {
+      "id": "knowledge-ingestion",
+      "operation_ids": [
+        "createUpload",
+        "completeUpload",
+        "createKnowledgeBase",
+        "ingestDocument",
+        "getKnowledgeDocument",
+        "claimBackgroundJob",
+        "completeBackgroundJob",
+        "deleteDocument"
+      ],
+      "tables": [
+        "knowledge_bases",
+        "knowledge_documents",
+        "knowledge_chunks",
+        "background_jobs"
+      ],
+      "criterion": "失败可见，删除后晚到索引不能激活",
+      "cli": []
+    },
+    {
+      "id": "service-account",
+      "operation_ids": [
+        "createServiceAccount",
+        "createApiKey",
+        "grantResource",
+        "submitRequest",
+        "decideApproval",
+        "revokeApiKey"
+      ],
+      "tables": [
+        "principals",
+        "api_keys",
+        "resource_grants"
+      ],
+      "criterion": "账号scope与ACL同时满足，个人数据不借负责人，写操作人类批准",
+      "cli": []
+    },
+    {
+      "id": "background-processing",
+      "operation_ids": [
+        "claimBackgroundJob",
+        "heartbeatBackgroundJob",
+        "completeBackgroundJob",
+        "getBackgroundJob"
+      ],
+      "tables": [
+        "background_jobs",
+        "platform_model_calls"
+      ],
+      "criterion": "任务源版本/租约/幂等成立，Redis丢唤醒不丢事实",
+      "cli": []
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+"""Generate the implementation DAG and API journey review matrix; no product tasks run."""
+import json
+from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[1]
+def save(path,value):
+    p=ROOT/path;p.parent.mkdir(parents=True,exist_ok=True)
+    p.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+tasks=[]
+def task(id,title,deps,artifacts,done,docs):
+    tasks.append(dict(id=id,title=title,depends_on=deps,artifacts=artifacts,completion=done,read=docs,initial_status='not_started'))
+task('D00','环境、路径与既有代码盘点',[],['PROGRESS.md','reports/environment.json'],'记录实际版本/可用工具、产品与上游路径、已有修改；缺条件标blocked，不打印密钥',['HANDOFF.md','BOOTSTRAP.md'])
+task('P01','解析并验证稳定依赖组合',['D00'],['versions.lock.json','reports/p0/dependencies.md'],'DeepAgents/LangChain/LangGraph/checkpointer最小调用、工具清单、JCS跨语言向量通过，精确包/镜像版本落盘',['ARCHITECTURE.md','IMPLEMENTATION-DETAILS.md'])
+task('P02','最小检查点、中断与旧图恢复探针',['P01'],['reports/p0/persistence.md'],'固定fixture图持久化→退出→同制品恢复；新版不能替代旧图，访问定位不等于授权',['EXECUTION.md'])
+task('P03','Linux沙箱隔离探针',['P01'],['reports/p0/sandbox.md'],'文件/网络/资源/退出负例有真实Linux证据；失败保持任意上传关闭',['SECURITY.md','OPERATIONS.md'])
+task('P04','最小租约、监督退出和故障探针',['P02'],['reports/p0/lease.md'],'失联不双跑，确认进程/沙箱/DB写排空才恢复，未知外部写不重发',['EXECUTION.md','IMPLEMENTATION-DETAILS.md'])
+task('P05','结构化DSL与框架编译探针',['P01'],['reports/p0/compiler.md'],'Go/Python固定corpus与LangGraph执行结果一致，条件/并行/嵌套/skip/非法跨区用例明确',['WORKFLOW-SPEC.md','COMPILER-CONTRACT.md'])
+task('F00','产品单体骨架、配置和契约同步',['P01'],['go.mod','apps/web/package.json','worker/pyproject.toml','deploy/config.example.yaml'],'建立模块与契约同步/校验命令、健康检查、严格配置、stub/real profile区分',['BOOTSTRAP.md','ARCHITECTURE.md'])
+task('F01','迁移、账号启动、权限与服务账号',['F00'],['db/migrations','cmd/admin','internal/identity','internal/policy'],'临时PG建库约束通过；首管理员/邀请激活/禁用/Key/跨用户权限闭环，敏感内容不进日志',['SECURITY.md','DATA-MODEL.md','IMPLEMENTATION-DETAILS.md'])
+task('F00B','持久后台任务控制器',['F01'],['internal/background','cmd/maintenance'],'固定handler领取/租约/去重/源版本检查；Redis重启不丢任务、旧token拒绝提交',['BACKGROUND-JOBS.md'])
+task('F02A','草稿、能力卡与固定执行快照',['F01','P05'],['internal/catalog','tests/contracts/snapshots'],'ETag保存、私有debug快照、manifest规范字节/hash/依赖归属正确；尚不假造发布报告',['DATA-MODEL.md','IMPLEMENTATION-DETAILS.md'])
+task('F04A','线性四节点编译与画布配置',['F02A','P02','P05'],['worker/platform_worker/compiler','apps/web/src/canvas'],'start/python/agent/end的Schema/绑定/结果契约对齐；先可用stub adapter测试',['WORKFLOW-SPEC.md','COMPILER-CONTRACT.md','UX.md'])
+task('F03','Run、worker/supervisor与事件协议',['F01','F02A','P02','P04'],['internal/execution','worker/platform_worker/transport'],'领取/心跳/结果提议/退出finalizer/取消/保守恢复/持久SSE测试通过',['EXECUTION.md','STATE-MACHINES.md','IMPLEMENTATION-DETAILS.md'])
+task('F05','固定工具构建、沙箱和产物协议',['F01','F00B','P03'],['internal/capabilities','deploy/policies','worker/platform_worker/nodes'],'预置工具可运行；不可信构建/上传开放前通过隔离，输出data/文件/日志独立验证',['WORKFLOW-SPEC.md','SECURITY.md'])
+task('F06','模型注册验证与受控调用/审批',['F03','F05','F00B'],['internal/capabilities','worker/platform_worker/agents'],'候选模型先验证后共享；stream/tool/usage与单一retry权威、proposal审批、unknown回执成立',['IMPLEMENTATION-DETAILS.md','API.md','BACKGROUND-JOBS.md'])
+task('F13A','最小TaskRunner与可信报告生成',['F03','F04A','F05','F06'],['internal/evaluation','tests/acceptance','reports/acceptance'],'销售真值、坏输入、隔离、取消与报告绑定通过；空checker/not_run不能passed',['TESTING-AND-DATASETS.md','EVALUATION.md'])
+task('F02B','管理员审核与发布门禁',['F02A','F13A'],['internal/catalog/publish','apps/web/src/admin'],'只批准同hash和可信报告，通过后固定版本；源改动/错报告被拒绝',['IMPLEMENTATION-DETAILS.md','API.md'])
+task('F08','目录路由、会话和澄清',['F02B','F03','F06','F00B'],['internal/requests','internal/routing','apps/web/src/chat'],'授权候选→选择/澄清/Run；明确版本入口与队列、过期交互闭环，无Run模型调用入账',['ROUTING-MEMORY-KNOWLEDGE.md','BACKGROUND-JOBS.md'])
+task('F15A','开发部署与销售冒烟',['F00','F01','F03','F05','F06'],['deploy/compose','README.md'],'实现真实启动/迁移/bootstrap命令，干净环境运行明确profile，未具备能力不伪装生产验收',['BOOTSTRAP.md','OPERATIONS.md'])
+task('F07','子应用和专家委派',['F02B','F04A','F06'],['internal/execution/children','worker/platform_worker/agents'],'固定子版本/独立thread、调用幂等、ACL交集、父预算与独立槽不死锁',['EXECUTION.md'])
+task('F09','个人记忆基线与候选决策',['F01','F03','F06'],['internal/memory','tests/integration/memory'],'确认/冲突/来源/用户应用隔离/删除基线通过；Mem0 C04对照不强制采用',['ROUTING-MEMORY-KNOWLEDGE.md'])
+task('F10','组织知识摄取、检索与引用',['F01','F05','F06','F00B'],['internal/knowledge','tests/integration/rag'],'资料/片段出处、当前ACL过滤、索引晚到/撤销/空检索，C03解析分块对照有结果',['ROUTING-MEMORY-KNOWLEDGE.md','BACKGROUND-JOBS.md'])
+task('F04B','完整十节点与结构化区域整合',['F04A','F06','F07','F10'],['worker/platform_worker/nodes','apps/web/src/canvas'],'condition/join/model/approval/retrieve/call_app集成，嵌套区域与并行恢复不串状态',['COMPILER-CONTRACT.md','WORKFLOW-SPEC.md'])
+task('F11','删除传播、诊断授权与审计',['F03','F09','F10','F00B'],['internal/artifacts','internal/audit','tests/security/deletion'],'artifact/checkpoint/索引/cache/记忆副本清理及备份删除账本；诊断限范围/时效',['DATA-POLICY.md','SECURITY.md','OPERATIONS.md'])
+task('F12','完整Web/REST/SSE闭环',['F02B','F04B','F07','F08','F09','F10','F11'],['apps/web','tests/contracts/api','tests/acceptance/journeys'],'所有契约路径实现或有明确非首版标注；角色/分页/ETag/服务账号/异步任务各旅程可执行',['API.md','UX.md'])
+task('F13B','完整质量、安全、故障、容量验收',['F12'],['reports/security','reports/capacity','reports/acceptance'],'硬门禁真实通过，质量adapter C05和任务集C06可复现或有可信淘汰结论；stub与真实模型分报',['EVALUATION.md','TESTING-AND-DATASETS.md'])
+task('F14','路由LoRA独立实验与登记',['F08','F13A'],['experiments/routing_sft','reports/training'],'同基模强基线/留出/消融/成本有真实结果；可无收益但不能未运行即完成',['TRAINING-EXPERIMENT.md'])
+task('F15B','完整首版部署、升级与恢复交付',['F13B','F14','F15A'],['reports/recovery','deploy','README.md'],'新机器完整部署、迁移/备份恢复与删除回放演练、已知限制/能力证据齐备',['OPERATIONS.md','REQUIREMENTS-TRACEABILITY.md'])
+save('contracts/task-graph.json',dict(schema_version='1.0',status='implementation_spec_not_run',tasks=tasks,milestones=[dict(id='M1',description='首周纵向切片，不等于完整首版',requires=['F02B','F08','F13A','F15A']),dict(id='V1',description='完整首版',requires=['F15B'])]))
+journeys=[]
+def journey(id,ops,tables,criterion,cli=None):
+    journeys.append(dict(id=id,operation_ids=ops,tables=tables,criterion=criterion,cli=cli or []))
+journey('bootstrap-login',['inviteUser','activateUser','login','getIdentity','updatePrincipal'],['principals','users','activation_tokens','sessions','role_bindings'],'首个管理员可创建并激活下一用户；禁用立即阻止新访问',['cmd/admin bootstrap'])
+journey('model-validation',['registerModel','validateModel','getEvaluation','getEvaluationReport','listModels'],['model_profile_versions','evaluation_jobs','background_jobs','evaluation_reports'],'模型候选先验证再应用引用，无自举循环')
+journey('draft-evaluate-publish',['createApplication','saveDraft','debugDraft','evaluateDraft','getEvaluation','getEvaluationReport','submitApplication','reviewPublication','getVersion'],['application_drafts','execution_snapshots','evaluation_jobs','publication_reviews','application_versions'],'相同快照hash报告才能发布，debug不要求先发布')
+journey('request-and-result',['createConversation','submitRequest','getRequest','replyInteraction','getRun','runEvents','listMessages','downloadArtifact'],['conversations','requests','interactions','runs','run_events','artifacts'],'202后可选择/澄清，终态产物经授权下载')
+journey('worker-finalization',['claimJob','heartbeat','submitWorkerResult','confirmAttemptExit','getRun'],['jobs','run_attempts','quota_allocations'],'结果与退出证据双到齐才终态，缺证据挂起')
+journey('write-approval',['invokeCapability','prepareApproval','getApproval','decideApproval','submitWorkerResult','confirmAttemptExit','reconcileOperation'],['operations','approvals','run_attempts'],'精确参数批准，写后丢回执不补发')
+journey('personal-memory',['proposeMemoryCandidate','listMemoryCandidates','decideMemoryCandidate','getMemory','updateMemory','deleteMemory','getDeletion'],['memory_candidates','memories','memory_embeddings','deletion_jobs'],'确认前不可召回，重复确认幂等，删除传播')
+journey('knowledge-ingestion',['createUpload','completeUpload','createKnowledgeBase','ingestDocument','getKnowledgeDocument','claimBackgroundJob','completeBackgroundJob','deleteDocument'],['knowledge_bases','knowledge_documents','knowledge_chunks','background_jobs'],'失败可见，删除后晚到索引不能激活')
+journey('service-account',['createServiceAccount','createApiKey','grantResource','submitRequest','decideApproval','revokeApiKey'],['principals','api_keys','resource_grants'],'账号scope与ACL同时满足，个人数据不借负责人，写操作人类批准')
+journey('background-processing',['claimBackgroundJob','heartbeatBackgroundJob','completeBackgroundJob','getBackgroundJob'],['background_jobs','platform_model_calls'],'任务源版本/租约/幂等成立，Redis丢唤醒不丢事实')
+save('contracts/journeys.json',dict(schema_version='1.0',note='Static closure matrix. Does not execute journeys or prove business acceptance.',journeys=journeys))
+save('examples/fixture-registry.json',dict(status='design_fixture_not_deployed',application_id='33333333-3333-4333-8333-333333333333',tool_version_id='11111111-1111-4111-8111-111111111111',model_profile_version_id='22222222-2222-4222-8222-222222222222',input='sales/input.csv',expected='sales/expected.json',note='IDs/digests are illustrative. Implementation seed-demo must build/validate real artifacts and use the normal evaluation/publication gates, not register placeholder image digests as production-ready.'))
+print('Generated implementation DAG, API journey matrix and fixture registry; no product tasks executed.')

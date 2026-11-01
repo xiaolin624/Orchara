@@ -1,0 +1,14 @@
+{
+  "status": "not_resolved",
+  "read_commits": {
+    "vue_flow": "17953c329db2d5dc5f5097370cbf5e1173bab520",
+    "deepagents": "e21ce33d4486899069dda55254e6ec56e874a854",
+    "langgraph": "e5c961d7fbe7ca6fdd4c94c84d90511372514d55",
+    "opensandbox": "c2f55b20e945d89efe3d35220942a997a3551751",
+    "llamafactory": "9997aa078b4da35e04bb492a8a27d45141f4b80b"
+  },
+  "installed_packages": null,
+  "worker_image_digest": null,
+  "embedding_model_revision": null,
+  "note": "Reading anchors only. Fill exact resolved distributions/digests after P0; do not claim these constitute a tested lock."
+}

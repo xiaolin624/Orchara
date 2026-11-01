@@ -1,0 +1,5 @@
+# Install exact validation environment recorded by pip freeze after first execution.
+jsonschema
+openapi-spec-validator
+pglast
+openpyxl

@@ -1,0 +1,192 @@
+{
+  "manifest_version": "1.0",
+  "application_id": "33333333-3333-4333-8333-333333333333",
+  "source_revision": 1,
+  "compiler_version": "fixture-compiler-1",
+  "worker_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "runtime_lock_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "state_schema_version": "fixture-state-1",
+  "definition": {
+    "dsl_version": "1.0",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "artifact_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": false
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "report",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "inputs": {},
+        "config": {},
+        "output_schema": {
+          "type": "object"
+        }
+      },
+      {
+        "id": "stats",
+        "type": "python",
+        "inputs": {
+          "file": {
+            "ref": "input#/file"
+          }
+        },
+        "config": {
+          "tool_version": "11111111-1111-4111-8111-111111111111"
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "string"
+            },
+            "regions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "order_count": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "regions",
+            "order_count"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "id": "analysis",
+        "type": "agent",
+        "inputs": {
+          "stats": {
+            "ref": "node:stats#"
+          }
+        },
+        "config": {
+          "model_profile_version": "22222222-2222-4222-8222-222222222222",
+          "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+          "tool_versions": [],
+          "subapp_versions": [],
+          "max_turns": 12
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "report": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "report"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "inputs": {
+          "report": {
+            "ref": "node:analysis#/report"
+          },
+          "summary": {
+            "ref": "node:stats#"
+          }
+        },
+        "config": {},
+        "output_schema": {
+          "type": "object"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "start",
+        "target": "stats"
+      },
+      {
+        "source": "stats",
+        "target": "analysis"
+      },
+      {
+        "source": "analysis",
+        "target": "end"
+      }
+    ],
+    "policy": {
+      "max_active_seconds": 900,
+      "max_child_depth": 3,
+      "max_child_calls": 12,
+      "budget_limit": "1.00",
+      "currency": "USD"
+    }
+  },
+  "capability_card": {
+    "purpose": "销售文件分析",
+    "includes": [
+      "CSV/XLSX统计"
+    ],
+    "excludes": [
+      "生产系统写入"
+    ],
+    "required_inputs": [
+      "file"
+    ],
+    "expected_outputs": [
+      "report",
+      "summary"
+    ],
+    "examples": [
+      "分析上传销售额",
+      "汇总各地区订单"
+    ]
+  },
+  "tool_artifacts": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "model_profile_versions": [
+    "22222222-2222-4222-8222-222222222222"
+  ],
+  "subapp_versions": [],
+  "connector_policies": []
+}

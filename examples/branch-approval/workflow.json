@@ -1,0 +1,153 @@
+{
+  "dsl_version": "1.0",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "requires_approval": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "requires_approval"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "inputs": {},
+      "config": {},
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "choose",
+      "type": "condition",
+      "inputs": {
+        "requires_approval": {
+          "ref": "input#/requires_approval"
+        }
+      },
+      "config": {
+        "join_id": "join",
+        "cases": [
+          {
+            "input": "requires_approval",
+            "op": "eq",
+            "value": true,
+            "port": "yes"
+          }
+        ],
+        "default_port": "no"
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "approve",
+      "type": "approval",
+      "inputs": {
+        "proposal": {
+          "literal": {
+            "purpose": "仅示范人工业务确认，不授权任意后续写入"
+          }
+        }
+      },
+      "config": {
+        "title": "业务确认",
+        "expires_seconds": 3600
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "direct",
+      "type": "model",
+      "inputs": {
+        "task": {
+          "literal": "输出无需人工确认的说明"
+        }
+      },
+      "config": {
+        "model_profile_version": "22222222-2222-4222-8222-222222222222",
+        "prompt_template": "{{task}}",
+        "response_mode": "json"
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "join",
+      "type": "join",
+      "inputs": {},
+      "config": {
+        "fork_id": "choose",
+        "mode": "all_active",
+        "required_sources": [
+          "approve",
+          "direct"
+        ],
+        "optional_sources": []
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "inputs": {
+        "results": {
+          "ref": "node:join#/results"
+        }
+      },
+      "config": {},
+      "output_schema": {
+        "type": "object"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "start",
+      "target": "choose"
+    },
+    {
+      "source": "choose",
+      "target": "approve",
+      "port": "yes"
+    },
+    {
+      "source": "choose",
+      "target": "direct",
+      "port": "no"
+    },
+    {
+      "source": "approve",
+      "target": "join"
+    },
+    {
+      "source": "direct",
+      "target": "join"
+    },
+    {
+      "source": "join",
+      "target": "end"
+    }
+  ],
+  "policy": {
+    "max_active_seconds": 900,
+    "max_child_depth": 3,
+    "max_child_calls": 12,
+    "budget_limit": "1.00",
+    "currency": "USD"
+  }
+}

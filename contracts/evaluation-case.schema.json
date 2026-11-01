@@ -1,0 +1,218 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "enum": [
+        "sales",
+        "routing",
+        "rag",
+        "memory",
+        "delegation",
+        "approval_effects",
+        "lifecycle"
+      ]
+    },
+    "family_id": {
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "frozen_test"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "published_version",
+            "debug_snapshot"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "fixture_id": {
+      "type": "string"
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "json_equals"
+              },
+              "pointer": {
+                "type": "string"
+              },
+              "expected": {}
+            },
+            "required": [
+              "kind",
+              "pointer",
+              "expected"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "decimal_equals"
+              },
+              "pointer": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "string",
+                "pattern": "^-?\\d+(\\.\\d+)?$"
+              }
+            },
+            "required": [
+              "kind",
+              "pointer",
+              "expected"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "run_state"
+              },
+              "expected": {
+                "enum": [
+                  "succeeded",
+                  "failed",
+                  "cancelled",
+                  "needs_reconciliation",
+                  "recovery_pending"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "expected"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "effect_count"
+              },
+              "capability": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "source": {
+                "const": "stub_ledger"
+              }
+            },
+            "required": [
+              "kind",
+              "capability",
+              "expected",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "citation_sources"
+              },
+              "allowed_source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "require_at_least_one": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "allowed_source_ids",
+              "require_at_least_one"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "enum": [
+            "self_created",
+            "adapted_external"
+          ]
+        },
+        "reference": {
+          "type": "string"
+        },
+        "license_review": {
+          "enum": [
+            "not_applicable",
+            "pending",
+            "reviewed"
+          ]
+        }
+      },
+      "required": [
+        "origin",
+        "reference",
+        "license_review"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "case_id",
+    "category",
+    "family_id",
+    "split",
+    "target",
+    "input",
+    "fixture_id",
+    "assertions",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-platform:evaluation-case:1.0"
+}

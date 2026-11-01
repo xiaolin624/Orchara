@@ -1,0 +1,113 @@
+{
+  "dsl_version": "1.0",
+  "input_schema": {
+    "type": "object"
+  },
+  "output_schema": {
+    "type": "object"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "inputs": {},
+      "config": {},
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "left",
+      "type": "model",
+      "inputs": {
+        "task": {
+          "literal": "摘要"
+        }
+      },
+      "config": {
+        "model_profile_version": "22222222-2222-4222-8222-222222222222",
+        "prompt_template": "{{task}}",
+        "response_mode": "json"
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "right",
+      "type": "model",
+      "inputs": {
+        "task": {
+          "literal": "风险清单"
+        }
+      },
+      "config": {
+        "model_profile_version": "22222222-2222-4222-8222-222222222222",
+        "prompt_template": "{{task}}",
+        "response_mode": "json"
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "join",
+      "type": "join",
+      "inputs": {},
+      "config": {
+        "fork_id": "start",
+        "mode": "all_active",
+        "required_sources": [
+          "left",
+          "right"
+        ],
+        "optional_sources": []
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "inputs": {
+        "results": {
+          "ref": "node:join#/results"
+        }
+      },
+      "config": {},
+      "output_schema": {
+        "type": "object"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "start",
+      "target": "left"
+    },
+    {
+      "source": "start",
+      "target": "right"
+    },
+    {
+      "source": "left",
+      "target": "join"
+    },
+    {
+      "source": "right",
+      "target": "join"
+    },
+    {
+      "source": "join",
+      "target": "end"
+    }
+  ],
+  "policy": {
+    "max_active_seconds": 900,
+    "max_child_depth": 3,
+    "max_child_calls": 12,
+    "budget_limit": "1.00",
+    "currency": "USD"
+  }
+}
