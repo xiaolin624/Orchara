@@ -14,6 +14,12 @@
 | Python（参考实现） | `probes/p05_dsl/python/validate.py` | 仅标准库；规范化复用 `probes/jcs/python/jcs.py`（P01/T003） |
 | Go（发布侧复验） | `probes/p05_dsl/go/`（自带 `go.mod`） | 仅标准库；JCS 序列化半部分移植自 T003，并用同一批向量回查 |
 
+> **已知重复代码（如实记录）**：`probes/p05_dsl/go/jcs.go` 是
+> `probes/jcs/go/jcs.go` 的副本，不是共享依赖。原因是两个 Go 模块各自独立、且 T003
+> 的实现是 `package main`（不可 import）。缓解措施：本票的 `go test` 会拿 T003 的 RFC
+> 向量回跑这份副本，一旦漂移会失败；彻底的修法是先把 T003 拆成可 import 的库 + 命令，
+> 属重构，未在本票做。
+
 两端各有一个 CLI，输出同一份 canonical 信封：
 
 ```powershell
