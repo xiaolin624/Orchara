@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Run the P01 minimal-agent probe and emit a structured result.
+
+Three scenarios are executed against the same authorized tool set:
+
+``happy``         two authorized calls, then a final answer;
+``unauthorized``  the model asks for a tool that is not on the allowlist;
+``retry``         the same call is replayed, which must be reported as a retry.
+
+Everything is a stub: no provider is contacted, so nothing here is evidence of
+model quality or production capacity.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import platform
+import sys
+from importlib import metadata
+from pathlib import Path
+from typing import Any
+
+from .model import Action, ScriptedModel
+from .runner import run_agent
+from .tools import make_tools
+
+PROBE_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = PROBE_ROOT / "fixtures"
+
+TRACKED_PACKAGES = ("langgraph", "langgraph-checkpoint-postgres", "pydantic", "jsonschema", "psycopg")
+
+
+def _package_versions() -> dict[str, str | None]:
+    versions: dict[str, str | None] = {}
+    for name in TRACKED_PACKAGES:
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:  # pragma: no cover - env dependent
+            versions[name] = None
+    return versions
+
+
+def _registry():
+    tools = make_tools(FIXTURE_DIR)
+    return tools
+
+
+def scenario_happy():
+    from .tools import ToolRegistry
+
+    registry = ToolRegistry(_registry())
+    model = ScriptedModel(
+        [
+            Action.tool("read_dataset", {"name": "sales"}),
+            Action.tool(
+                "sum_amounts",
+                {"rows": [{"amount": "120.50"}, {"amount": "79.50"}]},
+            ),
+            Action.final("total computed"),
+        ]
+    )
+    return run_agent(model, registry)
+
+
+def scenario_unauthorized():
+    from .tools import ToolRegistry
+
+    registry = ToolRegistry(_registry())
+    model = ScriptedModel(
+        [
+            Action.tool("delete_records", {"table": "requests"}),
+            Action.final("should never be reached"),
+        ]
+    )
+    return run_agent(model, registry)
+
+
+def scenario_retry():
+    from .tools import ToolRegistry
+
+    registry = ToolRegistry(_registry())
+    payload = {"rows": [{"amount": "10.00"}]}
+    model = ScriptedModel(
+        [
+            Action.tool("sum_amounts", payload),
+            Action.tool("sum_amounts", payload),
+            Action.final("computed twice"),
+        ]
+    )
+    return run_agent(model, registry)
+
+
+def scenario_bad_input():
+    from .tools import ToolRegistry
+
+    registry = ToolRegistry(_registry())
+    model = ScriptedModel(
+        [
+            # float instead of decimal string must be rejected by the tool
+            Action.tool("sum_amounts", {"rows": [{"amount": 120.5}]}),
+            Action.final("unreachable"),
+        ]
+    )
+    return run_agent(model, registry)
+
+
+SCENARIOS = {
+    "happy": scenario_happy,
+    "unauthorized": scenario_unauthorized,
+    "retry": scenario_retry,
+    "bad_input": scenario_bad_input,
+}
+
+
+def build_report() -> dict[str, Any]:
+    scenarios = {name: func().as_dict() for name, func in SCENARIOS.items()}
+    return {
+        "probe": "p01-agent-min",
+        "task": "P01 / T002",
+        "stub": True,
+        "note": "No model provider was contacted; control-plane behaviour only.",
+        "python": platform.python_version(),
+        "packages": _package_versions(),
+        "authorized_tools": sorted(_registry()),
+        "scenarios": scenarios,
+        "assertions": {
+            "happy_completed": scenarios["happy"]["status"] == "completed",
+            "happy_invoked_subset_of_allowlist": set(scenarios["happy"]["invoked_tools"]).issubset(
+                set(scenarios["happy"]["allowed_tools"])
+            ),
+            "happy_call_count": scenarios["happy"]["tool_calls"],
+            "unauthorized_rejected": bool(scenarios["unauthorized"]["unexpected_calls"]),
+            "unauthorized_run_failed": scenarios["unauthorized"]["status"] == "failed",
+            "retry_detected": scenarios["retry"]["hidden_retry_detected"],
+            "bad_input_failed": scenarios["bad_input"]["status"] == "failed",
+        },
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="P01 minimal-agent probe")
+    parser.add_argument("--out", type=Path, default=None, help="write JSON report here")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args(argv)
+
+    report = build_report()
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    if not args.quiet:
+        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+    return 0 if all(
+        (
+            report["assertions"]["happy_completed"],
+            report["assertions"]["happy_invoked_subset_of_allowlist"],
+            report["assertions"]["unauthorized_rejected"],
+            report["assertions"]["unauthorized_run_failed"],
+            report["assertions"]["retry_detected"],
+            report["assertions"]["bad_input_failed"],
+        )
+    ) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

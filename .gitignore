@@ -2,9 +2,8 @@ tools/.venv/
 tools/.deps/
 **/__pycache__/
 
-# Product workspace / local toolchains (never committed)
-.toolchains/
+# Product workspace state (never committed)
 .scratch/
-product/tools/.venv/
-product/**/__pycache__/
+.toolchains/
+**/.venv/
 .pytest_cache/
