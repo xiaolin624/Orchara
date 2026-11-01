@@ -121,3 +121,46 @@ def test_full_probe_refuses_every_dangerous_config() -> None:
     report = probe.probe()
     assert report["all_refused"] is True, json.dumps(report["refusals"], indent=2)
     assert report["benign_run"]["exit_code"] == 0
+
+
+# --------------------------------------------------------------------------
+# T010: the isolation profile actually blocks the attacks
+# --------------------------------------------------------------------------
+def test_isolation_profile_script_declares_minimal_privileges() -> None:
+    """Guard the committed profile: no host root mount, no capabilities, non-root."""
+    text = (PROBE_ROOT / "isolation_matrix.sh").read_text(encoding="utf-8")
+    assert '"uid": 65534' in text
+    assert '"bounding": []' in text
+    assert '"type": "network"' in text
+    assert '"readonly": true' in text
+    # the only bind mount must be the approved input directory
+    assert '"destination": "/work/input"' in text
+    assert '"destination": "/etc"' not in text
+    assert '"source": "/"' not in text
+
+
+@guest
+def test_isolation_matrix_blocks_every_attack() -> None:
+    matrix = probe.isolation_matrix()
+
+    assert matrix["profile"] == "minimal-oci-bundle"
+    assert matrix["identity"].startswith("uid=65534"), matrix["identity"]
+
+    # the approved input is readable, and only it
+    assert "alice-data" in matrix["approved_input"]
+    assert "DENIED" in matrix["foreign_input"], matrix["foreign_input"]
+    assert "bob-secret" not in matrix["foreign_input"]
+
+    # the host filesystem is not mounted at all
+    assert "DENIED" in matrix["host_filesystem"], matrix["host_filesystem"]
+
+    # writes land only in the tmpfs
+    assert "DENIED" in matrix["write_attempt"], matrix["write_attempt"]
+
+    # no network path out: public, host, or via a proxy
+    assert matrix["public_network"] == "BLOCKED", matrix["public_network"]
+    assert matrix["host_network"] == "BLOCKED", matrix["host_network"]
+    assert matrix["proxy_network"] == "BLOCKED", matrix["proxy_network"]
+
+    # host credentials never enter the sandbox
+    assert "ORCHARA_TEST_SECRET" not in matrix["sandbox_env"], matrix["sandbox_env"]

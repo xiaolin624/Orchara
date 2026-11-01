@@ -1,0 +1,12 @@
+{
+  "profile": "minimal-oci-bundle",
+  "identity": "uid=65534 gid=65534",
+  "approved_input": "alice-data",
+  "foreign_input": "cat: can't open '/work/tenant-b/input.csv': No such file or directory DENIED",
+  "host_filesystem": "cat: can't open '/etc/hostname': No such file or directory DENIED",
+  "write_attempt": "/bin/sh: can't create /work/input/blocked: Permission denied DENIED",
+  "public_network": "BLOCKED",
+  "host_network": "BLOCKED",
+  "proxy_network": "BLOCKED",
+  "sandbox_env": "HOME=/|PATH=/bin|PWD=/|SHLVL=1|"
+}

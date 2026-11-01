@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 POLICY_VERSION = "orchara.sandbox-policy/v1"
@@ -44,6 +45,15 @@ class PolicyRejection(RuntimeError):
         self.reasons = reasons
 
 
+# Only these prefixes may be passed into the sandbox. Everything else in the
+# host environment stays outside: `runsc do` inherits its own environment, so an
+# unscrubbed launch leaks host credentials to user scripts (observed).
+APPROVED_ENV_PREFIXES = ("ORCHARA_APPROVED_",)
+# A minimal PATH for the guest; `env -i` would otherwise remove it and runsc
+# would not be found.
+SANDBOX_PATH = "/usr/local/bin:/usr/bin:/bin:/bin"
+
+
 @dataclass(frozen=True)
 class SandboxRequest:
     """What the caller asked for. Defaults are the safe ones."""
@@ -54,6 +64,10 @@ class SandboxRequest:
     privileged: bool = False
     uid: int = 65534
     mounts: tuple[str, ...] = ()
+    env: tuple[tuple[str, str], ...] = ()
+
+    def env_map(self) -> dict[str, str]:
+        return {key: value for key, value in self.env}
 
 
 def validate(request: SandboxRequest) -> list[str]:
@@ -77,6 +91,13 @@ def validate(request: SandboxRequest) -> list[str]:
         if not normalised.startswith(f"{APPROVED_MOUNT_ROOT}/"):
             reasons.append(
                 f"mount {mount!r} is outside the approved root {APPROVED_MOUNT_ROOT}/"
+            )
+
+    for key, _value in request.env:
+        if not key.startswith(APPROVED_ENV_PREFIXES):
+            reasons.append(
+                f"environment variable {key!r} is not on the approved list "
+                f"(prefixes {APPROVED_ENV_PREFIXES})"
             )
 
     if not request.command.strip():
@@ -143,8 +164,18 @@ def report_versions(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
 
 
 def build_command(request: SandboxRequest) -> str:
-    """Translate a validated request into a runsc invocation."""
-    parts = ["runsc", f"--network={request.network}"]
+    """Translate a validated request into a runsc invocation.
+
+    The launch is wrapped in ``env -i`` on purpose: ``runsc do`` inherits its own
+    environment, so without this a user script can read every host variable —
+    including credentials. Only the approved environment and a minimal PATH
+    cross the boundary.
+    """
+    assignments = ["PATH=" + SANDBOX_PATH]
+    for key, value in request.env:
+        assignments.append(f"{key}={value}")
+
+    parts = ["env", "-i", *assignments, "runsc", f"--network={request.network}"]
     if not request.overlay:
         parts.append("--overlay=false")
     parts.append("do")
@@ -170,6 +201,37 @@ def run_sandbox(request: SandboxRequest, distro: str = DEFAULT_DISTRO) -> dict[s
         "network": request.network,
         "policy_version": POLICY_VERSION,
     }
+
+
+def _to_wsl_path(path: Path) -> str:
+    """Translate a Windows path into its /mnt/<drive> form for the guest."""
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    if not drive:
+        return str(resolved)
+    remainder = str(resolved)[len(resolved.drive):].replace("\\", "/")
+    return f"/mnt/{drive}{remainder}"
+
+
+MATRIX_SCRIPT = Path(__file__).with_name("isolation_matrix.sh")
+
+
+def isolation_matrix(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:
+    """Run the attack matrix inside the guest and return its JSON result.
+
+    Uses the committed ``isolation_matrix.sh`` so the evidence is reproducible
+    rather than something this Python file re-implements.
+    """
+    guest_script = "/tmp/orchara-isolation-matrix.sh"
+    staged = _to_wsl_path(MATRIX_SCRIPT)
+    command = f"tr -d '\\r' < '{staged}' > {guest_script} && bash {guest_script}"
+    completed = run_wsl(command, distro=distro)
+    if completed.returncode != 0:
+        raise RuntimeError(f"isolation matrix failed: {completed.stderr.strip()}")
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:  # pragma: no cover - guest failure
+        raise RuntimeError(f"isolation matrix emitted invalid JSON: {exc}") from exc
 
 
 def probe(distro: str = DEFAULT_DISTRO) -> dict[str, Any]:

@@ -22,7 +22,7 @@
 | T005 | P02 | 让一个中断任务在新进程中安全继续 | passed | `reports/p02/T005-checkpoint-resume.md`（真实 PG，7 passed） |
 | T009 | P02 | 升级后恢复旧图或明确报告缺制品 | passed | `reports/p02/T009-artifact-pinning.md`、`db/migrations/0002_artifacts.sql`（11 passed） |
 | T006 | P03 | 启动一个拒绝危险配置的 Linux 沙箱探针 | passed | `reports/p03/T006-sandbox-probe.md`（WSL2 + runsc 20241118.0，15 passed） |
-| T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | not_started | T006 已通过，依赖已解除 |
+| T010 | P03 | 证明脚本无法读越权文件或绕过网络代理 | passed | `reports/p03/T010-isolation-matrix.md`（最小 OCI bundle，17 passed） |
 | T014 | P03 | 停止超限脚本并证明资源已回收 | blocked | 依赖 T010 |
 | T013 | P04 | 模拟租约失联而不启动第二个执行者 | not_started | — |
 | T016 | P04 | 等待旧进程、沙箱和数据库写全部排空再恢复 | blocked | 依赖 T010/T014 的沙箱证据 |
@@ -104,7 +104,7 @@
 训练锁只做到**解析**：安装验证记 `install_verified: false` / `not_run`，因为没有训练宿主与冻结数据，
 不把"能解析"写成"装过"。
 
-## T010 侦察发现（尚未修复，先记录）
+## T010 侦察发现（已修复）
 
 在 WSL2 + runsc 上做 T010（越权文件/网络）侦察时，实测到一个真实缺陷：
 
@@ -113,11 +113,13 @@ ORCHARA_TEST_SECRET=leakme runsc --network=none do sh -c 'env | grep ORCHARA_TES
 → ORCHARA_TEST_SECRET=leakme        # 宿主环境变量被继承进沙箱
 ```
 
-`runsc do` 会继承宿主环境，因此"脚本读不到凭据"**当前并不成立**。修复方向：沙箱启动时
-清空宿主环境、只传批准的变量（或改用 OCI spec 显式给 env）。这条必须先修，T010 才能如实通过。
+修复：沙箱启动统一包在 `env -i`，只传 `PATH` 与 `ORCHARA_APPROVED_` 前缀的批准变量；
+其余由策略层拒绝。修后实测：宿主密钥不可见、批准变量可见、未批准变量被拒。
 
-同批侦察中已成立的部分：`--network=none` 下外连 `1.1.1.1:443` 与宿主 `127.0.0.1:55432`
-均被阻断（`OSError` / `ConnectionRefusedError`）。
+同批侦察还发现 `runsc do` 会以 root 挂载宿主文件系统（可读），因此用户脚本改用
+**最小 OCI bundle**（自有 rootfs、uid 65534、零 capabilities、只挂批准输入）。见
+`reports/p03/T010-isolation-matrix.md`。
+
 
 
 ## 记录模板
