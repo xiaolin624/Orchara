@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | T001 | D00 | 在产品工作区复现规格并生成环境报告 | passed | `reports/p0/D00-environment-report.md`、`reports/p0/spec-*.txt`、`tools/probe_environment.py` |
 | T002 | P01 | 从锁定依赖运行一个只有授权工具的 Agent | passed | `reports/p01/T002-agent-min-probe.md`、`probes/agent_min/`（锁 47 包 + 探针） |
-| T003 | P01 | 让 Go/Python 对同一清单给出相同指纹 | not_started | — |
+| T003 | P01 | 让 Go/Python 对同一清单给出相同指纹 | passed | `reports/p01/T003-jcs-parity.md`、`reports/p01/jcs-agreement.json`（40 向量 0 不一致） |
 | T004 | P01 | 在第二个干净环境重建核心探针 | not_started | — |
 | T005 | P02 | 让一个中断任务在新进程中安全继续 | not_started | — |
 | T009 | P02 | 升级后恢复旧图或明确报告缺制品 | not_started | — |
