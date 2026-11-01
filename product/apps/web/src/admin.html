@@ -38,9 +38,9 @@
   <h1>管理台（F01 身份）</h1>
   <p class="sub">
     本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
-    未登录会跳转到登录页。邀请返回的一次性激活令牌
-    <strong>只显示一次</strong>，平台只保存它的哈希，请人工转交。
-    资源授权与角色修改也在这里，写入都会带本会话的 CSRF 令牌。
+    未登录会跳转到登录页。邀请返回的一次性激活令牌与创建 API key 返回的一次性明文都
+    <strong>只显示一次</strong>，平台只保存它们的哈希，请人工转交/立即保存。
+    资源授权、角色修改、服务账号与 API key 也在这里，写入都会带本会话的 CSRF 令牌。
   </p>
 
   <section class="card">
@@ -158,6 +158,71 @@
     <p id="roles-status" class="status" role="status" aria-live="polite"></p>
   </section>
 
+  <section id="service-accounts-panel" class="card" hidden>
+    <h2>服务账号（具名负责人）</h2>
+    <p class="hint">
+      服务账号是独立 principal：没有登录密码、没有角色，只能用带 scope 的 API key 访问，
+      并且每个动作仍要满足资源 ACL。负责人必须是已启用的人类用户；负责人被禁用后，
+      该账号的 key 立即失效（无需逐把撤销）。负责人只是治理归属，不会把 TA 的个人应用或记忆借给服务账号。
+    </p>
+    <form id="service-account-form">
+      <label for="sa-display-name">显示名
+        <input id="sa-display-name" name="display_name" required />
+      </label>
+      <label for="sa-responsible">负责人 principal id（必须是启用中的人类用户）
+        <input id="sa-responsible" name="responsible_user_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">创建服务账号</button>
+    </form>
+    <p id="sa-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="sa-result" hidden>
+      <p class="ok">服务账号已创建，principal id：<code id="sa-principal-id">—</code></p>
+      <p class="hint">
+        它不能登录，也没有角色；请把该 id 填进下面的 API key 表单。平台只保存负责人归属，
+        不会把负责人的个人数据授权给它。
+      </p>
+    </div>
+  </section>
+
+  <section id="api-keys-panel" class="card" hidden>
+    <h2>API key（scope + 资源 ACL）</h2>
+    <p class="hint">
+      F01 只开放 <code>application:read</code>。scope 表示“这类动作被允许”，
+      具体应用仍需在资源授权里显式授予 <code>read</code>，两者同时满足才可读；
+      个人/记忆 scope 对服务账号一律拒绝。key 明文只返回一次，平台只保存 SHA-256。
+    </p>
+    <form id="api-key-form">
+      <label for="api-key-principal">服务账号 principal id
+        <input id="api-key-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <fieldset>
+        <legend>scope</legend>
+        <label><input id="api-key-scope-application-read" type="checkbox" name="scopes" value="application:read" checked /> application:read</label>
+      </fieldset>
+      <label for="api-key-expires">过期时间（RFC3339，必须晚于现在，例如 2026-12-31T00:00:00Z）
+        <input id="api-key-expires" name="expires_at" required placeholder="2026-12-31T00:00:00Z" />
+      </label>
+      <button type="submit">创建 API key</button>
+    </form>
+    <p id="api-key-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="api-key-result" hidden>
+      <p class="warn">API key 明文只显示一次（离开本页后无法再次获取）：</p>
+      <textarea id="api-key-secret" readonly rows="3" aria-label="一次性 API key"></textarea>
+      <p class="hint">key id 为 <code id="api-key-id">—</code>；撤销时填入下面的表单。</p>
+    </div>
+
+    <h2 style="margin-top:1.2rem">撤销 API key</h2>
+    <form id="api-key-revoke-form">
+      <label for="revoke-api-key-id">key id
+        <input id="revoke-api-key-id" name="key_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">撤销 key</button>
+    </form>
+    <p id="api-key-revoke-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script>
     const authStatus = document.getElementById('auth-status');
@@ -172,6 +237,8 @@
     const inviteStatus = document.getElementById('invite-status');
     const grantsPanel = document.getElementById('grants-panel');
     const rolesPanel = document.getElementById('roles-panel');
+    const serviceAccountsPanel = document.getElementById('service-accounts-panel');
+    const apiKeysPanel = document.getElementById('api-keys-panel');
     const grantForm = document.getElementById('grant-form');
     const grantStatus = document.getElementById('grant-status');
     const grantResult = document.getElementById('grant-result');
@@ -179,6 +246,15 @@
     const revokeStatus = document.getElementById('revoke-status');
     const rolesForm = document.getElementById('roles-form');
     const rolesStatus = document.getElementById('roles-status');
+    const serviceAccountForm = document.getElementById('service-account-form');
+    const serviceAccountStatus = document.getElementById('sa-status');
+    const serviceAccountResult = document.getElementById('sa-result');
+    const apiKeyForm = document.getElementById('api-key-form');
+    const apiKeyStatus = document.getElementById('api-key-status');
+    const apiKeyResult = document.getElementById('api-key-result');
+    const apiKeySecretField = document.getElementById('api-key-secret');
+    const apiKeyRevokeForm = document.getElementById('api-key-revoke-form');
+    const apiKeyRevokeStatus = document.getElementById('api-key-revoke-status');
 
     function setStatus(element, message, kind) {
       element.textContent = message;
@@ -197,6 +273,8 @@
       // feedback, never the authorization.
       grantsPanel.hidden = !isAdmin;
       rolesPanel.hidden = !isAdmin;
+      serviceAccountsPanel.hidden = !isAdmin;
+      apiKeysPanel.hidden = !isAdmin;
       setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
     }
 
@@ -354,6 +432,93 @@
           return;
         }
         setStatus(rolesStatus, `保存失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/service-accounts: create a service principal owned by a
+    // named, enabled human. The account has no login and no roles; its authority
+    // is the scoped key below plus the resource ACL.
+    serviceAccountForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(serviceAccountStatus, '正在创建服务账号…', 'pending');
+      serviceAccountResult.hidden = true;
+      try {
+        const created = await api('/api/v1/admin/service-accounts', {
+          method: 'POST',
+          csrf: await csrf(),
+          body: {
+            display_name: document.getElementById('sa-display-name').value.trim(),
+            responsible_user_id: document.getElementById('sa-responsible').value.trim(),
+          },
+        });
+        document.getElementById('sa-principal-id').textContent = created.id;
+        document.getElementById('api-key-principal').value = created.id;
+        serviceAccountResult.hidden = false;
+        setStatus(
+          serviceAccountStatus,
+          `已创建服务账号 ${created.id}（${created.state}），它不能登录。`,
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(serviceAccountStatus, `创建失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/api-keys: issue a scoped key. The secret returned here
+    // is rendered into a readonly textarea exactly once; it is never stored by
+    // the page, and only its hash exists server-side.
+    apiKeyForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const scopes = Array.from(
+        apiKeyForm.querySelectorAll('input[name="scopes"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(apiKeyStatus, '正在创建 API key…', 'pending');
+      apiKeyResult.hidden = true;
+      try {
+        const created = await api('/api/v1/admin/api-keys', {
+          method: 'POST',
+          csrf: await csrf(),
+          body: {
+            principal_id: document.getElementById('api-key-principal').value.trim(),
+            scopes,
+            expires_at: document.getElementById('api-key-expires').value.trim(),
+          },
+        });
+        apiKeySecretField.value = created.secret;
+        document.getElementById('api-key-id').textContent = created.id;
+        apiKeyResult.hidden = false;
+        setStatus(apiKeyStatus, `已创建 API key ${created.id}，明文只显示一次。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(apiKeyStatus, `创建失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // DELETE /api/v1/admin/api-keys/{key_id}: revocation takes effect on the
+    // very next bearer request; repeating it is idempotent.
+    apiKeyRevokeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const keyId = document.getElementById('revoke-api-key-id').value.trim();
+      setStatus(apiKeyRevokeStatus, '正在撤销 API key…', 'pending');
+      try {
+        await api('/api/v1/admin/api-keys/' + encodeURIComponent(keyId), {
+          method: 'DELETE',
+          csrf: await csrf(),
+        });
+        setStatus(apiKeyRevokeStatus, `已撤销 API key ${keyId}，下一次调用立即失败。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(apiKeyRevokeStatus, `撤销失败 [${error.code}] ${error.message}`, 'bad');
       }
     });
 

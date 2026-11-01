@@ -93,6 +93,11 @@ const (
 //
 // SessionHash is the SHA-256 of the presented cookie: it identifies exactly one
 // server-side session for logout without re-reading the raw secret.
+//
+// Scopes and KeyID exist only for an API-key credential (T020). Scopes is the
+// key's granted vocabulary; KeyID names the row, for logs and future audit
+// events. Neither is ever serialized: IdentityView is an explicit projection,
+// so a new internal field cannot leak into a response.
 type Identity struct {
 	PrincipalID string
 	Kind        string
@@ -102,6 +107,8 @@ type Identity struct {
 	CSRFToken   string
 	CSRFHash    string
 	SessionHash string
+	Scopes      []string
+	KeyID       string
 }
 
 // HasRole reports whether the identity carries role.

@@ -59,6 +59,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/activate", s.handleActivate)
 	mux.HandleFunc("POST /api/v1/admin/users", s.handleInviteUser)
 
+	// T020: named service accounts, scoped bearer keys and the personal-data
+	// boundary of the memory endpoint F09 will implement.
+	mux.HandleFunc("POST /api/v1/admin/service-accounts", s.handleCreateServiceAccount)
+	mux.HandleFunc("POST /api/v1/admin/api-keys", s.handleCreateAPIKey)
+	mux.HandleFunc("DELETE /api/v1/admin/api-keys/{key_id}", s.handleRevokeAPIKey)
+	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
+
 	// T019: resource grants, role updates and the ACL-filtered applications read.
 	mux.HandleFunc("POST /api/v1/admin/grants", s.handleGrant)
 	mux.HandleFunc("DELETE /api/v1/admin/grants/{grant_id}", s.handleRevokeGrant)
@@ -183,15 +190,18 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only a cookie session has a server-side row to revoke. A future API-key
-	// caller (T020) authenticates but has no browser session: key revocation is
-	// its own admin operation, so this endpoint clears the cookie and reports
-	// the idempotent 204 instead of pretending to revoke the key.
-	if caller.Method == identity.AuthMethodSessionCookie && caller.SessionHash != "" {
-		if _, err := s.service.Logout(r.Context(), caller.SessionHash, caller.PrincipalID); err != nil {
-			s.internalError(w, r, err)
-			return
-		}
+	// Only a browser session has a server-side row to revoke. An API key is not
+	// a session: it has no CSRF token and its lifecycle is the admin revoke
+	// operation, so this endpoint refuses a bearer caller instead of clearing a
+	// cookie that was never used and pretending it revoked a credential.
+	if caller.Method != identity.AuthMethodSessionCookie || caller.SessionHash == "" {
+		writeError(w, r, http.StatusUnauthorized, "unauthenticated",
+			"signing out requires a browser session; revoke an API key through the admin API")
+		return
+	}
+	if _, err := s.service.Logout(r.Context(), caller.SessionHash, caller.PrincipalID); err != nil {
+		s.internalError(w, r, err)
+		return
 	}
 	http.SetCookie(w, clearedSessionCookie(s.secureCookie))
 	// No body, but still auth data: the response must not be cached.

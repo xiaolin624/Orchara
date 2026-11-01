@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/identity"
 )
 
 // applicationView is exactly the contract's Application schema.
@@ -37,6 +38,12 @@ func viewOfApplication(application catalog.Application) applicationView {
 func (s *Server) handleListApplications(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
+		return
+	}
+	// Scope before ACL: a key without application:read is refused even when the
+	// service principal holds a read grant. A session is not scope-limited.
+	if failure := requireScope(caller, identity.ScopeApplicationRead); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
 	query := r.URL.Query()
@@ -74,6 +81,12 @@ func (s *Server) handleListApplications(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleGetApplication(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
+		return
+	}
+	// Scope before ACL, and before the catalog is called at all: a write-scoped
+	// key never learns whether the application exists.
+	if failure := requireScope(caller, identity.ScopeApplicationRead); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
 	application, err := s.catalog.GetVisible(r.Context(), caller.PrincipalID, r.PathValue("application_id"))
