@@ -439,10 +439,14 @@ def principal_id_for_login(dbname: str, login: str = ADMIN_LOGIN) -> str:
 
 
 def seed_principal(dbname: str, display_name: str = "t022-owner") -> str:
+    # A CTE keeps the INSERT's command tag out of the returned value (psql prints
+    # "INSERT 0 1" after a bare RETURNING statement).
     return st.sql(
         dbname,
+        "WITH inserted AS ("
         "INSERT INTO platform.principals (id, kind, display_name) "
-        f"VALUES (gen_random_uuid(), 'user', {st.quote_literal(display_name)}) RETURNING id",
+        f"VALUES (gen_random_uuid(), 'user', {st.quote_literal(display_name)}) RETURNING id"
+        ") SELECT id FROM inserted",
     )
 
 
@@ -536,7 +540,7 @@ def artifact_row(dbname: str, artifact_id: str) -> dict:
     rows = st.sql_rows(
         dbname,
         "SELECT id::text AS id, owner_id::text AS owner_id, object_key, staging_object_key, "
-        "expected_sha256, sha256, size_bytes, media_type, state, revision, "
+        "expected_sha256, sha256, size_bytes, media_type, purpose, state, revision, "
         "deleted_at::text AS deleted_at "
         "FROM platform.artifacts "
         f"WHERE id = {st.quote_literal(artifact_id)}::uuid",

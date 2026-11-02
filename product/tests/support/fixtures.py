@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a
+from support import f00b, f02a, t024
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -104,6 +104,39 @@ def t022_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> f00b.
 
 
 @pytest.fixture
+def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+    """A migrated + bootstrapped database behind one API with signing+mTLS.
+
+    Everything secret (the HMAC signing key, certificate material) is generated
+    under ``tmp_path`` for this test only and is never logged.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t024.T024Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def f02a_stack(migrated_database, go_binaries, api_server) -> f02a.F02AStack:
     """A migrated + bootstrapped database behind a real API, without mTLS/objects.
 
@@ -128,5 +161,6 @@ __all__ = [
     "migrated_database",
     "api_server",
     "t022_stack",
+    "t024_stack",
     "f02a_stack",
 ]
