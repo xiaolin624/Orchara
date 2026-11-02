@@ -47,6 +47,11 @@ type Server struct {
 	secureCookie bool
 	logger       *log.Logger
 	limiter      *loginLimiter
+	// F03/T032: the SSE replay window and its polling/heartbeat cadence. They are
+	// deployment knobs (ORCHARA_RUN_EVENT_*), normalised in New.
+	runEventRetention time.Duration
+	runEventPoll      time.Duration
+	runEventHeartbeat time.Duration
 }
 
 // Deps is everything the HTTP surface needs from the process that owns it.
@@ -85,6 +90,15 @@ type Deps struct {
 	// Notifier is the best-effort background wakeup hook. Nil means NopNotifier:
 	// losing every notification is a supported state because claim polls PostgreSQL.
 	Notifier background.Notifier
+	// RunEventRetention is how far back GET /runs/{id}/events can replay before
+	// answering 410 event_cursor_expired. Zero falls back to the documented 24h.
+	RunEventRetention time.Duration
+	// RunEventPollInterval is the idle SSE PostgreSQL poll cadence. Zero falls
+	// back to 500ms.
+	RunEventPollInterval time.Duration
+	// RunEventHeartbeatInterval is the idle SSE comment cadence. Zero falls back
+	// to the documented 15s.
+	RunEventHeartbeatInterval time.Duration
 }
 
 // New builds the HTTP surface. See Deps for each dependency's contract.
@@ -98,24 +112,41 @@ func New(deps Deps) *Server {
 		notifier = background.NopNotifier{}
 	}
 	authorizer := policy.New(deps.Service.DB)
+	executionService := execution.New(
+		deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL,
+	)
+	// local_sequence diagnostics go to the process log, never the API body.
+	executionService.Logger = logger
 	return &Server{
-		service:       deps.Service,
-		policy:        authorizer,
-		catalog:       catalog.New(deps.Service.DB, authorizer),
-		jobs:          background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
-		artifacts:     background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		execution:     execution.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL),
-		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		toolRuns:      toolruns.New(deps.Service.DB, notifier),
-		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
-		objects:       deps.Objects,
-		signer:        deps.Signer,
-		manifest:      deps.Manifest,
-		webDir:        deps.WebDir,
-		secureCookie:  SecureCookie(deps.Profile),
-		logger:        logger,
-		limiter:       newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
+		service:           deps.Service,
+		policy:            authorizer,
+		catalog:           catalog.New(deps.Service.DB, authorizer),
+		jobs:              background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
+		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:         executionService,
+		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		toolRuns:          toolruns.New(deps.Service.DB, notifier),
+		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		objects:           deps.Objects,
+		signer:            deps.Signer,
+		manifest:          deps.Manifest,
+		webDir:            deps.WebDir,
+		secureCookie:      SecureCookie(deps.Profile),
+		logger:            logger,
+		limiter:           newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
+		runEventRetention: durationOrDefault(deps.RunEventRetention, DefaultRunEventRetention),
+		runEventPoll:      durationOrDefault(deps.RunEventPollInterval, DefaultRunEventPollInterval),
+		runEventHeartbeat: durationOrDefault(deps.RunEventHeartbeatInterval, DefaultRunEventHeartbeatInterval),
 	}
+}
+
+// durationOrDefault keeps a zero dependency (an older caller) on the documented
+// deployment default instead of a zero-duration ticker panic.
+func durationOrDefault(value, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 // Register adds the identity routes to mux.
@@ -171,6 +202,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+	// F03/T032: the owner-only durable event stream. Last-Event-ID is this Run's
+	// local seq; the handler is SSE, not JSON.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the

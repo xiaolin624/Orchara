@@ -138,6 +138,10 @@ func run(logger *log.Logger) error {
 		ExecutionLeaseTTL: cfg.ExecutionLeaseTTL,
 		Manifest:          manifestInputs,
 		Notifier:          notifier,
+		// F03/T032: the durable event-stream deployment knobs.
+		RunEventRetention:         cfg.RunEventRetention,
+		RunEventPollInterval:      cfg.RunEventPollInterval,
+		RunEventHeartbeatInterval: cfg.RunEventHeartbeatInterval,
 	})
 	apiServer.Register(mux)
 

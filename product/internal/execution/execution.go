@@ -18,6 +18,9 @@
 //	              the slot and either return the work to the queue (evidence
 //	              says it never started), park the run for recovery (no result)
 //	              or run the finalizer (result present).
+//	AppendRunStatusTx  project every committed Run transition as a durable
+//	              run.status event in the same transaction (T032); the worker
+//	              event batch (node.status) uses the same seq allocator.
 //
 // Two invariants shape every query here:
 //
@@ -29,16 +32,17 @@
 //     token over the internal mTLS listener; they never touch `platform.*`
 //     directly (`orchara_worker` has no schema privileges).
 //
-// F03 boundary: run_events, cancel arbitration and the conservative
-// recovery/unknown-operation sweep are T032/T036/T038. This package writes the
-// terminal transition, but no event row, no cancel decision and no new attempt
-// after an unproven exit.
+// F03 boundary: cancel arbitration and the conservative
+// recovery/unknown-operation sweep are T036/T038. This package writes the
+// terminal transition and its durable event, but no cancel decision and no new
+// attempt after an unproven exit.
 package execution
 
 import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -116,9 +120,10 @@ var (
 	// not executing (waiting/cancelling/needs_reconciliation). T035/T036 own
 	// those states; the interim refusal is explicit instead of guessing.
 	ErrRunStateConflict = errors.New("the run is not in an executing state")
-	// ErrEventConflict is 409 event_conflict: the attempt already stored a
-	// different result proposal. The first proposal is authoritative.
-	ErrEventConflict = errors.New("a different result proposal is already stored")
+	// ErrEventConflict is 409 event_conflict: the same idempotency identity
+	// (an attempt's result proposal, or a worker event_id) already carries
+	// different content. The first stored content is authoritative.
+	ErrEventConflict = errors.New("a different event identity is already stored")
 	// ErrIdentityMismatch is 409 execution_identity_mismatch: the exit evidence
 	// names a protocol version, manifest hash or worker image digest that is not
 	// the one this attempt was claimed with.
@@ -266,6 +271,9 @@ type Service struct {
 	// LeaseTTL is the claim lease length. Values outside [MinLeaseTTL,
 	// MaxLeaseTTL] fall back to DefaultLeaseTTL.
 	LeaseTTL time.Duration
+	// Logger receives request-independent event diagnostics (worker
+	// local_sequence gaps/repeats). Nil drops them; it never receives credentials.
+	Logger *log.Logger
 }
 
 // New builds the service. Objects and Signer may be nil: a claim then fails

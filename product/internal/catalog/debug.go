@@ -51,6 +51,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/compiler"
+	"orchara/platform/internal/execution"
 	"orchara/platform/internal/jcs"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
@@ -665,6 +666,13 @@ func (r *Reader) createDebugRun(
 		checkpointThreadID, params.Budget, params.Currency,
 	); err != nil {
 		return nil, fmt.Errorf("creating the debug run: %w", err)
+	}
+
+	// F03/T032: the very first durable timeline fact, in the same transaction as
+	// the queued Run. The execution helper is the single event writer, so the
+	// debug path cannot grow a second seq/payload implementation.
+	if _, err := execution.AppendRunStatusTx(ctx, tx, runID); err != nil {
+		return nil, fmt.Errorf("recording the queued run event: %w", err)
 	}
 
 	// Exactly one ready start job; F03 owns claiming it.

@@ -48,6 +48,10 @@
     执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
     但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
     详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
+    持久时间线来自 <code>GET /api/v1/runs/{id}/events</code>（SSE，<code>id: seq</code>、
+    <code>event: type</code>、<code>data: event.schema 封套</code>）。断线后客户端按
+    <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
+    <code>details.snapshot_url</code> 指向的 Run 快照，而不是伪装完整历史。
   </p>
 
   <section class="card">
@@ -70,8 +74,14 @@
       <dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
       <dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
       <dt>领取 / 租约</dt><dd id="detail-lease"></dd>
+      <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
+    <ul id="detail-timeline" aria-live="polite"></ul>
     <p id="detail-note" class="hint"></p>
+    <p id="detail-preview" class="hint" data-preview="not_run">
+      临时模型流式 delta 预览未实现（F06 承接）：本页只显示已提交的持久事件，不把临时 delta
+      当成正文，也不伪造预览文本。finalizing 只是阶段，终态以服务端提交为准。
+    </p>
   </section>
 
   <script src="/assets/app.js"></script>

@@ -77,6 +77,13 @@ const (
 	// EnvExecutionLeaseTTL is the F03 claim lease length. It is a deployment
 	// knob bounded by the execution protocol (1s..1h), not a per-request value.
 	EnvExecutionLeaseTTL = "ORCHARA_EXECUTION_LEASE_TTL"
+	// F03/T032 run-event stream knobs. Retention is the documented replay window
+	// (default 24h); poll is how often an idle SSE stream asks PostgreSQL (Redis
+	// is wakeup-only and absent in this batch); heartbeat is the idle comment
+	// cadence (default 15s, never a business seq).
+	EnvRunEventRetention         = "ORCHARA_RUN_EVENT_RETENTION"
+	EnvRunEventPollInterval      = "ORCHARA_RUN_EVENT_POLL_INTERVAL"
+	EnvRunEventHeartbeatInterval = "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -157,6 +164,16 @@ const (
 	// minExecutionLeaseTTL/maxExecutionLeaseTTL bound the deployment knob.
 	minExecutionLeaseTTL = time.Second
 	maxExecutionLeaseTTL = time.Hour
+
+	// F03/T032 defaults. The retention window is the documented replay horizon;
+	// the heartbeat is API.md §4's 15s idle comment.
+	DefaultRunEventRetention         = 24 * time.Hour
+	DefaultRunEventPollInterval      = 500 * time.Millisecond
+	DefaultRunEventHeartbeatInterval = 15 * time.Second
+	// Upper bounds keep a typo from parking a stream for years or busy-looping.
+	maxRunEventRetention = 365 * 24 * time.Hour
+	maxRunEventPoll      = 5 * time.Minute
+	maxRunEventHeartbeat = time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -217,6 +234,11 @@ type Config struct {
 	RetryBackoff time.Duration
 	// ExecutionLeaseTTL is the F03 claim lease length (30s by default).
 	ExecutionLeaseTTL time.Duration
+	// RunEventRetention/PollInterval/HeartbeatInterval are the F03/T032 durable
+	// event stream knobs (24h replay window, 500ms PostgreSQL poll, 15s comment).
+	RunEventRetention         time.Duration
+	RunEventPollInterval      time.Duration
+	RunEventHeartbeatInterval time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -409,6 +431,38 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be between %s and %s", minExecutionLeaseTTL, maxExecutionLeaseTTL))
 	}
 	cfg.ExecutionLeaseTTL = leaseTTL
+	// F03/T032: the durable event-stream knobs. Small values are legal (tests use
+	// them to observe heartbeats/retention quickly); only absurd upper bounds are
+	// configuration errors.
+	retention, err := parseDuration(lookup, EnvRunEventRetention, DefaultRunEventRetention)
+	if err != nil {
+		return nil, err
+	}
+	if retention > maxRunEventRetention {
+		return nil, invalid(EnvRunEventRetention,
+			fmt.Sprintf("must be at most %s", maxRunEventRetention))
+	}
+	eventPoll, err := parseDuration(lookup, EnvRunEventPollInterval, DefaultRunEventPollInterval)
+	if err != nil {
+		return nil, err
+	}
+	if eventPoll > maxRunEventPoll {
+		return nil, invalid(EnvRunEventPollInterval,
+			fmt.Sprintf("must be at most %s", maxRunEventPoll))
+	}
+	eventHeartbeat, err := parseDuration(
+		lookup, EnvRunEventHeartbeatInterval, DefaultRunEventHeartbeatInterval,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if eventHeartbeat > maxRunEventHeartbeat {
+		return nil, invalid(EnvRunEventHeartbeatInterval,
+			fmt.Sprintf("must be at most %s", maxRunEventHeartbeat))
+	}
+	cfg.RunEventRetention = retention
+	cfg.RunEventPollInterval = eventPoll
+	cfg.RunEventHeartbeatInterval = eventHeartbeat
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.

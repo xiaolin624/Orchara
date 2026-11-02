@@ -172,7 +172,7 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 		return false
 	case errors.Is(err, execution.ErrEventConflict):
 		writeError(w, r, http.StatusConflict, "event_conflict",
-			"this attempt already stored a different result proposal")
+			"this idempotency identity already carries different content")
 		return false
 	case errors.Is(err, execution.ErrRunTerminal):
 		writeError(w, r, http.StatusConflict, "run_terminal",

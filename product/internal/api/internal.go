@@ -130,6 +130,7 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/jobs/claim", s.handleInternalExecutionClaim)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/heartbeat", s.handleInternalRunHeartbeat)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/result", s.handleInternalRunResult)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/events", s.handleInternalRunEvents)
 	mux.HandleFunc("POST /internal/v1/attempts/{attempt_id}/exited", s.handleInternalAttemptExit)
 }
 

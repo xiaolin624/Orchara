@@ -381,6 +381,16 @@ function initDebug() {
         submitted.lease,
       );
       debugStatus('已创建 queued debug Run ' + summary.id + '（revision ' + summary.revision + '）。', 'ok');
+      // T032: the panel's durable timeline is the same SSE client the runs page
+      // uses (runs.js is loaded first). It dedupes by seq, reconnects with
+      // Last-Event-ID, and shows the 410 snapshot URL instead of faking history.
+      if (typeof beginRunTimeline === 'function') {
+        beginRunTimeline(summary.id, {
+          listID: 'run-timeline',
+          statusID: 'run-timeline-status',
+          previewID: 'run-preview',
+        });
+      }
       // A new attempt gets a new key; the completed one is never reused.
       idempotencyKey = newIdempotencyKey();
       document.getElementById('debug-key').textContent = idempotencyKey;

@@ -86,6 +86,11 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 	if _, err := startRunTx(ctx, tx, candidate.RunID); err != nil {
 		return nil, err
 	}
+	// T032: the queued->running transition and its run.status event are one
+	// transaction. A failure to record the fact rolls the claim back.
+	if _, err := AppendRunStatusTx(ctx, tx, candidate.RunID); err != nil {
+		return nil, err
+	}
 
 	lease, err := s.buildLease(ctx, tx, candidate, token, leaseDeadline)
 	if err != nil {
@@ -341,6 +346,10 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		if err := returnJobToQueueTx(ctx, tx, facts.JobID, facts.RunID); err != nil {
 			return nil, err
 		}
+		// T032: running -> queued is a committed aggregate transition.
+		if _, err := AppendRunStatusTx(ctx, tx, facts.RunID); err != nil {
+			return nil, err
+		}
 	} else if len(facts.ReportedResult) > 0 {
 		if _, err := s.finalizeRunTx(ctx, tx, finalizeInput{
 			RunID:          facts.RunID,
@@ -360,6 +369,9 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 			return nil, err
 		}
 		if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
+			return nil, err
+		}
+		if _, err := AppendRunStatusTx(ctx, tx, facts.RunID); err != nil {
 			return nil, err
 		}
 	}
@@ -495,6 +507,13 @@ func (s *Service) finalizeRunTx(
 	); err != nil {
 		return false, err
 	}
+	// T032: the committed terminal/non-terminal outcome is projected in the same
+	// transaction. Both entry orders (result->exit, exit->result) converge here,
+	// so exactly one outcome event exists per actual transition; a repeated
+	// finalize returns before this point.
+	if _, err := AppendRunStatusTx(ctx, tx, input.RunID); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -618,6 +637,16 @@ func (s *Service) SubmitResult(
 	}
 	if err := setRunFinalizingTx(ctx, tx, run.ID); err != nil {
 		return nil, err
+	}
+	// T032: a first proposal is a committed fact (phase=finalizing, state still
+	// running). The contract's run.status payload has no phase field, so this
+	// event carries only {state:"running"}; the phase authority remains the
+	// owner-only Run read. A proposal on a recovery_pending run changes nothing
+	// and therefore emits nothing (the eventual terminal event explains it).
+	if run.State == "running" {
+		if _, err := AppendRunStatusTx(ctx, tx, run.ID); err != nil {
+			return nil, err
+		}
 	}
 	// Exit evidence may already be committed (the exit came first). In that
 	// case this proposal completes the same finalizer; the run CAS makes the
