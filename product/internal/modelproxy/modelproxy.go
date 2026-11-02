@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"orchara/platform/internal/background"
@@ -58,6 +59,10 @@ var (
 	ErrCallConflict = errors.New("logical model call already used with different parameters")
 	// ErrResultStoreUnavailable means the validated response cannot be sealed.
 	ErrResultStoreUnavailable = errors.New("object store is not configured; the model result cannot be sealed")
+	// ErrReplayUnavailable means a recorded successful call cannot be replayed
+	// because its sealed result cannot be read back. The server never invents a
+	// placeholder answer and never re-dispatches a recorded-success call.
+	ErrReplayUnavailable = errors.New("the recorded model result cannot be replayed")
 )
 
 // Currency is the ledger currency for this batch. No budget policy is enabled
@@ -349,31 +354,21 @@ func (s *Service) reserveAttempt(
 			return "", 0, nil, ErrCallConflict
 		}
 		if lastState == "succeeded" {
-			// Read the recorded answer in the same transaction so a concurrent
-			// completion cannot half-apply. The response body itself is not
-			// replayed: the recorded result artifact is the durable answer.
-			var resultID sql.NullString
-			if err := tx.QueryRowContext(ctx, `
-				SELECT result_artifact_id::text FROM platform.platform_model_calls WHERE id = $1::uuid`,
-				lastID,
-			).Scan(&resultID); err != nil {
-				return "", 0, nil, fmt.Errorf("reading the recorded model call: %w", err)
-			}
-			var resultArtifact *string
-			if resultID.Valid {
-				value := resultID.String
-				resultArtifact = &value
+			// A recorded success is replayed verbatim: re-read the sealed result
+			// artifact that holds the provider's canonical answer and return it.
+			// The handler derives its report (compatibility, provider/stub
+			// markers) from this data, so a placeholder would silently turn a
+			// passed validation into a failed one. The read happens in the same
+			// transaction as the ledger lookup, so a concurrent completion cannot
+			// half-apply underneath the replay.
+			replay, err := s.recordedResult(ctx, tx, lastID, input.OwnerID)
+			if err != nil {
+				return "", 0, nil, err
 			}
 			if err := tx.Commit(); err != nil {
 				return "", 0, nil, fmt.Errorf("committing the model call replay: %w", err)
 			}
-			return "", 0, &InvokeResult{
-				CallID:           lastID,
-				State:            "succeeded",
-				ResultArtifactID: resultArtifact,
-				Data:             map[string]any{"replayed": true},
-				Replayed:         true,
-			}, nil
+			return "", 0, &replay, nil
 		}
 		attempt = lastAttempt + 1
 	}
@@ -397,6 +392,105 @@ func (s *Service) reserveAttempt(
 		return "", 0, nil, fmt.Errorf("committing the model call attempt: %w", err)
 	}
 	return callID, attempt, nil, nil
+}
+
+// recordedResult re-reads the sealed answer of a recorded successful call and
+// returns it verbatim (call id, result artifact, provider data).
+//
+// Replay must not invent a placeholder: the handler derives its compatibility
+// report from this data, so `{"replayed": true}` would make a passed validation
+// look failed. The ledger row, the artifact row and the sealed bytes are all
+// re-checked here; a recorded success whose bytes cannot be verified is an error,
+// never a re-dispatch and never a made-up answer.
+func (s *Service) recordedResult(
+	ctx context.Context,
+	tx *sql.Tx,
+	callID, ownerID string,
+) (InvokeResult, error) {
+	var (
+		resultID      sql.NullString
+		objectKey     sql.NullString
+		state         sql.NullString
+		deleted       sql.NullTime
+		storedSHA     sql.NullString
+		artifactOwner sql.NullString
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT c.result_artifact_id::text, a.object_key, a.state, a.deleted_at, a.sha256,
+		       a.owner_id::text
+		  FROM platform.platform_model_calls AS c
+		  LEFT JOIN platform.artifacts AS a ON a.id = c.result_artifact_id
+		 WHERE c.id = $1::uuid AND c.owner_id = $2::uuid`, callID, ownerID,
+	).Scan(&resultID, &objectKey, &state, &deleted, &storedSHA, &artifactOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return InvokeResult{}, fmt.Errorf("%w: the recorded call is gone", ErrReplayUnavailable)
+	}
+	if err != nil {
+		return InvokeResult{}, fmt.Errorf("reading the recorded model call: %w", err)
+	}
+	if !resultID.Valid || !objectKey.Valid || !state.Valid || !storedSHA.Valid ||
+		deleted.Valid || state.String != "ready" ||
+		!strings.EqualFold(artifactOwner.String, ownerID) {
+		return InvokeResult{}, fmt.Errorf(
+			"%w: the recorded result artifact is not a ready object of this call", ErrReplayUnavailable,
+		)
+	}
+	if s.Store == nil {
+		return InvokeResult{}, ErrResultStoreUnavailable
+	}
+	content, digest, err := readReplayObject(s.Store, objectKey.String)
+	switch {
+	case errors.Is(err, objectstore.ErrNotExist),
+		errors.Is(err, objectstore.ErrInvalidKey),
+		errors.Is(err, objectstore.ErrTooLarge):
+		return InvokeResult{}, fmt.Errorf("%w: %v", ErrReplayUnavailable, err)
+	case err != nil:
+		return InvokeResult{}, fmt.Errorf("reading the recorded model result: %w", err)
+	}
+	if !strings.EqualFold(digest, storedSHA.String) {
+		return InvokeResult{}, fmt.Errorf(
+			"%w: the sealed bytes do not match the recorded hash", ErrReplayUnavailable,
+		)
+	}
+	var data map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	// Numbers keep their literal form: replay must return the recorded answer,
+	// not a float64 reinterpretation of it.
+	decoder.UseNumber()
+	if err := decoder.Decode(&data); err != nil || data == nil {
+		return InvokeResult{}, fmt.Errorf("%w: the recorded result is not a JSON object", ErrReplayUnavailable)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return InvokeResult{}, fmt.Errorf("%w: the recorded result has trailing data", ErrReplayUnavailable)
+	}
+	artifact := resultID.String
+	return InvokeResult{
+		CallID:           callID,
+		State:            "succeeded",
+		ResultArtifactID: &artifact,
+		Data:             data,
+		Replayed:         true,
+	}, nil
+}
+
+// readReplayObject reads at most MaxObjectBytes of one sealed object and returns
+// its bytes and SHA-256. Bytes over the platform ceiling are refused rather than
+// hashed forever.
+func readReplayObject(store *objectstore.Store, key string) ([]byte, string, error) {
+	reader, _, err := store.Open(key)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = reader.Close() }()
+	content, err := io.ReadAll(io.LimitReader(reader, objectstore.MaxObjectBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(content)) > objectstore.MaxObjectBytes {
+		return nil, "", objectstore.ErrTooLarge
+	}
+	sum := sha256.Sum256(content)
+	return content, hex.EncodeToString(sum[:]), nil
 }
 
 // finishSucceeded writes the validated response as a ready sealed artifact and

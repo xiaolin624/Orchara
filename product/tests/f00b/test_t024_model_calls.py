@@ -184,7 +184,14 @@ def test_the_same_logical_key_replays_and_different_params_conflict(t024_stack) 
     assert replay.status == 200, replay.text
     assert replay.json["call_id"] == first.json["call_id"]
     assert replay.json["result_artifact_id"] == first.json["result_artifact_id"]
-    assert replay.json["data"]["replayed"] is True
+    # A replay returns the original call's data, not a placeholder: the handler
+    # re-derives its compatibility report from this map, so a marker would turn a
+    # passed validation into a failed one.
+    assert replay.json["data"] == first.json["data"], replay.json["data"]
+    assert replay.json["data"]["provider"] == "stub"
+    assert replay.json["data"]["stub"] is True
+    assert replay.json["data"]["check"]["passed"] is True
+    assert "replayed" not in replay.json["data"]
     assert len(t024.model_calls(t024_stack.dbname, job.job_id)) == 1
 
     conflict = call(t024_stack, job, logical_key="replay:1", params={"task": "different"})
