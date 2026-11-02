@@ -341,3 +341,45 @@ func TestObjectLinkConfigurationIsValidated(t *testing.T) {
 		t.Fatal("a non-HTTP public URL must be rejected")
 	}
 }
+
+func TestWorkerImageDigestAndRuntimeLockAreDeploymentInputs(t *testing.T) {
+	env := validStubEnv()
+	// Absent is legal: manifest endpoints answer 503 compiler_unconfigured. The
+	// runtime lock path defaults to the P01 lock.
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.WorkerImageDigest != "" {
+		t.Fatalf("worker digest = %q; an absent digest must stay absent", cfg.WorkerImageDigest)
+	}
+	if cfg.RuntimeLockPath != "probes/agent_min/requirements.lock.txt" {
+		t.Fatalf("runtime lock default = %q", cfg.RuntimeLockPath)
+	}
+
+	env[EnvWorkerImageDigest] = "sha256:" + strings.Repeat("a", 64)
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("a valid digest must be accepted: %v", err)
+	}
+	if cfg.WorkerImageDigest != env[EnvWorkerImageDigest] {
+		t.Fatalf("worker digest = %q", cfg.WorkerImageDigest)
+	}
+
+	for _, bad := range []string{"latest", "sha256:xyz", "sha256:" + strings.Repeat("A", 64), "sha512:" + strings.Repeat("a", 64)} {
+		env[EnvWorkerImageDigest] = bad
+		if _, err := Load(lookupFrom(env)); err == nil {
+			t.Fatalf("digest %q must be rejected", bad)
+		}
+	}
+
+	env[EnvWorkerImageDigest] = "sha256:" + strings.Repeat("a", 64)
+	env[EnvRuntimeLockPath] = "custom/runtime.lock.txt"
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RuntimeLockPath != "custom/runtime.lock.txt" {
+		t.Fatalf("runtime lock override = %q", cfg.RuntimeLockPath)
+	}
+}

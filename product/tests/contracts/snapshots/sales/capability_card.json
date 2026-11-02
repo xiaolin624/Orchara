@@ -1,0 +1,20 @@
+{
+  "purpose": "销售文件分析",
+  "includes": [
+    "CSV/XLSX统计"
+  ],
+  "excludes": [
+    "生产系统写入"
+  ],
+  "required_inputs": [
+    "file"
+  ],
+  "expected_outputs": [
+    "report",
+    "summary"
+  ],
+  "examples": [
+    "分析上传销售额",
+    "汇总各地区订单"
+  ]
+}

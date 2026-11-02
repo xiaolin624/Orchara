@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024
+from support import f00b, f02a, t024, t025
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -154,6 +154,32 @@ def f02a_stack(migrated_database, go_binaries, api_server) -> f02a.F02AStack:
     )
 
 
+@pytest.fixture
+def t025_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t025.T025Stack:
+    """A migrated database behind a real API with an object store and the
+    placeholder worker image digest.
+
+    The object-store root lives under ``tmp_path``; the runtime lock is the P01
+    lock file, so the manifest hash uses the real lock digest. No mTLS listener is
+    started: validate is a public authenticated endpoint and does not need the
+    internal protocol.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    server = api_server(dsn, extra_env=t025.api_extra_env(object_dir))
+    return t025.T025Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        binaries=go_binaries,
+    )
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -163,4 +189,5 @@ __all__ = [
     "t022_stack",
     "t024_stack",
     "f02a_stack",
+    "t025_stack",
 ]
