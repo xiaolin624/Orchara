@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,14 @@ const (
 	EnvDatasetWaitTimeout     = "ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT"
 	EnvEvaluationPollInterval = "ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL"
 	EnvReportWaitTimeout      = "ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT"
+
+	// F05/T030 trusted preset tool. PythonPath is the interpreter used for the
+	// fixed tool script (default: "python" on Windows, "python3" elsewhere);
+	// ProductRoot anchors the fixed, server-side script path and never comes
+	// from request input. ToolTimeout bounds one tool subprocess.
+	EnvPython      = "ORCHARA_PYTHON"
+	EnvProductRoot = "ORCHARA_PRODUCT_ROOT"
+	EnvToolTimeout = "ORCHARA_MAINTENANCE_TOOL_TIMEOUT"
 )
 
 // F00B/T026 defaults. artifact_finalize gets a dedicated system_io pool (2
@@ -121,6 +130,12 @@ const (
 	DefaultDatasetWaitTimeout     = 60 * time.Second
 	DefaultEvaluationPollInterval = 100 * time.Millisecond
 	DefaultReportWaitTimeout      = 60 * time.Second
+	// DefaultToolRunTimeout bounds one trusted preset-tool subprocess. It is
+	// longer than a normal run (Python startup + a 20 MiB sheet) and short
+	// enough that a wedged tool cannot hold a work slot indefinitely.
+	DefaultToolRunTimeout = 30 * time.Second
+	// maxToolRunTimeout is the deployment ceiling for the same knob.
+	maxToolRunTimeout = 10 * time.Minute
 
 	maxMaintenanceSlots     = 32
 	minEvaluationPollPeriod = 10 * time.Millisecond
@@ -245,6 +260,11 @@ type MaintenanceConfig struct {
 	DatasetWaitTimeout     time.Duration
 	EvaluationPollInterval time.Duration
 	ReportWaitTimeout      time.Duration
+	// F05/T030: the trusted preset tool's interpreter, product root (the fixed
+	// script lives under it) and per-run timeout.
+	PythonPath  string
+	ProductRoot string
+	ToolTimeout time.Duration
 }
 
 // SweepConfig is everything `cmd/maintenance sweep` needs: the object store to
@@ -520,6 +540,34 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	pythonPath := value(lookup, EnvPython)
+	if pythonPath == "" {
+		// The default interpreter for this OS. It is a configured executable
+		// name/path, never a request-supplied command line.
+		if runtime.GOOS == "windows" {
+			pythonPath = "python"
+		} else {
+			pythonPath = "python3"
+		}
+	}
+	if strings.ContainsAny(pythonPath, "\x00\r\n") {
+		return nil, invalid(EnvPython, "must be a single executable path")
+	}
+	productRoot := orDefault(lookup, EnvProductRoot, ".")
+	if strings.ContainsAny(productRoot, "\x00") {
+		return nil, invalid(EnvProductRoot, "must not contain NUL")
+	}
+	if absolute, err := filepath.Abs(productRoot); err == nil {
+		productRoot = absolute
+	}
+	toolTimeout, err := parseHandlerDuration(lookup, EnvToolTimeout, DefaultToolRunTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if toolTimeout > maxToolRunTimeout {
+		return nil, invalid(EnvToolTimeout,
+			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
+	}
 	return &MaintenanceConfig{
 		InternalURL:            strings.TrimSuffix(rawURL, "/"),
 		ClientCert:             values[EnvInternalClientCert],
@@ -533,6 +581,9 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		DatasetWaitTimeout:     datasetWait,
 		EvaluationPollInterval: pollInterval,
 		ReportWaitTimeout:      reportWait,
+		PythonPath:             pythonPath,
+		ProductRoot:            productRoot,
+		ToolTimeout:            toolTimeout,
 	}, nil
 }
 

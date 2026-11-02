@@ -191,6 +191,7 @@ var completionGuards = map[Kind]CompletionGuard{
 	KindArtifactFinalize:    guardArtifactFinalizeCompletion,
 	KindModelValidate:       guardModelValidateCompletion,
 	KindApplicationEvaluate: guardApplicationEvaluateCompletion,
+	KindToolRun:             guardToolRunCompletion,
 }
 
 // retryAllowed is the single retry decision: the code must be in the kind's
@@ -268,6 +269,31 @@ func guardModelValidateCompletion(
 		return &ValidationError{
 			Field:   "result_artifact_id",
 			Message: "model_validate success must name the compatibility report artifact",
+		}
+	}
+	return verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID)
+}
+
+// guardToolRunCompletion is the T030 completion guard. A successful preset tool
+// run must name the summary artifact the handler registered; readiness, ownership
+// and job provenance are re-checked in this transaction with the same predicate
+// the model/evaluation guards use. A failed run never carries a result artifact
+// (Complete clears it), so its output artifacts stay mere diagnostics links and
+// can never be mistaken for a usable summary.
+func guardToolRunCompletion(
+	ctx context.Context,
+	_ *Controller,
+	tx *sql.Tx,
+	job *Job,
+	completion *Completion,
+) error {
+	if completion.State != StateSucceeded {
+		return nil
+	}
+	if completion.ResultArtifactID == "" {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "tool_run success must name the verified summary artifact",
 		}
 	}
 	return verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID)

@@ -47,9 +47,14 @@ const (
 	KindModelValidate       Kind = "model_validate"
 	KindDeleteContent       Kind = "delete_content"
 	KindCatalogIndex        Kind = "catalog_index"
+	// KindToolRun is the T030 non-contract bridge for the trusted preset tool:
+	// one caller-owned ready CSV/XLSX artifact in, summary/log/diagnostics
+	// artifacts out. T033 binds preset tools to the sandboxed run protocol.
+	KindToolRun Kind = "tool_run"
 )
 
-// allKinds is the closed whitelist from BACKGROUND-JOBS.md §2.
+// allKinds is the closed whitelist from BACKGROUND-JOBS.md §2, extended by T030
+// with the documented non-contract kind tool_run.
 var allKinds = []Kind{
 	KindArtifactFinalize,
 	KindRouteRequest,
@@ -59,6 +64,7 @@ var allKinds = []Kind{
 	KindModelValidate,
 	KindDeleteContent,
 	KindCatalogIndex,
+	KindToolRun,
 }
 
 var knownKinds = func() map[Kind]bool {
@@ -200,6 +206,21 @@ const (
 	CodeEvaluationUnsupported     = "evaluation_unsupported_kind"
 	CodeReportBindingMismatch     = "report_binding_mismatch"
 	CodeReportInvalid             = "report_invalid"
+
+	// tool_run failure codes (T030). A tool rejection (missing_column,
+	// duplicate_order_id, ...) is submitted verbatim: it is a business failure
+	// and the unknown-code rule keeps it non-retryable. The codes below are the
+	// platform-side edges: invalid/oversized/escaping output is a tool defect
+	// that cannot improve on retry, while timeout/crash/storage IO may.
+	CodeToolTimeout          = "tool_timeout"
+	CodeToolCrash            = "tool_crash"
+	CodeToolOutputInvalid    = "tool_output_invalid"
+	CodeToolArtifactInvalid  = "tool_artifact_invalid"
+	CodeToolArtifactEscape   = "tool_artifact_path_escape"
+	CodeToolArtifactSymlink  = "tool_artifact_symlink"
+	CodeToolArtifactTooLarge = "tool_artifact_too_large"
+	CodeToolArtifactCount    = "tool_artifact_count_exceeded"
+	CodeToolInputInvalid     = "tool_input_invalid"
 )
 
 // Failure codes that quarantine the artifact rather than leave it unavailable.
@@ -246,6 +267,19 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,
 		CodeDatasetWaitTimeout: true,
+	},
+	// tool_run (T030): the trusted tool runs in a bounded subprocess. A timeout
+	// or crash can be transient (a loaded host, a transient Python failure) and
+	// is retried at most MaxAttempts; a user-input rejection or an invalid tool
+	// output is deterministic and fails immediately. The tool's rejection codes
+	// are deliberately absent here: an unknown code classifies as business, so a
+	// later tool cannot accidentally introduce an infinite retry loop.
+	KindToolRun: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+		CodeToolTimeout:        true,
+		CodeToolCrash:          true,
 	},
 }
 

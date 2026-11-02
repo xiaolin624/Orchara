@@ -95,6 +95,51 @@
     <p id="artifact-download-status" class="status" role="status" aria-live="polite"></p>
   </section>
 
+  <section id="tool-panel" class="card" aria-live="polite">
+    <h2>预置销售统计工具（sales_stats，F05/T030）</h2>
+    <p class="hint">
+      对一个<strong>已就绪</strong>的 CSV/XLSX 附件运行平台预置的销售统计工具：
+      服务器在后台任务里用受限子进程执行固定脚本，校验 <code>output.json</code> 与产物，
+      再用 <code>Decimal</code> 字符串返回总额、地区金额与订单数，并可下载
+      <code>summary.csv</code> 与 <code>summary.json</code>。金额从不经过浮点数。
+      失败时只显示安全的错误码、修复建议和诊断附件，不展示脚本 stdout 作为正文。
+    </p>
+    <label for="tool-artifact-id">要统计的附件 artifact id</label>
+    <input id="tool-artifact-id" type="text" autocomplete="off" spellcheck="false"
+           placeholder="上传成功后会自动填入" />
+    <button id="tool-run-submit" type="button">运行销售统计</button>
+    <p id="tool-run-status" class="status" role="status" aria-live="polite"></p>
+
+    <dl class="artifact">
+      <dt>任务 id</dt><dd id="tool-run-id"></dd>
+      <dt>状态</dt><dd id="tool-run-state"></dd>
+      <dt>错误码</dt><dd id="tool-run-error-code"></dd>
+    </dl>
+
+    <div id="tool-summary" hidden>
+      <h3>统计结果（Decimal 字符串）</h3>
+      <dl class="artifact">
+        <dt>总额</dt><dd id="tool-summary-total"></dd>
+        <dt>订单数</dt><dd id="tool-summary-count"></dd>
+      </dl>
+      <table id="tool-summary-regions">
+        <thead><tr><th>地区</th><th>金额</th></tr></thead>
+        <tbody id="tool-summary-region-rows"></tbody>
+      </table>
+    </div>
+
+    <div id="tool-diagnostics" class="quarantine" hidden>
+      <p>错误码：<code id="tool-diagnostics-code"></code></p>
+      <p>说明：<span id="tool-diagnostics-message"></span></p>
+      <p>修复建议：<span id="tool-diagnostics-fix"></span></p>
+      <p id="tool-diagnostics-location" class="hint"></p>
+    </div>
+
+    <h3>可下载结果</h3>
+    <ul id="tool-downloads"></ul>
+    <p id="tool-log-note" class="hint"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script src="/assets/attachments.js"></script>
 </body>

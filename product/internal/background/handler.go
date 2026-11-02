@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/tools"
 )
 
 // HandlerWork is everything a compiled handler may use.
@@ -29,6 +30,11 @@ type HandlerWork struct {
 	// tests and deployments set short values explicitly rather than waiting a
 	// minute for a bounded wait to expire.
 	Settings HandlerSettings
+	// Tools is the trusted preset-tool executor (T030). It is constructed and
+	// configured by the maintenance process (python path, fixed script path,
+	// per-run timeout); a nil executor means this process cannot run tool_run
+	// jobs and the handler fails closed instead of guessing a command.
+	Tools *tools.Executor
 }
 
 // HandlerSettings is the per-process configuration a handler may consult.

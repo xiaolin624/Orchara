@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -355,6 +357,47 @@ func TestEvaluationPoolDefaultsAndBounds(t *testing.T) {
 		env[key] = raw
 		if _, err := LoadMaintenance(lookupFrom(env)); err == nil {
 			t.Fatalf("%s=%q must be rejected", key, raw)
+		}
+	}
+}
+
+func TestPresetToolConfigurationDefaultsAndBounds(t *testing.T) {
+	cfg, err := LoadMaintenance(lookupFrom(validMaintenanceEnv()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantPython := "python3"
+	if runtime.GOOS == "windows" {
+		wantPython = "python"
+	}
+	if cfg.PythonPath != wantPython {
+		t.Fatalf("python path = %q, want %q", cfg.PythonPath, wantPython)
+	}
+	if cfg.ToolTimeout != DefaultToolRunTimeout {
+		t.Fatalf("tool timeout = %s", cfg.ToolTimeout)
+	}
+	if cfg.ProductRoot == "" || !filepath.IsAbs(cfg.ProductRoot) {
+		t.Fatalf("product root must default to an absolute path, got %q", cfg.ProductRoot)
+	}
+
+	env := validMaintenanceEnv()
+	env[EnvPython] = "python3.12"
+	env[EnvProductRoot] = `C:\orchara`
+	env[EnvToolTimeout] = "2s"
+	cfg, err = LoadMaintenance(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.PythonPath != "python3.12" || cfg.ToolTimeout != 2*time.Second ||
+		!filepath.IsAbs(cfg.ProductRoot) {
+		t.Fatalf("preset tool overrides ignored: %+v", cfg)
+	}
+
+	for _, raw := range []string{"0s", "11m", "soon", "-1s"} {
+		env := validMaintenanceEnv()
+		env[EnvToolTimeout] = raw
+		if _, err := LoadMaintenance(lookupFrom(env)); err == nil {
+			t.Fatalf("tool timeout %q must be rejected", raw)
 		}
 	}
 }

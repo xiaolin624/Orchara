@@ -18,6 +18,7 @@ import (
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
+	"orchara/platform/internal/toolruns"
 )
 
 // Server serves the F01 identity endpoints, the F02A draft/version paths, the
@@ -33,9 +34,11 @@ type Server struct {
 	// userArtifacts is the T028 user-facing artifact service (distinct from the
 	// job-scoped ArtifactStore above: different purposes, different ACL).
 	userArtifacts *artifacts.Service
-	models        *modelproxy.Service
-	objects       *objectstore.Store
-	signer        *objectstore.Signer
+	// toolRuns is the T030 preset-tool run service (non-contract bridge).
+	toolRuns *toolruns.Service
+	models   *modelproxy.Service
+	objects  *objectstore.Store
+	signer   *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -103,6 +106,7 @@ func New(deps Deps) *Server {
 		artifacts:     background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		execution:     execution.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL),
 		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		toolRuns:      toolruns.New(deps.Service.DB, notifier),
 		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
 		objects:       deps.Objects,
 		signer:        deps.Signer,
@@ -194,6 +198,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}", s.handleGetArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/download", s.handleDownloadArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/content", s.handleArtifactContent)
+
+	// F05/T030: the trusted preset tool. A documented non-contract bridge over
+	// the durable background-job pipeline (T033/F04A bind tools to runs later).
+	mux.HandleFunc("POST /api/v1/tool-runs", s.handleCreateToolRun)
+	mux.HandleFunc("GET /api/v1/tool-runs/{job_id}", s.handleGetToolRun)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

@@ -24,12 +24,13 @@ import (
 // also has an entry in the fixed retry table (internal/background/job.go); a
 // kind that is absent here is never claimed, even if it is a whitelisted kind.
 // T022 implemented artifact_finalize; T024 adds model_validate; T026 adds
-// application_evaluate. The remaining five whitelisted kinds stay ready until
-// their ticket lands (T027/F03/F05/F07/F13A).
+// application_evaluate; T030 adds tool_run. The remaining whitelisted kinds stay
+// ready until their ticket lands (T027/F03/F05/F07/F13A).
 var Registry = background.Registry{
 	background.KindArtifactFinalize:    ArtifactFinalize,
 	background.KindModelValidate:       ModelValidate,
 	background.KindApplicationEvaluate: ApplicationEvaluate,
+	background.KindToolRun:             ToolRun,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from
