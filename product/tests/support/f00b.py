@@ -404,7 +404,24 @@ def maintenance_once(
     *args: str,
     env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[dict]]:
-    completed = run_maintenance(stack, "--once", *args, env=env)
+    """One deterministic `--once` drain with a single slot per pool.
+
+    T022's tests were written against the single-threaded loop (one claim at a
+    time, "the first empty claim exits"). T026 keeps one slot per pool here so
+    those ordering assumptions still describe a real process; the deployed
+    defaults (system_io=2, work=1) and multi-slot behaviour are exercised by
+    ``tests/f00b/test_t026_pool.py``.
+    """
+    completed = run_maintenance(
+        stack,
+        "--once",
+        *args,
+        "--system-io-slots",
+        "1",
+        "--work-slots",
+        "1",
+        env=env,
+    )
     assert completed.returncode == 0, (
         f"maintenance run --once failed ({completed.returncode}):\n"
         f"{completed.stdout}\n{completed.stderr}"
@@ -556,7 +573,9 @@ def job_row(dbname: str, job_id: str) -> dict:
         "state, error_code, failure_class, attempt_count, lease_token::text AS lease_token, "
         "lease_deadline::text AS lease_deadline, result_event_id::text AS result_event_id, "
         "result_event_digest, finished_at::text AS finished_at, available_at::text AS available_at, "
-        "worker_id, dedup_key, expected_revision, expected_sha256, input_artifact_id::text AS input_artifact_id "
+        "worker_id, dedup_key, expected_revision, expected_sha256, "
+        "input_artifact_id::text AS input_artifact_id, "
+        "result_artifact_id::text AS result_artifact_id "
         "FROM platform.background_jobs "
         f"WHERE id = {st.quote_literal(job_id)}::uuid",
     )

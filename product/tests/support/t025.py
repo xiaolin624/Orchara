@@ -313,11 +313,26 @@ def seed_published_version(
     version_no: int = 1,
     revoked: bool = False,
 ) -> str:
-    """Seed a real published version plus the review/artifact rows it requires."""
+    """Seed a real published version plus the review/artifact rows it requires.
+
+    Since T026's 0013 ``publication_reviews.report_id`` is a real FK, so the
+    review points at a real (seeded) ``evaluation_reports`` row with its own
+    ready result artifact. No evaluation job is created by this helper.
+    """
     version_id = version_id or new_uuid()
     review_id = new_uuid()
     report_id = new_uuid()
     artifact = insert_artifact(dbname, owner_id, purpose="version_manifest", sha256=None)
+    report_artifact = insert_artifact(dbname, owner_id, purpose="report", sha256=None)
+    sql_utf8(
+        dbname,
+        "INSERT INTO platform.evaluation_reports "
+        "(id, manifest_sha256, dataset_sha256, result_artifact_id, status) VALUES ("
+        f"{_literal(report_id)}::uuid, "
+        f"{_literal(hashlib.sha256(('manifest-' + report_id).encode()).hexdigest())}, "
+        f"{_literal(hashlib.sha256(('dataset-' + report_id).encode()).hexdigest())}, "
+        f"{_literal(report_artifact)}::uuid, 'passed')",
+    )
     manifest = {"manifest_version": "1.0", "application_id": application_id, "seeded": version_no}
     manifest_sha = hashlib.sha256(
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()

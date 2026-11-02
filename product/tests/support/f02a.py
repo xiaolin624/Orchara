@@ -285,6 +285,37 @@ def _jsonb(value) -> str:
     return _literal(json.dumps(value, ensure_ascii=False)) + "::jsonb"
 
 
+def _seed_evaluation_report(dbname: str, owner_id: str, *, tag: str = "seed") -> tuple[str, str]:
+    """Seed one real ``evaluation_reports`` row plus its ready result artifact.
+
+    T026's 0013 turns ``publication_reviews.report_id`` into a real foreign key.
+    Pre-T026 helpers used a random uuid there; the review/report seed now points
+    at a real immutable report row. The artifact has no bytes because these
+    tests never read them, and no evaluation job is implied by a report row.
+    """
+    report_id = new_uuid()
+    artifact_id = new_uuid()
+    object_key = "sealed/" + os.urandom(32).hex()
+    st.sql(
+        dbname,
+        "INSERT INTO platform.artifacts "
+        "(id, owner_id, object_key, purpose, media_type, size_bytes, state, sha256) VALUES ("
+        f"{_literal(artifact_id)}::uuid, {_literal(owner_id)}::uuid, "
+        f"{_literal(object_key)}, 'report', 'application/json', 2, 'ready', "
+        f"{_literal(hashlib.sha256(('report-' + tag).encode()).hexdigest())})",
+    )
+    st.sql(
+        dbname,
+        "INSERT INTO platform.evaluation_reports "
+        "(id, manifest_sha256, dataset_sha256, result_artifact_id, status) VALUES ("
+        f"{_literal(report_id)}::uuid, "
+        f"{_literal(hashlib.sha256(('manifest-' + tag).encode()).hexdigest())}, "
+        f"{_literal(hashlib.sha256(('dataset-' + tag).encode()).hexdigest())}, "
+        f"{_literal(artifact_id)}::uuid, 'passed')",
+    )
+    return report_id, artifact_id
+
+
 def principal_id_for_login(dbname: str, login: str = ADMIN_LOGIN) -> str:
     return st.sql(
         dbname,
@@ -346,8 +377,9 @@ def seed_published_versions(
 
     The manifest artifact row is real (the schema requires the FK); its bytes
     are not written, because T023 has no manifest generator or object-store read
-    (T025 owns both). ``report_id`` is a random uuid because T026 has not created
-    ``evaluation_reports`` yet and 0010 deliberately carries no FK there.
+    (T025 owns both). Since T026's 0013 every ``publication_reviews.report_id``
+    is a real FK, so each review points at a seeded ``evaluation_reports`` row
+    (immutable report metadata with its own ready result artifact).
     """
     artifact_id = new_uuid()
     object_key = "sealed/" + os.urandom(32).hex()
@@ -364,7 +396,9 @@ def seed_published_versions(
     for version_no in range(1, count + 1):
         version_id = new_uuid()
         review_id = new_uuid()
-        report_id = new_uuid()
+        report_id, _report_artifact_id = _seed_evaluation_report(
+            dbname, owner_id, tag=f"{manifest_tag}-{version_no}"
+        )
         manifest = {
             "manifest_version": "1.0",
             "application_id": application_id,

@@ -111,6 +111,8 @@ def _seed_published_version(
     import json
 
     artifact_id = new_uuid()
+    report_artifact_id = new_uuid()
+    report_id = new_uuid()
     review_id = new_uuid()
     manifest = {
         "manifest_version": "1.0",
@@ -128,6 +130,22 @@ def _seed_published_version(
         f"{_literal('sealed/' + os.urandom(32).hex())}, 'version_manifest', "
         f"'application/json', 2, 'ready', {_literal(manifest_sha)})",
     )
+    # T026's 0013 makes publication_reviews.report_id a real FK.
+    sql(
+        database,
+        "INSERT INTO platform.artifacts "
+        "(id, owner_id, object_key, purpose, media_type, size_bytes, state, sha256) VALUES "
+        f"({_literal(report_artifact_id)}::uuid, {_literal(owner_id)}::uuid, "
+        f"{_literal('sealed/' + os.urandom(32).hex())}, 'report', "
+        f"'application/json', 2, 'ready', {_literal(manifest_sha)})",
+    )
+    sql(
+        database,
+        "INSERT INTO platform.evaluation_reports "
+        "(id, manifest_sha256, dataset_sha256, result_artifact_id, status) VALUES "
+        f"({_literal(report_id)}::uuid, {_literal(manifest_sha)}, {_literal(manifest_sha)}, "
+        f"{_literal(report_artifact_id)}::uuid, 'passed')",
+    )
     sql(
         database,
         "INSERT INTO platform.publication_reviews "
@@ -135,7 +153,7 @@ def _seed_published_version(
         " reviewer_id, decided_at) VALUES "
         f"({_literal(review_id)}::uuid, {_literal(application_id)}::uuid, "
         f"{_literal(owner_id)}::uuid, '{{}}'::jsonb, {_literal(manifest_sha)}, "
-        f"{_literal(new_uuid())}::uuid, 'approved', {_literal(owner_id)}::uuid, now())",
+        f"{_literal(report_id)}::uuid, 'approved', {_literal(owner_id)}::uuid, now())",
     )
     sql(
         database,

@@ -2,11 +2,12 @@
 
 Three tables are created: the contract baseline ``model_profile_versions`` and
 ``platform_model_calls`` (plus the params digest), and the T024 provenance table
-``background_job_artifacts``. Two foreign keys are deliberately deferred:
-``platform_model_calls.request_id`` (F05/F07 owns ``requests``) and
-``model_profile_versions.evaluation_report_id`` (T026 owns
-``evaluation_reports``). The contract's XOR rule and attempt uniqueness are real
-database constraints, and ``orchara_worker`` still gets nothing from `platform`.
+``background_job_artifacts``. One foreign key is still deliberately deferred:
+``platform_model_calls.request_id`` (F05/F07 owns ``requests``).
+``model_profile_versions.evaluation_report_id`` was deferred by 0011 and is now
+bound by T026's 0013, which creates ``evaluation_reports``. The contract's XOR
+rule and attempt uniqueness are real database constraints, and ``orchara_worker``
+still gets nothing from `platform`.
 """
 
 from __future__ import annotations
@@ -114,7 +115,7 @@ def test_the_three_tables_match_the_contract_baseline(migrated_database) -> None
     assert "c" in links.values()
 
 
-def test_the_deferred_foreign_keys_are_really_absent(migrated_database) -> None:
+def test_the_foreign_keys_match_their_deferral_owners(migrated_database) -> None:
     _dsn, dbname = migrated_database
     call_fks = foreign_key_columns(dbname, "platform_model_calls")
     assert "request_id" not in call_fks, call_fks
@@ -124,7 +125,8 @@ def test_the_deferred_foreign_keys_are_really_absent(migrated_database) -> None:
     assert "result_artifact_id" in call_fks
 
     profile_fks = foreign_key_columns(dbname, "model_profile_versions")
-    assert "evaluation_report_id" not in profile_fks, profile_fks
+    # T024 deferred this one to T026; 0013 now binds it to evaluation_reports.
+    assert "evaluation_report_id" in profile_fks, profile_fks
     assert "manifest_artifact_id" in profile_fks
 
 

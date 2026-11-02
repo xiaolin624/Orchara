@@ -34,11 +34,11 @@ def test_0010_is_recorded_once_and_replaying_migrate_is_a_noop(f02a_stack) -> No
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # The chain now ends with T025's 0012; 0010 must still be recorded exactly
+    # The chain now ends with T026's 0013; 0010 must still be recorded exactly
     # once at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 13)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 14)], versions
     assert ledgers[9]["name"] == "0010_application_drafts.sql"
-    assert ledgers[-1]["name"] == "0012_manifest_and_tool_versions.sql"
+    assert ledgers[-1]["name"] == "0013_evaluation_pool.sql"
 
     replay = st.migrate_or_fail(f02a_stack.binaries["admin"], f02a_stack.dsn)
     assert "no pending migrations" in replay, replay
@@ -138,17 +138,23 @@ def test_the_active_version_fk_is_composite_restrict_and_nullable(f02a_stack) ->
     assert nullable == [{"is_nullable": "YES"}]
 
 
-def test_publication_reviews_report_id_has_no_fk_yet(f02a_stack) -> None:
+def test_publication_reviews_report_id_fk_lands_with_t026(f02a_stack) -> None:
     fks = _rows(
         f02a_stack.dbname,
         "SELECT conname, confrelid::regclass::text AS target "
         "FROM pg_constraint "
         "WHERE conrelid = 'platform.publication_reviews'::regclass AND contype = 'f'",
     )
-    assert {row["target"] for row in fks} == {"platform.applications", "platform.principals"}, fks
-    assert not any(
-        row["target"] == "platform.evaluation_reports" for row in fks
-    ), "the deferred T026 FK exists; 0010 must not fabricate evaluation_reports"
+    assert {row["target"] for row in fks} == {
+        "platform.applications",
+        "platform.principals",
+        "platform.evaluation_reports",
+    }, fks
+    assert any(
+        row["conname"] == "publication_reviews_report_id_fkey"
+        and row["target"] == "platform.evaluation_reports"
+        for row in fks
+    ), "T026's 0013 must add the deferred report FK; 0010 must not fabricate evaluation_reports"
 
     report_columns = st.sql_rows(
         f02a_stack.dbname,
