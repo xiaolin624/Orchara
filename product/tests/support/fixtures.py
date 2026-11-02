@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -275,6 +275,43 @@ def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.
     )
 
 
+@pytest.fixture
+def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.T029Stack:
+    """A T024-shaped stack plus the T025 compiler input, for claim/heartbeat/exit.
+
+    F03 needs every real primitive at once: a migrated + bootstrapped database,
+    the internal mTLS listener (the only place claim/heartbeat/exit exist), the
+    object store with HMAC link signing (the lease's manifest_url/input_url are
+    real sealed GET links) and the T025 deployment input so ``debugDraft`` can
+    freeze the checked-in golden manifest.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn,
+        extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
+    )
+
+    stack = t029.T029Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -288,4 +325,5 @@ __all__ = [
     "t026_stack",
     "t027_stack",
     "t028_stack",
+    "t029_stack",
 ]
