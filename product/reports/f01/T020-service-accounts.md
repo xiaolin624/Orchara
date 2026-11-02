@@ -44,6 +44,10 @@
   `8cc846084145728c825330c2e7711333c9e56638641a4d2fe11f87c88697396d`；
   `internal/api/apikeys.go` = `9e4c6cd7da74a66d094662c3f4c757655e1accc8f85e3ba2c7c3a426f212a982`。
 
+复核后补（2026-11-02）改动了 `internal/identity/apikeys.go`（两条签发路径加 `ROLESET1`），其当前
+SHA-256 为 `f49009f3b328bd7e2286efcfb26c6071047255c05bde4ec3fc5a8fcc75894cf1`；迁移与
+`internal/api/apikeys.go` 未变。
+
 ### 1.2 身份服务 `internal/identity/apikeys.go`
 
 ```go
@@ -139,6 +143,32 @@ func (s *Service) AuthenticateAPIKey(ctx, presented string) (*Identity, error)
     `requireScope` 5 条矩阵（会话不受限、key 有/无 scope）。
 - 集成（`tests/f01/test_t020_*.py`，30 个）：真实临时库 + `cmd/admin migrate/bootstrap` + 真实
   `cmd/api` 进程 + 真实 HTTP；逐条对应见第 2 节。
+
+### 1.6 复核后补（2026-11-02）：两条签发路径与禁用/交接的竞态
+
+复核发现 `CreateAPIKey` 与 `CreateServiceAccount` 在事务内读取负责人 `disabled_at`，却没有取
+`SetDisabled`/`SetRoles`/`Handover` 共用的 `ROLESET1` 咨询锁。这留下两个窗口：
+
+- 禁用与 key 插入交错时，禁用的撤销 UPDATE 看不到尚未提交的 key 行，于是留下一条禁用未撤销的
+  key；重新启用负责人后它仍可 bearer 认证（200），违反“禁用立即撤销”；
+- 服务账号创建与禁用/交接交错时，`cmd/admin handover --from R --to A` 已经提交，创建随后插入
+  一条仍以已禁用的 R 为负责人的服务账号，交接不会回溯移动它。
+
+修法：两条路径都在事务开头取同一把 `pg_advisory_xact_lock("ROLESET1")`，状态检查、INSERT 与
+审计都在锁内；既有校验顺序与状态码不变（`CreateAPIKey` 仍 404/422，`CreateServiceAccount` 仍
+404/422）。同一窗口的会话签发（`Login`）见 T017 报告 §1.7。
+
+证明测试（`BEFORE INSERT` + `pg_sleep` 把签发挂在真实表上，再在另一客户端禁用/交接）：
+
+- `test_t020_issuance_race.py::test_a_key_is_never_born_after_the_disable_that_should_have_revoked_it`
+  ——创建的 key 行 `revoked_at` 非空，重新启用负责人后 secret 的 bearer 调用仍 401 `invalid_key`；
+  无锁实现下该行 `revoked_at` 为 NULL、bearer 返回 200（真实库上实测失败）；
+- `test_t020_issuance_race.py::test_a_service_account_created_across_a_handover_is_moved_by_it`
+  ——新服务账号的 `responsible_user_id` 是交接目标 A（创建先提交、随后的交接移动它），并且再以
+  已禁用的 R 为负责人创建被 422 `validation_failed`（字段 `responsible_user_id`）；无锁实现下
+  新行仍属于 R（真实库上实测失败）。
+
+既有 30 个 T020 集成测试的结论与验收表不变；本票新增 2 个集成测试（`tests/f01` 计数相应增加）。
 
 ## 2. 验收标准逐条对照
 

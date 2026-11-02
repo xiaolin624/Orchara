@@ -144,6 +144,21 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, requiredRole 
   + 五个页面的内联 `<script>` 逐个 `node --check`；这是两轴复核后补的真实执行，不是源码 grep。
 - `tools/ci_checks.py` 未改动：非 quick 的 `integration-tests` 已包含 `product/tests/f01`。
 
+### 1.7 复核后补（2026-11-02）：会话签发与禁用的竞态
+
+复核发现 `Login` 在 `BeginTx` 之前读取 `disabled_at`，随后插入 `platform.sessions` 时没有取
+禁用/角色变更共用的 `ROLESET1` 锁。若一次禁用在这个窗口提交，它撤销的是当时可见的会话，刚插入
+的会话存活；用户被重新启用后，这个“本应已被撤销”的会话仍能认证 —— 违反 IMPLEMENTATION-DETAILS
+§1“立即撤销”。修法：登录事务先取 `pg_advisory_xact_lock("ROLESET1")`，在锁内重读
+`platform.principals.disabled_at`；若已禁用则回滚并返回 `ErrPrincipalDisabled`（HTTP 映射仍是
+403 `principal_disabled`）。argon2 校验与 rehash 计算仍在事务外，未知登录的 dummy verify 行为
+不变。证明测试用 `BEFORE INSERT` 触发器 `pg_sleep` 把登录挂在真实 `sessions` 插入上，再在另一
+客户端禁用：
+`test_t017_session_race.py::test_a_session_is_never_born_after_the_disable_that_should_have_revoked_it`
+——断言会话行 `revoked_at` 非空、Cookie 立即 401 `session_revoked`，且重新启用用户后仍是
+401 `session_revoked`。无锁实现下会话行的 `revoked_at` 为 NULL（测试在真实库上实测失败），
+重新启用后同一 Cookie 返回 200。本票其余验收结论与计数口径不变，`tests/f01` 计数加上本测试。
+
 ## 2. 验收标准逐条对照
 
 | # | 验收 | 证据测试 |

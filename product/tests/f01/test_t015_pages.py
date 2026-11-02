@@ -8,6 +8,7 @@ a URL.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -146,3 +147,63 @@ def test_unknown_page_is_not_served(pages_server) -> None:
     for path in ("/admin.html", "/assets/"):
         response = pages_server.http.get(path)
         assert response.status == 404, f"{path} unexpectedly returned {response.status}"
+
+
+# A form element opens with <form ...> and closes with </form>; no page nests
+# forms, so a non-greedy block match gives one block per real form.
+_FORM_TAG = re.compile(r"<form\b[^>]*>", re.IGNORECASE)
+_FORM_BLOCK = re.compile(r"<form\b.*?</form>", re.IGNORECASE | re.DOTALL)
+_METHOD_POST = re.compile(r"\bmethod\s*=\s*[\"']?post[\"']?", re.IGNORECASE)
+_ACTION = re.compile(r"\baction\s*=\s*[\"']([^\"']*)[\"']", re.IGNORECASE)
+
+
+def test_every_form_posts_and_no_action_carries_a_query_string(pages_server) -> None:
+    """With JavaScript disabled or not yet loaded, a browser must not GET a form.
+
+    A form without ``method`` defaults to GET, which puts the password, the
+    activation token and the CSRF-bearing fields into the query string and the
+    browser history -- exactly what "tokens and passwords never appear in a URL"
+    forbids. The JS handlers remove the submit event, but that is not the only
+    way a form can be submitted; ``method="post"`` is the markup-level guard.
+
+    The page paths are the real served pages, so the assertion covers what the
+    browser receives, not only the files on disk.
+    """
+    expected_forms = {"/login": 1, "/activate": 1, "/admin": 9}
+    total = 0
+    for path, expected_count in expected_forms.items():
+        response = pages_server.http.get(path)
+        assert response.status == 200, response.text
+        body = response.text
+        forms = _FORM_TAG.findall(body)
+        assert len(forms) == expected_count, f"{path} has {len(forms)} forms: {forms}"
+        total += len(forms)
+
+        for form in forms:
+            assert _METHOD_POST.search(form), (
+                f"{path} serves a form without method=post, so a no-JS submit "
+                f"would leak its fields into the query string: {form}"
+            )
+            action = _ACTION.search(form)
+            if action is not None:
+                assert "?" not in action.group(1), (
+                    f"{path} puts a query string in a form action: {form}"
+                )
+
+        # The sensitive fields live inside a form (and therefore inside the
+        # method=post guard), not in a bare element outside it.
+        blocks = _FORM_BLOCK.findall(body)
+        sensitive = {
+            "/login": ('type="password"',),
+            "/activate": ('id="activation-token"', 'type="password"'),
+            # The admin page's one-time token display is a readonly textarea
+            # outside any form (it is never submitted); its submitted sensitive
+            # field is the sign-in password.
+            "/admin": ('type="password"',),
+        }[path]
+        for marker in sensitive:
+            assert any(marker in block for block in blocks), (
+                f"{path} has a sensitive field {marker!r} outside every form"
+            )
+    # 1 login + 1 activation + 9 admin forms; a new form must be covered too.
+    assert total == 11, f"expected the three pages to contain 11 forms, found {total}"

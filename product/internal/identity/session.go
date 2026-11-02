@@ -59,6 +59,33 @@ func (s *Service) Login(ctx context.Context, login, password string) (*Session, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Session issuance is serialised with disable/enable, role changes and
+	// handover under the shared "ROLESET1" advisory lock. The check before the
+	// transaction is only a fast path: a disable committing between it and the
+	// INSERT would otherwise let a session be born after the moment it should
+	// have been revoked. Re-checking inside the lock leaves exactly two orders:
+	// either this transaction commits first and the disable then revokes the new
+	// session, or the disable is already visible here and no session is created.
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", rolesLockKey)); err != nil {
+		return nil, fmt.Errorf("acquiring the login lock: %w", err)
+	}
+	var currentDisabledAt sql.NullTime
+	err = tx.QueryRowContext(ctx,
+		`SELECT disabled_at FROM platform.principals WHERE id = $1`,
+		principalID,
+	).Scan(&currentDisabledAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Principal rows are never deleted; an unreadable subject is a failed
+		// login rather than a session for something that cannot be authorized.
+		return nil, ErrInvalidCredentials
+	}
+	if err != nil {
+		return nil, fmt.Errorf("re-reading the principal state: %w", err)
+	}
+	if currentDisabledAt.Valid {
+		return nil, ErrPrincipalDisabled
+	}
+
 	if rehashed != "" {
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE platform.users SET password_hash = $1 WHERE principal_id = $2`,
