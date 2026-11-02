@@ -10,8 +10,8 @@
 ## 当前发布范围
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
-T026 partial）**、**F02A（T023/T025 partial；T027 passed）** 与 **F05（T028 passed；T029+ open）**；
-其余票保持 open。
+T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028 passed）** 与
+**F03（T029 passed；T030+ open）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -26,8 +26,11 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 （迁移 0014、`execution_snapshots`/`runs`/`jobs`/`run_artifacts`/`idempotency_keys`）。F02A 三票
 范围内的工作完成，但 T023/T025/T026 的 `partial` 原因分别由 F02B/F03-F04A/F13A-F07 闭环；
 执行/领取属 F03、发布提交属 F02B，限制见各票报告。
-平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备
-等后续 epic 未实现；F01/F00B/F02A 的限制见各票报告 §5/§7。
+F03 的 T029 已交付执行领取的首个切片（迁移 0016、`internal/execution`、内部 claim/heartbeat/
+attempt-exit、owner-only `GET /runs` 与运行页面）：真实 mTLS + PG 原子领取/配额/hmac sealed 链接；
+result/finalizer/事件/恢复/取消属 T030+。平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/
+审批/编译器/画布/发布门禁/部署灾备等后续 epic 未实现；F01/F00B/F02A/F05/F03 的限制见各票报告
+§5/§7。
 本文件 2026-11-02 的两轴复核修复记录见下方“F00B/F02A 两轴复核修复”一节，第二次独立复核的 6 项
 缺陷 + 1 个 flaky 测试见“F00B/F02A 第二次复核修复”一节；状态以本节之后的表格为准。
 
@@ -63,6 +66,7 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 | T026 | F00B | 评测池满载时文件封存仍能完成 | partial | `reports/f00b/T026-evaluation-pool.md`、`db/migrations/0013_evaluation_pool.sql`、`internal/background/{evaluation,complete,sweep}.go`、`cmd/maintenance/{run,sweep}.go`、`tests/f00b/test_t026_*.py`（41 用例；`kind=application` 的真实 runner/checker 属 F13A，T027 后 snapshot 绑定结构可用；**deletion 状态属 F07、未实现**；第二次复核后 sweep 只清 staging、sealed 孤儿清理延后 F07/F13A，租约耗尽的评测终态与 job 同事务对账；三条 partial 原因见报告页首） |
 | T027 | F02A | 发布前提交私有草稿并查看固定调试任务 | passed | `reports/f02a/T027-debug-submit.md`、`db/migrations/0014_execution_snapshots_and_runs.sql`、`internal/catalog/{debug.go,debug_test.go}`、`internal/api/debug.go`、`apps/web/src/{debug.html,assets/debug.js}`、`tests/support/t027.py`、`tests/f02a/test_t027_*.py`（38 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；领取/执行属 F03；第二次复核后 debug 要求会话 creator 角色，无角色管理员 403） |
 | T028 | F05 | 上传、校验封存并授权下载不可覆盖的文件 | passed | `reports/f05/T028-artifact-uploads.md`、`db/migrations/0015_artifact_admissions.sql`、`internal/artifacts/`（服务 + 格式准入分类器）、`internal/api/{artifacts.go,server.go}`、`internal/background/handlers/artifact_finalize.go`、`apps/web/src/{attachments.html,assets/attachments.js}`、`tests/support/t028.py`、`tests/f05/test_t028_*.py`（6 文件 31 用例；真实 PG + 真实二进制 + 真实 HTTP + 真实签名 URL + 真实 maintenance finalize；删除模型/病毒查杀/深工作表解析分别属 F07/F13A，见报告 §5） |
+| T029 | F03 | 提交运行并只让合格执行者在配额内领取 | passed | `reports/f03/T029-claim-and-lease.md`、`db/migrations/0016_execution_claims_and_quota.sql`、`internal/execution/`（store + service：claim/heartbeat/attempt-exit）、`internal/api/{execution.go,runs.go,server.go,internal.go,debug.go}`、`apps/web/src/{runs.html,assets/runs.js,debug.html}`、`tests/support/t029.py`、`tests/f03/test_t029_*.py`（9 文件 51 用例；真实 PG + 真实 mTLS/HTTP + 真实对象字节 + 真实并发；result/finalizer/事件/恢复/取消属 T031–T038，发布版 Run 入口属 F02B/F05，见报告 §4/§5） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -439,6 +443,28 @@ staging/sealed URL + 真实 `cmd/maintenance run --once --kinds artifact_finaliz
 `deleted_at/state=deleted/revision+1` 列做真实 guard 竞争测试，不实现删除）；病毒查杀与 XLSX 工作表/
 行级/公式深解析（属 F13A/`document_ingest`）；管理员诊断授权正文读取（F07/F09）；浏览器 DOM；全量
 `pytest tests`（本票按 brief 跑五套件，见报告 §3.3）。本票不推送、不关闭 issue。
+
+## F03 领取、租约与退出证据（1/N：T029）
+
+T029（GitHub #30）已交付，状态 **`passed`**（本票范围 = **领取 + 租约/心跳 + 退出证据记录 +
+owner-only Run 列表与运行页面**）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 mTLS 客户端证书 +
+真实 HTTP + 真实文件系统对象字节 + 真实 HMAC sealed GET 链接 + 真实并发；无 mock、无跳过。
+边界（如实）：result 提议/事件/统一 finalizer/resume/cancel/recovery/终态/SSE 属 T031–T038；发布版
+Run 入口属 F02B/F05；真实 supervisor/worker 进程属 F04A/F15A。决策见报告 §4/§5。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0016_execution_claims_and_quota.sql`：`run_attempts`/`quota_counters`/`quota_allocations` 契约基线；补齐 T027 延期的 `jobs_current_attempt_token_fkey`、`run_artifacts_attempt_token_fkey`；部分唯一索引 `run_attempts_one_live_per_run`（`exited_at IS NULL AND revoked_at IS NULL`）；租约/心跳索引 `run_attempts_live_lease`、`run_attempts_live_job`；种子 `('global','execution_slots',0,2)`（容量是部署 knob，`ON CONFLICT DO NOTHING`）；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op；未建 requests/conversations/events/node_attempts/operations/approvals |
+| internal/execution | store + service 两层；**单一数据库时钟**（租约/心跳/过期/退出全部 SQL `now()`）；claim 一个事务：`FOR UPDATE OF j,r SKIP LOCKED` 选 ready job（run queued、snapshot compiler 受支持）→ 配额行锁 + `used<capacity` 原子自增 → holder `job:<id>` 分配（释放后复用/重新武装）→ attempt 行（新 token、`now()+ttl`）→ job `leased` + token → run `running`/phase `executing`/`started_at`/`revision+1` → `compiler.VerifyManifestBytes`（只信密封字节）→ 真实 sealed GET 链接 → commit；任何失败整笔回滚 |
+| claimJob | `POST /internal/v1/jobs/claim`，supervisor only（worker/maintenance 403）；body 严格校验（`worker_id`、非空/唯一/可打印 `supported_compilers`、`execution_unit_id`）；200 契约 `Lease` 14 字段（`protocol_version="1.0"`、manifest=snapshot JSONB 投影、resume 对 start 为 null）；无兼容 job/无容量 → 204 无 body 且零变化；字节/签名不可用 → 503 `object_store_unavailable`/`object_signing_unavailable` 且无租约 |
+| heartbeat | `POST /internal/v1/runs/{run_id}/heartbeat`，supervisor/worker 可、maintenance 403；token 必须绑定该 run/job 且 live（过期/撤销/错 run/错 unit → 409 `stale_attempt`）；`lease_deadline=now()+ttl`（`ORCHARA_EXECUTION_LEASE_TTL`，默认 30s）；`checkpoint_connections` 校验形状后持久化（缺省不覆盖）；`HeartbeatReply`：真实 lease_deadline、`cancel_requested` 来自 `runs.cancel_requested_at`、`policy_revision`=acl epoch、`budget_remaining`=`runs.budget_limit::text`（usage ledger 后续票，报告中明确） |
+| confirmAttemptExit | `POST /internal/v1/attempts/{attempt_id}/exited`，supervisor only；校验 live + execution_unit；持久化 `exited_at/exit_evidence`、撤销 token、`released_at IS NULL` 下只释放一次配额（`used-1`）；`evidence.started=false` → job `ready`、run `queued`/phase `idle`/`revision+1`（`started_at` 不变，未启动由证据证明）；其他 evidence（含缺省 started）→ job `held`、run 非终态（T031 finalizer 边界）；重复相同 evidence 幂等 200、冲突 409 `attempt_evidence_conflict` |
+| 配额/过期 | 唯一维度 `global/execution_slots`；一次 claim 一个槽、一次 exit 释放一次；容量 1 × 10 并发恰 1 个 200；**过期租约不自动回收**：心跳/退出 409，claim 不抢 `leased` job，过期 attempt 的槽保持占用；`recovery_pending`/sweep/撤销旧 token/槽位回收属 T031（EXECUTION §3 保守恢复） |
+| listRuns | `GET /api/v1/runs` owner-only（管理员只看自己的；无 grant 路径），`created_at,id DESC` 稳定 keyset + opaque cursor（过滤先于分页），`{items,next_cursor}` 契约；limit 缺省 20/非法 422、坏 cursor 400；API key 需 `application:read`；复用 T027 `catalog.Run` 投影（抽出 `runColumns/scanRun`，未复制第二份） |
+| 详情扩展 | `GET /api/v1/runs/{id}` 在尝试存活时附非契约头 `X-Run-Attempt-Started-At`/`X-Run-Lease-Deadline`（Run schema 无租约字段；`X-Manifest-SHA256` 先例；attempt token 绝不暴露） |
+| Web | `apps/web/src/runs.html` + `assets/runs.js`：owner-only 列表/分页、点击详情、state/phase/kind/revision/snapshot、manifest hash、运行中的真实 started_at/lease_deadline；无租约时明确“不伪造进度”；全部 `textContent`；debug 页新增 phase/租约行与 `/runs` 链接，apps 页新增 `/runs` 导航 |
+| 测试 | `tests/support/t029.py` + `tests/f03/test_t029_*.py` 9 文件 **51 用例**（迁移 7、claim 6、heartbeat 9、exit 10、listRuns 3、并发 3、原子性 5、不变量 3、页面 5）+ `internal/execution` 4 个 Go 单测；`tests/f03` **51 passed**，`go test ./...` 全绿，`go vet ./...`、`gofmt -l .` 无输出，`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节/并发） |
+| 证据 | `reports/f03/T029-claim-and-lease.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T030/T031 接口） |
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
