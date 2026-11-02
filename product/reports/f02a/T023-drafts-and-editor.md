@@ -282,3 +282,20 @@ scopes 2 + versions 6 + invalid-draft 2 + pages 7 = **45**。
 | P05 校验器移植 | real | 40 例 corpus 对拍 verdict/reasons/hash/canonical；嵌入 rules 逐字节等于 probe |
 | JCS 移植 | real | 40 条 RFC/T003 向量（含错误码） |
 | validate/debug/submit | not_run（不属本票） | 端点 404；由 T025/T027/F02B 交付 |
+
+## 8. T027 后补（2026-11-02）：AC3 闭环
+
+T023 的 `partial` 判定唯一原因是：当时没有 debug/submit 端点来兑现“非法草稿不能调试/提交”。
+T025 交付了 validate，T027 交付了 debugDraft；下列真实栈证据把这条闭环（T027 报告 §4）：
+
+- `tests/f02a/test_t023_invalid_draft.py::test_t023_acceptance_3_is_closed_by_the_validate_and_debug_refusals`：
+  空草稿 `POST /validate` → 200 `valid:false`；`POST /debug-runs` 缺 key → 400
+  `idempotency_key_required`；带 key → 422 `validation_failed` + 定位 `details.errors`；
+  `POST /submit` 仍 404（F02B 未实现）。
+- `tests/f02a/test_t027_refusals.py::test_an_invalid_draft_or_empty_card_can_be_saved_but_not_debugged`：
+  同一真实栈上，非法 DSL 与空能力卡都能先保存（200）再被 debug 422 拒绝，且不产生任何执行行。
+
+因此本报告的状态由 `partial` 更正为 **`passed`**（T023 的票面 AC3 在 T025+T027 端点闭合）。
+仍然成立的限制：发布提交端点尚未实现（F02B），因此“提交”侧目前是“没有端点接受任何草稿”，
+而不是“已实现 submit 的拒绝路径”；浏览器 DOM 渲染仍未跑（§6）。PROGRESS 的 T023 主表行与
+F02A 状态段同步更新。

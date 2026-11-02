@@ -715,5 +715,153 @@ handler 是受信基础设施，不是用户：报告由它生成，但“passed
 - `product/tests/support/{t026.py,fixtures.py,f00b.py,f02a.py,t025.py}`、`product/tests/f00b/test_t026_*.py`
 - `product/reports/f00b/T026-evaluation-pool.md`
 
+## T027 追加：私有调试快照、排队 Run 与幂等提交（F02A.03）
 
+T027 把“创作者从调试入口选择 revision 与测试输入，冻结仅自己可见的执行快照并排队一个
+debug Run”从规格变成可运行实现，并且只交付**提交与排队**：领取、执行、事件、结果和终态属
+F03。以下决定为 F03、F02B、F05/F07 与后续契约修订必须沿用；变更需新 ADR 或在本节追加理由。
 
+### 38. 迁移 0014：执行身份五表、补齐的 `evaluation_jobs_snapshot_fkey` 与三个延期外键
+
+- `platform.execution_snapshots`、`platform.runs`、`platform.jobs`、`platform.run_artifacts`、
+  `platform.idempotency_keys` 按 `contracts/database.sql` 基线创建。`execution_snapshots` 的
+  kind/身份 XOR CHECK、`runs` 的三条契约 CHECK、`jobs`/`run_artifacts` 的 PK 与部分唯一索引
+  （`one_live_job_per_run`、`jobs_ready`、`one_active_top_run_per_conversation`）原样保留。
+- **补齐 T026 延期的外键**：`evaluation_jobs_snapshot_fkey (snapshot_id) ->
+  execution_snapshots(id)`。从 0014 起 `evaluation_jobs.snapshot_id` 是真实引用；此前 T026 的
+  测试 seed 了一个裸 uuid，schema 收紧后改为 seed 真实 snapshot 行（预期适配，不是放宽断言）。
+- **三个继续延期的外键**（列已建、无 FK，迁移头/COMMENT 写明归属）：
+  `runs.request_id`/`runs.conversation_id` → F05/F07（`requests`/`conversations` 表不存在）；
+  `jobs.current_attempt_token`/`run_artifacts.attempt_token` → F03（`run_attempts` 不存在）。
+  F05/F07/F03 必须在各自迁移里补 `runs_request_id_fkey`、`runs_conversation_id_fkey`、
+  `jobs_current_attempt_token_fkey`、`run_artifacts_attempt_token_fkey`。在此之前任何代码都不得
+  把这几列当作已验证引用；本批只写 NULL。
+- **一个显式新增列**：`idempotency_keys.response_json jsonb`。契约的 idempotency 表只有
+  `response_code`/`response_artifact_id`，没有地方保存 `debugDraft` 必须原样重放的 202 响应体
+  （API.md §1 要求“保存规范请求哈希和响应”）。T027 在同一事务里写 response_code 与
+  response_json；F05/F06 的创建类操作继承该列。提交成功的收据**总是**同时带 code 与 body。
+- 收紧但契约未明写的 CHECK（本批所有写入者都满足）：`execution_snapshots.manifest_sha256`、
+  `runs.manifest_sha256`、`idempotency_keys.request_sha256` 为 64 字符；
+  `execution_snapshots.manifest` 是 jsonb object（只是可查询投影，hash 永远按密封字节算）；
+  debug 的 `draft_revision > 0`；`idempotency_keys.key` 非空白。
+- 权限沿用 0007–0013：PUBLIC 无 platform 权限，`orchara_worker` 无 USAGE/表/序列权限。
+- 不建 worker/attempt/operation/approval/event/quota 表（F03），不建 requests/conversations
+  （F05/F07），不写 published snapshot（F02B）。
+
+### 39. debugDraft 的固定顺序、owner-only 与“revision 在事务内冻结”
+
+- 端点是 `POST /api/v1/applications/{application_id}/debug-runs`（operationId `debugDraft`）；
+  会话需 CSRF，API key 需 `application:write`。**只有 owner**（非 owner 含管理员/read grant
+  一律 404；Run 没有 grant 类型）。
+- 顺序固定：401/403 → 请求体（400/422；缺 `Idempotency-Key` 为 400 `idempotency_key_required`）
+  → 幂等收据（replay 或 409 `idempotency_conflict`）→ 可见性/owner（404）→ 当前 revision
+  （409 `revision_conflict`，details 带 requested/current）→ T025 `ValidateExecution`
+  （PrivateDebug=true；定义/卡片/依赖 422 `validation_failed` + `details.errors` 定位错误；
+  未配置编译器/对象存储 503）→ run 预算/币种（422）→ 引用 artifact（422）→ 密封输入字节 →
+  一个事务（幂等收据 + snapshot + run + start job + artifact 行 + 链接）。
+- **修订在创建事务内用 `SELECT ... FOR UPDATE` 复核**：并发保存要么在锁前提交（revision 变了
+  → 409，绝不把旧 revision 静默升级成新内容），要么在锁后阻塞到本次提交完成（它改不到这个
+  run）。因为每次保存都 +1 `revision`，revision 相等即证明 `execution_revision` 未变，所以
+  校验时密封的 manifest 必然仍描述被冻结的草稿内容。
+- 创建结果：`execution_snapshots(kind=debug, application_version_id NULL, draft_revision=请求的
+  revision, owner=caller, manifest jsonb 投影, manifest_sha256, manifest_artifact_id=T025 的
+  artifact, compiler/worker digest/state schema)`；`runs(kind=debug, state=queued, phase=idle,
+  revision=1, next_event_seq=1, manifest_sha256, input_artifact_id, checkpoint_thread_id,
+  budget/currency 来自 definition.policy, request/conversation/version/parent 全 NULL)`；
+  `jobs(kind=start, state=ready)`；输入 artifact（`purpose=run_input`、owner=caller、ready、
+  JCS 规范字节、真实 sha256/size/revision=1）；`run_artifacts(relation=input)` 链接规范输入与
+  所有 `artifact_ids`。**不创建** application_version、publication_review、request、
+  conversation、report、background job。
+- 响应 202 + 契约 `Run`（10 字段，debug/null/queued/idle）。`GET /api/v1/runs/{run_id}` 只给
+  owner（其余 404，含管理员；畸形/未知/已删除同答），返回同一投影；API key 需
+  `application:read`。不实现 events/SSE/claim/cancel（F03）。
+
+### 40. 私有依赖规则、预算范围与输入 artifact 的准入
+
+- 依赖复用 T025 `ValidateExecution(..., ExecutionOptions{PrivateDebug:true})`：作者自己的
+  ready 工具**无需组织批准**即可私有调试；他人未批工具 → `dependency_not_visible`；共享/
+  提交执行仍要求 `approved_at`。model 必须 `validation_state=passed` 且未撤销；sub-app version
+  必须未撤销、应用未归档且调用者有 read ACL；环照旧拒绝。错误码/pointer/node_id 沿用 §28。
+- run 的 `budget_limit`/`currency` 取自 `definition.policy`（P05 校验器已要求五字段）。额外规则：
+  `budget_limit` 必须能放进 `numeric(20,8)`（≤12 位整数、≤8 位小数），否则 422
+  `policy_budget_out_of_range` 定位 `/policy/budget_limit`；这是 debug 专有的列范围检查，validate
+  仍按 DSL 报 valid（manifest 不存预算）。缺 policy/类型错是防御性 `policy_incomplete`。
+- `artifact_ids`：≤5 个、唯一、UUID；每个必须是**调用者自己的**、`state=ready`、未墓碑、有
+  sha256/size 的 artifact。错误定位 `/artifact_ids/<i>`，码为 `artifact_not_found`/
+  `artifact_not_visible`/`artifact_not_ready`（他人 artifact 不泄露其状态）。`artifact_ids` 是
+  集合：规范化时小写、排序，因此仅顺序不同的重放是同一请求。
+- 规范输入字节 = `input` 对象的 RFC 8785 JCS 字节，密封为 `sealed/<64hex>` 后才进入事务；
+  事务失败/重放/竞态落败都删除本次字节，崩溃留下的未引用对象属 T026 孤儿清理。
+
+### 41. 幂等语义：canonical digest、replay 无副作用、并发唯一、过期仍重放
+
+- 请求摘要 `request_sha256` = SHA-256(JCS(`{application_id, artifact_ids(规范化排序),
+  draft_revision, input(JCS 字节)}`))；收据主键是契约的
+  `(principal_id, method, path, key)`，其中 path 用**具体请求路径**
+  （`/api/v1/applications/<uuid>/debug-runs`），同一 key 不能跨应用借用。
+- 只有**成功**的 202 才写收据；422/409 不消耗 key，修正请求后可重试。同 key 同摘要 → 202
+  原 Run（同一 id/同一 snapshot/同一字节，不重编译、不写对象、不建行）；同 key 不同摘要 →
+  409 `idempotency_conflict`；缺/空/重复 header → 400 `idempotency_key_required`。
+- **replay 优先于“当前 revision”规则**：同一 key + 同一规范请求描述的是同一次已授权操作，
+  即使草稿随后保存过，也返回原来的 202 Run；用**新** key 指定旧 revision 才 409
+  `revision_conflict`（旧 revision 不会被重新调试）。该优先级是本票的显式选择。
+- 并发重复提交：收据插入与 snapshot/run/job 同一事务，第二个提交在唯一键上阻塞，待赢家提交后
+  读到已提交 202 体并重放；输家删除自己刚密封的输入对象，因此“并发重复 ⇒ 恰好一个 Run”
+  在数据库层成立（不是先查后写的竞态）。
+- `expires_at` 推荐 24h（`IdempotencyTTL`）。过期是清理元数据，**不允许**再次执行同一操作：
+  已提交收据永远可重放；F07 负责删除过期收据。提交成功的收据与响应体同事务，缺 body 是内部
+  缺陷（500），绝不重新创建。
+
+### 42. 契约缺口：Run 没有 snapshot hash 字段，也没有 getSnapshot 端点
+
+- 契约 `Run` 是 `additionalProperties:false` 的 10 字段，既没有 `manifest_sha256` 也没有
+  `draft_revision`；契约也没有读取 execution_snapshot 的 operation。为让“查看固定快照”诚实，
+  `debugDraft` 202 与 `getRun` 200 都用**非契约扩展**响应头 `X-Manifest-SHA256`（64 位小写
+  hex，与 T025 validate 同一先例 §26/§30）返回冻结的 hash；页面展示
+  `execution_snapshot_id`、该 hash、以及提交时冻结的 draft revision（客户端事实），并明确
+  “领取/执行/结果属 F03”。服务端 snapshot 的 manifest JSONB/draft_revision 仍只能通过 DB/worker
+  协议读取。
+- 后续契约修订应把 `manifest_sha256`（及可选 `draft_revision`）变成正式字段，或新增 snapshot
+  读端点/内部协议字段；不得在客户端自行重算 hash 或猜测快照内容。
+
+### 43. 与 T026/F13A 的衔接：application-kind 评测的绑定现在真实可用
+
+- `evaluation_jobs_snapshot_fkey` 之后，T026 的 `resolveBoundManifest` 对 kind=application 读
+  真实 `execution_snapshots.manifest_sha256`，仍要求 snapshot owner == 评测 owner（他人 snapshot
+  = `evaluation_binding_missing`）。T027 **不**实现评测 UI/端点；F13A 用同一绑定规则替换合成
+  runner，不得自证 passed。T026 的 `partial` 只剩“真实 runner”一条（本票在 PROGRESS 说明）。
+
+### 44. 边界：F03/F02B/F05/F07/T028 各拥有什么（不得越界）
+
+- **F03（执行）**：领取/租约/attempt/事件/结果/退出 finalizer/cancel/SSE；必须从 snapshot 取
+  `manifest_artifact_id` 的 `{object_key,sha256,size_bytes}` 并先调
+  `compiler.VerifyManifestBytes`（不得从 JSONB 重序列化推断 hash，不得重编译）；必须补
+  `jobs_current_attempt_token_fkey`、`run_artifacts_attempt_token_fkey`；只有它能改
+  `runs.state`/`phase`/`next_event_seq`。
+- **F02B（发布）**：审核/版本写入；发布 snapshot 必须 `kind=published` +
+  `application_version_id`，并复用 `manifest_artifacts` 记录的同一 artifact/hash；不得为同一
+  hash 重写字节。
+- **F05/F07**：requests/conversations 及其 FK；F07 还拥有 idempotency 过期清理、deletion 模型与
+  墓碑传播。T027 只写 `response_json` 并依赖收据永久可重放。
+- **T028（用户上传）**：`run_input` purpose 由服务端写；用户上传的 purpose/扫描/准入属 T028，
+  不得借 `artifact_ids` 让任意上传绕过就绪判定（仍要求 ready/本人/未墓碑）。
+
+## 后果（T027）
+
+- 0014 之后，执行身份的写入只有 `debugDraft` 一条路（F02B 会有第二条 published 路径）；任何
+  绕过它直接写 snapshot/run/job 的实现都是 bug。队列中的 start job 在 F03 领取前保持 ready。
+- debug 的 manifest 字节/hash 与 T025 validate 完全相同（golden 断言），发布必须复用同一
+  artifact；同一个草稿从 debug 走到发布不改变被评测的 hash。
+- 幂等收据是操作级事实：重放返回原 Run，过期不解除；并发重复由数据库唯一键收敛。
+- `X-Manifest-SHA256` 是已记录的契约缺口；契约修订前客户端只能用服务端返回值。
+
+## 证据（T027）
+
+- `product/db/migrations/0014_execution_snapshots_and_runs.sql`
+- `product/internal/catalog/{debug.go,debug_test.go}`
+- `product/internal/api/{debug.go,server.go}`
+- `product/apps/web/src/{debug.html,assets/debug.js}`、`apps/web/src/{editor.html,apps.html,assets/editor.js}`
+- `product/tests/support/{t027.py,fixtures.py}`、`product/tests/f02a/test_t027_*.py`
+- `product/tests/f02a/test_t023_invalid_draft.py`、`product/tests/f02a/test_t0{23,25}_migration.py`、
+  `product/tests/f00b/test_t026_{migration,enqueue,failures}.py`（schema 收紧后的预期适配）
+- `product/reports/f02a/T027-debug-submit.md`
