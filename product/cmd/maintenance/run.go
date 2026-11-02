@@ -112,6 +112,7 @@ func runMaintenance(args []string) {
 
 	runner := &runner{
 		client:    client,
+		scope:     newJobScope(client),
 		store:     store,
 		db:        db,
 		heartbeat: cfg.HeartbeatInterval,
@@ -222,6 +223,7 @@ func registryNames() []string {
 // runner owns one maintenance process's loop.
 type runner struct {
 	client    *internalClient
+	scope     *jobScope
 	store     *objectstore.Store
 	db        *sql.DB
 	heartbeat time.Duration
@@ -333,6 +335,7 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 		outcome = handler(ctx, background.HandlerWork{
 			Job:          jobModel(job),
 			AttemptToken: job.AttemptToken,
+			Scope:        r.scope,
 			Store:        r.store,
 			DB:           r.db,
 			Heartbeat: func(heartbeatCtx context.Context) error {

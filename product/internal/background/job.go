@@ -168,6 +168,16 @@ const (
 	CodeLeaseExpired             = "lease_expired"
 	CodeAttemptsExhausted        = "attempts_exhausted"
 	CodeArtifactStateNotScanning = "artifact_state_not_scanning"
+
+	// model_validate failure codes (T024). A model provider that is not
+	// configured is a deployment fact, not a transient outage: retrying cannot
+	// fix it, so it is a business failure. The compatibility report itself is a
+	// successful job with a failed report, never a job failure.
+	CodeProviderNotConfigured      = "provider_not_configured"
+	CodeProviderAdapterUnavailable = "provider_adapter_unavailable"
+	CodeModelCallRefused           = "model_call_refused"
+	CodeFixtureMissing             = "fixture_missing"
+	CodeReportNotReady             = "report_not_ready"
 )
 
 // Failure codes that quarantine the artifact rather than leave it unavailable.
@@ -189,6 +199,14 @@ func ImpliesQuarantine(code string) bool { return quarantineCodes[code] }
 // change; nothing is inferred from the code string.
 var retryableByKind = map[Kind]map[string]bool{
 	KindArtifactFinalize: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+	},
+	// model_validate (T024): only infrastructure failures are retried. A missing
+	// provider adapter or an unconfigured endpoint is a business failure, and a
+	// compatibility verdict is a report outcome, not a job failure.
+	KindModelValidate: {
 		CodeTransientStorageIO: true,
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,

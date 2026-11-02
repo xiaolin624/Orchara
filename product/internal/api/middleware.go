@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -44,16 +45,29 @@ func WithRequestLogging(logger *log.Logger, next http.Handler) http.Handler {
 			_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, maxRequestBody))
 		}
 
-		// r.URL.Path never includes the query string; that is the point.
+		// r.URL.Path never includes the query string; that is the point. Signed
+		// object links carry their capability in the path, so the token is
+		// redacted before it can reach a log file.
 		logger.Printf(
 			"%s %s %d %s request_id=%s",
 			r.Method,
-			r.URL.Path,
+			loggablePath(r.URL.Path),
 			recorder.status,
 			time.Since(start).Round(time.Microsecond),
 			id,
 		)
 	})
+}
+
+// loggablePath removes capability material from a path before logging. Signed
+// object links are bearer transfers: the token is the whole authority, so a log
+// that recorded it would hand out a working link.
+func loggablePath(path string) string {
+	const prefix = "/object-links/"
+	if strings.HasPrefix(path, prefix) {
+		return prefix + "<redacted>"
+	}
+	return path
 }
 
 // WithRequestID echoes the request id in the response header.

@@ -34,6 +34,7 @@ import (
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 )
 
@@ -76,6 +77,18 @@ func run(logger *log.Logger) error {
 	if objects == nil {
 		logger.Print("object store is not configured (ORCHARA_OBJECT_DIR); artifact activation will fail closed")
 	}
+	signer, err := objectstore.NewSigner(cfg.ObjectSigningKey, cfg.ObjectLinkTTL)
+	if err != nil {
+		// A short key is a configuration error, not a runtime degradation.
+		return fmt.Errorf("object link signing rejected: %w", err)
+	}
+	if signer == nil {
+		logger.Print("object link signing is not configured (ORCHARA_OBJECT_SIGNING_KEY); signed upload/download links will be refused")
+	}
+	// The provider set is built from deployment configuration only. A candidate's
+	// endpoint_ref/secret_ref are references; no request can add an endpoint or a
+	// credential.
+	providers := modelproxy.NewProviders(cfg.Profile, cfg.ModelEndpoint, cfg.SecretDir, config.FromEnv())
 
 	reporter := health.New(map[string]health.Check{"database": dbCheck}, 2*time.Second).
 		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton")).
@@ -93,7 +106,7 @@ func run(logger *log.Logger) error {
 	// F01 identity surface: login/invite/activate plus the pages that drive them.
 	// F00B/T022 adds the background-job read and the internal controller routes.
 	identityService := identity.New(db)
-	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, cfg.RetryBackoff)
+	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, signer, providers, cfg.PublicURL, cfg.RetryBackoff)
 	apiServer.Register(mux)
 
 	indexPath := filepath.Join(cfg.WebDir, "index.html")

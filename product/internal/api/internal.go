@@ -94,6 +94,16 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/background/jobs/claim", s.handleInternalClaim)
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/heartbeat", s.handleInternalHeartbeat)
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/result", s.handleInternalResult)
+
+	// F00B/T024: job-scoped artifact access and metered model calls. Every route
+	// re-proves the live attempt token; the job id in the path is never trusted,
+	// and an artifact outside the job's scope answers the same 404 as a missing
+	// one.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifact-uploads", s.handleInternalArtifactUpload)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifacts/{artifact_id}/complete", s.handleInternalArtifactComplete)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifact-downloads", s.handleInternalArtifactDownload)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifact-status", s.handleInternalArtifactStatus)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/model-calls", s.handleInternalModelCall)
 }
 
 type internalClaimRequest struct {
@@ -153,11 +163,20 @@ func (s *Server) handleInternalClaim(w http.ResponseWriter, r *http.Request) {
 		LeaseDeadline:    formatTimePtr(job.LeaseDeadline),
 		ExpectedRevision: job.ExpectedRevision,
 		InputArtifactID:  job.InputArtifactID,
-		// input_url is T024's signed artifact URL. Until that ticket, a handler
-		// gets the artifact identifier and no URL: it must not invent one.
-		InputURL: nil,
+		InputURL:         s.inputURL(r.Context(), job.InputArtifactID),
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// inputURL is the contract's BackgroundLease.input_url: a real signed sealed
+// link when the job has a ready input artifact, and null otherwise (no input,
+// not ready yet, or this process cannot sign). A handler must never invent an
+// artifact URL; it asks the job-scoped endpoint if the lease did not carry one.
+func (s *Server) inputURL(ctx context.Context, artifactID *string) *string {
+	if artifactID == nil || s.artifacts == nil {
+		return nil
+	}
+	return s.artifacts.SignedSealedURL(ctx, *artifactID)
 }
 
 type internalHeartbeatRequest struct {

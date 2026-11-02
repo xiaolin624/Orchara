@@ -68,6 +68,10 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("internal API %d %s: %s", e.Status, e.Code, e.Message)
 }
 
+// ErrorCode exposes the stable contract code to the handler layer without
+// importing this package's client type (handlers map codes to job outcomes).
+func (e *apiError) ErrorCode() string { return e.Code }
+
 func isAPICode(err error, code string) bool {
 	var apiErr *apiError
 	return errors.As(err, &apiErr) && apiErr.Code == code
@@ -157,6 +161,10 @@ func (c *internalClient) submitResult(
 	if outcome.ErrorCode != "" {
 		code := outcome.ErrorCode
 		body.ErrorCode = &code
+	}
+	if outcome.ResultArtifactID != "" {
+		artifactID := outcome.ResultArtifactID
+		body.ResultArtifactID = &artifactID
 	}
 	var response jobView
 	status, err := c.post(ctx, "/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/result", body, &response)

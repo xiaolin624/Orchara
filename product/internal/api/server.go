@@ -12,16 +12,22 @@ import (
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 )
 
-// Server serves the F01 identity endpoints and the static pages that drive them.
+// Server serves the F01 identity endpoints, the F02A draft/version paths, the
+// F00B background-job surface and the static pages that drive them.
 type Server struct {
 	service      *identity.Service
 	policy       *policy.Authorizer
 	catalog      *catalog.Reader
 	jobs         *background.Controller
+	artifacts    *background.ArtifactStore
+	models       *modelproxy.Service
+	objects      *objectstore.Store
+	signer       *objectstore.Signer
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
@@ -34,15 +40,20 @@ type Server struct {
 // The policy authorizer, the catalog read model and the background controller
 // share the identity service's database handle; constructing them here keeps
 // cmd/api's wiring unchanged and makes the decision cache a per-process property
-// of this server. objects may be nil: the server then starts but refuses any
-// operation that would need object bytes (artifact_finalize activation and the
-// handler's sealed write) instead of silently skipping verification.
+// of this server. objects and signer may be nil: the server then starts but
+// refuses any operation that would need object bytes or a signed link
+// (503 object_store_unavailable / object_signing_unavailable) instead of
+// silently skipping verification. providers is the model-proxy provider set
+// built from the deployer's configuration.
 func New(
 	service *identity.Service,
 	webDir string,
 	profile config.Profile,
 	logger *log.Logger,
 	objects *objectstore.Store,
+	signer *objectstore.Signer,
+	providers *modelproxy.Providers,
+	publicURL string,
 	retryBackoff time.Duration,
 ) *Server {
 	if logger == nil {
@@ -54,6 +65,10 @@ func New(
 		policy:       authorizer,
 		catalog:      catalog.New(service.DB, authorizer),
 		jobs:         background.New(service.DB, objects, retryBackoff),
+		artifacts:    background.NewArtifactStore(service.DB, objects, signer, publicURL),
+		models:       modelproxy.NewService(service.DB, objects, providers),
+		objects:      objects,
+		signer:       signer,
 		webDir:       webDir,
 		secureCookie: SecureCookie(profile),
 		logger:       logger,
@@ -105,6 +120,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// administrator. The internal claim/heartbeat/result routes live on the
 	// separate mTLS listener (RegisterInternal).
 	mux.HandleFunc("GET /api/v1/background-jobs/{job_id}", s.handleGetBackgroundJob)
+
+	// F00B/T024: presigned object transfers. There is deliberately no session
+	// requirement here (the HMAC token is the whole authority) and no list
+	// endpoint: PUT can only fill a reserved staging key, GET can only read a
+	// sealed object, and every bad link is a 404.
+	mux.HandleFunc("PUT /object-links/{token}", s.handleObjectLinkPut)
+	mux.HandleFunc("GET /object-links/{token}", s.handleObjectLinkGet)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

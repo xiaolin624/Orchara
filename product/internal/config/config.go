@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"orchara/platform/internal/objectstore"
 )
 
 // Profile names the environment contract. The set mirrors BOOTSTRAP.md §5.
@@ -43,8 +45,11 @@ var knownProfiles = map[Profile]bool{
 // Variables the loader reads. Kept as constants so error messages and tests
 // cannot drift from the implementation.
 const (
-	EnvProfile        = profileDefaultEnvVar
-	EnvHTTPAddr       = "ORCHARA_HTTP_ADDR"
+	EnvProfile  = profileDefaultEnvVar
+	EnvHTTPAddr = "ORCHARA_HTTP_ADDR"
+	// EnvPublicURL is the absolute base URL signed object links are minted
+	// against (e.g. https://orchara.example). Default: http://<HTTPAddr>.
+	EnvPublicURL      = "ORCHARA_PUBLIC_URL"
 	EnvDBDSN          = "ORCHARA_DB_DSN"
 	EnvModelEndpoint  = "ORCHARA_MODEL_ENDPOINT"
 	EnvModelSecretRef = "ORCHARA_MODEL_SECRET_REF"
@@ -55,6 +60,14 @@ const (
 	// Object store (F00B/T022). Empty means "this process cannot touch object
 	// bytes": every operation that needs them fails closed.
 	EnvObjectDir = "ORCHARA_OBJECT_DIR"
+	// Object links (F00B/T024): an HMAC key of at least 32 bytes signs short
+	// lived PUT/GET URLs, and the TTL bounds how long one stays valid. An empty
+	// key does not stop the process: signed-link traffic fails closed.
+	EnvObjectSigningKey = "ORCHARA_OBJECT_SIGNING_KEY"
+	EnvObjectLinkTTL    = "ORCHARA_OBJECT_LINK_TTL"
+	// EnvSecretDir is the deployer-controlled directory `file:NAME` secret
+	// references resolve inside. It never contains an inline credential.
+	EnvSecretDir = "ORCHARA_SECRET_DIR"
 	// EnvRetryBackoff is the base delay before the second attempt. A duration
 	// ("5s", "50ms") so tests can make retries deterministic without waiting.
 	EnvRetryBackoff = "ORCHARA_BACKGROUND_RETRY_BACKOFF"
@@ -128,10 +141,20 @@ type Config struct {
 	ModelSecret   SecretRef
 	StubLedger    string
 	AllowScripts  bool
+	// PublicURL is the absolute base URL signed object links are minted
+	// against. It is not a secret, but it must be the URL a worker can reach.
+	PublicURL string
 	// ObjectDir is the object-store root. Empty is legal: a process that never
 	// touches object bytes (an API instance without artifact work) starts, and
 	// every operation that needs the store refuses instead of guessing a path.
 	ObjectDir string
+	// ObjectSigningKey signs short-lived object links. It is a secret and never
+	// logged; empty means signed-link traffic is refused (the API still starts).
+	ObjectSigningKey string
+	// ObjectLinkTTL is how long a minted PUT/GET link stays valid.
+	ObjectLinkTTL time.Duration
+	// SecretDir is the deployer-controlled root for `file:NAME` secret refs.
+	SecretDir string
 	// RetryBackoff is the base exponential-retry delay for background jobs.
 	RetryBackoff time.Duration
 	// Internal is the optional internal mTLS listener configuration. Nil means
@@ -205,6 +228,19 @@ func Load(lookup Lookup) (*Config, error) {
 		return nil, invalid(EnvDBDSN, "is required; a process without its database cannot be ready")
 	}
 
+	publicURL := value(lookup, EnvPublicURL)
+	if publicURL == "" {
+		publicURL = "http://" + cfg.HTTPAddr
+	}
+	parsedPublic, err := url.Parse(publicURL)
+	if err != nil || parsedPublic.Host == "" ||
+		(parsedPublic.Scheme != "http" && parsedPublic.Scheme != "https") ||
+		parsedPublic.RawQuery != "" || parsedPublic.Fragment != "" || parsedPublic.User != nil {
+		return nil, invalid(EnvPublicURL,
+			"must be an absolute http(s) base URL without credentials, query or fragment")
+	}
+	cfg.PublicURL = strings.TrimSuffix(publicURL, "/")
+
 	// Arbitrary user scripts are only ever acceptable on a real isolation host.
 	allowScripts, err := parseBool(lookup, EnvAllowScripts)
 	if err != nil {
@@ -245,6 +281,22 @@ func Load(lookup Lookup) (*Config, error) {
 	// F00B/T022 runtime knobs. They are profile-independent: every profile that
 	// runs the API or maintenance can carry background jobs.
 	cfg.ObjectDir = value(lookup, EnvObjectDir)
+	signingKey := value(lookup, EnvObjectSigningKey)
+	if signingKey != "" && len(signingKey) < objectstore.MinSigningKeyBytes {
+		return nil, invalid(EnvObjectSigningKey,
+			fmt.Sprintf("must be at least %d bytes when set", objectstore.MinSigningKeyBytes))
+	}
+	cfg.ObjectSigningKey = signingKey
+	linkTTL, err := parseDuration(lookup, EnvObjectLinkTTL, objectstore.DefaultLinkTTL)
+	if err != nil {
+		return nil, err
+	}
+	if linkTTL > objectstore.MaxLinkTTL {
+		return nil, invalid(EnvObjectLinkTTL,
+			fmt.Sprintf("must be at most %s", objectstore.MaxLinkTTL))
+	}
+	cfg.ObjectLinkTTL = linkTTL
+	cfg.SecretDir = value(lookup, EnvSecretDir)
 	retryBackoff, err := parseDuration(lookup, EnvRetryBackoff, DefaultBackgroundRetryBackoff)
 	if err != nil {
 		return nil, err

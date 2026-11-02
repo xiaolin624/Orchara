@@ -25,9 +25,11 @@
 //     stored, and Hash re-reads an object to recompute it server-side; nothing
 //     trusts a client-declared hash.
 //
-// Signed URLs, S3/MinIO and virus scanning are explicitly out of scope for
-// T022: T024 adds signed staging/sealed URLs, and file admission is the
-// hash/size/tombstone/media-type checks this package and the finalize guard
+// Signed object links (T024) live in sign.go: an HMAC token binds one operation
+// and one key, PUT can only target a staging key, GET can only target a sealed
+// key, and an unconfigured signing key fails closed without stopping the
+// process. S3/MinIO and virus scanning remain out of scope: file admission is
+// the hash/size/tombstone/media-type checks this package and the finalize guard
 // implement.
 package objectstore
 
@@ -138,23 +140,46 @@ func (s *Store) CreateSealed(r io.Reader, limit int64) (Object, error) {
 // different artifact, and no client ever receives a PUT URL for it. Staging keys
 // are refused here: a staging object must stay a one-shot upload.
 func (s *Store) PutSealed(key string, r io.Reader, limit int64) (Object, error) {
+	return s.put(key, sealedPrefix, r, effectiveLimit(limit))
+}
+
+// PutStaging writes r to an existing staging key atomically.
+//
+// This is the signed-PUT path from T024: artifact-uploads preallocates the key
+// on the artifact row and mints a PUT link for exactly it, so the uploader can
+// neither choose a path nor overwrite a sealed object. Like every write it is
+// whole-or-nothing and streams the SHA-256 of the bytes it accepted; the server
+// recomputes the hash at finalize time and never trusts this one.
+//
+// limit is exact here (0 accepts only an empty body): a reserved upload's
+// declared size is a ceiling, not a default.
+func (s *Store) PutStaging(key string, r io.Reader, limit int64) (Object, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > MaxObjectBytes {
+		limit = MaxObjectBytes
+	}
+	return s.put(key, stagingPrefix, r, limit)
+}
+
+func (s *Store) put(key, requiredPrefix string, r io.Reader, limit int64) (Object, error) {
 	if s == nil {
 		return Object{}, ErrNotConfigured
 	}
 	if r == nil {
 		return Object{}, errors.New("object reader is nil")
 	}
+	if !validKey(key) || !strings.HasPrefix(key, requiredPrefix) {
+		return Object{}, ErrInvalidKey
+	}
 	path, err := s.pathFor(key)
 	if err != nil {
 		return Object{}, err
 	}
-	if !strings.HasPrefix(key, sealedPrefix) {
-		return Object{}, ErrInvalidKey
-	}
-	limit = effectiveLimit(limit)
-	temp, err := os.CreateTemp(s.sealedDir, ".tmp-*")
+	temp, err := os.CreateTemp(s.dirFor(requiredPrefix), ".tmp-*")
 	if err != nil {
-		return Object{}, fmt.Errorf("creating a sealed temp file: %w", err)
+		return Object{}, fmt.Errorf("creating a temporary object file: %w", err)
 	}
 	removeTemp := func() {
 		_ = temp.Close()
@@ -164,7 +189,7 @@ func (s *Store) PutSealed(key string, r io.Reader, limit int64) (Object, error) 
 	written, copyErr := io.Copy(io.MultiWriter(temp, hasher), io.LimitReader(r, limit+1))
 	if copyErr != nil {
 		removeTemp()
-		return Object{}, fmt.Errorf("writing the sealed object: %w", copyErr)
+		return Object{}, fmt.Errorf("writing the object: %w", copyErr)
 	}
 	if written > limit {
 		removeTemp()
@@ -172,11 +197,11 @@ func (s *Store) PutSealed(key string, r io.Reader, limit int64) (Object, error) 
 	}
 	if err := temp.Sync(); err != nil {
 		removeTemp()
-		return Object{}, fmt.Errorf("flushing the sealed object: %w", err)
+		return Object{}, fmt.Errorf("flushing the object: %w", err)
 	}
 	if err := temp.Close(); err != nil {
 		_ = os.Remove(temp.Name())
-		return Object{}, fmt.Errorf("closing the sealed object: %w", err)
+		return Object{}, fmt.Errorf("closing the object: %w", err)
 	}
 	if err := os.Rename(temp.Name(), path); err != nil {
 		_ = os.Remove(temp.Name())
@@ -338,26 +363,38 @@ func (s *Store) dirFor(prefix string) string {
 // pathFor validates the typed key and resolves it inside the configured root.
 // The key carries its directory, so no caller-supplied path component is used.
 func (s *Store) pathFor(key string) (string, error) {
-	var prefix string
-	switch {
-	case strings.HasPrefix(key, stagingPrefix):
-		prefix = stagingPrefix
-	case strings.HasPrefix(key, sealedPrefix):
-		prefix = sealedPrefix
-	default:
+	if !validKey(key) {
 		return "", ErrInvalidKey
 	}
-	name := strings.TrimPrefix(key, prefix)
+	if strings.HasPrefix(key, sealedPrefix) {
+		return filepath.Join(s.sealedDir, strings.TrimPrefix(key, sealedPrefix)), nil
+	}
+	return filepath.Join(s.stagingDir, strings.TrimPrefix(key, stagingPrefix)), nil
+}
+
+// validKey reports whether key is exactly `staging/<64 hex>` or
+// `sealed/<64 hex>`. It is shared with the link signer so a token can never name
+// a key the store would resolve differently.
+func validKey(key string) bool {
+	var name string
+	switch {
+	case strings.HasPrefix(key, stagingPrefix):
+		name = strings.TrimPrefix(key, stagingPrefix)
+	case strings.HasPrefix(key, sealedPrefix):
+		name = strings.TrimPrefix(key, sealedPrefix)
+	default:
+		return false
+	}
 	if len(name) != keyNameLength {
-		return "", ErrInvalidKey
+		return false
 	}
 	for index := 0; index < len(name); index++ {
 		char := name[index]
 		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
-			return "", ErrInvalidKey
+			return false
 		}
 	}
-	return filepath.Join(s.dirFor(prefix), name), nil
+	return true
 }
 
 func effectiveLimit(limit int64) int64 {

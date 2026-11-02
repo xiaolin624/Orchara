@@ -9,15 +9,17 @@ import (
 
 // HandlerWork is everything a compiled handler may use.
 //
-// Store and DB are the maintenance process's own access to the object store and
-// the platform database (the maintenance DSN). The job is a leased row: the
-// handler may read its target's current state, but it never writes a business
-// row: activation and failure recording belong to the server-side guard in
-// Complete. Heartbeat may be called while a long step runs; the maintenance loop
-// already heartbeats on a timer, so a handler with no long steps need not use it.
+// Scope is the only way a handler reaches job-scoped platform data: it proves
+// the lease and can only see the candidate/fixture/artifacts the server assigns
+// to this job, through short-lived signed links. Store and DB are the
+// maintenance process's own handles; a handler must not use them to read
+// business rows (the T022 artifact_finalize interim read is the exception that
+// T024 replaces for its own kind). Heartbeat may be called while a long step
+// runs; the maintenance loop already heartbeats on a timer.
 type HandlerWork struct {
 	Job          *Job
 	AttemptToken string
+	Scope        JobScope
 	Store        *objectstore.Store
 	DB           *sql.DB
 	Heartbeat    func(ctx context.Context) error
@@ -27,9 +29,14 @@ type HandlerWork struct {
 // activation) or failed with a code from the retry table. A handler never
 // invents a new code vocabulary silently: an unknown code is a business failure,
 // so a typo fails the job instead of retrying forever.
+//
+// ResultArtifactID is the artifact the handler registered as its result; only
+// kinds whose completion accepts a result artifact set it. The server re-checks
+// ownership/readiness before recording it.
 type Outcome struct {
-	State     State
-	ErrorCode string
+	State            State
+	ErrorCode        string
+	ResultArtifactID string
 }
 
 // Handler is one compile-time kind implementation. It returns an outcome rather
@@ -69,4 +76,10 @@ func Failed(code string) Outcome {
 // server's decision.
 func Succeeded() Outcome {
 	return Outcome{State: StateSucceeded}
+}
+
+// SucceededWith reports success and names the result artifact the server must
+// re-check (ready, owned by the job, linked to it) before recording it.
+func SucceededWith(resultArtifactID string) Outcome {
+	return Outcome{State: StateSucceeded, ResultArtifactID: resultArtifactID}
 }

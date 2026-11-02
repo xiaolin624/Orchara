@@ -113,6 +113,23 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		}
 	}
 
+	// model_validate completion records the compatibility report artifact the
+	// handler registered. The handler cannot name an artifact it did not upload:
+	// readiness, ownership and job provenance are re-checked in this
+	// transaction. A failed compatibility verdict is still a successful job, so
+	// only a succeeded result is checked here.
+	if job.Kind == KindModelValidate && state == StateSucceeded {
+		if resultArtifactID == "" {
+			return nil, &ValidationError{
+				Field:   "result_artifact_id",
+				Message: "model_validate success must name the compatibility report artifact",
+			}
+		}
+		if err := verifyJobResultArtifact(ctx, tx, job, resultArtifactID); err != nil {
+			return nil, err
+		}
+	}
+
 	// artifact_finalize: the server, not the worker, decides activation.
 	if job.Kind == KindArtifactFinalize {
 		switch state {
@@ -204,6 +221,47 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		return nil, fmt.Errorf("committing the completion: %w", err)
 	}
 	return finished, nil
+}
+
+// verifyJobResultArtifact refuses a result artifact that is not this job's own,
+// already-ready output. A handler that completed its upload but has not waited
+// for the finalize guard to activate it gets a validation error instead of a
+// job that points at an unusable artifact.
+func verifyJobResultArtifact(ctx context.Context, tx *sql.Tx, job *Job, artifactID string) error {
+	var (
+		owner   string
+		state   string
+		deleted sql.NullTime
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT a.owner_id::text, a.state, a.deleted_at
+		  FROM platform.artifacts AS a
+		  JOIN platform.background_job_artifacts AS l
+		    ON l.artifact_id = a.id AND l.background_job_id = $2::uuid
+		 WHERE a.id = $1::uuid`, artifactID, job.ID,
+	).Scan(&owner, &state, &deleted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "the result artifact is not linked to this job",
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("reading the result artifact: %w", err)
+	}
+	if owner != job.OwnerID {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "the result artifact belongs to another owner",
+		}
+	}
+	if deleted.Valid || state != "ready" {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "the result artifact must be ready and not deleted",
+		}
+	}
+	return nil
 }
 
 // retryJob returns a retryable failure to ready with exponential backoff. The

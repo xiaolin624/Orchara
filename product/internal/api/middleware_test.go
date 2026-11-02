@@ -62,6 +62,16 @@ func TestRequestLogNeverContainsBodiesCookiesOrHeaders(t *testing.T) {
 	}
 }
 
+func TestSignedObjectLinkTokensAreRedactedFromTheLog(t *testing.T) {
+	line, _ := logFor(t, http.MethodPut, "/object-links/djF8cHV0fHN0YWdpbmcvYWJj.YWJj", nil)
+	if strings.Contains(line, "djF8cHV0fHN0YWdpbmcvYWJj") {
+		t.Fatalf("the request log carries a working signed link: %q", line)
+	}
+	if !strings.Contains(line, "PUT /object-links/<redacted> 202 ") {
+		t.Fatalf("unexpected redacted log line: %q", line)
+	}
+}
+
 func TestClientSuppliedRequestIDIsEchoed(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-Request-ID", "t015-trace-42")

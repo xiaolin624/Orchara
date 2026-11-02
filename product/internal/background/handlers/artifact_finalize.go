@@ -17,11 +17,14 @@ import (
 	"orchara/platform/internal/objectstore"
 )
 
-// Registry is the set of kinds this build can execute. T022 implements the one
-// real handler the ticket owns (artifact_finalize); the other seven whitelisted
-// kinds stay ready until the ticket that owns their handler lands (T024/T026).
+// Registry is the set of kinds this build can execute. Each registered handler
+// also has an entry in the fixed retry table (internal/background/job.go); a
+// kind that is absent here is never claimed, even if it is a whitelisted kind.
+// T022 implemented artifact_finalize; T024 adds model_validate; the remaining
+// six whitelisted kinds stay ready until their ticket lands (T026/T027/F03).
 var Registry = background.Registry{
 	background.KindArtifactFinalize: ArtifactFinalize,
+	background.KindModelValidate:    ModelValidate,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from
