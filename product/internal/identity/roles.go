@@ -94,20 +94,9 @@ func (s *Service) SetRoles(
 	// Only a demotion can remove the last administrator; count the others only
 	// when that is what this change does.
 	if hasRole(oldRoles, "admin") && !hasRole(newRoles, "admin") {
-		var otherEnabledAdmins int
-		err = tx.QueryRowContext(ctx, `
-			SELECT count(*)
-			  FROM platform.principals AS p
-			  JOIN platform.users AS u ON u.principal_id = p.id
-			  JOIN platform.role_bindings AS r
-			    ON r.principal_id = p.id AND r.role = 'admin'
-			 WHERE p.kind = 'user'
-			   AND p.disabled_at IS NULL
-			   AND p.id <> $1`,
-			principalID,
-		).Scan(&otherEnabledAdmins)
+		otherEnabledAdmins, err := countOtherEnabledHumanAdmins(ctx, tx, principalID)
 		if err != nil {
-			return nil, fmt.Errorf("counting the remaining administrators: %w", err)
+			return nil, err
 		}
 		if removingLastAdmin(oldRoles, newRoles, otherEnabledAdmins) {
 			return nil, ErrLastAdmin
@@ -170,6 +159,30 @@ func rolesInTx(ctx context.Context, tx *sql.Tx, principalID string) ([]string, e
 		roles = append(roles, role)
 	}
 	return roles, rows.Err()
+}
+
+// countOtherEnabledHumanAdmins counts the enabled human administrators other
+// than principalID. It is the single definition of "someone else can still
+// administer this installation", shared by role replacement (SetRoles) and
+// disable (SetDisabled): both callers hold rolesLockKey in the same
+// transaction, so the count and the write that depends on it cannot interleave.
+func countOtherEnabledHumanAdmins(ctx context.Context, tx *sql.Tx, principalID string) (int, error) {
+	var count int
+	err := tx.QueryRowContext(ctx, `
+		SELECT count(*)
+		  FROM platform.principals AS p
+		  JOIN platform.users AS u ON u.principal_id = p.id
+		  JOIN platform.role_bindings AS r
+		    ON r.principal_id = p.id AND r.role = 'admin'
+		 WHERE p.kind = 'user'
+		   AND p.disabled_at IS NULL
+		   AND p.id <> $1`,
+		principalID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting the remaining administrators: %w", err)
+	}
+	return count, nil
 }
 
 // removingLastAdmin is the pure last-administrator rule: a change is refused

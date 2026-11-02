@@ -151,20 +151,9 @@ func (s *Service) SetDisabled(
 	change := &PrincipalStateChange{PrincipalID: principalID, State: state, Changed: true}
 	if disabled {
 		if kind == "user" && hasRole(roles, "admin") {
-			var otherEnabledAdmins int
-			err = tx.QueryRowContext(ctx, `
-				SELECT count(*)
-				  FROM platform.principals AS p
-				  JOIN platform.users AS u ON u.principal_id = p.id
-				  JOIN platform.role_bindings AS r
-				    ON r.principal_id = p.id AND r.role = 'admin'
-				 WHERE p.kind = 'user'
-				   AND p.disabled_at IS NULL
-				   AND p.id <> $1`,
-				principalID,
-			).Scan(&otherEnabledAdmins)
+			otherEnabledAdmins, err := countOtherEnabledHumanAdmins(ctx, tx, principalID)
 			if err != nil {
-				return nil, fmt.Errorf("counting the remaining administrators: %w", err)
+				return nil, err
 			}
 			if disablingLastAdmin(kind, disabledAt.Valid, roles, otherEnabledAdmins) {
 				return nil, ErrLastAdmin
