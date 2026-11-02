@@ -300,3 +300,44 @@ func TestHeartbeatIntervalMustBePositive(t *testing.T) {
 		t.Fatalf("heartbeat interval = %s", cfg.HeartbeatInterval)
 	}
 }
+
+func TestObjectLinkConfigurationIsValidated(t *testing.T) {
+	env := validStubEnv()
+	// Empty is legal: the API starts and refuses signed-link traffic. A short
+	// key is not, because it would weaken every minted link.
+	if cfg, err := Load(lookupFrom(env)); err != nil || cfg.ObjectSigningKey != "" {
+		t.Fatalf("an empty signing key must be accepted: %v", err)
+	}
+	env[EnvObjectSigningKey] = strings.Repeat("k", 16)
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("a short signing key must be rejected")
+	}
+	env[EnvObjectSigningKey] = strings.Repeat("k", 32)
+	env[EnvObjectLinkTTL] = "2h"
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("a TTL above the one-hour ceiling must be rejected")
+	}
+	env[EnvObjectLinkTTL] = "5m"
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ObjectLinkTTL != 5*time.Minute {
+		t.Fatalf("link TTL = %s", cfg.ObjectLinkTTL)
+	}
+	if cfg.PublicURL != "http://127.0.0.1:9999" {
+		t.Fatalf("default public URL = %q", cfg.PublicURL)
+	}
+	env[EnvPublicURL] = "https://orchara.example/"
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.PublicURL != "https://orchara.example" {
+		t.Fatalf("public URL was not normalised: %q", cfg.PublicURL)
+	}
+	env[EnvPublicURL] = "ftp://orchara.example"
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("a non-HTTP public URL must be rejected")
+	}
+}

@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"orchara/platform/internal/background"
@@ -232,9 +231,4 @@ func outcomeFor(err error) background.Outcome {
 		}
 	}
 	return background.Failed(background.CodeTransientInternal)
-}
-
-// DescribeModelValidate is a small diagnostic for the maintenance startup line.
-func DescribeModelValidate() string {
-	return fmt.Sprintf("model_validate requires the job-scoped artifact API and a registered provider profile")
 }

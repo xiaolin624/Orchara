@@ -198,6 +198,11 @@ func (s *ArtifactStore) CompleteUpload(
 	if job == nil {
 		return ArtifactView{}, ErrNotFound
 	}
+	if !uuid.Valid(strings.TrimSpace(artifactID)) {
+		// A malformed id is not a database error and must not reveal whether a
+		// row exists: answer exactly like an out-of-scope artifact.
+		return ArtifactView{}, ErrArtifactNotFound
+	}
 	sha := strings.ToLower(strings.TrimSpace(declaredSHA256))
 	if !isSHA256Hex(sha) {
 		return ArtifactView{}, &ValidationError{
@@ -213,25 +218,22 @@ func (s *ArtifactStore) CompleteUpload(
 	defer func() { _ = tx.Rollback() }()
 
 	var (
-		state      string
-		expected   sql.NullString
-		deleted    sql.NullTime
-		revision   int64
-		mediaType  string
-		sizeBytes  sql.NullInt64
-		objectKey  string
-		stagingKey sql.NullString
+		state     string
+		expected  sql.NullString
+		deleted   sql.NullTime
+		revision  int64
+		mediaType string
+		sizeBytes sql.NullInt64
 	)
 	err = tx.QueryRowContext(ctx, `
-		SELECT a.state, a.expected_sha256, a.deleted_at, a.revision, a.media_type,
-		       a.size_bytes, a.object_key, a.staging_object_key
+		SELECT a.state, a.expected_sha256, a.deleted_at, a.revision, a.media_type, a.size_bytes
 		  FROM platform.artifacts AS a
 		  JOIN platform.background_job_artifacts AS l
 		    ON l.artifact_id = a.id AND l.background_job_id = $2::uuid
 		 WHERE a.id = $1::uuid
 		 FOR UPDATE OF a`,
 		artifactID, job.ID,
-	).Scan(&state, &expected, &deleted, &revision, &mediaType, &sizeBytes, &objectKey, &stagingKey)
+	).Scan(&state, &expected, &deleted, &revision, &mediaType, &sizeBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ArtifactView{}, ErrArtifactNotFound
 	}

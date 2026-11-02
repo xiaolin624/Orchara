@@ -161,6 +161,10 @@ def test_complete_is_idempotent_per_hash_and_conflicts_on_a_different_hash(t024_
     assert bad_sha.status == 422, bad_sha.text
     assert bad_sha.json["error"]["details"]["field"] == "sha256"
 
+    malformed = complete(t024_stack, job.lease, "not-a-uuid", sha)
+    assert malformed.status == 404, malformed.text
+    assert malformed.json["error"]["code"] == "artifact_not_found"
+
     # A different job's artifact is not in scope and is indistinguishable from a
     # missing one.
     other = f00b.seed_artifact(
