@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027
+from support import f00b, f02a, t024, t025, t026, t027, t028
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -215,6 +215,41 @@ def t026_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.
 
 
 @pytest.fixture
+def t028_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t028.T028Stack:
+    """A T024-shaped stack for the user-upload path.
+
+    T028 needs every real primitive at once: a migrated + bootstrapped database,
+    a real API with the object store and HMAC link signing, the internal mTLS
+    listener (used to claim a finalize job deterministically in the deletion
+    race test) and the compiled maintenance process that runs the real handler.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t028.T028Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.T027Stack:
     """A migrated database behind a real API with a real object store.
 
@@ -252,4 +287,5 @@ __all__ = [
     "t025_stack",
     "t026_stack",
     "t027_stack",
+    "t028_stack",
 ]
