@@ -508,3 +508,52 @@ func TestWorkerImageDigestAndRuntimeLockAreDeploymentInputs(t *testing.T) {
 		t.Fatalf("runtime lock override = %q", cfg.RuntimeLockPath)
 	}
 }
+
+func TestRunEventStreamDefaultsAndBounds(t *testing.T) {
+	env := validStubEnv()
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RunEventRetention != 24*time.Hour {
+		t.Fatalf("retention default = %s", cfg.RunEventRetention)
+	}
+	if cfg.RunEventPollInterval != 500*time.Millisecond {
+		t.Fatalf("poll default = %s", cfg.RunEventPollInterval)
+	}
+	if cfg.RunEventHeartbeatInterval != 15*time.Second {
+		t.Fatalf("heartbeat default = %s", cfg.RunEventHeartbeatInterval)
+	}
+
+	env[EnvRunEventRetention] = "50ms"
+	env[EnvRunEventPollInterval] = "20ms"
+	env[EnvRunEventHeartbeatInterval] = "100ms"
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("small deployment knobs must be accepted: %v", err)
+	}
+	if cfg.RunEventRetention != 50*time.Millisecond ||
+		cfg.RunEventPollInterval != 20*time.Millisecond ||
+		cfg.RunEventHeartbeatInterval != 100*time.Millisecond {
+		t.Fatalf("knobs were not loaded: %+v", cfg)
+	}
+
+	for _, bad := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{"zero retention", EnvRunEventRetention, "0s"},
+		{"bad poll", EnvRunEventPollInterval, "soon"},
+		{"negative heartbeat", EnvRunEventHeartbeatInterval, "-1s"},
+		{"absurd retention", EnvRunEventRetention, "10000h"},
+	} {
+		t.Run(bad.name, func(t *testing.T) {
+			invalidEnv := validStubEnv()
+			invalidEnv[bad.key] = bad.value
+			if _, err := Load(lookupFrom(invalidEnv)); err == nil {
+				t.Fatalf("%s must be rejected", bad.name)
+			}
+		})
+	}
+}

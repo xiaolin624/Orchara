@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -285,6 +285,48 @@ def t030_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t030.
 
 
 @pytest.fixture
+def t032_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t032.T032Stack:
+    """A T029/T031-shaped stack with T032's event-stream deployment knobs.
+
+    The three knobs are validated configuration (not per-request values): the
+    production defaults are 24h retention, 500ms PostgreSQL polling and a 15s
+    heartbeat comment; this fixture shortens polling/heartbeat so the real SSE
+    tests finish quickly while keeping retention long enough that ordinary
+    replay never expires.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    env = t029.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    env.update(
+        {
+            "ORCHARA_RUN_EVENT_RETENTION": "1h",
+            "ORCHARA_RUN_EVENT_POLL_INTERVAL": "20ms",
+            "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL": "100ms",
+        }
+    )
+    server = api_server(dsn, extra_env=env)
+
+    stack = t032.T032Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.T027Stack:
     """A migrated database behind a real API with a real object store.
 
@@ -362,4 +404,5 @@ __all__ = [
     "t028_stack",
     "t029_stack",
     "t030_stack",
+    "t032_stack",
 ]

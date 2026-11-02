@@ -235,6 +235,89 @@ func TestValidateWorkerResultLocatesTheContractRules(t *testing.T) {
 
 func strPtr(value string) *string { return &value }
 
+func TestValidateWorkerEventsEnforcesTheNodeStatusAllowlist(t *testing.T) {
+	token := "11111111-1111-4111-8111-111111111111"
+	eventID := "22222222-2222-4222-8222-222222222222"
+	payload := []byte(`{"node_id":"n1","state":"running","attempt_no":2}`)
+
+	normalized, err := validateWorkerEvents(WorkerEventsRequest{
+		AttemptToken: "  " + token + " ",
+		Events: []WorkerEvent{{
+			EventID:       " " + eventID,
+			LocalSequence: 3,
+			Type:          "node.status",
+			Payload:       payload,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("a valid node.status batch was refused: %v", err)
+	}
+	if normalized.AttemptToken != token || normalized.Events[0].EventID != eventID {
+		t.Fatalf("the batch was not normalised: %+v", normalized)
+	}
+	var received map[string]any
+	if err := json.Unmarshal(normalized.Events[0].Payload, &received); err != nil {
+		t.Fatalf("the canonical payload is not JSON: %v", err)
+	}
+	if received["node_id"] != "n1" || received["state"] != "running" || received["attempt_no"] != float64(2) {
+		t.Fatalf("the payload changed: %v", received)
+	}
+
+	cases := []struct {
+		name    string
+		request WorkerEventsRequest
+		field   string
+	}{
+		{"bad token", WorkerEventsRequest{
+			AttemptToken: "x",
+			Events:       []WorkerEvent{{EventID: eventID, LocalSequence: 1, Type: "node.status", Payload: payload}},
+		}, "attempt_token"},
+		{"empty batch", WorkerEventsRequest{AttemptToken: token}, "events"},
+		{"bad event id", WorkerEventsRequest{
+			AttemptToken: token,
+			Events:       []WorkerEvent{{EventID: "x", LocalSequence: 1, Type: "node.status", Payload: payload}},
+		}, "events[0].event_id"},
+		{"local sequence 0", WorkerEventsRequest{
+			AttemptToken: token,
+			Events:       []WorkerEvent{{EventID: eventID, LocalSequence: 0, Type: "node.status", Payload: payload}},
+		}, "events[0].local_sequence"},
+		{"controller type", WorkerEventsRequest{
+			AttemptToken: token,
+			Events:       []WorkerEvent{{EventID: eventID, LocalSequence: 1, Type: "run.status", Payload: payload}},
+		}, "events[0].type"},
+		{"body-like payload key", WorkerEventsRequest{
+			AttemptToken: token,
+			Events: []WorkerEvent{{
+				EventID: eventID, LocalSequence: 1, Type: "node.status",
+				Payload: []byte(`{"node_id":"n1","state":"running","attempt_no":2,"content":"secret"}`),
+			}},
+		}, "events[0].payload.content"},
+		{"missing attempt_no", WorkerEventsRequest{
+			AttemptToken: token,
+			Events: []WorkerEvent{{
+				EventID: eventID, LocalSequence: 1, Type: "node.status",
+				Payload: []byte(`{"node_id":"n1","state":"running"}`),
+			}},
+		}, "events[0].payload.attempt_no"},
+		{"scalar payload", WorkerEventsRequest{
+			AttemptToken: token,
+			Events: []WorkerEvent{{
+				EventID: eventID, LocalSequence: 1, Type: "node.status",
+				Payload: []byte(`42`),
+			}},
+		}, "events[0].payload"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := validateWorkerEvents(testCase.request)
+			validation, ok := err.(*ValidationError)
+			if !ok || validation.Field != testCase.field {
+				t.Fatalf("expected field %q, got %v", testCase.field, err)
+			}
+		})
+	}
+}
+
 func TestNewNormalisesTheLeaseTTL(t *testing.T) {
 	if service := New(nil, nil, nil, "http://example.test/", 0); service.LeaseTTL != DefaultLeaseTTL {
 		t.Fatalf("zero TTL became %s, want %s", service.LeaseTTL, DefaultLeaseTTL)

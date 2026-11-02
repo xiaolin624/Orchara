@@ -46,16 +46,17 @@ def kind_check_definition(dbname: str) -> str:
     return rows[0]["definition"]
 
 
-def test_0017_is_at_the_chain_tail_and_extends_the_kind_check(migrated_database) -> None:
+def test_0017_extends_the_kind_check_and_0018_is_the_chain_tail(migrated_database) -> None:
     _dsn, dbname = migrated_database
     ledgers = st.sql_rows(
         dbname,
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 18)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 19)], versions
     assert ledgers[15]["name"] == "0016_execution_claims_and_quota.sql"
-    assert ledgers[-1]["name"] == "0017_tool_run_kind.sql"
+    assert ledgers[-2]["name"] == "0017_tool_run_kind.sql"
+    assert ledgers[-1]["name"] == "0018_run_events.sql"
 
     definition = kind_check_definition(dbname)
     for kind in ALL_KINDS:
