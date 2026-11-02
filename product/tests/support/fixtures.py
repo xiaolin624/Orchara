@@ -1,4 +1,4 @@
-"""Fixtures for the F00B/T022 tests (real PG, real binaries, real HTTP/mTLS)."""
+"""Fixtures for the F00B/T022 and F02A/T023 tests (real PG, binaries, HTTP/mTLS)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b
+from support import f00b, f02a
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -103,6 +103,24 @@ def t022_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> f00b.
     return stack
 
 
+@pytest.fixture
+def f02a_stack(migrated_database, go_binaries, api_server) -> f02a.F02AStack:
+    """A migrated + bootstrapped database behind a real API, without mTLS/objects.
+
+    T023's draft and version paths need neither the internal listener nor the
+    object store; starting without them is also the honest deployment shape for
+    a ticket that has no object bytes to move.
+    """
+    dsn, dbname = migrated_database
+    server = api_server(dsn)
+    return f02a.F02AStack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        binaries=go_binaries,
+    )
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -110,4 +128,5 @@ __all__ = [
     "migrated_database",
     "api_server",
     "t022_stack",
+    "f02a_stack",
 ]

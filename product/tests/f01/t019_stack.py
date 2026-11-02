@@ -5,10 +5,15 @@ The seams are the T017 ones: a throwaway PostgreSQL database created with
 HTTP over a socket. Nothing here is mocked.
 
 One deliberate exception is documented in the T019 report: F02A owns
-``createApplication``, so there is no HTTP way to create an application yet.
-These tests seed ``platform.applications`` rows directly through psql, which is
-the real table the API reads; the rows are real, only their creation is out of
-band for F01.
+``createApplication``, so there is no HTTP way to create an application in these
+tests. These tests seed ``platform.applications`` rows directly through psql,
+which is the real table the API reads; the rows are real, only their creation is
+out of band for F01.
+
+From F02A/T023 the reserved foreign key on ``applications.active_version_id``
+exists. A seeded application that names an active version therefore also seeds
+the real ``application_versions`` row (plus its artifact and review rows) instead
+of pointing at a fabricated uuid, which the database would now refuse.
 """
 
 from __future__ import annotations
@@ -71,19 +76,78 @@ def seed_application(
     ``age_minutes`` backdates ``created_at`` so a test can make ordering
     deterministic without sleeping. Larger age means older, so the list order
     (created_at DESC) is the reverse of the insertion order when ages increase.
+
+    ``active_version_id`` seeds a real published version row (F02A/T023's
+    composite foreign key refuses a dangling uuid): the application row is
+    inserted with NULL, the version/review/artifact rows are created, then the
+    active version is set in one UPDATE.
     """
     application_id = new_uuid()
     created_at = f"now() - interval '{age_minutes} minutes'" if age_minutes else "now()"
     archived_at = "now()" if archived else "NULL"
-    active = f"{_literal(active_version_id)}::uuid" if active_version_id else "NULL"
     sql(
         stack.dbname,
         "INSERT INTO platform.applications "
         "(id, owner_id, name, active_version_id, archived_at, created_at) VALUES "
         f"({_literal(application_id)}::uuid, {_literal(owner_id)}::uuid, "
-        f"{_literal(name)}, {active}, {archived_at}, {created_at})",
+        f"{_literal(name)}, NULL, {archived_at}, {created_at})",
     )
+    if active_version_id:
+        _seed_published_version(stack.dbname, application_id, owner_id, active_version_id)
+        sql(
+            stack.dbname,
+            "UPDATE platform.applications "
+            f"SET active_version_id = {_literal(active_version_id)}::uuid "
+            f"WHERE id = {_literal(application_id)}::uuid",
+        )
     return application_id
+
+
+def _seed_published_version(
+    database: str, application_id: str, owner_id: str, version_id: str
+) -> None:
+    """Seed the supporting rows a real published version needs (F02B owns writing them)."""
+    import hashlib
+    import json
+
+    artifact_id = new_uuid()
+    review_id = new_uuid()
+    manifest = {
+        "manifest_version": "1.0",
+        "application_id": application_id,
+        "source_revision": 1,
+    }
+    manifest_sha = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    sql(
+        database,
+        "INSERT INTO platform.artifacts "
+        "(id, owner_id, object_key, purpose, media_type, size_bytes, state, sha256) VALUES "
+        f"({_literal(artifact_id)}::uuid, {_literal(owner_id)}::uuid, "
+        f"{_literal('sealed/' + os.urandom(32).hex())}, 'version_manifest', "
+        f"'application/json', 2, 'ready', {_literal(manifest_sha)})",
+    )
+    sql(
+        database,
+        "INSERT INTO platform.publication_reviews "
+        "(id, application_id, submitted_by, snapshot, manifest_sha256, report_id, state, "
+        " reviewer_id, decided_at) VALUES "
+        f"({_literal(review_id)}::uuid, {_literal(application_id)}::uuid, "
+        f"{_literal(owner_id)}::uuid, '{{}}'::jsonb, {_literal(manifest_sha)}, "
+        f"{_literal(new_uuid())}::uuid, 'approved', {_literal(owner_id)}::uuid, now())",
+    )
+    sql(
+        database,
+        "INSERT INTO platform.application_versions "
+        "(id, application_id, version_no, review_id, manifest, manifest_sha256, "
+        " manifest_artifact_id, capability_card, compiler_version, worker_image_digest, "
+        " state_schema_version) VALUES "
+        f"({_literal(version_id)}::uuid, {_literal(application_id)}::uuid, 1, "
+        f"{_literal(review_id)}::uuid, {_literal(json.dumps(manifest))}::jsonb, "
+        f"{_literal(manifest_sha)}, {_literal(artifact_id)}::uuid, '{{}}'::jsonb, "
+        f"'p05-1.0.0', {_literal('sha256:' + '0' * 64)}, 'orchara-state/1.0')",
+    )
 
 
 def seed_applications_for_series(

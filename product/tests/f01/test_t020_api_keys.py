@@ -142,7 +142,9 @@ def test_key_creation_validation_is_typed_and_creates_nothing(stack) -> None:
         {
             "name": "unknown scope",
             "principal_id": service_id,
-            "scopes": ["application:write"],
+            # application:write is defined by F02A/T023; an out-of-vocabulary
+            # scope must still be refused.
+            "scopes": ["application:execute"],
             "expires_at": future_rfc3339(),
             "status": 422,
             "code": "validation_failed",

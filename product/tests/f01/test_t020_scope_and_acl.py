@@ -74,9 +74,9 @@ def test_scope_is_checked_before_the_acl(stack) -> None:
     # The service principal really holds a read grant on the application.
     grant_read_or_fail(admin, service_id, application_id)
 
-    # Creation refuses application:write, so the crafted key is seeded directly
-    # with the real hash of a real secret: it is a genuine credential with an
-    # out-of-vocabulary scope.
+    # A write-scoped key is a genuine credential (F02A/T023 added the scope to
+    # the vocabulary); this test proves a key that is not read-scoped is refused
+    # by a read endpoint before the catalog is touched.
     _write_key_id, write_secret = seed_api_key_row(
         stack.dbname, service_id, scopes=["application:write"]
     )

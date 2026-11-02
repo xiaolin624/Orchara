@@ -9,15 +9,19 @@ import (
 	"time"
 )
 
-// The F01 scope registry is exactly one scope. The test asserts the closed
-// vocabulary rather than the code's own map so an accidental widening fails here.
-func TestNormalizeScopesAcceptsTheF01Vocabulary(t *testing.T) {
-	scopes, err := normalizeScopes([]string{" application:read "})
-	if err != nil {
-		t.Fatalf("the contract scope was rejected: %v", err)
-	}
-	if len(scopes) != 1 || scopes[0] != ScopeApplicationRead {
-		t.Fatalf("scopes were not normalized: %v", scopes)
+// The scope registry is the closed platform vocabulary. T020 opened it with
+// application:read; F02A/T023 added application:write with the endpoints that
+// use it. The test asserts each accepted value explicitly so an accidental
+// widening still fails here.
+func TestNormalizeScopesAcceptsThePlatformVocabulary(t *testing.T) {
+	for _, wanted := range []string{ScopeApplicationRead, ScopeApplicationWrite} {
+		scopes, err := normalizeScopes([]string{" " + wanted + " "})
+		if err != nil {
+			t.Fatalf("the %s scope was rejected: %v", wanted, err)
+		}
+		if len(scopes) != 1 || scopes[0] != wanted {
+			t.Fatalf("scopes were not normalized: %v", scopes)
+		}
 	}
 }
 
@@ -25,7 +29,7 @@ func TestNormalizeScopesRejectsEmptyUnknownAndDuplicateSets(t *testing.T) {
 	cases := map[string][]string{
 		"empty":      nil,
 		"blank only": {"   "},
-		"unknown":    {"application:write"},
+		"unknown":    {"application:execute"},
 		"duplicate":  {"application:read", "application:read"},
 	}
 	for name, scopes := range cases {
