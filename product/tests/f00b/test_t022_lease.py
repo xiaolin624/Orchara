@@ -151,8 +151,16 @@ def test_an_expired_lease_is_recovered_and_the_retry_succeeds(t022_stack) -> Non
     f00b.force_lease_expiry(t022_stack.dbname, payload["id"])
 
     # The first run only recovers: the job becomes ready with backoff, so this
-    # claim finds nothing to hand out.
-    _completed, reports = f00b.maintenance_once(t022_stack)
+    # claim finds nothing to hand out. It is restricted to the artifact_finalize
+    # pool on purpose. With two pools, the other slot runs a second claim
+    # transaction; if more than the 50ms backoff elapses between the two
+    # transactions (the machine is loaded), that later claim legitimately finds
+    # the job available and hands it out, which is the flake the review saw
+    # (claimed=1 where 0 was expected). One slot = one claim transaction, and a
+    # recovery made inside that transaction sets available_at = now()+backoff with
+    # now() being the transaction timestamp, so the same transaction cannot also
+    # claim it.
+    _completed, reports = f00b.maintenance_once(t022_stack, "--kinds", "artifact_finalize")
     assert f00b.summary_of(reports)["claimed"] == 0
     recovered = f00b.job_row(t022_stack.dbname, payload["id"])
     assert recovered["state"] == "ready"
