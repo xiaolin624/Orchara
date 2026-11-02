@@ -15,6 +15,7 @@ import (
 
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/uuid"
 )
 
 // Registry is the set of kinds this build can execute. Each registered handler
@@ -31,9 +32,9 @@ var Registry = background.Registry{
 
 // artifactFinalizeRow is what the finalize handler needs from
 // platform.artifacts. The handler only reads; the server-side guard in
-// background.Complete is the only writer of state/sha256.
+// background.Complete is the only writer of state/sha256, and the only code that
+// ever moves bytes to the artifact's own object_key.
 type artifactFinalizeRow struct {
-	ObjectKey      string
 	StagingKey     sql.NullString
 	ExpectedSHA256 sql.NullString
 	SizeBytes      sql.NullInt64
@@ -42,7 +43,7 @@ type artifactFinalizeRow struct {
 	Revision       int64
 }
 
-// ArtifactFinalize copies the artifact's staging bytes to its preallocated
+// ArtifactFinalize copies the artifact's staging bytes to this attempt's own
 // sealed key.
 //
 // It performs the handler half of IMPLEMENTATION-DETAILS §9: read staging,
@@ -50,6 +51,14 @@ type artifactFinalizeRow struct {
 // sealed object, and report the outcome. It never activates the artifact and
 // never writes a business row: activation is the server's guarded decision, and
 // a handler that lied about a success still cannot make the artifact ready.
+//
+// The write target is fenced per attempt: it is derived from the job id and the
+// live attempt token (objectstore.AttemptSealedKey), never the artifact's own
+// object_key. A paused attempt that resumes after a newer attempt activated the
+// artifact can therefore overwrite or delete only its own object; the active
+// sealed bytes are moved into artifact.object_key exclusively by the completion
+// guard. That fence is what keeps BACKGROUND-JOBS §3's "后续覆盖不影响 sealed
+// 对象" true even when attempts overlap.
 //
 // The handler reads the artifact row with the maintenance database identity
 // because T022 does not yet have the job-scoped artifact-status endpoint (T024
@@ -61,14 +70,19 @@ func ArtifactFinalize(ctx context.Context, work background.HandlerWork) backgrou
 		// work by hand, treat it as an infrastructure failure rather than panic.
 		return background.Failed(background.CodeTransientInternal)
 	}
+	if work.Job == nil || !uuid.Valid(work.Job.ID) || !uuid.Valid(work.AttemptToken) {
+		// Without a real (job, attempt) pair there is no name for this attempt's
+		// object; refusing is safer than writing to a guessable key.
+		return background.Failed(background.CodeTransientInternal)
+	}
 	var artifact artifactFinalizeRow
 	err := work.DB.QueryRowContext(ctx, `
-		SELECT object_key, staging_object_key, expected_sha256, size_bytes,
+		SELECT staging_object_key, expected_sha256, size_bytes,
 		       state, deleted_at, revision
 		  FROM platform.artifacts
 		 WHERE id = $1::uuid`, work.Job.TargetID,
 	).Scan(
-		&artifact.ObjectKey, &artifact.StagingKey, &artifact.ExpectedSHA256,
+		&artifact.StagingKey, &artifact.ExpectedSHA256,
 		&artifact.SizeBytes, &artifact.State, &artifact.DeletedAt, &artifact.Revision,
 	)
 	switch {
@@ -94,42 +108,69 @@ func ArtifactFinalize(ctx context.Context, work background.HandlerWork) backgrou
 		return background.Failed(background.CodeArtifactExpectedHashMiss)
 	}
 
-	reader, _, err := work.Store.Open(strings.TrimSpace(artifact.StagingKey.String))
+	var declaredSize *int64
+	if artifact.SizeBytes.Valid {
+		size := artifact.SizeBytes.Int64
+		declaredSize = &size
+	}
+	attemptKey := objectstore.AttemptSealedKey(work.Job.ID, work.AttemptToken)
+	code, err := sealAttemptObject(
+		work.Store, strings.TrimSpace(artifact.StagingKey.String), attemptKey, expectedSHA, declaredSize,
+	)
 	switch {
-	case errors.Is(err, objectstore.ErrNotExist):
-		return background.Failed(background.CodeArtifactStagingMissing)
-	case errors.Is(err, objectstore.ErrInvalidKey):
-		return background.Failed(background.CodeArtifactStagingMissing)
 	case err != nil:
 		return background.Failed(background.CodeTransientStorageIO)
+	case code != "":
+		return background.Failed(code)
+	}
+	return background.Succeeded()
+}
+
+// sealAttemptObject writes the staging bytes to attemptKey and verifies the
+// declared size and hash in the same pass. It returns a stable business failure
+// code ("" on success) or an error for a storage failure the attempt may retry.
+//
+// A failed content check deletes the attempt object it just wrote: the retry
+// gets a new attempt token and a new key, so keeping this one would only be an
+// orphan. It never reads, writes or deletes another key, in particular not the
+// artifact's active object_key.
+func sealAttemptObject(
+	store *objectstore.Store,
+	stagingKey, attemptKey, expectedSHA string,
+	declaredSize *int64,
+) (string, error) {
+	reader, _, err := store.Open(stagingKey)
+	switch {
+	case errors.Is(err, objectstore.ErrNotExist), errors.Is(err, objectstore.ErrInvalidKey):
+		return background.CodeArtifactStagingMissing, nil
+	case err != nil:
+		return "", err
 	}
 	defer func() { _ = reader.Close() }()
 
-	sealed, err := work.Store.PutSealed(
-		strings.TrimSpace(artifact.ObjectKey), reader, objectstore.MaxObjectBytes,
-	)
+	sealed, err := store.PutSealed(attemptKey, reader, objectstore.MaxObjectBytes)
 	switch {
 	case errors.Is(err, objectstore.ErrTooLarge):
-		return background.Failed(background.CodeArtifactTooLarge)
+		return background.CodeArtifactTooLarge, nil
 	case errors.Is(err, objectstore.ErrInvalidKey):
-		// A stored object_key that is not a sealed key is a data defect; the
-		// artifact can never be sealed by this handler.
-		return background.Failed(background.CodeArtifactObjectMissing)
+		// attemptKey is derived, never caller-supplied; an invalid key is an
+		// internal defect. Reporting it as transient keeps the attempt from
+		// silently succeeding while a fix is deployed.
+		return "", err
 	case err != nil:
-		return background.Failed(background.CodeTransientStorageIO)
+		return "", err
 	}
-
-	if artifact.SizeBytes.Valid && sealed.Size != artifact.SizeBytes.Int64 {
-		// Never leave an unusable sealed object behind: the retry may still see a
-		// repaired staging object, and the orphan sweep would otherwise find it.
-		_ = work.Store.Delete(sealed.Key)
-		return background.Failed(background.CodeArtifactSizeMismatch)
+	if declaredSize != nil && sealed.Size != *declaredSize {
+		// Never leave an unusable attempt object behind: the retry may still see
+		// a repaired staging object, and the active object must stay untouched.
+		_ = store.Delete(sealed.Key)
+		return background.CodeArtifactSizeMismatch, nil
 	}
 	if sealed.SHA256 != expectedSHA {
-		_ = work.Store.Delete(sealed.Key)
-		return background.Failed(background.CodeArtifactHashMismatch)
+		_ = store.Delete(sealed.Key)
+		return background.CodeArtifactHashMismatch, nil
 	}
-	return background.Succeeded()
+	return "", nil
 }
 
 func nullString(value sql.NullString) string {

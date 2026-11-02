@@ -487,6 +487,34 @@ def random_object_name() -> str:
     return os.urandom(32).hex()
 
 
+# The derivation of a finalize attempt's own sealed key. It is the cross-language
+# side of objectstore.AttemptSealedKey: the Go test
+# TestAttemptSealedKeyIsStableFencedAndASealedKey pins this exact vector, so a
+# change to the domain string fails that test instead of silently diverging from
+# these helpers.
+ATTEMPT_SEALED_DOMAIN = "orchara/objectstore/attempt-sealed/v1"
+
+
+def attempt_sealed_key(job_id: str, attempt_token: str) -> str:
+    """The sealed key one finalize attempt owns: sealed/<hex sha256(domain|job|token)>."""
+    material = "\n".join(
+        (ATTEMPT_SEALED_DOMAIN, job_id.strip().lower(), attempt_token.strip().lower())
+    )
+    return "sealed/" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def object_keys(object_dir: Path, prefix: str) -> set[str]:
+    """Every real file under one typed store prefix (the test's own view)."""
+    directory = object_dir / prefix.rstrip("/")
+    if not directory.exists():
+        return set()
+    return {
+        f"{prefix.rstrip('/')}/{entry.name}"
+        for entry in directory.iterdir()
+        if entry.is_file()
+    }
+
+
 def write_object(object_dir: Path, key: str, content: bytes) -> Path:
     path = object_dir / key
     path.parent.mkdir(parents=True, exist_ok=True)

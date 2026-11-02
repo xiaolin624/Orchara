@@ -105,6 +105,33 @@ func Open(root string) (*Store, error) {
 	return store, nil
 }
 
+// attemptSealedDomain is the versioned domain separator of AttemptSealedKey. It
+// is a fixed string with newline separators so the digest cannot be confused with
+// another SHA-256(job || token) use, and a future format change is a new domain
+// version rather than a silent reinterpretation of objects written by an older
+// build. Both the finalize handler and the completion guard derive the key
+// through this one function, so their idea of "the current attempt's object" can
+// never drift apart.
+const attemptSealedDomain = "orchara/objectstore/attempt-sealed/v1"
+
+// AttemptSealedKey returns the sealed key that one finalize attempt owns
+// exclusively. It is derived from the job id and the attempt token (the live
+// lease token the server minted for this claim), so:
+//
+//   - a retry is a new token and therefore a new key: no attempt can write over
+//     or delete another attempt's bytes;
+//   - the artifact's own object_key is never a handler write target; only the
+//     completion guard moves a verified attempt object there;
+//   - the key is stable for (job, attempt), so the handler's write and the
+//     guard's verification name the same object without sharing state.
+func AttemptSealedKey(jobID, attemptToken string) string {
+	material := attemptSealedDomain + "\n" +
+		strings.ToLower(strings.TrimSpace(jobID)) + "\n" +
+		strings.ToLower(strings.TrimSpace(attemptToken))
+	sum := sha256.Sum256([]byte(material))
+	return sealedPrefix + hex.EncodeToString(sum[:])
+}
+
 // StagingKey returns a fresh, unguessable staging key. It does not touch the
 // filesystem, so a caller can allocate the key and hand it out before writing.
 func StagingKey() (string, error) { return newKey(stagingPrefix) }
@@ -262,6 +289,42 @@ func (s *Store) create(prefix string, r io.Reader, limit int64) (Object, error) 
 		return Object{}, fmt.Errorf("sealing the object: %w", err)
 	}
 	return Object{Key: key, Size: written, SHA256: hex.EncodeToString(hasher.Sum(nil))}, nil
+}
+
+// Move renames one sealed object to another sealed key.
+//
+// The finalize guard uses it to promote the bytes of the attempt it just verified
+// to the artifact's preallocated active key. Both keys are in sealed/, so the
+// local store can make this one atomic rename: the active key is either the old
+// object or the complete verified object, never a half copy. A missing source is
+// ErrNotExist (the caller must not claim an activation that did not happen), and
+// staging keys are refused on either side: a staging object is a one-shot upload,
+// not a sealed destination and not a move source.
+func (s *Store) Move(sourceKey, destinationKey string) error {
+	if s == nil {
+		return ErrNotConfigured
+	}
+	if !validKey(sourceKey) || !strings.HasPrefix(sourceKey, sealedPrefix) {
+		return ErrInvalidKey
+	}
+	if !validKey(destinationKey) || !strings.HasPrefix(destinationKey, sealedPrefix) {
+		return ErrInvalidKey
+	}
+	sourcePath, err := s.pathFor(sourceKey)
+	if err != nil {
+		return err
+	}
+	destinationPath, err := s.pathFor(destinationKey)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(sourcePath, destinationPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrNotExist
+		}
+		return fmt.Errorf("moving the object: %w", err)
+	}
+	return nil
 }
 
 // Open returns a streaming reader for key and the stored size. The caller owns

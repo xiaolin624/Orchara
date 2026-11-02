@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 
 from support import f00b
+from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
@@ -20,6 +21,21 @@ from support.fixtures import (  # noqa: F401 - pytest fixtures
     migrated_database,
     t022_stack,
 )
+
+
+def wait_for_available_at(dbname: str, job_id: str) -> None:
+    """Wait on the database clock until a retry's backoff has elapsed."""
+    f00b.wait_until(
+        lambda: st.sql(
+            dbname,
+            "SELECT available_at <= now() FROM platform.background_jobs "
+            f"WHERE id = {st.quote_literal(job_id)}::uuid",
+        )
+        == "t",
+        timeout=5.0,
+        interval=0.01,
+        what=f"the retry of job {job_id} to become available",
+    )
 
 
 def prepare(stack, *, content=b"finalize bytes\n", **seed_kwargs):
@@ -59,9 +75,10 @@ def test_a_hash_mismatch_is_quarantined_by_the_real_handler(t022_stack) -> None:
     assert row["state"] == "quarantined"
     assert int(row["revision"]) == 2
     assert row["sha256"] is None
-    # The unusable sealed copy is removed; the staging object is left for the
-    # orphan sweep.
+    # The attempt object the handler wrote is removed by the handler itself; the
+    # active object_key was never written.
     assert not artifact.sealed_path(t022_stack.object_dir).exists()
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == set()
     assert artifact.staging_path(t022_stack.object_dir).exists()
 
 
@@ -79,6 +96,7 @@ def test_a_size_mismatch_is_quarantined(t022_stack) -> None:
     assert job["failure_class"] == "business"
     assert f00b.artifact_row(t022_stack.dbname, artifact.id)["state"] == "quarantined"
     assert not artifact.sealed_path(t022_stack.object_dir).exists()
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == set()
 
 
 def test_a_deleted_artifact_can_never_be_activated(t022_stack) -> None:
@@ -140,14 +158,13 @@ def test_a_successful_claim_after_a_tombstone_is_refused_by_the_guard(t022_stack
     assert row["sha256"] is None
 
 
-def test_the_guard_rehashes_the_sealed_object_instead_of_trusting_the_worker(
+def test_the_guard_rehashes_the_attempt_object_instead_of_trusting_the_worker(
     t022_stack,
 ) -> None:
     owner = f00b.principal_id_for_login(t022_stack.dbname)
     content = b"good bytes"
     artifact = f00b.seed_artifact(
         t022_stack.dbname, t022_stack.object_dir, owner, content=content,
-        sealed_content=content,
     )
     payload = f00b.enqueue_ok(
         t022_stack, kind="artifact_finalize", target_id=artifact.id, owner_id=owner,
@@ -155,12 +172,13 @@ def test_the_guard_rehashes_the_sealed_object_instead_of_trusting_the_worker(
     )
     client = t022_stack.internal_client()
     lease = client.claim().json
-    # A buggy or malicious worker overwrites the sealed object with different
+    # A buggy or malicious worker writes its own attempt object with different
     # bytes of the same length and still claims success (same length so the guard
     # must reach the hash comparison, not merely notice a size difference).
+    attempt_key = f00b.attempt_sealed_key(payload["id"], lease["attempt_token"])
     tampered = bytes([content[0] ^ 0xFF]) + content[1:]
     assert len(tampered) == len(content)
-    f00b.write_object(t022_stack.object_dir, artifact.object_key, tampered)
+    f00b.write_object(t022_stack.object_dir, attempt_key, tampered)
 
     response = client.result(payload["id"], attempt_token=lease["attempt_token"], state="succeeded")
     assert response.status == 200, response.text
@@ -171,9 +189,15 @@ def test_the_guard_rehashes_the_sealed_object_instead_of_trusting_the_worker(
     assert row["sha256"] is None
     job = f00b.job_row(t022_stack.dbname, payload["id"])
     assert job["failure_class"] == "business"
+    # The guard removed only the attempt object it rejected.
+    assert not (t022_stack.object_dir / attempt_key).exists()
+    assert not artifact.sealed_path(t022_stack.object_dir).exists()
 
 
-def test_a_missing_sealed_object_is_quarantined(t022_stack) -> None:
+def test_a_missing_attempt_object_is_quarantined(t022_stack) -> None:
+    # A claimed success with no bytes at this attempt's own key cannot be proven:
+    # the guard never falls back to the artifact's active key or to another
+    # attempt's object.
     owner = f00b.principal_id_for_login(t022_stack.dbname)
     artifact = f00b.seed_artifact(t022_stack.dbname, t022_stack.object_dir, owner)
     payload = f00b.enqueue_ok(
@@ -236,7 +260,6 @@ def test_a_duplicate_result_event_is_idempotent_and_a_different_one_conflicts(
     content = b"duplicate event bytes"
     artifact = f00b.seed_artifact(
         t022_stack.dbname, t022_stack.object_dir, owner, content=content,
-        sealed_content=content,
     )
     payload = f00b.enqueue_ok(
         t022_stack, kind="artifact_finalize", target_id=artifact.id, owner_id=owner,
@@ -244,6 +267,9 @@ def test_a_duplicate_result_event_is_idempotent_and_a_different_one_conflicts(
     )
     client = t022_stack.internal_client()
     lease = client.claim().json
+    # The worker half: the attempt writes its own object before reporting.
+    attempt_key = f00b.attempt_sealed_key(payload["id"], lease["attempt_token"])
+    f00b.write_object(t022_stack.object_dir, attempt_key, content)
     event = f00b.new_uuid()
 
     first = client.result(
@@ -256,6 +282,11 @@ def test_a_duplicate_result_event_is_idempotent_and_a_different_one_conflicts(
     assert recorded["result_event_digest"] is not None
     activated = f00b.artifact_row(t022_stack.dbname, artifact.id)
     assert activated["state"] == "ready"
+    # Activation moved the verified attempt object to the active key: exactly one
+    # sealed object exists and it is the artifact's own key.
+    assert not (t022_stack.object_dir / attempt_key).exists()
+    assert (t022_stack.object_dir / artifact.object_key).read_bytes() == content
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == {artifact.object_key}
 
     replay = client.result(
         payload["id"], attempt_token=lease["attempt_token"], state="succeeded", event_id=event,
@@ -348,3 +379,203 @@ def test_a_server_without_an_object_store_refuses_to_activate(
     assert job["result_event_id"] is None
     assert job["finished_at"] is None
     assert f00b.artifact_row(t022_stack.dbname, artifact.id)["state"] == "scanning"
+
+
+def test_a_failed_attempt_never_deletes_an_object_already_sealed_at_the_active_key(
+    t022_stack,
+) -> None:
+    """The fence: a resumed attempt can only remove its own object.
+
+    This is the regression the second review found. The old handler wrote straight
+    to ``artifact.object_key`` and, on a hash mismatch, deleted that key. Here an
+    object is already sealed at the active key (the shape left by an activation
+    that beat this attempt); a real finalize attempt then fails its hash check.
+    The active bytes must survive byte for byte, and the attempt's own temporary
+    object must be the only thing removed.
+    """
+    owner = f00b.principal_id_for_login(t022_stack.dbname)
+    content = b"staging bytes from the stale attempt"
+    active_bytes = b"bytes sealed by the newer activation"
+    wrong_hash = hashlib.sha256(b"what the uploader claimed").hexdigest()
+    artifact = f00b.seed_artifact(
+        t022_stack.dbname,
+        t022_stack.object_dir,
+        owner,
+        content=content,
+        sealed_content=active_bytes,
+        expected_sha256=wrong_hash,
+    )
+    payload = f00b.enqueue_ok(
+        t022_stack,
+        kind="artifact_finalize",
+        target_id=artifact.id,
+        owner_id=owner,
+        dedup_key="fenced-active:" + artifact.id,
+        expected_revision=1,
+        expected_sha256=wrong_hash,
+    )
+
+    _completed, reports = f00b.maintenance_once(t022_stack, "--kinds", "artifact_finalize")
+    report = f00b.job_reports(reports)[0]
+    assert report["result"] == "failed", report
+    assert report["error_code"] == "artifact_hash_mismatch", report
+    row = f00b.artifact_row(t022_stack.dbname, artifact.id)
+    assert row["state"] == "quarantined"
+    assert row["sha256"] is None
+    # The active key still holds the bytes written by the other activation.
+    assert (t022_stack.object_dir / artifact.object_key).read_bytes() == active_bytes
+    # Only the active key exists: the failed attempt removed only its own object.
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == {artifact.object_key}
+
+
+def test_a_successful_completion_moves_the_attempt_object_and_leaves_no_attempt_key(
+    t022_stack,
+) -> None:
+    owner = f00b.principal_id_for_login(t022_stack.dbname)
+    content = b"bytes that must be moved into the active key"
+    artifact = f00b.seed_artifact(t022_stack.dbname, t022_stack.object_dir, owner, content=content)
+    payload = f00b.enqueue_ok(
+        t022_stack,
+        kind="artifact_finalize",
+        target_id=artifact.id,
+        owner_id=owner,
+        dedup_key="fenced-move:" + artifact.id,
+        expected_revision=1,
+        expected_sha256=artifact.expected_sha256,
+    )
+
+    _completed, reports = f00b.maintenance_once(t022_stack, "--kinds", "artifact_finalize")
+    report = f00b.job_reports(reports)[0]
+    assert report["job_id"] == payload["id"], report
+    assert report["result"] == "succeeded", report
+
+    row = f00b.artifact_row(t022_stack.dbname, artifact.id)
+    assert row["state"] == "ready"
+    assert row["sha256"] == artifact.expected_sha256
+    assert (t022_stack.object_dir / artifact.object_key).read_bytes() == content
+    # The guard moved the attempt object: no per-attempt sealed key is left.
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == {artifact.object_key}
+
+
+def test_a_resumed_old_attempt_cannot_corrupt_the_activated_object(t022_stack) -> None:
+    owner = f00b.principal_id_for_login(t022_stack.dbname)
+    content = b"the retried attempt's bytes"
+    artifact = f00b.seed_artifact(t022_stack.dbname, t022_stack.object_dir, owner, content=content)
+    payload = f00b.enqueue_ok(
+        t022_stack,
+        kind="artifact_finalize",
+        target_id=artifact.id,
+        owner_id=owner,
+        dedup_key="fenced-stale:" + artifact.id,
+        expected_revision=1,
+        expected_sha256=artifact.expected_sha256,
+    )
+    client = t022_stack.internal_client()
+    first = client.claim()
+    assert first.status == 200, first.text
+    old_token = first.json["attempt_token"]
+
+    # The old attempt is now paused. Its lease expires, the retry runs for real
+    # and activates the artifact.
+    f00b.force_lease_expiry(t022_stack.dbname, payload["id"])
+    _completed, reports = f00b.maintenance_once(t022_stack, "--kinds", "artifact_finalize")
+    assert f00b.summary_of(reports)["claimed"] == 0, "the first drain only recovers"
+    recovered = f00b.job_row(t022_stack.dbname, payload["id"])
+    assert recovered["state"] == "ready"
+    assert recovered["error_code"] == "lease_expired"
+    wait_for_available_at(t022_stack.dbname, payload["id"])
+    _completed, reports = f00b.maintenance_once(t022_stack, "--kinds", "artifact_finalize")
+    assert f00b.summary_of(reports)["succeeded"] == 1, reports
+
+    activated = f00b.artifact_row(t022_stack.dbname, artifact.id)
+    assert activated["state"] == "ready"
+    active_bytes = (t022_stack.object_dir / artifact.object_key).read_bytes()
+    assert active_bytes == content
+
+    # The old attempt resumes and writes its own object, then reports failure
+    # with its now-stale token. The job is already terminal, so the server refuses
+    # the late event without reaching the guard; nothing it did may reach the
+    # active object.
+    old_key = f00b.attempt_sealed_key(payload["id"], old_token)
+    stale_bytes = b"stale bytes written by the resumed attempt"
+    f00b.write_object(t022_stack.object_dir, old_key, stale_bytes)
+    response = client.result(
+        payload["id"], attempt_token=old_token, state="failed", error_code="transient_storage_io",
+    )
+    assert response.status == 409, response.text
+    assert response.json["error"]["code"] == "event_conflict"
+
+    after = f00b.artifact_row(t022_stack.dbname, artifact.id)
+    assert after["state"] == "ready"
+    assert after["sha256"] == activated["sha256"]
+    assert after["revision"] == activated["revision"]
+    assert (t022_stack.object_dir / artifact.object_key).read_bytes() == active_bytes
+    # The stale bytes exist only as that attempt's own fenced object.
+    assert old_key != artifact.object_key
+    assert (t022_stack.object_dir / old_key).read_bytes() == stale_bytes
+
+
+def test_a_stale_completion_deletes_only_its_own_attempt_key(t022_stack) -> None:
+    """Two live attempts on one artifact: the later activation wins.
+
+    The first job's token is still a live lease, so its completion reaches the
+    guard. The guard sees the artifact is no longer scanning, deletes only that
+    attempt's own object and leaves the activated bytes untouched.
+    """
+    owner = f00b.principal_id_for_login(t022_stack.dbname)
+    content = b"the attempt that wins"
+    artifact = f00b.seed_artifact(t022_stack.dbname, t022_stack.object_dir, owner, content=content)
+    first_payload = f00b.enqueue_ok(
+        t022_stack,
+        kind="artifact_finalize",
+        target_id=artifact.id,
+        owner_id=owner,
+        dedup_key="fenced-race-a:" + artifact.id,
+        expected_revision=1,
+        expected_sha256=artifact.expected_sha256,
+    )
+    second_payload = f00b.enqueue_ok(
+        t022_stack,
+        kind="artifact_finalize",
+        target_id=artifact.id,
+        owner_id=owner,
+        dedup_key="fenced-race-b:" + artifact.id,
+        expected_revision=1,
+        expected_sha256=artifact.expected_sha256,
+    )
+    client = t022_stack.internal_client()
+    first = client.claim()
+    second = client.claim()
+    assert first.status == 200 and second.status == 200
+    assert {first.json["job_id"], second.json["job_id"]} == {
+        first_payload["id"],
+        second_payload["id"],
+    }
+    winning, winning_token = first.json["job_id"], first.json["attempt_token"]
+    losing, losing_token = second.json["job_id"], second.json["attempt_token"]
+    if winning != first_payload["id"]:
+        winning, losing = losing, winning
+        winning_token, losing_token = losing_token, winning_token
+
+    winning_key = f00b.attempt_sealed_key(winning, winning_token)
+    losing_key = f00b.attempt_sealed_key(losing, losing_token)
+    f00b.write_object(t022_stack.object_dir, winning_key, content)
+    f00b.write_object(t022_stack.object_dir, losing_key, b"the losing attempt's bytes")
+
+    activated = client.result(winning, attempt_token=winning_token, state="succeeded")
+    assert activated.status == 200, activated.text
+    assert activated.json["state"] == "succeeded", activated.json
+
+    rejected = client.result(losing, attempt_token=losing_token, state="succeeded")
+    assert rejected.status == 200, rejected.text
+    assert rejected.json["state"] == "failed", rejected.json
+    assert rejected.json["error_code"] == "artifact_state_not_scanning", rejected.json
+
+    row = f00b.artifact_row(t022_stack.dbname, artifact.id)
+    assert row["state"] == "ready"
+    assert row["sha256"] == artifact.expected_sha256
+    # The guard removed only the losing attempt's object; the active bytes are the
+    # winner's verified bytes.
+    assert not (t022_stack.object_dir / losing_key).exists()
+    assert (t022_stack.object_dir / artifact.object_key).read_bytes() == content
+    assert f00b.object_keys(t022_stack.object_dir, "sealed/") == {artifact.object_key}

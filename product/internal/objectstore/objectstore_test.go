@@ -183,6 +183,104 @@ func TestDeleteIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAttemptSealedKeyIsStableFencedAndASealedKey(t *testing.T) {
+	job := "6f1c5f0e-3f8f-4a52-9a4e-0f40f8f0c9b1"
+	first := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	second := "11111111-2222-4333-8444-555555555555"
+
+	key := AttemptSealedKey(job, first)
+	if !strings.HasPrefix(key, "sealed/") || len(key) != len("sealed/")+64 {
+		t.Fatalf("attempt key %q is not a sealed key with a 64-hex name", key)
+	}
+	// The exact formula is a cross-language contract: the Python test helpers
+	// derive the same key to seed a worker's half. Pinning the digest here makes
+	// an accidental domain-string change a test failure, not a silent divergence.
+	const want = "sealed/07ada8bbc08e558d5943f84398c0c4d36143cde4c027db304a78328ac52c1e24"
+	if key != want {
+		t.Fatalf("AttemptSealedKey(%q, %q) = %q, want %q", job, first, key, want)
+	}
+	if AttemptSealedKey(job, second) == key {
+		t.Fatal("two attempt tokens must derive different keys")
+	}
+	if AttemptSealedKey("22222222-2222-4222-8222-222222222222", first) == key {
+		t.Fatal("two jobs must derive different keys")
+	}
+	if AttemptSealedKey(strings.ToUpper(job), strings.ToUpper(first)) != key {
+		t.Fatal("the derivation must be case-insensitive on UUIDs")
+	}
+	if !validKey(key) {
+		t.Fatalf("the store would refuse its own attempt key %q", key)
+	}
+}
+
+func TestMoveSealedIsAtomicAndRefusesNonSealedKeys(t *testing.T) {
+	store := newStore(t)
+	source, err := SealedKey()
+	if err != nil {
+		t.Fatalf("SealedKey: %v", err)
+	}
+	if _, err := store.PutSealed(source, strings.NewReader("attempt bytes"), 0); err != nil {
+		t.Fatalf("PutSealed: %v", err)
+	}
+	destination, err := SealedKey()
+	if err != nil {
+		t.Fatalf("SealedKey: %v", err)
+	}
+	if _, err := store.PutSealed(destination, strings.NewReader("old bytes"), 0); err != nil {
+		t.Fatalf("PutSealed destination: %v", err)
+	}
+	if err := store.Move(source, destination); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if _, err := store.Hash(source); !errors.Is(err, ErrNotExist) {
+		t.Fatalf("the source key must be gone after Move, got %v", err)
+	}
+	moved, err := store.Hash(destination)
+	if err != nil {
+		t.Fatalf("Hash destination: %v", err)
+	}
+	if moved.SHA256 != sha256Hex("attempt bytes") {
+		t.Fatalf("the destination bytes are not the moved bytes: %+v", moved)
+	}
+	// Missing source: the caller must be able to tell "nothing was written".
+	missing, err := SealedKey()
+	if err != nil {
+		t.Fatalf("SealedKey: %v", err)
+	}
+	if err := store.Move(missing, destination); !errors.Is(err, ErrNotExist) {
+		t.Fatalf("moving a missing object: expected ErrNotExist, got %v", err)
+	}
+	// Only sealed -> sealed is a platform move: a staging key is never a sealed
+	// destination and vice versa.
+	staging, err := StagingKey()
+	if err != nil {
+		t.Fatalf("StagingKey: %v", err)
+	}
+	if _, err := store.CreateStaging(strings.NewReader("x"), 0); err != nil {
+		t.Fatalf("CreateStaging: %v", err)
+	}
+	listed, err := store.List("staging/")
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("staging listing = %v, %v", listed, err)
+	}
+	if err := store.Move(listed[0].Key, destination); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("a staging source must be refused, got %v", err)
+	}
+	if err := store.Move(destination, staging); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("a staging destination must be refused, got %v", err)
+	}
+	// An empty store root is not configured; failure is explicit.
+	var nilStore *Store
+	if err := nilStore.Move(source, destination); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("a nil store must fail closed, got %v", err)
+	}
+}
+
+func sha256Hex(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
 func TestPutSealedFillsAPreallocatedKeyAndCanRewriteIt(t *testing.T) {
 	store := newStore(t)
 	key, err := SealedKey()

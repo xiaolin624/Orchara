@@ -220,7 +220,7 @@ func guardArtifactFinalizeCompletion(
 	}
 	switch completion.State {
 	case StateSucceeded:
-		failureCode, guardErr := c.verifyAndActivateArtifact(ctx, tx, job)
+		failureCode, guardErr := c.verifyAndActivateArtifact(ctx, tx, job, completion.AttemptToken)
 		switch {
 		case errors.Is(guardErr, errGuardTransient):
 			completion.State = StateFailed
@@ -408,16 +408,22 @@ type artifactRow struct {
 }
 
 // verifyAndActivateArtifact is the server-side finalize guard. It holds the
-// artifact row lock for the duration, re-reads the sealed object bytes, and
-// activates only when tombstone, state, revision, size and hash all agree.
+// artifact row lock for the duration, re-reads the bytes the CURRENT attempt
+// wrote under its own fenced key, and activates only when tombstone, state,
+// revision, size and hash all agree. Verified bytes are moved to the artifact's
+// active object_key in one atomic rename immediately before the row is updated;
+// the guard is the only writer of that key.
 //
 // A non-empty failure code means "this attempt failed business-wise; quarantine
 // when the code says so". errGuardTransient means the store could not be read
-// for an infrastructure reason and the attempt may be retried.
+// for an infrastructure reason and the attempt may be retried. Every rejection
+// removes only the attempt key, so a paused older attempt that resumes cannot
+// affect an active sealed object.
 func (c *Controller) verifyAndActivateArtifact(
 	ctx context.Context,
 	tx *sql.Tx,
 	job *Job,
+	attemptToken string,
 ) (string, error) {
 	var artifact artifactRow
 	err := tx.QueryRowContext(ctx, `
@@ -437,38 +443,42 @@ func (c *Controller) verifyAndActivateArtifact(
 	if err != nil {
 		return "", fmt.Errorf("reading the artifact: %w", err)
 	}
+	attemptKey := objectstore.AttemptSealedKey(job.ID, attemptToken)
 	if artifact.DeletedAt.Valid {
+		discardAttemptObject(c.Store, attemptKey)
 		return CodeSourceDeleted, nil
 	}
 	if artifact.State != "scanning" {
+		// A newer attempt may already have activated this artifact; this
+		// attempt's own bytes are useless now.
+		discardAttemptObject(c.Store, attemptKey)
 		return CodeArtifactStateNotScanning, nil
 	}
 	if job.ExpectedRevision != nil && *job.ExpectedRevision != artifact.Revision {
+		discardAttemptObject(c.Store, attemptKey)
 		return CodeSourceChanged, nil
 	}
 	expectedSHA := strings.ToLower(strings.TrimSpace(nullText(artifact.ExpectedSHA256)))
 	if !isSHA256Hex(expectedSHA) {
+		discardAttemptObject(c.Store, attemptKey)
 		return CodeArtifactExpectedHashMiss, nil
 	}
 	if c.Store == nil {
 		return "", ErrObjectStoreUnavailable
 	}
-	object, err := c.Store.Hash(artifact.ObjectKey)
-	switch {
-	case errors.Is(err, objectstore.ErrNotExist):
-		return CodeArtifactObjectMissing, nil
-	case errors.Is(err, objectstore.ErrTooLarge):
-		return CodeArtifactTooLarge, nil
-	case errors.Is(err, objectstore.ErrInvalidKey):
-		return CodeArtifactObjectMissing, nil
-	case err != nil:
-		return "", fmt.Errorf("%w: %v", errGuardTransient, err)
+	var declaredSize *int64
+	if artifact.SizeBytes.Valid {
+		size := artifact.SizeBytes.Int64
+		declaredSize = &size
 	}
-	if artifact.SizeBytes.Valid && object.Size != artifact.SizeBytes.Int64 {
-		return CodeArtifactSizeMismatch, nil
+	object, failureCode, err := promoteAttemptObject(
+		c.Store, attemptKey, artifact.ObjectKey, expectedSHA, declaredSize,
+	)
+	if err != nil {
+		return "", err
 	}
-	if object.SHA256 != expectedSHA {
-		return CodeArtifactHashMismatch, nil
+	if failureCode != "" {
+		return failureCode, nil
 	}
 
 	result, err := tx.ExecContext(ctx, `
