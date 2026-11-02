@@ -3,8 +3,14 @@
  *
  * `api` always sends JSON, never follows a redirect (a redirect on an auth
  * endpoint is a bug), and turns the contract error envelope
- * {"error":{"code","message","request_id"}} into a throwable carrying `code`,
- * so a page can show the API's own error code instead of "something failed".
+ * {"error":{"code","message","request_id","details"}} into a throwable carrying
+ * `code`, `status`, `requestId` and `details`, so a page can show the API's own
+ * error code instead of "something failed".
+ *
+ * `apiFull` is the same request with the response headers exposed. It exists for
+ * the draft editor, where the ETag response header is part of the contract (a
+ * save must echo it in If-Match). `api` is the payload-only wrapper every other
+ * page uses, so adding header access changed no existing call site's shape.
  *
  * `identity`, `csrf`, `requireLogin` and `logout` are the session helpers every
  * logged-in page uses:
@@ -21,13 +27,18 @@
  * `escapeHTML` exists for the places a page has to build markup; prefer
  * textContent where possible.
  */
-async function api(path, options = {}) {
+async function apiFull(path, options = {}) {
   const method = options.method || 'GET';
   const headers = { Accept: 'application/json' };
   const init = { method, headers, credentials: 'same-origin', cache: 'no-store', redirect: 'error' };
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(options.body);
+  }
+  if (options.headers) {
+    // Caller-supplied headers (the draft editor's If-Match) are additive: they
+    // can never replace the fixed Accept/Content-Type semantics above.
+    Object.assign(headers, options.headers);
   }
   if (options.csrf) {
     headers['X-CSRF-Token'] = options.csrf;
@@ -50,9 +61,15 @@ async function api(path, options = {}) {
     failure.code = detail.code || ('http_' + response.status);
     failure.status = response.status;
     failure.requestId = detail.request_id || null;
+    failure.details = detail.details || null;
     throw failure;
   }
-  return payload;
+  return { payload, status: response.status, headers: response.headers };
+}
+
+async function api(path, options = {}) {
+  const result = await apiFull(path, options);
+  return result.payload;
 }
 
 function escapeHTML(value) {

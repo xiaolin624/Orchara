@@ -1,16 +1,21 @@
-// Package catalog is the applications read model used to demonstrate the
-// default-deny resource ACL.
+// Package catalog is the applications read model and, from F02A/T023, the draft
+// aggregate and published-version read model.
 //
-// It has exactly two reads: a keyset-paginated list and a single lookup. Both
-// apply the ACL before deciding what the caller may see:
+// Reads apply the resource ACL before deciding what the caller may see:
 //
-//   - the list puts the visibility predicate in the same SQL WHERE as the cursor
-//     and LIMIT, so the page is filtered before it is cut (a grant cannot be
-//     "hidden behind" an invisible row and produce an empty page);
-//   - the single lookup answers every not-visible case with one sentinel, so a
+//   - every list puts the visibility predicate in the same SQL WHERE as the
+//     cursor and LIMIT, so the page is filtered before it is cut (a grant cannot
+//     be "hidden behind" an invisible row and produce an empty page);
+//   - every single lookup answers all not-visible cases with one sentinel, so a
 //     missing row and somebody else's row are indistinguishable to the caller.
 //
-// F02A owns createApplication and application versions; F01 only reads rows.
+// The draft write path adds optimistic concurrency: GetDraft returns a strong
+// ETag, SaveDraft requires If-Match and updates with `WHERE revision = <etag>`.
+// The two counters on a draft are deliberately different (see draft.go and
+// migration 0010): revision is the ETag/CAS counter, execution_revision only
+// moves when the executable content moves.
+//
+// F01 only reads applications; F02A owns createApplication, drafts and versions.
 package catalog
 
 import (
@@ -113,6 +118,48 @@ func DecodeCursor(raw string) (time.Time, string, error) {
 	return createdAt.UTC(), parts[1], nil
 }
 
+// applicationReadPredicate is the single owner-or-unexpired-grant SQL predicate
+// every application list uses. The caller supplies the 1-based placeholder
+// numbers for the principal, the read clock, the resource type and the action, so
+// the applications list and the version list share one copy of the predicate
+// instead of two that can drift. The values are always policy.ResourceApplication
+// and policy.ActionRead at the call sites; they are parameters (not literals) so
+// the query keeps the existing placeholder order and argument count.
+//
+// The predicate assumes the application is aliased `a` and is used in the same
+// WHERE as the keyset cursor and LIMIT, so filtering happens before pagination.
+func applicationReadPredicate(principalArg, nowArg, resourceTypeArg, actionArg int) string {
+	return fmt.Sprintf(`(
+		        a.owner_id = $%[1]d
+		        OR EXISTS (
+		             SELECT 1
+		               FROM platform.resource_grants AS g
+		              WHERE g.principal_id = $%[1]d
+		                AND g.resource_type = $%[3]d
+		                AND g.resource_id = a.id
+		                AND g.action = $%[4]d
+		                AND (g.expires_at IS NULL OR g.expires_at > $%[2]d)
+		           )
+		       )`, principalArg, nowArg, resourceTypeArg, actionArg)
+}
+
+// readAllowed applies the default-deny ACL used by every single application
+// read (application detail, draft, version, dependency visibility). A nil
+// authorizer fails closed: a reader that cannot authorize never falls back to
+// "visible".
+func (r *Reader) readAllowed(
+	ctx context.Context, callerID, applicationID, ownerID string,
+) (bool, error) {
+	if r.Authorizer == nil {
+		return false, nil
+	}
+	return r.Authorizer.Allow(ctx, policy.PrincipalRef{ID: callerID}, policy.ResourceRef{
+		Type:    policy.ResourceApplication,
+		ID:      applicationID,
+		OwnerID: ownerID,
+	}, policy.ActionRead)
+}
+
 // ListVisible returns the applications principalID may read, newest first, with
 // a stable (created_at DESC, id DESC) keyset order.
 //
@@ -152,18 +199,7 @@ func (r *Reader) ListVisible(
 		SELECT a.id, a.name, a.active_version_id, a.created_at
 		  FROM platform.applications AS a
 		 WHERE a.archived_at IS NULL
-		   AND (
-		        a.owner_id = $1
-		        OR EXISTS (
-		             SELECT 1
-		               FROM platform.resource_grants AS g
-		              WHERE g.principal_id = $1
-		                AND g.resource_type = $6
-		                AND g.resource_id = a.id
-		                AND g.action = $7
-		                AND (g.expires_at IS NULL OR g.expires_at > $5)
-		           )
-		       )
+		   AND `+applicationReadPredicate(1, 5, 6, 7)+`
 		   AND (
 		        $2::timestamptz IS NULL
 		        OR (a.created_at, a.id) < ($2::timestamptz, $3::uuid)
@@ -249,15 +285,7 @@ func (r *Reader) GetVisible(
 		value := active.String
 		application.ActiveVersionID = &value
 	}
-	if r.Authorizer == nil {
-		// No authorizer means no way to authorize; never fall back to "visible".
-		return nil, ErrNotVisible
-	}
-	allow, err := r.Authorizer.Allow(ctx, policy.PrincipalRef{ID: principalID}, policy.ResourceRef{
-		Type:    policy.ResourceApplication,
-		ID:      application.ID,
-		OwnerID: ownerID,
-	}, policy.ActionRead)
+	allow, err := r.readAllowed(ctx, principalID, application.ID, ownerID)
 	if err != nil {
 		return nil, err
 	}

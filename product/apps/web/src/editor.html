@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 应用编辑器（F02A 草稿）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .88rem; margin: .8rem 0 .25rem; }
+    input[type="text"], textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .45rem .55rem; }
+    textarea { min-height: 6rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    textarea.definition, textarea.layout { min-height: 12rem; }
+    .hint { font-size: .82rem; opacity: .7; }
+    .revision { font-size: .9rem; }
+    .revision strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .conflict { border-color: #b45309; }
+    .conflict .status { margin-top: .5rem; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    .conflict button { margin-right: .5rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/login">登录</a>
+    <a href="/admin">管理台</a>
+  </nav>
+
+  <h1>应用编辑器（F02A 草稿）</h1>
+  <p class="sub">
+    草稿来自 <code>GET /api/v1/applications/{id}/draft</code>，响应头
+    <code>ETag</code> 是本页保存时 <code>If-Match</code> 的值。保存成功后刷新页面会重新加载
+    服务器上的草稿；若别人先保存了，服务器返回 <code>412</code>，本页不会覆盖，而是让你
+    <strong>重载服务器版本</strong>或<strong>保留本地副本</strong>。
+    保存需要 <strong>creator</strong> 角色（管理员也需兼任），否则服务器返回
+    <code>403 creator_role_required</code>。
+  </p>
+
+  <section class="card">
+    <h2>当前草稿</h2>
+    <p class="revision">revision：<strong id="draft-revision">加载中</strong>
+      <span class="hint">（ETag 是不透明令牌；页面不会把它放进 URL 或浏览器存储）</span></p>
+    <p class="hint">调试入口：<a id="debug-entry" href="/apps">加载草稿后可用</a>
+      （F02A 私有调试：冻结当前 revision 为仅自己可见的快照并排队一个 debug Run）</p>
+    <p id="editor-status" class="status" role="status" aria-live="polite">正在加载使用说明和草稿…</p>
+  </section>
+
+  <form id="draft-form" method="post">
+    <section class="card">
+      <h2>用途卡（capability card）</h2>
+      <p class="hint">
+        新草稿的用途卡是空对象 <code>{}</code>。一旦填写，契约要求六项齐全，且
+        <code>examples</code> 至少 2 条；列表类字段每行一条。空草稿与已填用途卡的
+        表示差异是契约缺口，见 ADR 0004。
+      </p>
+      <label for="card-purpose">用途（purpose）</label>
+      <textarea id="card-purpose" name="purpose"></textarea>
+      <label for="card-includes">包含（includes，每行一条）</label>
+      <textarea id="card-includes" name="includes"></textarea>
+      <label for="card-excludes">不包含（excludes，每行一条）</label>
+      <textarea id="card-excludes" name="excludes"></textarea>
+      <label for="card-required-inputs">必需输入（required_inputs，每行一条）</label>
+      <textarea id="card-required-inputs" name="required_inputs"></textarea>
+      <label for="card-expected-outputs">预期输出（expected_outputs，每行一条）</label>
+      <textarea id="card-expected-outputs" name="expected_outputs"></textarea>
+      <label for="card-examples">示例（examples，至少 2 行）</label>
+      <textarea id="card-examples" name="examples"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>definition / layout</h2>
+      <p class="hint">
+        本票用文本域编辑 JSON（画布属 F04A）。非法 DSL 仍可保存，但不能调试或提交
+        （T025/T027 提供校验与调试入口）。layout 只影响视图，不改变执行内容。
+      </p>
+      <label for="draft-definition">definition（JSON 对象）</label>
+      <textarea id="draft-definition" class="definition" name="definition" spellcheck="false"></textarea>
+      <label for="draft-layout">layout（JSON 对象）</label>
+      <textarea id="draft-layout" class="layout" name="layout" spellcheck="false"></textarea>
+      <button id="draft-save" type="submit">保存草稿（If-Match）</button>
+    </section>
+  </form>
+
+  <section id="conflict-panel" class="card conflict" hidden aria-live="polite">
+    <h2>保存冲突</h2>
+    <p class="hint">
+      服务器上的草稿已经更新。本页不会自动覆盖，也不会自动重载。请选择：
+      <strong>重载服务器版本</strong>会丢弃本地未保存修改；<strong>保留本地副本</strong>
+      会把当前表单内容下载为 JSON 文件，之后再决定如何合并。
+    </p>
+    <button id="conflict-reload" type="button">重载服务器版本</button>
+    <button id="conflict-download" type="button">保留本地副本（下载 JSON）</button>
+    <p id="conflict-status" class="status" role="status"></p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/editor.js"></script>
+</body>
+</html>

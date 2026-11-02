@@ -119,6 +119,39 @@ func requireScope(caller *identity.Identity, scope string) *authzFailure {
 	return nil
 }
 
+// requireApplicationWrite is the write capability of the four authoring
+// endpoints: create application, save draft, validate and debug.
+//
+// The rules are credential-shaped, exactly like requireScope:
+//
+//   - a browser session authenticates a human, so it must hold the human creator
+//     role. SECURITY §1 forbids a plain user from creating drafts or debugging,
+//     and an administrator is not exempt: "兼任创作者后" (an administrator must
+//     also be a creator). Ownership of the resource does not replace the role;
+//   - an API key authenticates a service account, which has no roles at all.
+//     Its authority is the application:write scope (T023 §17), so the scope rule
+//     is the whole check.
+//
+// One function keeps the four call sites from drifting; it runs before the
+// request body and before any resource lookup, so a caller lacking the capability
+// learns nothing about an application's existence.
+func requireApplicationWrite(caller *identity.Identity) *authzFailure {
+	if caller == nil {
+		return nil
+	}
+	if caller.Method == identity.AuthMethodAPIKey {
+		return requireScope(caller, identity.ScopeApplicationWrite)
+	}
+	if !caller.HasRole(identity.RoleCreator) {
+		return &authzFailure{
+			Status:  http.StatusForbidden,
+			Code:    "creator_role_required",
+			Message: "the creator role is required to create, validate or debug an application",
+		}
+	}
+	return nil
+}
+
 // parseBearerHeader extracts the secret from the Authorization header values.
 //
 // present distinguishes "no Authorization header" (fall back to the session

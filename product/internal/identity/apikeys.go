@@ -12,21 +12,28 @@ import (
 	"orchara/platform/internal/uuid"
 )
 
-// ScopeApplicationRead is the only scope the F01 contract exposes. It permits a
-// read of an application only when the service principal also holds an
-// unexpired resource grant (or owns the application): scope is necessary, never
-// sufficient.
+// ScopeApplicationRead permits a read of an application only when the service
+// principal also holds an unexpired resource grant (or owns the application):
+// scope is necessary, never sufficient.
 const ScopeApplicationRead = "application:read"
+
+// ScopeApplicationWrite permits creating an application and saving its draft.
+// It was added by F02A/T023 together with the endpoints that use it: T020's
+// closed vocabulary only knew application:read, so F02A's write path would have
+// been unreachable for scoped keys. A write key still owns nothing it did not
+// create; ownership and the ACL remain the content decision.
+const ScopeApplicationWrite = "application:write"
 
 // APIKeyPrefix makes a leaked key recognisable in a log or a support ticket. It
 // is not a secret and carries no meaning beyond "this is an Orchara key".
 const APIKeyPrefix = "orchara_"
 
-// knownScopes is the closed F01 vocabulary. A later ticket extends this map
+// knownScopes is the closed vocabulary. A later ticket extends this map
 // together with whatever endpoint uses the scope; an unknown value is a
 // validation error rather than a stored string no authorizer understands.
 var knownScopes = map[string]bool{
-	ScopeApplicationRead: true,
+	ScopeApplicationRead:  true,
+	ScopeApplicationWrite: true,
 }
 
 // Errors the API layer maps to contract codes. They are sentinels so handlers

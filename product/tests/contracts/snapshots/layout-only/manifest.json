@@ -1,0 +1,192 @@
+{
+  "manifest_version": "1.0",
+  "application_id": "33333333-3333-4333-8333-333333333333",
+  "source_revision": 1,
+  "compiler_version": "orchara-compiler/1.0.0",
+  "worker_image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "runtime_lock_sha256": "a451afed0a24f4dc73e2fb98d5b8592d311deb226a98d70371c7003d568a801d",
+  "state_schema_version": "orchara-state/1.0",
+  "definition": {
+    "dsl_version": "1.0",
+    "edges": [
+      {
+        "source": "start",
+        "target": "stats"
+      },
+      {
+        "source": "stats",
+        "target": "analysis"
+      },
+      {
+        "source": "analysis",
+        "target": "end"
+      }
+    ],
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifact_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "type": "object"
+    },
+    "nodes": [
+      {
+        "config": {},
+        "id": "start",
+        "inputs": {},
+        "output_schema": {
+          "type": "object"
+        },
+        "type": "start"
+      },
+      {
+        "config": {
+          "tool_version": "11111111-1111-4111-8111-111111111111"
+        },
+        "id": "stats",
+        "inputs": {
+          "file": {
+            "ref": "input#/file"
+          }
+        },
+        "output_schema": {
+          "additionalProperties": false,
+          "properties": {
+            "order_count": {
+              "type": "integer"
+            },
+            "regions": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "total": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "total",
+            "regions",
+            "order_count"
+          ],
+          "type": "object"
+        },
+        "type": "python"
+      },
+      {
+        "config": {
+          "instructions": "依据已验证统计生成报告，不改变金额；不调用外部写工具。",
+          "max_turns": 12,
+          "model_profile_version": "22222222-2222-4222-8222-222222222222",
+          "subapp_versions": [],
+          "tool_versions": []
+        },
+        "id": "analysis",
+        "inputs": {
+          "stats": {
+            "ref": "node:stats#"
+          }
+        },
+        "output_schema": {
+          "additionalProperties": false,
+          "properties": {
+            "report": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "report"
+          ],
+          "type": "object"
+        },
+        "type": "agent"
+      },
+      {
+        "config": {},
+        "id": "end",
+        "inputs": {
+          "report": {
+            "ref": "node:analysis#/report"
+          },
+          "summary": {
+            "ref": "node:stats#"
+          }
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "type": "end"
+      }
+    ],
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "report": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "report",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "policy": {
+      "budget_limit": "1.00",
+      "currency": "USD",
+      "max_active_seconds": 900,
+      "max_child_calls": 12,
+      "max_child_depth": 3
+    }
+  },
+  "capability_card": {
+    "examples": [
+      "分析上传销售额",
+      "汇总各地区订单"
+    ],
+    "excludes": [
+      "生产系统写入"
+    ],
+    "expected_outputs": [
+      "report",
+      "summary"
+    ],
+    "includes": [
+      "CSV/XLSX统计"
+    ],
+    "purpose": "销售文件分析",
+    "required_inputs": [
+      "file"
+    ]
+  },
+  "tool_artifacts": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "image_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "model_profile_versions": [
+    "22222222-2222-4222-8222-222222222222"
+  ],
+  "subapp_versions": [],
+  "connector_policies": []
+}

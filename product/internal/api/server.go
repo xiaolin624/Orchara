@@ -8,40 +8,94 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/background"
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/modelproxy"
+	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 )
 
-// Server serves the F01 identity endpoints and the static pages that drive them.
+// Server serves the F01 identity endpoints, the F02A draft/version paths, the
+// F00B background-job surface and the static pages that drive them.
 type Server struct {
-	service      *identity.Service
-	policy       *policy.Authorizer
-	catalog      *catalog.Reader
+	service   *identity.Service
+	policy    *policy.Authorizer
+	catalog   *catalog.Reader
+	jobs      *background.Controller
+	artifacts *background.ArtifactStore
+	models    *modelproxy.Service
+	objects   *objectstore.Store
+	signer    *objectstore.Signer
+	// manifest carries the deployment inputs (worker image digest, runtime lock
+	// path) the validate endpoint needs. Absent inputs are not a startup error;
+	// the endpoint answers 503 compiler_unconfigured instead.
+	manifest     compiler.Inputs
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
 	limiter      *loginLimiter
 }
 
-// New builds the HTTP surface. webDir is where admin.html, login.html,
-// activate.html and assets/app.js are served from (ORCHARA_WEB_DIR).
+// Deps is everything the HTTP surface needs from the process that owns it.
 //
-// The policy authorizer and the catalog read model share the identity service's
-// database handle; constructing them here keeps cmd/api's wiring unchanged and
-// makes the decision cache a per-process property of this server.
-func New(service *identity.Service, webDir string, profile config.Profile, logger *log.Logger) *Server {
+// It is a struct rather than a positional argument list because the surface has
+// grown with each ticket (identity, catalog, background jobs, object links,
+// model proxy, manifest inputs) and a ten-argument constructor makes a swapped
+// pair of same-typed arguments compile silently. Named fields keep the wiring
+// legible and let a caller opt out of optional pieces explicitly.
+type Deps struct {
+	// Service is the identity service; required.
+	Service *identity.Service
+	// WebDir is where the static pages and assets are served from (ORCHARA_WEB_DIR).
+	WebDir string
+	// Profile selects cookie security and is recorded for the process profile.
+	Profile config.Profile
+	// Logger receives request-independent diagnostics; nil means discard.
+	Logger *log.Logger
+	// Objects/Signer may be nil: every operation that needs bytes or a signed
+	// link then fails closed instead of skipping verification.
+	Objects *objectstore.Store
+	Signer  *objectstore.Signer
+	// Providers is the model-proxy provider set built from deployment configuration.
+	Providers *modelproxy.Providers
+	// PublicURL is the absolute base URL signed links are minted against.
+	PublicURL string
+	// RetryBackoff is the background-job retry base delay.
+	RetryBackoff time.Duration
+	// Manifest carries the deployment inputs the validate endpoint needs; absent
+	// inputs are a 503, not a startup error.
+	Manifest compiler.Inputs
+	// Notifier is the best-effort background wakeup hook. Nil means NopNotifier:
+	// losing every notification is a supported state because claim polls PostgreSQL.
+	Notifier background.Notifier
+}
+
+// New builds the HTTP surface. See Deps for each dependency's contract.
+func New(deps Deps) *Server {
+	logger := deps.Logger
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
 	}
-	authorizer := policy.New(service.DB)
+	notifier := deps.Notifier
+	if notifier == nil {
+		notifier = background.NopNotifier{}
+	}
+	authorizer := policy.New(deps.Service.DB)
 	return &Server{
-		service:      service,
+		service:      deps.Service,
 		policy:       authorizer,
-		catalog:      catalog.New(service.DB, authorizer),
-		webDir:       webDir,
-		secureCookie: SecureCookie(profile),
+		catalog:      catalog.New(deps.Service.DB, authorizer),
+		jobs:         background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
+		artifacts:    background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		models:       modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		objects:      deps.Objects,
+		signer:       deps.Signer,
+		manifest:     deps.Manifest,
+		webDir:       deps.WebDir,
+		secureCookie: SecureCookie(deps.Profile),
 		logger:       logger,
 		limiter:      newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
 	}
@@ -78,11 +132,58 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications", s.handleListApplications)
 	mux.HandleFunc("GET /api/v1/applications/{application_id}", s.handleGetApplication)
 
+	// F02A/T023: the creator's draft path and the immutable version read model.
+	// The version list/detail join applications and apply the same ACL as the
+	// application read; the draft write is owner-only with ETag/If-Match.
+	mux.HandleFunc("POST /api/v1/applications", s.handleCreateApplication)
+	mux.HandleFunc("GET /api/v1/applications/{application_id}/draft", s.handleGetDraft)
+	mux.HandleFunc("PUT /api/v1/applications/{application_id}/draft", s.handleSaveDraft)
+	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
+	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
+
+	// F02A/T025: compile the current draft, resolve its fixed dependency closure
+	// and return located errors. A valid draft also returns the server-side
+	// manifest hash in X-Manifest-SHA256 (the 200 schema has no field for it; the
+	// extension is documented in ADR 0004 §26) and seals the canonical bytes.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/validate", s.handleValidateApplication)
+
+	// F02A/T027: private debug submission (owner-only, Idempotency-Key required,
+	// one frozen snapshot + queued run + ready start job) and the owner-only run
+	// read. The fixed manifest hash travels in X-Manifest-SHA256 on both, because
+	// the contract Run schema has no field for it (ADR 0004 §38).
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
+	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+
+	// F00B/T022: the redacted diagnostic read for a background job's owner or an
+	// administrator. The internal claim/heartbeat/result routes live on the
+	// separate mTLS listener (RegisterInternal).
+	mux.HandleFunc("GET /api/v1/background-jobs/{job_id}", s.handleGetBackgroundJob)
+
+	// F00B/T026: the evaluation business state and its immutable report. Both
+	// are owner-or-admin (everyone else 404) and project only contract fields;
+	// the report read never returns the report body or an artifact path.
+	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
+	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+
+	// F00B/T024: presigned object transfers. There is deliberately no session
+	// requirement here (the HMAC token is the whole authority) and no list
+	// endpoint: PUT can only fill a reserved staging key, GET can only read a
+	// sealed object, and every bad link is a 404.
+	mux.HandleFunc("PUT /object-links/{token}", s.handleObjectLinkPut)
+	mux.HandleFunc("GET /object-links/{token}", s.handleObjectLinkGet)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
+	// F02A/T023: the editor is served per application so the page never needs a
+	// query string (the path segment is the application id the editor edits).
+	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
+	// F02A/T027: the debug entry is served per application for the same reason.
+	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
+	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
+	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 }
 
 type loginRequest struct {
@@ -315,6 +416,10 @@ func validationDetails(err error) map[string]any {
 	var policyValidation *policy.ValidationError
 	if errors.As(err, &policyValidation) && policyValidation.Field != "" {
 		return map[string]any{"field": policyValidation.Field}
+	}
+	var catalogValidation *catalog.ValidationError
+	if errors.As(err, &catalogValidation) && catalogValidation.Field != "" {
+		return map[string]any{"field": catalogValidation.Field}
 	}
 	return nil
 }

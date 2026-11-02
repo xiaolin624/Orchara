@@ -1,0 +1,425 @@
+{
+  "probe": "p05_dsl",
+  "probe_version": "1.0.0",
+  "schema_id": "urn:agent-platform:workflow:1.0",
+  "dsl_version": "1.0",
+  "limit": {
+    "min_nodes": 2,
+    "max_nodes": 100,
+    "max_edges": 400,
+    "max_schema_depth": 8
+  },
+  "patterns": {
+    "node_id": "[A-Za-z][A-Za-z0-9_-]{0,63}",
+    "ref": "(input|node:[A-Za-z][A-Za-z0-9_-]*)#(/.*)?",
+    "uuid": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    "budget": "[0-9]+(\\.[0-9]{1,8})?",
+    "template_variable": "\\{\\{[ \t\r\n]*([A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*\\}\\}"
+  },
+  "document_keys": [
+    "dsl_version",
+    "edges",
+    "input_schema",
+    "nodes",
+    "output_schema",
+    "policy"
+  ],
+  "node_keys": [
+    "config",
+    "id",
+    "inputs",
+    "output_schema",
+    "type"
+  ],
+  "edge_keys": [
+    "port",
+    "source",
+    "target"
+  ],
+  "edge_required_keys": [
+    "source",
+    "target"
+  ],
+  "node_types": [
+    "agent",
+    "approval",
+    "call_app",
+    "condition",
+    "end",
+    "join",
+    "model",
+    "python",
+    "retrieve",
+    "start"
+  ],
+  "config": {
+    "agent": {
+      "required": [
+        "instructions",
+        "max_turns",
+        "model_profile_version",
+        "subapp_versions",
+        "tool_versions"
+      ],
+      "fields": {
+        "instructions": {
+          "kind": "string"
+        },
+        "max_turns": {
+          "kind": "integer",
+          "min": 1,
+          "max": 50
+        },
+        "model_profile_version": {
+          "kind": "uuid"
+        },
+        "subapp_versions": {
+          "kind": "uuid_array"
+        },
+        "tool_versions": {
+          "kind": "uuid_array"
+        }
+      }
+    },
+    "approval": {
+      "required": [
+        "expires_seconds",
+        "title"
+      ],
+      "fields": {
+        "expires_seconds": {
+          "kind": "integer",
+          "max": 86400,
+          "min": 60
+        },
+        "title": {
+          "kind": "string"
+        }
+      }
+    },
+    "call_app": {
+      "required": [
+        "application_version"
+      ],
+      "fields": {
+        "application_version": {
+          "kind": "uuid"
+        }
+      }
+    },
+    "condition": {
+      "required": [
+        "cases",
+        "default_port",
+        "join_id"
+      ],
+      "fields": {
+        "cases": {
+          "kind": "condition_cases"
+        },
+        "default_port": {
+          "kind": "string"
+        },
+        "join_id": {
+          "kind": "string"
+        }
+      }
+    },
+    "end": {
+      "required": [],
+      "fields": {}
+    },
+    "join": {
+      "required": [
+        "fork_id",
+        "mode",
+        "optional_sources",
+        "required_sources"
+      ],
+      "fields": {
+        "fork_id": {
+          "kind": "string"
+        },
+        "mode": {
+          "kind": "enum",
+          "values": [
+            "all_active"
+          ]
+        },
+        "optional_sources": {
+          "kind": "string_array"
+        },
+        "required_sources": {
+          "kind": "string_array"
+        }
+      }
+    },
+    "model": {
+      "required": [
+        "model_profile_version",
+        "prompt_template",
+        "response_mode"
+      ],
+      "fields": {
+        "model_profile_version": {
+          "kind": "uuid"
+        },
+        "prompt_template": {
+          "kind": "string"
+        },
+        "response_mode": {
+          "kind": "enum",
+          "values": [
+            "json",
+            "text"
+          ]
+        }
+      }
+    },
+    "python": {
+      "required": [
+        "tool_version"
+      ],
+      "fields": {
+        "tool_version": {
+          "kind": "uuid"
+        }
+      }
+    },
+    "retrieve": {
+      "required": [
+        "knowledge_base_ids",
+        "top_k"
+      ],
+      "fields": {
+        "knowledge_base_ids": {
+          "kind": "uuid_array",
+          "min_items": 1
+        },
+        "top_k": {
+          "kind": "integer",
+          "max": 20,
+          "min": 1
+        }
+      }
+    },
+    "start": {
+      "required": [],
+      "fields": {}
+    }
+  },
+  "condition": {
+    "ops": [
+      "eq",
+      "ne",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "in",
+      "exists"
+    ],
+    "numeric_ops": [
+      "gt",
+      "gte",
+      "lt",
+      "lte"
+    ],
+    "list_ops": [
+      "in"
+    ],
+    "valueless_ops": [
+      "exists"
+    ],
+    "case_keys": [
+      "input",
+      "op",
+      "port",
+      "value"
+    ],
+    "case_required_keys": [
+      "input",
+      "op",
+      "port"
+    ],
+    "min_cases": 1
+  },
+  "policy": {
+    "required": [
+      "budget_limit",
+      "currency",
+      "max_active_seconds",
+      "max_child_calls",
+      "max_child_depth"
+    ],
+    "fields": {
+      "budget_limit": {
+        "kind": "budget"
+      },
+      "currency": {
+        "kind": "string",
+        "max_len": 3,
+        "min_len": 3
+      },
+      "max_active_seconds": {
+        "kind": "integer",
+        "max": 3600,
+        "min": 1
+      },
+      "max_child_calls": {
+        "kind": "integer",
+        "max": 12,
+        "min": 0
+      },
+      "max_child_depth": {
+        "kind": "integer",
+        "max": 3,
+        "min": 0
+      }
+    }
+  },
+  "schema": {
+    "root_type": "object",
+    "keywords": [
+      "type",
+      "properties",
+      "required",
+      "additionalProperties",
+      "items",
+      "enum",
+      "const",
+      "minimum",
+      "maximum",
+      "minLength",
+      "maxLength",
+      "minItems",
+      "maxItems",
+      "uniqueItems",
+      "title",
+      "description",
+      "format"
+    ]
+  },
+  "reasons": [
+    {
+      "code": "bad_document",
+      "stage": 1,
+      "meaning": "top-level document shape, key set or primitive type is wrong"
+    },
+    {
+      "code": "bad_id",
+      "stage": 1,
+      "meaning": "node id fails the contract pattern"
+    },
+    {
+      "code": "unknown_type",
+      "stage": 1,
+      "meaning": "node type is outside the contract enum"
+    },
+    {
+      "code": "bad_binding",
+      "stage": 1,
+      "meaning": "input binding is neither exactly {literal} nor {ref}, or is forbidden on this node"
+    },
+    {
+      "code": "bad_schema",
+      "stage": 1,
+      "meaning": "input_schema/output_schema/node output_schema is not a restricted object schema"
+    },
+    {
+      "code": "bad_config",
+      "stage": 1,
+      "meaning": "node config violates the per-type whitelist (missing, extra, wrong type or range)"
+    },
+    {
+      "code": "bad_edge",
+      "stage": 1,
+      "meaning": "edge has an unknown key or a non-string port"
+    },
+    {
+      "code": "bad_policy",
+      "stage": 1,
+      "meaning": "policy field is out of range or malformed"
+    },
+    {
+      "code": "duplicate_id",
+      "stage": 2,
+      "meaning": "two nodes share an id"
+    },
+    {
+      "code": "unknown_endpoint",
+      "stage": 2,
+      "meaning": "edge endpoint is not a node id"
+    },
+    {
+      "code": "start_end_count",
+      "stage": 2,
+      "meaning": "the graph does not have exactly one start and one end"
+    },
+    {
+      "code": "cycle",
+      "stage": 3,
+      "meaning": "the control-flow graph is not a DAG"
+    },
+    {
+      "code": "unreachable_node",
+      "stage": 3,
+      "meaning": "a node is not reachable from start"
+    },
+    {
+      "code": "cannot_reach_end",
+      "stage": 3,
+      "meaning": "a node has no path to end"
+    },
+    {
+      "code": "merge_without_join",
+      "stage": 3,
+      "meaning": "a node with two or more incoming edges is not a join"
+    },
+    {
+      "code": "invalid_region",
+      "stage": 4,
+      "meaning": "condition/join or fork/join pairing is missing or inconsistent"
+    },
+    {
+      "code": "bad_port",
+      "stage": 4,
+      "meaning": "exit ports do not line up with the condition cases and default_port"
+    },
+    {
+      "code": "cross_region_edge",
+      "stage": 4,
+      "meaning": "an edge enters or leaves a structured branch region illegally"
+    },
+    {
+      "code": "bad_join_sources",
+      "stage": 4,
+      "meaning": "required_sources/optional_sources do not match the region's real branch endpoints"
+    },
+    {
+      "code": "unknown_ref",
+      "stage": 5,
+      "meaning": "a node reference names an unknown node"
+    },
+    {
+      "code": "bad_pointer",
+      "stage": 5,
+      "meaning": "a JSON Pointer is malformed or names a field the producer schema forbids"
+    },
+    {
+      "code": "non_ancestor_ref",
+      "stage": 5,
+      "meaning": "a node reference is not a control dependency ancestor"
+    },
+    {
+      "code": "type_mismatch",
+      "stage": 5,
+      "meaning": "a condition comparison is statically impossible for the bound value type"
+    },
+    {
+      "code": "missing_value",
+      "stage": 5,
+      "meaning": "a required value is absent; it is never replaced by an implicit null"
+    }
+  ]
+}
