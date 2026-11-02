@@ -71,15 +71,29 @@ function runRuntimeFacts(headers) {
  * has not been claimed; a running run quotes the lease when the server supplied
  * it and otherwise says the lease facts are unavailable instead of inventing
  * progress.
+ *
+ * T031 adds the finalizing stage: a worker result is only a proposal, so while
+ * phase=finalizing the page says the platform is waiting for supervisor exit
+ * evidence and that this is not a success yet. Success is only ever rendered
+ * from a committed terminal state.
  */
 function describeRunState(run, facts) {
   const summary = runSummary(run);
   const runtime = facts || {};
-  if (summary.state === 'succeeded' || summary.state === 'failed' || summary.state === 'cancelled') {
-    return '已进入终态 ' + summary.state + '。';
+  if (isRunTerminal(summary.state)) {
+    return '已进入终态 ' + summary.state + '（终态由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
   }
   if (summary.state === 'queued') {
     return '尚未被领取（queued）；领取、心跳与退出证据属于 F03 内部 supervisor 协议。';
+  }
+  if (summary.state === 'recovery_pending') {
+    return '已确认执行单元退出但没有结果，Run 挂起在 recovery_pending；在恢复证据齐全前不会重新执行，也不会显示成功。';
+  }
+  if (summary.state === 'needs_reconciliation') {
+    return 'Run 等待人工核对（needs_reconciliation）：存在未明的外部副作用，平台不把它显示为成功或失败。';
+  }
+  if (summary.state === 'running' && summary.phase === 'finalizing') {
+    return '结果提议已保存，正在 finalizing：仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；终态提交前这不是成功。';
   }
   if (summary.state === 'running') {
     const lease = (runtime.leaseDeadline || '').trim();
@@ -92,6 +106,41 @@ function describeRunState(run, facts) {
       '，当前租约至 ' + lease + '（由数据库时钟判定并随心跳续租）。';
   }
   return '状态 ' + summary.state + '（phase=' + (summary.phase || 'unknown') + '）。';
+}
+
+/** The three execution stages the page observes, never reordered. */
+function runLifecycle(run) {
+  const summary = runSummary(run);
+  let current = 'executing';
+  if (summary.phase === 'finalizing') {
+    current = 'finalizing';
+  }
+  if (isRunTerminal(summary.state)) {
+    current = 'terminal';
+  }
+  return { stages: ['executing', 'finalizing', 'terminal'], current: current };
+}
+
+/** One line for the lifecycle row: executing -> finalizing -> terminal. */
+function lifecycleText(run) {
+  const lifecycle = runLifecycle(run);
+  return lifecycle.stages.join(' → ') + '（当前：' + lifecycle.current + '）';
+}
+
+function isRunTerminal(state) {
+  return state === 'succeeded' || state === 'failed' || state === 'cancelled';
+}
+
+/**
+ * Poll the owner-only detail until the Run is terminal. A finalizing run is
+ * still non-terminal: the page keeps asking GET /runs/{id} rather than guessing
+ * the outcome, so success can never be rendered before the committed state.
+ */
+function shouldPollRun(run) {
+  if (!run || typeof run.state !== 'string') {
+    return false;
+  }
+  return !isRunTerminal(run.state);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +183,7 @@ function showRunDetail(run, facts) {
   document.getElementById('detail-kind').textContent = summary.kind;
   document.getElementById('detail-revision').textContent = summary.revision;
   document.getElementById('detail-snapshot').textContent = summary.executionSnapshotID;
+  document.getElementById('detail-lifecycle').textContent = lifecycleText(run);
   document.getElementById('detail-manifest').textContent = facts.manifestSHA256 || '（响应头未提供）';
   document.getElementById('detail-lease').textContent =
     summary.state === 'running' && facts.leaseDeadline
@@ -143,6 +193,27 @@ function showRunDetail(run, facts) {
   document.getElementById('run-detail').hidden = false;
 }
 
+// T031: while the Run is not terminal the page polls the owner-only detail (the
+// state is committed by the Go finalizer), and stops the moment a terminal state
+// arrives. Nothing is rendered as success before that committed state.
+const RUN_POLL_INTERVAL_MS = 2000;
+const RUN_POLL_MAX = 60;
+
+async function pollRunDetail(runId, polls) {
+  if (polls >= RUN_POLL_MAX) {
+    runsStatus('已停止轮询（' + polls + ' 次）；Run 仍未进入终态。', 'pending');
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, RUN_POLL_INTERVAL_MS));
+  const result = await apiFull(runDetailPath(runId));
+  const facts = runRuntimeFacts(result.headers);
+  showRunDetail(result.payload, facts);
+  if (shouldPollRun(result.payload)) {
+    return pollRunDetail(runId, polls + 1);
+  }
+  runsStatus('Run ' + runId + ' 已进入终态 ' + result.payload.state + '。', 'ok');
+}
+
 async function loadRunDetail(runId) {
   runsStatus('正在加载 Run ' + runId + ' 的详情…', 'pending');
   try {
@@ -150,7 +221,12 @@ async function loadRunDetail(runId) {
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
     showRunDetail(result.payload, facts);
-    runsStatus('已加载 Run ' + runId + '。', 'ok');
+    if (shouldPollRun(result.payload)) {
+      runsStatus('已加载 Run ' + runId + '，仍在执行；页面会轮询到终态（不会提前显示成功）。', 'pending');
+      await pollRunDetail(runId, 0);
+    } else {
+      runsStatus('已加载 Run ' + runId + '。', 'ok');
+    }
   } catch (error) {
     if (error.status === 401) {
       window.location.assign('/login');

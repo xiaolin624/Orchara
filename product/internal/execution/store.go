@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"orchara/platform/internal/uuid"
@@ -65,6 +66,11 @@ type attemptFacts struct {
 	RunPhase          string
 	RunRevision       int64
 	RunStartedAt      sql.NullTime
+	RunOwnerID        string
+	RunManifestSHA256 string
+	ImageDigest       string
+	ReportedResult    []byte
+	CheckpointID      sql.NullString
 }
 
 // selectClaimCandidateTx picks one ready job whose run is queued and whose
@@ -363,9 +369,11 @@ func loadHeartbeatAttemptTx(ctx context.Context, tx *sql.Tx, runID, token string
 }
 
 // loadAttemptForExitTx locks the attempt, its job and its run in one statement
-// and reads the facts an exit decision needs. The evidence comparison
-// (`exit_evidence = $2::jsonb`) is JSONB equality, so key order and whitespace
-// never make a repeated exit look conflicting.
+// and reads the facts an exit decision needs: the claimed identity (manifest
+// hash + image digest) the evidence must match, and whether a result proposal is
+// already stored (which decides finalize vs recovery_pending). The evidence
+// comparison (`exit_evidence = $2::jsonb`) is JSONB equality, so key order and
+// whitespace never make a repeated exit look conflicting.
 func loadAttemptForExitTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -378,10 +386,13 @@ func loadAttemptForExitTx(
 		       a.lease_deadline::text, a.exited_at, a.revoked_at,
 		       a.lease_deadline > now() AS lease_live,
 		       (a.exit_evidence IS NOT NULL AND a.exit_evidence = $2::jsonb) AS evidence_same,
-		       j.state, j.run_id::text, r.state, r.phase, r.revision, r.started_at
+		       a.reported_result, a.checkpoint_id,
+		       j.state, j.run_id::text, r.state, r.phase, r.revision, r.started_at,
+		       r.owner_id::text, r.manifest_sha256, s.worker_image_digest
 		  FROM platform.run_attempts AS a
 		  JOIN platform.jobs AS j ON j.id = a.job_id
 		  JOIN platform.runs AS r ON r.id = a.run_id
+		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
 		 WHERE a.token = $1::uuid
 		 FOR UPDATE OF a, j, r`,
 		attemptID, evidence,
@@ -389,8 +400,10 @@ func loadAttemptForExitTx(
 		&facts.Token, &facts.JobID, &facts.RunID, &facts.ExecutionUnitID,
 		&facts.LeaseDeadline, &facts.ExitedAt, &facts.RevokedAt,
 		&facts.LeaseLive, &facts.EvidenceSame,
+		&facts.ReportedResult, &facts.CheckpointID,
 		&facts.JobState, &facts.JobRunID, &facts.RunState, &facts.RunPhase,
 		&facts.RunRevision, &facts.RunStartedAt,
+		&facts.RunOwnerID, &facts.RunManifestSHA256, &facts.ImageDigest,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrAttemptNotFound
@@ -425,48 +438,6 @@ func recordExitTx(ctx context.Context, tx *sql.Tx, token string, evidence []byte
 		return ErrStaleAttempt
 	}
 	return nil
-}
-
-// releaseAllocationTx sets released_at once and decrements `used` only when the
-// release actually happened. The `released_at IS NULL` predicate is the
-// exactly-once rule; the counter's `used > 0` guard makes a second call a no-op
-// instead of a negative count.
-func releaseAllocationTx(ctx context.Context, tx *sql.Tx, holderKey string) (bool, error) {
-	var id string
-	err := tx.QueryRowContext(ctx, `
-		UPDATE platform.quota_allocations
-		   SET released_at = now()
-		 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
-		   AND released_at IS NULL
-		RETURNING id::text`,
-		quotaScope, quotaDimension, holderKey,
-	).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		// Nothing to release: the exact-once rule already held. A missing row for
-		// a just-exited attempt is an invariant violation, not a double release,
-		// so only the caller decides; the return value distinguishes them.
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("releasing the execution quota allocation: %w", err)
-	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE platform.quota_counters
-		   SET used = used - 1
-		 WHERE scope = $1 AND dimension = $2 AND used > 0`,
-		quotaScope, quotaDimension,
-	)
-	if err != nil {
-		return false, fmt.Errorf("decrementing the execution quota counter: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("decrementing the execution quota counter: %w", err)
-	}
-	if affected != 1 {
-		return false, ErrAllocationConflict
-	}
-	return true, nil
 }
 
 // returnJobToQueueTx is the started=false release: the job becomes ready again
@@ -510,15 +481,16 @@ func returnJobToQueueTx(ctx context.Context, tx *sql.Tx, jobID, runID string) er
 	return nil
 }
 
-// holdJobTx is the started!=false release: the job stops being leased but the
-// run stays non-terminal. T031/T038 own the next transition; nothing here
-// invents a terminal state or a result.
+// holdJobTx stops dispatching the job without completing it. A leased job
+// becomes held (the exit path); an already-held job is the idempotent no-op of a
+// repeated finalize (waiting/blocked guard after an exit-first park). Nothing
+// here invents a terminal state or a result; T035/T038 own the next transition.
 func holdJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE platform.jobs
 		   SET state = 'held',
 		       current_attempt_token = NULL
-		 WHERE id = $1::uuid AND state = 'leased'`,
+		 WHERE id = $1::uuid AND state IN ('leased', 'held')`,
 		jobID,
 	)
 	if err != nil {
@@ -568,4 +540,406 @@ func nullableBytes(value []byte) any {
 		return nil
 	}
 	return value
+}
+
+// nullableString passes an optional text parameter as SQL NULL.
+func nullableString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+// ---------------------------------------------------------------------------
+// F03/T031: result proposals and the unified finalizer
+// ---------------------------------------------------------------------------
+
+// runFacts is one run row locked for the duration of a result-proposal
+// transaction. The proposal checks state/phase/revision and needs the owner for
+// the output-artifact admission (which is owned by the Run's owner).
+type runFacts struct {
+	ID       string
+	OwnerID  string
+	State    string
+	Phase    string
+	Revision int64
+}
+
+// lockRunTx locks one run and reads the facts the proposal needs. A missing run
+// is ErrRunNotFound (404); the lock serialises the result and exit handlers, so
+// exactly one of them observes the other's committed evidence.
+func lockRunTx(ctx context.Context, tx *sql.Tx, runID string) (*runFacts, error) {
+	var facts runFacts
+	err := tx.QueryRowContext(ctx, `
+		SELECT r.id::text, r.owner_id::text, r.state, r.phase, r.revision
+		  FROM platform.runs AS r
+		 WHERE r.id = $1::uuid
+		   FOR UPDATE OF r`,
+		runID,
+	).Scan(&facts.ID, &facts.OwnerID, &facts.State, &facts.Phase, &facts.Revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRunNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the run: %w", err)
+	}
+	return &facts, nil
+}
+
+// resultAttemptFacts is the attempt+job binding the result endpoint checks.
+type resultAttemptFacts struct {
+	Token               string
+	JobID               string
+	RunID               string
+	JobState            string
+	CurrentAttemptToken sql.NullString
+	ReportedResult      []byte
+	ExitedAt            sql.NullTime
+	Superseded          bool
+}
+
+// lockAttemptForResultTx locks the attempt named by the token *for this run* and
+// its job. A token that belongs to another run, or an attempt superseded by a
+// later attempt of the same run, is not a valid proposer: the query's bindings
+// are the cross-run guard.
+func lockAttemptForResultTx(
+	ctx context.Context, tx *sql.Tx, runID, token string,
+) (*resultAttemptFacts, error) {
+	var facts resultAttemptFacts
+	err := tx.QueryRowContext(ctx, `
+		SELECT a.token::text, a.job_id::text, a.run_id::text,
+		       a.reported_result, a.exited_at,
+		       j.state, j.current_attempt_token::text,
+		       EXISTS (
+		           SELECT 1 FROM platform.run_attempts AS newer
+		            WHERE newer.run_id = a.run_id
+		              AND (newer.started_at, newer.token) > (a.started_at, a.token)
+		       ) AS superseded
+		  FROM platform.run_attempts AS a
+		  JOIN platform.jobs AS j ON j.id = a.job_id
+		 WHERE a.token = $1::uuid
+		   AND a.run_id = $2::uuid
+		   FOR UPDATE OF a, j`,
+		token, runID,
+	).Scan(
+		&facts.Token, &facts.JobID, &facts.RunID,
+		&facts.ReportedResult, &facts.ExitedAt,
+		&facts.JobState, &facts.CurrentAttemptToken, &facts.Superseded,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrStaleAttempt
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the result attempt: %w", err)
+	}
+	return &facts, nil
+}
+
+// checkOutputArtifactTx enforces the four admission rules of a succeeded
+// proposal: the artifact exists, is owned by the run's owner, is ready and not
+// tombstoned, and is registered to this run in run_artifacts. Registration is
+// T033; until then the link is the authority that the artifact belongs to this
+// run.
+func checkOutputArtifactTx(
+	ctx context.Context, tx *sql.Tx, runID, runOwnerID, artifactID string,
+) error {
+	var (
+		ownerID   string
+		state     string
+		deletedAt sql.NullTime
+		sha256    sql.NullString
+		sizeBytes sql.NullInt64
+		linked    bool
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT a.owner_id::text, a.state, a.deleted_at, a.sha256, a.size_bytes,
+		       EXISTS (
+		           SELECT 1 FROM platform.run_artifacts AS ra
+		            WHERE ra.run_id = $1::uuid AND ra.artifact_id = a.id
+		       )
+		  FROM platform.artifacts AS a
+		 WHERE a.id = $2::uuid`,
+		runID, artifactID,
+	).Scan(&ownerID, &state, &deletedAt, &sha256, &sizeBytes, &linked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &OutputArtifactError{
+			Code:    CodeArtifactNotFound,
+			Message: "the output artifact does not exist",
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("reading the output artifact: %w", err)
+	}
+	switch {
+	case !strings.EqualFold(ownerID, runOwnerID):
+		return &OutputArtifactError{
+			Code:    CodeArtifactNotOwned,
+			Message: "the output artifact belongs to another principal; a run may only publish its owner's artifact",
+		}
+	case state != "ready" || deletedAt.Valid || !sha256.Valid || !sizeBytes.Valid:
+		return &OutputArtifactError{
+			Code:    CodeArtifactNotReady,
+			Message: "the output artifact is not ready (state=" + state + ")",
+		}
+	case !linked:
+		return &OutputArtifactError{
+			Code:    CodeArtifactNotLinked,
+			Message: "the output artifact is not registered to this run",
+		}
+	}
+	return nil
+}
+
+// storeResultTx writes the proposal once. The `reported_result IS NULL`
+// predicate is the once-only rule; the transaction already holds the attempt
+// lock, so a second writer serially observes the stored value.
+func storeResultTx(
+	ctx context.Context, tx *sql.Tx, token string, proposal []byte, checkpointID any,
+) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.run_attempts
+		   SET reported_result = $2::jsonb,
+		       reported_at = now(),
+		       checkpoint_id = COALESCE($3, checkpoint_id)
+		 WHERE token = $1::uuid
+		   AND reported_result IS NULL`,
+		token, proposal, checkpointID,
+	)
+	if err != nil {
+		return fmt.Errorf("storing the result proposal: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storing the result proposal: %w", err)
+	}
+	if affected != 1 {
+		return ErrEventConflict
+	}
+	return nil
+}
+
+// setRunFinalizingTx is the proposal's only run write: phase=finalizing while
+// the state stays running (and the revision does not move, because no state
+// transition happened). A run parked in recovery_pending keeps its idle phase;
+// a later result completes the finalizer rather than faking execution again.
+func setRunFinalizingTx(ctx context.Context, tx *sql.Tx, runID string) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE platform.runs
+		   SET phase = 'finalizing'
+		 WHERE id = $1::uuid AND state = 'running'`,
+		runID,
+	)
+	if err != nil {
+		return fmt.Errorf("setting the run phase to finalizing: %w", err)
+	}
+	return nil
+}
+
+// completeJobTx is the finalizer's job transition: the execution is over, the
+// job is completed and it no longer names the revoked token. The `state IN
+// (leased, held, completed)` predicate makes a repeated finalize a no-op instead
+// of an error (the run CAS below still guarantees one committed outcome).
+func completeJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.jobs
+		   SET state = 'completed',
+		       current_attempt_token = NULL
+		 WHERE id = $1::uuid
+		   AND state IN ('leased', 'held', 'completed')`,
+		jobID,
+	)
+	if err != nil {
+		return fmt.Errorf("completing the job: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("completing the job: %w", err)
+	}
+	if affected != 1 {
+		return ErrStaleAttempt
+	}
+	return nil
+}
+
+// revokeAttemptTx clears the execution credential. The exit path already
+// revoked it; the finalizer repeats the statement idempotently so a terminal
+// Run never has a live token even if it was finalized through a different path.
+func revokeAttemptTx(ctx context.Context, tx *sql.Tx, token string) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE platform.run_attempts
+		   SET revoked_at = COALESCE(revoked_at, now())
+		 WHERE token = $1::uuid`,
+		token,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking the execution attempt: %w", err)
+	}
+	return nil
+}
+
+// releaseAllocationOnceTx releases the holder's slot exactly once. A row whose
+// released_at is already set is the successful no-op of a repeated finalize; a
+// missing row is an invariant violation. The counter decrement only runs with
+// the release, so concurrent/duplicate finalizers cannot decrement twice.
+func releaseAllocationOnceTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
+	var released sql.NullTime
+	err := tx.QueryRowContext(ctx, `
+		SELECT released_at
+		  FROM platform.quota_allocations
+		 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
+		 FOR UPDATE`,
+		quotaScope, quotaDimension, holderKey,
+	).Scan(&released)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAllocationConflict
+	}
+	if err != nil {
+		return fmt.Errorf("reading the execution quota allocation: %w", err)
+	}
+	if released.Valid {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.quota_allocations
+		   SET released_at = now()
+		 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
+		   AND released_at IS NULL`,
+		quotaScope, quotaDimension, holderKey,
+	)
+	if err != nil {
+		return fmt.Errorf("releasing the execution quota allocation: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("releasing the execution quota allocation: %w", err)
+	}
+	if affected != 1 {
+		return ErrAllocationConflict
+	}
+	result, err = tx.ExecContext(ctx, `
+		UPDATE platform.quota_counters
+		   SET used = used - 1
+		 WHERE scope = $1 AND dimension = $2 AND used > 0`,
+		quotaScope, quotaDimension,
+	)
+	if err != nil {
+		return fmt.Errorf("decrementing the execution quota counter: %w", err)
+	}
+	affected, err = result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("decrementing the execution quota counter: %w", err)
+	}
+	if affected != 1 {
+		return ErrAllocationConflict
+	}
+	return nil
+}
+
+// runOutcome is one committed Run state transition the finalizer asks for.
+type runOutcome struct {
+	State            string
+	OutputArtifactID *string
+	ErrorCode        *string
+	Finished         bool
+}
+
+// updateRunOutcomeTx is the single Run aggregate transition of the finalizer:
+// state, revision+1, phase idle, the finished timestamp exactly for a real
+// terminal state (needs_reconciliation is non-terminal and stays unfinished),
+// the output artifact and the error code. The expected state+revision make it a
+// CAS: a run that moved under the transaction is a conflict, not an overwrite.
+func updateRunOutcomeTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	runID, expectedState string,
+	expectedRevision int64,
+	outcome runOutcome,
+) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.runs
+		   SET state = $2,
+		       phase = 'idle',
+		       revision = revision + 1,
+		       finished_at = CASE WHEN $3 THEN now() ELSE NULL END,
+		       output_artifact_id = $4::uuid,
+		       error_code = $5
+		 WHERE id = $1::uuid
+		   AND state = $6
+		   AND revision = $7
+		   AND deleted_at IS NULL`,
+		runID, outcome.State, outcome.Finished,
+		nullableString(outcome.OutputArtifactID), nullableString(outcome.ErrorCode),
+		expectedState, expectedRevision,
+	)
+	if err != nil {
+		return fmt.Errorf("committing the run outcome: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("committing the run outcome: %w", err)
+	}
+	if affected != 1 {
+		return ErrStaleAttempt
+	}
+	return nil
+}
+
+// parkRunForRecoveryTx is the exit-without-result transition: the supervisor has
+// proven the execution unit exited, but there is no result to commit. The run is
+// parked in recovery_pending (non-terminal), the job is held and the slot is
+// already released. T038 owns proving the old unit drained before any new
+// attempt; T031 never requeues on exit alone.
+func parkRunForRecoveryTx(ctx context.Context, tx *sql.Tx, runID string) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.runs
+		   SET state = 'recovery_pending',
+		       phase = 'idle',
+		       revision = revision + 1
+		 WHERE id = $1::uuid AND state = 'running' AND deleted_at IS NULL`,
+		runID,
+	)
+	if err != nil {
+		return fmt.Errorf("parking the run for recovery: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("parking the run for recovery: %w", err)
+	}
+	if affected != 1 {
+		return ErrStaleAttempt
+	}
+	return nil
+}
+
+// hasLiveChildrenTx is the "all child runs finished" half of the finalizer
+// guard. Children are ordinary `platform.runs` rows with parent_run_id set
+// (F03 §7 / T035 creates them); a child that is not succeeded/failed/cancelled
+// blocks the parent's terminal transition.
+func hasLiveChildrenTx(ctx context.Context, tx *sql.Tx, runID string) (bool, error) {
+	var live bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+		    SELECT 1 FROM platform.runs AS child
+		     WHERE child.parent_run_id = $1::uuid
+		       AND child.deleted_at IS NULL
+		       AND child.state NOT IN ('succeeded', 'failed', 'cancelled')
+		)`,
+		runID,
+	).Scan(&live)
+	if err != nil {
+		return false, fmt.Errorf("checking live child runs: %w", err)
+	}
+	return live, nil
+}
+
+// hasUnknownOperationsTx is the "no unknown side effects" half of the finalizer
+// guard. EXECUTION §5 requires a Run with unknown external writes to become
+// needs_reconciliation instead of succeeding/failing/cancelling, but the
+// operation table is owned by F03/T036 (`platform.run_unknown_operations` or
+// equivalent). Until T036 creates it there is nothing that can record an
+// unknown operation for this run, so the predicate is false; T036 replaces this
+// body with the real query (the finalizer calls it, it does not grow a second
+// guard).
+func hasUnknownOperationsTx(context.Context, *sql.Tx, string) (bool, error) {
+	return false, nil
 }

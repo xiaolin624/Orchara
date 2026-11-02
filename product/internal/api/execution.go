@@ -1,9 +1,10 @@
 package api
 
-// F03/T029: the three internal execution-protocol operations.
+// F03/T029+T031: the internal execution-protocol operations.
 //
 //	POST /internal/v1/jobs/claim                              claimJob
 //	POST /internal/v1/runs/{run_id}/heartbeat                 heartbeat
+//	POST /internal/v1/runs/{run_id}/result                    submitWorkerResult
 //	POST /internal/v1/attempts/{attempt_id}/exited            confirmAttemptExit
 //
 // They live on the separate mTLS listener (RegisterInternal) and are never
@@ -13,8 +14,10 @@ package api
 //
 //   - claim and attempt exit: supervisor only. A worker cannot claim work or
 //     certify its own exit (API.md §6, EXECUTION.md §4/§6).
-//   - heartbeat: supervisor or worker. The attempt token is the credential; the
-//     handler does not know which process holds it.
+//   - heartbeat and result: supervisor or worker. The attempt token is the
+//     credential; a worker may propose a result but only the supervisor can
+//     confirm the exit that lets the finalizer commit it.
+//   - maintenance: none of these endpoints.
 //
 // The handlers decode the contract bodies strictly, then map the execution
 // package's typed errors to the contract vocabulary. They write no SQL.
@@ -86,6 +89,33 @@ func (s *Server) handleInternalRunHeartbeat(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, reply)
 }
 
+// handleInternalRunResult accepts the worker's result *proposal*. The 200 body
+// is the contract Run read through the single owner-facing projection: a
+// proposal-only call returns running/finalizing, and only a call that also
+// completes the finalizer (the exit evidence was already present) returns the
+// committed terminal Run.
+func (s *Server) handleInternalRunResult(w http.ResponseWriter, r *http.Request) {
+	if !requireAnyInternalRole(w, r, InternalRoleSupervisor, InternalRoleWorker) {
+		return
+	}
+	var request execution.WorkerResult
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	outcome, err := s.execution.SubmitResult(r.Context(), r.PathValue("run_id"), request)
+	if !s.writeExecutionError(w, r, err) {
+		return
+	}
+	run, err := s.catalog.GetRun(r.Context(), outcome.OwnerID, outcome.RunID)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	w.Header().Set("X-Manifest-SHA256", run.ManifestSHA256)
+	writeJSON(w, http.StatusOK, run)
+}
+
 type internalAttemptExitRequest struct {
 	ExecutionUnitID string          `json:"execution_unit_id"`
 	Evidence        json.RawMessage `json:"evidence"`
@@ -117,6 +147,10 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 	switch {
 	case err == nil:
 		return true
+	case executionOutputArtifactFailure(err) != nil:
+		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
+			err.Error(), executionOutputArtifactFailure(err))
+		return false
 	case executionValidationFailure(err) != nil:
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			err.Error(), executionValidationFailure(err))
@@ -125,6 +159,9 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 		writeError(w, r, http.StatusNotFound, "attempt_not_found",
 			"that execution attempt does not exist")
 		return false
+	case errors.Is(err, execution.ErrRunNotFound):
+		writeError(w, r, http.StatusNotFound, "run_not_found", "that run does not exist")
+		return false
 	case errors.Is(err, execution.ErrStaleAttempt):
 		writeError(w, r, http.StatusConflict, "stale_attempt",
 			"the attempt token does not own a live lease on this run")
@@ -132,6 +169,22 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 	case errors.Is(err, execution.ErrEvidenceConflict):
 		writeError(w, r, http.StatusConflict, "attempt_evidence_conflict",
 			"this attempt already exited with different evidence")
+		return false
+	case errors.Is(err, execution.ErrEventConflict):
+		writeError(w, r, http.StatusConflict, "event_conflict",
+			"this attempt already stored a different result proposal")
+		return false
+	case errors.Is(err, execution.ErrRunTerminal):
+		writeError(w, r, http.StatusConflict, "run_terminal",
+			"the run is already terminal; a late result never revives it")
+		return false
+	case errors.Is(err, execution.ErrRunStateConflict):
+		writeError(w, r, http.StatusConflict, "run_state_conflict",
+			"the run is not executing; waiting/cancelling/reconciliation states are owned by later F03 tickets")
+		return false
+	case errors.Is(err, execution.ErrIdentityMismatch):
+		writeError(w, r, http.StatusConflict, "execution_identity_mismatch",
+			"the exit evidence does not match the claimed protocol/manifest/image identity")
 		return false
 	case errors.Is(err, execution.ErrObjectSigningUnavailable):
 		writeError(w, r, http.StatusServiceUnavailable, "object_signing_unavailable",
@@ -155,6 +208,17 @@ func executionValidationFailure(err error) map[string]any {
 	var validation *execution.ValidationError
 	if errors.As(err, &validation) && validation.Field != "" {
 		return map[string]any{"field": validation.Field}
+	}
+	return nil
+}
+
+// executionOutputArtifactFailure locates a refused succeeded-proposal artifact:
+// 422 validation_failed with the field and the stable reason code, exactly like
+// T027's located execution refusals.
+func executionOutputArtifactFailure(err error) map[string]any {
+	var artifact *execution.OutputArtifactError
+	if errors.As(err, &artifact) {
+		return map[string]any{"field": "output_artifact_id", "code": artifact.Code}
 	}
 	return nil
 }

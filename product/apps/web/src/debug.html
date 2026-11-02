@@ -50,6 +50,11 @@
     （<code>X-Run-Attempt-Started-At</code> / <code>X-Run-Lease-Deadline</code>，仅在尝试存活时出现）。
     领取、心跳与退出证据由 F03 内部 supervisor 协议完成；页面不伪造进度。
   </p>
+  <p class="hint">
+    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示结果提议已保存、
+    仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空），本页不会在终态前显示成功；页面会持续轮询
+    <code>GET /api/v1/runs/{id}</code> 直到服务端提交终态。
+  </p>
 
   <section class="card">
     <h2>当前草稿</h2>

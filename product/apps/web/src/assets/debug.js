@@ -143,6 +143,35 @@ function runIsTerminal(state) {
   return state === 'succeeded' || state === 'failed' || state === 'cancelled';
 }
 
+/**
+ * T031: one honest sentence per execution stage. A result proposal moves the
+ * Run to phase=finalizing, but that is still not success: the Go finalizer waits
+ * for supervisor exit/sandbox/DB-drain evidence. Success is only ever described
+ * for a committed terminal state.
+ */
+function describeRunStage(run) {
+  const summary = runSummary(run || {});
+  // The debug page's runSummary deliberately carries no phase; read the field
+  // from the contract Run body itself.
+  const phase = (run && run.phase) || '';
+  if (runIsTerminal(summary.state)) {
+    return '已进入终态 ' + summary.state + '（由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
+  }
+  if (summary.state === 'recovery_pending') {
+    return '已确认退出但没有结果，Run 挂起在 recovery_pending；恢复证据齐全前不会重新执行。';
+  }
+  if (summary.state === 'needs_reconciliation') {
+    return 'Run 等待人工核对（needs_reconciliation）；不显示为成功或失败。';
+  }
+  if (summary.state === 'running' && phase === 'finalizing') {
+    return '结果提议已保存，正在 finalizing：等待 supervisor 的退出证据（进程/沙箱/数据库排空），终态前这不是成功。';
+  }
+  if (summary.state === 'running') {
+    return '正在执行（executing）；结果提议与退出证据由 F03 supervisor 协议提交。';
+  }
+  return '当前阶段 ' + (phase || 'idle') + '（' + summary.state + '）。';
+}
+
 function shouldPollRun(run, pollsSoFar, maxPolls) {
   if (!run || typeof run.state !== 'string') {
     return false;
@@ -301,7 +330,7 @@ function initDebug() {
       debugShowRun(
         polled.run,
         polled.manifestSHA256,
-        '这是一个私有 debug Run。领取、心跳与退出证据由 F03 supervisor 协议完成；本页只显示服务端返回的 state/phase 与租约事实。',
+        describeRunStage(polled.run) + ' 本页只显示服务端返回的 state/phase 与租约事实。',
         frozenRevision,
         polled.lease,
       );

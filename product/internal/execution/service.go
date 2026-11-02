@@ -267,18 +267,28 @@ func (s *Service) Heartbeat(ctx context.Context, request HeartbeatRequest) (*Hea
 	}, nil
 }
 
-// ConfirmExit records supervisor exit evidence.
+// ConfirmExit records supervisor exit evidence and runs the unified finalizer
+// when a result proposal is already stored.
 //
-// The started=false case is this ticket's "startup failed, provably never
-// started" path: the attempt is exited and revoked, the slot is released, the
-// job returns to ready and the run returns to queued without inventing a
-// terminal result. Any other evidence holds the job: T031's finalizer (result
-// proposal, sandbox/drain proofs, terminal state, resume) decides next.
+// The started=false case is the "startup failed, provably never started" path:
+// the attempt is exited and revoked, the slot is released, the job returns to
+// ready and the run returns to queued without inventing a terminal result.
 //
-// The call is idempotent for identical evidence (JSONB equality) and answers
-// ErrEvidenceConflict for different evidence on an already-exited attempt.
+// Any started=true exit has already released the slot (the physical unit is
+// gone). If a result proposal is present, finalizeRunTx commits succeeded/
+// failed/needs_reconciliation or leaves a waiting proposal for T035. With no
+// result the run is parked in recovery_pending, the job is held and nothing is
+// requeued: T038 owns proving the old unit drained, and a late result completes
+// the finalizer.
+//
+// The evidence must echo the claimed identity (protocol version, manifest hash,
+// image digest); a mismatch is ErrIdentityMismatch (409
+// execution_identity_mismatch) before any write, so a supervisor that ran the
+// wrong image cannot certify this attempt. The call is idempotent for identical
+// evidence (JSONB equality) and answers ErrEvidenceConflict for different
+// evidence on an already-exited attempt.
 func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitResult, error) {
-	normalized, started, err := validateExitRequest(request)
+	normalized, evidence, err := validateExitRequest(request)
 	if err != nil {
 		return nil, err
 	}
@@ -306,27 +316,50 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		return nil, ErrStaleAttempt
 	}
 	if facts.JobState != "leased" || facts.RunState != "running" {
-		// Cancel/recovery races are T031/T038's model; this ticket refuses rather
+		// Cancel/recovery races are T038's model; this handler refuses rather
 		// than overwrite a state it does not own.
 		return nil, ErrStaleAttempt
+	}
+	// The claimed identity check comes before any write: a wrong protocol,
+	// manifest or image is a refusal, not an exit that later parks the run.
+	if evidence.ProtocolVersion != LeaseProtocolVersion ||
+		!strings.EqualFold(evidence.ManifestSHA256, facts.RunManifestSHA256) ||
+		evidence.ImageDigest != facts.ImageDigest {
+		return nil, ErrIdentityMismatch
 	}
 
 	if err := recordExitTx(ctx, tx, normalized.AttemptID, normalized.Evidence); err != nil {
 		return nil, err
 	}
-	released, err := releaseAllocationTx(ctx, tx, "job:"+facts.JobID)
-	if err != nil {
+	// The physical execution unit is gone, so its slot is free regardless of
+	// what the result/finalizer does next. released_at IS NULL keeps it
+	// exactly-once; the finalizer repeats the statement idempotently.
+	if err := releaseAllocationOnceTx(ctx, tx, "job:"+facts.JobID); err != nil {
 		return nil, err
 	}
-	if !released {
-		return nil, ErrAllocationConflict
-	}
-	if started {
-		if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
+	if !evidence.Started {
+		if err := returnJobToQueueTx(ctx, tx, facts.JobID, facts.RunID); err != nil {
+			return nil, err
+		}
+	} else if len(facts.ReportedResult) > 0 {
+		if _, err := s.finalizeRunTx(ctx, tx, finalizeInput{
+			RunID:          facts.RunID,
+			RunOwnerID:     facts.RunOwnerID,
+			RunState:       facts.RunState,
+			RunRevision:    facts.RunRevision,
+			JobID:          facts.JobID,
+			AttemptToken:   facts.Token,
+			ReportedResult: facts.ReportedResult,
+			Exited:         true,
+		}); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := returnJobToQueueTx(ctx, tx, facts.JobID, facts.RunID); err != nil {
+		// Exit with no result: park for recovery, hold the job, never requeue.
+		if err := parkRunForRecoveryTx(ctx, tx, facts.RunID); err != nil {
+			return nil, err
+		}
+		if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
 			return nil, err
 		}
 	}
@@ -336,6 +369,151 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	return &ExitResult{ID: normalized.AttemptID, State: "exited"}, nil
 }
 
+// finalizeInput is the state the finalizer decides on. The caller has already
+// locked the run/job/attempt and checked the evidence.
+type finalizeInput struct {
+	RunID          string
+	RunOwnerID     string
+	RunState       string
+	RunRevision    int64
+	JobID          string
+	AttemptToken   string
+	ReportedResult []byte
+	Exited         bool
+}
+
+// finalizeRunTx is the one idempotent finalizer for result+exit, in either
+// arrival order. It requires both pieces of evidence; when only one is present
+// it does nothing. When both are present it:
+//
+//   - checks the "no live children / no unknown operations" guard; a blocked
+//     run keeps its evidence, holds the job and stays non-terminal (T035/T036
+//     own the next transition);
+//   - stores a waiting_* proposal and leaves the run running/finalizing (T035
+//     owns waiting and resume);
+//   - commits succeeded/failed exactly once (state, revision+1, finished_at,
+//     output_artifact_id, error_code, phase idle, job completed, token revoked,
+//     allocation released once);
+//   - commits needs_reconciliation as the honest non-terminal outcome when the
+//     proposal says so (or when a previously valid output artifact is no longer
+//     acceptable).
+//
+// The run CAS on state+revision is what makes a racing duplicate a conflict
+// rather than a second terminal write.
+func (s *Service) finalizeRunTx(
+	ctx context.Context, tx *sql.Tx, input finalizeInput,
+) (bool, error) {
+	if !input.Exited || len(input.ReportedResult) == 0 {
+		return false, nil
+	}
+	if input.RunState != "running" && input.RunState != "recovery_pending" {
+		// Already terminal/needs_reconciliation/waiting: a repeated finalize is
+		// a no-op, never a second transition.
+		return false, nil
+	}
+	var proposal struct {
+		SuggestedState   string  `json:"suggested_state"`
+		OutputArtifactID *string `json:"output_artifact_id"`
+		ErrorCode        *string `json:"error_code"`
+	}
+	if err := json.Unmarshal(input.ReportedResult, &proposal); err != nil {
+		return false, fmt.Errorf("decoding the stored result proposal: %w", err)
+	}
+
+	if proposal.SuggestedState == "waiting_approval" || proposal.SuggestedState == "waiting_children" {
+		// Stored, not terminal: T035 turns the waiting proposal into the waiting
+		// state and the single resume job. The execution slot is already free.
+		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	blocked, err := finalizerBlockedTx(ctx, tx, input.RunID)
+	if err != nil {
+		return false, err
+	}
+	if blocked {
+		// Keep the run finalizing with its evidence; hold the job so no new
+		// attempt is dispatched. T035/T036 own the next transition.
+		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	outcome := runOutcome{}
+	switch proposal.SuggestedState {
+	case "succeeded":
+		if proposal.OutputArtifactID == nil {
+			return false, errors.New("the stored succeeded proposal has no output artifact")
+		}
+		if err := checkOutputArtifactTx(
+			ctx, tx, input.RunID, input.RunOwnerID, *proposal.OutputArtifactID,
+		); err != nil {
+			// The artifact was acceptable when the proposal was stored; if it is
+			// no longer owned/ready/linked the platform cannot honestly claim
+			// success, so the run parks for reconciliation instead.
+			code := "output_artifact_invalid"
+			outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
+			break
+		}
+		outcome = runOutcome{
+			State:            "succeeded",
+			OutputArtifactID: proposal.OutputArtifactID,
+			Finished:         true,
+		}
+	case "failed":
+		if proposal.ErrorCode == nil {
+			return false, errors.New("the stored failed proposal has no error_code")
+		}
+		outcome = runOutcome{
+			State:     "failed",
+			ErrorCode: proposal.ErrorCode,
+			Finished:  true,
+		}
+	case "needs_reconciliation":
+		outcome = runOutcome{
+			State:     "needs_reconciliation",
+			ErrorCode: proposal.ErrorCode,
+		}
+	default:
+		return false, fmt.Errorf("unknown stored result proposal %q", proposal.SuggestedState)
+	}
+
+	if err := completeJobTx(ctx, tx, input.JobID); err != nil {
+		return false, err
+	}
+	if err := revokeAttemptTx(ctx, tx, input.AttemptToken); err != nil {
+		return false, err
+	}
+	if err := releaseAllocationOnceTx(ctx, tx, "job:"+input.JobID); err != nil {
+		return false, err
+	}
+	if err := updateRunOutcomeTx(
+		ctx, tx, input.RunID, input.RunState, input.RunRevision, outcome,
+	); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// finalizerBlockedTx is the exit guard of EXECUTION §3/§8: no live child Runs
+// and no unknown operations. Until T036 adds the unknown-operation table the
+// second half can only be false; the finalizer still calls it so T036 extends
+// one predicate instead of adding a second finalizer path.
+func finalizerBlockedTx(ctx context.Context, tx *sql.Tx, runID string) (bool, error) {
+	liveChildren, err := hasLiveChildrenTx(ctx, tx, runID)
+	if err != nil {
+		return false, err
+	}
+	unknownOperations, err := hasUnknownOperationsTx(ctx, tx, runID)
+	if err != nil {
+		return false, err
+	}
+	return liveChildren || unknownOperations, nil
+}
+
 // LiveLease returns the current attempt's non-secret lease facts for one run, or
 // nil when no attempt is live. It is the owner-facing run-detail extension.
 func (s *Service) LiveLease(ctx context.Context, runID string) (*LiveLease, error) {
@@ -343,6 +521,144 @@ func (s *Service) LiveLease(ctx context.Context, runID string) (*LiveLease, erro
 		return nil, nil
 	}
 	return liveLease(ctx, s.DB, runID)
+}
+
+// SubmitResult stores one worker result proposal. It is deliberately not a
+// completion: the attempt keeps its credential, the job stays leased, the
+// allocation stays held and the run only moves to phase=finalizing. The unified
+// finalizer (T031) commits the terminal state once the supervisor's exit
+// evidence is present, in whichever order the two calls arrive.
+//
+// Order inside the transaction:
+//
+//  1. lock the run: terminal is 409 run_terminal (a late result never revives),
+//     a non-executing non-terminal state is 409 run_state_conflict;
+//  2. lock the attempt *bound to this run*: a foreign run's token, a superseded
+//     attempt or a requeued (started=false) job is 409 stale_attempt;
+//  3. an identical stored proposal is the idempotent 200 (no write); different
+//     content is 409 event_conflict;
+//  4. a succeeded proposal's output artifact must be owned/ready/linked;
+//  5. store the proposal, set phase=finalizing (never state/revision).
+func (s *Service) SubmitResult(
+	ctx context.Context, runID string, result WorkerResult,
+) (*ResultOutcome, error) {
+	runID = strings.TrimSpace(runID)
+	if !uuid.Valid(runID) {
+		return nil, ErrRunNotFound
+	}
+	normalized, err := validateWorkerResult(result)
+	if err != nil {
+		return nil, err
+	}
+	proposal, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, fmt.Errorf("encoding the result proposal: %w", err)
+	}
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting the result transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	run, err := lockRunTx(ctx, tx, runID)
+	if err != nil {
+		return nil, err
+	}
+	switch run.State {
+	case "succeeded", "failed", "cancelled":
+		return nil, ErrRunTerminal
+	case "running", "recovery_pending":
+		// running: the normal proposal. recovery_pending: the supervisor already
+		// proved the exit but the result was in flight; this call can complete
+		// the finalizer, it never dispatches a new attempt.
+	default:
+		return nil, ErrRunStateConflict
+	}
+
+	attempt, err := lockAttemptForResultTx(ctx, tx, runID, normalized.AttemptToken)
+	if err != nil {
+		return nil, err
+	}
+	if attempt.Superseded {
+		return nil, ErrStaleAttempt
+	}
+	switch attempt.JobState {
+	case "leased":
+		if !attempt.CurrentAttemptToken.Valid || attempt.CurrentAttemptToken.String != normalized.AttemptToken {
+			return nil, ErrStaleAttempt
+		}
+	case "held":
+		// An exit without result parks the job with the token cleared; a held job
+		// that names a different token is already serving another attempt.
+		if attempt.CurrentAttemptToken.Valid && attempt.CurrentAttemptToken.String != normalized.AttemptToken {
+			return nil, ErrStaleAttempt
+		}
+	default:
+		return nil, ErrStaleAttempt
+	}
+
+	if len(attempt.ReportedResult) > 0 {
+		if sameProposal(attempt.ReportedResult, proposal) {
+			return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
+		}
+		return nil, ErrEventConflict
+	}
+	if normalized.SuggestedState == "succeeded" {
+		if err := checkOutputArtifactTx(
+			ctx, tx, run.ID, run.OwnerID, *normalized.OutputArtifactID,
+		); err != nil {
+			return nil, err
+		}
+	}
+	if err := storeResultTx(
+		ctx, tx, normalized.AttemptToken, proposal, nullableString(normalized.CheckpointID),
+	); err != nil {
+		return nil, err
+	}
+	if err := setRunFinalizingTx(ctx, tx, run.ID); err != nil {
+		return nil, err
+	}
+	// Exit evidence may already be committed (the exit came first). In that
+	// case this proposal completes the same finalizer; the run CAS makes the
+	// transition happen exactly once.
+	if attempt.ExitedAt.Valid {
+		if _, err := s.finalizeRunTx(ctx, tx, finalizeInput{
+			RunID:          run.ID,
+			RunOwnerID:     run.OwnerID,
+			RunState:       run.State,
+			RunRevision:    run.Revision,
+			JobID:          attempt.JobID,
+			AttemptToken:   normalized.AttemptToken,
+			ReportedResult: proposal,
+			Exited:         true,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing the result transaction: %w", err)
+	}
+	return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
+}
+
+// sameProposal reports whether two proposal documents carry the same JSON value.
+// JSONB equality is the authority in the database; this comparison only answers
+// the idempotent replay before writing.
+func sameProposal(stored, proposed []byte) bool {
+	var storedValue, proposedValue any
+	if json.Unmarshal(stored, &storedValue) != nil || json.Unmarshal(proposed, &proposedValue) != nil {
+		return false
+	}
+	storedCanonical, err := json.Marshal(storedValue)
+	if err != nil {
+		return false
+	}
+	proposedCanonical, err := json.Marshal(proposedValue)
+	if err != nil {
+		return false
+	}
+	return string(storedCanonical) == string(proposedCanonical)
 }
 
 // ---------------------------------------------------------------------------
@@ -507,42 +823,219 @@ func validateCheckpointConnections(raw []byte) ([]byte, error) {
 	return encoded, nil
 }
 
-func validateExitRequest(request ExitRequest) (ExitRequest, bool, error) {
+// resultStates is the contract's suggested_state enum. The proposal vocabulary
+// is closed: a worker cannot invent a state the platform does not know.
+var resultStates = map[string]bool{
+	"succeeded":            true,
+	"failed":               true,
+	"waiting_approval":     true,
+	"waiting_children":     true,
+	"needs_reconciliation": true,
+}
+
+// validateWorkerResult checks the contract body's shape and conditional
+// requirements before any row is touched (all 422 validation_failed with a
+// located field):
+//
+//	attempt_token    UUID
+//	event_id         UUID (the proposal's idempotency identity)
+//	suggested_state  one of the contract's five proposals
+//	output_artifact_id  required for succeeded, UUID when present
+//	checkpoint_id       required for waiting_approval/waiting_children
+//	error_code          required for failed
+//
+// Artifact ownership/readiness/linkage is checked inside the transaction, where
+// the run owner is known.
+func validateWorkerResult(result WorkerResult) (WorkerResult, error) {
+	normalized := result
+	normalized.AttemptToken = strings.TrimSpace(result.AttemptToken)
+	if !uuid.Valid(normalized.AttemptToken) {
+		return WorkerResult{}, &ValidationError{
+			Field: "attempt_token", Message: "attempt_token must be a UUID",
+		}
+	}
+	normalized.EventID = strings.TrimSpace(result.EventID)
+	if !uuid.Valid(normalized.EventID) {
+		return WorkerResult{}, &ValidationError{
+			Field: "event_id", Message: "event_id must be a UUID",
+		}
+	}
+	normalized.SuggestedState = strings.TrimSpace(result.SuggestedState)
+	if !resultStates[normalized.SuggestedState] {
+		return WorkerResult{}, &ValidationError{
+			Field:   "suggested_state",
+			Message: "suggested_state must be succeeded, failed, waiting_approval, waiting_children or needs_reconciliation",
+		}
+	}
+
+	normalized.OutputArtifactID = nil
+	if result.OutputArtifactID != nil {
+		value := strings.ToLower(strings.TrimSpace(*result.OutputArtifactID))
+		if !uuid.Valid(value) {
+			return WorkerResult{}, &ValidationError{
+				Field: "output_artifact_id", Message: "output_artifact_id must be a UUID",
+			}
+		}
+		normalized.OutputArtifactID = &value
+	}
+
+	normalized.CheckpointID = nil
+	if result.CheckpointID != nil {
+		value := strings.TrimSpace(*result.CheckpointID)
+		if value == "" || len(value) > maxCheckpointID || !isPrintable(value) {
+			return WorkerResult{}, &ValidationError{
+				Field:   "checkpoint_id",
+				Message: fmt.Sprintf("checkpoint_id must be printable and at most %d characters", maxCheckpointID),
+			}
+		}
+		normalized.CheckpointID = &value
+	}
+
+	normalized.ErrorCode = nil
+	if result.ErrorCode != nil {
+		value := strings.TrimSpace(*result.ErrorCode)
+		if value == "" || len(value) > maxErrorCode || !isPrintable(value) {
+			return WorkerResult{}, &ValidationError{
+				Field:   "error_code",
+				Message: fmt.Sprintf("error_code must be printable and at most %d characters", maxErrorCode),
+			}
+		}
+		normalized.ErrorCode = &value
+	}
+
+	switch normalized.SuggestedState {
+	case "succeeded":
+		if normalized.OutputArtifactID == nil {
+			return WorkerResult{}, &ValidationError{
+				Field:   "output_artifact_id",
+				Message: "a succeeded proposal must name its output artifact",
+			}
+		}
+	case "failed":
+		if normalized.ErrorCode == nil {
+			return WorkerResult{}, &ValidationError{
+				Field: "error_code", Message: "a failed proposal must name its error_code",
+			}
+		}
+	case "waiting_approval", "waiting_children":
+		if normalized.CheckpointID == nil {
+			return WorkerResult{}, &ValidationError{
+				Field:   "checkpoint_id",
+				Message: "a waiting proposal must name the checkpoint it stopped at",
+			}
+		}
+	}
+	return normalized, nil
+}
+
+func validateExitRequest(request ExitRequest) (ExitRequest, *ExitEvidence, error) {
 	attemptID := strings.TrimSpace(request.AttemptID)
 	if !uuid.Valid(attemptID) {
-		return ExitRequest{}, false, ErrAttemptNotFound
+		return ExitRequest{}, nil, ErrAttemptNotFound
 	}
 	executionUnitID, err := validateIdentifier("execution_unit_id", request.ExecutionUnitID)
 	if err != nil {
-		return ExitRequest{}, false, err
+		return ExitRequest{}, nil, err
 	}
 	if len(request.Evidence) == 0 {
-		return ExitRequest{}, false, &ValidationError{
+		return ExitRequest{}, nil, &ValidationError{
 			Field: "evidence", Message: "evidence must be a JSON object",
 		}
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(request.Evidence, &fields); err != nil || fields == nil {
-		return ExitRequest{}, false, &ValidationError{
+		return ExitRequest{}, nil, &ValidationError{
 			Field: "evidence", Message: "evidence must be a JSON object",
 		}
 	}
-	// Only an explicit started=false is proof that the execution unit never
-	// began work. An absent key proves nothing, so it holds the job: the process
-	// may have started and the F03 finalizer must decide.
-	started := true
-	if raw, present := fields["started"]; present {
-		if err := json.Unmarshal(raw, &started); err != nil {
-			return ExitRequest{}, false, &ValidationError{
-				Field: "evidence.started", Message: "evidence.started must be a boolean",
-			}
+
+	// T031: `started` is required. T029 treated an absent key as "possibly
+	// started" and held the job; now a supervisor must state which case it
+	// proves, so a missing key is a located 422 instead of an ambiguous hold.
+	startedField, present := fields["started"]
+	if !present {
+		return ExitRequest{}, nil, &ValidationError{
+			Field: "evidence.started", Message: "evidence.started is required",
 		}
+	}
+	var started bool
+	if err := json.Unmarshal(startedField, &started); err != nil {
+		return ExitRequest{}, nil, &ValidationError{
+			Field: "evidence.started", Message: "evidence.started must be a boolean",
+		}
+	}
+	protocolVersion, err := evidenceString(fields, "protocol_version", maxIdentifierLength)
+	if err != nil {
+		return ExitRequest{}, nil, err
+	}
+	manifestSHA256, err := evidenceString(fields, "manifest_sha256", 64)
+	if err != nil {
+		return ExitRequest{}, nil, err
+	}
+	if !isHex64(manifestSHA256) {
+		return ExitRequest{}, nil, &ValidationError{
+			Field:   "evidence.manifest_sha256",
+			Message: "evidence.manifest_sha256 must be 64 hexadecimal characters",
+		}
+	}
+	imageDigest, err := evidenceString(fields, "image_digest", maxCheckpointID)
+	if err != nil {
+		return ExitRequest{}, nil, err
 	}
 	return ExitRequest{
 		AttemptID:       attemptID,
 		ExecutionUnitID: executionUnitID,
 		Evidence:        request.Evidence,
-	}, started, nil
+	}, &ExitEvidence{
+		Started:         started,
+		ProtocolVersion: protocolVersion,
+		ManifestSHA256:  manifestSHA256,
+		ImageDigest:     imageDigest,
+	}, nil
+}
+
+// evidenceString reads one required non-blank printable string from an evidence
+// object and locates the error at evidence.<name>.
+func evidenceString(fields map[string]json.RawMessage, name string, maxLength int) (string, error) {
+	raw, present := fields[name]
+	if !present {
+		return "", &ValidationError{
+			Field: "evidence." + name, Message: "evidence." + name + " is required",
+		}
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", &ValidationError{
+			Field: "evidence." + name, Message: "evidence." + name + " must be a string",
+		}
+	}
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > maxLength || !isPrintable(value) {
+		return "", &ValidationError{
+			Field: "evidence." + name,
+			Message: fmt.Sprintf(
+				"evidence.%s must be printable and at most %d characters", name, maxLength,
+			),
+		}
+	}
+	return value, nil
+}
+
+// isHex64 is the manifest hash shape (case-insensitive hex).
+func isHex64(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		switch {
+		case character >= '0' && character <= '9':
+		case character >= 'a' && character <= 'f':
+		case character >= 'A' && character <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // validateIdentifier trims and bounds one free-form identifier.

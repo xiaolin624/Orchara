@@ -36,13 +36,18 @@
     <a href="/admin">管理台</a>
   </nav>
 
-  <h1>运行（F03 领取与租约）</h1>
+  <h1>运行（F03 领取、租约与终态）</h1>
   <p class="sub">
     列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
     同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
     <strong>真实租约事实</strong>（<code>X-Run-Attempt-Started-At</code>、
     <code>X-Run-Lease-Deadline</code>，来自数据库时钟）；没有租约事实时本页不伪造进度。
     领取、心跳与退出证据属于 F03 内部 supervisor 协议，普通页面只读它们的结果。
+  </p>
+  <p class="hint">
+    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
+    但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
+    详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
   </p>
 
   <section class="card">
@@ -60,6 +65,7 @@
       <dt>state</dt><dd id="detail-state"></dd>
       <dt>phase</dt><dd id="detail-phase"></dd>
       <dt>kind</dt><dd id="detail-kind"></dd>
+      <dt>执行阶段</dt><dd id="detail-lifecycle"></dd>
       <dt>revision（Run 自身）</dt><dd id="detail-revision"></dd>
       <dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
       <dt>manifest_sha256</dt><dd id="detail-manifest"></dd>

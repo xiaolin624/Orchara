@@ -2,6 +2,7 @@ package execution
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,51 +103,137 @@ func TestValidateCheckpointConnections(t *testing.T) {
 	}
 }
 
-func TestExitEvidenceOnlyAnExplicitStartedFalseReleases(t *testing.T) {
-	cases := []struct {
-		evidence string
-		started  bool
-	}{
-		{`{"started":false}`, false},
-		{`{"started":false,"reason":"spawn_failed"}`, false},
-		{`{"started":true}`, true},
-		{`{"reason":"drained"}`, true}, // absent proves nothing -> hold
-		{`{}`, true},
+func TestExitEvidenceRequiresIdentityAndStarted(t *testing.T) {
+	manifestHash := strings.Repeat("a", 64)
+	valid := `{"started":false,"protocol_version":"1.0","manifest_sha256":"` + manifestHash +
+		`","image_digest":"sha256:aaa","reason":"spawn_failed"}`
+	_, evidence, err := validateExitRequest(ExitRequest{
+		AttemptID:       "11111111-1111-4111-8111-111111111111",
+		ExecutionUnitID: "unit-1",
+		Evidence:        []byte(valid),
+	})
+	if err != nil {
+		t.Fatalf("valid identity evidence was refused: %v", err)
 	}
-	for _, testCase := range cases {
-		_, started, err := validateExitRequest(ExitRequest{
-			AttemptID:       "11111111-1111-4111-8111-111111111111",
-			ExecutionUnitID: "unit-1",
-			Evidence:        []byte(testCase.evidence),
-		})
-		if err != nil {
-			t.Fatalf("%s: unexpected error: %v", testCase.evidence, err)
-		}
-		if started != testCase.started {
-			t.Fatalf("%s: started=%v want %v", testCase.evidence, started, testCase.started)
-		}
+	if evidence.Started || evidence.ProtocolVersion != "1.0" ||
+		evidence.ManifestSHA256 != manifestHash || evidence.ImageDigest != "sha256:aaa" {
+		t.Fatalf("unexpected parsed evidence: %+v", evidence)
 	}
 
-	for _, evidence := range []string{`[]`, `null`, `"x"`, `7`} {
+	// Every required key is located when absent: T031 refuses an ambiguous exit.
+	base := map[string]string{
+		"started":          "true",
+		"protocol_version": `"1.0"`,
+		"manifest_sha256":  `"` + manifestHash + `"`,
+		"image_digest":     `"sha256:aaa"`,
+	}
+	for _, missing := range []string{"started", "protocol_version", "manifest_sha256", "image_digest"} {
+		parts := make([]string, 0, len(base)-1)
+		for key, raw := range base {
+			if key == missing {
+				continue
+			}
+			parts = append(parts, `"`+key+`":`+raw)
+		}
 		_, _, err := validateExitRequest(ExitRequest{
 			AttemptID:       "11111111-1111-4111-8111-111111111111",
 			ExecutionUnitID: "unit-1",
-			Evidence:        []byte(evidence),
+			Evidence:        []byte("{" + strings.Join(parts, ",") + "}"),
 		})
-		if validation, ok := err.(*ValidationError); !ok || validation.Field != "evidence" {
-			t.Fatalf("%s: expected evidence ValidationError, got %v", evidence, err)
+		validation, ok := err.(*ValidationError)
+		if !ok || validation.Field != "evidence."+missing {
+			t.Fatalf("missing %s: expected a located ValidationError, got %v", missing, err)
 		}
 	}
 
-	_, _, err := validateExitRequest(ExitRequest{
-		AttemptID:       "11111111-1111-4111-8111-111111111111",
-		ExecutionUnitID: "unit-1",
-		Evidence:        []byte(`{"started":"false"}`),
-	})
-	if validation, ok := err.(*ValidationError); !ok || validation.Field != "evidence.started" {
-		t.Fatalf("expected evidence.started ValidationError, got %v", err)
+	for evidenceValue, field := range map[string]string{
+		`{"started":"false","protocol_version":"1.0","manifest_sha256":"` + manifestHash + `","image_digest":"sha256:aaa"}`: "evidence.started",
+		`{"started":true,"protocol_version":"  ","manifest_sha256":"` + manifestHash + `","image_digest":"sha256:aaa"}`:     "evidence.protocol_version",
+		`{"started":true,"protocol_version":"1.0","manifest_sha256":"abc","image_digest":"sha256:aaa"}`:                     "evidence.manifest_sha256",
+		`{"started":true,"protocol_version":"1.0","manifest_sha256":"` + manifestHash + `","image_digest":""}`:              "evidence.image_digest",
+	} {
+		_, _, err := validateExitRequest(ExitRequest{
+			AttemptID:       "11111111-1111-4111-8111-111111111111",
+			ExecutionUnitID: "unit-1",
+			Evidence:        []byte(evidenceValue),
+		})
+		validation, ok := err.(*ValidationError)
+		if !ok || validation.Field != field {
+			t.Fatalf("%s: expected field %q, got %v", evidenceValue, field, err)
+		}
+	}
+
+	for _, evidenceValue := range []string{`[]`, `null`, `"x"`, `7`} {
+		_, _, err := validateExitRequest(ExitRequest{
+			AttemptID:       "11111111-1111-4111-8111-111111111111",
+			ExecutionUnitID: "unit-1",
+			Evidence:        []byte(evidenceValue),
+		})
+		if validation, ok := err.(*ValidationError); !ok || validation.Field != "evidence" {
+			t.Fatalf("%s: expected evidence ValidationError, got %v", evidenceValue, err)
+		}
 	}
 }
+
+func TestValidateWorkerResultLocatesTheContractRules(t *testing.T) {
+	validArtifact := "22222222-2222-4222-8222-222222222222"
+	validEvent := "33333333-3333-4333-8333-333333333333"
+	validToken := "11111111-1111-4111-8111-111111111111"
+
+	normalized, err := validateWorkerResult(WorkerResult{
+		AttemptToken:     " " + strings.ToUpper(validToken) + " ",
+		EventID:          validEvent,
+		SuggestedState:   "succeeded",
+		OutputArtifactID: strPtr(strings.ToUpper(validArtifact)),
+	})
+	if err != nil {
+		t.Fatalf("a valid succeeded proposal was refused: %v", err)
+	}
+	if normalized.AttemptToken != validToken || normalized.EventID != validEvent {
+		t.Fatalf("identifiers were not normalised: %+v", normalized)
+	}
+	if normalized.OutputArtifactID == nil || *normalized.OutputArtifactID != validArtifact {
+		t.Fatalf("the artifact id was not lower-cased: %+v", normalized)
+	}
+
+	cases := []struct {
+		name   string
+		result WorkerResult
+		field  string
+	}{
+		{"bad token", WorkerResult{AttemptToken: "x", EventID: validEvent, SuggestedState: "failed", ErrorCode: strPtr("boom")}, "attempt_token"},
+		{"bad event", WorkerResult{AttemptToken: validToken, EventID: "x", SuggestedState: "failed", ErrorCode: strPtr("boom")}, "event_id"},
+		{"bad state", WorkerResult{AttemptToken: validToken, EventID: validEvent, SuggestedState: "cheerful"}, "suggested_state"},
+		{"succeeded without artifact", WorkerResult{AttemptToken: validToken, EventID: validEvent, SuggestedState: "succeeded"}, "output_artifact_id"},
+		{"failed without code", WorkerResult{AttemptToken: validToken, EventID: validEvent, SuggestedState: "failed"}, "error_code"},
+		{"waiting without checkpoint", WorkerResult{AttemptToken: validToken, EventID: validEvent, SuggestedState: "waiting_approval"}, "checkpoint_id"},
+		{"waiting children without checkpoint", WorkerResult{AttemptToken: validToken, EventID: validEvent, SuggestedState: "waiting_children"}, "checkpoint_id"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := validateWorkerResult(testCase.result)
+			validation, ok := err.(*ValidationError)
+			if !ok || validation.Field != testCase.field {
+				t.Fatalf("expected field %q, got %v", testCase.field, err)
+			}
+		})
+	}
+
+	// needs_reconciliation needs no extra field, and a blank checkpoint is located.
+	if _, err := validateWorkerResult(WorkerResult{
+		AttemptToken: validToken, EventID: validEvent, SuggestedState: "needs_reconciliation",
+	}); err != nil {
+		t.Fatalf("a needs_reconciliation proposal was refused: %v", err)
+	}
+	if _, err := validateWorkerResult(WorkerResult{
+		AttemptToken: validToken, EventID: validEvent, SuggestedState: "waiting_approval",
+		CheckpointID: strPtr("   "),
+	}); err == nil {
+		t.Fatalf("a blank checkpoint_id was accepted")
+	}
+}
+
+func strPtr(value string) *string { return &value }
 
 func TestNewNormalisesTheLeaseTTL(t *testing.T) {
 	if service := New(nil, nil, nil, "http://example.test/", 0); service.LeaseTTL != DefaultLeaseTTL {
