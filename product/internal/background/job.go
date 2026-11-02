@@ -169,6 +169,12 @@ const (
 	CodeAttemptsExhausted        = "attempts_exhausted"
 	CodeArtifactStateNotScanning = "artifact_state_not_scanning"
 
+	// T028 format admission codes. Both are content refusals: the artifact can
+	// never become ready, so the completion guard quarantines it. They are
+	// deliberately not retryable — the same bytes cannot pass a later attempt.
+	CodeArtifactFormatRejected   = "artifact_format_rejected"
+	CodeArtifactUploadIncomplete = "artifact_upload_incomplete"
+
 	// model_validate failure codes (T024). A model provider that is not
 	// configured is a deployment fact, not a transient outage: retrying cannot
 	// fix it, so it is a business failure. The compatibility report itself is a
@@ -203,6 +209,11 @@ var quarantineCodes = map[string]bool{
 	CodeArtifactTooLarge:         true,
 	CodeArtifactObjectMissing:    true,
 	CodeArtifactExpectedHashMiss: true,
+	// T028: user-upload content that the platform refuses to admit, and an
+	// upload whose staging bytes never arrived. Both can never become ready, so
+	// the owner must see quarantined rather than a permanent scanning state.
+	CodeArtifactFormatRejected:   true,
+	CodeArtifactUploadIncomplete: true,
 }
 
 // ImpliesQuarantine reports whether a reported artifact_finalize failure must

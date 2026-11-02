@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
@@ -26,9 +27,12 @@ type Server struct {
 	catalog   *catalog.Reader
 	jobs      *background.Controller
 	artifacts *background.ArtifactStore
-	models    *modelproxy.Service
-	objects   *objectstore.Store
-	signer    *objectstore.Signer
+	// userArtifacts is the T028 user-facing artifact service (distinct from the
+	// job-scoped ArtifactStore above: different purposes, different ACL).
+	userArtifacts *artifacts.Service
+	models        *modelproxy.Service
+	objects       *objectstore.Store
+	signer        *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -85,19 +89,20 @@ func New(deps Deps) *Server {
 	}
 	authorizer := policy.New(deps.Service.DB)
 	return &Server{
-		service:      deps.Service,
-		policy:       authorizer,
-		catalog:      catalog.New(deps.Service.DB, authorizer),
-		jobs:         background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
-		artifacts:    background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		models:       modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
-		objects:      deps.Objects,
-		signer:       deps.Signer,
-		manifest:     deps.Manifest,
-		webDir:       deps.WebDir,
-		secureCookie: SecureCookie(deps.Profile),
-		logger:       logger,
-		limiter:      newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
+		service:       deps.Service,
+		policy:        authorizer,
+		catalog:       catalog.New(deps.Service.DB, authorizer),
+		jobs:          background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
+		artifacts:     background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		objects:       deps.Objects,
+		signer:        deps.Signer,
+		manifest:      deps.Manifest,
+		webDir:        deps.WebDir,
+		secureCookie:  SecureCookie(deps.Profile),
+		logger:        logger,
+		limiter:       newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
 	}
 }
 
@@ -172,10 +177,22 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /object-links/{token}", s.handleObjectLinkPut)
 	mux.HandleFunc("GET /object-links/{token}", s.handleObjectLinkGet)
 
+	// F05/T028: user uploads and the owner-only artifact reads. The sealed key
+	// is preallocated on the row and never a PUT target; completion only moves
+	// uploading -> scanning and enqueues the shared finalize handler.
+	mux.HandleFunc("POST /api/v1/artifacts/uploads", s.handleCreateUpload)
+	mux.HandleFunc("POST /api/v1/artifacts/{artifact_id}/complete", s.handleCompleteUpload)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}", s.handleGetArtifact)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/download", s.handleDownloadArtifact)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/content", s.handleArtifactContent)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
+	// F05/T028: the attachment upload page. Like every static route, the path is
+	// a compile-time constant and no request input participates in it.
+	mux.HandleFunc("GET /attachments", s.staticPage("attachments.html"))
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
@@ -184,6 +201,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
+	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 }
 
 type loginRequest struct {
