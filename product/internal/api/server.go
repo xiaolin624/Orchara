@@ -13,6 +13,7 @@ import (
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
@@ -27,6 +28,8 @@ type Server struct {
 	catalog   *catalog.Reader
 	jobs      *background.Controller
 	artifacts *background.ArtifactStore
+	// execution owns the F03 claim/heartbeat/attempt-exit primitive.
+	execution *execution.Service
 	// userArtifacts is the T028 user-facing artifact service (distinct from the
 	// job-scoped ArtifactStore above: different purposes, different ACL).
 	userArtifacts *artifacts.Service
@@ -69,6 +72,10 @@ type Deps struct {
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
 	RetryBackoff time.Duration
+	// ExecutionLeaseTTL is the F03 claim lease length. Zero falls back to
+	// execution.DefaultLeaseTTL (30s); a value outside the documented bounds is
+	// normalised by the execution service.
+	ExecutionLeaseTTL time.Duration
 	// Manifest carries the deployment inputs the validate endpoint needs; absent
 	// inputs are a 503, not a startup error.
 	Manifest compiler.Inputs
@@ -94,6 +101,7 @@ func New(deps Deps) *Server {
 		catalog:       catalog.New(deps.Service.DB, authorizer),
 		jobs:          background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
 		artifacts:     background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:     execution.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL),
 		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
 		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
 		objects:       deps.Objects,
@@ -157,6 +165,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// read. The fixed manifest hash travels in X-Manifest-SHA256 on both, because
 	// the contract Run schema has no field for it (ADR 0004 §38).
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
+	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
@@ -198,10 +207,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F03/T029: the owner-only runs view. Like every static route, the path is a
+	// compile-time constant and no request input participates in it.
+	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
+	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
 }
 
 type loginRequest struct {

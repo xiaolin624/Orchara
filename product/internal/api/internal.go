@@ -87,6 +87,20 @@ func requireInternalRole(w http.ResponseWriter, r *http.Request, role string) bo
 	return false
 }
 
+// requireAnyInternalRole is the same capacity check for an endpoint that may be
+// served in more than one internal capacity (heartbeat: supervisor or worker).
+func requireAnyInternalRole(w http.ResponseWriter, r *http.Request, roles ...string) bool {
+	role := InternalRole(r.Context())
+	for _, allowed := range roles {
+		if role == allowed {
+			return true
+		}
+	}
+	writeError(w, r, http.StatusForbidden, "forbidden",
+		"this endpoint requires an internal role other than the presented one")
+	return false
+}
+
 // RegisterInternal adds the internal contract routes. The listener that serves
 // this mux is TLS with client certificates; nothing here is reachable on the
 // public listener.
@@ -108,6 +122,14 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// hash) the handler must put in its report. Non-contract internal extension;
 	// see internal/api/evaluations.go for why the lease cannot carry it.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation", s.handleInternalEvaluationBinding)
+
+	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
+	// capacities; heartbeat may be served by either the supervisor or the worker
+	// that holds the attempt token. Worker/maintenance certificates are refused
+	// per endpoint (API.md §6), not by the TLS layer.
+	mux.HandleFunc("POST /internal/v1/jobs/claim", s.handleInternalExecutionClaim)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/heartbeat", s.handleInternalRunHeartbeat)
+	mux.HandleFunc("POST /internal/v1/attempts/{attempt_id}/exited", s.handleInternalAttemptExit)
 }
 
 type internalClaimRequest struct {

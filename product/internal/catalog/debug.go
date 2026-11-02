@@ -838,6 +838,44 @@ func intervalOf(duration time.Duration) string {
 	return fmt.Sprintf("%d seconds", int64(duration/time.Second))
 }
 
+// runColumns is the one Run projection every run read shares. The contract Run
+// is ten additionalProperties:false fields; manifest_sha256 is carried in memory
+// for the documented X-Manifest-SHA256 header and created_at only feeds the
+// list's stable keyset cursor (neither is serialised).
+const runColumns = `id::text, state, revision, application_version_id::text,
+	parent_run_id::text, output_artifact_id::text, error_code, kind,
+	execution_snapshot_id::text, phase, manifest_sha256, created_at`
+
+// rowScanner is the common shape of *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanRun reads one row selected with runColumns (plus its created_at keyset
+// position) into the contract Run projection.
+func scanRun(row rowScanner) (*Run, time.Time, error) {
+	var (
+		run                  Run
+		applicationVersionID sql.NullString
+		parentRunID          sql.NullString
+		outputArtifactID     sql.NullString
+		errorCode            sql.NullString
+		createdAt            time.Time
+	)
+	if err := row.Scan(
+		&run.ID, &run.State, &run.Revision, &applicationVersionID, &parentRunID,
+		&outputArtifactID, &errorCode, &run.Kind, &run.ExecutionSnapshotID, &run.Phase,
+		&run.ManifestSHA256, &createdAt,
+	); err != nil {
+		return nil, time.Time{}, err
+	}
+	run.ApplicationVersionID = nullableString(applicationVersionID)
+	run.ParentRunID = nullableString(parentRunID)
+	run.OutputArtifactID = nullableString(outputArtifactID)
+	run.ErrorCode = nullableString(errorCode)
+	return &run, createdAt, nil
+}
+
 // GetRun returns one run when the caller owns it (a run has no grant type in
 // this batch). Unknown, malformed, deleted and not-owned ids are all
 // ErrNotVisible, so the endpoint cannot be used to enumerate runs.
@@ -845,38 +883,104 @@ func (r *Reader) GetRun(ctx context.Context, callerID, runID string) (*Run, erro
 	if !uuid.Valid(runID) || !uuid.Valid(callerID) {
 		return nil, ErrNotVisible
 	}
-	var (
-		run                  Run
-		applicationVersionID sql.NullString
-		parentRunID          sql.NullString
-		outputArtifactID     sql.NullString
-		errorCode            sql.NullString
-	)
-	err := r.DB.QueryRowContext(ctx, `
-		SELECT id::text, state, revision, application_version_id::text, parent_run_id::text,
-		       output_artifact_id::text, error_code, kind, execution_snapshot_id::text,
-		       phase, manifest_sha256
+	run, _, err := scanRun(r.DB.QueryRowContext(ctx, `
+		SELECT `+runColumns+`
 		  FROM platform.runs
 		 WHERE id = $1::uuid
 		   AND owner_id = $2::uuid
 		   AND deleted_at IS NULL`,
 		runID, callerID,
-	).Scan(
-		&run.ID, &run.State, &run.Revision, &applicationVersionID, &parentRunID,
-		&outputArtifactID, &errorCode, &run.Kind, &run.ExecutionSnapshotID, &run.Phase,
-		&run.ManifestSHA256,
-	)
+	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotVisible
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading the run: %w", err)
 	}
-	run.ApplicationVersionID = nullableString(applicationVersionID)
-	run.ParentRunID = nullableString(parentRunID)
-	run.OutputArtifactID = nullableString(outputArtifactID)
-	run.ErrorCode = nullableString(errorCode)
-	return &run, nil
+	return run, nil
+}
+
+// ListRuns returns the caller's own runs, newest first, with the same stable
+// (created_at DESC, id DESC) keyset order as every other cursor list.
+//
+// The list is owner-only and contains no grant path: a run belongs to the
+// principal who submitted it (T027's getRun rule), and an administrator sees
+// only the runs it owns. The owner predicate is in the same WHERE as the cursor
+// and LIMIT, so filtering happens before pagination.
+func (r *Reader) ListRuns(
+	ctx context.Context,
+	ownerID, cursor string,
+	limit int,
+) ([]Run, *string, error) {
+	if !uuid.Valid(ownerID) {
+		return nil, nil, ErrNotVisible
+	}
+	if limit == 0 {
+		limit = DefaultLimit
+	}
+	if limit < MinLimit || limit > MaxLimit {
+		return nil, nil, ErrInvalidLimit
+	}
+	var (
+		cursorAt any
+		cursorID any
+	)
+	if strings.TrimSpace(cursor) != "" {
+		at, id, err := DecodeCursor(cursor)
+		if err != nil {
+			return nil, nil, err
+		}
+		cursorAt, cursorID = at, id
+	}
+
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT `+runColumns+`
+		  FROM platform.runs
+		 WHERE owner_id = $1::uuid
+		   AND deleted_at IS NULL
+		   AND (
+		        $2::timestamptz IS NULL
+		        OR (created_at, id) < ($2::timestamptz, $3::uuid)
+		       )
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $4`,
+		ownerID, cursorAt, cursorID, limit+1,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing runs: %w", err)
+	}
+	defer rows.Close()
+
+	type scored struct {
+		run       Run
+		createdAt time.Time
+	}
+	all := make([]scored, 0, limit+1)
+	for rows.Next() {
+		run, createdAt, err := scanRun(rows)
+		if err != nil {
+			return nil, nil, fmt.Errorf("listing runs: %w", err)
+		}
+		all = append(all, scored{run: *run, createdAt: createdAt})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("listing runs: %w", err)
+	}
+
+	items := make([]Run, 0, len(all))
+	for _, entry := range all {
+		items = append(items, entry.run)
+	}
+	var next *string
+	if len(all) > limit {
+		// One extra row proves another page exists; the cursor names the last
+		// returned row so the next page starts strictly after it.
+		last := all[limit-1]
+		token := EncodeCursor(last.createdAt, last.run.ID)
+		next = &token
+		items = items[:limit]
+	}
+	return items, next, nil
 }
 
 // nullableString converts a SQL NULL into the contract's JSON null.

@@ -73,6 +73,9 @@ const (
 	// EnvRetryBackoff is the base delay before the second attempt. A duration
 	// ("5s", "50ms") so tests can make retries deterministic without waiting.
 	EnvRetryBackoff = "ORCHARA_BACKGROUND_RETRY_BACKOFF"
+	// EnvExecutionLeaseTTL is the F03 claim lease length. It is a deployment
+	// knob bounded by the execution protocol (1s..1h), not a per-request value.
+	EnvExecutionLeaseTTL = "ORCHARA_EXECUTION_LEASE_TTL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -132,6 +135,13 @@ const (
 	DefaultBackgroundRetryBackoff = 5 * time.Second
 	// maxBackgroundRetryBackoff keeps a misconfigured base from parking work.
 	maxBackgroundRetryBackoff = time.Hour
+
+	// DefaultExecutionLeaseTTL is the documented claim lease. It matches
+	// execution.DefaultLeaseTTL; a supervisor must heartbeat well inside it.
+	DefaultExecutionLeaseTTL = 30 * time.Second
+	// minExecutionLeaseTTL/maxExecutionLeaseTTL bound the deployment knob.
+	minExecutionLeaseTTL = time.Second
+	maxExecutionLeaseTTL = time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -190,6 +200,8 @@ type Config struct {
 	SecretDir string
 	// RetryBackoff is the base exponential-retry delay for background jobs.
 	RetryBackoff time.Duration
+	// ExecutionLeaseTTL is the F03 claim lease length (30s by default).
+	ExecutionLeaseTTL time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -366,6 +378,17 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be at most %s", maxBackgroundRetryBackoff))
 	}
 	cfg.RetryBackoff = retryBackoff
+	// F03/T029: the claim lease is a deployment knob, but an absurd value is a
+	// configuration error rather than a silently normalised lease.
+	leaseTTL, err := parseDuration(lookup, EnvExecutionLeaseTTL, DefaultExecutionLeaseTTL)
+	if err != nil {
+		return nil, err
+	}
+	if leaseTTL < minExecutionLeaseTTL || leaseTTL > maxExecutionLeaseTTL {
+		return nil, invalid(EnvExecutionLeaseTTL,
+			fmt.Sprintf("must be between %s and %s", minExecutionLeaseTTL, maxExecutionLeaseTTL))
+	}
+	cfg.ExecutionLeaseTTL = leaseTTL
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.

@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
@@ -207,5 +208,16 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("X-Manifest-SHA256", run.ManifestSHA256)
+	// F03/T029: when an attempt is live, expose the claimed-at/lease-deadline
+	// facts so the owner can see execution reality instead of a fabricated
+	// progress bar. The attempt token is a credential and is deliberately not
+	// exposed; the two timestamps are non-secret bookkeeping.
+	if lease, err := s.execution.LiveLease(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if lease != nil {
+		w.Header().Set("X-Run-Attempt-Started-At", lease.StartedAt.UTC().Format(time.RFC3339Nano))
+		w.Header().Set("X-Run-Lease-Deadline", lease.LeaseDeadline.UTC().Format(time.RFC3339Nano))
+	}
 	writeJSON(w, http.StatusOK, run)
 }

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 运行（F03 领取与租约）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .5rem 0; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    dl.run { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
+    dl.run dt { opacity: .7; }
+    dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/attachments">附件</a>
+    <a href="/login">登录</a>
+    <a href="/admin">管理台</a>
+  </nav>
+
+  <h1>运行（F03 领取与租约）</h1>
+  <p class="sub">
+    列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
+    同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
+    <strong>真实租约事实</strong>（<code>X-Run-Attempt-Started-At</code>、
+    <code>X-Run-Lease-Deadline</code>，来自数据库时钟）；没有租约事实时本页不伪造进度。
+    领取、心跳与退出证据属于 F03 内部 supervisor 协议，普通页面只读它们的结果。
+  </p>
+
+  <section class="card">
+    <h2>我的 Run</h2>
+    <p id="runs-status" class="status" role="status" aria-live="polite">正在加载运行…</p>
+    <ul id="runs-list"></ul>
+    <p id="runs-empty" class="hint" hidden>当前没有属于你的 Run。调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
+    <button id="runs-next" type="button" hidden>下一页</button>
+  </section>
+
+  <section id="run-detail" class="card" hidden aria-live="polite">
+    <h2>Run 详情</h2>
+    <dl class="run">
+      <dt>id</dt><dd id="detail-id"></dd>
+      <dt>state</dt><dd id="detail-state"></dd>
+      <dt>phase</dt><dd id="detail-phase"></dd>
+      <dt>kind</dt><dd id="detail-kind"></dd>
+      <dt>revision（Run 自身）</dt><dd id="detail-revision"></dd>
+      <dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
+      <dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
+      <dt>领取 / 租约</dt><dd id="detail-lease"></dd>
+    </dl>
+    <p id="detail-note" class="hint"></p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/runs.js"></script>
+</body>
+</html>
