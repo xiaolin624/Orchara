@@ -322,6 +322,84 @@ def test_version_dependency_cycles_and_self_calls_are_refused(t025_stack) -> Non
     assert errors[0]["code"] == "dependency_cycle", errors
 
 
+def test_uppercase_dependency_ids_validate_like_their_lowercase_twins(t025_stack) -> None:
+    """UUIDs are case-insensitive identifiers, not opaque strings.
+
+    PostgreSQL stores and returns lowercase uuid text, so a definition that names
+    the same id in uppercase must resolve to the same row, produce the same
+    readiness decision and the same normalized dependency set. The author's
+    original text stays in the document (and therefore in the manifest's
+    definition); only the identity comparison is normalized.
+    """
+    admin, creator = owner(t025_stack)
+    model = t025.seed_model_version(t025_stack.dbname, creator.principal_id)
+    tool = t025.seed_tool_version(
+        t025_stack.dbname, creator.principal_id, approved=True, approved_by=creator.principal_id
+    )
+    foreign_owner = t025.seed_principal(t025_stack.dbname, "t025-case-owner")
+    foreign_app = t025.seed_application(t025_stack.dbname, foreign_owner, name="case app")
+    version = t025.seed_published_version(
+        t025_stack.dbname, foreign_owner, foreign_app, version_no=1
+    )
+    t025.grant_read(admin, creator.principal_id, foreign_app)
+
+    def manifest_for(definition: dict) -> dict:
+        application_id, response = submit(creator, definition)
+        assert response.status == 200, response.text
+        assert response.json == {"valid": True, "errors": []}, response.json
+        rows = t025.manifest_artifacts(t025_stack.dbname, application_id)
+        assert len(rows) == 1, rows
+        return json.loads(t025.manifest_artifact_bytes(t025_stack.object_dir, rows[0]))
+
+    cases = {
+        "model": (
+            model_definition(model),
+            model_definition(model.upper()),
+            "model_profile_versions",
+            [model],
+        ),
+        "tool": (
+            tool_definition(tool),
+            tool_definition(tool.upper()),
+            "tool_artifacts",
+            [{"id": tool, "image_digest": t025.TOOL_IMAGE_DIGEST}],
+        ),
+        "subapp": (
+            subapp_definition(version),
+            subapp_definition(version.upper()),
+            "subapp_versions",
+            [version],
+        ),
+    }
+    for kind, (lower, upper, field, expected) in cases.items():
+        lower_manifest = manifest_for(lower)
+        upper_manifest = manifest_for(upper)
+        assert lower_manifest[field] == expected, (kind, lower_manifest[field])
+        assert upper_manifest[field] == expected, (kind, upper_manifest[field])
+        # Everything except the identity of the application (and the definition,
+        # which is the author's own text) is identical: the same readiness facts
+        # were resolved and the same normalized closure was compiled.
+        comparable_lower = {
+            key: value
+            for key, value in lower_manifest.items()
+            if key not in {"application_id", "definition"}
+        }
+        comparable_upper = {
+            key: value
+            for key, value in upper_manifest.items()
+            if key not in {"application_id", "definition"}
+        }
+        assert comparable_upper == comparable_lower, kind
+
+    # An id referenced twice with different case is one dependency, not two.
+    duplicated = agent_definition(model, [tool.upper(), tool.lower()])
+    manifest = manifest_for(duplicated)
+    assert manifest["tool_artifacts"] == [
+        {"id": tool, "image_digest": t025.TOOL_IMAGE_DIGEST}
+    ], manifest["tool_artifacts"]
+    assert manifest["model_profile_versions"] == [model]
+
+
 def test_manifest_dependency_sets_are_sorted_and_deduplicated(t025_stack) -> None:
     _admin, creator = owner(t025_stack)
     model = t025.seed_model_version(t025_stack.dbname, creator.principal_id)

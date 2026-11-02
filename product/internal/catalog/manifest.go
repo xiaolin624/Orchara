@@ -179,6 +179,29 @@ type executionDependencySet struct {
 	subapps []string
 }
 
+// normalizeDependencyID is the identity form of a dependency reference.
+//
+// UUIDs are case-insensitive identifiers, and PostgreSQL renders uuid text in
+// lowercase, so readiness lookups and the manifest's normalized sets use this
+// form: the same model/tool/sub-app id in uppercase must resolve to the same row
+// as its lowercase twin. The author's original spelling remains in the definition
+// document (and therefore in the sealed bytes) and in located error messages; only
+// the identity comparison and the normalized manifest values are canonicalized.
+func normalizeDependencyID(id string) string {
+	return strings.ToLower(strings.TrimSpace(id))
+}
+
+// normalizedDependencyIDs canonicalizes a list of ids before a lookup, keeping
+// the caller's order and dropping nothing: the loaders return one map keyed by
+// the database's own lowercase text.
+func normalizedDependencyIDs(ids []string) []string {
+	normalized := make([]string, 0, len(ids))
+	for _, id := range ids {
+		normalized = append(normalized, normalizeDependencyID(id))
+	}
+	return uniqueStrings(normalized)
+}
+
 // checkDependencies resolves every reference and returns both the normalised set
 // and every located problem. Unknown/revoked/unready/not-visible rows are
 // errors; the returned set only contains usable values. T027 reuses this through
@@ -194,13 +217,16 @@ func (r *Reader) checkDependencies(
 		if !uuid.Valid(ref.id) {
 			continue
 		}
+		// Lookup ids are compared case-insensitively: PostgreSQL stores uuid text
+		// in lowercase, so an uppercase reference is the same dependency.
+		id := normalizeDependencyID(ref.id)
 		switch ref.kind {
 		case dependencyModel:
-			modelIDs = append(modelIDs, ref.id)
+			modelIDs = append(modelIDs, id)
 		case dependencyTool:
-			toolIDs = append(toolIDs, ref.id)
+			toolIDs = append(toolIDs, id)
 		case dependencySubapp:
-			subappIDs = append(subappIDs, ref.id)
+			subappIDs = append(subappIDs, id)
 		}
 	}
 	models, err := r.loadModelDependencies(ctx, modelIDs)
@@ -225,10 +251,12 @@ func (r *Reader) checkDependencies(
 	emitted := make(map[string]bool)
 
 	for _, ref := range refs {
-		key := ref.kind + ":" + ref.id
+		// The same dependency referenced from two nodes (even with different UUID
+		// letter case) is one readiness fact; report it once at its first
+		// location, then include it once.
+		id := normalizeDependencyID(ref.id)
+		key := ref.kind + ":" + id
 		if emitted[key] {
-			// The same dependency referenced from two nodes is one readiness
-			// fact; report it once at its first location, then include it once.
 			continue
 		}
 		emitted[key] = true
@@ -243,21 +271,21 @@ func (r *Reader) checkDependencies(
 		}
 		switch ref.kind {
 		case dependencyModel:
-			row, present := models[ref.id]
+			row, present := models[id]
 			if code, message := modelReadinessProblem(row, present); code != "" {
 				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
 				continue
 			}
-			set.models = append(set.models, ref.id)
+			set.models = append(set.models, id)
 		case dependencyTool:
-			row, present := tools[ref.id]
+			row, present := tools[id]
 			if code, message := toolReadinessProblem(row, present, callerID, options.PrivateDebug); code != "" {
 				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
 				continue
 			}
-			set.tools = append(set.tools, compiler.ToolArtifact{ID: ref.id, ImageDigest: row.imageDigest.String})
+			set.tools = append(set.tools, compiler.ToolArtifact{ID: id, ImageDigest: row.imageDigest.String})
 		case dependencySubapp:
-			row, present := subapps[ref.id]
+			row, present := subapps[id]
 			if code, message := subappReadinessProblem(row, present); code != "" {
 				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
 				continue
@@ -273,7 +301,7 @@ func (r *Reader) checkDependencies(
 				})
 				continue
 			}
-			set.subapps = append(set.subapps, ref.id)
+			set.subapps = append(set.subapps, id)
 		}
 	}
 	if len(located) > 0 {
@@ -445,7 +473,7 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 	result, err := r.DB.QueryContext(ctx, `
 		SELECT id::text, validation_state, revoked_at IS NOT NULL
 		  FROM platform.model_profile_versions
-		 WHERE id::text = ANY($1::text[])`, uniqueStrings(ids))
+		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading model profile versions: %w", err)
 	}
@@ -475,7 +503,7 @@ func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[st
 	result, err := r.DB.QueryContext(ctx, `
 		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest
 		  FROM platform.tool_versions
-		 WHERE id::text = ANY($1::text[])`, uniqueStrings(ids))
+		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading tool versions: %w", err)
 	}
@@ -506,7 +534,7 @@ func (r *Reader) loadSubappDependencies(ctx context.Context, ids []string) (map[
 		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
-		 WHERE v.id::text = ANY($1::text[])`, uniqueStrings(ids))
+		 WHERE v.id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading application versions: %w", err)
 	}
@@ -553,10 +581,11 @@ func (r *Reader) checkSubappCycles(
 		if ref.kind != dependencySubapp || !uuid.Valid(ref.id) {
 			continue
 		}
-		if _, present := subapps[ref.id]; !present {
+		id := normalizeDependencyID(ref.id)
+		if _, present := subapps[id]; !present {
 			continue
 		}
-		roots = append(roots, ref.id)
+		roots = append(roots, id)
 	}
 	roots = uniqueStrings(roots)
 	if len(roots) == 0 {
@@ -596,10 +625,11 @@ func (r *Reader) checkSubappCycles(
 		if ref.kind != dependencySubapp || !uuid.Valid(ref.id) {
 			continue
 		}
-		if _, present := subapps[ref.id]; !present {
+		id := normalizeDependencyID(ref.id)
+		if _, present := subapps[id]; !present {
 			continue
 		}
-		reachable := reachableVersions(ref.id, edges)
+		reachable := reachableVersions(id, edges)
 		selfHit := ""
 		for _, id := range reachable {
 			if selfVersions[id] {
@@ -648,7 +678,7 @@ func (r *Reader) loadVersionEdges(ctx context.Context, roots []string) (map[stri
 		      FROM platform.version_dependencies AS d
 		      JOIN closure AS c ON d.parent_version_id = c.child_version_id
 		)
-		SELECT parent_version_id::text, child_version_id::text FROM closure`, roots)
+		SELECT parent_version_id::text, child_version_id::text FROM closure`, normalizedDependencyIDs(roots))
 	if err != nil {
 		return nil, fmt.Errorf("reading version dependencies: %w", err)
 	}
@@ -675,7 +705,7 @@ func (r *Reader) loadVersionApplications(ctx context.Context, ids []string) (map
 	result, err := r.DB.QueryContext(ctx, `
 		SELECT id::text, application_id::text
 		  FROM platform.application_versions
-		 WHERE id::text = ANY($1::text[])`, ids)
+		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading application versions: %w", err)
 	}
