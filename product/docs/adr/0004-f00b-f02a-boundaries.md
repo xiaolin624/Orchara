@@ -164,3 +164,102 @@ wakeup）记为 `not_run`，等有实例的票再做；`SweepExpired` 的恢复�
 - `product/cmd/maintenance/{run,client}.go`、`product/cmd/admin/background.go`
 - `product/tests/f00b/`（真实 PG + 真实二进制 + 真实 mTLS HTTP）、`product/tests/support/`
 - `product/reports/f00b/T022-background-jobs.md`（命令、原始结果、not_run 清单）
+
+## T023 追加：草稿、版本读模型与编辑器（F02A.01+F02A.04）
+
+T023 把“保存草稿/刷新恢复/冲突不覆盖”从规格变成可运行实现。以下决定为后续票必须沿用；改动需
+新 ADR 或在本节追加修订理由。
+
+### 12. 迁移 0010 的显式偏离与延期外键
+
+- `application_drafts` 在契约基线上增加 `execution_revision bigint NOT NULL DEFAULT 1`。
+  `revision` 是 ETag/CAS 计数器（每次成功保存 +1）；`execution_revision` 只在 `definition` 或
+  `capability_card` 的 jsonb 值变化时 +1（`IS DISTINCT FROM`）。后者是 T025 manifest 的
+  `source_revision`；只改 layout 不得改变执行 hash，不能靠“不保存 layout”规避。
+- `publication_reviews.report_id` 按契约类型建列但**没有 FK**：`evaluation_reports` 属 T026，
+  0010 不伪造该表。T026 建表后在自己的迁移里补 FK；在此之前任何代码不得把该列当已验证引用。
+- `applications.active_version_id` 的 FK 用契约的复合形式
+  `(id, active_version_id) -> application_versions(application_id, id)`，`ON DELETE RESTRICT`。
+  复合形式保证活动版本属于同一应用；版本不可删除，撤销走 `revoked_at`，因此删除导致孤儿是
+  bug，必须失败而不是静默置空。NULL（从未发布）不受约束。
+- 0010 之后 `python -m pytest tests/f01` 仍须全绿：F01 的 seed 辅助函数现在为带
+  `active_version_id` 的应用补真实 version/review/artifact 行（以前可指向不存在的 uuid）。
+  这是 schema 收紧后的测试适配，不是放宽断言。
+
+### 13. 草稿 ACL：读 owner-or-grant，写 owner-only；空草稿的契约缺口
+
+- GET draft：owner 或未过期 `read` grant；其余（含无 grant 的管理员）一律 404，避免枚举。
+- PUT draft：先做同一个读权限判定；能读但非 owner 返回 403 `forbidden`（调用者已知草稿存在，
+  拒绝的是写权）；不能读仍返回 404。读写顺序固定为：可见性(404) → owner(403) →
+  If-Match(428/412) → 结构校验(422) → CAS 更新。失败路径不写任何行。
+- ETag 是强验证器 `"<revision>"`。缺失/空 `If-Match` = 428 `precondition_required`
+  (`details.header=If-Match`)；过期、弱验证器、列表、`*`、不可解析值 = 412
+  `precondition_failed`，`details` 带 `current_revision`/`current_etag`。成功 200
+  `Accepted{state:"saved"}` 并返回新 `ETag`。并发写用 `UPDATE ... WHERE revision = <If-Match>`
+  的零行结果判 412，所以两个持同一 ETag 的写者不可能都成功。
+- **契约缺口（空草稿）**：`contracts/openapi.json` 的 `DraftInput.capability_card` 要求六个键
+  且 `examples.minItems=2`，但新建草稿还没有用途卡。T023 用 `capability_card: {}` 表示“尚未
+  填写”，接受 `{}` 原样保存，GET→PUT 空草稿可往返；任何非空卡都必须六键齐全且 examples≥2，
+  绝不填充伪造示例。T025/T027 及 F02B 必须继续接受 `{}` 这一状态，不得按“必须先有卡”拒绝
+  读取/调试/提交草稿；契约修订属后续票，T023 不改 contracts。
+
+### 14. 版本读模型：只读不可变发布行
+
+`getVersion`/`listVersions` 只返回 `application_versions` 的 `manifest`、`manifest_sha256`、
+`version_no`（及 id/application_id），绝不 join `application_drafts`；不可见/已归档应用的版本
+一律 404。列表的 ACL 谓词与 cursor、LIMIT 在同一条 SQL 的 WHERE 中（先过滤后分页），游标是
+`(version_no DESC, id DESC)` 的不透明 base64 token；limit 默认 20、1..100，越界 422，
+坏游标 400 `invalid_cursor`。发布行的 `active_version_id`、列表项和详情必须一致（测试用真实
+播种行证明）。
+
+### 15. 校验器移植：internal/workflow + internal/jcs（T025 复用，不得分叉）
+
+- `internal/workflow` 是 `probes/p05_dsl/go` 的直移植：相同 stage 顺序、code、pointer 与
+  优先级；`rules.json` 逐字复制并以 `go:embed` 打入包内，另有 Go 测试断言它与 probe 原件
+  逐字节一致，防止单边漂移。`validate_corpus_test.go` 用 `probes/p05_dsl/corpus.json`
+  对拍 verdict/reasons/input hash/normal-form hash/canonical 文本。
+- `internal/jcs` 是 P01/T003 Go 实现的可用形态（probes 不动），用 `probes/jcs/vectors.json`
+  的 40 条 RFC 向量做测试。T023 需要规范字节来实现校验器；T025 的 manifest 必须直接复用
+  这个包，不得再复制第三份序列化器。
+- `catalog.CheckExecutable(draft)` 是纯函数，返回 `{node_id?, code, pointer, message}`
+  （node_id 只在 pointer 指向 `/nodes/<i>/...` 时解析；cycle 这类文档级错误的 pointer 为空）。
+  T023 只用 Go 单测证明它能定位 cycle；**不提供** validate/debug/submit 端点。
+
+### 16. T023 未完成、由后续票闭环的验收
+
+- “非法草稿可保存但不能调试/提交”：保存半条已实现并测试；`validate`(T025)、`debug-runs`
+  (T027)、`submit`(F02B) 端点不存在（测试断言 404）。该验收在 T023 只能记 `partial`，
+  T025 闭环“不能调试/提交”的校验侧，T027 闭环 debug 的 revision 固定与拒绝语义。
+- T025 必须用 `execution_revision` 作为 manifest `source_revision`，用
+  `catalog.CheckExecutable`（或 workflow 包）而不是重写规则；`saveDraft` 继续不校验 DSL。
+- T027 必须用 draft 行 `revision` 作为 debug 的 `draft_revision`，并保持本节的 404/403 与
+  ETag 语义不变。
+
+### 17. scope 词汇表由 T023 扩展（T020 的注册表注释授权的扩展点）
+
+`identity` 增加 `application:write`：T020 的 `knownScopes` 注释明确“later ticket extends this
+map together with whatever endpoint uses the scope”，而契约给 createApplication/saveDraft 列了
+`apiKey` security，只有 `application:read` 时写路径对 scoped key 不可达。T023 让创建/保存要求
+`application:write`，读取仍要求 `application:read`（编辑一个应用需要两把 scope）；会话不受
+scope 限制。因此 F01 的两个测试随词汇表更新：`test_t020_api_keys.py` 的“未知 scope”用例改用
+仍不存在的 `application:execute`，`test_t020_scope_and_acl.py` 的注释改为“write-scoped key 是
+真实凭据”。这是实现扩展，不是契约修改。
+
+## 后果（T023）
+
+- 0010 之后草稿写入只有 `catalog.SaveDraft` 一条路；任何直接 UPDATE 绕过 CAS/ACL 的代码都是
+  bug。T024 不碰本票表；T025/T027 只读草稿并按 `execution_revision`/`revision` 区分语义。
+- 空 `capability_card: {}` 是受支持状态；前端、T025、T027、F02B 都必须容忍。
+- `internal/jcs` 与 `internal/workflow` 成为共享实现，后续票只扩展不改语义；probes 保持
+  原样作为独立真值。
+- validate/debug/submit 的缺失是显式的，不是遗漏；T023 报告把相应验收记 `partial`。
+
+## 证据（T023）
+
+- `product/db/migrations/0010_application_drafts.sql`
+- `product/internal/catalog/{draft,versions}.go`、`product/internal/api/{drafts,versions}.go`
+- `product/internal/jcs/`、`product/internal/workflow/`
+- `product/apps/web/src/{editor.html,assets/editor.js,assets/app.js,apps.html}`
+- `product/tests/f02a/`、`product/tests/support/f02a.py`
+- `product/reports/f02a/T023-drafts-and-editor.md`
+
