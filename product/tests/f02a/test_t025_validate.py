@@ -43,7 +43,12 @@ def test_validate_is_owner_only_and_requires_csrf(t025_stack) -> None:
     anonymous = t025_stack.client().post(path)
     st.assert_error(anonymous, 401, "unauthenticated")
 
-    # The administrator is not the owner and holds no grant: exactly 404.
+    # The administrator is not the owner and holds no grant: exactly 404. The
+    # administrator must also be a creator to reach the owner check at all
+    # (SECURITY §1), so grant that role through the real endpoint first: this test
+    # is about ownership, not about the creator gate.
+    granted = f02a.set_roles(admin, admin.principal_id, ["admin", "creator"])
+    assert granted.status == 200, granted.text
     st.assert_error(admin.client.post(path, csrf=admin.csrf), 404, "resource_not_found")
 
     # A read grant is sufficient to read the draft and insufficient to compile it.

@@ -44,6 +44,8 @@
     <code>ETag</code> 是本页保存时 <code>If-Match</code> 的值。保存成功后刷新页面会重新加载
     服务器上的草稿；若别人先保存了，服务器返回 <code>412</code>，本页不会覆盖，而是让你
     <strong>重载服务器版本</strong>或<strong>保留本地副本</strong>。
+    保存需要 <strong>creator</strong> 角色（管理员也需兼任），否则服务器返回
+    <code>403 creator_role_required</code>。
   </p>
 
   <section class="card">

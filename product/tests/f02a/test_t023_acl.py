@@ -35,11 +35,19 @@ def test_an_unrelated_user_and_an_admin_without_a_grant_get_404_everywhere(f02a_
     admin, _owner, _reader, outsider, application, versions = _setup(f02a_stack)
     for caller in (outsider, admin):
         assert f.get_draft(caller, application["id"]).status == 404
-        assert f.save_draft(caller, application["id"], '"1"').status == 404
         assert f.list_versions(caller, application["id"]).status == 404
         assert f.get_version(caller, versions[0]["id"]).status == 404
         # The application read itself is the same default-deny boundary.
         assert f.get_application(caller, application["id"]).status == 404
+
+    # Saving is a creator write: the outsider holds the role but not ownership
+    # (404, no existence oracle), while the bootstrap administrator does not hold
+    # the creator role at all and is refused before visibility is consulted (403
+    # creator_role_required, SECURITY §1: an administrator must be a creator too).
+    assert f.save_draft(outsider, application["id"], '"1"').status == 404
+    st.assert_error(
+        f.save_draft(admin, application["id"], '"1"'), 403, "creator_role_required"
+    )
 
 
 def test_a_read_grant_can_read_but_cannot_save(f02a_stack) -> None:

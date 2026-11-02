@@ -41,7 +41,10 @@ def test_only_the_owner_can_submit_a_debug_run(t027_stack) -> None:
     })
     st.assert_error(anonymous, 401, "unauthenticated")
 
-    # The administrator is not the owner and holds no grant: exactly 404.
+    # The administrator is not the owner and holds no grant. Debugging is a
+    # creator write, so an administrator who is not also a creator is refused as
+    # a capability problem (403 creator_role_required) before ownership is
+    # consulted (SECURITY §1: "管理员=兼任创作者后").
     st.assert_error(
         admin.client.post(
             path,
@@ -49,8 +52,8 @@ def test_only_the_owner_can_submit_a_debug_run(t027_stack) -> None:
             csrf=admin.csrf,
             headers={"Idempotency-Key": t027.new_idempotency_key()},
         ),
-        404,
-        "resource_not_found",
+        403,
+        "creator_role_required",
     )
 
     # A read grant lets the reader see the draft and nothing more.

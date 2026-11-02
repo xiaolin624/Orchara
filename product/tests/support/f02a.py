@@ -246,6 +246,20 @@ def revoke_grant(admin: Session, grant_id: str) -> st.Response:
     return admin.client.request("DELETE", f"/api/v1/admin/grants/{grant_id}", csrf=admin.csrf)
 
 
+def set_roles(admin: Session, principal_id: str, roles: list[str]) -> st.Response:
+    """Replace a human's roles through the real admin endpoint (F01/T019).
+
+    Used by tests that need a caller to hold the creator role in addition to
+    whatever role the scenario is about; the gate itself is never weakened.
+    """
+    return admin.client.request(
+        "PUT",
+        f"/api/v1/admin/users/{principal_id}/roles",
+        body={"roles": list(roles)},
+        csrf=admin.csrf,
+    )
+
+
 # ---------------------------------------------------------------------------
 # service accounts and scoped API keys (F02A extends the vocabulary with
 # application:write; the bearer client is the real credential path)

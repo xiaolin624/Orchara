@@ -20,9 +20,19 @@ const (
 	SessionCookieName = "platform_session"
 )
 
-// Known roles. F01 fixes this vocabulary; an unknown role is a validation error
+// Human roles fixed by F01. A service account has no roles at all: its authority
+// is a scoped API key plus the object ACL (T020). RoleCreator is the capability
+// SECURITY §1 requires before an application can be created, saved, validated or
+// debugged; an administrator is not exempt and must also hold it.
+const (
+	RoleAdmin   = "admin"
+	RoleCreator = "creator"
+	RoleUser    = "user"
+)
+
+// knownRoles is the closed vocabulary: an unknown role is a validation error
 // rather than a row that no authorizer understands.
-var knownRoles = map[string]bool{"admin": true, "creator": true, "user": true}
+var knownRoles = map[string]bool{RoleAdmin: true, RoleCreator: true, RoleUser: true}
 
 // Errors callers map to HTTP codes. They are sentinels so the API layer never
 // has to inspect driver errors or string messages.

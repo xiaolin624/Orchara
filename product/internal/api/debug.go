@@ -72,8 +72,10 @@ func readDebugRequest(w http.ResponseWriter, r *http.Request) (catalog.DebugRequ
 //
 // Access is owner-only (404 for everyone else, including administrators and
 // read-grant holders): debugging compiles and executes a draft, which is a
-// submission action rather than a read. API keys additionally need
-// application:write; browser sessions need the CSRF token any POST requires.
+// submission action rather than a read. A browser session must also hold the
+// creator role (SECURITY §1: an administrator must be a creator as well); API
+// keys need application:write. Browser sessions need the CSRF token any POST
+// requires.
 //
 // The Idempotency-Key header is required by the contract. The same key with the
 // same canonical request replays the stored 202 body; the same key with a
@@ -83,7 +85,7 @@ func (s *Server) handleDebugDraft(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if failure := requireScope(caller, identity.ScopeApplicationWrite); failure != nil {
+	if failure := requireApplicationWrite(caller); failure != nil {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}

@@ -29,14 +29,15 @@ type draftView struct {
 const maxDraftRequestBytes = maxRequestBody
 
 // handleCreateApplication creates an application and its revision=1 empty draft
-// in one transaction. Session callers are authorized by the session; an API key
-// additionally needs application:write (a read key must not be able to create).
+// in one transaction. Session callers must hold the creator role (SECURITY §1:
+// "建应用" is a creator action, and an administrator must also be a creator); an
+// API key needs application:write instead (a service account has no roles).
 func (s *Server) handleCreateApplication(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
 		return
 	}
-	if failure := requireScope(caller, identity.ScopeApplicationWrite); failure != nil {
+	if failure := requireApplicationWrite(caller); failure != nil {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
@@ -149,12 +150,16 @@ func readDraftInput(w http.ResponseWriter, r *http.Request) (draftInput, bool) {
 // The DSL is deliberately not validated here: saving an invalid workflow is
 // allowed, and refusing to debug/submit it belongs to T025/T027 (CheckExecutable
 // is exposed and unit-tested now; those endpoints are not).
+//
+// The creator gate (requireApplicationWrite) runs before the body and before the
+// visibility/owner lookup: a session without the role is refused as a capability
+// problem, not told whether the draft exists.
 func (s *Server) handleSaveDraft(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
 		return
 	}
-	if failure := requireScope(caller, identity.ScopeApplicationWrite); failure != nil {
+	if failure := requireApplicationWrite(caller); failure != nil {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}

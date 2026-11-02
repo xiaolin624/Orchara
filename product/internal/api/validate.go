@@ -6,7 +6,6 @@ import (
 
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
-	"orchara/platform/internal/identity"
 	"orchara/platform/internal/objectstore"
 )
 
@@ -23,8 +22,9 @@ type validationResponse struct {
 // manifest and answers with located errors or the server-side hash.
 //
 // Access is owner-only (404 for everyone else, including read-grant holders):
-// compiling is a submission action, not a read. API keys additionally need
-// application:write; browser sessions need the CSRF token any POST requires.
+// compiling is a submission action, not a read. A browser session must also hold
+// the creator role (SECURITY §1); API keys need application:write. Browser
+// sessions need the CSRF token any POST requires.
 //
 // Nothing execution-shaped is persisted here: validate creates no version,
 // snapshot, run or report. It does seal the canonical manifest bytes once per
@@ -35,7 +35,7 @@ func (s *Server) handleValidateApplication(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if failure := requireScope(caller, identity.ScopeApplicationWrite); failure != nil {
+	if failure := requireApplicationWrite(caller); failure != nil {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}

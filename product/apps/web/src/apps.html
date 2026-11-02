@@ -39,6 +39,11 @@
     没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
     创建应用会同时建立 revision=1 的空草稿，随后进入编辑器填写用途卡和草稿。
   </p>
+  <p class="hint">
+    创建、保存、校验与调试是<strong>创作者（creator）</strong>操作：只有持有 creator 角色的账号
+    才能写入，管理员也需要同时具备该角色（SECURITY §1）。缺少角色时服务器返回
+    <code>403 creator_role_required</code>，本页会原样显示该错误码。
+  </p>
 
   <section class="card">
     <h2>新建应用</h2>

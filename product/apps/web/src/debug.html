@@ -41,6 +41,8 @@
     冻结成仅自己可见的执行快照，并创建一个 <code>kind=debug</code> 的 queued Run。调试不创建公共版本、
     发布审核、平台 Request 或 Conversation；草稿随后如何修改都不会改变已经创建的 Run、快照和输入字节。
     提交必须带 <code>Idempotency-Key</code>：同一 key 与同一请求会重放原来的 Run，不会创建第二个。
+    调试需要 <strong>creator</strong> 角色（管理员也需兼任），否则服务器返回
+    <code>403 creator_role_required</code>。
     提交成功后本页用 <code>GET /api/v1/runs/{id}</code> 显示 Run 的 state / kind / revision /
     <code>execution_snapshot_id</code>。
   </p>
