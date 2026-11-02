@@ -103,7 +103,15 @@ def build_checks(quick: bool) -> list[dict]:
         checks.append(
             {
                 "name": "integration-tests",
-                "command": [sys.executable, "-m", "pytest", "product/tests/f00", "product/tests/p02", "-q"],
+                "command": [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "product/tests/f00",
+                    "product/tests/p02",
+                    "product/tests/f01",
+                    "-q",
+                ],
                 "cwd": REPO_ROOT,
                 "always": False,
                 "requires": "cluster",

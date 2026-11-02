@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 管理台（F01 身份）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 46rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; margin: .5rem 0; font-size: .9rem; }
+    input:not([type="checkbox"]), textarea { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
+    fieldset { border: 0; padding: 0; margin: .5rem 0; }
+    legend { font-size: .9rem; padding: 0; }
+    fieldset label { display: inline-block; margin-right: 1rem; }
+    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .warn { color: #a16207; font-weight: 600; }
+    .hint { font-size: .82rem; opacity: .7; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/login">登录</a>
+    <a href="/apps">应用目录</a>
+    <a href="/activate">激活账号</a>
+  </nav>
+
+  <h1>管理台（F01 身份）</h1>
+  <p class="sub">
+    本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
+    未登录会跳转到登录页。邀请返回的一次性激活令牌与创建 API key 返回的一次性明文都
+    <strong>只显示一次</strong>，平台只保存它们的哈希，请人工转交/立即保存。
+    资源授权、角色修改、服务账号与 API key 也在这里，写入都会带本会话的 CSRF 令牌。
+  </p>
+
+  <section class="card">
+    <h2>当前身份</h2>
+    <p class="status" id="auth-status" role="status" aria-live="polite">正在读取当前身份…</p>
+    <p>principal：<code id="identity-principal">—</code></p>
+    <p>角色：<span id="identity-roles">—</span></p>
+    <button id="logout-button" type="button">退出登录</button>
+  </section>
+
+  <section class="card">
+    <h2>管理员登录</h2>
+    <p class="hint">
+      正式入口是 <a href="/login">/login</a>；未登录访问本页会自动跳转过去。
+      下面的表单供禁用脚本的浏览器使用，登录后本页会重新读取身份。
+    </p>
+    <form id="signin-form" autocomplete="on">
+      <label for="login">登录名
+        <input id="login" name="login" autocomplete="username" required />
+      </label>
+      <label for="password">密码
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit">登录</button>
+    </form>
+  </section>
+
+  <section id="invite-panel" class="card" hidden>
+    <h2>邀请新用户</h2>
+    <form id="invite-form">
+      <label for="invite-login">登录名
+        <input id="invite-login" name="login" required />
+      </label>
+      <label for="invite-display-name">显示名
+        <input id="invite-display-name" name="display_name" required />
+      </label>
+      <fieldset>
+        <legend>角色</legend>
+        <label><input type="checkbox" name="roles" value="user" checked /> user</label>
+        <label><input type="checkbox" name="roles" value="creator" /> creator</label>
+        <label><input type="checkbox" name="roles" value="admin" /> admin</label>
+      </fieldset>
+      <button type="submit">生成一次性邀请</button>
+    </form>
+    <p id="invite-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="invite-result" hidden>
+      <p class="warn">一次性激活令牌（只显示一次，离开本页后无法再次获取）：</p>
+      <textarea id="activation-token" readonly rows="3" aria-label="一次性激活令牌"></textarea>
+      <p class="hint">
+        请手动把令牌转交用户；用户打开 <a href="/activate">/activate</a> 设置密码。
+        平台不发送邮件，也不会把令牌写进 URL。
+      </p>
+    </div>
+  </section>
+
+  <section id="grants-panel" class="card" hidden>
+    <h2>资源授权（application / read）</h2>
+    <p class="hint">
+      授权后目标用户在 <a href="/apps">应用目录</a> 立即看到该应用；撤销后下一次读取立即被拒绝。
+      F01 只开放 <code>application</code> 资源与 <code>read</code> 动作；过期时间可留空。
+    </p>
+    <form id="grant-form">
+      <label for="grant-principal">被授权 principal id
+        <input id="grant-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <label for="grant-resource">资源 id（application）
+        <input id="grant-resource" name="resource_id" required placeholder="uuid" />
+      </label>
+      <label for="grant-action">动作
+        <select id="grant-action" name="action">
+          <option value="read" selected>read</option>
+        </select>
+      </label>
+      <label for="grant-expires">过期时间（可选，RFC3339，例如 2026-12-31T00:00:00Z）
+        <input id="grant-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z" />
+      </label>
+      <button type="submit">授予 read</button>
+    </form>
+    <p id="grant-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="grant-result" hidden>
+      <p class="ok">已创建授权，grant id：<code id="grant-id">—</code></p>
+      <p class="hint">撤销时把该 id 填入下面的表单；撤销会让下一次读取立即失败，不需要刷新缓存。</p>
+    </div>
+
+    <h2 style="margin-top:1.2rem">撤销授权</h2>
+    <form id="revoke-form">
+      <label for="revoke-grant-id">grant id
+        <input id="revoke-grant-id" name="grant_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">撤销授权</button>
+    </form>
+    <p id="revoke-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="roles-panel" class="card" hidden>
+    <h2>修改用户角色</h2>
+    <p class="hint">
+      目标必须是已存在的人类用户（服务账号没有角色绑定）；角色集合不能为空、不能重复。
+      至少保留一个启用中的人类管理员，否则请求会被拒绝。
+    </p>
+    <form id="roles-form">
+      <label for="roles-principal">principal id
+        <input id="roles-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <fieldset>
+        <legend>角色</legend>
+        <label><input type="checkbox" name="roles" value="user" checked /> user</label>
+        <label><input type="checkbox" name="roles" value="creator" /> creator</label>
+        <label><input type="checkbox" name="roles" value="admin" /> admin</label>
+      </fieldset>
+      <button type="submit">保存角色</button>
+    </form>
+    <p id="roles-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="service-accounts-panel" class="card" hidden>
+    <h2>服务账号（具名负责人）</h2>
+    <p class="hint">
+      服务账号是独立 principal：没有登录密码、没有角色，只能用带 scope 的 API key 访问，
+      并且每个动作仍要满足资源 ACL。负责人必须是已启用的人类用户；负责人被禁用后，
+      该账号的 key 立即失效（无需逐把撤销）。负责人只是治理归属，不会把 TA 的个人应用或记忆借给服务账号。
+    </p>
+    <form id="service-account-form">
+      <label for="sa-display-name">显示名
+        <input id="sa-display-name" name="display_name" required />
+      </label>
+      <label for="sa-responsible">负责人 principal id（必须是启用中的人类用户）
+        <input id="sa-responsible" name="responsible_user_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">创建服务账号</button>
+    </form>
+    <p id="sa-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="sa-result" hidden>
+      <p class="ok">服务账号已创建，principal id：<code id="sa-principal-id">—</code></p>
+      <p class="hint">
+        它不能登录，也没有角色；请把该 id 填进下面的 API key 表单。平台只保存负责人归属，
+        不会把负责人的个人数据授权给它。
+      </p>
+    </div>
+  </section>
+
+  <section id="api-keys-panel" class="card" hidden>
+    <h2>API key（scope + 资源 ACL）</h2>
+    <p class="hint">
+      F01 只开放 <code>application:read</code>。scope 表示“这类动作被允许”，
+      具体应用仍需在资源授权里显式授予 <code>read</code>，两者同时满足才可读；
+      个人/记忆 scope 对服务账号一律拒绝。key 明文只返回一次，平台只保存 SHA-256。
+    </p>
+    <form id="api-key-form">
+      <label for="api-key-principal">服务账号 principal id
+        <input id="api-key-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <fieldset>
+        <legend>scope</legend>
+        <label><input id="api-key-scope-application-read" type="checkbox" name="scopes" value="application:read" checked /> application:read</label>
+      </fieldset>
+      <label for="api-key-expires">过期时间（RFC3339，必须晚于现在，例如 2026-12-31T00:00:00Z）
+        <input id="api-key-expires" name="expires_at" required placeholder="2026-12-31T00:00:00Z" />
+      </label>
+      <button type="submit">创建 API key</button>
+    </form>
+    <p id="api-key-status" class="status" role="status" aria-live="polite"></p>
+
+    <div id="api-key-result" hidden>
+      <p class="warn">API key 明文只显示一次（离开本页后无法再次获取）：</p>
+      <textarea id="api-key-secret" readonly rows="3" aria-label="一次性 API key"></textarea>
+      <p class="hint">key id 为 <code id="api-key-id">—</code>；撤销时填入下面的表单。</p>
+    </div>
+
+    <h2 style="margin-top:1.2rem">撤销 API key</h2>
+    <form id="api-key-revoke-form">
+      <label for="revoke-api-key-id">key id
+        <input id="revoke-api-key-id" name="key_id" required placeholder="uuid" />
+      </label>
+      <button type="submit">撤销 key</button>
+    </form>
+    <p id="api-key-revoke-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="principals-panel" class="card" hidden>
+    <h2>禁用 / 启用主体</h2>
+    <p class="hint">
+      禁用会立即撤销该人的全部浏览器会话与 API key，并撤销 TA 负责的服务账号的 key；启用只清除禁用状态，
+      已撤销的凭据不会恢复（需要重新签发 key、重新登录）。principal 行永远不会被删除，审计仍能定位到原主体。
+      至少保留一个启用中的人类管理员，否则会显示 <code>last_admin</code>；主体不存在或 id 畸形显示
+      <code>principal_not_found</code>。原因必填并写入审计。
+    </p>
+    <form id="disable-form">
+      <label for="disable-principal">principal id
+        <input id="disable-principal" name="principal_id" required placeholder="uuid" />
+      </label>
+      <label for="disable-state">目标状态
+        <select id="disable-state" name="disabled">
+          <option value="true" selected>禁用</option>
+          <option value="false">启用</option>
+        </select>
+      </label>
+      <label for="disable-reason">原因（必填，写入审计）
+        <input id="disable-reason" name="reason" required placeholder="例如：离职交接" />
+      </label>
+      <button type="submit">提交</button>
+    </form>
+    <p id="disable-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const authStatus = document.getElementById('auth-status');
+    const identityPrincipal = document.getElementById('identity-principal');
+    const identityRoles = document.getElementById('identity-roles');
+    const logoutButton = document.getElementById('logout-button');
+    const signinForm = document.getElementById('signin-form');
+    const inviteForm = document.getElementById('invite-form');
+    const invitePanel = document.getElementById('invite-panel');
+    const inviteResult = document.getElementById('invite-result');
+    const activationTokenField = document.getElementById('activation-token');
+    const inviteStatus = document.getElementById('invite-status');
+    const grantsPanel = document.getElementById('grants-panel');
+    const rolesPanel = document.getElementById('roles-panel');
+    const serviceAccountsPanel = document.getElementById('service-accounts-panel');
+    const apiKeysPanel = document.getElementById('api-keys-panel');
+    const grantForm = document.getElementById('grant-form');
+    const grantStatus = document.getElementById('grant-status');
+    const grantResult = document.getElementById('grant-result');
+    const revokeForm = document.getElementById('revoke-form');
+    const revokeStatus = document.getElementById('revoke-status');
+    const rolesForm = document.getElementById('roles-form');
+    const rolesStatus = document.getElementById('roles-status');
+    const serviceAccountForm = document.getElementById('service-account-form');
+    const serviceAccountStatus = document.getElementById('sa-status');
+    const serviceAccountResult = document.getElementById('sa-result');
+    const apiKeyForm = document.getElementById('api-key-form');
+    const apiKeyStatus = document.getElementById('api-key-status');
+    const apiKeyResult = document.getElementById('api-key-result');
+    const apiKeySecretField = document.getElementById('api-key-secret');
+    const apiKeyRevokeForm = document.getElementById('api-key-revoke-form');
+    const apiKeyRevokeStatus = document.getElementById('api-key-revoke-status');
+    const principalsPanel = document.getElementById('principals-panel');
+    const disableForm = document.getElementById('disable-form');
+    const disableStatus = document.getElementById('disable-status');
+
+    function setStatus(element, message, kind) {
+      element.textContent = message;
+      element.className = 'status ' + (kind || '');
+    }
+
+    // Identity comes from the server on every load: the cookie is HttpOnly, so
+    // the page never holds a credential of its own.
+    function renderIdentity(me) {
+      identityPrincipal.textContent = me.principal_id;
+      const roles = me.roles || [];
+      identityRoles.textContent = roles.length ? roles.join('、') : '（无）';
+      const isAdmin = roles.indexOf('admin') !== -1;
+      invitePanel.hidden = !isAdmin;
+      // The admin endpoints refuse non-admins anyway; hiding the forms is only
+      // feedback, never the authorization.
+      grantsPanel.hidden = !isAdmin;
+      rolesPanel.hidden = !isAdmin;
+      serviceAccountsPanel.hidden = !isAdmin;
+      apiKeysPanel.hidden = !isAdmin;
+      principalsPanel.hidden = !isAdmin;
+      setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
+    }
+
+    // On load: restore the identity after a refresh. A 401 goes to the login
+    // page; any other failure is shown instead of pretending to be signed in.
+    async function restoreIdentity() {
+      try {
+        renderIdentity(await requireLogin());
+      } catch (error) {
+        if (error.status !== 401) {
+          setStatus(authStatus, `无法读取当前身份 [${error.code}] ${error.message}`, 'bad');
+        }
+        // A 401 already navigated to /login; leave whatever is on screen.
+        invitePanel.hidden = true;
+      }
+    }
+
+    signinForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(authStatus, '正在登录…', 'pending');
+      try {
+        await api('/api/v1/auth/login', {
+          method: 'POST',
+          body: {
+            login: document.getElementById('login').value,
+            password: document.getElementById('password').value,
+          },
+        });
+        document.getElementById('password').value = '';
+        // The login response carries no roles, so ask /auth/me again.
+        renderIdentity(await identity(true));
+      } catch (error) {
+        setStatus(authStatus, `登录失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    inviteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const roles = Array.from(
+        inviteForm.querySelectorAll('input[name="roles"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(inviteStatus, '正在创建邀请…', 'pending');
+      inviteResult.hidden = true;
+      try {
+        const invitation = await api('/api/v1/admin/users', {
+          method: 'POST',
+          // The CSRF token for this session, from /auth/me; never from storage.
+          csrf: await csrf(),
+          body: {
+            login: document.getElementById('invite-login').value,
+            display_name: document.getElementById('invite-display-name').value,
+            roles,
+          },
+        });
+        activationTokenField.value = invitation.activation_token;
+        inviteResult.hidden = false;
+        setStatus(
+          inviteStatus,
+          '已创建 principal ' + invitation.principal_id + '，令牌 ' +
+            invitation.expires_at + ' 前有效。',
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(inviteStatus, `邀请失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    logoutButton.addEventListener('click', async () => {
+      setStatus(authStatus, '正在退出…', 'pending');
+      try {
+        await logout();
+        window.location.assign('/login');
+      } catch (error) {
+        setStatus(authStatus, `退出失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/grants: grant `read` on one application. The write is
+    // authorized by the admin session + CSRF token, never by the page.
+    grantForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(grantStatus, '正在创建授权…', 'pending');
+      grantResult.hidden = true;
+      const expiresAt = document.getElementById('grant-expires').value.trim();
+      const body = {
+        principal_id: document.getElementById('grant-principal').value.trim(),
+        resource_type: 'application',
+        resource_id: document.getElementById('grant-resource').value.trim(),
+        action: document.getElementById('grant-action').value,
+      };
+      if (expiresAt) {
+        body.expires_at = expiresAt;
+      }
+      try {
+        const grant = await api('/api/v1/admin/grants', {
+          method: 'POST',
+          csrf: await csrf(),
+          body,
+        });
+        document.getElementById('grant-id').textContent = grant.id;
+        grantResult.hidden = false;
+        setStatus(grantStatus, `已授权（${grant.state}），grant id ${grant.id}。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(grantStatus, `授权失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // DELETE /api/v1/admin/grants/{grant_id}: revocation takes effect on the
+    // very next authorization decision, so the page says exactly that.
+    revokeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const grantId = document.getElementById('revoke-grant-id').value.trim();
+      setStatus(revokeStatus, '正在撤销授权…', 'pending');
+      try {
+        await api('/api/v1/admin/grants/' + encodeURIComponent(grantId), {
+          method: 'DELETE',
+          csrf: await csrf(),
+        });
+        setStatus(revokeStatus, `已撤销授权 ${grantId}，下一次读取立即生效。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(revokeStatus, `撤销失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // PUT /api/v1/admin/users/{principal_id}/roles: replace the role bindings.
+    rolesForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const principalId = document.getElementById('roles-principal').value.trim();
+      const roles = Array.from(
+        rolesForm.querySelectorAll('input[name="roles"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(rolesStatus, '正在保存角色…', 'pending');
+      try {
+        const update = await api('/api/v1/admin/users/' + encodeURIComponent(principalId) + '/roles', {
+          method: 'PUT',
+          csrf: await csrf(),
+          body: { roles },
+        });
+        setStatus(rolesStatus, `已更新 principal ${update.id} 的角色（${update.state}）。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(rolesStatus, `保存失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/service-accounts: create a service principal owned by a
+    // named, enabled human. The account has no login and no roles; its authority
+    // is the scoped key below plus the resource ACL.
+    serviceAccountForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus(serviceAccountStatus, '正在创建服务账号…', 'pending');
+      serviceAccountResult.hidden = true;
+      try {
+        const created = await api('/api/v1/admin/service-accounts', {
+          method: 'POST',
+          csrf: await csrf(),
+          body: {
+            display_name: document.getElementById('sa-display-name').value.trim(),
+            responsible_user_id: document.getElementById('sa-responsible').value.trim(),
+          },
+        });
+        document.getElementById('sa-principal-id').textContent = created.id;
+        document.getElementById('api-key-principal').value = created.id;
+        serviceAccountResult.hidden = false;
+        setStatus(
+          serviceAccountStatus,
+          `已创建服务账号 ${created.id}（${created.state}），它不能登录。`,
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(serviceAccountStatus, `创建失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // POST /api/v1/admin/api-keys: issue a scoped key. The secret returned here
+    // is rendered into a readonly textarea exactly once; it is never stored by
+    // the page, and only its hash exists server-side.
+    apiKeyForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const scopes = Array.from(
+        apiKeyForm.querySelectorAll('input[name="scopes"]:checked'),
+      ).map((checkbox) => checkbox.value);
+      setStatus(apiKeyStatus, '正在创建 API key…', 'pending');
+      apiKeyResult.hidden = true;
+      try {
+        const created = await api('/api/v1/admin/api-keys', {
+          method: 'POST',
+          csrf: await csrf(),
+          body: {
+            principal_id: document.getElementById('api-key-principal').value.trim(),
+            scopes,
+            expires_at: document.getElementById('api-key-expires').value.trim(),
+          },
+        });
+        apiKeySecretField.value = created.secret;
+        document.getElementById('api-key-id').textContent = created.id;
+        apiKeyResult.hidden = false;
+        setStatus(apiKeyStatus, `已创建 API key ${created.id}，明文只显示一次。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(apiKeyStatus, `创建失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // DELETE /api/v1/admin/api-keys/{key_id}: revocation takes effect on the
+    // very next bearer request; repeating it is idempotent.
+    apiKeyRevokeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const keyId = document.getElementById('revoke-api-key-id').value.trim();
+      setStatus(apiKeyRevokeStatus, '正在撤销 API key…', 'pending');
+      try {
+        await api('/api/v1/admin/api-keys/' + encodeURIComponent(keyId), {
+          method: 'DELETE',
+          csrf: await csrf(),
+        });
+        setStatus(apiKeyRevokeStatus, `已撤销 API key ${keyId}，下一次调用立即失败。`, 'ok');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(apiKeyRevokeStatus, `撤销失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    // PATCH /api/v1/admin/principals/{principal_id}: disable or enable one
+    // principal. Disabling revokes every session and key of that person and of
+    // the service accounts they are responsible for; enabling never restores a
+    // revoked credential. The visible failure shows the contract code, so
+    // last_admin and principal_not_found are readable on the page.
+    disableForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const principalId = document.getElementById('disable-principal').value.trim();
+      const targetDisabled = document.getElementById('disable-state').value === 'true';
+      const reason = document.getElementById('disable-reason').value;
+      setStatus(disableStatus, targetDisabled ? '正在禁用…' : '正在启用…', 'pending');
+      try {
+        const result = await api(
+          '/api/v1/admin/principals/' + encodeURIComponent(principalId),
+          {
+            method: 'PATCH',
+            csrf: await csrf(),
+            body: { disabled: targetDisabled, reason },
+          },
+        );
+        setStatus(
+          disableStatus,
+          `已${result.state === 'disabled' ? '禁用' : '启用'} principal ${result.id}（${result.state}）。`,
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(disableStatus, `操作失败 [${error.code}] ${error.message}`, 'bad');
+      }
+    });
+
+    restoreIdentity();
+  </script>
+</body>
+</html>

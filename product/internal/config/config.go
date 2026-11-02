@@ -121,13 +121,9 @@ func FromEnv() Lookup {
 
 // Load validates the configuration for the declared profile.
 func Load(lookup Lookup) (*Config, error) {
-	profileRaw, ok := lookup(EnvProfile)
-	if !ok || strings.TrimSpace(profileRaw) == "" {
-		return nil, invalid(EnvProfile, "is required; set it to one of dev-stub, linux-sandbox, real-model, capacity-stub")
-	}
-	profile := Profile(strings.TrimSpace(profileRaw))
-	if !knownProfiles[profile] {
-		return nil, invalid(EnvProfile, fmt.Sprintf("unknown profile %q", profile))
+	profile, err := parseProfile(lookup)
+	if err != nil {
+		return nil, err
 	}
 
 	cfg := &Config{
@@ -179,6 +175,39 @@ func Load(lookup Lookup) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// DatabaseConfig is the configuration subset an administrative command needs
+// when it only touches the database. A migration must not require a model
+// endpoint it will never call, but it must still refuse an unknown profile.
+type DatabaseConfig struct {
+	Profile Profile
+	DBDSN   string
+}
+
+// LoadDatabase validates the profile and the database DSN for cmd/admin.
+func LoadDatabase(lookup Lookup) (*DatabaseConfig, error) {
+	profile, err := parseProfile(lookup)
+	if err != nil {
+		return nil, err
+	}
+	dsn := value(lookup, EnvDBDSN)
+	if dsn == "" {
+		return nil, invalid(EnvDBDSN, "is required; the command cannot reach the platform database")
+	}
+	return &DatabaseConfig{Profile: profile, DBDSN: dsn}, nil
+}
+
+func parseProfile(lookup Lookup) (Profile, error) {
+	profileRaw, ok := lookup(EnvProfile)
+	if !ok || strings.TrimSpace(profileRaw) == "" {
+		return "", invalid(EnvProfile, "is required; set it to one of dev-stub, linux-sandbox, real-model, capacity-stub")
+	}
+	profile := Profile(strings.TrimSpace(profileRaw))
+	if !knownProfiles[profile] {
+		return "", invalid(EnvProfile, fmt.Sprintf("unknown profile %q", profile))
+	}
+	return profile, nil
 }
 
 // Stub reports whether this profile produces stub results that must be labelled.

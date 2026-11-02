@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 应用目录（F01 授权）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 46rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .45rem 0; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/login">登录</a>
+    <a href="/admin">管理台</a>
+    <a href="/activate">激活账号</a>
+  </nav>
+
+  <h1>应用目录（F01 授权）</h1>
+  <p class="sub">
+    列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
+    <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
+    没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
+  </p>
+
+  <section class="card">
+    <h2>可见应用</h2>
+    <p id="apps-status" class="status" role="status" aria-live="polite">正在加载应用…</p>
+    <ul id="apps-list"></ul>
+    <p id="apps-empty" class="hint" hidden>当前没有可见的应用：你既不是任何应用的所有者，也没有收到有效的 read 授权。</p>
+    <button id="apps-next" type="button" hidden>下一页</button>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const listElement = document.getElementById('apps-list');
+    const statusElement = document.getElementById('apps-status');
+    const emptyElement = document.getElementById('apps-empty');
+    const nextButton = document.getElementById('apps-next');
+
+    let nextCursor = null;
+    let rendered = 0;
+
+    function setStatus(message, kind) {
+      statusElement.textContent = message;
+      statusElement.className = 'status ' + (kind || '');
+    }
+
+    // Build every node with textContent: an application name is user data and
+    // must never be parsed as markup.
+    function renderItem(application) {
+      const item = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = application.name;
+      const id = document.createElement('code');
+      id.textContent = application.id;
+      const version = document.createElement('span');
+      version.textContent = application.active_version_id
+        ? '当前版本 ' + application.active_version_id
+        : '尚未发布版本';
+      item.append(name, ' ', id, ' ', version);
+      listElement.appendChild(item);
+    }
+
+    async function loadPage(cursor) {
+      setStatus('正在加载应用…', 'pending');
+      try {
+        // Identity is read from the HttpOnly cookie; a 401 sends the browser to
+        // /login instead of rendering an empty page that looks authorized.
+        await requireLogin();
+        const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+        const page = await api('/api/v1/applications' + query);
+        const items = page.items || [];
+        for (const application of items) {
+          renderItem(application);
+          rendered += 1;
+        }
+        nextCursor = page.next_cursor || null;
+        nextButton.hidden = !nextCursor;
+        emptyElement.hidden = rendered !== 0;
+        setStatus(
+          rendered === 0
+            ? '没有可见的应用。'
+            : '共显示 ' + rendered + ' 个可见应用' + (nextCursor ? '，还有下一页。' : '。'),
+          'ok',
+        );
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
+      }
+    }
+
+    nextButton.addEventListener('click', () => {
+      if (nextCursor) {
+        loadPage(nextCursor);
+      }
+    });
+
+    loadPage(null);
+  </script>
+</body>
+</html>

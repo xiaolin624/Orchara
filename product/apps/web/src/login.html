@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 登录</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 40rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; }
+    label { display: block; margin: .6rem 0; font-size: .9rem; }
+    input { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
+    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/activate">激活账号</a>
+  </nav>
+
+  <h1>登录</h1>
+  <p class="sub">
+    用管理员分配、并已在 <a href="/activate">/activate</a> 激活的登录名与密码登录。
+    会话保存在 HttpOnly 的 <code>platform_session</code> Cookie 里；本页不会把令牌
+    写进地址栏、URL 查询或浏览器存储。
+  </p>
+
+  <section class="card">
+    <form id="login-form" autocomplete="on">
+      <label for="login">登录名
+        <input id="login" name="login" autocomplete="username" required />
+      </label>
+      <label for="password">密码
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit">登录</button>
+    </form>
+    <p id="login-status" class="status" role="status" aria-live="polite"></p>
+    <p class="hint">
+      还没有账号？请让管理员在管理台生成一次性邀请令牌，然后到
+      <a href="/activate">激活页</a> 设置密码。
+    </p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const loginForm = document.getElementById('login-form');
+    const loginStatus = document.getElementById('login-status');
+
+    // The two failures this page exists to explain, in the API's own terms.
+    const LOGIN_MESSAGES = {
+      invalid_credentials: '登录名或密码不正确（invalid_credentials）。',
+      rate_limited:
+        '失败次数过多，已被暂时限流（rate_limited）。服务端要求约 60 秒后再试；' +
+        '被限流期间即使是正确密码也会被拒绝。',
+      principal_disabled: '这个账号已被禁用（principal_disabled），请联系管理员。',
+    };
+
+    function setStatus(message, kind) {
+      loginStatus.textContent = message;
+      loginStatus.className = 'status ' + (kind || '');
+    }
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus('正在登录…', 'pending');
+      try {
+        await api('/api/v1/auth/login', {
+          method: 'POST',
+          body: {
+            login: document.getElementById('login').value,
+            password: document.getElementById('password').value,
+          },
+        });
+        document.getElementById('password').value = '';
+        // The response set the HttpOnly session cookie. The admin page restores
+        // the identity from GET /api/v1/auth/me, so nothing is kept here.
+        setStatus('登录成功，正在进入管理台…', 'ok');
+        window.location.assign('/admin');
+      } catch (error) {
+        setStatus(
+          LOGIN_MESSAGES[error.code] || `登录失败 [${error.code}] ${error.message}`,
+          'bad',
+        );
+      }
+    });
+  </script>
+</body>
+</html>

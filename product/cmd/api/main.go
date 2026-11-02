@@ -21,8 +21,10 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"orchara/platform/internal/api"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
+	"orchara/platform/internal/identity"
 )
 
 const defaultAddr = "127.0.0.1:8088"
@@ -70,6 +72,11 @@ func run(logger *log.Logger) error {
 	mux.HandleFunc("/readyz", reporter.Ready)
 	mux.HandleFunc("/api/status", reporter.Status)
 
+	// F01 identity surface: login/invite/activate plus the pages that drive them.
+	// Full login/logout/refresh/CSRF lifecycle lands with T017.
+	identityService := identity.New(db)
+	api.New(identityService, cfg.WebDir, cfg.Profile, logger).Register(mux)
+
 	indexPath := filepath.Join(cfg.WebDir, "index.html")
 	if _, err := os.Stat(indexPath); err != nil {
 		return fmt.Errorf("web entry not found at %s (set ORCHARA_WEB_DIR)", indexPath)
@@ -84,7 +91,7 @@ func run(logger *log.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           api.WithRequestLogging(logger, api.WithRequestID(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
