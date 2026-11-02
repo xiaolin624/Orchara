@@ -4,8 +4,8 @@ PLAN §2 D6 and T023's brief split this deliberately: saving only performs
 structural DraftInput validation, so a semantically invalid workflow (a cycle) is
 persisted and read back unchanged. Refusing to *debug* or *submit* it belongs to
 T025/T027/F02B. T025 added validate and T027 added debugDraft; the last test
-records that the refusal side of acceptance 3 is now closed by real endpoints
-while publication-submit is still absent (F02B).
+proves those two refusals are real and records that publication-submit still has
+no endpoint (F02B), so it does not treat a 404 as a refuse-path success.
 """
 
 from __future__ import annotations
@@ -53,14 +53,14 @@ def test_a_cyclic_definition_saves_and_reads_back_verbatim(f02a_stack) -> None:
     assert row["definition"] == definition
 
 
-def test_t023_acceptance_3_is_closed_by_the_validate_and_debug_refusals(f02a_stack) -> None:
-    """An invalid draft can be saved, and neither validate nor debug accepts it.
+def test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent(f02a_stack) -> None:
+    """The invalid draft is refused by the two endpoints that exist.
 
     T025 added ``POST /applications/{id}/validate``; T027 added
     ``POST /applications/{id}/debug-runs``. Both refuse the empty draft with
-    located errors, which is the "cannot debug/submit" half of T023's acceptance
-    item. Publication-submit is F02B and is still absent, so no endpoint accepts a
-    draft for publication yet.
+    located errors. Publication-submit is F02B and has no endpoint yet: the 404
+    below proves an endpoint is absent, not that a refusal path was implemented,
+    so T023's acceptance item 3 stays ``partial`` until F02B lands (report §2/§8).
     """
     admin = f.admin_session(f02a_stack)
     owner = f.invite_and_activate(f02a_stack, admin, "t023-absent-owner")
@@ -94,7 +94,8 @@ def test_t023_acceptance_3_is_closed_by_the_validate_and_debug_refusals(f02a_sta
     assert isinstance(located, list) and located, refused.text
     assert all({"code", "pointer", "message"} <= set(entry) for entry in located), located
 
-    # Publication-submit is F02B and remains absent.
+    # Publication-submit is F02B and has no endpoint at all. This is evidence of
+    # absence, not of a submit refusal; T023 must not claim the F02B closure.
     submit = owner.client.post(
         f"/api/v1/applications/{application['id']}/submit", body={}, csrf=owner.csrf
     )
