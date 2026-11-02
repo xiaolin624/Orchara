@@ -536,9 +536,18 @@ type ExecutableError struct {
 // return value. T023 does not call it from an HTTP endpoint (validate/debug are
 // T025/T027), which is why the ticket records those acceptance items as partial.
 func CheckExecutable(draft Draft) ([]ExecutableError, error) {
+	_, located, err := executableDocument(draft)
+	return located, err
+}
+
+// executableDocument is CheckExecutable plus the parsed document, which the
+// manifest builder needs. Both endpoints that compile a draft (T025 validate and
+// T027 debug) go through this one function so the definition is validated and
+// interpreted exactly once.
+func executableDocument(draft Draft) (map[string]any, []ExecutableError, error) {
 	definition := bytes.TrimSpace(draft.Definition)
 	if len(definition) == 0 || definition[0] != '{' {
-		return []ExecutableError{{
+		return nil, []ExecutableError{{
 			Code:    "bad_document",
 			Pointer: "",
 			Message: "the definition must be a JSON object",
@@ -546,7 +555,7 @@ func CheckExecutable(draft Draft) ([]ExecutableError, error) {
 	}
 	var document map[string]any
 	if err := json.Unmarshal(definition, &document); err != nil || document == nil {
-		return []ExecutableError{{
+		return nil, []ExecutableError{{
 			Code:    "bad_document",
 			Pointer: "",
 			Message: "the definition must be a JSON object",
@@ -554,11 +563,11 @@ func CheckExecutable(draft Draft) ([]ExecutableError, error) {
 	}
 	rules, err := workflow.DefaultRules()
 	if err != nil {
-		return nil, fmt.Errorf("loading the workflow rules: %w", err)
+		return nil, nil, fmt.Errorf("loading the workflow rules: %w", err)
 	}
 	result, err := workflow.Validate(document, rules, workflow.ValidationOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("validating the draft definition: %w", err)
+		return nil, nil, fmt.Errorf("validating the draft definition: %w", err)
 	}
 	located := make([]ExecutableError, 0, len(result.Problems))
 	for _, problem := range result.Problems {
@@ -573,7 +582,7 @@ func CheckExecutable(draft Draft) ([]ExecutableError, error) {
 			Message: message,
 		})
 	}
-	return located, nil
+	return document, located, nil
 }
 
 // nodeIDAt resolves a `/nodes/<index>/...` pointer to the node's id. Other

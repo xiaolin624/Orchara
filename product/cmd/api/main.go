@@ -31,6 +31,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"orchara/platform/internal/api"
+	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
 	"orchara/platform/internal/identity"
@@ -106,7 +107,15 @@ func run(logger *log.Logger) error {
 	// F01 identity surface: login/invite/activate plus the pages that drive them.
 	// F00B/T022 adds the background-job read and the internal controller routes.
 	identityService := identity.New(db)
-	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, signer, providers, cfg.PublicURL, cfg.RetryBackoff)
+	// Manifest deployment inputs: the worker image digest (a deployer placeholder
+	// until F04A/F15A build an image) and the locked runtime file. Both are
+	// resolved per validate request so a missing input is a 503, not a startup
+	// crash for identity-only deployments.
+	manifestInputs := compiler.Inputs{
+		WorkerImageDigest: cfg.WorkerImageDigest,
+		RuntimeLockPath:   cfg.RuntimeLockPath,
+	}
+	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, signer, providers, cfg.PublicURL, cfg.RetryBackoff, manifestInputs)
 	apiServer.Register(mux)
 
 	indexPath := filepath.Join(cfg.WebDir, "index.html")

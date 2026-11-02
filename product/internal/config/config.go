@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/objectstore"
 )
 
@@ -77,6 +78,14 @@ const (
 	EnvInternalServerCert = "ORCHARA_INTERNAL_SERVER_CERT"
 	EnvInternalServerKey  = "ORCHARA_INTERNAL_SERVER_KEY"
 	EnvInternalClientCA   = "ORCHARA_INTERNAL_CLIENT_CA"
+
+	// Execution manifest deployment inputs (F02A/T025). The worker image digest
+	// is a placeholder until F04A/F15A build an image; a missing digest does not
+	// stop the API (identity/draft work remains usable) but every manifest-
+	// generating request answers 503 compiler_unconfigured. The runtime lock is
+	// the P01 locked package set; its SHA-256 is part of the manifest.
+	EnvWorkerImageDigest = compiler.EnvWorkerImageDigest
+	EnvRuntimeLockPath   = compiler.EnvRuntimeLockPath
 
 	// Internal mTLS client (cmd/maintenance).
 	EnvInternalURL        = "ORCHARA_INTERNAL_URL"
@@ -157,6 +166,15 @@ type Config struct {
 	SecretDir string
 	// RetryBackoff is the base exponential-retry delay for background jobs.
 	RetryBackoff time.Duration
+	// WorkerImageDigest is the deployer-provided image digest pinned into every
+	// execution manifest. Empty is legal: the API starts, and every
+	// manifest-generating request answers 503 compiler_unconfigured. This batch
+	// has not built a worker image (F04A/F15A do), so the value is a placeholder.
+	WorkerImageDigest string
+	// RuntimeLockPath is the locked runtime file whose SHA-256 enters the
+	// manifest. It defaults to the P01 lock (probes/agent_min/requirements.lock.txt);
+	// a missing file makes manifest generation fail closed, not invent a hash.
+	RuntimeLockPath string
 	// Internal is the optional internal mTLS listener configuration. Nil means
 	// the listener is disabled; a partially configured set is a startup error.
 	Internal *InternalTLS
@@ -306,6 +324,15 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be at most %s", maxBackgroundRetryBackoff))
 	}
 	cfg.RetryBackoff = retryBackoff
+	// F02A/T025 deployment inputs. A malformed digest is a configuration error
+	// (refuse to start); an absent one is the honest "no worker image yet"
+	// state that manifest endpoints answer with 503 compiler_unconfigured.
+	cfg.WorkerImageDigest = value(lookup, EnvWorkerImageDigest)
+	if cfg.WorkerImageDigest != "" && !compiler.ValidWorkerImageDigest(cfg.WorkerImageDigest) {
+		return nil, invalid(EnvWorkerImageDigest,
+			"must be sha256:<64 lowercase hex> when set; the compiler never invents an image digest")
+	}
+	cfg.RuntimeLockPath = orDefault(lookup, EnvRuntimeLockPath, compiler.DefaultRuntimeLockPath)
 	internalTLS, err := loadInternalTLS(lookup)
 	if err != nil {
 		return nil, err

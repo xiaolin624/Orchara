@@ -10,6 +10,7 @@ import (
 
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
@@ -20,14 +21,18 @@ import (
 // Server serves the F01 identity endpoints, the F02A draft/version paths, the
 // F00B background-job surface and the static pages that drive them.
 type Server struct {
-	service      *identity.Service
-	policy       *policy.Authorizer
-	catalog      *catalog.Reader
-	jobs         *background.Controller
-	artifacts    *background.ArtifactStore
-	models       *modelproxy.Service
-	objects      *objectstore.Store
-	signer       *objectstore.Signer
+	service   *identity.Service
+	policy    *policy.Authorizer
+	catalog   *catalog.Reader
+	jobs      *background.Controller
+	artifacts *background.ArtifactStore
+	models    *modelproxy.Service
+	objects   *objectstore.Store
+	signer    *objectstore.Signer
+	// manifest carries the deployment inputs (worker image digest, runtime lock
+	// path) the validate endpoint needs. Absent inputs are not a startup error;
+	// the endpoint answers 503 compiler_unconfigured instead.
+	manifest     compiler.Inputs
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
@@ -55,6 +60,7 @@ func New(
 	providers *modelproxy.Providers,
 	publicURL string,
 	retryBackoff time.Duration,
+	manifestInputs compiler.Inputs,
 ) *Server {
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
@@ -69,6 +75,7 @@ func New(
 		models:       modelproxy.NewService(service.DB, objects, providers),
 		objects:      objects,
 		signer:       signer,
+		manifest:     manifestInputs,
 		webDir:       webDir,
 		secureCookie: SecureCookie(profile),
 		logger:       logger,
@@ -115,6 +122,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/applications/{application_id}/draft", s.handleSaveDraft)
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
+
+	// F02A/T025: compile the current draft, resolve its fixed dependency closure
+	// and return located errors. A valid draft also returns the server-side
+	// manifest hash in X-Manifest-SHA256 (the 200 schema has no field for it; the
+	// extension is documented in ADR 0004 §26) and seals the canonical bytes.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/validate", s.handleValidateApplication)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
