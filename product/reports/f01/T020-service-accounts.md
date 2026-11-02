@@ -312,13 +312,21 @@ EXIT=0
    本票用 `Query().Has("limit")` 区分；`cursor`/`application_id` 按 prompt 忽略。
 6. **key 创建/撤销不 bump `policy_epochs`**：见 §5 的缓存论证；本票没有任何缓存的 key 决策。
    若后续给认证加决策缓存，撤销必须改为同事务 bump。
-7. **页面只做了服务端内容/行为断言**：没有浏览器或 JS 引擎执行（与 T015/T017/T019 相同限制）。
+7. **页面测试的边界**：没有 DOM/浏览器执行（与 T015/T017/T019 相同限制）。两轴复核后新增的
+   `tests/f01/test_f01_app_js.py` 会在 Node 下执行共享 `assets/app.js` 并对页面内联脚本做
+   语法检查；DOM/浏览器交互仍未运行，见 §7。
+8. **`GET /memories` 是 F09 的端点，F01 只交付拒绝边界**：该路由由 F09 拥有并由其实现记忆
+   存储；本票的 F01 交付物是**服务凭据 403 `personal_scope_forbidden`**——在解析 `limit`、接触
+   任何存储之前就拒绝（`IMPLEMENTATION-DETAILS` §1：个人长期记忆只属于人类）。人类会话拿到的
+   200 空列表（`items: []`, `next_cursor: null`）是**诚实的空读模型**，不是“记忆已存在/已实现”
+   的声明，也不是伪造数据或 501。`cursor`/`application_id` 按契约接受但在 F09 前忽略。
 
 ## 7. 限制 / not_run
 
 - **没有浏览器级验证**：`/admin` 的断言是服务端 HTML/JS 内容与行为断言（表单 id、契约路径、
-  CSRF 使用、一次性明文 textarea、撤销表单、401 跳转、无 storage/URL 泄露）；不执行 JavaScript、
-  不截图、不做 HCI 验收。
+  CSRF 使用、一次性明文 textarea、撤销表单、401 跳转、无 storage/URL 泄露）；共享
+  `assets/app.js` 已由 Node 真实执行、页面内联脚本通过 `node --check`（`test_f01_app_js.py`），
+  但 DOM/浏览器交互仍未运行，不截图、不做 HCI 验收。
 - **F01 只暴露一个 scope**：`application:read`。`application:write` 等写 scope 要到 F02A 应用写入
   路径才可加入注册表；当前创建 key 会拒绝未知 scope。
 - **`/memories` 的存储未实现**：F09 拥有个人记忆；本票只交付“服务账号不可读”的强制边界和

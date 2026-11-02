@@ -16,7 +16,7 @@
   - `internal/uuid/uuid.go`（新增：HTTP 契约 UUID 形状校验，不引入依赖）
   - `internal/api/{grants,roles,applications}.go`、`internal/api/server.go`（5 条端点、429/422/404/409 映射、`/apps` 路由）
   - `apps/web/src/apps.html`（新增）、`apps/web/src/admin.html`（授权/撤销/角色表单）
-  - `internal/{policy,catalog,identity,api,uuid}/*_test.go`、`tests/f01/t019_stack.py`、`tests/f01/test_t019_*.py`（31 个集成测试）
+  - `internal/{policy,catalog,identity,api,uuid}/*_test.go`、`tests/f01/t019_stack.py`、`tests/f01/test_t019_*.py`（两轴复核后 34 个集成测试：原 31 + 自授 2 + 列表/详情过期一致性 1）
 - 版本 / 环境：
   - Go 1.27.3 windows/amd64（`E:\orchara-toolchains\go\bin\go.exe`）
   - PostgreSQL 16.4，隔离集群 `127.0.0.1:55432`（`E:\orchara-pg`）
@@ -55,13 +55,13 @@
 func (a *Authorizer) Allow(ctx, subject PrincipalRef, resource ResourceRef, action string) (bool, error)
 ```
 
-顺序是安全相关的：
+顺序是安全相关的（两轴复核后 epoch 读取提前到所有权之前）：
 
-1. **所有权优先**：`resource.OwnerID != "" && subject.ID == OwnerID` 直接允许，不读策略表，
-   也不依赖数据库可用性；空 owner 表示“没有所有权路径”，继续走授权。
-2. 空主体/空资源/空动作直接拒绝（不花费一次策略读）。
-3. **每次调用**读 `policy_epochs.acl`（`EpochReads` 计数可观测）；读错误或缺行 → `(false, error)`，
-   **fail closed**。
+1. **每次调用先读 `policy_epochs.acl`**（`EpochReads` 计数可观测）；读错误或缺行 →
+   `(false, error)`，**fail closed**——包括 owner 调用，策略表损坏时不存在“owner 例外”。
+2. **所有权是第一决策，但不是短路**：`resource.OwnerID != "" && subject.ID == OwnerID`
+   在 epoch 读取成功后允许，不再查 grant 表；空 owner 表示“没有所有权路径”，继续走 grant。
+3. 空主体/空资源/空动作直接拒绝（不花费一次 grant 查库）。
 4. 进程内决策缓存键 `(principal_id, resource_type, resource_id, action, epoch)`；
    - 命中 deny → 直接拒绝；
    - 命中 allow → 用注入时钟复核该 grant 的 `expires_at`；已过期则**丢弃命中并重新查库**，
@@ -93,20 +93,23 @@ grant + revoke 恰好 +2、角色 PUT 恰好 +1。
 
 ### 1.4 `catalog`：先 ACL 过滤，再游标/分页
 
-`ListVisible(ctx, principalID, cursor, limit)` 的可见性谓词和游标/LIMIT 在**同一条 SQL 的
-WHERE** 里：
+`ListVisible(ctx, principalID, cursor, limit, now)` 的可见性谓词和游标/LIMIT 在**同一条 SQL 的
+WHERE** 里；`now` 是调用者时钟（API 传 `policy.Authorizer.Clock()`）：
 
 ```sql
 WHERE a.archived_at IS NULL
   AND (a.owner_id = $1 OR EXISTS (
         SELECT 1 FROM platform.resource_grants g
-         WHERE g.principal_id = $1 AND g.resource_type = 'application'
-           AND g.resource_id = a.id AND g.action = 'read'
-           AND (g.expires_at IS NULL OR g.expires_at > now())))
+         WHERE g.principal_id = $1 AND g.resource_type = $6
+           AND g.resource_id = a.id AND g.action = $7
+           AND (g.expires_at IS NULL OR g.expires_at > $5)))
   AND ($2::timestamptz IS NULL OR (a.created_at, a.id) < ($2::timestamptz, $3::uuid))
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT $4
 ```
+
+`$6`/`$7` 是 `policy.ResourceApplication`/`policy.ActionRead`，不是散落的字符串；`$5` 是同一个
+时钟参数，保证列表与 `GetVisible` 的过期判断不出现第二权威。
 
 - 稳定 keyset：`(created_at DESC, id DESC)`；取 `limit+1` 判断是否还有下一页，`next_cursor`
   取**最后一条返回行**的键，保证下一页严格从它之后开始。
@@ -178,8 +181,8 @@ import identity 就成环。审计包只依赖 `database/sql`，事件 id 用 Po
 |---|---|---|
 | 1 | **A 不能枚举 B 正文** | `test_t019_visibility.py::test_a_cannot_enumerate_b_applications`（A 的列表只有自己的行；A GET B 的 id → 404 且响应不含 B 的 name/id；B 对称）、`test_missing_and_unauthorized_are_indistinguishable`（不存在与无权用同一个 code/message，逐字节对比去掉 request_id 后相同）、`test_an_archived_application_is_invisible_even_to_its_owner` |
 | 2 | **撤销后下一调用拒绝** | `test_t019_grants.py::test_a_grant_appears_on_the_next_read_and_a_revoke_denies_the_next_one`（201→列表含/详情 200→204→同一进程内列表排除/详情 404；epoch 恰好 +2；`grant.created`/`grant.revoked` 审计存在且元数据正确）、`test_the_second_read_is_answered_from_the_in_process_decision_cache`（在**不 bump epoch** 的情况下把库中 grant 改成已过期：第一个进程仍 200 → 证明缓存命中；同一数据库上另起一个 API 进程 → 404，隔离出“是缓存答的”） |
-| 3 | **管理员/作者不自动读取使用者内容** | `test_t019_visibility.py::test_an_administrator_is_not_an_automatic_content_reader`（bootstrap admin 的列表为空，GET 他人应用 404）、`test_an_author_cannot_read_another_creators_application`（两位 creator 互相 404/列表排除） |
-| 4 | 端到端入口实际演示；失败、当前授权与重试/恢复边界有断言，不以单层 mock 成功代替 | 31 个集成测试全部真实 PG + 真实二进制 + 真实 HTTP；失败/边界：`test_t019_validation.py` 的 11 类拒绝 + 每种拒绝前后 `state()` 快照相等（grants/epoch/audit/role_bindings）、重复授权 409 不 bump、未知 grant 撤销 404、坏 cursor 400、坏/越界 limit 422、非管理员 403、缺 CSRF 403 且无行变化；`test_t019_pagination.py` 先 ACL 后分页（interleaved + `limit=1` 无空页）；`test_t019_roles.py::test_two_concurrent_demotions_leave_an_administrator`（真实 psql 持有 advisory lock，两个真 HTTP 并发降级 → 恰好一个 200、一个 409 `last_admin`，最终仍有 1 个启用中的人类管理员）；`test_t019_grants.py::test_an_expiring_grant_is_not_served_from_cache_after_its_expiry`（grant 过期后同一 epoch 内下一次读取 404） |
+| 3 | **管理员/作者不自动读取使用者内容** | `test_t019_visibility.py::test_an_administrator_is_not_an_automatic_content_reader`（bootstrap admin 的列表为空，GET 他人应用 404）、`test_an_author_cannot_read_another_creators_application`（两位 creator 互相 404/列表排除）、`test_t019_self_grant.py::test_an_administrator_cannot_grant_themselves_read`（管理员自授被 422 拒绝、零行/零 epoch/零审计，随后列表仍空、详情仍 404；大写 UUID 不能绕过）、`test_a_different_administrator_can_grant_the_read`（另一管理员授予后同一读请求才可见） |
+| 4 | 端到端入口实际演示；失败、当前授权与重试/恢复边界有断言，不以单层 mock 成功代替 | 34 个 T019 集成测试全部真实 PG + 真实二进制 + 真实 HTTP；失败/边界：`test_t019_validation.py` 的 11 类拒绝 + 每种拒绝前后 `state()` 快照相等（grants/epoch/audit/role_bindings）、重复授权 409 不 bump、未知 grant 撤销 404、坏 cursor 400、坏/越界 limit 422、非管理员 403、缺 CSRF 403 且无行变化、自授 422 且零写入；`test_t019_pagination.py` 先 ACL 后分页（interleaved + `limit=1` 无空页）；`test_t019_roles.py::test_two_concurrent_demotions_leave_an_administrator`（真实 psql 持有 advisory lock，两个真 HTTP 并发降级 → 恰好一个 200、一个 409 `last_admin`，最终仍有 1 个启用中的人类管理员）；`test_t019_grants.py::test_an_expiring_grant_is_not_served_from_cache_after_its_expiry` 与 `test_the_list_and_the_detail_agree_at_the_same_grant_expiry`（同一个过期点，列表与详情一起拒绝） |
 | 5 | 记录版本、输入/hash、实际命令、原始结果与环境 profile；stub/real 分报，缺条件 blocked、未跑 not_run | 本报告 §1、§3、§4、§7；迁移文件与代码 hash 见上面的 commit；环境 profile `dev-stub` 明示 |
 | A1 | 迁移 0007：三表 + epoch 播种 + worker/PUBLIC 权限拒绝 | `test_t019_privileges.py::test_the_worker_cannot_write_the_authorization_tables`（3 表 × INSERT/UPDATE/DELETE 全部 permission denied，拒绝后无行）、`test_the_worker_holds_no_recorded_privilege_on_the_new_tables`、`test_public_has_no_privilege_on_the_platform_tables`（`aclexplode`/`acldefault` 证明 grantee=0 无权限）、`test_the_worker_keeps_its_own_bookkeeping_access`（对照） |
 | D1 | `POST /admin/grants` 契约与校验 | `test_t019_grants.py`（201 `{id,state}`）、`test_t019_validation.py::test_every_bad_grant_is_refused_with_its_field_and_changes_nothing`（未知/禁用 grantee、未知/归档资源、坏 action/type、过期/坏 expires_at 的精确 code 与 `details.field`） |
@@ -187,7 +190,7 @@ import identity 就成环。审计包只依赖 `database/sql`，事件 id 用 Po
 | D3 | `PUT /admin/users/{id}/roles` | `test_t019_roles.py` 全文件：promote 后同一会话可调 admin 端点、demote 后 403；last_admin 409；service principal 422；审计 old/new；epoch +1 |
 | D4 | `GET /applications` 列表 | `test_t019_pagination.py`（默认 20、limit=100、interleaved 过滤、游标往返）、`test_t019_validation.py::test_cursor_and_limit_are_validated`、`test_t019_pages.py` |
 | D5 | `GET /applications/{id}` | `test_t019_visibility.py`（200/404 同响应） |
-| D6 | Go 单测：cursor/limit/authorizer/role | `internal/catalog`（5 个）、`internal/policy`（13 个）、`internal/identity/roles_test.go`（3 个）、`internal/api/grants_test.go`（4 个）、`internal/uuid`（2 个），见 §3 |
+| D6 | Go 单测：cursor/limit/authorizer/role | 两轴复核后 `internal/catalog`（6 个：原 5 + 时钟参数 1）、`internal/policy`（15 个：原 13 + owner fail-closed 1 + 自授规则 1）、`internal/identity/roles_test.go`（3 个）、`internal/api/grants_test.go`（4 个）、`internal/uuid`（2 个），见 §3 |
 
 ## 3. 实际命令与原始结果（test 提交 `665f71c` 上，docs 提交前）
 
@@ -354,30 +357,49 @@ ok  	orchara/platform/internal/identity	0.765s
 5. **单资源读取用 `Authorizer`，列表用 SQL ACL**：本票要求列表“ACL 在同一个 WHERE 里”，
    所以列表不能走缓存；详情走 `Authorizer` 才能证明 epoch/缓存语义在真实读路径上生效。
    两者都默认拒绝，结果一致。
-6. **`expires_at` 用注入时钟比较，而不是数据库 `now()`**：本票明确要求“缓存 allow 必须带
-   `expires_at` 并用注入时钟复核”，Go 单测需要假时钟。因此 `Authorizer` 的查库条件也把
-   同一时刻作为参数传入。代价：列表 SQL 仍用数据库 `now()`，两处时钟在进程与数据库严重
-   漂移时可能短暂不一致（单机 dev/生产同一时钟；见 §7）。
+6. **`expires_at` 用注入时钟比较**：本票明确要求“缓存 allow 必须带 `expires_at` 并用注入时钟
+   复核”，Go 单测需要假时钟，因此 `Authorizer` 的查库条件把同一时刻作为参数传入。两轴复核后，
+   **列表查询也改用调用者时钟**：`catalog.Reader.ListVisible` 增加了 `now time.Time` 参数，
+   SQL 条件为 `g.expires_at > $5`，API 传 `s.policy.Clock()`。列表与详情因此共用一个时钟权威，
+   不再存在“列表用数据库 `now()`、详情用进程时钟”的双口径。Go 单测
+   `TestListVisibleQueriesWithTheProvidedClockAndVocabulary` 固定参数 5/6/7，
+   集成测试 `test_the_list_and_the_detail_agree_at_the_same_grant_expiry` 固定两条读路径在
+   同一过期点一起变不可见。
 7. **畸形路径 UUID 返回 404 而不是 422**：`grant_id`/`application_id`/`principal_id` 是路径参数，
    畸形值不可能命中任何行；用与“不存在”相同的 404 保持“不可枚举”。请求体/查询参数仍是 422
    （字段可指认）。
 8. **角色未变化时也 bump epoch**：每次成功的角色 PUT 都是一个授权状态写，本票测试按“每次写
    +1”断言；避免“相同集合就跳过”带来的两种语义。
-9. **页面只做了服务端内容/行为断言**：没有浏览器或 JS 引擎执行（与 T015/T017 相同限制）。
+9. **页面测试的边界**：没有 DOM/浏览器执行——页面断言仍是服务端内容/行为（与 T015/T017 相同
+   限制）。两轴复核后新增的 `tests/f01/test_f01_app_js.py` 会在 Node 下执行共享
+   `assets/app.js` 并对页面内联脚本做语法检查；仍未运行的是 DOM/浏览器交互，见 §7。
+10. **`last_admin` 不是本票自由发明**：`contracts/openapi.json` 的 `setUserRoles` description
+    明确写 "transaction must preserve at least one enabled human administrator"；T021 的
+    `updatePrincipal` 沿用同一不变量。本票的 409 `last_admin` 与 `ROLESET1` 咨询锁就是实现
+    该契约要求，T021 的禁用/启用复用同一把锁（见 T021 报告）。
+11. **管理员不能给自己授 `read`（两轴复核修复）**：此前 `POST /api/v1/admin/grants` 接受
+    `principal_id == caller`，管理员可以先给自己授 `read` 再读任意应用，恰好绕过 T019
+    “管理员/作者不自动读取使用者内容”的验收。现在 `policy.Grant` 在事务开始前用
+    `validateSelfGrant` 拒绝自授：422 `validation_failed`、`details.field = "principal_id"`、
+    消息说明必须由**另一位管理员**授予；不写 grant 行、不 bump epoch、不写审计。UUID 文本
+    大小写不敏感，`strings.EqualFold` 防止用大写拼写绕过。证据：
+    `test_t019_self_grant.py::test_an_administrator_cannot_grant_themselves_read`（含大写绕过
+    与零写入）与 `test_a_different_administrator_can_grant_the_read`（两人路径仍可用）。
 
 ## 7. 限制 / not_run
 
 - **没有浏览器级验证**：`/apps` 与 admin 页面断言的是服务端返回的 HTML/JS 内容（表单 id、
-  契约路径、CSRF 使用、401 跳转、空态与游标逻辑）以及同一 API 的行为测试；不执行 JavaScript，
-  不截图，不做 HCI 验收。
+  契约路径、CSRF 使用、401 跳转、空态与游标逻辑）以及同一 API 的行为测试；共享 `assets/app.js`
+  已由 Node 真实执行、页面内联脚本通过 `node --check`（`test_f01_app_js.py`），但 DOM/浏览器
+  交互仍未运行，也不截图，不做 HCI 验收。
 - **没有 `listGrants`/`getGrant` 契约**：撤销必须使用创建响应返回的 grant id。admin 页把
   id 显示在页面上；离开页面后无法从 API 重新列出 grant——这是契约缺口，不是本票遗漏
   （openapi 只有 `grantResource`/`revokeResourceGrant`）。
 - **F01 ACL 词汇表只有 `application`/`read`**：其它 `resource_type`/`action` 按设计返回 422；
   未知资源类型没有通用存在性探测。扩展点已在 `policy.ResourceTypes`/`Actions`。
-- **列表 SQL 用数据库 `now()` 判断 grant 过期，`Authorizer` 用进程时钟**（§6.6）：单机部署
-  两者同源；多实例时钟漂移时，列表与详情可能在过期边界短暂不一致。真正的统一时钟策略
-  （数据库时间作为唯一权威）留给后续票。
+- **列表与详情共用一个时钟**（§6.6）：两者都走 `policy.Authorizer` 的注入时钟，API 传
+  `s.policy.Clock()`；同一进程内不会在过期边界给出不一致答案。跨 API 实例仍是各进程时钟，
+  部署需保证时钟同源（NTP）；真正的数据库时间权威策略留给后续票。
 - **决策缓存是单进程的**：多实例部署时每个实例各自缓存，但每次判定都读数据库里的 epoch，
   所以撤销仍会在下一次请求生效；“跨实例共享缓存/失效广播”不需要也没有实现。缓存无定时清理，
   只在达到上限时按 epoch 淘汰。

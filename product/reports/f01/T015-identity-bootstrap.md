@@ -43,9 +43,30 @@
   audit 两个索引；`REVOKE ALL ON SCHEMA platform FROM PUBLIC`，若 `orchara_worker` 存在则
   撤销其在 `platform` 上的全部表权限与 USAGE。文件头声明：`checkpoint` schema 由
   langgraph-checkpoint-postgres 独立管理、本迁移不建不改；无 vector 列、无 `CREATE EXTENSION vector`。
-- **0005 修复（必须点名）**：原 `GRANT SELECT, INSERT ON app.operations TO orchara_worker`
-  在空库上必然失败（该表尚不存在，链无法从零开始）。改为 DO 块，仅在
-  `app.operations` 存在时授权；语义不变，链现在可以从空库跑完 0001→0006。
+- **0005 修复（必须点名，且只能算“有限修复”）**：原文件在空库上有一条悬空的
+  `GRANT SELECT, INSERT ON app.operations TO orchara_worker`。当前迁移链（0001–0008）
+  **没有任何迁移创建 `app.operations`**。T015 把它改成“表存在才授权”的 DO 块之后：
+  - 从空库执行 `admin migrate` 现在可以跑完 **0001→0008**（T015 当时是 0001→0006；
+    0007/0008 由 T019/T020 追加），不再因悬空语句中断；
+  - 但这条条件 `GRANT ... ON app.operations` 在当前链上**永不执行**：表不存在；
+  - 0005 文件头关于 `app.operations` 的授权承诺是 P04 继承下来的声明，仍是
+    **unverified**（没有表、没有授权、没有验证），不是本票的通过项；
+  - **F03 必须新建 `app.operations`，并在同一迁移里显式授予 worker 所需权限**。
+    在那之前，任何“worker 可以写 `app.operations`”的说法都不成立。本条按限制记录，
+    不按交付通过记录（§7 同样登记）。
+
+**不可变性例外的准确范围**：`platform.schema_migrations` 是 T015 引入的记账表。在它之前，
+任何安装都没有记录过任何迁移的 checksum，因此不可能存在引用 0005 旧字节的账本行。T015 修改
+0005 是**账本建立前的一次性修复**，不是“已应用文件被改”。账本建立后，从 0006 起（以及随后
+加入的 0007/0008）迁移文件一律不可变：`admin migrate` 会对已记录文件做 SHA-256 校验，改动即
+响亮失败。0001–0005 在记账后同样按记录值校验，只是它们的“当前字节”就是首次记账值。
+
+**运维注意（pre-F01 数据库）**：T015 之前的数据库没有 `platform.schema_migrations`，也没有
+任何 checksum 记录。对它执行 `admin migrate` 会按目录顺序应用 0001–0008；其中 0001–0005
+按构造是幂等的（`IF NOT EXISTS`、`DO` 块、重复 GRANT 不改变状态），随后执行器为每条迁移写入
+**当前文件**的 checksum。此后该库与空库走同一条不可变校验路径。若某个 pre-F01 库的 `app`
+schema 已被人工改过，迁移仍可能因对象定义冲突而失败；这属于运维修复，不应通过编辑迁移文件
+绕过。
 
 当前迁移文件与 SHA-256（即 `platform.schema_migrations.sha256` 的记录值）：
 
@@ -313,16 +334,22 @@ migration 0001_drill_one.sql was modified after it was applied: checksum mismatc
    卫生要求一致）。
 9. **`tools/ci_checks.py`**（主代理追加要求）：非 quick 的 `integration-tests` 现在同时跑
    f00/p02/f01；`--quick` 保持不变，仍快速且不碰数据库。
-10. **`0005_worker_grants.sql` 的一处修复**：见第 1.1 节，不修则空库迁移不可能成功。
+10. **`0005_worker_grants.sql` 的一次性修复**：见第 1.1 节。它只把悬空语句改成条件执行，使空库
+    迁移可完成；`app.operations` 仍不存在，0005 文件头的相关承诺仍为 unverified，F03 必须建表并
+    显式授权。不修则空库迁移不可能成功，但“修了”不等于“该授权已验证”。
 
 ## 7. 限制 / not_run
 
+- **`app.operations` 的 worker 授权仍是未验证的 P04 声明**：当前链没有创建该表的迁移，0005 的
+  条件 GRANT 永不执行；F03 必须建表并显式授权。见 §1.1 与 §6.10。这是本票最容易被误读为
+  “已通过”的一处，特此单列。
 - **CSRF 强制**：T015 不强制；`sessions.csrf_hash` 已存储，`X-CSRF-Token` 已被接收但在
   T017 前不作为拒绝依据。
 - **登出 / `/auth/me` / 刷新**：未实现，属 T017。
 - **登录限流**（5 次/60s，内存单实例）：未实现，属 T017。
-- **浏览器级验证**：未跑真实浏览器/无头浏览器；页面断言是 HTTP 内容 + JS 源码行为断言
-  （表单 id、端点、状态元素、token 不在 URL/storage）。HCI 级验收不在本票。
+- **浏览器级验证**：未跑真实浏览器/无头浏览器，DOM 交互未运行。后续两轴复核新增的
+  `tests/f01/test_f01_app_js.py` 会在 Node 下执行共享 `assets/app.js` 并对页面内联脚本做
+  `node --check`；这提高了对 JS 行为的证据强度，但仍不替代浏览器验收。
 - **Secure Cookie 的 HTTP 级实测**：`linux-sandbox`/`real-model` 启动 API 需要模型端点配置，
   集成测试未覆盖；Cookie 属性由 Go 单测 `TestSecureCookieFollowsTheProfile` 证明。
 - **argon2id 时序**：实现了 dummy verify 与常量时间比较，但没有做统计意义上的时序测量。

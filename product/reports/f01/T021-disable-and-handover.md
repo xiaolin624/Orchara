@@ -362,7 +362,16 @@ $ python -m pytest product/tests/f01/test_t021_disable_credentials.py product/te
    必须改为同事务 bump。
 7. **未新增迁移**：所需列都已存在；没有编辑 0005–0008，也没有 0009。
 8. **页面测试不执行 JavaScript**：与 T015/T017/T019/T020 相同的限制，只断言服务端 HTML 内容
-   与行为（表单 id、契约路径、PATCH、CSRF、反馈元素、无 URL/storage 泄漏）。
+   与行为（表单 id、契约路径、PATCH、CSRF、反馈元素、无 URL/storage 泄漏）。两轴复核后，
+   共享 `assets/app.js` 已由 `tests/f01/test_f01_app_js.py` 在 Node 下真实执行，页面内联脚本
+   也逐个通过 `node --check`；DOM/浏览器交互仍未运行。
+9. **“未完成待办”为什么是服务账号责任、为什么只能 CLI**：F01 可交接的“未完成待办”定义为
+   **服务账号责任**（`responsible_user_id`），因为审批/待办实体属于 **F06 的 approvals**，
+   F01 没有也不应伪造审批数据模型；因此本票的交接范围只到服务账号，不是遗漏了审批。
+   `updatePrincipal`（PATCH `/admin/principals/{id}`）的契约 body 只有 `{disabled, reason}`，
+   **没有 successor 字段**，所以责任交接无法通过该 HTTP 端点表达，只能由
+   `cmd/admin handover --from --to --by` 完成。这两条依赖关系是显式的：若 F06 定义 successor
+   字段或审批交接，应在新票扩展契约，而不是回填 F01。
 
 ## 7. 限制 / not_run
 

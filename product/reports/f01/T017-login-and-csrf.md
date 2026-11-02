@@ -94,6 +94,9 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, requiredRole 
 
 ### 1.4 登录限流
 
+限流不是本票自行加码：`contracts/openapi.json` 的 `login` operation description 明确写
+"Rate limited."，`API.md` §1 的错误码表包含 429（限流/配额）。本票只是按契约实现它。
+
 - 键 =（登录名小写去空白，`r.RemoteAddr` 的主机部分）。**不用** `X-Forwarded-For`
   之类的客户端可伪造头；能自选键的限流等于没有限流。
 - 5 次失败 / 60 秒固定窗口；第 6 次（即使密码正确）→ 429 `rate_limited` +
@@ -137,6 +140,8 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, requiredRole 
     成功清零、过期清理与上限淘汰。
 - 集成（`tests/f01/test_t017_*.py`，26 个）：真实临时库 + `cmd/admin migrate/bootstrap`
   + 真实 `cmd/api` 进程 + 真实 HTTP；见 §2 的逐条映射。
+- 共享页面 JS（`tests/f01/test_f01_app_js.py`，6 个）：Node 执行 `assets/app.js`（stub `fetch`）
+  + 五个页面的内联 `<script>` 逐个 `node --check`；这是两轴复核后补的真实执行，不是源码 grep。
 - `tools/ci_checks.py` 未改动：非 quick 的 `integration-tests` 已包含 `product/tests/f01`。
 
 ## 2. 验收标准逐条对照
@@ -294,6 +299,9 @@ EXIT=0
 8. **限流是固定窗口而非滑动窗口**：第一次失败开启 60 秒窗口，窗口内第 5 次失败即拦到窗口
    结束。固定窗口的边界效应（窗口末尾集中尝试）在单进程内存限流里可接受，且行为更可预测、
    可被注入时钟的 Go 单测逐项证明；滑动窗口/分布式配额属 F15B。
+9. **登录限流不是 scope creep**：`contracts/openapi.json` 的 `login` description 写明
+   "Rate limited."，`API.md` §1 的通用错误表包含 429；本票的 5 次/60 秒正是实现该契约要求。
+   它的单进程内存限制仍如实登记在 §7，不因“契约要求”而升级成生产级配额。
 
 ## 7. 限制 / not_run
 
@@ -305,8 +313,12 @@ EXIT=0
   不在 F01 范围。
 - **会话不会被动清理**：过期/吊销行保留在 `sessions`，清理任务不在本票；`/auth/me` 用数据库
   `now()` 判定过期，不依赖行删除。
-- **浏览器级验证未跑**：没有真实/无头浏览器；页面断言是服务端 HTML/JS 的内容与行为断言
-  （表单、契约路径、状态元素、401 跳转逻辑、token 不进 URL/storage）。HCI 级验收不在本票。
+- **浏览器级验证未跑**：没有真实/无头浏览器，DOM 交互（表单提交后的实际渲染、焦点、跳转后的
+  页面状态）不在自动验收内。共享的 `assets/app.js` 现在由
+  `tests/f01/test_f01_app_js.py` 在 Node 下用 stub `fetch` **真实执行**（成功 JSON、错误封套的
+  `code/status/requestId`、`http_<status>` 回退、CSRF/Content-Type/credentials/redirect、转义、
+  identity 缓存与 logout），五个页面的内联 `<script>` 块也逐个通过 `node --check`；页面结构仍由
+  `test_t015_pages.py`/`test_t017_pages.py` 断言。仍未运行的是 DOM/浏览器行为本身，不是 JS 语法。
 - **`Secure` Cookie 的 HTTP 级实测**：`linux-sandbox`/`real-model` 启动 API 需要模型端点配置，
   集成测试仍以 `dev-stub` 运行；Secure 属性由 Go 单测 `TestSecureCookieFollowsTheProfile`
   与 `TestClearedSessionCookieDeletesTheBrowserCookie` 覆盖。

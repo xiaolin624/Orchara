@@ -10,14 +10,40 @@
 
 ## 当前状态（不要读成"平台已完成"）
 
-平台**尚未实现**。当前只有 D00 环境探测与规格复现产物、以及工具脚本。没有任何业务服务、
-数据库迁移、前端画布或模型调用。真实状态以 [PROGRESS.md](PROGRESS.md) 为准。
+已实现范围：**D00 + P01–P05 + F00 + F01**。
 
-已知阻塞（D00/T001 实测）：
+- **D00–P05**：环境探测与规格复现、锁定依赖、双语言指纹/DSL 校验、检查点恢复与制品钉版、
+  Profile/CI、WSL2 沙箱隔离（ADR 0002）、租约/排空/丢回执。
+- **F00**：可启动的 HTTP 骨架、健康/就绪检查、静态状态页、环境 profile。
+- **F01（身份基础，5/5）**：迁移链与 `cmd/admin migrate` / `bootstrap`；本地用户邀请、激活、
+  登录、登出，Cookie 会话与 CSRF 强制；默认拒绝的资源 ACL（`platform.applications` 读模型、
+  `policy_epochs` / `resource_grants`、授权/撤销、角色更新与 last-admin）；具名负责人的服务账号
+  与可撤销、带 scope 的 bearer API Key；禁用/启用（同一事务撤销会话与 Key、bump epoch、审计）
+  与 `cmd/admin handover`；`/login`、`/admin`、`/apps`、`/activate` 页面。
+
+平台**仍不是完整 v1**：请求/路由/执行/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署与灾备等
+后续 epic 尚未实现。F01 的已知边界（详见 [`reports/f01/`](reports/f01/) 与
+[PROGRESS.md](PROGRESS.md)）：
+
+- **没有浏览器 E2E**：页面测试是真实 HTTP 内容断言；共享 `assets/app.js` 由 Node 真实执行，
+  页面内联脚本做 `node --check`，但 DOM/交互行为未跑。
+- **没有 approvals / F09 记忆存储**：F01 只交付服务账号责任交接与 `/memories` 的服务凭据拒绝
+  边界；审批属 F06，记忆属 F09。
+- **登录限流是单进程内存态**（5 次/60 秒），多实例配额属 F15B；限流键取直连 peer 地址。
+- **ACL 词汇表只有 `application` / `read`**；`createApplication` 与 `application_versions`
+  外键属 F02A。
+- **`app.operations` 的 worker 授权仍是未验证的 P04 声明**：当前链没有创建该表，0005 的条件
+  GRANT 不执行；F03 必须建表并显式授权。
+- **`Secure` Cookie 由 Go 单测覆盖**；`linux-sandbox` / `real-model` profile 未做 HTTP 级实测。
+
+真实状态以 [PROGRESS.md](PROGRESS.md) 为准；F01 各票的证据与限制见 `reports/f01/T015-*.md`…
+`T021-*.md`。
+
+已知阻塞 / 限制（D00/T001 实测 + F01 补充）：
 
 | 阻塞 | 影响 | 解除条件 |
 |---|---|---|
-| `linux_isolation` | P03 沙箱票（T006/T010/T014）、F13B 隔离验收无法执行 | 真实 Linux 宿主 + runsc/gVisor + root |
+| `linux_isolation`（生产） | 验收已在 WSL2 完成（ADR 0002）；生产隔离交付仍需真实独立 Linux 宿主 | 独立 Linux 宿主 + runsc/gVisor + root，并重跑 P03 证据 |
 | `model_credentials` | 只能报告 stub 路径；真实模型质量不可声明 | 部署者提供已获批模型端点凭据 |
 | `container_runtime` | Compose 部署票不可验证 | 安装 Docker/兼容运行时 |
 
@@ -67,7 +93,21 @@ $env:ORCHARA_DB_DSN   = (python tools/pg_dev.py dsn)
 $env:ORCHARA_HTTP_ADDR = "127.0.0.1:8088"
 $env:ORCHARA_WEB_DIR  = "apps/web/src"
 go run ./cmd/api
+
+# F01 身份：迁移 → 建首个管理员（密码只从隐藏 stdin 读）→ 启动后访问页面
+go run ./cmd/admin migrate
+go run ./cmd/admin bootstrap --login admin --display-name "Platform Admin"
+# 终端里会隐藏读取密码；管道/脚本输入时读一行，不回显、不落日志
+go run ./cmd/api
+# 页面：/login（登录）、/admin（邀请/授权/角色/服务账号/禁用）、
+#       /apps（ACL 过滤后的应用列表）、/activate（一次性令牌激活）
+
+# F01 交接：服务账号责任转给另一位启用中的人类管理员（CLI-only）
+go run ./cmd/admin handover --from <旧负责人 uuid> --to <新负责人 uuid> --by <操作者 uuid>
 ```
+
+F01 的命令、接口、原始结果与限制见 [`reports/f01/`](reports/f01/)（T015–T021），票状态见
+[PROGRESS.md](PROGRESS.md)。`admin` 的 DSN 只从 `ORCHARA_DB_DSN` 读取，不要放在 argv 上。
 
 可选 profile：`dev-stub` / `linux-sandbox` / `real-model` / `capacity-stub`。
 非 `linux-sandbox` 下启用 `ORCHARA_ALLOW_ARBITRARY_SCRIPTS=true` 会被拒绝；
