@@ -29,7 +29,7 @@ const usage = `usage: orchara-maintenance [run|sweep]
 
   (no argument)  connectivity and visibility pass; prints one JSON report
   run            claim and execute background jobs over the internal mTLS API
-  sweep          delete orphaned staging/sealed objects (never live ones)
+  sweep          delete orphaned staging objects (sealed bytes are never touched)
 
 run flags:
   --once                 drain every pool until idle, then exit
@@ -53,8 +53,11 @@ sweep flags:
   --dry-run         report what would be deleted, delete nothing
 
   sweep needs ORCHARA_MAINTENANCE_DSN and ORCHARA_OBJECT_DIR (not the internal
-  TLS client configuration): it reads references from PostgreSQL and deletes
-  objects from the local store.
+  TLS client configuration): it reads staging references from PostgreSQL and
+  deletes unreferenced staging objects from the local store. Sealed bytes are
+  never deleted by this command; it reports unreferenced ones as
+  sealed_deferred for F07/F13A, which must coordinate registration and deletion
+  with a lock.
 `
 
 type report struct {

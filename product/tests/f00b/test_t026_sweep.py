@@ -1,14 +1,16 @@
-"""T026 acceptance: the orphan sweep deletes only unreferenced objects.
+"""T026 acceptance: the orphan sweep deletes only unreferenced staging objects.
 
 Real files in the real object store, real artifacts rows, the real compiled
 maintenance binary. The sweep must delete:
 
 * staging objects with no live uploader (no row, or a row that already moved on:
-  ready/quarantined/deleted);
-* sealed objects that no artifact row references at all (crash leftovers).
+  ready/quarantined/deleted).
 
-It must never delete a sealed object an artifact row references (including a
-deleted artifact — F07 owns that removal), and it must keep a staged object whose
+It must never delete a sealed object, referenced or not. Deleting sealed bytes
+needs a registration/deletion lock shared with the writers (a sealed object can be
+written just before its artifact row commits), so sealed-orphan cleanup is a later
+ticket (F07/F13A); this sweep reports how many unreferenced sealed objects it left
+in ``sealed_deferred`` instead of guessing. It must also keep a staged object whose
 artifact is still uploading/scanning. A repeated sweep is a no-op.
 """
 
@@ -32,6 +34,8 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     orphan_staging_key = "staging/" + f00b.random_object_name()
     f00b.write_object(object_dir, orphan_staging_key, b"crashed upload")
     # 2. A sealed object no row references (a crash between seal and commit).
+    #    The sweep must NOT delete it: registration and deletion need a shared
+    #    lock, so sealed-orphan cleanup is F07/F13A.
     orphan_sealed_key = "sealed/" + f00b.random_object_name()
     f00b.write_object(object_dir, orphan_sealed_key, b"crashed sealed bytes")
 
@@ -79,7 +83,8 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
         staging=True,
     )
 
-    # Dry run: reports the candidates, deletes nothing.
+    # Dry run: reports the staging candidates, deletes nothing, and already
+    # reports the sealed object it will not delete.
     completed, planned, summary = t026.run_sweep(
         t026_stack, "--orphan-age", "0s", "--dry-run"
     )
@@ -88,6 +93,7 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     assert summary["dry_run"] is True, summary
     assert summary["deleted"] == 0, summary
     assert summary["would_delete"] >= 2, summary
+    assert summary["sealed_deferred"] == 1, summary
     assert set(t026.object_files(object_dir, "staging/")) >= {
         orphan_staging_key,
         leftover.staging_key,
@@ -95,35 +101,40 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     }
     assert (object_dir / orphan_sealed_key).exists()
     assert all(line["action"] == "would_delete" for line in planned), planned
+    assert all(line["store"] == "staging" for line in planned), planned
 
     completed, deleted_lines, summary = t026.run_sweep(t026_stack, "--orphan-age", "0s")
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     assert summary["status"] == "ok", summary
-    assert summary["deleted"] == 3, (summary, deleted_lines)
+    # Only the staging leftovers go: the sealed orphans are preserved on purpose.
+    assert summary["deleted"] == 2, (summary, deleted_lines)
+    assert summary["sealed_deferred"] == 1, summary
     assert summary["deleted_bytes"] > 0
 
     deleted_keys = {line["key"] for line in deleted_lines}
     assert orphan_staging_key in deleted_keys, deleted_lines
-    assert orphan_sealed_key in deleted_keys, deleted_lines
     assert leftover.staging_key in deleted_keys, deleted_lines
+    assert orphan_sealed_key not in deleted_keys, deleted_lines
     reasons = {line["reason"] for line in deleted_lines}
     assert "no_artifact_reference" in reasons, deleted_lines
     assert "artifact_ready" in reasons, deleted_lines
     assert all(line["action"] == "deleted" for line in deleted_lines), deleted_lines
 
-    # What must survive: referenced sealed bytes (ready and deleted rows) and the
-    # live uploader's staging object.
+    # What must survive: every sealed object (referenced, unreferenced and
+    # tombstoned alike) and the live uploader's staging object.
     assert (object_dir / ready.object_key).exists()
     assert (object_dir / deleted.object_key).exists()
+    assert (object_dir / orphan_sealed_key).exists(), "the sweep deleted sealed bytes"
     assert (object_dir / live.staging_key).exists()
     assert not (object_dir / orphan_staging_key).exists()
-    assert not (object_dir / orphan_sealed_key).exists()
     assert not (object_dir / leftover.staging_key).exists()
 
-    # Idempotent: a second sweep finds nothing to delete.
+    # Idempotent: a second sweep finds nothing to delete and still reports the
+    # sealed objects it left for the later ticket.
     completed, deleted_lines, summary = t026.run_sweep(t026_stack, "--orphan-age", "0s")
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     assert summary["deleted"] == 0, summary
+    assert summary["sealed_deferred"] == 1, summary
     assert deleted_lines == []
     assert summary["kept"] >= 3, summary
 

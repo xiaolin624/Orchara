@@ -1,16 +1,19 @@
-// Command maintenance sweep: object-store orphan cleanup (F00B/T026).
+// Command maintenance sweep: staging object orphan cleanup (F00B/T026).
 //
-// Two kinds of bytes are safe to delete, and only after an age threshold:
+// Only staging bytes are deleted, and only after an age threshold:
 //
-//	staging/  no live artifact is waiting for it. A live artifact means an
+//	staging/  no live uploader is waiting for it. A live artifact means an
 //	          `uploading`/`scanning`, non-deleted artifact row whose
 //	          staging_object_key is exactly this key. A staging key referenced
 //	          only by a ready/quarantined/deleted row is a leftover from an
 //	          upload that already finished (or failed).
-//	sealed/   no artifact row references the key at all. A sealed object that any
-//	          artifact row references is never deleted here, whatever the row's
-//	          state: deletion of a live artifact's sealed bytes belongs to F07's
-//	          deletion model, not to the orphan sweep.
+//	sealed/   never deleted here. A sealed object is written before its
+//	          artifact row commits, so "no row references this key" observed in
+//	          one snapshot does not prove the object is garbage: the writer may
+//	          be between the seal and its commit. Safe sealed-orphan cleanup needs
+//	          a lock shared by registration and deletion (F07/F13A). This command
+//	          reports how many unreferenced sealed objects it left behind in
+//	          `sealed_deferred` and never guesses.
 //
 // The sweep never guesses: it reads the references from PostgreSQL, lists the
 // real store, and re-reads the database before each deletion decision. It is
@@ -53,6 +56,7 @@ type sweepSummary struct {
 	DryRun         bool   `json:"dry_run"`
 	ScannedStaging int    `json:"scanned_staging"`
 	ScannedSealed  int    `json:"scanned_sealed"`
+	SealedDeferred int    `json:"sealed_deferred"`
 	Deleted        int    `json:"deleted"`
 	WouldDelete    int    `json:"would_delete"`
 	Kept           int    `json:"kept"`
@@ -150,7 +154,8 @@ func sweepOrphans(
 		Status:    "ok",
 		OrphanAge: orphanAge.String(),
 		DryRun:    dryRun,
-		Note:      "staging without a live uploader and sealed objects no artifact row references; live/deleted-artifact sealed bytes are F07's",
+		Note: "staging objects without a live uploader; sealed objects are never deleted here " +
+			"(sealed-orphan cleanup belongs to F07/F13A and needs a registration/deletion lock)",
 	}
 
 	staging, err := loadStagingReferences(ctx, db)
@@ -214,18 +219,19 @@ func sweepOrphans(
 
 	for _, object := range sealedObjects {
 		if sealed[object.Key] {
-			// Referenced by an artifact row in some state. The sweep never
-			// deletes those: F07's deletion model owns artifact removal.
+			// Referenced by an artifact row in some state. Never deleted here,
+			// whatever the row's state: F07's deletion model owns artifact
+			// removal.
 			summary.Kept++
 			continue
 		}
-		if now.Sub(object.ModTime) < orphanAge {
-			summary.Kept++
-			continue
+		// Unreferenced *by this snapshot*. A concurrent writer may be between
+		// sealing the object and committing its artifact row, so this is a
+		// candidate for a later ticket, never a deletion decision here.
+		if now.Sub(object.ModTime) >= orphanAge {
+			summary.SealedDeferred++
 		}
-		if err := decide(object.Key, "sealed", "no_artifact_reference", object.Size); err != nil {
-			return summary, deletions, err
-		}
+		summary.Kept++
 	}
 	return summary, deletions, nil
 }
