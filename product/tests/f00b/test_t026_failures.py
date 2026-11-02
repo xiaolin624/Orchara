@@ -145,6 +145,76 @@ def test_unreadable_dataset_bytes_retry_then_fail_without_a_report(t026_stack, t
     assert "application_evaluate" in log_text
 
 
+def test_exhausted_leases_fail_the_evaluation_without_a_report(t026_stack) -> None:
+    """The third expired lease terminalizes the job AND its evaluation row.
+
+    Recovery happens inside the next claim's transaction (there is no separate
+    sweep process), so the same rule must hold on that path as on Complete: a
+    retryable failure leaves the evaluation running (an attempt is still in
+    flight), while the exhausted third attempt fails the job and the evaluation
+    with the same code and no report row.
+    """
+    prepared = t026.prepare_model_evaluation(t026_stack)
+    job_id = prepared["background_job_id"]
+    evaluation_id = prepared["evaluation_id"]
+    client = t026_stack.internal_client()
+
+    # Attempt 1.
+    first = client.claim(kinds=[t026.KIND_APPLICATION_EVALUATE])
+    assert first.status == 200, first.text
+    assert first.json["job_id"] == job_id
+    assert t026.evaluation_row(t026_stack.dbname, evaluation_id)["state"] == "running"
+    f00b.force_lease_expiry(t026_stack.dbname, job_id)
+
+    # The next claim recovers the expired lease (ready + backoff) and finds
+    # nothing to hand out yet. The evaluation is still running: a retry is
+    # pending, not a terminal failure.
+    recovered = client.claim(kinds=[t026.KIND_APPLICATION_EVALUATE])
+    assert recovered.status == 204, recovered.text
+    job = f00b.job_row(t026_stack.dbname, job_id)
+    assert job["state"] == "ready", job
+    assert job["error_code"] == "lease_expired"
+    evaluation = t026.evaluation_row(t026_stack.dbname, evaluation_id)
+    assert evaluation["state"] == "running", evaluation
+    assert evaluation["report_id"] is None
+    assert evaluation["finished_at"] is None
+
+    # Attempt 2 and 3.
+    for attempt in (2, 3):
+        t026.wait_for_retry_available(t026_stack.dbname, job_id)
+        lease = client.claim(kinds=[t026.KIND_APPLICATION_EVALUATE])
+        assert lease.status == 200, lease.text
+        assert lease.json["job_id"] == job_id
+        assert int(f00b.job_row(t026_stack.dbname, job_id)["attempt_count"]) == attempt
+        assert t026.evaluation_row(t026_stack.dbname, evaluation_id)["state"] == "running"
+        f00b.force_lease_expiry(t026_stack.dbname, job_id)
+        recovered = client.claim(kinds=[t026.KIND_APPLICATION_EVALUATE])
+        assert recovered.status == 204, recovered.text
+        if attempt == 2:
+            row = f00b.job_row(t026_stack.dbname, job_id)
+            assert row["state"] == "ready", row
+            assert t026.evaluation_row(t026_stack.dbname, evaluation_id)["state"] == "running"
+
+    # The third expired lease is not retried: the job fails, and the bound
+    # evaluation fails with the same code and no report.
+    job = f00b.job_row(t026_stack.dbname, job_id)
+    assert job["state"] == "failed", job
+    assert job["error_code"] == "lease_expired", job
+    assert job["failure_class"] == "infrastructure", job
+    assert int(job["attempt_count"]) == 3
+    assert job["finished_at"] is not None
+
+    evaluation = t026.evaluation_row(t026_stack.dbname, evaluation_id)
+    assert evaluation["state"] == "failed", evaluation
+    assert evaluation["error_code"] == "lease_expired", evaluation
+    assert evaluation["report_id"] is None
+    assert evaluation["finished_at"] is not None
+    assert t026.report_count(t026_stack.dbname) == 0
+
+    # No fourth attempt exists: the job is terminal.
+    assert client.claim(kinds=[t026.KIND_APPLICATION_EVALUATE]).status == 204
+
+
 def test_an_application_evaluation_with_a_foreign_snapshot_fails_honestly(t026_stack) -> None:
     owner = f00b.principal_id_for_login(t026_stack.dbname)
     dataset = t026.seed_dataset(t026_stack, owner)

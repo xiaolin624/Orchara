@@ -39,7 +39,7 @@ func recoverExpiredTx(ctx context.Context, tx *sql.Tx, base time.Duration) (int,
 		base = DefaultRetryBackoff
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id::text, attempt_count
+		SELECT id::text, attempt_count, kind, target_id::text
 		  FROM platform.background_jobs
 		 WHERE state = 'leased' AND lease_deadline < now()
 		 ORDER BY lease_deadline
@@ -51,11 +51,13 @@ func recoverExpiredTx(ctx context.Context, tx *sql.Tx, base time.Duration) (int,
 	type expired struct {
 		id       string
 		attempts int
+		kind     string
+		targetID string
 	}
 	var pending []expired
 	for rows.Next() {
 		var entry expired
-		if err := rows.Scan(&entry.id, &entry.attempts); err != nil {
+		if err := rows.Scan(&entry.id, &entry.attempts, &entry.kind, &entry.targetID); err != nil {
 			_ = rows.Close()
 			return 0, fmt.Errorf("reading expired leases: %w", err)
 		}
@@ -82,6 +84,14 @@ func recoverExpiredTx(ctx context.Context, tx *sql.Tx, base time.Duration) (int,
 				       last_error_at = now(),
 				       finished_at = now()
 				 WHERE id = $1::uuid`, entry.id, CodeLeaseExpired, string(FailureInfrastructure))
+			if err == nil {
+				// A terminal background job must not leave its business row
+				// "running" forever: the evaluation and the job are two views of
+				// one piece of work (ADR 0004 §33), so the same transaction that
+				// fails the job fails an evaluation that is not already terminal.
+				// Retryable recoveries below stay non-terminal on purpose.
+				err = failEvaluationForJobTx(ctx, tx, Kind(entry.kind), entry.targetID, CodeLeaseExpired)
+			}
 		} else {
 			_, err = tx.ExecContext(ctx, `
 				UPDATE platform.background_jobs

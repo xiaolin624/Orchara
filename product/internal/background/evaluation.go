@@ -369,6 +369,23 @@ func failEvaluationTx(ctx context.Context, tx *sql.Tx, evaluationID, errorCode s
 	return nil
 }
 
+// failEvaluationForJobTx reconciles the business row of a terminal background
+// job with that job's failure. It is the one place both terminal paths (Complete's
+// guards and the expired-lease sweep) go through, so a failed job can never leave
+// its evaluation "running" and a retryable recovery never fails it.
+func failEvaluationForJobTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	kind Kind,
+	targetID, errorCode string,
+) error {
+	if kind != KindApplicationEvaluate {
+		// No other kind owns bound business state in this batch.
+		return nil
+	}
+	return failEvaluationTx(ctx, tx, targetID, errorCode)
+}
+
 // cancelEvaluationTx records a cancelled evaluation.
 func cancelEvaluationTx(ctx context.Context, tx *sql.Tx, evaluationID string) error {
 	if _, err := tx.ExecContext(ctx, `

@@ -329,6 +329,26 @@ def read_log(path: Path) -> str:
 # ---------------------------------------------------------------------------
 # database read models and bounded waits
 # ---------------------------------------------------------------------------
+def wait_for_retry_available(dbname: str, job_id: str, *, timeout: float = 5.0) -> None:
+    """Wait on the database clock until a retry's backoff has elapsed.
+
+    The retry delay is set by the job row's ``available_at``; waiting on that
+    column (instead of sleeping for the configured backoff) is what makes the
+    lease-recovery tests deterministic under load.
+    """
+    wait_until(
+        lambda: st.sql(
+            dbname,
+            "SELECT available_at <= now() FROM platform.background_jobs "
+            f"WHERE id = {st.quote_literal(job_id)}::uuid",
+        )
+        == "t",
+        timeout=timeout,
+        interval=0.01,
+        what=f"the retry of job {job_id} to become available",
+    )
+
+
 def evaluation_row(dbname: str, evaluation_id: str) -> dict:
     rows = st.sql_rows(
         dbname,
@@ -486,6 +506,7 @@ __all__ = [
     "wait_for_evaluation",
     "wait_for_job_state",
     "wait_for_leased",
+    "wait_for_retry_available",
     "wait_until",
     "get_evaluation",
     "get_report",
