@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from support import f00b, t024
+from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
     t024_stack,
@@ -247,6 +248,88 @@ def test_stale_and_malformed_attempt_tokens_are_refused(t024_stack) -> None:
     )
     assert missing_job.status == 404, missing_job.text
     assert missing_job.json["error"]["code"] == "job_not_found"
+    assert t024.model_calls(t024_stack.dbname, job.job_id) == []
+
+
+def test_a_business_artifact_is_never_accepted_as_a_model_fixture(t024_stack) -> None:
+    """T024's boundary, in both enforcement places.
+
+    A user upload (``parsed_data``/``report``/...) is readable but is not a
+    synthetic fixture. The admin enqueue refuses it before writing a job, and the
+    model-calls endpoint re-reads the job's input and refuses it again, so neither
+    a stale job row nor a hand-written row can smuggle business content to a
+    model.
+    """
+    owner = t024.owner_id(t024_stack.dbname)
+    candidate = t024.seed_candidate(t024_stack.dbname, t024_stack.object_dir, owner)
+    business = t024.seed_business_artifact(t024_stack.dbname, t024_stack.object_dir, owner)
+
+    refused = f00b.enqueue(
+        t024_stack,
+        kind=t024.KIND_MODEL_VALIDATE,
+        target_id=candidate["id"],
+        owner_id=owner,
+        dedup_key="t024-business-fixture",
+        input_artifact_id=business.id,
+    )
+    assert refused.returncode == 1, (refused.stdout, refused.stderr)
+    assert "model_fixture" in refused.stderr, refused.stderr
+    assert f00b.job_count(t024_stack.dbname) == 0
+
+    # A not-ready artifact is refused at the same boundary.
+    not_ready = t024.seed_fixture(t024_stack.dbname, t024_stack.object_dir, owner, state="scanning")
+    refused = f00b.enqueue(
+        t024_stack,
+        kind=t024.KIND_MODEL_VALIDATE,
+        target_id=candidate["id"],
+        owner_id=owner,
+        dedup_key="t024-not-ready-fixture",
+        input_artifact_id=not_ready.id,
+    )
+    assert refused.returncode == 1, (refused.stdout, refused.stderr)
+    assert "ready" in refused.stderr, refused.stderr
+    assert f00b.job_count(t024_stack.dbname) == 0
+
+    # Another principal's synthetic fixture is refused too: a job owner cannot
+    # borrow somebody else's fixture.
+    stranger = f00b.seed_principal(t024_stack.dbname, "t024-fixture-stranger")
+    foreign = t024.seed_fixture(t024_stack.dbname, t024_stack.object_dir, stranger)
+    refused = f00b.enqueue(
+        t024_stack,
+        kind=t024.KIND_MODEL_VALIDATE,
+        target_id=candidate["id"],
+        owner_id=owner,
+        dedup_key="t024-foreign-fixture",
+        input_artifact_id=foreign.id,
+    )
+    assert refused.returncode == 1, (refused.stdout, refused.stderr)
+    assert "different principal" in refused.stderr, refused.stderr
+    assert f00b.job_count(t024_stack.dbname) == 0
+
+    # The endpoint check is defense in depth: a job that was legitimately created
+    # with a synthetic fixture is still refused if the artifact later stops being
+    # one (or belongs to somebody else).
+    job = t024.prepare_model_validate_job(t024_stack, dedup_key="t024-fixture-tampered-purpose")
+    st.sql(
+        t024_stack.dbname,
+        "UPDATE platform.artifacts SET purpose = 'parsed_data' "
+        f"WHERE id = {st.quote_literal(job.fixture.id)}::uuid",
+    )
+    refused_call = call(t024_stack, job)
+    assert refused_call.status == 422, refused_call.text
+    assert refused_call.json["error"]["code"] == "fixture_not_synthetic", refused_call.json
+    assert t024.model_calls(t024_stack.dbname, job.job_id) == []
+
+    job = t024.prepare_model_validate_job(t024_stack, dedup_key="t024-fixture-tampered-owner")
+    st.sql(
+        t024_stack.dbname,
+        "UPDATE platform.artifacts SET owner_id = "
+        f"{st.quote_literal(stranger)}::uuid "
+        f"WHERE id = {st.quote_literal(job.fixture.id)}::uuid",
+    )
+    foreign_call = call(t024_stack, job)
+    assert foreign_call.status == 422, foreign_call.text
+    assert foreign_call.json["error"]["code"] == "fixture_missing", foreign_call.json
     assert t024.model_calls(t024_stack.dbname, job.job_id) == []
 
 

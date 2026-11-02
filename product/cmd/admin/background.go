@@ -170,6 +170,13 @@ func runBackgroundEnqueue(args []string) error {
 // enqueueInTransaction is EnqueueTx with the administrative command's own
 // transaction. It exists instead of calling Controller.Enqueue so the CLI has no
 // object store or model configuration to load.
+//
+// A model_validate job names a synthetic fixture; the CLI refuses a business
+// artifact, a foreign artifact or a not-ready artifact before the job row is
+// written (the same checks run again in the model-calls endpoint, which re-reads
+// the row after a claim). This is the administrative registration boundary
+// documented in the T024 report: F06 owns the real fixture UI, and no user
+// upload purpose can produce model_fixture.
 func enqueueInTransaction(
 	ctx context.Context,
 	db *sql.DB,
@@ -180,6 +187,13 @@ func enqueueInTransaction(
 		return nil, false, errors.New("cannot start the enqueue transaction")
 	}
 	defer func() { _ = tx.Rollback() }()
+	if params.Kind == background.KindModelValidate && params.InputArtifactID != "" {
+		if err := background.RequireSyntheticFixtureTx(
+			ctx, tx, params.InputArtifactID, params.OwnerID,
+		); err != nil {
+			return nil, false, fixtureRefusal(err)
+		}
+	}
 	job, created, err := background.EnqueueTx(ctx, tx, params)
 	if err != nil {
 		return nil, false, err
@@ -188,6 +202,28 @@ func enqueueInTransaction(
 		return nil, false, errors.New("cannot commit the enqueue transaction")
 	}
 	return job, created, nil
+}
+
+// fixtureRefusal turns the typed fixture errors into the operator-facing reason.
+// These are data refusals (exit 1), not command-line shape errors (exit 2): the
+// flags are well formed, the artifact the operator named is not usable.
+func fixtureRefusal(err error) error {
+	switch {
+	case errors.Is(err, background.ErrArtifactNotFound):
+		return errors.New("--input-artifact-id does not name an artifact")
+	case errors.Is(err, background.ErrFixtureNotSynthetic):
+		return fmt.Errorf(
+			"--input-artifact-id must be an administrative synthetic model fixture (purpose %q); "+
+				"a user-uploaded artifact may never be given to a model",
+			background.PurposeModelFixture,
+		)
+	case errors.Is(err, background.ErrFixtureNotOwned):
+		return errors.New("--input-artifact-id belongs to a different principal than --owner-id")
+	case errors.Is(err, background.ErrArtifactNotReady):
+		return errors.New("--input-artifact-id must be ready and not deleted")
+	default:
+		return err
+	}
 }
 
 func kindNames() []string {

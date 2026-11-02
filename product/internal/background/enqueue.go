@@ -124,6 +124,10 @@ func EnqueueTx(ctx context.Context, tx *sql.Tx, params EnqueueParams) (*Job, boo
 
 // Enqueue is EnqueueTx in its own transaction. Producers that already write a
 // resource row must call EnqueueTx with that transaction instead.
+//
+// After the commit the controller emits a best-effort wakeup. The job is durable
+// before the notification is attempted, so a dropped wakeup delays the next
+// claim by at most one poll interval and can never lose the work.
 func (c *Controller) Enqueue(ctx context.Context, params EnqueueParams) (*Job, bool, error) {
 	tx, err := c.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -137,6 +141,7 @@ func (c *Controller) Enqueue(ctx context.Context, params EnqueueParams) (*Job, b
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("committing the enqueue transaction: %w", err)
 	}
+	notify(ctx, c.Notifier, job)
 	return job, created, nil
 }
 

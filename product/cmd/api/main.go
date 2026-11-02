@@ -25,12 +25,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"orchara/platform/internal/api"
+	"orchara/platform/internal/background"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
@@ -115,7 +117,27 @@ func run(logger *log.Logger) error {
 		WorkerImageDigest: cfg.WorkerImageDigest,
 		RuntimeLockPath:   cfg.RuntimeLockPath,
 	}
-	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, signer, providers, cfg.PublicURL, cfg.RetryBackoff, manifestInputs)
+	// Background wakeups are advisory. This batch has no wakeup transport (no
+	// Redis instance on the development host), so the API installs the in-process
+	// notifier with no consumer: every notification is dropped, the drop is logged
+	// once, and the maintenance processes still claim the committed work by
+	// polling PostgreSQL. A later ticket replaces the notifier, not the producers.
+	notifier := background.NewInProcessNotifier(sync.OnceFunc(func() {
+		logger.Print("wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)")
+	}))
+	apiServer := api.New(api.Deps{
+		Service:      identityService,
+		WebDir:       cfg.WebDir,
+		Profile:      cfg.Profile,
+		Logger:       logger,
+		Objects:      objects,
+		Signer:       signer,
+		Providers:    providers,
+		PublicURL:    cfg.PublicURL,
+		RetryBackoff: cfg.RetryBackoff,
+		Manifest:     manifestInputs,
+		Notifier:     notifier,
+	})
 	apiServer.Register(mux)
 
 	indexPath := filepath.Join(cfg.WebDir, "index.html")

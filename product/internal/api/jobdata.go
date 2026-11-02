@@ -42,6 +42,19 @@ type internalModelCallRequest struct {
 	Params                map[string]any `json:"params"`
 }
 
+// jobAttemptRequest is the one method every job-scoped body must provide: the
+// attempt token that proves the lease. It lets one wrapper decode the body,
+// enforce the maintenance role and check the live attempt before a handler sees
+// any business data, without repeating that prologue five times.
+type jobAttemptRequest interface {
+	attemptToken() string
+}
+
+func (r internalArtifactTokenRequest) attemptToken() string { return r.AttemptToken }
+func (r internalUploadRequest) attemptToken() string        { return r.AttemptToken }
+func (r internalCompleteRequest) attemptToken() string      { return r.AttemptToken }
+func (r internalModelCallRequest) attemptToken() string     { return r.AttemptToken }
+
 type uploadView struct {
 	ArtifactID string `json:"artifact_id"`
 	UploadURL  string `json:"upload_url"`
@@ -76,16 +89,36 @@ func artifactViewOf(view background.ArtifactView) artifactView {
 	}
 }
 
-func (s *Server) handleInternalArtifactUpload(w http.ResponseWriter, r *http.Request) {
+// withJobData is the shared prologue of every job-scoped internal endpoint:
+//
+//	requireInternalRole(maintenance) -> decodeJSON -> requireJobAttempt.
+//
+// It preserves the existing statuses and body shapes (403 forbidden for a
+// non-maintenance certificate, 400 invalid_json for a malformed body, and
+// writeJobControlError's mapping for a bad job id/token). A handler that gets
+// ok=true knows the caller holds the live lease and request is decoded.
+func (s *Server) withJobData(
+	w http.ResponseWriter,
+	r *http.Request,
+	request jobAttemptRequest,
+) (*background.Job, bool) {
 	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
+		return nil, false
 	}
-	var request internalUploadRequest
-	if err := decodeJSON(w, r, &request); err != nil {
+	if err := decodeJSON(w, r, request); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
+		return nil, false
 	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, err := s.jobs.CheckAttempt(r.Context(), r.PathValue("job_id"), request.attemptToken())
+	if !s.writeJobControlError(w, r, err) {
+		return nil, false
+	}
+	return job, true
+}
+
+func (s *Server) handleInternalArtifactUpload(w http.ResponseWriter, r *http.Request) {
+	var request internalUploadRequest
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}
@@ -105,15 +138,8 @@ func (s *Server) handleInternalArtifactUpload(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleInternalArtifactComplete(w http.ResponseWriter, r *http.Request) {
-	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
-	}
 	var request internalCompleteRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
-	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}
@@ -125,15 +151,8 @@ func (s *Server) handleInternalArtifactComplete(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleInternalArtifactDownload(w http.ResponseWriter, r *http.Request) {
-	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
-	}
 	var request internalArtifactTokenRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
-	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}
@@ -148,15 +167,8 @@ func (s *Server) handleInternalArtifactDownload(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleInternalArtifactStatus(w http.ResponseWriter, r *http.Request) {
-	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
-	}
 	var request internalArtifactTokenRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
-	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}
@@ -168,15 +180,8 @@ func (s *Server) handleInternalArtifactStatus(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleInternalModelCall(w http.ResponseWriter, r *http.Request) {
-	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
-	}
 	var request internalModelCallRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
-	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}
@@ -204,7 +209,14 @@ func (s *Server) handleInternalModelCall(w http.ResponseWriter, r *http.Request)
 	if !s.writeJobDataError(w, r, err) {
 		return
 	}
-	fixture, err := s.artifacts.ReadReady(r.Context(), *job.InputArtifactID)
+	// Re-read the job's input artifact and prove it is a synthetic fixture owned
+	// by the job owner BEFORE opening its bytes. Enqueue already refused a
+	// business artifact, but this second check is what makes the model boundary
+	// hold even for a hand-written or stale job row: T024's acceptance forbids
+	// trying a model on business user content.
+	fixture, err := s.artifacts.ReadSyntheticFixture(
+		r.Context(), *job.InputArtifactID, job.OwnerID,
+	)
 	if !s.writeJobDataError(w, r, err) {
 		return
 	}
@@ -227,20 +239,6 @@ func (s *Server) handleInternalModelCall(w http.ResponseWriter, r *http.Request)
 		ResultArtifactID: result.ResultArtifactID,
 		Data:             result.Data,
 	})
-}
-
-// requireJobAttempt checks the live lease before any job-scoped work. The job id
-// is the path's; the token is the body's; neither is trusted beyond this check.
-func (s *Server) requireJobAttempt(
-	w http.ResponseWriter,
-	r *http.Request,
-	attemptToken string,
-) (*background.Job, bool) {
-	job, err := s.jobs.CheckAttempt(r.Context(), r.PathValue("job_id"), attemptToken)
-	if !s.writeJobControlError(w, r, err) {
-		return nil, false
-	}
-	return job, true
 }
 
 // writeJobDataError maps the T024 service errors to the contract vocabulary and
@@ -273,6 +271,18 @@ func (s *Server) writeJobDataError(w http.ResponseWriter, r *http.Request, err e
 	case errors.Is(err, background.ErrArtifactConflict):
 		writeError(w, r, http.StatusConflict, "artifact_conflict",
 			"the upload completion disagrees with the recorded artifact")
+		return false
+	case errors.Is(err, background.ErrFixtureNotSynthetic):
+		// A user-uploaded artifact is never a model fixture. Stable code: the
+		// handler maps it to model_call_refused (business, no retry).
+		writeError(w, r, http.StatusUnprocessableEntity, "fixture_not_synthetic",
+			"the job input is not a synthetic model fixture; user content may not be sent to a model")
+		return false
+	case errors.Is(err, background.ErrFixtureNotOwned):
+		// Same answer as "no fixture": the endpoint must not reveal that
+		// another principal's artifact id exists.
+		writeError(w, r, http.StatusUnprocessableEntity, "fixture_missing",
+			"this validation job has no fixture artifact owned by its owner")
 		return false
 	case errors.Is(err, background.ErrSigningUnavailable):
 		writeError(w, r, http.StatusServiceUnavailable, "object_signing_unavailable",

@@ -275,8 +275,46 @@ def seed_fixture(
     owner_id: str,
     *,
     content: bytes | None = None,
+    state: str = "ready",
 ) -> f00b.SeededArtifact:
+    """Register a synthetic model fixture the way this batch's admin path does.
+
+    T024 has no fixture-registration UI (F06 owns it), so the sanctioned
+    registration path is the same administrative SQL seeding used for the other
+    rows the batch cannot create through a product endpoint. The purpose marker
+    ``model_fixture`` is load-bearing: it is deliberately not an upload purpose,
+    and both ``background-jobs enqueue`` and the model-calls endpoint refuse a
+    business artifact as a model input.
+    """
     content = content if content is not None else fixture_bytes()
+    return f00b.seed_artifact(
+        dbname,
+        object_dir,
+        owner_id,
+        content=content,
+        state=state,
+        staging=False,
+        sealed_content=content if state == "ready" else None,
+        media_type="application/json",
+        purpose="model_fixture",
+    )
+
+
+def seed_business_artifact(
+    dbname: str,
+    object_dir: Path,
+    owner_id: str,
+    *,
+    purpose: str = "parsed_data",
+    content: bytes | None = None,
+) -> f00b.SeededArtifact:
+    """A ready artifact whose purpose is a real user-upload purpose.
+
+    It is the negative control for the synthetic-fixture rule: the bytes are
+    perfectly readable, but they are business content and must never be sent to a
+    model.
+    """
+    content = content if content is not None else b'{"business":"user data"}'
     return f00b.seed_artifact(
         dbname,
         object_dir,
@@ -286,7 +324,7 @@ def seed_fixture(
         staging=False,
         sealed_content=content,
         media_type="application/json",
-        purpose="parsed_data",
+        purpose=purpose,
     )
 
 

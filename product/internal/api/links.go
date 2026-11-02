@@ -89,7 +89,10 @@ func (s *Server) handleObjectLinkGet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeObjectLinkNotFound is the single refusal for every invalid link.
+// writeObjectLinkNotFound is the single refusal for every invalid link. The code
+// is the platform-wide 404 vocabulary (`resource_not_found`, like every other
+// missing-resource answer); the message stays deliberately opaque, so the code
+// names a category without revealing whether the object exists.
 func writeObjectLinkNotFound(w http.ResponseWriter, r *http.Request) {
-	writeError(w, r, http.StatusNotFound, "not_found", "no such object link")
+	writeError(w, r, http.StatusNotFound, "resource_not_found", "no such object link")
 }

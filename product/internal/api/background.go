@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/identity"
 )
 
 // backgroundJobView is exactly the contract's BackgroundJob schema. It is an
@@ -37,6 +38,16 @@ func viewOfJob(job *background.Job) backgroundJobView {
 func (s *Server) handleGetBackgroundJob(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
+		return
+	}
+	// An API key needs the platform's read scope. Without this check an
+	// application:read key (and any future write-only key) could read any
+	// owner-visible job; the ACL decision below remains the content authority.
+	// F13A/contract revision may add a finer job/evaluation scope; until then
+	// application:read is the one registered read scope, and a session caller is
+	// never scope-limited.
+	if failure := requireScope(caller, identity.ScopeApplicationRead); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
 	job, err := s.jobs.Get(

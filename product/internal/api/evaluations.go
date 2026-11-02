@@ -30,6 +30,7 @@ import (
 	"net/http"
 
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/identity"
 )
 
 type evaluationJobView struct {
@@ -73,6 +74,14 @@ func (s *Server) handleGetEvaluation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A key needs the platform's registered read scope before the owner/admin
+	// decision. The ACL below still decides content, so a scoped key with no
+	// relationship to the evaluation learns nothing (404), while an unscoped key
+	// is refused as a credential (403).
+	if failure := requireScope(caller, identity.ScopeApplicationRead); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
+		return
+	}
 	evaluation, err := s.jobs.GetEvaluation(
 		r.Context(), r.PathValue("evaluation_id"), caller.PrincipalID, caller.HasRole("admin"),
 	)
@@ -90,6 +99,10 @@ func (s *Server) handleGetEvaluation(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetEvaluationReport(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
+		return
+	}
+	if failure := requireScope(caller, identity.ScopeApplicationRead); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
 	report, err := s.jobs.GetEvaluationReport(
@@ -110,6 +123,8 @@ type internalEvaluationBindingRequest struct {
 	AttemptToken string `json:"attempt_token"`
 }
 
+func (r internalEvaluationBindingRequest) attemptToken() string { return r.AttemptToken }
+
 type internalEvaluationBindingResponse struct {
 	EvaluationID      string `json:"evaluation_id"`
 	Kind              string `json:"kind"`
@@ -118,15 +133,8 @@ type internalEvaluationBindingResponse struct {
 }
 
 func (s *Server) handleInternalEvaluationBinding(w http.ResponseWriter, r *http.Request) {
-	if !requireInternalRole(w, r, InternalRoleMaintenance) {
-		return
-	}
 	var request internalEvaluationBindingRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
-		return
-	}
-	job, ok := s.requireJobAttempt(w, r, request.AttemptToken)
+	job, ok := s.withJobData(w, r, &request)
 	if !ok {
 		return
 	}

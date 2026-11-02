@@ -39,45 +39,63 @@ type Server struct {
 	limiter      *loginLimiter
 }
 
-// New builds the HTTP surface. webDir is where admin.html, login.html,
-// activate.html and assets/app.js are served from (ORCHARA_WEB_DIR).
+// Deps is everything the HTTP surface needs from the process that owns it.
 //
-// The policy authorizer, the catalog read model and the background controller
-// share the identity service's database handle; constructing them here keeps
-// cmd/api's wiring unchanged and makes the decision cache a per-process property
-// of this server. objects and signer may be nil: the server then starts but
-// refuses any operation that would need object bytes or a signed link
-// (503 object_store_unavailable / object_signing_unavailable) instead of
-// silently skipping verification. providers is the model-proxy provider set
-// built from the deployer's configuration.
-func New(
-	service *identity.Service,
-	webDir string,
-	profile config.Profile,
-	logger *log.Logger,
-	objects *objectstore.Store,
-	signer *objectstore.Signer,
-	providers *modelproxy.Providers,
-	publicURL string,
-	retryBackoff time.Duration,
-	manifestInputs compiler.Inputs,
-) *Server {
+// It is a struct rather than a positional argument list because the surface has
+// grown with each ticket (identity, catalog, background jobs, object links,
+// model proxy, manifest inputs) and a ten-argument constructor makes a swapped
+// pair of same-typed arguments compile silently. Named fields keep the wiring
+// legible and let a caller opt out of optional pieces explicitly.
+type Deps struct {
+	// Service is the identity service; required.
+	Service *identity.Service
+	// WebDir is where the static pages and assets are served from (ORCHARA_WEB_DIR).
+	WebDir string
+	// Profile selects cookie security and is recorded for the process profile.
+	Profile config.Profile
+	// Logger receives request-independent diagnostics; nil means discard.
+	Logger *log.Logger
+	// Objects/Signer may be nil: every operation that needs bytes or a signed
+	// link then fails closed instead of skipping verification.
+	Objects *objectstore.Store
+	Signer  *objectstore.Signer
+	// Providers is the model-proxy provider set built from deployment configuration.
+	Providers *modelproxy.Providers
+	// PublicURL is the absolute base URL signed links are minted against.
+	PublicURL string
+	// RetryBackoff is the background-job retry base delay.
+	RetryBackoff time.Duration
+	// Manifest carries the deployment inputs the validate endpoint needs; absent
+	// inputs are a 503, not a startup error.
+	Manifest compiler.Inputs
+	// Notifier is the best-effort background wakeup hook. Nil means NopNotifier:
+	// losing every notification is a supported state because claim polls PostgreSQL.
+	Notifier background.Notifier
+}
+
+// New builds the HTTP surface. See Deps for each dependency's contract.
+func New(deps Deps) *Server {
+	logger := deps.Logger
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
 	}
-	authorizer := policy.New(service.DB)
+	notifier := deps.Notifier
+	if notifier == nil {
+		notifier = background.NopNotifier{}
+	}
+	authorizer := policy.New(deps.Service.DB)
 	return &Server{
-		service:      service,
+		service:      deps.Service,
 		policy:       authorizer,
-		catalog:      catalog.New(service.DB, authorizer),
-		jobs:         background.New(service.DB, objects, retryBackoff),
-		artifacts:    background.NewArtifactStore(service.DB, objects, signer, publicURL),
-		models:       modelproxy.NewService(service.DB, objects, providers),
-		objects:      objects,
-		signer:       signer,
-		manifest:     manifestInputs,
-		webDir:       webDir,
-		secureCookie: SecureCookie(profile),
+		catalog:      catalog.New(deps.Service.DB, authorizer),
+		jobs:         background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
+		artifacts:    background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		models:       modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		objects:      deps.Objects,
+		signer:       deps.Signer,
+		manifest:     deps.Manifest,
+		webDir:       deps.WebDir,
+		secureCookie: SecureCookie(deps.Profile),
 		logger:       logger,
 		limiter:      newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
 	}

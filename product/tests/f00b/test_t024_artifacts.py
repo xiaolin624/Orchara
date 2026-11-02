@@ -10,8 +10,10 @@ the test to fake a transition.
 
 from __future__ import annotations
 
+import subprocess
+import time
+
 from support import f00b, t024
-from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     t024_stack,
 )
@@ -96,6 +98,69 @@ def test_upload_complete_finalize_download_round_trip(t024_stack) -> None:
     assert fetched.status == 200, (fetched.status, fetched.raw)
     assert fetched.raw == CONTENT
     assert fetched.headers["Content-Length"] == str(len(CONTENT))
+
+
+def test_a_dropped_wakeup_never_loses_the_finalize_work(t024_stack) -> None:
+    """The wakeup seam is advisory: the API drops every notification.
+
+    The API installs an in-process notifier with no consumer, so the
+    artifact_finalize job created by ``complete`` is announced to nobody (the
+    real maintenance process is a different process). A maintenance process that
+    was already polling PostgreSQL must still claim, finalize and activate the
+    artifact, and the API log must show the seam ran and the wakeup was dropped.
+
+    This is T022 acceptance 1 (``Redis 清空仍能从 PG 轮询推进``) exercised at the
+    seam level: no Redis instance exists on this host, so the test does not claim
+    one was cleared; it proves that losing every wakeup cannot lose the work.
+    """
+    job = t024.prepare_model_validate_job(t024_stack)
+    finalizer = subprocess.Popen(
+        [
+            str(t024_stack.binaries["maintenance"]),
+            "run",
+            "--kinds",
+            t024.KIND_ARTIFACT_FINALIZE,
+            "--poll-interval",
+            "20ms",
+            "--worker-id",
+            "t024-wakeup-dropped",
+        ],
+        cwd=f00b.PRODUCT_ROOT,
+        env=f00b.maintenance_env(t024_stack),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    try:
+        # The poller must already be alive before the job exists, otherwise
+        # "polling claimed it" would be indistinguishable from a startup scan.
+        time.sleep(0.2)
+        assert finalizer.poll() is None, "the poller exited during startup"
+        ticket = upload(t024_stack, job.lease).json
+        assert t024.put_link(ticket["upload_url"], CONTENT).status == 204
+        assert complete(t024_stack, job.lease, ticket["artifact_id"], t024.sha256_hex(CONTENT)).status == 202
+        f00b.wait_until(
+            lambda: f00b.artifact_row(t024_stack.dbname, ticket["artifact_id"])["state"] == "ready",
+            timeout=20.0,
+            what="the poller to finalize the artifact after a dropped wakeup",
+        )
+    finally:
+        finalizer.terminate()
+        try:
+            _stdout, stderr = finalizer.communicate(timeout=15)
+        except subprocess.TimeoutExpired:  # pragma: no cover - defensive
+            finalizer.kill()
+            _stdout, stderr = finalizer.communicate(timeout=5)
+
+    assert "run: worker=t024-wakeup-dropped" in stderr, stderr
+    logs = t024_stack.server.logs()
+    assert "wakeup: no notification transport is configured" in logs, logs[-3000:]
+    assert "the wakeup was dropped" in logs, logs[-3000:]
+
+    row = f00b.artifact_row(t024_stack.dbname, ticket["artifact_id"])
+    assert row["state"] == "ready"
+    assert row["sha256"] == t024.sha256_hex(CONTENT)
 
 
 def test_upload_validation_rejects_bad_purpose_size_media_and_state(t024_stack) -> None:

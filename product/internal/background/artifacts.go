@@ -38,19 +38,29 @@ type ArtifactStore struct {
 	// (ORCHARA_PUBLIC_URL). It is what makes upload_url/input_url usable by
 	// another process.
 	BaseURL string
+	// Notifier is the best-effort wakeup hook called after the finalize job is
+	// committed. It is never required for delivery; nil means NopNotifier.
+	Notifier Notifier
 }
 
 // NewArtifactStore builds the service. Objects and Signer may be nil in a
 // process that never moves bytes; every byte operation then fails closed.
+// notifier may be nil: job creation is durable regardless of whether a wakeup
+// can be delivered.
 func NewArtifactStore(
 	db *sql.DB,
 	objects *objectstore.Store,
 	signer *objectstore.Signer,
 	baseURL string,
+	notifier Notifier,
 ) *ArtifactStore {
+	if notifier == nil {
+		notifier = NopNotifier{}
+	}
 	return &ArtifactStore{
 		DB: db, Objects: objects, Signer: signer,
-		BaseURL: strings.TrimSuffix(strings.TrimSpace(baseURL), "/"),
+		BaseURL:  strings.TrimSuffix(strings.TrimSpace(baseURL), "/"),
+		Notifier: notifier,
 	}
 }
 
@@ -264,7 +274,7 @@ func (s *ArtifactStore) CompleteUpload(
 		if affected != 1 {
 			return ArtifactView{}, &ArtifactConflictError{Reason: "the artifact changed while completing"}
 		}
-		if _, _, err := EnqueueTx(ctx, tx, EnqueueParams{
+		finalize, _, err := EnqueueTx(ctx, tx, EnqueueParams{
 			Kind:             KindArtifactFinalize,
 			TargetID:         artifactID,
 			OwnerID:          job.OwnerID,
@@ -272,12 +282,14 @@ func (s *ArtifactStore) CompleteUpload(
 			ExpectedRevision: &nextRevision,
 			ExpectedSHA256:   sha,
 			InputArtifactID:  artifactID,
-		}); err != nil {
+		})
+		if err != nil {
 			return ArtifactView{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return ArtifactView{}, fmt.Errorf("committing the completion: %w", err)
 		}
+		notify(ctx, s.Notifier, finalize)
 		view.State = "scanning"
 		return view, nil
 
@@ -294,7 +306,7 @@ func (s *ArtifactStore) CompleteUpload(
 		// on (ready/quarantined), the recorded job's expected revision no longer
 		// matches this row, so a dedup conflict here is expected and not an
 		// error: the completion is still the same intention.
-		if _, _, err := EnqueueTx(ctx, tx, EnqueueParams{
+		finalize, _, err := EnqueueTx(ctx, tx, EnqueueParams{
 			Kind:             KindArtifactFinalize,
 			TargetID:         artifactID,
 			OwnerID:          job.OwnerID,
@@ -302,11 +314,15 @@ func (s *ArtifactStore) CompleteUpload(
 			ExpectedRevision: revisionPointer(revision),
 			ExpectedSHA256:   sha,
 			InputArtifactID:  artifactID,
-		}); err != nil && !errors.Is(err, ErrDedupConflict) {
+		})
+		if err != nil && !errors.Is(err, ErrDedupConflict) {
 			return ArtifactView{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return ArtifactView{}, fmt.Errorf("committing the idempotent completion: %w", err)
+		}
+		if finalize != nil {
+			notify(ctx, s.Notifier, finalize)
 		}
 		return view, nil
 
@@ -419,38 +435,52 @@ type ObjectBytes struct {
 	SHA256    string
 	Size      int64
 	MediaType string
+	Purpose   string
+	OwnerID   string
 }
 
-// ReadReady reads a ready, non-deleted artifact's sealed bytes for a server-side
-// decision (the model fixture). There is no job scope here on purpose: the
-// caller is the internal endpoint, which has already proven which job it is
-// acting for and passes only that job's input artifact id.
-func (s *ArtifactStore) ReadReady(ctx context.Context, artifactID string) (ObjectBytes, error) {
-	var (
-		objectKey string
-		state     string
-		deleted   sql.NullTime
-		size      sql.NullInt64
-		mediaType string
-	)
+// artifactMetadata is the artifact row facts the server checks before it opens
+// any bytes. Keeping the metadata read separate from the byte read is what lets
+// a non-fixture purpose be refused without first loading business content into
+// the API process.
+type artifactMetadata struct {
+	ObjectKey string
+	State     string
+	Deleted   sql.NullTime
+	Size      sql.NullInt64
+	MediaType string
+	Purpose   string
+	OwnerID   string
+}
+
+func (s *ArtifactStore) readArtifactMetadata(
+	ctx context.Context,
+	artifactID string,
+) (artifactMetadata, error) {
+	var metadata artifactMetadata
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT object_key, state, deleted_at, size_bytes, media_type
+		SELECT object_key, state, deleted_at, size_bytes, media_type, purpose, owner_id::text
 		  FROM platform.artifacts
 		 WHERE id = $1::uuid`, artifactID,
-	).Scan(&objectKey, &state, &deleted, &size, &mediaType)
+	).Scan(
+		&metadata.ObjectKey, &metadata.State, &metadata.Deleted, &metadata.Size,
+		&metadata.MediaType, &metadata.Purpose, &metadata.OwnerID,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ObjectBytes{}, ErrArtifactNotFound
+		return artifactMetadata{}, ErrArtifactNotFound
 	}
 	if err != nil {
-		return ObjectBytes{}, fmt.Errorf("reading the artifact: %w", err)
+		return artifactMetadata{}, fmt.Errorf("reading the artifact: %w", err)
 	}
-	if deleted.Valid || state != "ready" {
-		return ObjectBytes{}, ErrArtifactNotReady
-	}
+	return metadata, nil
+}
+
+// readObjectBytes opens the sealed object of an already-authorized metadata row.
+func (s *ArtifactStore) readObjectBytes(metadata artifactMetadata) (ObjectBytes, error) {
 	if s.Objects == nil {
 		return ObjectBytes{}, ErrObjectStoreUnavailable
 	}
-	reader, storedSize, err := s.Objects.Open(objectKey)
+	reader, storedSize, err := s.Objects.Open(metadata.ObjectKey)
 	if errors.Is(err, objectstore.ErrNotExist) || errors.Is(err, objectstore.ErrInvalidKey) {
 		return ObjectBytes{}, ErrArtifactNotFound
 	}
@@ -465,13 +495,58 @@ func (s *ArtifactStore) ReadReady(ctx context.Context, artifactID string) (Objec
 	if int64(len(content)) > objectstore.MaxObjectBytes {
 		return ObjectBytes{}, objectstore.ErrTooLarge
 	}
-	hasher := sha256Hex(content)
 	return ObjectBytes{
 		Content:   content,
-		SHA256:    hasher,
+		SHA256:    sha256Hex(content),
 		Size:      storedSize,
-		MediaType: mediaType,
+		MediaType: metadata.MediaType,
+		Purpose:   metadata.Purpose,
+		OwnerID:   metadata.OwnerID,
 	}, nil
+}
+
+// ReadReady reads a ready, non-deleted artifact's sealed bytes for a server-side
+// decision. There is no job scope here on purpose: the caller is the internal
+// endpoint, which has already proven which job it is acting for and passes only
+// that job's input artifact id.
+func (s *ArtifactStore) ReadReady(ctx context.Context, artifactID string) (ObjectBytes, error) {
+	metadata, err := s.readArtifactMetadata(ctx, artifactID)
+	if err != nil {
+		return ObjectBytes{}, err
+	}
+	if metadata.Deleted.Valid || metadata.State != "ready" {
+		return ObjectBytes{}, ErrArtifactNotReady
+	}
+	return s.readObjectBytes(metadata)
+}
+
+// ReadSyntheticFixture reads the job's model fixture after proving it really is
+// a server-registered synthetic fixture owned by this job's owner.
+//
+// The purpose and ownership checks happen before any bytes are opened: a
+// business artifact (report/log/receipt/parsed_data) must be refused even though
+// the endpoint could technically read it, because T024's boundary is "never try
+// a model on user content". A job that names another principal's artifact gets
+// the same fixture_missing answer as a job without a fixture, so the endpoint
+// cannot be used to probe artifact ids.
+func (s *ArtifactStore) ReadSyntheticFixture(
+	ctx context.Context,
+	artifactID, ownerID string,
+) (ObjectBytes, error) {
+	metadata, err := s.readArtifactMetadata(ctx, artifactID)
+	if err != nil {
+		return ObjectBytes{}, err
+	}
+	if metadata.Purpose != PurposeModelFixture {
+		return ObjectBytes{}, fmt.Errorf("%w: purpose is %q", ErrFixtureNotSynthetic, metadata.Purpose)
+	}
+	if !strings.EqualFold(metadata.OwnerID, ownerID) {
+		return ObjectBytes{}, ErrFixtureNotOwned
+	}
+	if metadata.Deleted.Valid || metadata.State != "ready" {
+		return ObjectBytes{}, ErrArtifactNotReady
+	}
+	return s.readObjectBytes(metadata)
 }
 
 // SignedSealedURL is used by the claim projection: it returns a link for any

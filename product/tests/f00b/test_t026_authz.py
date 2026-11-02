@@ -9,6 +9,8 @@ fields: no dataset/candidate id, object key, report body or draft text.
 from __future__ import annotations
 
 from support import f00b, t026
+from support import f02a as f02a_support
+from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
     fresh_database,
@@ -89,6 +91,80 @@ def test_owner_admin_and_everyone_else(t026_stack) -> None:
     assert "object_key" not in owner_report.text
     assert "dataset_artifact_id" not in owner_body.text
     assert "manifest" not in owner_body.text
+
+
+def test_api_keys_need_the_read_scope_for_evaluations_reports_and_jobs(t026_stack) -> None:
+    """The three public reads enforce a scope for bearer credentials.
+
+    A key that authenticates but carries only application:write is refused before
+    the owner/admin decision (403 insufficient_scope). A read-scoped key still
+    only sees what it owns (404 otherwise), and once the evaluation/job really is
+    owned by the service principal the same key gets the 200: the scope is
+    necessary, never sufficient. Session callers are unaffected (the rest of this
+    file).
+    """
+    admin = f00b.admin_session(t026_stack)
+    service_id = f02a_support.create_service_account(
+        admin, "t026-eval-reader", admin.principal_id
+    )
+    _write_id, write_secret = f02a_support.create_api_key(
+        admin, service_id, ["application:write"]
+    )
+    write_key = f02a_support.bearer_client(t026_stack, write_secret)
+
+    prepared = t026.prepare_model_evaluation(
+        t026_stack, cases=[t026.dataset_case(case_id="c1", input_value={"q": 1})]
+    )
+    completed, _reports = t026.run_pools_once(t026_stack, work_slots=1)
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    evaluation = t026.wait_for_evaluation(
+        t026_stack.dbname, prepared["evaluation_id"], {"succeeded"}, timeout=15
+    )
+    report_id = evaluation["report_id"]
+    assert report_id is not None
+    job_id = prepared["background_job_id"]
+
+    for path in (
+        f"/api/v1/evaluations/{prepared['evaluation_id']}",
+        f"/api/v1/evaluation-reports/{report_id}",
+        f"/api/v1/background-jobs/{job_id}",
+    ):
+        st.assert_error(write_key.get(path), 403, "insufficient_scope")
+
+    _read_id, read_secret = f02a_support.create_api_key(
+        admin, service_id, ["application:read"]
+    )
+    read_key = f02a_support.bearer_client(t026_stack, read_secret)
+    for path in (
+        f"/api/v1/evaluations/{prepared['evaluation_id']}",
+        f"/api/v1/evaluation-reports/{report_id}",
+        f"/api/v1/background-jobs/{job_id}",
+    ):
+        st.assert_error(read_key.get(path), 404, "resource_not_found")
+
+    # Make the service principal the real owner of these rows. The same scoped
+    # key now reads them: the scope check passed before, and the ACL now allows.
+    st.sql(
+        t026_stack.dbname,
+        "UPDATE platform.evaluation_jobs SET owner_id = "
+        f"{st.quote_literal(service_id)}::uuid "
+        f"WHERE id = {st.quote_literal(prepared['evaluation_id'])}::uuid",
+    )
+    st.sql(
+        t026_stack.dbname,
+        "UPDATE platform.background_jobs SET owner_id = "
+        f"{st.quote_literal(service_id)}::uuid "
+        f"WHERE id = {st.quote_literal(job_id)}::uuid",
+    )
+    owner_evaluation = read_key.get(f"/api/v1/evaluations/{prepared['evaluation_id']}")
+    assert owner_evaluation.status == 200, owner_evaluation.text
+    assert set(owner_evaluation.json) == EVALUATION_KEYS
+    owner_report = read_key.get(f"/api/v1/evaluation-reports/{report_id}")
+    assert owner_report.status == 200, owner_report.text
+    assert set(owner_report.json) == REPORT_KEYS
+    owner_job = read_key.get(f"/api/v1/background-jobs/{job_id}")
+    assert owner_job.status == 200, owner_job.text
+    assert set(owner_job.json) == BACKGROUND_JOB_KEYS
 
 
 def test_unauthenticated_reads_are_401(t026_stack) -> None:

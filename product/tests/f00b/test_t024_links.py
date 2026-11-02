@@ -42,6 +42,21 @@ def link_url(server: st.ApiServer, signed_url: str) -> str:
     return server.base_url + parsed.path
 
 
+def assert_link_refused(response: t024.LinkResponse, *, what: str) -> None:
+    """Every invalid link is the platform's 404 vocabulary, not a private code.
+
+    The status and the error code are both pinned: a refactor that drops the
+    envelope (or invents a second 404 code) must fail here, not merely a test that
+    checks "not 200".
+    """
+    assert response.status == 404, (what, response.status, response.raw)
+    body = response.json
+    assert isinstance(body, dict) and "error" in body, (what, response.raw)
+    error = body["error"]
+    assert error["code"] == "resource_not_found", (what, error)
+    assert error["message"], error
+
+
 def test_an_expired_link_is_refused(t024_stack, tmp_path: Path, api_server) -> None:
     server, certificates = t024.start_second_api(
         api_server, t024_stack, tmp_path / "certs-expiring", signing_key=t024_stack.signing_key, link_ttl="1s"
@@ -67,9 +82,9 @@ def test_an_expired_link_is_refused(t024_stack, tmp_path: Path, api_server) -> N
 
     time.sleep(1.4)
     expired_put = t024.put_link(ticket["upload_url"], b"expired!")
-    assert expired_put.status == 404, (expired_put.status, expired_put.raw)
+    assert_link_refused(expired_put, what="an expired PUT link")
     expired_get = t024.get_link(input_url)
-    assert expired_get.status == 404, (expired_get.status, expired_get.raw)
+    assert_link_refused(expired_get, what="an expired GET link")
 
 
 def test_tampered_swapped_and_sealed_puts_are_refused(t024_stack) -> None:
@@ -79,10 +94,10 @@ def test_tampered_swapped_and_sealed_puts_are_refused(t024_stack) -> None:
     ).json
 
     tampered = t024.put_link(t024.tamper_token(ticket["upload_url"]), t024.fixture_bytes())
-    assert tampered.status == 404, (tampered.status, tampered.raw)
+    assert_link_refused(tampered, what="a tampered token")
 
     swapped = t024.get_link(ticket["upload_url"])
-    assert swapped.status == 404, (swapped.status, swapped.raw)
+    assert_link_refused(swapped, what="a PUT token used for GET")
 
     assert t024.put_link(ticket["upload_url"], CONTENT).status == 204
     sha = t024.sha256_hex(CONTENT)
@@ -98,7 +113,7 @@ def test_tampered_swapped_and_sealed_puts_are_refused(t024_stack) -> None:
 
     # A GET token (sealed key) can never be used as a PUT.
     sealed_put = t024.put_link(download.json["url"], CONTENT)
-    assert sealed_put.status == 404, (sealed_put.status, sealed_put.raw)
+    assert_link_refused(sealed_put, what="a sealed GET token used for PUT")
 
 
 def test_a_link_signed_with_another_key_is_refused(t024_stack, tmp_path: Path, api_server) -> None:
@@ -112,7 +127,7 @@ def test_a_link_signed_with_another_key_is_refused(t024_stack, tmp_path: Path, a
     ).json
     foreign = link_url(server, ticket["upload_url"])
     refused = t024.put_link(foreign, b"eight by")
-    assert refused.status == 404, (refused.status, refused.raw)
+    assert_link_refused(refused, what="a token signed with another key")
 
 
 def test_an_oversized_upload_is_413_and_leaves_no_object(t024_stack) -> None:
@@ -153,7 +168,8 @@ def test_without_a_signing_key_the_api_starts_and_refuses_links(
     # A link minted by the configured API is refused by the unsigned one.
     job = t024.prepare_model_validate_job(t024_stack, dedup_key="t024-no-signer-second")
     ticket = t024_stack.internal_client().upload(job.job_id, job.attempt_token, size_bytes=8).json
-    assert t024.put_link(link_url(server, ticket["upload_url"]), b"eight by").status == 404
+    foreign_link = t024.put_link(link_url(server, ticket["upload_url"]), b"eight by")
+    assert_link_refused(foreign_link, what="a link presented to the unsigned API")
 
 
 CONTENT = b"sealed report bytes\n"

@@ -220,7 +220,7 @@ func outcomeFor(err error) background.Outcome {
 		case "provider_adapter_unavailable":
 			return background.Failed(background.CodeProviderAdapterUnavailable)
 		case "candidate_mismatch", "candidate_unavailable", "model_not_allowed",
-			"model_call_conflict", "fixture_missing":
+			"model_call_conflict", "fixture_missing", "fixture_not_synthetic":
 			return background.Failed(background.CodeModelCallRefused)
 		case "stale_attempt":
 			return background.Failed(background.CodeStaleAttempt)

@@ -42,15 +42,28 @@ type Controller struct {
 	// RetryBackoff is the base delay for the first retry; RetryDelay doubles it
 	// per attempt. Values <= 0 fall back to DefaultRetryBackoff.
 	RetryBackoff time.Duration
+	// Notifier is the best-effort wakeup hook called after Enqueue commits. It is
+	// never required for delivery (claim polls PostgreSQL); nil means NopNotifier.
+	Notifier Notifier
 }
 
 // New builds a Controller. store may be nil only in processes that never
 // activate artifacts; the completion guard handles that case fail-closed.
-func New(db *sql.DB, store *objectstore.Store, retryBackoff time.Duration) *Controller {
+// notifier may be nil: a process without a wakeup transport installs the no-op
+// notifier, and losing every notification is a supported state.
+func New(
+	db *sql.DB,
+	store *objectstore.Store,
+	retryBackoff time.Duration,
+	notifier Notifier,
+) *Controller {
 	if retryBackoff <= 0 {
 		retryBackoff = DefaultRetryBackoff
 	}
-	return &Controller{DB: db, Store: store, RetryBackoff: retryBackoff}
+	if notifier == nil {
+		notifier = NopNotifier{}
+	}
+	return &Controller{DB: db, Store: store, RetryBackoff: retryBackoff, Notifier: notifier}
 }
 
 // RetryDelay is the deterministic exponential backoff for an attempt that just
