@@ -11,7 +11,7 @@
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
 T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030 passed）** 与
-**F03（T029 passed；T031+ open）**；其余票保持 open。
+**F03（T029、T031 passed；T032+ open）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -28,7 +28,10 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 执行/领取属 F03、发布提交属 F02B，限制见各票报告。
 F03 的 T029 已交付执行领取的首个切片（迁移 0016、`internal/execution`、内部 claim/heartbeat/
 attempt-exit、owner-only `GET /runs` 与运行页面）：真实 mTLS + PG 原子领取/配额/hmac sealed 链接；
-result/finalizer/事件/恢复/取消属 T031+。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
+result/finalizer/事件/恢复/取消属 T031+。T031 在 T029 之上交付 result 提议与统一幂等 finalizer：
+同一 attempt 的 result 与 supervisor 身份化 exit 证据按任意顺序到达都只提交一次终态
+（succeeded/failed）、退出无结果转 recovery_pending、waiting/needs_reconciliation 如实非终态；
+事件/SSE/取消/恢复属 T032/T035/T036/T038。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
 只把 `tool_run` 加入后台任务 kind 白名单；真实维护进程用固定 argv 的 Python 子进程执行固定脚本，
 Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；公开 `POST/GET /api/v1/tool-runs`
 是 ADR 0005 记录的非契约桥，T033/F04A 再绑定到 Run/沙箱协议。平台整体**仍不是完整 v1**：业务执行/
@@ -71,6 +74,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T028 | F05 | 上传、校验封存并授权下载不可覆盖的文件 | passed | `reports/f05/T028-artifact-uploads.md`、`db/migrations/0015_artifact_admissions.sql`、`internal/artifacts/`（服务 + 格式准入分类器）、`internal/api/{artifacts.go,server.go}`、`internal/background/handlers/artifact_finalize.go`、`apps/web/src/{attachments.html,assets/attachments.js}`、`tests/support/t028.py`、`tests/f05/test_t028_*.py`（6 文件 31 用例；真实 PG + 真实二进制 + 真实 HTTP + 真实签名 URL + 真实 maintenance finalize；删除模型/病毒查杀/深工作表解析分别属 F07/F13A，见报告 §5） |
 | T029 | F03 | 提交运行并只让合格执行者在配额内领取 | passed | `reports/f03/T029-claim-and-lease.md`、`db/migrations/0016_execution_claims_and_quota.sql`、`internal/execution/`（store + service：claim/heartbeat/attempt-exit）、`internal/api/{execution.go,runs.go,server.go,internal.go,debug.go}`、`apps/web/src/{runs.html,assets/runs.js,debug.html}`、`tests/support/t029.py`、`tests/f03/test_t029_*.py`（9 文件 51 用例；真实 PG + 真实 mTLS/HTTP + 真实对象字节 + 真实并发；result/finalizer/事件/恢复/取消属 T031–T038，发布版 Run 入口属 F02B/F05，见报告 §4/§5） |
 | T030 | F05 | 用预置工具对销售表格返回统计或具体输入错误 | passed | `reports/f05/T030-sales-tool.md`、`db/migrations/0017_tool_run_kind.sql`（只扩展 kind CHECK）、`internal/tools/`（固定 argv/只读输入/超时/严格 output.json/产物准入）、`internal/toolruns/`（幂等创建 + owner-only 读）、`internal/api/toolruns.go`、`internal/background/handlers/tool_run.go`（summary/CSV/diagnostics/log + 完成守卫）、`worker/platform_worker/nodes/sales_stats.py`（stdlib-only Decimal CSV/XLSX）、`apps/web/src/{attachments.html,assets/attachments.js}`（工具区/统计表/下载/诊断）、`tests/support/t030.py`、`tests/f05/test_t030_*.py`（6 文件 55 用例，含 36 个 Python 工具子进程用例；真实 PG + 二进制 + HTTP + 签名 URL + maintenance 双池 + 真实 Python 子进程；非契约桥见 ADR 0005；沙箱/结果协议/工具构建分别属 T033/T031/T037，见报告 §6） |
+| T031 | F03 | 运行完成后等待真实退出证据再展示终态 | passed | `reports/f03/T031-result-and-finalizer.md`、`internal/execution/`（result 提议 + 身份化 exit 证据 + 统一幂等 finalizer + children guard 扩展点）、`internal/api/execution.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/{t029.py,t031.py}`、`tests/f03/test_t031_*.py`（4 文件 17 用例；T029 exit 用例按新必填证据收紧）；无迁移（`reported_result` 已含 event_id）；真实 PG + 真实 mTLS/HTTP + 真实对象字节；事件/SSE/tools/cancel/recovery 属 T032–T038，见报告 §5/§7 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -491,6 +495,27 @@ Run/沙箱协议，T037 再开放任意工具构建。边界见报告 §5/§6。
 | Web | `apps/web/src/attachments.html` + `assets/attachments.js`：上传页新增预置工具区（artifact id、运行、ready/leased/succeeded/failed 中文状态、Decimal 总额/地区表、summary.csv/summary.json 下载、失败诊断 error_code/message/fix/location）；全部 `textContent`，无内联用户内容、无 Number()/parseFloat、无凭据存储 |
 | 测试 | `tests/support/t030.py` + `tests/f05/test_t030_*.py` **6 文件 55 用例**（工具 Python 子进程 36、迁移 5、成功流 4、拒绝 3、失败/重试 3、页面 4）；真实路径覆盖 CSV/XLSX 精确 Decimal、下载字节、日志无正文/secret、10 类拒绝 + 诊断、超时/IO/tombstone、幂等/重跑/ACL/API key scope；`internal/tools` 15 个 Go 单测、`handlers` 7 个、`config` 1 个、后台白名单更新 |
 | 证据 | `reports/f05/T030-sales-tool.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T031/T033 接口）；`docs/adr/0005-t030-tool-run-bridge.md` |
+
+## F03 结果提议与统一幂等终态（2/N：T031）
+
+T031（GitHub #32）已交付，状态 **`passed`**（本票范围 = **worker result 提议 + supervisor 身份化 exit
+证据 + 统一幂等 finalizer + 运行页 finalizing/终态展示**）。真实 PostgreSQL 16.4 + 真实编译二进制 +
+真实 mTLS 内部客户端（worker/supervisor/maintenance 三种证书）+ 真实 HTTP + 真实文件系统对象字节；
+无 mock、无跳过。边界（如实）：T032 的事件/SSE、T033 的 run-bound artifact 注册、T035 的 waiting/
+resume、T036 的 cancel/unknown guard、T038 的恢复证据均不实现；运行页为真实 HTML/JS + Node 执行
+核心逻辑，无浏览器 DOM 驱动。见报告 §5/§7。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | 无。契约基线 `run_attempts.reported_result/reported_at/checkpoint_id` 已够用：proposal 整体（含 `event_id`）存入 `reported_result`，不新增列/表；`contracts/**`、`docs/spec/**` 未改，`sync_spec --check` no drift |
+| submitWorkerResult | `POST /internal/v1/runs/{run_id}/result`，worker 或 supervisor（maintenance 403）；body 按契约 `WorkerResult` 严格解码（additionalProperties:false），条件必填 `output_artifact_id`(succeeded)/`checkpoint_id`(waiting_*)/`error_code`(failed)；token 必须绑定该 run 且为该 run 最新 attempt（跨 run/被取代/已 requeue → 409 `stale_attempt`），run 必须 running 或 recovery_pending（终态 → 409 `run_terminal`，waiting/cancelling/needs_reconciliation → 409 `run_state_conflict`）；同内容重放 200、异内容 409 `event_conflict`；succeeded 的 output artifact 必须存在、owner=run owner、ready 且未删除、并在 `run_artifacts` 关联（422 `validation_failed` + `details.code`=artifact_not_found/not_owned/not_ready/not_linked）；事务只写 proposal/reported_at/checkpoint_id 与 `runs.phase='finalizing'`（state/revision 不变），200 返回契约 Run（proposal-only 时 running/finalizing）。T033 之前由测试/种子写 `run_artifacts` 链接 |
+| confirmAttemptExit | 在 T029 上扩展：evidence 必须携带 `started`(bool)、`protocol_version`、`manifest_sha256`(64 hex)、`image_digest`（非契约 evidence 扩展）；协议/manifest/image 与 claim 时的 run manifest hash + snapshot worker_image_digest 不符 → 409 `execution_identity_mismatch` 且零写入；`started=false` 保持 T029 requeue；`started=true` 且无 result → run `recovery_pending`/phase idle/revision+1、job held、slot 已释放，绝不 requeue |
+| 统一 finalizer | `finalizeRunTx` 由 result+exit 两个入口在各自事务内调用，要求两者齐全；`platform.runs(parent_run_id)` 有非终态子 run 时阻塞（job held、run 保持 running/finalizing，T035/T036 接续）；unknown-operation guard 已结构化（`hasUnknownOperationsTx` 目前恒 false，T036 替换该函数体）；succeeded/failed 同一事务映射 run state/revision+1/finished_at/output_artifact_id/error_code、phase idle、job completed、token revoked、allocation `released_at` 恰好一次（重复调用为 no-op）；needs_reconciliation 非终态提交；waiting_* 只存 proposal、保持 running/finalizing、job held（T035） |
+| 幂等/顺序 | result-first：claim rev2 → proposal rev2/finalizing → exit rev3 终态；exit-first：claim rev2 → park rev3 recovery_pending → result rev4 终态；两种顺序都只有一次终态、一次 job 完成、一次配额释放、无重复行；重复 exit（同 evidence JSONB 相等）200 no-op，重复 result（proposal 已存且 run 非终态）200 no-op；终态后迟到 result 409 `run_terminal`，不同 exit evidence 409 `attempt_evidence_conflict` |
+| 错误码 | 新增 `run_terminal`(409)、`event_conflict`(409)、`execution_identity_mismatch`(409)、`run_state_conflict`(409，T035/T036 之前的显式临时拒绝)、`run_not_found`(404)；复用 `stale_attempt`/`attempt_evidence_conflict`/`validation_failed`/`invalid_json`/`forbidden`；422 `details` 增加 `code` 以定位 artifact 原因 |
+| Web | `runs.html`/`runs.js`：详情新增“执行阶段 executing → finalizing → 终态”行；finalizing 明确写“等待 supervisor 的退出证据……终态提交前这不是成功”；未终态时轮询 `GET /api/v1/runs/{id}`，终态即停，成功只在服务端提交终态后展示；`debug.html`/`debug.js` 同样解释 finalizing（`describeRunStage`）；全部 `textContent`、无凭据存储 |
+| 测试 | `tests/support/t031.py` + `tests/f03/test_t031_{result,finalizer,identity,pages}.py` **4 文件 17 用例**（result 2、finalizer 10、identity 1、pages 4），T029 exit/invariants 用例按新必填证据收紧；`tests/f03` **68 passed**（51 + 17）；`internal/execution` Go 单测扩到 7 个（含 exit identity 必填/定位、WorkerResult 条件必填）；`go test ./...` 全绿、`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节） |
+| 证据 | `reports/f03/T031-result-and-finalizer.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T032/T035/T036/T038 接口） |
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
