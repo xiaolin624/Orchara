@@ -209,6 +209,16 @@ func (s *Service) CreateServiceAccount(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Service-account creation is serialised with every other write that changes
+	// who manages the installation or who owns a service account: role changes,
+	// disable/enable and handover all take the same "ROLESET1" advisory lock. The
+	// responsible-user check below and the INSERT therefore cannot interleave
+	// with a disable or a handover: creation either commits before them (and the
+	// handover then moves the new row) or sees the disabled person and is refused.
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", rolesLockKey)); err != nil {
+		return "", fmt.Errorf("acquiring the service account lock: %w", err)
+	}
+
 	var (
 		kind        string
 		disabledAt  sql.NullTime
@@ -291,6 +301,15 @@ func (s *Service) CreateAPIKey(
 		return nil, fmt.Errorf("starting the api key transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// A credential must not be born after the disable that should have revoked
+	// it. The state read below and the key INSERT share the "ROLESET1" advisory
+	// lock used by SetDisabled/SetRoles/Handover, so a disable either commits
+	// before this transaction (the check sees it and no key is created) or after
+	// it (the disable's revoke UPDATE sees this committed key and kills it).
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", rolesLockKey)); err != nil {
+		return nil, fmt.Errorf("acquiring the api key lock: %w", err)
+	}
 
 	var (
 		kind                string
