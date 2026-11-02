@@ -57,7 +57,7 @@
       正式入口是 <a href="/login">/login</a>；未登录访问本页会自动跳转过去。
       下面的表单供禁用脚本的浏览器使用，登录后本页会重新读取身份。
     </p>
-    <form id="signin-form" autocomplete="on">
+    <form method="post" id="signin-form" autocomplete="on">
       <label for="login">登录名
         <input id="login" name="login" autocomplete="username" required />
       </label>
@@ -70,7 +70,7 @@
 
   <section id="invite-panel" class="card" hidden>
     <h2>邀请新用户</h2>
-    <form id="invite-form">
+    <form method="post" id="invite-form">
       <label for="invite-login">登录名
         <input id="invite-login" name="login" required />
       </label>
@@ -103,7 +103,7 @@
       授权后目标用户在 <a href="/apps">应用目录</a> 立即看到该应用；撤销后下一次读取立即被拒绝。
       F01 只开放 <code>application</code> 资源与 <code>read</code> 动作；过期时间可留空。
     </p>
-    <form id="grant-form">
+    <form method="post" id="grant-form">
       <label for="grant-principal">被授权 principal id
         <input id="grant-principal" name="principal_id" required placeholder="uuid" />
       </label>
@@ -128,7 +128,7 @@
     </div>
 
     <h2 style="margin-top:1.2rem">撤销授权</h2>
-    <form id="revoke-form">
+    <form method="post" id="revoke-form">
       <label for="revoke-grant-id">grant id
         <input id="revoke-grant-id" name="grant_id" required placeholder="uuid" />
       </label>
@@ -143,7 +143,7 @@
       目标必须是已存在的人类用户（服务账号没有角色绑定）；角色集合不能为空、不能重复。
       至少保留一个启用中的人类管理员，否则请求会被拒绝。
     </p>
-    <form id="roles-form">
+    <form method="post" id="roles-form">
       <label for="roles-principal">principal id
         <input id="roles-principal" name="principal_id" required placeholder="uuid" />
       </label>
@@ -165,7 +165,7 @@
       并且每个动作仍要满足资源 ACL。负责人必须是已启用的人类用户；负责人被禁用后，
       该账号的 key 立即失效（无需逐把撤销）。负责人只是治理归属，不会把 TA 的个人应用或记忆借给服务账号。
     </p>
-    <form id="service-account-form">
+    <form method="post" id="service-account-form">
       <label for="sa-display-name">显示名
         <input id="sa-display-name" name="display_name" required />
       </label>
@@ -192,7 +192,7 @@
       具体应用仍需在资源授权里显式授予 <code>read</code>，两者同时满足才可读；
       个人/记忆 scope 对服务账号一律拒绝。key 明文只返回一次，平台只保存 SHA-256。
     </p>
-    <form id="api-key-form">
+    <form method="post" id="api-key-form">
       <label for="api-key-principal">服务账号 principal id
         <input id="api-key-principal" name="principal_id" required placeholder="uuid" />
       </label>
@@ -214,7 +214,7 @@
     </div>
 
     <h2 style="margin-top:1.2rem">撤销 API key</h2>
-    <form id="api-key-revoke-form">
+    <form method="post" id="api-key-revoke-form">
       <label for="revoke-api-key-id">key id
         <input id="revoke-api-key-id" name="key_id" required placeholder="uuid" />
       </label>
@@ -231,7 +231,7 @@
       至少保留一个启用中的人类管理员，否则会显示 <code>last_admin</code>；主体不存在或 id 畸形显示
       <code>principal_not_found</code>。原因必填并写入审计。
     </p>
-    <form id="disable-form">
+    <form method="post" id="disable-form">
       <label for="disable-principal">principal id
         <input id="disable-principal" name="principal_id" required placeholder="uuid" />
       </label>
