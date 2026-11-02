@@ -12,8 +12,9 @@
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
-内部 mTLS API、maintenance 处理器循环、admin enqueue、GET job）。F00B 其余票（T024/T026）
-继续 open。
+内部 mTLS API、maintenance 处理器循环、admin enqueue、GET job）；T024 已交付 job 限定文件访问
+与受控模型调用（迁移 0011、HMAC 签名对象链接、5 个内部端点、`internal/modelproxy` 与
+`model_validate` handler、`platform_model_calls` 记账）。F00B 其余票（T026）继续 open。
 平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备
 等后续 epic 未实现；F01/F00B 的限制见各票报告 §5/§7。
 
@@ -43,6 +44,7 @@ F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储�
 | T020 | F01 | 创建服务账号并用可撤销 Key 调用授权 API | passed | `reports/f01/T020-service-accounts.md`、`db/migrations/0008_api_keys.sql`、`internal/identity/apikeys.go`、`internal/api/{apikeys,authz,applications,server}.go`、`apps/web/src/admin.html`、`tests/f01/t020_stack.py`、`tests/f01/test_t020_*.py`（`tests/f01` 共 124 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T021 | F01 | 禁用人员并安全交接未完成待办 | passed | `reports/f01/T021-disable-and-handover.md`、`internal/identity/{disable,handover}.go`、`internal/api/{principals,server}.go`、`cmd/admin/main.go`、`apps/web/src/admin.html`、`tests/f01/test_t021_*.py`（`tests/f01` 共 142 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T022 | F00B | 提交一个后台任务并在重启后得到唯一结果 | passed | `reports/f00b/T022-background-jobs.md`、`db/migrations/0009_background_jobs.sql`、`internal/objectstore/`、`internal/background/`（含 handlers）、`internal/api/{internal,background}.go`、`cmd/api/main.go`、`cmd/maintenance/{main,client,run}.go`、`cmd/admin/{main,background}.go`、`tests/support/`、`tests/f00b/`（60 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
+| T024 | F00B | 后台评测只读取获准文件并记账模型调用 | passed | `reports/f00b/T024-job-files-and-models.md`、`db/migrations/0011_job_files_and_models.sql`、`internal/objectstore/sign.go`、`internal/background/{attempt,artifacts,scope}.go`、`internal/modelproxy/`、`internal/api/{jobdata,links}.go`、`internal/background/handlers/model_validate.go`、`cmd/maintenance/scope.go`、`tests/support/t024.py`、`tests/f00b/test_t024_*.py`（`tests/f00b` 86 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -258,6 +260,29 @@ T022（GitHub #23）已交付，状态 `passed`。真实 PostgreSQL 16.4 + 真�
 未运行（如实）：Redis 唤醒集成（本机无实例；以“无唤醒总线时 PG 轮询仍推进”实测）、S3/MinIO、
 签名 URL/`input_url`、上传 producer、真实 worker 协议、病毒查杀、字面 SIGKILL 注入；分别由
 T024/T026/F03/F05 或专门故障票承接。本票不推送、不关闭 issue。
+
+## F00B 后台文件与模型调用（2/3：T024）
+
+T024（GitHub #25）已交付，状态 `passed`（真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
+HTTP/mTLS；模型侧为**明确的 stub profile**，真实 provider 在本环境 `not_run`）。决策边界见
+[ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §18–24。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0011_job_files_and_models.sql`：`model_profile_versions`、`platform_model_calls`（+`params_sha256` 偏离）、`background_job_artifacts`（T024 归属表）；`request_id`→F05/F07、`evaluation_report_id`→T026 延期 FK 并在文件头/COMMENT 写明；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op |
+| 签名链接 | `internal/objectstore/sign.go`：HMAC-SHA256（`ORCHARA_OBJECT_SIGNING_KEY` ≥32B，空则 fail closed）、token 绑定 op+key+artifact_id+exp+max_bytes、PUT 仅 staging/GET 仅 sealed、TTL 可配；`cmd/api` 公共 `PUT/GET /object-links/{token}`（无会话、无列表、过期/篡改/换 key/换 op/sealed-PUT 全 404、超限 413、临时文件+rename）；日志对 token 脱敏 |
+| 内部端点 | 5 个契约端点（upload/complete/download/status/model-calls）在 mTLS listener，全部校验活 attempt_token（stale=409）；upload 校验 kind/media/size/purpose；complete 同事务 CAS `uploading→scanning`（revision+1）+ `EnqueueTx(artifact_finalize)`；下载/状态按 input/result/归属表 scope，越界与不存在同为 404 |
+| 模型代理 | `internal/modelproxy`：Provider seam + 确定性 stub（仅 dev-stub/capacity-stub 且候选 provider=stub；输出标注 stub、fixture hash/bytes/usage 来自真实 fixture 字节）+ real 路径（`ORCHARA_MODEL_ENDPOINT` 未配置→503 `provider_not_configured`；配置但无厂商 adapter→503 `provider_adapter_unavailable`；密钥仅经 `secret_ref` 在 Go 内解析，响应/日志不含密钥或引用）；两次拒绝都发生在 ledger 行之前 |
+| 记账 | `platform_model_calls`：owner/job/candidate、`scope_key=job`、逻辑键+params 摘要、`physical_attempt`（job 行锁内 max+1）、prepared→dispatching→succeeded/failed、真实 tokens、decimal reserved/charged（整数 1e-8 单位，无 float）、provider 响应 sealed 为 ready artifact；同键同参幂等、同键异参 409、失败重试新 attempt |
+| handler | `internal/background/handlers/model_validate.go`：经 `background.JobScope` 下载 fixture、调 model-calls、上传/complete/轮询报告、`succeeded` 带 `result_artifact_id`；兼容性失败是 job 成功 + report 失败，provider 未配置是 business 失败；registry + `retryableByKind` 同变更扩展；服务端 Complete 额外校验结果 artifact ready/owner/linked |
+| lease/API | `BackgroundLease.input_url` 为真实签名 sealed URL（无输入/未 ready/无签名 key 时 null）；`Upload.upload_url`/`Download.url` 用 `ORCHARA_PUBLIC_URL` 铸造 |
+| 测试 | `tests/support/t024.py` + `tests/f00b/test_t024_*.py` 5 文件 **26 用例**（迁移 6、上传/最终化/下载 5、签名链接 5、模型调用 7、端到端 3）；`tests/f00b` 86 passed、`tests/f02a` 45 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 证据 | `reports/f00b/T024-job-files-and-models.md`（AC 逐条、命令原始结果、stub/real 分报、not_run、下一票接口） |
+
+未运行（如实）：真实模型 provider 集成与厂商协议 adapter（本机无 endpoint/凭据，且 F06 才拥有
+adapter；本票交付诚实 503 边界与不泄露密钥的路径）、病毒查杀/深格式扫描（F05/T028）、Redis 唤醒
+（T026/后续）；T026 的运行时双池属其票面，本票测试用两个真实进程驱动 handler + finalize。
+本票不推送、不关闭 issue。
 
 ## F02A 草稿与版本读模型（1/3：T023）
 

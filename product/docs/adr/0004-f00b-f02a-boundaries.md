@@ -263,3 +263,163 @@ scope 限制。因此 F01 的两个测试随词汇表更新：`test_t020_api_key
 - `product/tests/f02a/`、`product/tests/support/f02a.py`
 - `product/reports/f02a/T023-drafts-and-editor.md`
 
+## T024 追加：job 限定文件与受控模型调用（F00B.03）
+
+T024 把“后台 handler 只能读获准文件、每次模型调用都有账”从规格变成可运行实现。以下决定
+为后续票必须沿用；改动需新 ADR 或在本节追加修订理由。
+
+### 18. 迁移 0011 的显式偏离与两个延期外键
+
+- `platform.model_profile_versions`、`platform.platform_model_calls` 按 `contracts/database.sql`
+  基线建表；`platform.background_job_artifacts` 是新增表（job→artifact 归属）。
+- 偏离 1：`platform_model_calls.params_sha256 text`。契约基线没有地方存逻辑调用的参数，
+  而 IMPLEMENTATION-DETAILS §4/§5 要求“同逻辑键不同参数”是冲突而不是被当成另一次调用悄悄计费。
+  该列存 params 的 JCS SHA-256（`internal/jcs`），不存 params 本身。
+- 偏离 2：`background_job_artifacts(background_job_id, artifact_id, relation, purpose, created_at)`。
+  契约只用 `input_artifact_id`/`result_artifact_id` 关联 job 与 artifact，无法表达“job 产出的
+  artifact 在 uploading/scanning 期间也归它”，也无法表达多个输出；job-scoped 访问需要这条
+  归属行。PK 是 `(background_job_id, artifact_id)`，`relation ∈ {input, output}`，两外键
+  `ON DELETE CASCADE`。
+- 延期外键 1：`platform_model_calls.request_id` 保持裸 `uuid`，**没有 FK**。`platform.requests`
+  属 F05/F07，本批不建；F05（或 F07 删除路径）在自己的迁移里补
+  `platform_model_calls.request_id -> platform.requests(id)`。在此之前任何代码不得把该列当已
+  验证引用。契约的 XOR CHECK（`request_id` 与 `background_job_id` 恰一非空）仍然由数据库强制。
+- 延期外键 2：`model_profile_versions.evaluation_report_id` 保持裸 `uuid`。`evaluation_reports`
+  由 T026（0012）创建并在其迁移里补 FK；在此之前不得视为已验证引用。
+- 权限沿用 0007–0010：`REVOKE ALL ON SCHEMA platform FROM PUBLIC`，`orchara_worker` 无 platform
+  USAGE/表/序列权限。`background_job_artifacts` 的归属行不是授权本身：每次读取仍要同时证明
+  活租约与 scope。
+
+### 19. 签名对象 URL 的模型与拒绝面
+
+- 签名器在 `internal/objectstore`（`sign.go`），HMAC-SHA256，key 来自
+  `ORCHARA_OBJECT_SIGNING_KEY`（≥32 字节）。空 key 不阻止进程启动，但**铸造失败**（
+  `503 object_signing_unavailable`）且**任何已签发链接被拒**；非空但过短的 key 是配置错误，
+  拒绝启动。
+- token 绑定 `op(put|get) + key + artifact_id + exp + max_bytes`，base64url(payload).base64url(mac)。
+  `PUT` 只能指向 `staging/<64hex>`，其 max_bytes 是 artifact 声明的 size（0 表示只接受空体）；
+  `GET` 只能指向 `sealed/<64hex>`。**签名器拒绝铸造 sealed PUT**，验证器拒绝 op 与 key 前缀
+  不匹配的 token，因此泄露一个 GET 链接不可能变成写权限。
+- 公共 listener 提供 `PUT/GET /object-links/{token}`，无会话、无 CSRF、无列表端点（presigned
+  语义）。过期/篡改/换 key/换 op/sealed-PUT 一律 `404 not_found`，不泄露对象是否存在；超限
+  是 `413 payload_too_large`（size 拒绝不是存在性泄露），且 store 的临时文件+rename 保证不
+  留半截对象。
+- 链接需要绝对 URL：新增 `ORCHARA_PUBLIC_URL`（默认 `http://<ORCHARA_HTTP_ADDR>`），
+  `BackgroundLease.input_url`、`Upload.upload_url`、`Download.url` 都以它铸造。请求日志对
+  `/object-links/` 路径脱敏，token 不落日志。
+- 链接 TTL 由 `ORCHARA_OBJECT_LINK_TTL` 配置（默认 10m，上限 1h）。链接只用于一次传输，不是
+  能力；对象 key 永不复用，sealed 永不给 PUT。
+
+### 20. job-scoped artifact 规则
+
+- 允许创建 artifact 的 kind 是固定集合 `{model_validate, application_evaluate}`（后者供 T026）；
+  其他 kind 即使持有活租约也 422。新增 kind 必须在同一变更里扩展该集合。
+- upload 预留：同一事务写 `artifacts(state='uploading', revision=1, purpose ∈ {report,log,
+  receipt,parsed_data}, size_bytes ≤ 20MiB)` 与 `background_job_artifacts(relation='output')`；
+  staging key 与 sealed key 都是随机不可猜值，客户端只拿到 staging PUT 链接。
+- complete：`uploading -> scanning` 的 CAS（`revision = revision + 1`，写
+  `expected_sha256`）与 `EnqueueTx(artifact_finalize, target=artifact, expected_revision=新
+  revision, expected_sha256=sha, dedup_key='artifact:<id>:<sha>')` 在同一事务。同 hash 重复
+  complete 是幂等 202 且不会新建第二个 finalize job（dedup 是同意图判定；artifact 已 ready 后
+  重放时 expected_revision 不同导致的 dedup 冲突被视为同一意图，不再报错）；不同 hash 或
+  墓碑是 409 `artifact_conflict`。**complete 不激活 artifact**：激活仍只由 T022 的 finalize
+  守卫在同一事务里做。
+- 读取 scope 一条 SQL 判定：artifact 是该 job 的 `input_artifact_id`、`result_artifact_id`，
+  或在 `background_job_artifacts` 里属于该 job；否则与不存在同为 `404 artifact_not_found`。
+  `artifact-status` 返回 uploading/scanning/ready/quarantined；`artifact-downloads` 只对
+  `ready` 且未墓碑的对象签发 sealed GET，未 ready 是 409 `artifact_not_ready`。
+- 状态/墓碑写入都 bump `revision`（complete 的 CAS、T022 激活/隔离/删除），维持 ADR §1。
+
+### 21. 模型 provider 与密钥边界
+
+- `internal/modelproxy` 是唯一模型调用边界。候选行的 `endpoint_ref` 必须是 `env:` 引用，
+  `secret_ref` 必须是 `env:NAME`/`file:NAME` 引用；两者都在 Go 内解析，worker/handler 永远
+  不传 endpoint、路径或密钥，也收不到它们。
+- `provider:"stub"` 只在 `dev-stub`/`capacity-stub` profile 下可用；其他 profile 里 stub 候选
+  直接 `503 provider_not_configured`。stub 输出必须带 `provider:"stub"`/`stub:true`，其
+  fixture_sha256/fixture_bytes/usage 都由**服务器实际读到的 fixture 字节**推导；兼容性判定由
+  fixture 里的显式 case 驱动。stub 不是“真实模型通过”的替身。
+- 真实 provider 路径：无 `ORCHARA_MODEL_ENDPOINT`（非 real-model profile 时为常态）→
+  `503 provider_not_configured`；有 endpoint 但本批没有编译任何厂商协议 adapter（F06 才有）
+  → `503 provider_adapter_unavailable`。两种都在**预留 ledger 行之前**拒绝，因此不会留下可被
+  读成“已计费调用”的行，也不会伪造成功。密钥只经 `secret_ref` 在 Go 内解析，任何错误消息、
+  HTTP 响应、日志都不包含密钥值或引用字符串。
+- 真实 provider 集成测试在本环境 `not_run`（无供应商 endpoint/凭据）；报告必须分开列 stub 与
+  real。
+
+### 22. platform_model_calls 记账语义
+
+- 每次物理 attempt 一行：`state` 从 `prepared` → `dispatching` → `succeeded`/`failed`；
+  行在 dispatch **之前**写入（`prepared`），所以崩溃/拒绝也留下可审计的尝试。
+- `scope_key = job_id`，`logical_key` 由调用方给定，`physical_attempt` 在 job 行锁内取
+  `max+1`（`UNIQUE(scope_key,logical_key,physical_attempt)` 是物理兜底）。同逻辑键 + 同 params
+  且已 succeeded → 返回原 call（不再计费）；同逻辑键 + 不同 params → `409 model_call_conflict`；
+  失败后重试 → 新 physical_attempt。
+- `params_sha256` 是 JCS 规范字节的 SHA-256；`reserved_amount`（dispatch 前估算）与
+  `charged_amount`（provider 返回后，按真实 tokens 计算）都是 decimal 字符串，金额只用整数
+  1e-8 单位计算，不经过 float。stub 的 tokens 由 fixture/response 字节推导，永不为 null。
+- 成功时把 provider 的规范响应写成 sealed、ready 的 `purpose='model_result'` artifact 并登记
+  `background_job_artifacts`，然后再把 ledger 行置 succeeded；失败 attempt 记
+  `state='failed', charged_amount=0`，不挂 result artifact。
+- 进程在 `prepared` 行写入后、dispatch 前崩溃会留下 `prepared` 行：它永远不会被读成成功或
+  已收费，`unknown`/`prepared` 的清扫与对账属 F05/F13A（本批不做，不在报告里写成已处理）。
+- `request_id` 恒为 NULL、`background_job_id` 恒有值（契约 XOR）；F05 接管用户请求调用时必须
+  显式二选一。
+
+### 23. model_validate handler 的边界
+
+- handler 只通过 `background.JobScope` 访问 job-scoped 数据：下载 fixture、上传/complete/
+  status 报告、发起 model-call。它没有 maintenance DSN 的业务读权限，也不构造对象路径；T022
+  artifact_finalize 的 interim direct read 仅保留在该 kind（T024 不触碰它，T026 迁移）。
+- logical key 由 fixture SHA 派生（`compatibility:<sha>`），params 携带 fixture hash 与检查项；
+  同一 job 重试同 fixture 是同一逻辑调用的新 physical attempt。
+- 兼容性失败（如 structured output 不合规）是**报告结果**：job `succeeded`、report
+  `compatible:false`，ledger 仍是一次成功的真实调用。provider 未配置/无 adapter 是
+  business failure（不重试），只有 `transient_storage_io`/`transient_internal`/`lease_expired`
+  可重试——`retryableByKind[model_validate]` 与 registry 在同一变更里扩展。
+- handler 必须等报告 artifact 变成 `ready` 才提交 `succeeded` 与 `result_artifact_id`；服务端
+  Complete 对 `model_validate` 额外校验该 artifact 存在、属于 job owner、linked 且 ready，
+  否则 422 且不改 job。
+- T022 的 maintenance 循环是单线程；T024 测试用两个真实进程（work handler + system_io
+  finalize）驱动。**运行时双池属 T026**，本票不改调度器。
+
+### 24. T025/T026 可以依赖的接口
+
+- 端点（内部 mTLS，maintenance 角色，全部要求活 attempt_token）：
+  `POST /internal/v1/background/jobs/{id}/artifact-uploads`、
+  `.../artifacts/{artifact_id}/complete`、`.../artifact-downloads`、`.../artifact-status`、
+  `.../model-calls`；错误码 `stale_attempt`(409)、`artifact_not_found`(404)、
+  `artifact_conflict`/`artifact_not_ready`(409)、`object_signing_unavailable`/
+  `object_store_unavailable`/`provider_not_configured`/`provider_adapter_unavailable`(503)、
+  `model_call_conflict`(409)、`candidate_mismatch`/`candidate_unavailable`/`model_not_allowed`/
+  `fixture_missing`(422)。
+- 表：`platform.model_profile_versions`、`platform.platform_model_calls`、
+  `platform.background_job_artifacts`；`background_jobs.result_artifact_id` 由 Complete 记录。
+- env：`ORCHARA_OBJECT_SIGNING_KEY`、`ORCHARA_OBJECT_LINK_TTL`、`ORCHARA_PUBLIC_URL`、
+  `ORCHARA_SECRET_DIR`；`ORCHARA_OBJECT_DIR`/内部 mTLS 变量沿用 T022。
+- Lease 的 `input_url` 是真实签名 sealed URL（无输入/未 ready/未配置签名时为 null）。T026 的
+  application_evaluate 应走同一 upload/download/status 流程并在同一 retry 表扩展自己的码。
+
+## 后果（T024）
+
+- 0011 之后，artifact 的创建路径有两条：T022 controller/CLI 与 T024 `completeUpload`；两者都
+  必须写 `revision=1` 并在状态迁移时 bump。任何其他 INSERT 都是 bug。
+- 对象字节只能经签名链接移动；公共 listener 不暴露对象命名空间，日志不记录 token。
+- 模型调用必须先检查 provider 可用性再写 ledger；“未配置”永远不产生成功行，也不重试。
+- `input_url`/`upload_url` 依赖 `ORCHARA_PUBLIC_URL`；部署方必须把它设成 worker 可达的绝对
+  地址，否则链接不可用（不是安全降级）。
+- T025/T026 不得复制签名器、modelproxy 或 job-scoped 校验的实现，只扩展 kind/码/测试。
+
+## 证据（T024）
+
+- `product/db/migrations/0011_job_files_and_models.sql`
+- `product/internal/objectstore/{sign.go,sign_test.go}`、`internal/objectstore/objectstore.go`
+- `product/internal/background/{attempt,artifacts,scope}.go`、`internal/background/complete.go`、
+  `internal/background/handlers/model_validate.go`
+- `product/internal/modelproxy/`（provider seam、stub、real not-configured 路径、ledger）
+- `product/internal/api/{jobdata,links,internal,server,middleware}.go`
+- `product/cmd/api/main.go`、`product/cmd/maintenance/{scope,client,run}.go`
+- `product/tests/support/t024.py`、`product/tests/f00b/test_t024_*.py`
+- `product/reports/f00b/T024-job-files-and-models.md`
+
+
