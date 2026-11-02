@@ -12,7 +12,7 @@ Both are observed through the real processes and the real public reads.
 
 from __future__ import annotations
 
-from support import f00b, t026
+from support import f00b, t026, t027
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
     fresh_database,
@@ -145,14 +145,19 @@ def test_unreadable_dataset_bytes_retry_then_fail_without_a_report(t026_stack, t
     assert "application_evaluate" in log_text
 
 
-def test_an_application_kind_evaluation_fails_honestly_before_t027(t026_stack) -> None:
+def test_an_application_evaluation_with_a_foreign_snapshot_fails_honestly(t026_stack) -> None:
     owner = f00b.principal_id_for_login(t026_stack.dbname)
     dataset = t026.seed_dataset(t026_stack, owner)
+    # T027 makes the snapshot reference real, so the honest refusal is no longer
+    # "the table is missing": it is that the snapshot belongs to another
+    # principal, which is not a valid evaluation binding.
+    foreign_owner = t027.seed_principal(t026_stack.dbname, "t026-foreign-snapshot")
+    foreign_snapshot = t027.seed_execution_snapshot(t026_stack.dbname, foreign_owner)
     payload = t026.enqueue_evaluation_ok(
         t026_stack,
         kind="application",
         dataset_artifact_id=dataset.id,
-        snapshot_id=t026.new_uuid(),
+        snapshot_id=foreign_snapshot,
     )
     completed, reports = t026.run_pools_once(t026_stack, work_slots=1)
     assert completed.returncode == 0, (completed.stdout, completed.stderr)

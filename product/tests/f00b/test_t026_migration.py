@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from support import f00b, t024
+from support import f00b, t024, t027
 from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -73,8 +73,8 @@ def test_0013_is_recorded_once_at_its_position(migrated_database) -> None:
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 14)], versions
-    assert ledgers[-1]["name"] == "0013_evaluation_pool.sql"
+    assert versions == [f"{number:04d}" for number in range(1, 15)], versions
+    assert ledgers[-1]["name"] == "0014_execution_snapshots_and_runs.sql"
 
 
 def test_0013_replays_as_a_noop(migrated_database, go_binaries) -> None:
@@ -108,9 +108,9 @@ def test_the_two_tables_match_the_contract_baseline(migrated_database) -> None:
     assert background_fks["dataset_artifact_id"] == "platform.artifacts"
     assert background_fks["model_profile_version_id"] == "platform.model_profile_versions"
     assert background_fks["report_id"] == "platform.evaluation_reports"
-    # T027 owns execution_snapshots; T026 must not invent an FK to a missing table.
-    assert "snapshot_id" not in background_fks, background_fks
-    assert "evaluation_jobs_snapshot_fkey" not in {
+    # T027 completes the deferred FK: a snapshot reference is now a real one.
+    assert background_fks["snapshot_id"] == "platform.execution_snapshots"
+    assert "evaluation_jobs_snapshot_fkey" in {
         row["conname"] for row in foreign_keys_of(dbname, "evaluation_jobs")
     }
 
@@ -201,9 +201,18 @@ def test_the_kind_xor_and_state_checks_are_database_facts(migrated_database, tmp
         snapshot=f00b.new_uuid(),
         model=None,
     )
-    # Structural acceptance: execution_snapshots does not exist yet (T027), and
-    # snapshot_id deliberately has no FK, so the row is representable today.
-    assert application_ok.code == 0, application_ok.stderr
+    # T027's 0014 makes the reference real: a random uuid is now refused by the
+    # FK, and a snapshot row created by the real migration is accepted.
+    assert application_ok.code != 0, "the snapshot FK accepted a dangling reference"
+    assert "foreign key" in application_ok.stderr.lower(), application_ok.stderr
+    real_snapshot = t027.seed_execution_snapshot(dbname, owner)
+    application_bound = insert_evaluation(
+        kind="application",
+        job_id=add_job("t026-application-bound"),
+        snapshot=real_snapshot,
+        model=None,
+    )
+    assert application_bound.code == 0, application_bound.stderr
 
 
 def test_the_owner_indexes_exist(migrated_database) -> None:

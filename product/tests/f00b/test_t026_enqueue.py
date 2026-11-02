@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from support import f00b, t024, t026
+from support import f00b, t024, t026, t027
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
     fresh_database,
@@ -144,10 +144,12 @@ def test_model_evaluation_enqueue_writes_both_rows_in_one_transaction(t026_stack
     assert job["attempt_count"] == 0
 
 
-def test_application_kind_is_accepted_structurally_but_unbound(t026_stack) -> None:
+def test_application_kind_requires_a_real_snapshot_after_t027(t026_stack) -> None:
     owner = f00b.principal_id_for_login(t026_stack.dbname)
     dataset = t026.seed_dataset(t026_stack, owner)
-    snapshot_id = t026.new_uuid()
+    # T027's 0014 makes evaluation_jobs.snapshot_id a real FK; the enqueue path
+    # now needs an execution snapshot row that exists and belongs to the owner.
+    snapshot_id = t027.seed_execution_snapshot(t026_stack.dbname, owner)
     payload = t026.enqueue_evaluation_ok(
         t026_stack,
         kind="application",
@@ -159,7 +161,7 @@ def test_application_kind_is_accepted_structurally_but_unbound(t026_stack) -> No
     assert evaluation["snapshot_id"] == snapshot_id
     assert evaluation["model_profile_version_id"] is None
 
-    # T026 cannot execute an application evaluation (T027 owns snapshots); the
-    # handler's job-scoped binding read is the honest refusal point. It is
-    # exercised end to end in test_t026_failures.py.
+    # The binding now resolves: the owner's real snapshot carries a manifest hash.
     assert f00b.job_row(t026_stack.dbname, payload["background_job_id"])["state"] == "ready"
+    snapshot = t027.snapshot_row(t026_stack.dbname, snapshot_id)
+    assert snapshot["manifest_sha256"]

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026
+from support import f00b, f02a, t024, t025, t026, t027
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -214,6 +214,32 @@ def t026_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.
     return stack
 
 
+@pytest.fixture
+def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.T027Stack:
+    """A migrated database behind a real API with a real object store.
+
+    The debug submission seals the canonical manifest (T025) and the canonical
+    test input (T027), so the object store is required. The deployment inputs are
+    T025's placeholders (fixed worker image digest, real P01 runtime lock); the
+    API needs no internal mTLS listener because debug is a public authenticated
+    endpoint.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    server = api_server(dsn, extra_env=t025.api_extra_env(object_dir))
+    return t027.T027Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        binaries=go_binaries,
+    )
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -225,4 +251,5 @@ __all__ = [
     "f02a_stack",
     "t025_stack",
     "t026_stack",
+    "t027_stack",
 ]

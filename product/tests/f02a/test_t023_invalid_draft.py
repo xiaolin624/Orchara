@@ -3,8 +3,9 @@
 PLAN §2 D6 and T023's brief split this deliberately: saving only performs
 structural DraftInput validation, so a semantically invalid workflow (a cycle) is
 persisted and read back unchanged. Refusing to *debug* or *submit* it belongs to
-T025/T027, whose endpoints do not exist in this ticket. The last test asserts
-that absence instead of pretending the behaviour is already enforced.
+T025/T027/F02B. T025 added validate and T027 added debugDraft; the last test
+records that the refusal side of acceptance 3 is now closed by real endpoints
+while publication-submit is still absent (F02B).
 """
 
 from __future__ import annotations
@@ -52,13 +53,14 @@ def test_a_cyclic_definition_saves_and_reads_back_verbatim(f02a_stack) -> None:
     assert row["definition"] == definition
 
 
-def test_debug_and_submit_endpoints_are_still_absent_after_t025(f02a_stack) -> None:
-    """T025 closes the validate side; debug (T027) and submit (F02B) remain absent.
+def test_t023_acceptance_3_is_closed_by_the_validate_and_debug_refusals(f02a_stack) -> None:
+    """An invalid draft can be saved, and neither validate nor debug accepts it.
 
-    T023 shipped ``CheckExecutable`` and recorded "validate/debug/submit" as not
-    built. T025 adds ``POST /applications/{id}/validate`` (it answers the empty
-    draft with located errors rather than 404); the other two endpoints are still
-    the ticket boundary for T027 and F02B, so a 404 here is the evidence.
+    T025 added ``POST /applications/{id}/validate``; T027 added
+    ``POST /applications/{id}/debug-runs``. Both refuse the empty draft with
+    located errors, which is the "cannot debug/submit" half of T023's acceptance
+    item. Publication-submit is F02B and is still absent, so no endpoint accepts a
+    draft for publication yet.
     """
     admin = f.admin_session(f02a_stack)
     owner = f.invite_and_activate(f02a_stack, admin, "t023-absent-owner")
@@ -72,10 +74,28 @@ def test_debug_and_submit_endpoints_are_still_absent_after_t025(f02a_stack) -> N
     assert validate.status == 200, validate.text
     assert validate.json["valid"] is False, validate.text
 
-    for path in ("debug-runs", "submit"):
-        response = owner.client.post(
-            f"/api/v1/applications/{application['id']}/{path}",
-            body={},
-            csrf=owner.csrf,
-        )
-        assert response.status == 404, f"{path} unexpectedly exists: {response.status} {response.text}"
+    # debug-runs exists after T027. It requires the Idempotency-Key first ...
+    debug_path = f"/api/v1/applications/{application['id']}/debug-runs"
+    missing_key = owner.client.post(debug_path, body={}, csrf=owner.csrf)
+    assert missing_key.status == 400, missing_key.text
+    assert missing_key.json["error"]["code"] == "idempotency_key_required", missing_key.text
+
+    # ... and with one it refuses the not-executable draft with located errors.
+    refused = owner.client.post(
+        debug_path,
+        body={"draft_revision": 1, "input": {}, "artifact_ids": []},
+        csrf=owner.csrf,
+        headers={"Idempotency-Key": "t023-acceptance-3"},
+    )
+    assert refused.status == 422, refused.text
+    error = refused.json["error"]
+    assert error["code"] == "validation_failed", refused.text
+    located = error["details"]["errors"]
+    assert isinstance(located, list) and located, refused.text
+    assert all({"code", "pointer", "message"} <= set(entry) for entry in located), located
+
+    # Publication-submit is F02B and remains absent.
+    submit = owner.client.post(
+        f"/api/v1/applications/{application['id']}/submit", body={}, csrf=owner.csrf
+    )
+    assert submit.status == 404, f"submit unexpectedly exists: {submit.status} {submit.text}"
