@@ -95,7 +95,10 @@
       const edit = document.createElement('a');
       edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
       edit.textContent = '编辑草稿';
-      item.append(name, ' ', id, ' ', version, ' ', edit);
+      const debug = document.createElement('a');
+      debug.href = '/apps/' + encodeURIComponent(application.id) + '/debug';
+      debug.textContent = '调试';
+      item.append(name, ' ', id, ' ', version, ' ', edit, ' ', debug);
       listElement.appendChild(item);
     }
 

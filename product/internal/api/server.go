@@ -129,6 +129,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// extension is documented in ADR 0004 §26) and seals the canonical bytes.
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/validate", s.handleValidateApplication)
 
+	// F02A/T027: private debug submission (owner-only, Idempotency-Key required,
+	// one frozen snapshot + queued run + ready start job) and the owner-only run
+	// read. The fixed manifest hash travels in X-Manifest-SHA256 on both, because
+	// the contract Run schema has no field for it (ADR 0004 §38).
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
+	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
 	// separate mTLS listener (RegisterInternal).
@@ -154,8 +161,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
+	// F02A/T027: the debug entry is served per application for the same reason.
+	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
+	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 }
 
 type loginRequest struct {

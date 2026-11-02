@@ -238,6 +238,14 @@ function initEditor() {
     editorStatus('这个地址没有指向一个应用编辑器（应为 /apps/<application id>/edit）。', 'bad');
     return;
   }
+  // The debug entry is per application, so it is built from the path segment
+  // instead of putting an id in a query string. The link is inert until the
+  // page knows which application it edits.
+  const debugEntry = document.getElementById('debug-entry');
+  if (debugEntry) {
+    debugEntry.href = '/apps/' + encodeURIComponent(applicationId) + '/debug';
+    debugEntry.textContent = '打开私有调试页';
+  }
   let etag = null;
 
   async function load() {
