@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028, t029
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -250,6 +250,41 @@ def t028_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t028.
 
 
 @pytest.fixture
+def t030_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t030.T030Stack:
+    """A T028-shaped stack for the T030 preset tool path.
+
+    The tool run needs the same real primitives as T028 (migrated database, real
+    API with object store and signed links, real maintenance process) plus the
+    real Python interpreter. No stack-specific knob is added: the preset tool's
+    script path is resolved from the product root, exactly as in production.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t030.T030Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.T027Stack:
     """A migrated database behind a real API with a real object store.
 
@@ -326,4 +361,5 @@ __all__ = [
     "t027_stack",
     "t028_stack",
     "t029_stack",
+    "t030_stack",
 ]

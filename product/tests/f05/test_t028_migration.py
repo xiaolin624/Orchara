@@ -70,8 +70,10 @@ def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
         dbname,
         "SELECT string_agg(version, ',' ORDER BY version) FROM platform.schema_migrations",
     )
-    assert versions.split(",")[-1] == "0015", versions
-    assert len(versions.split(",")) == 15, versions
+    # T030 appends 0017; 0015 must stay at its own position.
+    assert versions.split(",")[-1] == "0017", versions
+    assert len(versions.split(",")) == 17, versions
+    assert "0015" in versions.split(","), versions
 
     # The one table this ticket adds is present with exactly the columns the
     # upload admission path writes. A table name that does not exist is the

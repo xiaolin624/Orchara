@@ -131,10 +131,12 @@ def test_0016_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # T029 appends 0016; every earlier migration must stay at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 17)], versions
+    # T029 appends 0016; T030 appends 0017. Every earlier migration stays at its
+    # own position.
+    assert versions == [f"{number:04d}" for number in range(1, 18)], versions
     assert ledgers[14]["name"] == "0015_artifact_admissions.sql"
-    assert ledgers[-1]["name"] == "0016_execution_claims_and_quota.sql"
+    assert ledgers[-2]["name"] == "0016_execution_claims_and_quota.sql"
+    assert ledgers[-1]["name"] == "0017_tool_run_kind.sql"
 
 
 def test_0016_replays_as_a_noop(migrated_database, go_binaries) -> None:

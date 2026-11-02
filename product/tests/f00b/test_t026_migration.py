@@ -73,10 +73,10 @@ def test_0013_is_recorded_once_at_its_position(migrated_database) -> None:
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # T029 appends 0016; 0013 must stay at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 17)], versions
+    # T030 appends 0017; 0013 must stay at its own position.
+    assert versions == [f"{number:04d}" for number in range(1, 18)], versions
     assert ledgers[12]["name"] == "0013_evaluation_pool.sql"
-    assert ledgers[-1]["name"] == "0016_execution_claims_and_quota.sql"
+    assert ledgers[-1]["name"] == "0017_tool_run_kind.sql"
 
 
 def test_0013_replays_as_a_noop(migrated_database, go_binaries) -> None:

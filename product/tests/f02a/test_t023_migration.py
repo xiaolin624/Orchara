@@ -34,11 +34,11 @@ def test_0010_is_recorded_once_and_replaying_migrate_is_a_noop(f02a_stack) -> No
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # The chain now ends with T029's 0016; 0010 must still be recorded exactly
+    # The chain now ends with T030's 0017; 0010 must still be recorded exactly
     # once at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 17)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 18)], versions
     assert ledgers[9]["name"] == "0010_application_drafts.sql"
-    assert ledgers[-1]["name"] == "0016_execution_claims_and_quota.sql"
+    assert ledgers[-1]["name"] == "0017_tool_run_kind.sql"
 
     replay = st.migrate_or_fail(f02a_stack.binaries["admin"], f02a_stack.dsn)
     assert "no pending migrations" in replay, replay
