@@ -15,8 +15,11 @@ F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储�
 内部 mTLS API、maintenance 处理器循环、admin enqueue、GET job）；T024 已交付 job 限定文件访问
 与受控模型调用（迁移 0011、HMAC 签名对象链接、5 个内部端点、`internal/modelproxy` 与
 `model_validate` handler、`platform_model_calls` 记账）。F00B 其余票（T026）继续 open。
+F02A 的 T023 已交付草稿 CAS/版本读模型/编辑器；T025 已交付执行清单固化、依赖闭包与
+`POST /applications/{id}/validate`（迁移 0012、`internal/compiler`、`manifest_artifacts` 去重、
+golden 规范字节、`VerifyManifestBytes` 机制）。F02A 其余票（T027 debug）继续 open。
 平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备
-等后续 epic 未实现；F01/F00B 的限制见各票报告 §5/§7。
+等后续 epic 未实现；F01/F00B/F02A 的限制见各票报告 §5/§7。
 
 ## 票状态
 
@@ -45,6 +48,7 @@ F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储�
 | T021 | F01 | 禁用人员并安全交接未完成待办 | passed | `reports/f01/T021-disable-and-handover.md`、`internal/identity/{disable,handover}.go`、`internal/api/{principals,server}.go`、`cmd/admin/main.go`、`apps/web/src/admin.html`、`tests/f01/test_t021_*.py`（`tests/f01` 共 142 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T022 | F00B | 提交一个后台任务并在重启后得到唯一结果 | passed | `reports/f00b/T022-background-jobs.md`、`db/migrations/0009_background_jobs.sql`、`internal/objectstore/`、`internal/background/`（含 handlers）、`internal/api/{internal,background}.go`、`cmd/api/main.go`、`cmd/maintenance/{main,client,run}.go`、`cmd/admin/{main,background}.go`、`tests/support/`、`tests/f00b/`（60 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
 | T024 | F00B | 后台评测只读取获准文件并记账模型调用 | passed | `reports/f00b/T024-job-files-and-models.md`、`db/migrations/0011_job_files_and_models.sql`、`internal/objectstore/sign.go`、`internal/background/{attempt,artifacts,scope}.go`、`internal/modelproxy/`、`internal/api/{jobdata,links}.go`、`internal/background/handlers/model_validate.go`、`cmd/maintenance/scope.go`、`tests/support/t024.py`、`tests/f00b/test_t024_*.py`（`tests/f00b` 86 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
+| T025 | F02A | 把当前草稿固化为可核验执行清单 | passed | `reports/f02a/T025-manifest.md`、`db/migrations/0012_manifest_and_tool_versions.sql`、`internal/compiler/`、`internal/catalog/manifest.go`、`internal/api/validate.go`、`internal/config/config.go`、`tests/contracts/snapshots/`、`tests/support/t025.py`、`tests/f02a/test_t025_*.py`（`tests/f02a` 62 passed，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；worker 复核机制已交付、真正 worker 属 F03/F04A） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -304,8 +308,31 @@ HTTP；页面 JS 用 Node 真实执行。判定为 `partial` 的唯一原因是�
 | 证据 | `reports/f02a/T023-drafts-and-editor.md`（AC 逐条、命令原始结果、契约缺口、not_run、下一票接口） |
 
 未运行（如实）：浏览器 DOM/HCI（无 headless browser；页面为真实 HTML/JS + Node 执行逻辑）；
-validate/debug/submit 端点（T025/T027/F02B）；manifest/hash/对象写入（T025/T024）。本票
-不推送、不关闭 issue。
+debug/submit 端点（T027/F02B；validate 已由 T025 交付）；manifest/hash/对象写入（T025/T024）。
+本票不推送、不关闭 issue。
+
+## F02A 执行清单固化（2/3：T025）
+
+T025（GitHub #26）已交付，状态 `passed`。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
+HTTP + 真实文件系统对象字节；无 mock、无跳过。票面第 3 条“worker 能复核规范字节”按
+**机制已交付、真正 worker 未构建**记录（F03/F04A 拥有 worker）。决策边界见
+[ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §25–30。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0012_manifest_and_tool_versions.sql`：`tool_versions`（契约基线、F05 写、T025 只读模型）、`manifest_artifacts`（T025 去重表，PK `(application_id, execution_revision, manifest_sha256)`，FK artifact）；权限沿用 0007–0011；重复 migrate no-op |
+| Manifest | `internal/compiler`：schema 精确 13 字段、`source_revision=execution_revision`、固定 `compiler_version`/`state_schema_version`、worker digest/runtime lock 部署输入 fail closed；`tool_artifacts`/model/subapp 排序去重、`connector_policies=[]`；JCS 规范字节 + 外置 `manifest_sha256`；不含 layout/身份/审核状态/hash |
+| 依赖闭包 | `internal/catalog/manifest.go`：model/tool/subapp 引用提取（pointer 精确到 config 字段）、真实表就绪判定（model passed；tool ready+approved+image；作者私有 debug 规则）、sub-app ACL 归属、`version_dependencies` + 自调用环检测；错误码 `capability_card_incomplete`/`dependency_invalid_id`/`dependency_not_found`/`dependency_not_ready`/`dependency_revoked`/`dependency_not_visible`/`dependency_cycle` |
+| API | `POST /api/v1/applications/{id}/validate`：owner-only（其余 404）、CSRF、`application:write` scope；200 `{valid,errors[]}` 定位错误；valid:true 返回 `X-Manifest-SHA256`（契约缺口，非契约扩展）；503 `compiler_unconfigured`/`object_store_unavailable`；不创建 version/review/snapshot/job |
+| 密封/去重 | 规范字节 JCS 原样写 `sealed/<64hex>`（state=ready、`execution_manifest`、application/json），按三元组 advisory lock 去重；重复 validate 不写第二个对象；同一 hash 的 artifact 供 T027/F02B 复用 |
+| 复核机制 | `compiler.VerifyManifestBytes(objects, ArtifactRef)`：先按字节重算 SHA-256/大小比对记录值，再要求精确 JCS 形式，最后严格解码复核 schema；golden 通过 + 篡改/错误 hash/非规范/缺字段/大小不符/缺对象/未配置 store 全拒绝；真正 worker 属 F03/F04A（未构建） |
+| Golden | `tests/contracts/snapshots/`：`sales` 与 `layout-only` 双胞胎（definition/card/layout + manifest.json/jcs/sha256）；Go 生成/漂移测试、Verify 测试；HTTP 测试断言响应头 == golden sha、密封字节 == `manifest.jcs` |
+| 测试 | `tests/support/t025.py` + `tests/f02a/test_t025_*.py` 4 文件 **17 用例**（迁移 6、validate 3、manifest 3、dependencies 5）；`tests/f02a` 62 passed、`tests/f00b` 86 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 证据 | `reports/f02a/T025-manifest.md`（AC 逐条、命令原始结果、契约缺口/占位输入、not_run、T027/F03 接口） |
+
+未运行（如实）：真正 worker 的领取/解析/复核（F03/F04A；本票只交付 `VerifyManifestBytes` 机制与
+真实字节/负例测试）；真实 worker 镜像与 state schema 制品（F04A/F15A/F03；digest 是部署方占位输入）；
+全量 `pytest tests`（PLAN §1 由统筹收尾跑一次）。本票不推送、不关闭 issue。
 
 
 

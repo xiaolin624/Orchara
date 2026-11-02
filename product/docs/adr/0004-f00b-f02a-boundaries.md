@@ -422,4 +422,121 @@ T024 把“后台 handler 只能读获准文件、每次模型调用都有账”
 - `product/tests/support/t024.py`、`product/tests/f00b/test_t024_*.py`
 - `product/reports/f00b/T024-job-files-and-models.md`
 
+## T025 追加：执行清单、依赖闭包与字节复核边界（F02A.02）
+
+T025 把草稿固化成一个**内容可核验**的执行清单：同一执行内容（definition + capability card + 固定依赖 +
+编译器/镜像/锁/状态 schema）得到同一份规范字节与 hash，布局和身份不参与；错误定位到节点 config；
+依赖闭包无环且只含调用者可用的已就绪版本。以下决定为 T027（debug）、F02B（发布）与 F03/F04A（worker）
+必须沿用。
+
+### 25. 迁移 0012 的表归属：tool_versions 只读模型 + manifest_artifacts 去重
+
+- `platform.tool_versions` 按 `contracts/database.sql` 基线创建，**写入/构建/审批归 F05**。本批没有工具
+  提交/构建/审批流程，而 T025 的依赖闭包必须能证明“python/agent 引用的工具已 ready、已审批、有镜像
+  digest”，因此 T025 现在建表作为只读模型（与 F01 为 applications 建读模型同理），迁移头/COMMENT
+  明确写出归属。**T025 不写任何工具行**，测试用 SQL 播种真实约束下的一致行；不得把本票读模型写成
+  “工具构建已实现”。
+- `platform.manifest_artifacts` 是**对契约基线的显式新增**（T025 拥有），主键
+  `(application_id, execution_revision, manifest_sha256)`，FK 到 `platform.artifacts`。它不是发布/快照
+  身份，而是“同一执行内容只密封一次”的内容注册表。T027 的 debug snapshot 与 F02B 的发布版本必须
+  引用这里记录的 artifact；**不得为同一 hash 再写第二份字节**。
+- 权限沿用 0007–0011：PUBLIC 无 platform 权限，`orchara_worker` 无 platform USAGE/表/序列权限。
+
+### 26. Manifest 组合与 hash：JCS 外置、身份/布局不参与、执行 revision 是 source_revision
+
+- 字段严格等于 `contracts/execution-manifest.schema.json`（13 字段，无额外字段）：
+  `manifest_version=1.0`、`application_id`、`source_revision`（= 草稿 `execution_revision`，不是 ETag
+  的 `revision`）、`compiler_version`、`worker_image_digest`、`runtime_lock_sha256`、
+  `state_schema_version`、`definition`、`capability_card`、`tool_artifacts`、`model_profile_versions`、
+  `subapp_versions`、`connector_policies`（本批恒 `[]`）。
+- **不含** layout、run/snapshot/version/review id、审核/验证状态或 hash 自身。`manifest_sha256` 是
+  UTF-8 RFC 8785 JCS 原字节的 SHA-256，外置返回/存储；绝不能从 JSONB 重序列化后推断。
+- 固定常量：`compiler_version="orchara-compiler/1.0.0"`、`state_schema_version="orchara-state/1.0"`。
+  前者是组合规则版本（本批没有编译器二进制）；后者只是清单字段，真正的 state schema 制品属 F03。
+- 集合规范化：`tool_artifacts` 按 tool version id 排序去重，model/subapp UUID 数组排序去重；
+  `python.tool_version` 与 `agent.tool_versions[]` 指向同一 tool 时只出现一次。
+- 只修改 layout 的保存仍会 +1 `revision`（ETag/CAS），但 `execution_revision` 不变，因而同一份
+  manifest 字节/hash 不变。该性质由保存路径的 jsonb `IS DISTINCT FROM` 与 manifest 不含 layout 共同保证，
+  不靠“不保存 layout”规避。golden 的 `sales`/`layout-only` 双胞胎是仓库内的逐字节证据。
+
+### 27. 部署输入 fail closed：worker 镜像占位、runtime lock 真实摘要、503 而非伪造
+
+- `worker_image_digest` 来自 `ORCHARA_WORKER_IMAGE_DIGEST`，必须匹配 `^sha256:[0-9a-f]{64}$`。
+  本批**未构建 worker 镜像**（F04A/F15A 才有），该值是部署方占位输入；缺失/非法时生成 manifest 的
+  端点返回 `503 compiler_unconfigured`，**绝不发明 digest**。配置里非空但格式非法 = 拒启动。
+- `runtime_lock_sha256` 是 `ORCHARA_RUNTIME_LOCK_PATH`（默认 P01 锁
+  `probes/agent_min/requirements.lock.txt`）文件字节的 SHA-256；每次生成时重新计算，文件不可读同样
+  `503 compiler_unconfigured`。锁文件变化必然改变所有执行 hash，golden 必须显式重生成。
+- 有效草稿但没有 `ORCHARA_OBJECT_DIR`：`503 object_store_unavailable`（字节无处密封，不能只返回一个
+  无法复核的 hash）。坏草稿（定义/卡片/依赖错误）不需要部署输入即可得到 `valid:false`，不会被 503
+  掩盖。
+
+### 28. 依赖就绪词汇与错误码：共享 vs 作者私有，归属错误不静默
+
+- 闭包只覆盖固定引用：model（`model`/`agent.model_profile_version`）、tool（`agent.tool_versions[]`、
+  `python.tool_version`）、sub-app version（`agent.subapp_versions[]`、`call_app.application_version`）。
+  知识库引用不参与（本批无 KB 表/读取授权实现，F09/F05 范围）。
+- 就绪规则（Go 对真实行判定）：
+  - model：存在、未撤销、`validation_state='passed'`；pending/running/failed 均不可执行。
+  - tool：存在、未撤销、`state='ready'`、`image_digest` 非空；**共享/提交执行**还要求 `approved_at`
+    非空（构建 ready ≠ 组织批准）。**作者私有 debug**（T027 传 `ExecutionOptions{PrivateDebug:true}` +
+    caller id）允许作者自己的 ready 工具无需批准；用他人未批工具是归属错误，不是静默纳入。
+  - sub-app version：存在、未撤销、应用未归档、调用者对该应用有 read ACL（owner 或未过期 grant）。
+    他人依赖无 ACL = 错误；有 ACL 才进入 manifest 的 `subapp_versions`。
+- 环：`version_dependencies` 的递归闭包必须无环；另外草稿直接/间接调用到**本应用**的 published
+  version 也是环（草稿不能递归调用自己）。错误定位到第一个达到环的引用 pointer。
+- 稳定错误码（T025 新增，客户端/T027 可依赖）：
+  `capability_card_incomplete`、`dependency_invalid_id`、`dependency_not_found`、
+  `dependency_not_ready`、`dependency_revoked`、`dependency_not_visible`、`dependency_cycle`。
+  每条都有 `pointer`（`/capability_card[/field]` 或 `/nodes/<i>/config/<field>[/<j>]`），单节点错误带
+  `node_id`；消息只含 id/状态，不含其他用户正文。定义错误继续使用 P05 的 code/pointer/优先级。
+
+### 29. 复核边界：`VerifyManifestBytes` 是机制，worker 属 F03/F04A
+
+- `internal/compiler.VerifyManifestBytes(objects, ArtifactRef{ObjectKey,SHA256,SizeBytes})` 是未来
+  supervisor/worker 的复核入口：读密封对象（≤20 MiB）→ **先**重算字节 SHA-256/大小并与记录值比较
+  （不符立即失败，不进入 parser）→ 要求字节是精确 JCS 规范形式 → 严格解码并复核 schema 语义。
+- Go 测试证明 golden 通过，篡改字节、错误记录 hash、非规范 JSON、缺必填字段、大小不符、对象不存在、
+  未配置 store 均被拒；真实 HTTP 测试证明端点密封的字节 hash == artifact 行 == 响应头。
+- **真正 worker 尚未构建**：本批不声称 worker 已复核过任何执行。F04A/F03 必须从 snapshot/claim 取得
+  `{object_key,sha256,size_bytes}` 后调用同一函数，不得自行重序列化或另造字节。
+
+### 30. `X-Manifest-SHA256` 非契约扩展、去重密封与“validate 不建执行身份”
+
+- `validateApplication` 的契约 200 体只有 `{valid,errors}`，装不下 `manifest_sha256`。T025 在
+  **valid:true 的 200 响应头**返回 `X-Manifest-SHA256`（64 位小写 hex），不改 contracts；这是显式
+  契约缺口，后续契约修订票应把它变成正式字段或正式 header 契约。invalid/503 没有 hash。
+- 端点是 **owner-only**（非 owner 一律 404，read grant 也不放行），会话 POST 需 CSRF；API key 需
+  `application:write`（validate 会写 artifact，按写能力授权）。
+- validate 只写“规范字节 artifact + 去重行”，**不创建** application_version、publication_review、
+  execution_snapshot、run、report 或 background job。同 `(application_id, execution_revision,
+  manifest_sha256)` 重复 validate 复用既有 artifact，不产生第二个对象；同一事务用
+  `pg_advisory_xact_lock`（按三元组）串行化并发写。
+- 事务失败/冲突路径删除本次写入的对象；对象写成功而 commit 前崩溃可能留下未引用 sealed 对象，
+  属 T026 孤儿清理，不在本票声称已处理。
+- T027/F02B 必须复用本票的 `ValidatedExecution.ArtifactID` 与同一 `SHA256`：debug 的
+  `manifest_artifact_id`、发布的 manifest 字节/hash 都来自这一次密封，不允许各自重编译出第二份。
+
+## 后果（T025）
+
+- 执行内容的唯一身份是 `(application_id, execution_revision, manifest_sha256)`；任何改变 definition /
+  capability_card / 固定依赖 config 的保存都改变执行 hash，任何只改 layout 的保存都不改变。
+- 依赖就绪判定只在 Go 内、对真实行执行；T025 没有工具构建/审批写入，也没有发布写入；后续票不得
+  复用 `manifest_artifacts` 表去伪造发布身份。
+- `internal/compiler` 是 manifest 组合/复核的唯一实现；`internal/catalog` 是依赖/ACL/密封的唯一编排。
+  T027/F02B/F03 只调用，不复制 JCS、不复写 hash 规则。
+- worker 镜像 digest 与 state schema 制品是显式的占位/未完成项；F04A/F15A/F03 替换后必须重生成 golden，
+  并把“所有执行 hash 变化”作为预期影响记录。
+
+## 证据（T025）
+
+- `product/db/migrations/0012_manifest_and_tool_versions.sql`
+- `product/internal/compiler/{manifest.go,verify.go,*_test.go}`
+- `product/internal/catalog/{manifest.go,manifest_test.go,draft.go}`
+- `product/internal/api/{validate.go,server.go}`、`product/internal/config/{config.go,config_test.go}`
+- `product/tests/contracts/{README.md,snapshots/**}`
+- `product/tests/support/t025.py`、`product/tests/f02a/test_t025_*.py`
+- `product/reports/f02a/T025-manifest.md`
+
+
 
