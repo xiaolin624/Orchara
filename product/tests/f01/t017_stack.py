@@ -8,6 +8,7 @@ the repetition of building that stack and signing in; nothing here is mocked.
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -27,8 +28,11 @@ from conftest import (  # noqa: F401 - the fixtures are re-exported for test mod
 )
 
 ADMIN_LOGIN = "admin"
-ADMIN_PASSWORD = "t017-admin-password"
-USER_PASSWORD = "t017-user-password"
+# Generated per test process, never a fixed credential-shaped literal in the
+# repository. The descriptive prefix keeps a failure message readable; the
+# random suffix is what is actually secret.
+ADMIN_PASSWORD = "t017-admin-" + secrets.token_urlsafe(18)
+USER_PASSWORD = "t017-user-" + secrets.token_urlsafe(18)
 
 
 @dataclass

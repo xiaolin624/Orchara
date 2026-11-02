@@ -8,6 +8,7 @@ principal has no users row, so it can never sign in.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from conftest import assert_error, sql_rows
@@ -157,7 +158,8 @@ def test_a_service_account_cannot_sign_in(stack) -> None:
     admin = admin_session(stack)
     create_service_account_or_fail(admin, "svc-login-probe", admin.principal_id)
 
-    client, response = sign_in(stack, "svc-login-probe", "whatever-password")
+    probe_password = "t020-probe-" + secrets.token_urlsafe(18)
+    client, response = sign_in(stack, "svc-login-probe", probe_password)
     # Same invalid_credentials answer as every unknown login; no new principal.
     assert_error(response, 401, "invalid_credentials")
     assert client.cookie() is None

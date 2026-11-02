@@ -11,6 +11,8 @@ covered by the Go unit test with an injected clock
 
 from __future__ import annotations
 
+import secrets
+
 from conftest import assert_error, sql
 from t017_stack import (  # noqa: F401 - fixtures are used through their names
     ADMIN_LOGIN,
@@ -26,7 +28,8 @@ from t017_stack import (  # noqa: F401 - fixtures are used through their names
     stack,
 )
 
-WRONG_PASSWORD = "t017-definitely-wrong-password"
+# Generated per test process: the fixture contains no fixed password string.
+WRONG_PASSWORD = "t017-wrong-" + secrets.token_urlsafe(18)
 
 
 def fail_login(stack: Stack, client, login: str = ADMIN_LOGIN):

@@ -9,6 +9,7 @@ line (method, path, status, duration, request id) and none of the secrets.
 from __future__ import annotations
 
 import re
+import secrets
 import uuid
 
 import pytest
@@ -22,9 +23,12 @@ from conftest import (
     migrate_or_fail,
 )
 
-ADMIN_PASSWORD = "t015-log-admin-password"
-USER_PASSWORD = "t015-log-user-password"
-WRONG_PASSWORD = "t015-log-wrong-password"
+# Generated per test process. The log assertions below compare against these
+# exact values, so a freshly generated secret is a stronger check than a
+# repository literal: it cannot have been accidentally filtered as "known".
+ADMIN_PASSWORD = "t015-log-admin-" + secrets.token_urlsafe(18)
+USER_PASSWORD = "t015-log-user-" + secrets.token_urlsafe(18)
+WRONG_PASSWORD = "t015-log-wrong-" + secrets.token_urlsafe(18)
 
 
 @pytest.fixture

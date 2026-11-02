@@ -8,6 +8,7 @@ never appear in the command's output.
 from __future__ import annotations
 
 import re
+import secrets
 
 import pytest
 
@@ -22,7 +23,11 @@ from conftest import (
     sql_rows,
 )
 
-ADMIN_PASSWORD = "t015-correct-horse-battery"
+# Generated per test process: the fixture contains no fixed password string.
+ADMIN_PASSWORD = "t015-bootstrap-" + secrets.token_urlsafe(18)
+ANOTHER_PASSWORD = "t015-second-" + secrets.token_urlsafe(18)
+# Deliberately below the 12-character minimum; generated, not a fixture literal.
+WEAK_PASSWORD = "short-" + secrets.token_urlsafe(2)
 
 
 @pytest.fixture
@@ -100,7 +105,7 @@ def test_second_bootstrap_is_refused(migrated_database, go_binaries) -> None:
     bootstrap_or_fail(go_binaries["admin"], dsn, ADMIN_PASSWORD)
 
     completed = run_bootstrap(
-        go_binaries["admin"], dsn, "another-long-password", login="admin2"
+        go_binaries["admin"], dsn, ANOTHER_PASSWORD, login="admin2"
     )
     combined = (completed.stdout + completed.stderr).strip()
     assert completed.returncode != 0, f"a second bootstrap succeeded:\n{combined}"
@@ -114,7 +119,7 @@ def test_second_bootstrap_is_refused(migrated_database, go_binaries) -> None:
 
 def test_weak_password_is_refused_without_creating_anyone(migrated_database, go_binaries) -> None:
     dsn, dbname = migrated_database
-    completed = run_bootstrap(go_binaries["admin"], dsn, "too-short")
+    completed = run_bootstrap(go_binaries["admin"], dsn, WEAK_PASSWORD)
     combined = (completed.stdout + completed.stderr).strip()
     assert completed.returncode != 0, f"a weak password was accepted:\n{combined}"
     assert "12" in combined, combined

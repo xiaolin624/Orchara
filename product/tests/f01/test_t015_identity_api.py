@@ -8,6 +8,7 @@ tests must keep proving the same user path after that change.
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -31,8 +32,14 @@ from conftest import (
     sql_rows,
 )
 
-ADMIN_PASSWORD = "t015-admin-password"
-USER_PASSWORD = "t015-user-password"
+# Generated per test process: no fixed password string lives in the fixture.
+ADMIN_PASSWORD = "t015-admin-" + secrets.token_urlsafe(18)
+USER_PASSWORD = "t015-user-" + secrets.token_urlsafe(18)
+WRONG_PASSWORD = "t015-wrong-" + secrets.token_urlsafe(18)
+SECOND_PASSWORD = "t015-second-" + secrets.token_urlsafe(18)
+# Deliberately below the 12-character minimum, generated so no fixed password
+# string appears in the fixture.
+WEAK_PASSWORD = "short-" + secrets.token_urlsafe(2)
 COOKIE = "platform_session"
 
 
@@ -139,8 +146,8 @@ def test_login_returns_a_session_cookie_and_a_hashed_csrf_token(stack: Stack) ->
 
 
 def test_login_does_not_reveal_whether_a_login_exists(stack: Stack) -> None:
-    _client, unknown, _csrf = login(stack, "ghost", "whatever-password")
-    _client2, wrong, _csrf2 = login(stack, "admin", "wrong-but-long-password")
+    _client, unknown, _csrf = login(stack, "ghost", WRONG_PASSWORD)
+    _client2, wrong, _csrf2 = login(stack, "admin", WRONG_PASSWORD)
 
     assert unknown.status == 401, unknown.text
     assert wrong.status == 401, wrong.text
@@ -279,7 +286,7 @@ def test_activation_succeeds_once_and_the_user_can_then_log_in(stack: Stack) -> 
         "SELECT consumed_at IS NOT NULL FROM platform.activation_tokens",
     ) == "t"
 
-    reuse = activate(stack, token, "another-long-password")
+    reuse = activate(stack, token, SECOND_PASSWORD)
     assert_error(reuse, 409, "activation_consumed")
 
     _client, login_response, _csrf = login(stack, "gina", USER_PASSWORD)
@@ -313,7 +320,7 @@ def test_password_validation_does_not_consume_the_token(stack: Stack) -> None:
     login_name = "iris.long.login"
     token = invites_until_token(stack, admin, login_name)
 
-    weak = activate(stack, token, "short")
+    weak = activate(stack, token, WEAK_PASSWORD)
     assert_error(weak, 422, "validation_failed")
     same_as_login = activate(stack, token, login_name)
     assert_error(same_as_login, 422, "validation_failed")
