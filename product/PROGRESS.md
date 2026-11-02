@@ -10,7 +10,8 @@
 ## 当前发布范围
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
-T026 partial）** 与 **F02A（T023/T025 partial；T027 passed）**；其余票保持 open。
+T026 partial）**、**F02A（T023/T025 partial；T027 passed）** 与 **F05（T028 passed；T029+ open）**；
+其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -61,6 +62,7 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 | T025 | F02A | 把当前草稿固化为可核验执行清单 | **partial** | `reports/f02a/T025-manifest.md`（AC3 `partial`：`VerifyManifestBytes` 机制 + 真实 sealed-object 篡改测试已交付，真正 worker 属 F03/F04A）、`db/migrations/0012_manifest_and_tool_versions.sql`、`internal/compiler/`、`internal/catalog/manifest.go`、`internal/api/validate.go`、`internal/config/config.go`、`tests/contracts/snapshots/`、`tests/support/t025.py`、`tests/f02a/test_t025_*.py`（T025 17 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；第二次复核新增依赖 UUID 大小写归一） |
 | T026 | F00B | 评测池满载时文件封存仍能完成 | partial | `reports/f00b/T026-evaluation-pool.md`、`db/migrations/0013_evaluation_pool.sql`、`internal/background/{evaluation,complete,sweep}.go`、`cmd/maintenance/{run,sweep}.go`、`tests/f00b/test_t026_*.py`（41 用例；`kind=application` 的真实 runner/checker 属 F13A，T027 后 snapshot 绑定结构可用；**deletion 状态属 F07、未实现**；第二次复核后 sweep 只清 staging、sealed 孤儿清理延后 F07/F13A，租约耗尽的评测终态与 job 同事务对账；三条 partial 原因见报告页首） |
 | T027 | F02A | 发布前提交私有草稿并查看固定调试任务 | passed | `reports/f02a/T027-debug-submit.md`、`db/migrations/0014_execution_snapshots_and_runs.sql`、`internal/catalog/{debug.go,debug_test.go}`、`internal/api/debug.go`、`apps/web/src/{debug.html,assets/debug.js}`、`tests/support/t027.py`、`tests/f02a/test_t027_*.py`（38 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；领取/执行属 F03；第二次复核后 debug 要求会话 creator 角色，无角色管理员 403） |
+| T028 | F05 | 上传、校验封存并授权下载不可覆盖的文件 | passed | `reports/f05/T028-artifact-uploads.md`、`db/migrations/0015_artifact_admissions.sql`、`internal/artifacts/`（服务 + 格式准入分类器）、`internal/api/{artifacts.go,server.go}`、`internal/background/handlers/artifact_finalize.go`、`apps/web/src/{attachments.html,assets/attachments.js}`、`tests/support/t028.py`、`tests/f05/test_t028_*.py`（6 文件 31 用例；真实 PG + 真实二进制 + 真实 HTTP + 真实签名 URL + 真实 maintenance finalize；删除模型/病毒查杀/深工作表解析分别属 F07/F13A，见报告 §5） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -411,8 +413,32 @@ T027（GitHub #28）已交付，状态 **`passed`**（本票范围 = **提交与
 未运行（如实）：F03 的领取/租约/attempt/事件/SSE/结果/退出 finalizer/cancel/终态（本票的 run 停在
 queued、start job 停在 ready；F03 必须补两个 attempt 外键并先调 `VerifyManifestBytes`）；F02B 的发布
 审核/version 写入/`submit`（测试断言仍 404）；F05/F07 的 requests/conversations 与 FK、幂等收据清理；
-T028 的用户上传准入；浏览器 DOM 渲染（与 F01/T023 相同）；真实 worker 镜像（占位 digest）；
+浏览器 DOM 渲染（与 F01/T023 相同）；真实 worker 镜像（占位 digest）；
 F13A 的真实评测 runner。全量 `pytest tests` 已在复核修复收尾运行。本票不推送、不关闭 issue。
+
+## F05 用户上传、格式准入与不可覆盖封存（1/N：T028）
+
+T028（GitHub #29）已交付，状态 **`passed`**（本票范围 = **上传 + 准入 + owner-only 读取**）。
+真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP + 真实文件系统对象字节 + 真实 HMAC 签名
+staging/sealed URL + 真实 `cmd/maintenance run --once --kinds artifact_finalize`；无 mock、无跳过。
+复用 T022 的 `artifact_finalize` 流水线（未写第二个 finalizer）。边界（如实）：F07 删除模型、
+病毒查杀、XLSX 工作表/行级深解析、浏览器 DOM 分别见报告 §4/§5 的 `not_run`/后续票。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0015_artifact_admissions.sql`：唯一新表 `platform.artifact_admissions`（PK/FK artifact、declared/sniffed media type、detected_format、verdict、reason、checked_at；accepted 必有 sniff、rejected 必有 reason 的 CHECK）；迁移头列出偏离与 owner（F07/T037）；无 deletion/requests/conversations/tool 表；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op |
+| createUpload | `POST /api/v1/artifacts/uploads`：会话 CSRF / API key `application:write`（普通 user 可上传，不要求 creator）；`UploadInput` 精确校验（4 类 media_type 允许清单、size 1..20971520、4 个 purpose）；预分配不同 staging/sealed key，`uploading` revision=1；201 `Upload` 只含短时 staging PUT URL（max_bytes=声明 size）+ expires_at；sealed key 永不发 PUT |
+| completeUpload | `POST /api/v1/artifacts/{id}/complete`：owner-only（他人含管理员 404）；CAS `uploading→scanning`（revision+1）+ 同事务一个 `artifact_finalize` job（expected_revision=新 revision、`artifact:<id>:<sha>` dedup）；同 hash 在 scanning/ready 幂等且不建第二个 job；异 hash 409 `artifact_hash_conflict`；deleted/quarantined 409 `artifact_conflict`；不读对象存储、不激活 |
+| 格式准入 | handler 在 hash/大小通过后读取**本尝试** sealed 对象并持久化 admission：text/UTF-8、CSV 解析、JSON `json.Valid`、XLSX zip 宏/条目≤512/解压≤64 MiB/路径穿越/必需 workbook；不一致/空/非法/不支持 → `artifact_format_rejected`（quarantine-implying、business、不可重试）；staging 缺失对 user upload → `artifact_upload_incomplete`；非 user-upload purpose 不走本准入（T024/T026 语义不变）；激活仍只由完成守卫决定；新增 Go 分类器单测 |
+| 读取 | `GET /artifacts/{id}` 4 字段（quarantined 附非契约 `X-Artifact-Quarantine-Reason`）；`GET .../download` ready 才签 sealed GET、未 ready 409 `artifact_not_ready`、隔离/他人/已删 404；`GET .../content` 同一 ACL、`Content-Disposition: attachment`、流式复制不把 20 MiB 读进内存；管理员不是任意用户正文读者（404） |
+| Web | `apps/web/src/attachments.html` + `assets/attachments.js`：选文件/类型/用途 → 浏览器 SHA-256 → createUpload → 无凭据 PUT staging → complete → 轮询 state；ready 才显示下载（点击时才取新链接）；quarantined 安全中文文案 + reason；全部 `textContent`，无 URL/localStorage 凭据；apps/debug 导航入口 |
+| 测试 | `tests/support/t028.py` + `tests/f05/test_t028_*.py` 6 文件 **31 用例**（迁移 4、上传 6、隔离 10、ACL 5、删除竞争 1、页面 5）；核心 AC“校验后覆盖 staging 不改变 sealed”与“同 hash 幂等/异 hash 409 + 单 job”逐字节/逐行断言；五套件门禁 `pytest tests/f05 tests/f00b tests/f02a tests/f01 tests/tooling -q` = **446 passed**（f05 31 / f00b 135 / f02a 104 / f01 155 / tooling 21），`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 证据 | `reports/f05/T028-artifact-uploads.md`（AC 逐条、命令原始结果、契约缺口、`not_run`、F07/F03 接口） |
+
+未运行/边界（如实）：F07 的 DELETE 端点/deletion_jobs/副本清理/tombstone 传播（本票只用 F07 将写的
+`deleted_at/state=deleted/revision+1` 列做真实 guard 竞争测试，不实现删除）；病毒查杀与 XLSX 工作表/
+行级/公式深解析（属 F13A/`document_ingest`）；管理员诊断授权正文读取（F07/F09）；浏览器 DOM；全量
+`pytest tests`（本票按 brief 跑五套件，见报告 §3.3）。本票不推送、不关闭 issue。
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
