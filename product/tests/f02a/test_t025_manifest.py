@@ -176,21 +176,9 @@ def test_layout_only_save_keeps_the_hash_and_definition_change_changes_it(t025_s
     assert len(sealed_files(t025_stack.object_dir)) == 3
 
 
-def test_tampering_with_the_sealed_bytes_breaks_the_recorded_digest(t025_stack) -> None:
-    admin, creator, _login = owner(t025_stack)
-    application_id = t025.seed_golden_draft(t025_stack.dbname, creator.principal_id)
-    response = t025.validate(creator, application_id)
-    assert response.status == 200, response.text
-    recorded_sha = response.header("X-Manifest-SHA256")
-    row = t025.manifest_artifacts(t025_stack.dbname, application_id)[0]
-    path = t025_stack.object_dir / row["object_key"]
-
-    # Flip one byte in the sealed object. The worker's verification mechanism is
-    # compiler.VerifyManifestBytes: it hashes the bytes first and compares with
-    # the recorded digest before parsing (proved end-to-end in the Go tests).
-    payload = bytearray(path.read_bytes())
-    payload[len(payload) // 2] ^= 0xFF
-    path.write_bytes(bytes(payload))
-    tampered_digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    assert tampered_digest != recorded_sha
-    assert tampered_digest != row["sha256"]
+# The sealed-object tamper evidence lives in internal/compiler/verify_test.go:
+# TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace seals the canonical
+# bytes, verifies them, overwrites one byte in the sealed file and calls
+# VerifyManifestBytes, expecting ErrManifestHashMismatch. A Python test that only
+# compares two SHA-256 values cannot fail for a verifier bug, so it is not kept
+# here as if it were verification evidence (T025 report §4/§5).

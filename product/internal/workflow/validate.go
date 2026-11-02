@@ -16,9 +16,10 @@
 //  5. references, pointers, dominance and missing values
 //
 // The first stage that reports anything decides the verdict; the reported codes
-// keep detection order. A valid document yields two separate outputs: the
-// canonical *data* (NormalizedWorkflow) and the publishable *artifact*
-// (WorkflowArtifact) whose provenance is part of its digest.
+// keep detection order. A valid document yields the canonical *data*
+// (NormalizedWorkflow). The P05 probe also built a publish descriptor; that is
+// deliberately not ported: publication is F02B and T025's execution manifest is
+// internal/compiler's, so this package carries no publish path.
 //
 // T023 exposes Validate, DefaultRules and CheckExecutable (the last one lives in
 // internal/catalog because it returns draft-shaped located errors). T025 owns
@@ -249,18 +250,10 @@ type NormalizedWorkflow struct {
 	SHA256    string
 }
 
-// WorkflowArtifact is the *artifact*: the descriptor a publisher would register.
-type WorkflowArtifact struct {
-	Descriptor map[string]any
-	Canonical  []byte
-	SHA256     string
-}
-
 type ValidationResult struct {
 	InputSHA256 string
 	Problems    []Problem
 	Data        *NormalizedWorkflow
-	Artifact    *WorkflowArtifact
 }
 
 func (r *ValidationResult) Verdict() string {
@@ -1557,7 +1550,7 @@ func stageReferences(document map[string]any, rules *Rules, g *graph, problems *
 }
 
 // ---------------------------------------------------------------------------
-// normalisation and publication
+// normalisation
 // ---------------------------------------------------------------------------
 var setValuedConfig = map[string][]string{
 	"agent":    {"subapp_versions", "tool_versions"},
@@ -1663,52 +1656,17 @@ func mapSlice(items []map[string]any) []any {
 	return out
 }
 
-// BuildProvenance assembles the provenance that the artifact digest covers.
-func BuildProvenance(rules *Rules, inputSHA256, dataSHA256, corpusSHA256, rulesSHA256 string) map[string]any {
-	return map[string]any{
-		"corpus_sha256": corpusSHA256,
-		"data_sha256":   dataSHA256,
-		"dsl_version":   rules.DSLVersion,
-		"input_sha256":  inputSHA256,
-		"probe":         rules.Probe,
-		"probe_version": rules.ProbeVersion,
-		"rules_sha256":  rulesSHA256,
-		"schema_id":     rules.SchemaID,
-	}
-}
-
-// Publish wraps data in the publishable descriptor. Provenance cannot touch data.
-func Publish(data *NormalizedWorkflow, provenance map[string]any) (*WorkflowArtifact, error) {
-	merged := make(map[string]any, len(provenance)+1)
-	for key, value := range provenance {
-		merged[key] = value
-	}
-	merged["data_sha256"] = data.SHA256
-	descriptor := map[string]any{
-		"data_sha256": data.SHA256,
-		"dsl_version": merged["dsl_version"],
-		"provenance":  merged,
-		"schema_id":   merged["schema_id"],
-	}
-	canonical, err := jcs.Canonicalize(descriptor)
-	if err != nil {
-		return nil, err
-	}
-	payload := []byte(canonical)
-	return &WorkflowArtifact{Descriptor: descriptor, Canonical: payload, SHA256: jcs.SHA256Hex(payload)}, nil
-}
-
 // ---------------------------------------------------------------------------
 // validation entry point
 // ---------------------------------------------------------------------------
 type ValidationOptions struct {
-	InputSHA256  string
-	CorpusSHA256 string
-	RulesSHA256  string
+	InputSHA256 string
 }
 
-// Validate runs the five stages and, when the document is valid, normalises and
-// publishes it.
+// Validate runs the five stages and, when the document is valid, returns its
+// canonical normal form. It deliberately does not build a publishable artifact:
+// publication is F02B, and this batch must not carry a publish path in the
+// product package (T025 owns the execution manifest, not the version).
 func Validate(document any, rules *Rules, options ValidationOptions) (*ValidationResult, error) {
 	inputSHA := options.InputSHA256
 	if inputSHA == "" {
@@ -1742,16 +1700,10 @@ func Validate(document any, rules *Rules, options ValidationOptions) (*Validatio
 	if err != nil {
 		return nil, err
 	}
-	provenance := BuildProvenance(rules, inputSHA, data.SHA256, options.CorpusSHA256, options.RulesSHA256)
-	artifact, err := Publish(data, provenance)
-	if err != nil {
-		return nil, err
-	}
 	return &ValidationResult{
 		InputSHA256: inputSHA,
 		Problems:    nil,
 		Data:        data,
-		Artifact:    artifact,
 	}, nil
 }
 
@@ -1779,13 +1731,17 @@ func WireResult(result *ValidationResult, name string) map[string]any {
 	}
 	out["data_sha256"] = result.Data.SHA256
 	out["data_canonical"] = string(result.Data.Canonical)
-	out["artifact_sha256"] = result.Artifact.SHA256
 	return out
 }
 
 // ---------------------------------------------------------------------------
 // corpus
 // ---------------------------------------------------------------------------
+// The helpers below are test-support surface, not product API: they replay
+// probes/p05_dsl/corpus.json from validate_corpus_test.go and have no caller in a
+// product binary. They stay in the package (rather than a _test.go file) so the
+// parser and the comparison live next to the rules they pin, and they are
+// deliberately not a publication path.
 type CorpusCase struct {
 	Name              string
 	Source            string
@@ -1922,13 +1878,17 @@ func ParseCorpus(payload any) (*Corpus, error) {
 }
 
 // RunCorpus validates every case and returns the shared wire envelope.
+//
+// The envelope no longer carries an artifact digest: the P05 probe's publish
+// descriptor was not part of T023/T025, and this package must not keep a publish
+// path (the execution manifest is internal/compiler's). The fields the corpus
+// actually pins — verdict, reason(s), input hash, normal-form hash/canonical
+// text — are unchanged, so the replay is exactly as strict as before.
 func RunCorpus(corpus *Corpus, corpusSHA256 string, rules *Rules) (map[string]any, error) {
 	results := make([]any, 0, len(corpus.Cases))
 	for _, entry := range corpus.Cases {
 		result, err := Validate(entry.Input, rules, ValidationOptions{
-			InputSHA256:  entry.InputSHA256,
-			CorpusSHA256: corpusSHA256,
-			RulesSHA256:  rules.sha256,
+			InputSHA256: entry.InputSHA256,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("case %s: %w", entry.Name, err)

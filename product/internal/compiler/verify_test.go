@@ -97,6 +97,81 @@ func TestVerifyManifestBytesRejectsTamperedBytesBeforeParsing(t *testing.T) {
 	}
 }
 
+// TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace is the real
+// sealed-object tamper flow: the canonical bytes are sealed and verified first,
+// then one byte is overwritten inside the store's sealed object (the file the
+// finalize guard/producer wrote, not a second object with a different digest).
+// VerifyManifestBytes must hash the bytes before parsing and report the typed
+// hash mismatch. The Python HTTP test can only assert that a flipped file has a
+// different SHA-256; it cannot fail for a verifier bug, so the verifier itself is
+// proved here.
+func TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace(t *testing.T) {
+	payload, recorded := goldenJCS(t)
+	root := t.TempDir()
+	store, err := objectstore.Open(root)
+	if err != nil {
+		t.Fatalf("open the object store: %v", err)
+	}
+	object, err := store.CreateSealed(bytes.NewReader(payload), 0)
+	if err != nil {
+		t.Fatalf("seal the golden manifest: %v", err)
+	}
+	if object.SHA256 != recorded {
+		t.Fatalf("sealed bytes hash to %s, snapshot says %s", object.SHA256, recorded)
+	}
+	artifact := ArtifactRef{
+		ObjectKey: object.Key, SHA256: recorded, SizeBytes: int64(len(payload)),
+	}
+	manifest, verified, err := VerifyManifestBytes(store, artifact)
+	if err != nil {
+		t.Fatalf("the untampered sealed object must verify: %v", err)
+	}
+	if !bytes.Equal(verified, payload) || manifest.SourceRevision != 1 {
+		t.Fatal("the untampered verification did not return the sealed manifest")
+	}
+
+	// Overwrite one byte in the object that is already sealed on disk. The key and
+	// the recorded digest do not change; only the stored bytes do.
+	path := filepath.Join(root, object.Key)
+	stored, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the sealed object: %v", err)
+	}
+	if !bytes.Equal(stored, payload) {
+		t.Fatal("the sealed file does not contain the canonical bytes")
+	}
+	tampered := append([]byte(nil), stored...)
+	tampered[len(tampered)/2] ^= 0xFF
+	if len(tampered) != len(stored) {
+		t.Fatal("the tamper changed the object size instead of one byte")
+	}
+	if err := os.WriteFile(path, tampered, 0o600); err != nil {
+		t.Fatalf("overwrite the sealed object: %v", err)
+	}
+
+	_, _, err = VerifyManifestBytes(store, artifact)
+	if !errors.Is(err, ErrManifestHashMismatch) {
+		t.Fatalf("an in-place tampered sealed object must fail the hash check, got %v", err)
+	}
+
+	// Re-recording the tampered digest gets past the hash check, and the content
+	// check still rejects it: a verifier that only compared the recorded value
+	// would have accepted these bytes.
+	tamperedObject, err := store.Hash(object.Key)
+	if err != nil {
+		t.Fatalf("hash the tampered object: %v", err)
+	}
+	if tamperedObject.SHA256 == recorded {
+		t.Fatal("the tampered object has the recorded digest")
+	}
+	_, _, err = VerifyManifestBytes(store, ArtifactRef{
+		ObjectKey: object.Key, SHA256: tamperedObject.SHA256, SizeBytes: tamperedObject.Size,
+	})
+	if !errors.Is(err, ErrManifestInvalid) {
+		t.Fatalf("tampered content must fail the content check, got %v", err)
+	}
+}
+
 func TestVerifyManifestBytesRejectsNonCanonicalAndSchemaInvalidBytes(t *testing.T) {
 	payload, _ := goldenJCS(t)
 	var pretty any
