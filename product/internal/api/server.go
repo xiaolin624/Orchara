@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/background"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 )
 
@@ -19,6 +21,7 @@ type Server struct {
 	service      *identity.Service
 	policy       *policy.Authorizer
 	catalog      *catalog.Reader
+	jobs         *background.Controller
 	webDir       string
 	secureCookie bool
 	logger       *log.Logger
@@ -28,10 +31,20 @@ type Server struct {
 // New builds the HTTP surface. webDir is where admin.html, login.html,
 // activate.html and assets/app.js are served from (ORCHARA_WEB_DIR).
 //
-// The policy authorizer and the catalog read model share the identity service's
-// database handle; constructing them here keeps cmd/api's wiring unchanged and
-// makes the decision cache a per-process property of this server.
-func New(service *identity.Service, webDir string, profile config.Profile, logger *log.Logger) *Server {
+// The policy authorizer, the catalog read model and the background controller
+// share the identity service's database handle; constructing them here keeps
+// cmd/api's wiring unchanged and makes the decision cache a per-process property
+// of this server. objects may be nil: the server then starts but refuses any
+// operation that would need object bytes (artifact_finalize activation and the
+// handler's sealed write) instead of silently skipping verification.
+func New(
+	service *identity.Service,
+	webDir string,
+	profile config.Profile,
+	logger *log.Logger,
+	objects *objectstore.Store,
+	retryBackoff time.Duration,
+) *Server {
 	if logger == nil {
 		logger = log.New(nullWriter{}, "", 0)
 	}
@@ -40,6 +53,7 @@ func New(service *identity.Service, webDir string, profile config.Profile, logge
 		service:      service,
 		policy:       authorizer,
 		catalog:      catalog.New(service.DB, authorizer),
+		jobs:         background.New(service.DB, objects, retryBackoff),
 		webDir:       webDir,
 		secureCookie: SecureCookie(profile),
 		logger:       logger,
@@ -77,6 +91,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/admin/users/{principal_id}/roles", s.handleSetRoles)
 	mux.HandleFunc("GET /api/v1/applications", s.handleListApplications)
 	mux.HandleFunc("GET /api/v1/applications/{application_id}", s.handleGetApplication)
+
+	// F00B/T022: the redacted diagnostic read for a background job's owner or an
+	// administrator. The internal claim/heartbeat/result routes live on the
+	// separate mTLS listener (RegisterInternal).
+	mux.HandleFunc("GET /api/v1/background-jobs/{job_id}", s.handleGetBackgroundJob)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

@@ -14,10 +14,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Profile names the environment contract. The set mirrors BOOTSTRAP.md §5.
@@ -49,6 +51,41 @@ const (
 	EnvStubLedger     = "ORCHARA_STUB_LEDGER"
 	EnvAllowScripts   = "ORCHARA_ALLOW_ARBITRARY_SCRIPTS"
 	EnvWebDir         = "ORCHARA_WEB_DIR"
+
+	// Object store (F00B/T022). Empty means "this process cannot touch object
+	// bytes": every operation that needs them fails closed.
+	EnvObjectDir = "ORCHARA_OBJECT_DIR"
+	// EnvRetryBackoff is the base delay before the second attempt. A duration
+	// ("5s", "50ms") so tests can make retries deterministic without waiting.
+	EnvRetryBackoff = "ORCHARA_BACKGROUND_RETRY_BACKOFF"
+
+	// Internal mTLS listener for maintenance/worker/supervisor traffic.
+	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
+	EnvInternalServerCert = "ORCHARA_INTERNAL_SERVER_CERT"
+	EnvInternalServerKey  = "ORCHARA_INTERNAL_SERVER_KEY"
+	EnvInternalClientCA   = "ORCHARA_INTERNAL_CLIENT_CA"
+
+	// Internal mTLS client (cmd/maintenance).
+	EnvInternalURL        = "ORCHARA_INTERNAL_URL"
+	EnvInternalClientCert = "ORCHARA_INTERNAL_CLIENT_CERT"
+	EnvInternalClientKey  = "ORCHARA_INTERNAL_CLIENT_KEY"
+	EnvInternalCA         = "ORCHARA_INTERNAL_CA"
+
+	// The maintenance process's own database identity. It is deliberately not
+	// ORCHARA_DB_DSN: the maintenance role is not the API's role.
+	EnvMaintenanceDSN = "ORCHARA_MAINTENANCE_DSN"
+	// EnvHeartbeatInterval is how often a running handler renews its lease.
+	EnvHeartbeatInterval = "ORCHARA_BACKGROUND_HEARTBEAT_INTERVAL"
+)
+
+// Defaults fixed by BACKGROUND-JOBS.md §1 and the F00B plan.
+const (
+	// DefaultHeartbeatInterval is the documented 5s heartbeat against a 30s lease.
+	DefaultHeartbeatInterval = 5 * time.Second
+	// DefaultBackgroundRetryBackoff is the documented base retry delay.
+	DefaultBackgroundRetryBackoff = 5 * time.Second
+	// maxBackgroundRetryBackoff keeps a misconfigured base from parking work.
+	maxBackgroundRetryBackoff = time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -91,6 +128,37 @@ type Config struct {
 	ModelSecret   SecretRef
 	StubLedger    string
 	AllowScripts  bool
+	// ObjectDir is the object-store root. Empty is legal: a process that never
+	// touches object bytes (an API instance without artifact work) starts, and
+	// every operation that needs the store refuses instead of guessing a path.
+	ObjectDir string
+	// RetryBackoff is the base exponential-retry delay for background jobs.
+	RetryBackoff time.Duration
+	// Internal is the optional internal mTLS listener configuration. Nil means
+	// the listener is disabled; a partially configured set is a startup error.
+	Internal *InternalTLS
+}
+
+// InternalTLS is the API's internal listener configuration.
+type InternalTLS struct {
+	Addr       string
+	ServerCert string
+	ServerKey  string
+	ClientCA   string
+}
+
+// MaintenanceConfig is everything cmd/maintenance run needs: a verified
+// internal endpoint, the object store and the maintenance database identity.
+// It deliberately does not load the API's model/profile configuration: a
+// maintenance process has no model endpoint and no user-facing HTTP listener.
+type MaintenanceConfig struct {
+	InternalURL       string
+	ClientCert        string
+	ClientKey         string
+	CA                string
+	ObjectDir         string
+	DBDSN             string
+	HeartbeatInterval time.Duration
 }
 
 // ValidationError names the variable that made startup impossible.
@@ -174,7 +242,140 @@ func Load(lookup Lookup) (*Config, error) {
 		// verified by its own probe, not by a configuration flag.
 	}
 
+	// F00B/T022 runtime knobs. They are profile-independent: every profile that
+	// runs the API or maintenance can carry background jobs.
+	cfg.ObjectDir = value(lookup, EnvObjectDir)
+	retryBackoff, err := parseDuration(lookup, EnvRetryBackoff, DefaultBackgroundRetryBackoff)
+	if err != nil {
+		return nil, err
+	}
+	if retryBackoff > maxBackgroundRetryBackoff {
+		return nil, invalid(EnvRetryBackoff,
+			fmt.Sprintf("must be at most %s", maxBackgroundRetryBackoff))
+	}
+	cfg.RetryBackoff = retryBackoff
+	internalTLS, err := loadInternalTLS(lookup)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Internal = internalTLS
+
 	return cfg, nil
+}
+
+// loadInternalTLS validates the internal listener's four variables as a set.
+// An address without its certificate material, or material without an address,
+// is a startup error: a listener must never come up without verifying clients,
+// and unused key material must not sit in the environment looking intentional.
+func loadInternalTLS(lookup Lookup) (*InternalTLS, error) {
+	addr := value(lookup, EnvInternalAddr)
+	cert := value(lookup, EnvInternalServerCert)
+	key := value(lookup, EnvInternalServerKey)
+	ca := value(lookup, EnvInternalClientCA)
+	if addr == "" {
+		if cert != "" || key != "" || ca != "" {
+			return nil, invalid(EnvInternalAddr, "is required when internal TLS material is configured")
+		}
+		return nil, nil
+	}
+	for _, required := range []struct {
+		name  string
+		value string
+	}{
+		{EnvInternalServerCert, cert},
+		{EnvInternalServerKey, key},
+		{EnvInternalClientCA, ca},
+	} {
+		if required.value == "" {
+			return nil, invalid(required.name,
+				fmt.Sprintf("is required when %s is set; the internal listener fails closed without mTLS", EnvInternalAddr))
+		}
+	}
+	return &InternalTLS{
+		Addr:       addr,
+		ServerCert: cert,
+		ServerKey:  key,
+		ClientCA:   ca,
+	}, nil
+}
+
+// LoadMaintenance validates what cmd/maintenance run needs. The internal URL
+// must be https with no path/query/credentials: it is an mTLS endpoint, not a
+// generic webhook, and nothing about it may be redirected by configuration.
+func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
+	rawURL := value(lookup, EnvInternalURL)
+	if rawURL == "" {
+		return nil, invalid(EnvInternalURL, "is required; maintenance talks to the internal mTLS API")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, invalid(EnvInternalURL, "is not a valid URL")
+	}
+	if parsed.Scheme != "https" {
+		return nil, invalid(EnvInternalURL, "must use https://; the internal API requires mTLS")
+	}
+	if parsed.Host == "" {
+		return nil, invalid(EnvInternalURL, "must name a host and port")
+	}
+	if parsed.User != nil {
+		return nil, invalid(EnvInternalURL, "must not carry credentials")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return nil, invalid(EnvInternalURL, "must not carry a path; the client appends contract paths")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, invalid(EnvInternalURL, "must not carry a query or fragment")
+	}
+
+	values := map[string]string{
+		EnvInternalClientCert: value(lookup, EnvInternalClientCert),
+		EnvInternalClientKey:  value(lookup, EnvInternalClientKey),
+		EnvInternalCA:         value(lookup, EnvInternalCA),
+		EnvObjectDir:          value(lookup, EnvObjectDir),
+		EnvMaintenanceDSN:     value(lookup, EnvMaintenanceDSN),
+	}
+	for _, required := range []struct {
+		name  string
+		value string
+	}{
+		{EnvInternalClientCert, values[EnvInternalClientCert]},
+		{EnvInternalClientKey, values[EnvInternalClientKey]},
+		{EnvInternalCA, values[EnvInternalCA]},
+		{EnvObjectDir, values[EnvObjectDir]},
+		{EnvMaintenanceDSN, values[EnvMaintenanceDSN]},
+	} {
+		if required.value == "" {
+			return nil, invalid(required.name, "is required for cmd/maintenance run")
+		}
+	}
+	heartbeat, err := parseDuration(lookup, EnvHeartbeatInterval, DefaultHeartbeatInterval)
+	if err != nil {
+		return nil, err
+	}
+	return &MaintenanceConfig{
+		InternalURL:       strings.TrimSuffix(rawURL, "/"),
+		ClientCert:        values[EnvInternalClientCert],
+		ClientKey:         values[EnvInternalClientKey],
+		CA:                values[EnvInternalCA],
+		ObjectDir:         values[EnvObjectDir],
+		DBDSN:             values[EnvMaintenanceDSN],
+		HeartbeatInterval: heartbeat,
+	}, nil
+}
+
+func parseDuration(lookup Lookup, key string, fallback time.Duration) (time.Duration, error) {
+	raw := value(lookup, key)
+	if raw == "" {
+		return fallback, nil
+	}
+	duration, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, invalid(key, fmt.Sprintf("must be a duration such as 5s, got %q", raw))
+	}
+	if duration <= 0 {
+		return 0, invalid(key, "must be greater than zero")
+	}
+	return duration, nil
 }
 
 // DatabaseConfig is the configuration subset an administrative command needs

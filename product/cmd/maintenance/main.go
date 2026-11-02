@@ -1,9 +1,15 @@
 // Command maintenance performs one maintenance pass and exits (F00 skeleton).
 //
-// Today it only proves the maintenance identity can reach the database and read
-// the state the worker writes. Retention sweeps, deletion ledgers and quota
-// reconciliation are later tickets; reporting "nothing to do" is honest, while
-// inventing work would not be.
+// Subcommands:
+//
+//	(none)  connectivity/visibility pass, one JSON report, exit 0
+//	run     F00B/T022 maintenance client: claim a fixed kind, heartbeat,
+//	        execute the compiled handler, submit the result
+//
+// The no-argument behaviour is deliberately unchanged: it proves the maintenance
+// identity can reach the database and read the state the worker writes. The
+// `run` subcommand is the background-job controller client and talks only to the
+// internal mTLS API; it never invents work.
 package main
 
 import (
@@ -18,6 +24,18 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+const usage = `usage: orchara-maintenance [run]
+
+  (no argument)  connectivity and visibility pass; prints one JSON report
+  run            claim and execute background jobs over the internal mTLS API
+
+run flags:
+  --once                 claim until there is no ready job, then exit
+  --kinds a,b            restrict to these kinds (must have a compiled handler)
+  --poll-interval 2s     wait between empty claims (not used with --once)
+  --worker-id NAME       identity recorded on the leased job
+`
+
 type report struct {
 	Status    string `json:"status"`
 	Database  string `json:"database"`
@@ -28,6 +46,23 @@ type report struct {
 }
 
 func main() {
+	if len(os.Args) == 1 {
+		connectivityPass()
+		return
+	}
+	switch os.Args[1] {
+	case "run":
+		runMaintenance(os.Args[2:])
+	case "help", "-h", "--help":
+		fmt.Fprint(os.Stdout, usage)
+	default:
+		fmt.Fprintf(os.Stderr, "orchara-maintenance: unknown command %q\n\n%s", os.Args[1], usage)
+		os.Exit(2)
+	}
+}
+
+// connectivityPass is the F00 behaviour, unchanged.
+func connectivityPass() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

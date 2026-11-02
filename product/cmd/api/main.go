@@ -4,14 +4,23 @@
 // contract drift can be exercised end to end before any business module is
 // written. Readiness fails closed when the database is missing or unreachable;
 // see internal/health.
+//
+// F00B/T022 adds an optional second, TLS-only listener for the internal
+// maintenance/worker/supervisor protocol. It is separate from the public mux on
+// purpose: the internal contract paths must not be reachable with a user cookie
+// or API key, and the public pages must not be reachable with an internal
+// certificate.
 package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,6 +34,7 @@ import (
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/health"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/objectstore"
 )
 
 const defaultAddr = "127.0.0.1:8088"
@@ -59,6 +69,14 @@ func run(logger *log.Logger) error {
 		return db.QueryRowContext(ctx, "SELECT 1").Scan(&one)
 	}
 
+	objects, err := openObjectStore(cfg.ObjectDir)
+	if err != nil {
+		return fmt.Errorf("object store rejected: %w", err)
+	}
+	if objects == nil {
+		logger.Print("object store is not configured (ORCHARA_OBJECT_DIR); artifact activation will fail closed")
+	}
+
 	reporter := health.New(map[string]health.Check{"database": dbCheck}, 2*time.Second).
 		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton")).
 		WithProfile(string(cfg.Profile), cfg.Stub())
@@ -73,9 +91,10 @@ func run(logger *log.Logger) error {
 	mux.HandleFunc("/api/status", reporter.Status)
 
 	// F01 identity surface: login/invite/activate plus the pages that drive them.
-	// Full login/logout/refresh/CSRF lifecycle lands with T017.
+	// F00B/T022 adds the background-job read and the internal controller routes.
 	identityService := identity.New(db)
-	api.New(identityService, cfg.WebDir, cfg.Profile, logger).Register(mux)
+	apiServer := api.New(identityService, cfg.WebDir, cfg.Profile, logger, objects, cfg.RetryBackoff)
+	apiServer.Register(mux)
 
 	indexPath := filepath.Join(cfg.WebDir, "index.html")
 	if _, err := os.Stat(indexPath); err != nil {
@@ -95,22 +114,100 @@ func run(logger *log.Logger) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// The internal listener is built before either server starts, so a missing
+	// certificate or an occupied port refuses startup instead of leaving a
+	// half-running process.
+	var (
+		internalServer   *http.Server
+		internalListener net.Listener
+	)
+	if cfg.Internal != nil {
+		tlsConfig, err := internalTLSConfig(cfg.Internal)
+		if err != nil {
+			return fmt.Errorf("internal listener rejected: %w", err)
+		}
+		internalMux := http.NewServeMux()
+		internalMux.HandleFunc("/health/live", reporter.Live)
+		apiServer.RegisterInternal(internalMux)
+		internalListener, err = net.Listen("tcp", cfg.Internal.Addr)
+		if err != nil {
+			return fmt.Errorf("internal listener rejected: cannot listen on %s", cfg.Internal.Addr)
+		}
+		internalServer = &http.Server{
+			Handler: api.WithRequestLogging(logger,
+				api.WithRequestID(api.RequireInternalMTLS(internalMux))),
+			ReadHeaderTimeout: 5 * time.Second,
+			TLSConfig:         tlsConfig,
+		}
+	}
+
+	serverErr := make(chan error, 2)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+	if internalServer != nil {
+		tlsListener := tls.NewListener(internalListener, internalServer.TLSConfig)
+		go func() {
+			serverErr <- internalServer.Serve(tlsListener)
+		}()
+	}
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-stop
-		logger.Print("shutting down")
+	select {
+	case received := <-stop:
+		logger.Printf("shutting down (%s)", received)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(ctx)
-	}()
-
-	logger.Printf("listening on http://%s/ (profile=%s stub=%t web=%s)",
-		cfg.HTTPAddr, cfg.Profile, cfg.Stub(), indexPath)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("http server failed: %w", err)
+		if internalServer != nil {
+			_ = internalServer.Shutdown(ctx)
+		}
+		return nil
+	case serveErr := <-serverErr:
+		if internalServer != nil {
+			_ = internalServer.Close()
+		}
+		if errors.Is(serveErr, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("http server failed: %w", serveErr)
 	}
-	return nil
+}
+
+// openObjectStore configures the object store only when a root is set. An empty
+// root is not an error at startup: the API is useful for identity work without
+// objects, and every operation that needs bytes refuses later.
+func openObjectStore(root string) (*objectstore.Store, error) {
+	if root == "" {
+		return nil, nil
+	}
+	return objectstore.Open(root)
+}
+
+// internalTLSConfig loads the server identity and the client CA. The listener
+// requires and verifies a client certificate; TLS version is pinned to 1.2 or
+// newer. Any missing or unreadable file refuses startup.
+func internalTLSConfig(internal *config.InternalTLS) (*tls.Config, error) {
+	certificate, err := tls.LoadX509KeyPair(internal.ServerCert, internal.ServerKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load the internal server certificate: %w", err)
+	}
+	caPEM, err := os.ReadFile(internal.ClientCA)
+	if err != nil {
+		// The path is configuration, not a secret; the bytes are not logged.
+		return nil, errors.New("cannot read the internal client CA file")
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("the internal client CA file contains no certificate")
+	}
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{certificate},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+	}, nil
 }
 
 func env(key, fallback string) string {

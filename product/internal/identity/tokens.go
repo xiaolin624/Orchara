@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+
+	"orchara/platform/internal/uuid"
 )
 
 // TokenBytes is the entropy of every opaque token (activation, session, CSRF).
@@ -34,11 +36,5 @@ func HashToken(raw string) string {
 // The platform generates its own identifiers (the contract says "UUID by the
 // server"), so no value from a client or the database is trusted as one.
 func NewUUID() string {
-	var buf [16]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		panic(fmt.Sprintf("identity: system random source failed: %v", err))
-	}
-	buf[6] = (buf[6] & 0x0f) | 0x40 // version 4
-	buf[8] = (buf[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16])
+	return uuid.NewString()
 }

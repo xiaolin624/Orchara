@@ -6,9 +6,10 @@
 //
 // Commands:
 //
-//	migrate    apply the numbered SQL migrations
-//	bootstrap  create the first local administrator (password on stdin only)
-//	handover   move unfinished service-account responsibility to another admin
+//	migrate          apply the numbered SQL migrations
+//	bootstrap        create the first local administrator (password on stdin only)
+//	handover         move unfinished service-account responsibility to another admin
+//	background-jobs  the formal control interface for fixed-handler background work
 package main
 
 import (
@@ -39,9 +40,10 @@ const (
 	usage          = `usage: orchara-admin <command> [flags]
 
 commands:
-  migrate    apply pending SQL migrations (ORCHARA_PROFILE + ORCHARA_DB_DSN)
-  bootstrap  create the first local administrator (password read from stdin)
-  handover   move unfinished service-account responsibility to another administrator
+  migrate          apply pending SQL migrations (ORCHARA_PROFILE + ORCHARA_DB_DSN)
+  bootstrap        create the first local administrator (password read from stdin)
+  handover         move unfinished service-account responsibility to another administrator
+  background-jobs  enqueue fixed-handler background work (background-jobs enqueue --help)
 
 handover:
   orchara-admin handover --from <principal> --to <principal> --by <principal>
@@ -49,6 +51,23 @@ handover:
   --from  the departing responsible person (may be disabled)
   --to    the successor: an enabled human administrator
   --by    the acting administrator written to the audit events
+
+background-jobs:
+  orchara-admin background-jobs enqueue --kind KIND --target-id UUID --owner-id UUID \
+      --dedup-key KEY [--expected-revision N] [--expected-sha256 HEX] \
+      [--input-artifact-id UUID]
+
+  --kind               one of the eight fixed handler kinds; never a command
+  --target-id          resource the job works on
+  --owner-id           principal that owns the job (GET is owner-or-admin)
+  --dedup-key          idempotency key, unique per kind
+  --expected-revision  source version the result must still match
+  --expected-sha256    expected content hash (64 lowercase hex)
+  --input-artifact-id  optional input artifact
+
+  The command writes a job row in one transaction and prints
+  {"id":...,"state":...,"kind":...}. Unknown kinds or malformed ids exit 2;
+  a dedup conflict with different facts exits 1 and writes nothing.
 `
 )
 
@@ -79,7 +98,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing command; expected 'migrate', 'bootstrap' or 'handover'")
+		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover' or 'background-jobs'")
 	}
 	switch args[0] {
 	case "migrate":
@@ -88,11 +107,13 @@ func run(args []string) error {
 		return runBootstrap(args[1:])
 	case "handover":
 		return runHandover(args[1:])
+	case "background-jobs":
+		return runBackgroundJobs(args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap' or 'handover'", args[0])
+		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover' or 'background-jobs'", args[0])
 	}
 }
 
