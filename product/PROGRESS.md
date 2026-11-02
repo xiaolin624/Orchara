@@ -11,7 +11,7 @@
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
 T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030 passed）** 与
-**F03（T029、T031 passed；T032+ open）**；其余票保持 open。
+**F03（T029、T031、T032 passed；T033+ open）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -30,8 +30,10 @@ F03 的 T029 已交付执行领取的首个切片（迁移 0016、`internal/exec
 attempt-exit、owner-only `GET /runs` 与运行页面）：真实 mTLS + PG 原子领取/配额/hmac sealed 链接；
 result/finalizer/事件/恢复/取消属 T031+。T031 在 T029 之上交付 result 提议与统一幂等 finalizer：
 同一 attempt 的 result 与 supervisor 身份化 exit 证据按任意顺序到达都只提交一次终态
-（succeeded/failed）、退出无结果转 recovery_pending、waiting/needs_reconciliation 如实非终态；
-事件/SSE/取消/恢复属 T032/T035/T036/T038。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
+（succeeded/failed）、退出无结果转 recovery_pending、waiting/needs_reconciliation 如实非终态。
+T032 再把每个已提交 Run 转换投影为 `platform.run_events` 的持久 `run.status`（同事务 seq 分配）、
+提供 worker `node.status` 批量事件端点与 owner-only SSE 回放（Last-Event-ID 去重、保留窗口 410+快照、
+15s 注释心跳、终态后关闭）；cancel/恢复属 T036/T038。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
 只把 `tool_run` 加入后台任务 kind 白名单；真实维护进程用固定 argv 的 Python 子进程执行固定脚本，
 Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；公开 `POST/GET /api/v1/tool-runs`
 是 ADR 0005 记录的非契约桥，T033/F04A 再绑定到 Run/沙箱协议。平台整体**仍不是完整 v1**：业务执行/
@@ -75,6 +77,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T029 | F03 | 提交运行并只让合格执行者在配额内领取 | passed | `reports/f03/T029-claim-and-lease.md`、`db/migrations/0016_execution_claims_and_quota.sql`、`internal/execution/`（store + service：claim/heartbeat/attempt-exit）、`internal/api/{execution.go,runs.go,server.go,internal.go,debug.go}`、`apps/web/src/{runs.html,assets/runs.js,debug.html}`、`tests/support/t029.py`、`tests/f03/test_t029_*.py`（9 文件 51 用例；真实 PG + 真实 mTLS/HTTP + 真实对象字节 + 真实并发；result/finalizer/事件/恢复/取消属 T031–T038，发布版 Run 入口属 F02B/F05，见报告 §4/§5） |
 | T030 | F05 | 用预置工具对销售表格返回统计或具体输入错误 | passed | `reports/f05/T030-sales-tool.md`、`db/migrations/0017_tool_run_kind.sql`（只扩展 kind CHECK）、`internal/tools/`（固定 argv/只读输入/超时/严格 output.json/产物准入）、`internal/toolruns/`（幂等创建 + owner-only 读）、`internal/api/toolruns.go`、`internal/background/handlers/tool_run.go`（summary/CSV/diagnostics/log + 完成守卫）、`worker/platform_worker/nodes/sales_stats.py`（stdlib-only Decimal CSV/XLSX）、`apps/web/src/{attachments.html,assets/attachments.js}`（工具区/统计表/下载/诊断）、`tests/support/t030.py`、`tests/f05/test_t030_*.py`（6 文件 55 用例，含 36 个 Python 工具子进程用例；真实 PG + 二进制 + HTTP + 签名 URL + maintenance 双池 + 真实 Python 子进程；非契约桥见 ADR 0005；沙箱/结果协议/工具构建分别属 T033/T031/T037，见报告 §6） |
 | T031 | F03 | 运行完成后等待真实退出证据再展示终态 | passed | `reports/f03/T031-result-and-finalizer.md`、`internal/execution/`（result 提议 + 身份化 exit 证据 + 统一幂等 finalizer + children guard 扩展点）、`internal/api/execution.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/{t029.py,t031.py}`、`tests/f03/test_t031_*.py`（4 文件 17 用例；T029 exit 用例按新必填证据收紧）；无迁移（`reported_result` 已含 event_id）；真实 PG + 真实 mTLS/HTTP + 真实对象字节；事件/SSE/tools/cancel/recovery 属 T032–T038，见报告 §5/§7 |
+| T032 | F03 | 断开事件流后从持久时间线继续查看运行 | passed | `reports/f03/T032-run-events.md`、`db/migrations/0018_run_events.sql`、`internal/execution/events.go`（同事务 run.status 投影 + 同事务 seq 分配 + worker node.status 批量提交）、`internal/execution/{service.go,execution.go}`、`internal/api/events.go`（submitWorkerEvents + SSE）、`internal/api/{server.go,internal.go,middleware.go}`、`internal/config/config.go`、`catalog/debug.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/t032.py`、`tests/f03/test_t032_*.py`（4 文件 31 用例；真实 PG + 编译 API + 真实 mTLS + 真实 SSE 连接/断开重连 + Node 执行页面逻辑）；retention 默认 24h（`ORCHARA_RUN_EVENT_RETENTION`），410 `event_cursor_expired` + `details.snapshot_url`；Delta 预览/真实 worker/沙箱/取消/恢复属 F06/T033/T036/T038，见报告 §5/§7 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -516,6 +519,27 @@ resume、T036 的 cancel/unknown guard、T038 的恢复证据均不实现；运�
 | Web | `runs.html`/`runs.js`：详情新增“执行阶段 executing → finalizing → 终态”行；finalizing 明确写“等待 supervisor 的退出证据……终态提交前这不是成功”；未终态时轮询 `GET /api/v1/runs/{id}`，终态即停，成功只在服务端提交终态后展示；`debug.html`/`debug.js` 同样解释 finalizing（`describeRunStage`）；全部 `textContent`、无凭据存储 |
 | 测试 | `tests/support/t031.py` + `tests/f03/test_t031_{result,finalizer,identity,pages}.py` **4 文件 17 用例**（result 2、finalizer 10、identity 1、pages 4），T029 exit/invariants 用例按新必填证据收紧；`tests/f03` **68 passed**（51 + 17）；`internal/execution` Go 单测扩到 7 个（含 exit identity 必填/定位、WorkerResult 条件必填）；`go test ./...` 全绿、`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节） |
 | 证据 | `reports/f03/T031-result-and-finalizer.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T032/T035/T036/T038 接口） |
+
+## F03 持久事件与 SSE 回放（3/N：T032）
+
+T032（GitHub #33）已交付，状态 **`passed`**（本票范围 = **持久 run_events + 同事务状态投影 +
+worker node.status 批量事件 + owner-only SSE 回放/去重/保留窗口/心跳/终态关闭 + 页面时间线**）。
+真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 mTLS 内部客户端（worker/supervisor/maintenance）+
+真实 HTTP/SSE 连接（含中途断开与 Last-Event-ID 重连）+ Node 真实执行页面逻辑；无 mock、无跳过。
+边界（如实）：模型 delta 临时预览属 F06（UI 明确 `data-preview="not_run"`，不伪造正文）；
+run-bound artifact 注册属 T033；waiting/resume 属 T035；cancel/unknown guard 属 T036；恢复属 T038；
+F07 负责保留窗口的实际清理；浏览器 DOM 驱动页面仍 `not_run`。见报告 §5/§7。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0018_run_events.sql`：唯一新表 `platform.run_events`（run_id FK、seq>0、event_id uuid UNIQUE、type/revision/payload jsonb、created_at；PK `(run_id,seq)`）；命名 replay 索引 `(run_id,seq)` 与 retention 索引 `(created_at)`；事件类型限定契约五值、payload 必须为 JSON 对象、revision>0；`orchara_worker`/PUBLIC 仍零权限。`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| 同事务事件 | `execution.AppendRunStatusTx(tx)` 是唯一控制器写入器：锁 Run→取 `next_event_seq`→以新 uuid 与**转换后** revision 插入→计数+1；debug 创建（queued rev1）、claim（running rev2）、result 提议（running，phase=finalizing 但事件无 phase 字段）、finalizer（succeeded/failed + error_code、needs_reconciliation）、exit 无结果（recovery_pending）、started=false requeue（queued）全部同事务；事件插入失败则业务转换一起回滚（测试用真实 PG trigger 证明） |
+| submitWorkerEvents | `POST /internal/v1/runs/{run_id}/events`，worker|supervisor（maintenance 403）；batch 1..100；body 严格解码 `{attempt_token,events[{event_id,local_sequence,type,payload}]}`；token 必须是该 run 的**当前 live attempt**（job 仍 leased、未 exit/revoke、租约未过期；跨 run/随机 token → 409 `stale_attempt`）；只接受 `node.status`，payload 精确 `{node_id,state,attempt_no}`，content/body/delta 等键 422 定位拒绝；event_id 幂等：同 run+同 type+同 JSONB payload → 200 no-op 不占 seq，异内容/跨 run → 409 `event_conflict`；新事件按请求数组顺序各占一个 seq；终态 run → 409 `run_terminal`；非执行态 → 409 `run_state_conflict`；`local_sequence` 仅诊断（缺口/重复只写日志，绝不当展示顺序，也不入库） |
+| runEvents (SSE) | `GET /api/v1/runs/{run_id}/events`，owner-only（管理员/他人/未知/已删除一律 404 `resource_not_found`）；`Last-Event-ID` 为同 run 本地 seq（非法 → 400 `validation_failed` + `details.field=Last-Event-ID`）；帧 `id: <seq>`、`event: <type>`、`data: <event.schema 封套>`；无事件每 15s 发 `: heartbeat` 注释（不占 seq、无 id/event/data）；空闲时轮询 PostgreSQL（Redis 仅唤醒且本批不存在）；回放期间重复 seq 由客户端按 seq 去重；回放到终态并追平后关闭；回放边界事件早于保留窗口 → 410 `event_cursor_expired` + `details.snapshot_url=/api/v1/runs/{id}`（契约 Error 无 snapshot_url 字段，记录为契约缺口），不静默跳过 |
+| 配置 | `ORCHARA_RUN_EVENT_RETENTION`（默认 24h）、`ORCHARA_RUN_EVENT_POLL_INTERVAL`（默认 500ms）、`ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL`（默认 15s），均由 `config.Load` 校验（正数 + 上限），api.Deps 传入；无请求级覆盖 |
+| Web | `runs.html`/`runs.js`：详情新增持久时间线（fetch+ReadableStream 读 SSE，不用 EventSource，以便观察 410 并显式发送 Last-Event-ID）；按 seq 去重排序；断线显示“按 Last-Event-ID 重连”，410 显示 `details.snapshot_url` 并停止；终态显示“已回放到已提交终态 … 事件流关闭”；`describeRunEvent` 只渲染 run.status state/error_code 与 node.status 元数据，绝不渲染 payload 正文；running/finalizing 明确“尚未成功”；`debug.html`/`debug.js` 复用同一 `beginRunTimeline`；两页都有 `data-preview="not_run"` 的 F06 说明 |
+| 测试 | `tests/support/t032.py` + `tests/f03/test_t032_{migration,events,sse,pages}.py` **4 文件 31 用例**（migration 6、events 13、sse 7、pages 5）；`tests/f03` **99 passed in 420.83s**（基线 68 + 31）；`go test ./...` 19 包 ok、8 包 no test files、0 FAIL；`go vet ./...` exit 0、`gofmt -l .` 无输出、`sync_spec --check` no drift；均为真实 PG/二进制/mTLS/HTTP/SSE/Node |
+| 证据 | `reports/f03/T032-run-events.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T033/T035/T036/T038 接口） |
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
