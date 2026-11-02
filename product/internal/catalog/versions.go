@@ -131,18 +131,7 @@ func (r *Reader) ListVersions(
 		  JOIN platform.applications AS a ON a.id = v.application_id
 		 WHERE v.application_id = $1
 		   AND a.archived_at IS NULL
-		   AND (
-		        a.owner_id = $2
-		        OR EXISTS (
-		             SELECT 1
-		               FROM platform.resource_grants AS g
-		              WHERE g.principal_id = $2
-		                AND g.resource_type = $7
-		                AND g.resource_id = a.id
-		                AND g.action = $8
-		                AND (g.expires_at IS NULL OR g.expires_at > $6)
-		           )
-		       )
+		   AND `+applicationReadPredicate(2, 6, 7, 8)+`
 		   AND (
 		        $3::bigint IS NULL
 		        OR (v.version_no, v.id) < ($3::bigint, $4::uuid)

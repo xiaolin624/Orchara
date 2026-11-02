@@ -99,146 +99,46 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		return nil, ErrStaleAttempt
 	}
 
-	state := normalized.State
-	errorCode := normalized.ErrorCode
-	resultArtifactID := normalized.ResultArtifactID
-
-	// artifact_finalize activation is the server's: the result *is* the target
-	// artifact, so a worker-supplied result_artifact_id could only be a second,
-	// unverified artifact reference. Refuse it instead of recording it.
-	if job.Kind == KindArtifactFinalize && state == StateSucceeded && resultArtifactID != "" {
-		return nil, &ValidationError{
-			Field:   "result_artifact_id",
-			Message: "artifact_finalize activation is server-side; the result artifact is the job target",
-		}
-	}
-
-	// model_validate completion records the compatibility report artifact the
-	// handler registered. The handler cannot name an artifact it did not upload:
-	// readiness, ownership and job provenance are re-checked in this
-	// transaction. A failed compatibility verdict is still a successful job, so
-	// only a succeeded result is checked here.
-	if job.Kind == KindModelValidate && state == StateSucceeded {
-		if resultArtifactID == "" {
-			return nil, &ValidationError{
-				Field:   "result_artifact_id",
-				Message: "model_validate success must name the compatibility report artifact",
-			}
-		}
-		if err := verifyJobResultArtifact(ctx, tx, job, resultArtifactID); err != nil {
+	// The guards are a registry keyed by kind, mirroring handlers.Registry: each
+	// kind that needs a completion decision owns one function, and Complete never
+	// branches on the kind itself. A guard runs before the terminal write and may
+	// override the worker's proposal (a claimed success that cannot be proven
+	// becomes a failure); it returns an error only for a refusal that must leave
+	// the job untouched (for example a stale result-artifact reference).
+	proposal := normalized
+	if guard, ok := completionGuards[job.Kind]; ok {
+		if err := guard(ctx, c, tx, job, &proposal); err != nil {
 			return nil, err
 		}
 	}
 
-	// artifact_finalize: the server, not the worker, decides activation.
-	if job.Kind == KindArtifactFinalize {
-		switch state {
-		case StateSucceeded:
-			failureCode, guardErr := c.verifyAndActivateArtifact(ctx, tx, job)
-			switch {
-			case errors.Is(guardErr, errGuardTransient):
-				state = StateFailed
-				errorCode = CodeTransientStorageIO
-			case guardErr != nil:
-				return nil, guardErr
-			case failureCode != "":
-				// Guard override: any failure path must leave the artifact
-				// unusable, so a claimed success that cannot be proven is a
-				// failed attempt.
-				state = StateFailed
-				errorCode = failureCode
-				resultArtifactID = ""
-				if ImpliesQuarantine(failureCode) {
-					if err := quarantineArtifact(ctx, tx, job.TargetID); err != nil {
-						return nil, err
-					}
-				}
-			}
-		case StateFailed:
-			if ImpliesQuarantine(errorCode) {
-				if err := quarantineArtifact(ctx, tx, job.TargetID); err != nil {
-					return nil, err
-				}
-			}
+	// A failed attempt is retried only for a code in the fixed per-kind table and
+	// only while attempts remain. The expression lives here once and is shared by
+	// the application_evaluate guard through retryAllowed.
+	if proposal.State == StateFailed && retryAllowed(job, proposal.ErrorCode) {
+		retried, err := c.retryJob(ctx, tx, job, proposal.ErrorCode)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// application_evaluate (T026): the completion guard reads the sealed report
-	// artifact, verifies the manifest/dataset binding and the verdict rules, and
-	// only then records the immutable report. A claimed success that cannot be
-	// proven becomes a failed job with no report row; a business verdict
-	// (status=failed) stays a succeeded job with a failed report. Retryable
-	// guard failures leave the evaluation running for the next attempt; only a
-	// terminal outcome fails/cancels the evaluation row.
-	if job.Kind == KindApplicationEvaluate {
-		if state == StateSucceeded {
-			if resultArtifactID == "" {
-				return nil, &ValidationError{
-					Field:   "result_artifact_id",
-					Message: "application_evaluate success must name the report artifact",
-				}
-			}
-			if err := verifyJobResultArtifact(ctx, tx, job, resultArtifactID); err != nil {
-				return nil, err
-			}
-			failureCode, guardErr := c.guardEvaluationSuccess(ctx, tx, job, resultArtifactID)
-			switch {
-			case errors.Is(guardErr, errGuardTransient):
-				state = StateFailed
-				errorCode = CodeTransientStorageIO
-			case guardErr != nil:
-				return nil, guardErr
-			case failureCode != "":
-				// The report is not something the server can accept: the job
-				// fails with the stable guard code and no report row exists.
-				state = StateFailed
-				errorCode = failureCode
-				resultArtifactID = ""
-			}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing the retry: %w", err)
 		}
-		if state == StateFailed {
-			retryable := Retryable(job.Kind, errorCode) && job.AttemptCount < MaxAttempts
-			if !retryable {
-				if err := failEvaluationTx(ctx, tx, job.TargetID, errorCode); err != nil {
-					return nil, err
-				}
-			}
-		}
-		if state == StateCancelled {
-			if err := cancelEvaluationTx(ctx, tx, job.TargetID); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if state == StateFailed {
-		retryable := Retryable(job.Kind, errorCode)
-		if retryable && job.AttemptCount < MaxAttempts {
-			retried, err := c.retryJob(ctx, tx, job, errorCode)
-			if err != nil {
-				return nil, err
-			}
-			if err := tx.Commit(); err != nil {
-				return nil, fmt.Errorf("committing the retry: %w", err)
-			}
-			return retried, nil
-		}
+		return retried, nil
 	}
 
 	failureClass := any(nil)
-	switch state {
-	case StateFailed:
-		failureClass = string(ClassifyFailure(job.Kind, errorCode))
+	if proposal.State == StateFailed {
+		failureClass = string(ClassifyFailure(job.Kind, proposal.ErrorCode))
 	}
-	if state == StateSucceeded || state == StateCancelled {
-		errorCode = normalized.ErrorCode
-		if state == StateSucceeded {
-			errorCode = ""
+	if proposal.State == StateSucceeded || proposal.State == StateCancelled {
+		proposal.ErrorCode = normalized.ErrorCode
+		if proposal.State == StateSucceeded {
+			proposal.ErrorCode = ""
 			failureClass = nil
 		}
 	}
-	if state == StateFailed {
-		resultArtifactID = "" // a failed job never carries a result artifact
+	if proposal.State == StateFailed {
+		proposal.ResultArtifactID = "" // a failed job never carries a result artifact
 	}
 
 	finished, err := scanJob(tx.QueryRowContext(ctx, `
@@ -256,8 +156,8 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		       last_error_at = CASE WHEN $2 = 'failed' THEN now() ELSE NULL END
 		 WHERE id = $1::uuid
 		RETURNING `+selectJobColumns,
-		job.ID, string(state), nullableText(errorCode), failureClass,
-		normalized.EventID, digest, nullableText(resultArtifactID),
+		job.ID, string(proposal.State), nullableText(proposal.ErrorCode), failureClass,
+		normalized.EventID, digest, nullableText(proposal.ResultArtifactID),
 	))
 	if err != nil {
 		if isUniqueViolation(err, "background_jobs_result_event_id_key") {
@@ -269,6 +169,160 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		return nil, fmt.Errorf("committing the completion: %w", err)
 	}
 	return finished, nil
+}
+
+// CompletionGuard is the per-kind completion decision, the completion-side
+// counterpart of handlers.Registry. A guard may rewrite the worker's proposal
+// (state/error code/result artifact) but must not write the terminal job row:
+// Complete does that once after every guard returns. An error aborts the whole
+// completion and leaves the job and its business rows untouched.
+type CompletionGuard func(
+	ctx context.Context,
+	c *Controller,
+	tx *sql.Tx,
+	job *Job,
+	completion *Completion,
+) error
+
+// completionGuards is the fixed kind -> guard table. Kinds without an entry
+// complete exactly as the worker reported (their results carry no server-side
+// business fact). A new kind that needs a guard adds one here in the same change.
+var completionGuards = map[Kind]CompletionGuard{
+	KindArtifactFinalize:    guardArtifactFinalizeCompletion,
+	KindModelValidate:       guardModelValidateCompletion,
+	KindApplicationEvaluate: guardApplicationEvaluateCompletion,
+}
+
+// retryAllowed is the single retry decision: the code must be in the kind's
+// fixed table and the claim must not have reached the attempt ceiling. It is
+// used both by Complete's retry branch and by the evaluation guard, which must
+// know whether a failed job will be retried before it fails the evaluation row.
+func retryAllowed(job *Job, errorCode string) bool {
+	return Retryable(job.Kind, errorCode) && job.AttemptCount < MaxAttempts
+}
+
+// guardArtifactFinalizeCompletion is the server-side activation decision. The
+// result *is* the target artifact, so a worker-supplied result artifact id could
+// only be a second, unverified reference; a claimed success is re-verified
+// against the sealed bytes and any failure leaves the artifact unusable.
+func guardArtifactFinalizeCompletion(
+	ctx context.Context,
+	c *Controller,
+	tx *sql.Tx,
+	job *Job,
+	completion *Completion,
+) error {
+	if completion.State == StateSucceeded && completion.ResultArtifactID != "" {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "artifact_finalize activation is server-side; the result artifact is the job target",
+		}
+	}
+	switch completion.State {
+	case StateSucceeded:
+		failureCode, guardErr := c.verifyAndActivateArtifact(ctx, tx, job)
+		switch {
+		case errors.Is(guardErr, errGuardTransient):
+			completion.State = StateFailed
+			completion.ErrorCode = CodeTransientStorageIO
+		case guardErr != nil:
+			return guardErr
+		case failureCode != "":
+			// Guard override: any failure path must leave the artifact unusable,
+			// so a claimed success that cannot be proven is a failed attempt.
+			completion.State = StateFailed
+			completion.ErrorCode = failureCode
+			completion.ResultArtifactID = ""
+			if ImpliesQuarantine(failureCode) {
+				if err := quarantineArtifact(ctx, tx, job.TargetID); err != nil {
+					return err
+				}
+			}
+		}
+	case StateFailed:
+		if ImpliesQuarantine(completion.ErrorCode) {
+			if err := quarantineArtifact(ctx, tx, job.TargetID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// guardModelValidateCompletion records the compatibility report artifact the
+// handler registered. The handler cannot name an artifact it did not upload:
+// readiness, ownership and job provenance are re-checked in this transaction. A
+// failed compatibility verdict is still a successful job, so only a succeeded
+// result is checked.
+func guardModelValidateCompletion(
+	ctx context.Context,
+	_ *Controller,
+	tx *sql.Tx,
+	job *Job,
+	completion *Completion,
+) error {
+	if completion.State != StateSucceeded {
+		return nil
+	}
+	if completion.ResultArtifactID == "" {
+		return &ValidationError{
+			Field:   "result_artifact_id",
+			Message: "model_validate success must name the compatibility report artifact",
+		}
+	}
+	return verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID)
+}
+
+// guardApplicationEvaluateCompletion is the T026 completion guard: it reads the
+// sealed report artifact, verifies the manifest/dataset binding and the verdict
+// rules, and only then records the immutable report (inside the same
+// transaction). A claimed success that cannot be proven becomes a failed job
+// with no report row; a business verdict (status=failed) stays a succeeded job
+// with a failed report. Retryable guard failures leave the evaluation running
+// for the next attempt; only a terminal outcome fails/cancels the evaluation row.
+func guardApplicationEvaluateCompletion(
+	ctx context.Context,
+	c *Controller,
+	tx *sql.Tx,
+	job *Job,
+	completion *Completion,
+) error {
+	if completion.State == StateSucceeded {
+		if completion.ResultArtifactID == "" {
+			return &ValidationError{
+				Field:   "result_artifact_id",
+				Message: "application_evaluate success must name the report artifact",
+			}
+		}
+		if err := verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID); err != nil {
+			return err
+		}
+		failureCode, guardErr := c.guardEvaluationSuccess(ctx, tx, job, completion.ResultArtifactID)
+		switch {
+		case errors.Is(guardErr, errGuardTransient):
+			completion.State = StateFailed
+			completion.ErrorCode = CodeTransientStorageIO
+		case guardErr != nil:
+			return guardErr
+		case failureCode != "":
+			// The report is not something the server can accept: the job fails
+			// with the stable guard code and no report row exists.
+			completion.State = StateFailed
+			completion.ErrorCode = failureCode
+			completion.ResultArtifactID = ""
+		}
+	}
+	if completion.State == StateFailed && !retryAllowed(job, completion.ErrorCode) {
+		if err := failEvaluationTx(ctx, tx, job.TargetID, completion.ErrorCode); err != nil {
+			return err
+		}
+	}
+	if completion.State == StateCancelled {
+		if err := cancelEvaluationTx(ctx, tx, job.TargetID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // verifyJobResultArtifact refuses a result artifact that is not this job's own,

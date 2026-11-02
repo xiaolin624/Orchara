@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"orchara/platform/internal/policy"
 	"orchara/platform/internal/uuid"
 	"orchara/platform/internal/workflow"
 )
@@ -249,21 +248,6 @@ func (r *Reader) loadDraft(
 	draft.Layout = json.RawMessage(layout)
 	draft.CapabilityCard = json.RawMessage(capabilityCard)
 	return draft, owner, nil
-}
-
-// readAllowed applies the default-deny ACL used by every application read. A
-// nil authorizer fails closed.
-func (r *Reader) readAllowed(
-	ctx context.Context, callerID, applicationID, ownerID string,
-) (bool, error) {
-	if r.Authorizer == nil {
-		return false, nil
-	}
-	return r.Authorizer.Allow(ctx, policy.PrincipalRef{ID: callerID}, policy.ResourceRef{
-		Type:    policy.ResourceApplication,
-		ID:      applicationID,
-		OwnerID: ownerID,
-	}, policy.ActionRead)
 }
 
 // GetDraft returns the draft when the caller owns the application or holds an
