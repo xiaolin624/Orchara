@@ -137,7 +137,7 @@ def test_two_live_attempts_for_one_run_are_impossible(t029_stack) -> None:
     exited = t029.execution_client(t029_stack).confirm_exit(
         lease["attempt_token"],
         execution_unit_id="unit-1",
-        evidence={"started": False},
+        evidence=t029.exit_evidence(lease, started=False),
     )
     assert exited.status == 200, exited.text
 

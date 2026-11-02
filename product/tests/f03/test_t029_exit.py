@@ -1,9 +1,16 @@
-"""T029 acceptance: supervisor exit evidence, slot release and the started=false path.
+"""T029 acceptance, tightened by T031: supervisor exit evidence, slot release and
+the started=false path.
 
 The ticket's core failure case is "startup failed and can be proven never to have
 started": the attempt is exited and revoked, the slot is released exactly once,
-the job returns to ready and the run returns to queued. Evidence that says
-otherwise stops at `held`: the F03 finalizer (T031) owns the next transition.
+the job returns to ready and the run returns to queued.
+
+T031 tightened the evidence contract: every exit evidence object must also carry
+the claimed identity (``protocol_version``, ``manifest_sha256``,
+``image_digest``) and an explicit boolean ``started``; the supervisor that ran a
+different image cannot certify this attempt. The started=false path is unchanged;
+a started=true exit *without* a stored result now parks the run in
+``recovery_pending`` (T031 finalizer; T038 owns proving the old unit drained).
 """
 
 from __future__ import annotations
@@ -20,12 +27,16 @@ from support.fixtures import (  # noqa: F401 - pytest fixtures
     t029_stack,
 )
 
-STARTUP_FAILED = {
-    "started": False,
-    "reason": "spawn_failed",
-    "exit_code": 127,
-    "detail": "worker process exited before loading the graph",
-}
+
+def startup_failed(lease: dict) -> dict:
+    """Evidence that the execution unit provably never started work."""
+    return t029.exit_evidence(
+        lease,
+        started=False,
+        reason="spawn_failed",
+        exit_code=127,
+        detail="worker process exited before loading the graph",
+    )
 
 
 def setup_claimed(t029_stack):
@@ -37,12 +48,13 @@ def setup_claimed(t029_stack):
 def test_startup_failure_evidence_returns_work_to_the_queue(t029_stack) -> None:
     owner, lease = setup_claimed(t029_stack)
     job_id = lease["job_id"]
+    evidence = startup_failed(lease)
     before = t029.run_state_row(t029_stack.dbname, lease["run_id"])
 
     response = t029.execution_client(t029_stack, "supervisor").confirm_exit(
         lease["attempt_token"],
         execution_unit_id="unit-exit",
-        evidence=STARTUP_FAILED,
+        evidence=evidence,
     )
     assert response.status == 200, response.text
     assert response.json == {"id": lease["attempt_token"], "state": "exited"}, response.json
@@ -50,7 +62,7 @@ def test_startup_failure_evidence_returns_work_to_the_queue(t029_stack) -> None:
     attempt = t029.attempt_row(t029_stack.dbname, lease["attempt_token"])
     assert attempt["exited_at"] is not None, attempt
     assert attempt["revoked_at"] is not None, attempt
-    assert json.loads(attempt["exit_evidence"]) == STARTUP_FAILED, attempt
+    assert json.loads(attempt["exit_evidence"]) == evidence, attempt
 
     job = t029.job_row(t029_stack.dbname, job_id)
     assert job["state"] == "ready", job
@@ -81,9 +93,10 @@ def test_startup_failure_evidence_returns_work_to_the_queue(t029_stack) -> None:
 def test_repeating_identical_evidence_is_idempotent(t029_stack) -> None:
     _owner, lease = setup_claimed(t029_stack)
     client = t029.execution_client(t029_stack)
+    evidence = startup_failed(lease)
 
     first = client.confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=evidence
     )
     assert first.status == 200, first.text
     after_first = t029.run_state_row(t029_stack.dbname, lease["run_id"])
@@ -91,7 +104,7 @@ def test_repeating_identical_evidence_is_idempotent(t029_stack) -> None:
     allocation_first = t029.allocation_for_job(t029_stack.dbname, lease["job_id"])
 
     # Different key order is still the same evidence: JSONB equality decides.
-    reordered = {key: STARTUP_FAILED[key] for key in reversed(list(STARTUP_FAILED))}
+    reordered = {key: evidence[key] for key in reversed(list(evidence))}
     second = client.confirm_exit(
         lease["attempt_token"], execution_unit_id="unit-exit", evidence=reordered
     )
@@ -108,13 +121,14 @@ def test_repeating_identical_evidence_is_idempotent(t029_stack) -> None:
 def test_conflicting_evidence_is_a_409_and_changes_nothing(t029_stack) -> None:
     _owner, lease = setup_claimed(t029_stack)
     client = t029.execution_client(t029_stack)
+    evidence = startup_failed(lease)
     assert client.confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=evidence
     ).status == 200
 
     before = t029.run_state_row(t029_stack.dbname, lease["run_id"])
     allocation = t029.allocation_for_job(t029_stack.dbname, lease["job_id"])
-    conflicting = {"started": False, "reason": "different_reason"}
+    conflicting = t029.exit_evidence(lease, started=False, reason="different_reason")
     response = client.confirm_exit(
         lease["attempt_token"], execution_unit_id="unit-exit", evidence=conflicting
     )
@@ -123,15 +137,17 @@ def test_conflicting_evidence_is_a_409_and_changes_nothing(t029_stack) -> None:
 
     assert json.loads(
         t029.attempt_row(t029_stack.dbname, lease["attempt_token"])["exit_evidence"]
-    ) == STARTUP_FAILED
+    ) == evidence
     assert t029.run_state_row(t029_stack.dbname, lease["run_id"]) == before
     assert t029.allocation_for_job(t029_stack.dbname, lease["job_id"]) == allocation
     assert t029.quota_counter(t029_stack.dbname)["used"] == 0
 
 
-def test_started_evidence_holds_the_job_and_leaves_the_run_non_terminal(t029_stack) -> None:
+def test_started_exit_without_a_result_parks_the_run_for_recovery(t029_stack) -> None:
+    """T031 supersedes T029's bare hold: no result means recovery_pending, not a
+    terminal guess, and the job stays held while the slot is already free."""
     _owner, lease = setup_claimed(t029_stack)
-    evidence = {"started": True, "reason": "process_crashed", "exit_code": 1}
+    evidence = t029.exit_evidence(lease, started=True, reason="process_crashed", exit_code=1)
 
     response = t029.execution_client(t029_stack).confirm_exit(
         lease["attempt_token"], execution_unit_id="unit-exit", evidence=evidence
@@ -147,12 +163,12 @@ def test_started_evidence_holds_the_job_and_leaves_the_run_non_terminal(t029_sta
     assert job["current_attempt_token"] is None, job
 
     run = t029.run_state_row(t029_stack.dbname, lease["run_id"])
-    assert run["state"] == "running", "T029 must not invent a terminal state"
-    assert run["phase"] == "executing", run
+    assert run["state"] == "recovery_pending", "T031 parks an exit without a result"
+    assert run["phase"] == "idle", run
     assert run["finished_at"] is None, run
-    assert run["revision"] == 2, "the run aggregate does not move on a hold"
+    assert run["revision"] == 3, "claim 1->2 and the park 2->3"
 
-    # The physical execution unit is gone, so its slot is free. T031's finalizer
+    # The physical execution unit is gone, so its slot is free. The finalizer
     # releases the allocation again idempotently (released_at is already set).
     assert t029.quota_counter(t029_stack.dbname)["used"] == 0
     assert t029.allocation_for_job(t029_stack.dbname, lease["job_id"])["released_at"] is not None
@@ -163,25 +179,30 @@ def test_started_evidence_holds_the_job_and_leaves_the_run_non_terminal(t029_sta
     )
     assert repeated.status == 200, repeated.text
     assert t029.job_row(t029_stack.dbname, lease["job_id"])["state"] == "held"
+    assert t029.run_state_row(t029_stack.dbname, lease["run_id"])["state"] == "recovery_pending"
 
 
-def test_absent_started_evidence_holds_the_job(t029_stack) -> None:
+def test_absent_started_evidence_is_refused_before_any_change(t029_stack) -> None:
+    """T031: `started` is required. An absent key no longer silently means
+    "started" (T029's rule); a supervisor must state which case it is proving."""
     _owner, lease = setup_claimed(t029_stack)
+    evidence = t029.exit_identity(lease)
+    evidence.pop("started")
     response = t029.execution_client(t029_stack).confirm_exit(
-        lease["attempt_token"],
-        execution_unit_id="unit-exit",
-        evidence={"reason": "drained", "note": "no started key"},
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=evidence
     )
-    assert response.status == 200, response.text
-    assert t029.job_row(t029_stack.dbname, lease["job_id"])["state"] == "held"
-    assert t029.run_state_row(t029_stack.dbname, lease["run_id"])["state"] == "running"
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "validation_failed", response.text
+    assert response.json["error"]["details"]["field"] == "evidence.started", response.text
+    assert t029.job_row(t029_stack.dbname, lease["job_id"])["state"] == "leased"
+    assert t029.attempt_row(t029_stack.dbname, lease["attempt_token"])["exited_at"] is None
 
 
 def test_a_second_claim_after_a_start_failure_succeeds(t029_stack) -> None:
     owner, first = setup_claimed(t029_stack)
     client = t029.execution_client(t029_stack)
     assert client.confirm_exit(
-        first["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        first["attempt_token"], execution_unit_id="unit-exit", evidence=startup_failed(first)
     ).status == 200
     allocation_before = t029.allocation_for_job(t029_stack.dbname, first["job_id"])
 
@@ -214,7 +235,7 @@ def test_a_second_claim_after_a_start_failure_succeeds(t029_stack) -> None:
 def test_a_worker_certificate_cannot_confirm_exit(t029_stack) -> None:
     _owner, lease = setup_claimed(t029_stack)
     response = t029.execution_client(t029_stack, "worker").confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=startup_failed(lease)
     )
     assert response.status == 403, response.text
     assert response.json["error"]["code"] == "forbidden", response.text
@@ -230,24 +251,28 @@ def test_exit_requires_the_live_attempt_and_its_execution_unit(t029_stack) -> No
     wrong_unit = client.confirm_exit(
         lease["attempt_token"],
         execution_unit_id="some-other-unit",
-        evidence=STARTUP_FAILED,
+        evidence=startup_failed(lease),
     )
     assert wrong_unit.status == 409, wrong_unit.text
     assert wrong_unit.json["error"]["code"] == "stale_attempt", wrong_unit.text
     assert t029.attempt_row(t029_stack.dbname, lease["attempt_token"])["exited_at"] is None
 
-    unknown = client.confirm_exit(t029.new_uuid(), execution_unit_id="unit-exit")
+    unknown = client.confirm_exit(
+        t029.new_uuid(), execution_unit_id="unit-exit", evidence=startup_failed(lease)
+    )
     assert unknown.status == 404, unknown.text
     assert unknown.json["error"]["code"] == "attempt_not_found", unknown.text
 
-    malformed = client.confirm_exit("not-a-uuid", execution_unit_id="unit-exit")
+    malformed = client.confirm_exit(
+        "not-a-uuid", execution_unit_id="unit-exit", evidence=startup_failed(lease)
+    )
     assert malformed.status == 404, malformed.text
 
     # An expired lease cannot be certified as an exit by this ticket: recovery
-    # (and the reason it is not a death certificate) belongs to T031.
+    # (and the reason it is not a death certificate) belongs to T038.
     t029.force_lease_expiry(t029_stack.dbname, lease["attempt_token"])
     expired = client.confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=startup_failed(lease)
     )
     assert expired.status == 409, expired.text
     assert expired.json["error"]["code"] == "stale_attempt", expired.text
@@ -270,24 +295,43 @@ def test_exit_evidence_shape_is_validated_before_any_change(t029_stack) -> None:
         assert error["code"] == "validation_failed", (evidence, error)
         assert error.get("details", {}).get("field") == "evidence", (evidence, error)
 
-    not_bool = client.confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", body={
-            "execution_unit_id": "unit-exit",
-            "evidence": {"started": "false"},
-        }
-    )
-    assert not_bool.status == 422, not_bool.text
-    assert not_bool.json["error"]["details"]["field"] == "evidence.started", not_bool.text
+    def located(evidence: dict, field: str):
+        response = client.confirm_exit(
+            lease["attempt_token"], execution_unit_id="unit-exit", evidence=evidence
+        )
+        assert response.status == 422, (evidence, response.text)
+        assert response.json["error"]["code"] == "validation_failed", response.text
+        assert response.json["error"]["details"]["field"] == field, (field, response.text)
+        return response
+
+    # T031: the three identity fields and `started` are required and typed.
+    not_bool = t029.exit_identity(lease, started="false")
+    located(not_bool, "evidence.started")
+    for name in ("started", "protocol_version", "manifest_sha256", "image_digest"):
+        incomplete = t029.exit_identity(lease)
+        incomplete.pop(name)
+        located(incomplete, "evidence." + name)
+
+    blank_protocol = t029.exit_evidence(lease, protocol_version="  ")
+    located(blank_protocol, "evidence.protocol_version")
+    short_manifest = t029.exit_evidence(lease, manifest_sha256="abc")
+    located(short_manifest, "evidence.manifest_sha256")
+    blank_image = t029.exit_evidence(lease, image_digest="")
+    located(blank_image, "evidence.image_digest")
 
     missing_unit = client.confirm_exit(
-        lease["attempt_token"], body={"evidence": {"started": False}}
+        lease["attempt_token"], body={"evidence": t029.exit_evidence(lease)}
     )
     assert missing_unit.status == 422, missing_unit.text
     assert missing_unit.json["error"]["details"]["field"] == "execution_unit_id", missing_unit.text
 
     unknown_key = client.confirm_exit(
         lease["attempt_token"],
-        body={"execution_unit_id": "unit-exit", "evidence": {"started": False}, "extra": True},
+        body={
+            "execution_unit_id": "unit-exit",
+            "evidence": t029.exit_evidence(lease),
+            "extra": True,
+        },
     )
     assert unknown_key.status == 400, unknown_key.text
     assert unknown_key.json["error"]["code"] == "invalid_json", unknown_key.text
@@ -301,7 +345,7 @@ def test_a_heartbeat_after_exit_is_a_409(t029_stack) -> None:
     _owner, lease = setup_claimed(t029_stack)
     client = t029.execution_client(t029_stack)
     assert client.confirm_exit(
-        lease["attempt_token"], execution_unit_id="unit-exit", evidence=STARTUP_FAILED
+        lease["attempt_token"], execution_unit_id="unit-exit", evidence=startup_failed(lease)
     ).status == 200
 
     response = client.heartbeat_run(

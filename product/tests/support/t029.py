@@ -116,9 +116,37 @@ class ExecutionInternalClient(f00b.InternalClient):
         if body is None:
             body = {
                 "execution_unit_id": execution_unit_id,
-                "evidence": {"started": False} if evidence is None else evidence,
+                "evidence": evidence if evidence is not None else {"started": False},
             }
         return self.post(f"/internal/v1/attempts/{attempt_id}/exited", body, **kwargs)
+
+    def submit_result(
+        self,
+        run_id: str,
+        *,
+        attempt_token: str | None = None,
+        suggested_state: str = "succeeded",
+        event_id: str | None = None,
+        output_artifact_id: str | None = None,
+        checkpoint_id: str | None = None,
+        error_code: str | None = None,
+        body: dict | None = None,
+        **kwargs,
+    ):
+        """The contract's submitWorkerResult body, with only supplied fields."""
+        if body is None:
+            body = {
+                "attempt_token": attempt_token,
+                "event_id": event_id if event_id is not None else new_uuid(),
+                "suggested_state": suggested_state,
+            }
+            if output_artifact_id is not None:
+                body["output_artifact_id"] = output_artifact_id
+            if checkpoint_id is not None:
+                body["checkpoint_id"] = checkpoint_id
+            if error_code is not None:
+                body["error_code"] = error_code
+        return self.post(f"/internal/v1/runs/{run_id}/result", body, **kwargs)
 
 
 def execution_client(stack: T029Stack, role: str = "supervisor") -> ExecutionInternalClient:
@@ -272,6 +300,32 @@ def assert_heartbeat_reply(body: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# F03/T031: identity-bearing exit evidence
+# ---------------------------------------------------------------------------
+# The lease is the only source of truth for the three identity fields a
+# supervisor must echo back: the protocol version it spoke, the frozen manifest
+# hash it loaded and the worker image digest it ran. T029's evidence carried only
+# `started`; T031 requires the identity too so a supervisor that ran the wrong
+# image cannot certify an exit (or park the run) as if it had run the right one.
+def exit_identity(lease: dict, **overrides) -> dict:
+    identity = {
+        "started": True,
+        "protocol_version": lease["protocol_version"],
+        "manifest_sha256": lease["manifest_sha256"],
+        "image_digest": WORKER_IMAGE_DIGEST,
+    }
+    identity.update(overrides)
+    return identity
+
+
+def exit_evidence(lease: dict, *, started: bool = True, **extra) -> dict:
+    """A complete exit-evidence object for this lease, with optional extra keys."""
+    evidence = exit_identity(lease, started=started)
+    evidence.update(extra)
+    return evidence
+
+
+# ---------------------------------------------------------------------------
 # signed sealed links: download the real bytes
 # ---------------------------------------------------------------------------
 def download(url: str, *, timeout: float = 30.0) -> bytes:
@@ -296,7 +350,7 @@ def attempt_row(dbname: str, token: str) -> dict:
         "heartbeat_at::text AS heartbeat_at, started_at::text AS started_at, "
         "exited_at::text AS exited_at, revoked_at::text AS revoked_at, "
         "exit_evidence::text AS exit_evidence, checkpoint_connections::text AS checkpoint_connections, "
-        "reported_result::text AS reported_result, checkpoint_id "
+        "reported_result::text AS reported_result, reported_at::text AS reported_at, checkpoint_id "
         "FROM platform.run_attempts "
         f"WHERE token = {st.quote_literal(token)}::uuid",
     )
@@ -367,7 +421,9 @@ def run_state_row(dbname: str, run_id: str) -> dict:
         "SELECT id::text AS id, state, phase, revision, next_event_seq, "
         "budget_limit::text AS budget_limit, currency, started_at::text AS started_at, "
         "cancel_requested_at::text AS cancel_requested_at, finished_at::text AS finished_at, "
-        "input_artifact_id::text AS input_artifact_id, execution_snapshot_id::text AS execution_snapshot_id "
+        "input_artifact_id::text AS input_artifact_id, "
+        "output_artifact_id::text AS output_artifact_id, error_code, "
+        "execution_snapshot_id::text AS execution_snapshot_id "
         "FROM platform.runs "
         f"WHERE id = {st.quote_literal(run_id)}::uuid",
     )
