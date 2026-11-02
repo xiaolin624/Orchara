@@ -170,6 +170,22 @@ d72c7da2fe6ac285a4abed1499c13f03b9852f26db5e6a7c590cbd72e071ae85  internal/ident
 
 迁移 hash 无变化：本票没有新迁移，0005–0008 未编辑。
 
+复核后补（2026-11-02）给 `apps/web/src/admin.html` 的 9 个表单加了 `method="post"`；该文件当前
+SHA-256 为 `262753dd6243e815f48b21fa930e14526b5182acc95a1532f13c98e1658cd059`。其余文件未变，
+本票的禁用/交接代码（`disable.go`、`handover.go`）未编辑。
+
+### 1.7 复核后补（2026-11-02）：交接与创建设置的时序
+
+复核发现服务账号创建读取负责人 `disabled_at` 时没有取 `ROLESET1`，因此“创建 paused → 禁用 R
+→ `handover --from R --to A --by A` → 创建 resume”会留下仍以已禁用的 R 为负责人的服务账号；
+交接已经提交，不会回溯移动它。修法在 `internal/identity/apikeys.go::CreateServiceAccount`：
+事务开头取同一把 `pg_advisory_xact_lock("ROLESET1")`，负责人检查 + INSERT + 审计都在锁内，所以
+创建要么先提交（随后的 handover 会移动它），要么看到 R 已禁用而 422 拒绝。交接本身的语义
+（只改 `responsible_user_id`、逐账号审计、不动角色/授权/key）不变。证明测试：
+`test_t020_issuance_race.py::test_a_service_account_created_across_a_handover_is_moved_by_it`
+（并发创建与“禁用 + handover”；断言新账号负责人是 A，且再以 R 为负责人创建被 422 拒绝）。
+无锁实现下新账号的负责人仍是 R（真实库上实测失败）。本票原有验收表与结论不变。
+
 ## 2. 验收标准逐条对照
 
 Ticket 验收（`T021.md`）：

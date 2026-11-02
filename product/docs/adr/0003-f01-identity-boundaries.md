@@ -73,12 +73,21 @@ approvals，F01 不伪造审批数据模型。交接只改责任归属，不动�
 `limit`、接触存储之前就 403 `personal_scope_forbidden`。人类会话的 200 空列表是诚实的空读模型，
 不是“记忆已实现”的声明；F01 不伪造数据，也不以 501 代替契约响应。
 
-### 8. `ROLESET1` 是角色/禁用/交接共享的 advisory lock
+### 8. `ROLESET1` 是角色/禁用/交接/凭据签发共享的 advisory lock
 
 `SetRoles`、`SetDisabled`、`Handover` 都在各自事务里取同一个
 `pg_advisory_xact_lock("ROLESET1")`。它串行化所有会改变“谁可管理安装 / 谁负责服务账号”的写：
 并发的两次降级或自禁用不可能都看到“还有一个管理员”，交接也不会与禁用交错成无负责人的状态。
-未来任何新增的角色/责任写路径必须继续复用这把锁；这是并发正确性的一部分，不是可选优化。
+
+会话签发（`Login`）、API Key 签发（`CreateAPIKey`）与服务账号创建（`CreateServiceAccount`）
+同样必须取这把锁。理由是同一条：**凭据不能在本应撤销它的禁用提交之后才出生**。三种签发都在
+锁内重读状态、再做 INSERT，因此只可能有两种顺序——签发先提交（之后的禁用在同一把锁内撤销刚
+签发的会话/Key，或交接把刚创建的服务账号移到新负责人），或禁用/交接先提交（签发看到禁用状态
+并拒绝，或看到已交接的责任人）。没有这把锁，“检查状态”与“插入凭据”之间就是一个禁用可以
+合法穿过的窗口：key 会漏过禁用撤销、服务账号会留在已禁用的负责人名下、会话会在重新启用后复活。
+
+所以这把锁保护的不只是角色/责任数据，也保护“凭据存在”与“撤销凭据”之间的先后关系。
+未来任何新增的角色/责任/凭据签发写路径必须继续复用这把锁；这是并发正确性的一部分，不是可选优化。
 
 ## 后果
 
@@ -98,4 +107,5 @@ approvals，F01 不伪造审批数据模型。交接只改责任归属，不动�
 - `product/reports/f01/T019-resource-grants.md`（ACL、last-admin、自授拒绝、单一时钟）
 - `product/reports/f01/T020-service-accounts.md`（服务账号、scope、`/memories` 边界）
 - `product/reports/f01/T021-disable-and-handover.md`（禁用、交接、`ROLESET1`）
-- `product/tests/f01/test_t019_self_grant.py`、`test_f01_app_js.py`
+- `product/tests/f01/test_t020_issuance_race.py`、`test_t017_session_race.py`（签发与禁用/交接的并发）
+- `product/tests/f01/test_t019_self_grant.py`、`test_f01_app_js.py`、`test_t015_pages.py`（自授、JS 执行、表单 POST）

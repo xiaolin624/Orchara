@@ -150,6 +150,18 @@ schema 已被人工改过，迁移仍可能因对象定义冲突而失败；这�
 - `tools/ci_checks.py` 的非 quick `integration-tests` 已加入 `product/tests/f01`，
   一条命令即覆盖 F01；`--quick` 路径未改动（仍是 spec-drift + tooling/p01，快速且不依赖数据库）。
 
+### 1.7 复核后补（2026-11-02）：每个表单必须声明 POST
+
+复核发现 `login.html`、`activate.html`、`admin.html` 的 11 个 `<form>` 都没有 `method`，
+只靠 JavaScript 的 `preventDefault()`。在 JS 被禁用或尚未加载时，浏览器默认按 GET 提交，
+密码、激活令牌和带 CSRF 的字段因此进入查询串与浏览器历史，违反 IMPLEMENTATION-DETAILS §1
+“令牌/密码不出现在日志和 URL 查询”。修法：给三个页面的全部 11 个表单加 `method="post"`
+（不设置带参数的 `action`，不删除 JS handler；无 JS 时浏览器 POST 到当前页面路径并得到 405，
+字段不再进入 URL）。本票第 2 节验收 7 的“token 不在 URL/storage”结论不变，并新增标记层证明：
+`test_t015_pages.py::test_every_form_posts_and_no_action_carries_a_query_string`（通过真实 HTTP
+取三个页面，逐个 `<form>` 断言大小写不敏感的 `method="post"`、`action` 不含 `?`、敏感字段位于
+表单块内，并核对表单总数为 11）。无该修法时此测试在 `/login` 的第一个表单上失败（`method` 缺失）。
+
 ## 2. 验收标准逐条对照
 
 | # | 验收 | 证据测试 |
