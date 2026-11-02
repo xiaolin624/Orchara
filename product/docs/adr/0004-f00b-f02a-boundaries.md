@@ -538,5 +538,182 @@ T025 把草稿固化成一个**内容可核验**的执行清单：同一执行�
 - `product/tests/support/t025.py`、`product/tests/f02a/test_t025_*.py`
 - `product/reports/f02a/T025-manifest.md`
 
+## T026 追加：评测池、报告绑定与孤儿清理（F00B.04）
+
+T026 把“评测池满载时文件封存仍能完成、业务失败与基础设施失败可区分”从规格变成可运行
+实现，并补上 T023/T024 留下的两个延期外键。以下决定为 T027、F13A、F07 与部署方必须沿用；
+改动需新 ADR 或在本节追加修订理由。
+
+### 31. 迁移 0013：评测表、两个补齐的延期外键与一个继续延期
+
+- `platform.evaluation_jobs`/`platform.evaluation_reports` 按 `contracts/database.sql`
+  基线创建（含 kind XOR CHECK、state/status CHECK、report/artifact/principal/background_job 外键）。
+  `evaluation_reports` 没有 owner 列，所有权由产生它的 `evaluation_jobs.report_id` 表达。
+- `evaluation_jobs.snapshot_id` 是**裸 uuid、无 FK**。契约引用 `execution_snapshots(id)`，但该表
+  属 T027（迁移 0014）且本批不存在。T027 必须在其迁移里补
+  `evaluation_jobs_snapshot_fkey (snapshot_id) -> execution_snapshots(id)`；在此之前
+  `kind=application` 的行只能结构存在（CHECK 真实），不能执行（binding 409、handler 以
+  `evaluation_binding_missing` 失败、无报告）。T026 绝不伪造 snapshot 行。
+- 两个延期外键在本迁移补齐：`publication_reviews.report_id -> evaluation_reports(id)`（0010 延期）
+  与 `model_profile_versions.evaluation_report_id -> evaluation_reports(id)`（0011 延期）。因为
+  约束现在真实存在，T019/T023/T025 的测试 seed 辅助函数改为插入真实 report 行；这是 schema
+  收紧后的预期适配，不是放宽断言。T026 本身不写 `publication_reviews`，也不写
+  `model_profile_versions.evaluation_report_id`（F02B/F13A 责任）。延期 FK 不做事后回填：升级
+  一个已存在 dangling `report_id` 的旧库前必须先修正/清空这些行（本批没有已部署数据；所有门禁
+  都在新库上迁移）。
+- 索引：`evaluation_jobs_owner_state (owner_id, state, created_at DESC)` 供 owner/admin 读，
+  `evaluation_jobs_report (report_id) WHERE report_id IS NOT NULL` 供 report→owner 判定；
+  `background_job_id UNIQUE` 提供 1:1 job 查找。权限沿用 0007–0012（PUBLIC 无、`orchara_worker`
+  无 platform USAGE/表/序列权限）。
+- 不建 F07 的 deletion 模型；不建 snapshot/run/job；不写发布版本。`evaluation_reports` 不可变
+  （没有 update 路径），删除生命周期归 F07。
+
+### 32. 一个评测 = 业务行 + 一个固定后台 job，同事务创建；claim 把 queued 变 running
+
+- 控制接口是 `cmd/admin evaluations enqueue --kind model|application --owner-login LOGIN
+  --dataset-artifact-id UUID [--model-profile-version-id UUID] [--snapshot-id UUID]`。它在一个
+  事务里先 `EnqueueTx(kind=application_evaluate, target=evaluation_id, owner, dedup=evaluation_id,
+  input_artifact_id=dataset)` 再插 `evaluation_jobs`；任一失败两者都不存在。
+  `--kind=model` 必须且有 candidate、不能有 snapshot；`--kind=application` 反之。形状错误
+  exit 2、数据库语义拒绝（未知 login、候选不存在、dataset 不存在 FK）exit 1，均不写部分行。
+- `background_jobs.target_id = evaluation id`，`input_artifact_id = dataset`，`dedup_key = evaluation
+  id`（一次评测一个意图；终态 job 仍占用该 key，重跑必须新评测）。job 的 `expected_*` 不参与
+  评测绑定：绑定由 `evaluation_jobs` 行的 kind 决定（候选 manifest / snapshot manifest）。
+- Claim（任何 worker）在同一事务里把 evaluation `queued -> running`；重试保持 running；只有
+  Complete 的终态路径写 `failed`/`cancelled`，只有通过守卫的 report 写 `succeeded` + `report_id`。
+- 公共 `POST /api/v1/applications/{application_id}/evaluations` 仍属 F13A 的受信 runner 入口；
+  T026 不实现、不伪造响应。API key 也拿不到未实现的公共评测入口。
+
+### 33. 完成守卫：报告绑定与状态规则；report failed ≠ job failed
+
+`Complete` 对 `application_evaluate` 的 `succeeded` 结果执行服务端守卫（同一事务）：
+
+1. `result_artifact_id` 必填，且必须是本 job 的、ready、未墓碑、owner 一致的 artifact（复用
+   T024 的 `verifyJobResultArtifact`）；报告 artifact 大小上限 1 MiB（远低于 20 MiB store 上限）。
+2. `FOR UPDATE` 锁 evaluation 行：必须属于本 job/owner、state ∈ {queued,running}；dataset 行必须
+   ready、未墓碑、有 64 hex `sha256`（否则 `source_deleted`/`dataset_not_ready`）。
+3. 解析绑定 manifest：model → `model_profile_versions.manifest_sha256`；application →
+   `execution_snapshots.manifest_sha256`（表存在且 owner 一致；T027 前为 `evaluation_binding_missing`）。
+4. 读 sealed report 字节（cap + 重算 SHA-256 必须等于 artifact 记录值）、严格 JSON 解码
+   （未知字段/尾随数据拒绝）、文档规则校验。
+5. 绑定比较：`manifest_sha256` == bound；`dataset_sha256` == dataset artifact 的 sha256；
+   `dataset_artifact_id`、`evaluation_id` 一致；`evaluation_kind` 一致。任一不符 →
+   `report_binding_mismatch`（文档身份不符/字段类型问题 → `report_invalid`）。
+6. 状态规则：`passed` 要求 ≥1 case、≥1 check、全部 case passed；`failed` 要求 ≥1 case、≥1 check、
+   至少一个 case failed；`not_run` 才能 0 case。空 case、空 check、status 与 cases 矛盾、坏 case
+   id 一律 `report_invalid`——`not_run`/空集永远不能变成 passed。
+7. 全部通过才插入 `evaluation_reports`（immutable）、把 evaluation 置 succeeded + report_id +
+   finished_at、并让 job succeeded。任何守卫拒绝：job failed（business，不重试）、evaluation
+   failed 同名 error_code、**没有 report 行**。sealed 对象读失败是 `transient_storage_io`：
+   job 可重试，evaluation 保持 running 直到终态。
+
+业务评测失败（case failed / dataset 不是有效评测数据集）由 handler 表达为 report `status=failed`：
+job succeeded、evaluation succeeded、report status=failed。handler 主动提交 job failed 时：重试表
+内的基础设施码返回 ready 重试（evaluation 保持 running）；business 码立即 job failed + evaluation
+failed（error_code 相同）。cancelled → evaluation cancelled。`application_evaluate` 的可重试码固定为
+`transient_storage_io`/`transient_internal`/`lease_expired`/`dataset_wait_timeout`，其余（含未知码）
+一律 business。
+
+handler 是受信基础设施，不是用户：报告由它生成，但“passed”只能由服务端按上述绑定/状态规则确认；
+用户/前端永远不能自报 passed。
+
+### 34. handler 边界与合成评测器；application kind 如实 partial
+
+- `JobScope` 增加 job-scoped `Evaluation` 读取（内部 mTLS maintenance 角色 + 活 attempt_token +
+  本 job 归属校验），返回 evaluation id/kind/dataset id/bound manifest hash。这是**非契约内部扩展**：
+  `BackgroundLease`（`additionalProperties:false`）没有地方放 bound manifest hash，而让 handler
+  直接用 maintenance DSN 读评测表会把绑定决策移进 handler。该端点不是公共路径，只返回本 job 的
+  evaluation 事实；报告/ADR 记录该缺口，契约修订时应把它纳入正式内部协议。
+- handler 等 dataset：job-scoped `artifact-status` 轮询（默认 100ms）+ heartbeat（默认 5s，测试 50ms）；
+  默认等待 60s，可配（`--dataset-wait-timeout` / `ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT`）。
+  uploading/scanning 继续等；quarantined/deleted/404 → business `source_deleted`；超时 →
+  可重试 `dataset_wait_timeout`。等待发生在 work 池，不占 system_io 槽。
+- 合成评测器（T026 占位，`report.synthetic=true`、`evaluator="synthetic-jcs-case/1"`）：dataset 文档
+  `{schema:"orchara.evaluation-dataset/1", cases:[{id,input,expected_sha256}]}`；对每个 case 的 `input`
+  求 RFC 8785 JCS 字节的 SHA-256 并与声明值比较。空 `cases` → report `not_run`；坏 dataset → 一个
+  failed `dataset` case（report failed、job succeeded）。报告含 `report_version/kind/evaluation_kind/
+  evaluation_id/dataset_artifact_id/dataset_sha256/manifest_sha256/status/checks/case_count/cases/
+  synthetic/evaluator`。
+- **F13A 取代 case 判定与 dataset schema**；替换时必须同时扩展守卫的状态/绑定规则与测试，不得
+  让 handler 自证 passed。T026 不调用真实模型、不声称真实评测已通过；真实模型/真实 checker 是
+  F13A 的 `not_run`。
+- `kind=application`：CLI 结构接受并写行（snapshot_id 无 FK 仍可存），但 execution_snapshots 不存在
+  时 binding 返回 409 `evaluation_binding_unavailable` → handler 以 `evaluation_binding_missing`
+  job failed、evaluation failed、无报告。T027 建表且补 FK 后同一 `resolveBoundManifest` 查询自然生效
+  （要求 snapshot 行有 `owner_id` 与 `manifest_sha256`，owner 必须等于评测 owner）；T026 不把
+  application 评测写成已跑通，报告记 `partial`。
+
+### 35. 运行时双池与 `--once` 语义
+
+- `cmd/maintenance run` 起两个独立池：`system_io` 只含 `artifact_finalize`（默认 2 槽），`work`
+  含其余已编译 kind（默认 1 槽）。每槽一个 worker/worker_id（`<base>:<pool>:<slot>`），各自走
+  claim→execute。`--kinds` 只能收窄并仍按池划分：`--kinds artifact_finalize` 只起 system_io，
+  `--kinds model_validate,application_evaluate` 只起 work。T022 的启动日志行与 summary 形状保留，
+  summary 聚合两池，jobReport 增 `pool` 字段。
+- 参数：`--system-io-slots`/`--work-slots`/`--dataset-wait-timeout`/`--evaluation-poll-interval`/
+  `--report-wait-timeout`，环境默认 `ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS` 等五个。非法值（0、越界、
+  过短 poll、过长 wait）启动即 exit 2。环境先校验、flag 覆盖之；flag 不会用 0 值静默覆盖配置。
+- `--once` 是**跨池 drain**而不是“第一个空 claim 就退出”：每个槽在空 claim 时记录当前 activity
+  epoch；只有所有槽都在同一 epoch 观察到空队列才退出。任何 job 开始或结束都会 bump epoch 并清空
+  空标记——因为 work handler 的 `completeUpload` 会产生 system_io 的 finalize job，finalize 完成后
+  又可能产生新的 work。活动 job 存在时进程绝不会退出；因此“报告 finalize 还没跑完 `--once` 就退出”
+  不可能发生。正常空队列时一次 drain 会在若干 poll interval 内退出。
+- 等待评测的 handler 在 work 池续租；system_io 池独立，因此 finalize 不会被等待中的评测饿死。
+  真实测试：两个 uploading dataset 的评测占满 work 槽时，另一个 artifact_finalize job 仍完成并
+  ready（此时两个评测仍 leased/running）；随后 dataset 就绪，两评测都成功且报告 passed。
+
+### 36. 评测/报告读权限与投影
+
+- `GET /api/v1/evaluations/{evaluation_id}` 与 `GET /api/v1/evaluation-reports/{report_id}`：
+  evaluation 的 owner 或 admin 得 200，其余（含无 grant 的管理员以外用户、未知 id、畸形 id）一律
+  404（与不存在同答，不可枚举）。report 无 owner 列：owner 由 `evaluation_jobs.report_id` join 判定，
+  report 不被任何 evaluation 引用时同为 404。
+- 响应只有契约字段：EvaluationJob 六字段（id/kind/state/background_job_id/report_id/error_code），
+  Report 四字段（id/status/manifest_sha256/result_artifact_id）。不返回 dataset/candidate/snapshot id、
+  object key、报告正文或 draft；后台 job GET 仍按 T022 的 owner-or-admin 脱敏投影。
+- 契约给读端点声明了 `apiKey` security，但没有定义评测 scope。T026 不做 scope 判定（一致按
+  owner/admin），记录为契约缺口；F13A/契约修订应为评测读定义专用 scope（不得复用
+  `application:read` 假装已授权）。
+
+### 37. 孤儿清理边界（F07 前的最小安全规则）
+
+- `cmd/maintenance sweep --orphan-age D [--dry-run]` 只需要 `ORCHARA_MAINTENANCE_DSN` 与
+  `ORCHARA_OBJECT_DIR`（不需要内部 mTLS），它不领取 job、不写业务行。
+- `staging/*`：当且仅当没有“live 上传者”时删除。live 定义是存在 `uploading`/`scanning` 且
+  `deleted_at IS NULL` 的 artifact 行以该 staging key 为目标。ready/quarantined/deleted 行的 staging
+  残留可删（否则永不清）；无行引用可删。reason 记录 `artifact_ready`/`artifact_quarantined`/
+  `artifact_deleted`/`no_artifact_reference`。
+- `sealed/*`：只有**任何 artifact 行都不引用**该 object_key 时才删（崩溃留下的未登记 sealed）；
+  被任何行引用的 sealed 字节永不在这里删除（包括 deleted 行——那属 F07 的删除账本）。
+- 年龄用对象 mtime 与 `--orphan-age` 比较，是并发/TOCTOU 的护栏：新写入的对象不会被误删；
+  staging key 由行在同一事务预分配，旧 key 不会被复用。删除 `Store.Delete` 幂等，重复 sweep 删除 0。
+  `--dry-run` 只报告（`would_delete`），不动文件。临时文件名/非法 key 不是 platform 对象，不参与。
+- 不做：F07 的 deletion_jobs/墓碑传播、对象内容扫描（F05/T028）、quarantined 行复活。
+
+## 后果（T026）
+
+- 0013 之后，评测写入只有 `cmd/admin evaluations enqueue` 一条路，报告写入只有完成守卫一条路；
+  任何直接写 `evaluation_reports` 或先写 report 再补绑定的实现都是 bug。F13A 必须复用同一守卫，
+  替换 runner 而不是替换绑定规则。
+- `application_evaluate` 的终态语义固定：report failed 是 job succeeded；基础设施失败是 job failed
+  + evaluation failed + 无 report。新增错误码必须同时进 `retryableByKind` 或明确标 business。
+- 迁移 0013 之后，任何引用 `evaluation_reports` 的新表/新列直接受 FK 约束；T027 只需补
+  `evaluation_jobs_snapshot_fkey` 并写 snapshot 行，不重复 T026 的绑定/守卫。
+- 运行时双池是与 T022/T024 的既有 `--once/--kinds` 行为兼容的扩展；等待型 handler 必须使用
+  work 池，绝不能把 finalize 类工作放进 work 池（否则又回到 T026 要修的拥塞）。
+- 孤儿清理只清“确定没人要”的对象；它不是删除功能，不能作为 F07 的替代，也不把 quarantined
+  变成可用。
+
+## 证据（T026）
+
+- `product/db/migrations/0013_evaluation_pool.sql`
+- `product/cmd/admin/{evaluations.go,main.go}`、`product/cmd/maintenance/{run,sweep,scope,client,main}.go`
+- `product/internal/background/{evaluation.go,complete.go,claim.go,handler.go,scope.go,job.go}`
+- `product/internal/background/handlers/{application_evaluate.go,artifact_finalize.go}`
+- `product/internal/api/{evaluations.go,server.go,internal.go}`、`product/internal/objectstore/objectstore.go`
+- `product/internal/config/{config.go,config_test.go}`
+- `product/tests/support/{t026.py,fixtures.py,f00b.py,f02a.py,t025.py}`、`product/tests/f00b/test_t026_*.py`
+- `product/reports/f00b/T026-evaluation-pool.md`
+
 
 

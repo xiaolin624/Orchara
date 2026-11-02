@@ -336,6 +336,33 @@ HTTP + 真实文件系统对象字节；无 mock、无跳过。票面第 3 条�
 
 
 
+## F00B 评测池、报告守卫与孤儿清理（3/3：T026）
+
+T026（GitHub #27）已交付，状态 **`partial`**。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
+HTTP/mTLS/对象字节；评测执行器是**明确的合成占位**（`synthetic-jcs-case/1`，F13A 才有真实
+runner/checker），且 `kind=application` 需要 T027 的 `execution_snapshots`，本批只结构性接受并
+如实失败。`partial` 的唯一原因就是这两条：模型 kind 的“池不饿死 finalize、report failed 与 job
+failed 可区分、owner/admin 读、孤儿清理”全部真实跑通。决策边界见
+[ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §31–37。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0013_evaluation_pool.sql`：`evaluation_jobs`/`evaluation_reports` 契约基线（kind XOR、state/status CHECK、report→artifact FKs）；`snapshot_id` 裸 uuid 无 FK（T027/0014 补 `evaluation_jobs_snapshot_fkey`，COMMENT 写明）；补齐 0010/0011 延期的 `publication_reviews.report_id`、`model_profile_versions.evaluation_report_id` FK；owner/state 与 report 索引；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op |
+| 控制接口 | `cmd/admin evaluations enqueue --kind model/application --owner-login ... --dataset-artifact-id ... [--model-profile-version-id] [--snapshot-id]`：一个事务 = `EnqueueTx(application_evaluate, target=eval, input=dataset, dedup=eval id)` + evaluation 行；model/application 组合、UUID、login 语义校验；shape exit 2、数据库拒绝 exit 1、均无部分行 |
+| 评测不饿死 finalize | `cmd/maintenance run` 双池：system_io=artifact_finalize（默认 2 槽）、work=其他 kind（默认 1 槽）；`--kinds` 只收窄仍按池划分；`--once` 是跨池 drain（activity epoch，任 job 开始/结束清空标记，所有槽同 epoch 空才退出）；slots/wait flags + 五个环境变量；summary 聚合、jobReport 带 pool |
+| `application_evaluate` | handler 经 job-scoped binding 读取 evaluation 事实；dataset uploading/scanning 时 `artifact-status` 轮询 + heartbeat（可配 timeout，可重试 `dataset_wait_timeout`）；signed download → 合成 JCS case 评测 → signed report upload/complete → 等 finalize ready → `succeeded` + result artifact；等待只在 work 池，不占 system_io |
+| 完成守卫 | `Complete` 同事务：锁 evaluation、核 dataset ready/sha、解析候选/snapshot manifest、读 sealed report（≤1 MiB、重算 sha256、严格 JSON）、绑定 manifest/dataset/identity、passed/failed/not_run 规则；通过才插 immutable report + evaluation succeeded + job succeeded；绑定/格式/非法 passed → job failed（`report_binding_mismatch`/`report_invalid`）+ evaluation failed + **无 report**；sealed 读失败是 `transient_storage_io`（可重试，evaluation 保持 running） |
+| 状态区分 | 业务评测失败 = report `status=failed` + job/evaluation `succeeded`；基础设施失败 = job failed + evaluation failed + 同 error_code、无 report；`not_run`/空 case/空 check 永不 passed；`application_evaluate` 重试表只含 `transient_storage_io`/`transient_internal`/`lease_expired`/`dataset_wait_timeout` |
+| 读权限 | `GET /api/v1/evaluations/{id}`（EvaluationJob 六字段）与 `GET /api/v1/evaluation-reports/{id}`（Report 四字段）：owner 或 admin 200，其余 404（不枚举）；report 的 owner 由产生它的 evaluation join；不返回 dataset/candidate/snapshot/object key/正文；后台 job GET 仍 T022 owner/admin |
+| 孤儿清理 | `cmd/maintenance sweep --orphan-age D [--dry-run]`：只删无 live uploader 的 staging 与无任何 artifact 行引用的 sealed；被引用的 sealed（含 deleted 行）永不删（F07 负责）；mtime 年龄护栏、幂等、逐条 reason、重复 sweep 删 0 |
+| 测试 | `tests/support/t026.py` + `tests/f00b/test_t026_*.py` 7 文件 **39 用例**（迁移 7、CLI 12、双池 2、失败区分 6、报告绑定 8、权限 2、sweep 2）；全部真实 PG/二进制/HTTP/mTLS/对象字节；`tests/f00b` 125 passed、`tests/f02a` 62 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 证据 | `reports/f00b/T026-evaluation-pool.md`（AC 逐条、原始命令/结果、池/env/端点、stub/real 分报、T027 交接） |
+
+未运行/部分（如实）：`kind=application` 端到端评测（T027 建 `execution_snapshots` 并补 FK 后才能执行；
+本批结构接受、binding 失败、报告记 partial）；真实评测 runner/checker（F13A；本批是合成占位，不是
+真实模型通过）；API key 的评测 scope（契约未定义，记为缺口）；全量 `pytest tests`（PLAN §1 由统筹
+收尾跑一次）。本票不推送、不关闭 issue。
+
 ## 记录模板
 
 ```text
