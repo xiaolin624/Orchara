@@ -10,8 +10,8 @@
 ## 当前发布范围
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
-T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028 passed）** 与
-**F03（T029 passed；T030+ open）**；其余票保持 open。
+T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030 passed）** 与
+**F03（T029 passed；T031+ open）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -28,9 +28,12 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 执行/领取属 F03、发布提交属 F02B，限制见各票报告。
 F03 的 T029 已交付执行领取的首个切片（迁移 0016、`internal/execution`、内部 claim/heartbeat/
 attempt-exit、owner-only `GET /runs` 与运行页面）：真实 mTLS + PG 原子领取/配额/hmac sealed 链接；
-result/finalizer/事件/恢复/取消属 T030+。平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/
-审批/编译器/画布/发布门禁/部署灾备等后续 epic 未实现；F01/F00B/F02A/F05/F03 的限制见各票报告
-§5/§7。
+result/finalizer/事件/恢复/取消属 T031+。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
+只把 `tool_run` 加入后台任务 kind 白名单；真实维护进程用固定 argv 的 Python 子进程执行固定脚本，
+Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；公开 `POST/GET /api/v1/tool-runs`
+是 ADR 0005 记录的非契约桥，T033/F04A 再绑定到 Run/沙箱协议。平台整体**仍不是完整 v1**：业务执行/
+路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备等后续 epic 未实现；F01/F00B/F02A/F05/F03
+的限制见各票报告 §5/§7。
 本文件 2026-11-02 的两轴复核修复记录见下方“F00B/F02A 两轴复核修复”一节，第二次独立复核的 6 项
 缺陷 + 1 个 flaky 测试见“F00B/F02A 第二次复核修复”一节；状态以本节之后的表格为准。
 
@@ -67,6 +70,7 @@ result/finalizer/事件/恢复/取消属 T030+。平台整体**仍不是完整 v
 | T027 | F02A | 发布前提交私有草稿并查看固定调试任务 | passed | `reports/f02a/T027-debug-submit.md`、`db/migrations/0014_execution_snapshots_and_runs.sql`、`internal/catalog/{debug.go,debug_test.go}`、`internal/api/debug.go`、`apps/web/src/{debug.html,assets/debug.js}`、`tests/support/t027.py`、`tests/f02a/test_t027_*.py`（38 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；领取/执行属 F03；第二次复核后 debug 要求会话 creator 角色，无角色管理员 403） |
 | T028 | F05 | 上传、校验封存并授权下载不可覆盖的文件 | passed | `reports/f05/T028-artifact-uploads.md`、`db/migrations/0015_artifact_admissions.sql`、`internal/artifacts/`（服务 + 格式准入分类器）、`internal/api/{artifacts.go,server.go}`、`internal/background/handlers/artifact_finalize.go`、`apps/web/src/{attachments.html,assets/attachments.js}`、`tests/support/t028.py`、`tests/f05/test_t028_*.py`（6 文件 31 用例；真实 PG + 真实二进制 + 真实 HTTP + 真实签名 URL + 真实 maintenance finalize；删除模型/病毒查杀/深工作表解析分别属 F07/F13A，见报告 §5） |
 | T029 | F03 | 提交运行并只让合格执行者在配额内领取 | passed | `reports/f03/T029-claim-and-lease.md`、`db/migrations/0016_execution_claims_and_quota.sql`、`internal/execution/`（store + service：claim/heartbeat/attempt-exit）、`internal/api/{execution.go,runs.go,server.go,internal.go,debug.go}`、`apps/web/src/{runs.html,assets/runs.js,debug.html}`、`tests/support/t029.py`、`tests/f03/test_t029_*.py`（9 文件 51 用例；真实 PG + 真实 mTLS/HTTP + 真实对象字节 + 真实并发；result/finalizer/事件/恢复/取消属 T031–T038，发布版 Run 入口属 F02B/F05，见报告 §4/§5） |
+| T030 | F05 | 用预置工具对销售表格返回统计或具体输入错误 | passed | `reports/f05/T030-sales-tool.md`、`db/migrations/0017_tool_run_kind.sql`（只扩展 kind CHECK）、`internal/tools/`（固定 argv/只读输入/超时/严格 output.json/产物准入）、`internal/toolruns/`（幂等创建 + owner-only 读）、`internal/api/toolruns.go`、`internal/background/handlers/tool_run.go`（summary/CSV/diagnostics/log + 完成守卫）、`worker/platform_worker/nodes/sales_stats.py`（stdlib-only Decimal CSV/XLSX）、`apps/web/src/{attachments.html,assets/attachments.js}`（工具区/统计表/下载/诊断）、`tests/support/t030.py`、`tests/f05/test_t030_*.py`（6 文件 55 用例，含 36 个 Python 工具子进程用例；真实 PG + 二进制 + HTTP + 签名 URL + maintenance 双池 + 真实 Python 子进程；非契约桥见 ADR 0005；沙箱/结果协议/工具构建分别属 T033/T031/T037，见报告 §6） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -465,6 +469,28 @@ Run 入口属 F02B/F05；真实 supervisor/worker 进程属 F04A/F15A。决策�
 | Web | `apps/web/src/runs.html` + `assets/runs.js`：owner-only 列表/分页、点击详情、state/phase/kind/revision/snapshot、manifest hash、运行中的真实 started_at/lease_deadline；无租约时明确“不伪造进度”；全部 `textContent`；debug 页新增 phase/租约行与 `/runs` 链接，apps 页新增 `/runs` 导航 |
 | 测试 | `tests/support/t029.py` + `tests/f03/test_t029_*.py` 9 文件 **51 用例**（迁移 7、claim 6、heartbeat 9、exit 10、listRuns 3、并发 3、原子性 5、不变量 3、页面 5）+ `internal/execution` 4 个 Go 单测；`tests/f03` **51 passed**，`go test ./...` 全绿，`go vet ./...`、`gofmt -l .` 无输出，`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节/并发） |
 | 证据 | `reports/f03/T029-claim-and-lease.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T030/T031 接口） |
+
+## F05 预置销售统计工具（2/N：T030）
+
+T030（GitHub #31）已交付，状态 **`passed`**（本票范围 = **可信预置工具执行 + Decimal 统计 +
+具体输入错误 + 用户可见运行/下载/诊断路径**）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP
++ 真实文件系统对象字节 + 真实 HMAC 签名 URL + 真实 `cmd/maintenance run --once` 双池
+（tool_run work pool + artifact_finalize system_io pool）+ 真实 Python 3.12 子进程；无 mock、无跳过。
+F03 的 result/finalizer/events/SSE/cancel/recovery 尚不存在，因此本票走 ADR 0005 记录的
+**非契约桥**：一个 `tool_run` 后台 job，而不是伪造 Run；T033/F04A 再把预置工具绑定到
+Run/沙箱协议，T037 再开放任意工具构建。边界见报告 §5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0017_tool_run_kind.sql`：guarded、幂等 drop/recreate `background_jobs_kind_check`，只加入第九个 kind `tool_run`；无新表、无新业务行、无权限变化；`orchara_worker`/PUBLIC 仍无 platform 权限；重复 migrate no-op |
+| 后台 kind | `internal/background/{job.go,complete.go,artifacts.go}`：`AllKinds`/`KnownKind`/数据库 CHECK 同步；retry 表 `tool_run` = transient_storage_io/transient_internal/lease_expired/tool_timeout/tool_crash（≤3 次），工具拒绝码与输出违规码 business；`tool_run` 在 work pool（非 system_io）；producer purpose 加入 tool_summary/tool_artifact/diagnostics/log；新增 `guardToolRunCompletion`，成功必须命名本 job 的 ready summary artifact |
+| API | `POST /api/v1/tool-runs`（会话 CSRF / API key `application:write`；`Idempotency-Key` 必需；body 精确 tool+artifact_id；202 `{id,state,tool,artifact_id}`）；同 key 同 body 回放已存 body、异 body 409 `idempotency_conflict`；非本人/已删/畸形 id 404 `resource_not_found`；未 ready 409 `artifact_not_ready`；非 CSV/XLSX 422 `validation_failed`；receipt+job 同事务。`GET /api/v1/tool-runs/{job_id}` owner-only，`{id,state,error_code,artifacts:[...]}`，join `background_job_artifacts`，不含 object key |
+| 执行器 | `internal/tools`：固定 argv（无 shell）、裁剪环境、临时 workspace、输入复制只读（Windows DOS read-only / POSIX 0444，OS 边界见 ADR）、超时 30s 默认（环境可调、≤10m）、stdout/stderr 各 64 KiB 只作 log artifact、严格 output.json 成功/拒绝形状、未知码拒绝、产物准入（相对/目录内/普通文件/无 symlink/`..`/非空/≤20 MiB/≤16 个/SHA-256），`output.json` 未列出的文件不登记；Python 与脚本路径来自 `ORCHARA_PYTHON`/`ORCHARA_PRODUCT_ROOT` 部署配置 |
+| 工具 | `worker/platform_worker/nodes/sales_stats.py`：Python 3.12 stdlib only；CSV 与 XLSX（zip+XML，含 sharedStrings）读取；表头精确 order_id/date/region/amount；Decimal 金额（输出两位小数字符串，永不 float）；产出 summary.json/summary.csv 仅在 artifacts 目录；拒绝缺列/多列/乱序、重复订单、负值/非十进制、空地区、非 ISO 日期、公式、非 UTF-8、宏、DTD/实体、zip 穿越/条目/解压/压缩比、工作表/行/单元格上限、错误单元格类型 |
+| handler | `internal/background/handlers/tool_run.go`：job-scoped Status/Download/FetchURL 取输入 → 执行器 → 校验销售 Schema/Decimal 总和 + summary.json 与 data 规范化一致 → 上传 tool_summary/tool_artifact/log 并等待 ready → 成功提交 summary；工具拒绝/超时/崩溃/IO 失败上传安全 diagnostics+log 后失败，失败永不激活 result artifact |
+| Web | `apps/web/src/attachments.html` + `assets/attachments.js`：上传页新增预置工具区（artifact id、运行、ready/leased/succeeded/failed 中文状态、Decimal 总额/地区表、summary.csv/summary.json 下载、失败诊断 error_code/message/fix/location）；全部 `textContent`，无内联用户内容、无 Number()/parseFloat、无凭据存储 |
+| 测试 | `tests/support/t030.py` + `tests/f05/test_t030_*.py` **6 文件 55 用例**（工具 Python 子进程 36、迁移 5、成功流 4、拒绝 3、失败/重试 3、页面 4）；真实路径覆盖 CSV/XLSX 精确 Decimal、下载字节、日志无正文/secret、10 类拒绝 + 诊断、超时/IO/tombstone、幂等/重跑/ACL/API key scope；`internal/tools` 15 个 Go 单测、`handlers` 7 个、`config` 1 个、后台白名单更新 |
+| 证据 | `reports/f05/T030-sales-tool.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T031/T033 接口）；`docs/adr/0005-t030-tool-run-bridge.md` |
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
