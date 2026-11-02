@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func lookupFrom(pairs map[string]string) Lookup {
@@ -158,5 +159,144 @@ func TestBadBooleanIsRejected(t *testing.T) {
 	env[EnvAllowScripts] = "yes"
 	if _, err := Load(lookupFrom(env)); err == nil {
 		t.Fatal("a non-boolean flag value must be rejected")
+	}
+}
+
+func TestBackgroundDefaultsAndObjectDirectory(t *testing.T) {
+	env := validStubEnv()
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ObjectDir != "" {
+		t.Fatalf("object dir = %q, want the empty (fail-closed) default", cfg.ObjectDir)
+	}
+	if cfg.RetryBackoff != DefaultBackgroundRetryBackoff {
+		t.Fatalf("retry backoff = %s", cfg.RetryBackoff)
+	}
+	if cfg.Internal != nil {
+		t.Fatalf("internal listener = %+v, want disabled", cfg.Internal)
+	}
+
+	env[EnvObjectDir] = `C:\objects`
+	env[EnvRetryBackoff] = "50ms"
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ObjectDir != `C:\objects` {
+		t.Fatalf("object dir = %q", cfg.ObjectDir)
+	}
+	if cfg.RetryBackoff != 50*time.Millisecond {
+		t.Fatalf("retry backoff = %s", cfg.RetryBackoff)
+	}
+}
+
+func TestRetryBackoffMustBeAPositiveDuration(t *testing.T) {
+	for _, raw := range []string{"soon", "0s", "-1s", "2h"} {
+		env := validStubEnv()
+		env[EnvRetryBackoff] = raw
+		_, err := Load(lookupFrom(env))
+		var invalidErr *ValidationError
+		if !errors.As(err, &invalidErr) || invalidErr.Variable != EnvRetryBackoff {
+			t.Fatalf("%q: expected a retry-backoff validation error, got %v", raw, err)
+		}
+	}
+}
+
+func TestInternalTLSMaterialMustBeComplete(t *testing.T) {
+	env := validStubEnv()
+	env[EnvInternalAddr] = "127.0.0.1:0"
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("an internal address without certificates must be rejected")
+	}
+
+	env[EnvInternalServerCert] = "server.pem"
+	env[EnvInternalServerKey] = "server-key.pem"
+	env[EnvInternalClientCA] = "ca.pem"
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Internal == nil || cfg.Internal.Addr != "127.0.0.1:0" ||
+		cfg.Internal.ServerCert != "server.pem" || cfg.Internal.ClientCA != "ca.pem" {
+		t.Fatalf("internal TLS config = %+v", cfg.Internal)
+	}
+
+	// Material without an address is a half-configured listener, not an
+	// invitation to start one somewhere else.
+	env = validStubEnv()
+	env[EnvInternalServerCert] = "server.pem"
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("certificate material without an address must be rejected")
+	}
+}
+
+func validMaintenanceEnv() map[string]string {
+	return map[string]string{
+		EnvInternalURL:        "https://127.0.0.1:9443",
+		EnvInternalClientCert: "client.pem",
+		EnvInternalClientKey:  "client-key.pem",
+		EnvInternalCA:         "ca.pem",
+		EnvObjectDir:          `C:\objects`,
+		EnvMaintenanceDSN:     "postgresql://orchara_owner:pw@127.0.0.1:55432/db",
+	}
+}
+
+func TestMaintenanceConfigurationIsFailClosed(t *testing.T) {
+	cfg, err := LoadMaintenance(lookupFrom(validMaintenanceEnv()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HeartbeatInterval != DefaultHeartbeatInterval {
+		t.Fatalf("heartbeat interval = %s", cfg.HeartbeatInterval)
+	}
+	if cfg.InternalURL != "https://127.0.0.1:9443" {
+		t.Fatalf("internal URL = %q", cfg.InternalURL)
+	}
+
+	for _, missing := range []string{
+		EnvInternalURL, EnvInternalClientCert, EnvInternalClientKey,
+		EnvInternalCA, EnvObjectDir, EnvMaintenanceDSN,
+	} {
+		env := validMaintenanceEnv()
+		delete(env, missing)
+		_, err := LoadMaintenance(lookupFrom(env))
+		var invalidErr *ValidationError
+		if !errors.As(err, &invalidErr) || invalidErr.Variable != missing {
+			t.Fatalf("missing %s: expected a validation error, got %v", missing, err)
+		}
+	}
+}
+
+func TestMaintenanceURLMustBePlainHTTPS(t *testing.T) {
+	for _, raw := range []string{
+		"http://127.0.0.1:9443",
+		"https://user:secret@127.0.0.1:9443",
+		"https://127.0.0.1:9443/prefix",
+		"https://127.0.0.1:9443?x=1",
+		"not-a-url",
+	} {
+		env := validMaintenanceEnv()
+		env[EnvInternalURL] = raw
+		if _, err := LoadMaintenance(lookupFrom(env)); err == nil {
+			t.Fatalf("maintenance URL %q must be rejected", raw)
+		}
+	}
+}
+
+func TestHeartbeatIntervalMustBePositive(t *testing.T) {
+	env := validMaintenanceEnv()
+	env[EnvHeartbeatInterval] = "0s"
+	if _, err := LoadMaintenance(lookupFrom(env)); err == nil {
+		t.Fatal("a zero heartbeat interval must be rejected")
+	}
+	env[EnvHeartbeatInterval] = "100ms"
+	cfg, err := LoadMaintenance(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HeartbeatInterval != 100*time.Millisecond {
+		t.Fatalf("heartbeat interval = %s", cfg.HeartbeatInterval)
 	}
 }
