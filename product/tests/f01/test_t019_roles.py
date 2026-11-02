@@ -77,12 +77,19 @@ def test_a_promoted_user_can_call_an_admin_endpoint_and_a_demoted_one_cannot(
 
     accepted = member.client.post(
         "/api/v1/admin/grants",
-        body=grant_body(member.principal_id, first_application),
+        body=grant_body(admin.principal_id, first_application),
         csrf=member.csrf,
     )
     assert accepted.status == 201, accepted.text
     # Two bumps so far: the role update and the grant the promoted member created.
     assert epoch_revision(stack.dbname) == revision_before + 2
+    # The new administrator uses the endpoint to grant *another* principal (the
+    # bootstrap admin), not themselves; the two-person rule leaves the endpoint
+    # fully usable after promotion. The grant is immediately effective for the
+    # grantee.
+    assert first_application in [
+        item["id"] for item in list_applications(admin).json["items"]
+    ]
 
     demoted = set_roles(admin, member.principal_id, ["user"])
     assert demoted.status == 200, demoted.text
@@ -92,17 +99,22 @@ def test_a_promoted_user_can_call_an_admin_endpoint_and_a_demoted_one_cannot(
     assert_error(
         member.client.post(
             "/api/v1/admin/grants",
-            body=grant_body(member.principal_id, second_application),
+            body=grant_body(admin.principal_id, second_application),
             csrf=member.csrf,
         ),
         403,
         "forbidden",
     )
-    # The grant the promoted member created is still effective: losing the admin
-    # role does not cascade into the resource grants the member holds.
-    visible = [item["id"] for item in list_applications(member).json["items"]]
-    assert visible == [first_application], visible
-    assert second_application not in visible
+    # The grant the promoted member created is still effective after the
+    # demotion: losing the admin role does not cascade into grants the member
+    # created, but the member is back to seeing only their own (none).
+    assert first_application in [
+        item["id"] for item in list_applications(admin).json["items"]
+    ]
+    assert list_applications(member).json == {"items": [], "next_cursor": None}
+    assert second_application not in [
+        item["id"] for item in list_applications(admin).json["items"]
+    ]
 
 
 def test_the_last_enabled_human_admin_cannot_be_demoted(stack: Stack) -> None:

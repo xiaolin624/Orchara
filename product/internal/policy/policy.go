@@ -140,28 +140,30 @@ func (a *Authorizer) Clock() time.Time { return a.clock() }
 
 // Allow reports whether subject may perform action on resource.
 //
-// Ownership is checked first, so an owner keeps reading their own resource even
-// if the policy tables are unavailable. Everything else reads the current epoch
-// and then the decision cache.
+// The current policy epoch is read first, on every call. Ownership is checked
+// next, but it is a decision, not a shortcut around the policy: a broken
+// installation whose epoch row is missing fails closed even for the owner.
+// Everything else consults the epoch-keyed decision cache and then the grant
+// table.
 func (a *Authorizer) Allow(
 	ctx context.Context,
 	subject PrincipalRef,
 	resource ResourceRef,
 	action string,
 ) (bool, error) {
+	epoch, err := a.epoch(ctx)
+	if err != nil {
+		return false, err
+	}
 	if resource.OwnerID != "" && subject.ID != "" && subject.ID == resource.OwnerID {
 		return true, nil
 	}
 	if subject.ID == "" || resource.Type == "" || resource.ID == "" || action == "" {
 		// An incomplete reference cannot be authorized; deny instead of guessing
-		// (and do not spend a policy read on it).
+		// (and do not spend a grant lookup on it).
 		return false, nil
 	}
 
-	epoch, err := a.epoch(ctx)
-	if err != nil {
-		return false, err
-	}
 	key := decisionKey{
 		principalID:  subject.ID,
 		resourceType: resource.Type,

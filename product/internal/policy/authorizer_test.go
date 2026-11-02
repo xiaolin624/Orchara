@@ -106,7 +106,7 @@ func readRequest() (PrincipalRef, ResourceRef) {
 		}
 }
 
-func TestOwnerIsAlwaysAllowedWithoutAPolicyLookup(t *testing.T) {
+func TestTheOwnerIsAllowedAfterTheEpochRead(t *testing.T) {
 	store := newFakeStore()
 	authorizer := testAuthorizer(store, time.Now)
 	_, resource := readRequest()
@@ -118,8 +118,29 @@ func TestOwnerIsAlwaysAllowedWithoutAPolicyLookup(t *testing.T) {
 	if !allow {
 		t.Fatal("the owner of the resource was denied")
 	}
-	if store.epochReadCount() != 0 || store.grantCallCount() != 0 {
-		t.Fatalf("an ownership check reached the policy store: %+v", authorizer.Stats())
+	// Ownership is the first decision, not a short-circuit around the policy:
+	// every call reads the current epoch, and only then may the owner be allowed.
+	if store.epochReadCount() != 1 {
+		t.Fatalf("the owner call did not read the policy epoch: %d reads", store.epochReadCount())
+	}
+	if store.grantCallCount() != 0 {
+		t.Fatalf("an ownership check reached the grant table: %+v", authorizer.Stats())
+	}
+}
+
+func TestAnOwnerAlsoFailsClosedWhenThePolicyEpochIsMissing(t *testing.T) {
+	store := newFakeStore()
+	store.epochErr = ErrEpochMissing
+	_, resource := readRequest()
+
+	allow, err := testAuthorizer(store, time.Now).Allow(
+		context.Background(), PrincipalRef{ID: resource.OwnerID}, resource, "read",
+	)
+	if allow {
+		t.Fatal("an owner was allowed while the policy epoch was missing")
+	}
+	if !errors.Is(err, ErrEpochMissing) {
+		t.Fatalf("expected ErrEpochMissing for the owner, got %v", err)
 	}
 }
 
@@ -267,7 +288,7 @@ func TestAStoreErrorFailsClosed(t *testing.T) {
 	}
 }
 
-func TestAnIncompleteReferenceIsDeniedWithoutALookup(t *testing.T) {
+func TestAnIncompleteReferenceIsDeniedWithoutAGrantLookup(t *testing.T) {
 	store := newFakeStore()
 	authorizer := testAuthorizer(store, time.Now)
 	resource := ResourceRef{Type: "application", ID: "22222222-2222-4222-8222-222222222222"}
@@ -276,8 +297,11 @@ func TestAnIncompleteReferenceIsDeniedWithoutALookup(t *testing.T) {
 	if err != nil || allow {
 		t.Fatalf("an empty principal should be denied: allow=%v err=%v", allow, err)
 	}
-	if store.epochReadCount() != 0 {
-		t.Fatal("an incomplete reference reached the policy store")
+	if store.epochReadCount() != 1 {
+		t.Fatalf("an incomplete reference skipped the epoch read: %d reads", store.epochReadCount())
+	}
+	if store.grantCallCount() != 0 {
+		t.Fatal("an incomplete reference reached the grant table")
 	}
 }
 

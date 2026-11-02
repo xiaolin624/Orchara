@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -16,9 +17,16 @@ import (
 // Grant vocabulary. F01 fixes one resource type and one action; the maps are
 // the extension point for later tickets, and an unknown value is a validation
 // error rather than an unreadable row.
+const (
+	// ResourceApplication is the only resource_type F01 grants.
+	ResourceApplication = "application"
+	// ActionRead is the only action F01 grants.
+	ActionRead = "read"
+)
+
 var (
-	ResourceTypes = map[string]bool{"application": true}
-	Actions       = map[string]bool{"read": true}
+	ResourceTypes = map[string]bool{ResourceApplication: true}
+	Actions       = map[string]bool{ActionRead: true}
 )
 
 // Errors the API layer maps to contract codes. They are sentinels so handlers
@@ -69,7 +77,7 @@ func ValidateGrant(params GrantParams, now time.Time) error {
 	if !ResourceTypes[params.ResourceType] {
 		return &ValidationError{
 			Field:   "resource_type",
-			Message: "resource_type must be one of the known types (application)",
+			Message: "resource_type must be one of the known types (" + ResourceApplication + ")",
 		}
 	}
 	if !uuid.Valid(params.ResourceID) {
@@ -78,11 +86,29 @@ func ValidateGrant(params GrantParams, now time.Time) error {
 	if !Actions[params.Action] {
 		return &ValidationError{
 			Field:   "action",
-			Message: "action must be one of the known actions (read)",
+			Message: "action must be one of the known actions (" + ActionRead + ")",
 		}
 	}
 	if params.ExpiresAt != nil && !params.ExpiresAt.After(now) {
 		return &ValidationError{Field: "expires_at", Message: "expires_at must be in the future"}
+	}
+	return nil
+}
+
+// validateSelfGrant refuses a grant whose principal is the acting
+// administrator. An administrator is not an automatic content reader (T019
+// acceptance 3), and the ACL write path must not be usable to manufacture that
+// access: the documented path is a second administrator granting the read.
+//
+// UUID text is case-insensitive, so the comparison is case-insensitive too; an
+// upper-case spelling of the caller's id must not bypass the rule and become a
+// grant row that PostgreSQL resolves back to the same principal.
+func validateSelfGrant(actorID string, params GrantParams) error {
+	if params.PrincipalID != "" && strings.EqualFold(params.PrincipalID, actorID) {
+		return &ValidationError{
+			Field:   "principal_id",
+			Message: "an administrator cannot grant themselves access; another administrator must grant it",
+		}
 	}
 	return nil
 }
@@ -93,6 +119,9 @@ func ValidateGrant(params GrantParams, now time.Time) error {
 func (a *Authorizer) Grant(ctx context.Context, actorID string, params GrantParams) (*GrantResult, error) {
 	now := a.clock()
 	if err := ValidateGrant(params, now); err != nil {
+		return nil, err
+	}
+	if err := validateSelfGrant(actorID, params); err != nil {
 		return nil, err
 	}
 

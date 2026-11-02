@@ -54,7 +54,7 @@ func (s *Server) handleListApplications(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	items, nextCursor, err := s.catalog.ListVisible(
-		r.Context(), caller.PrincipalID, query.Get("cursor"), limit,
+		r.Context(), caller.PrincipalID, query.Get("cursor"), limit, s.policy.Clock(),
 	)
 	switch {
 	case errors.Is(err, catalog.ErrInvalidCursor):

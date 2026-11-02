@@ -23,6 +23,7 @@ from t019_stack import (  # noqa: F401 - fixtures are used through their names
     Stack,
     admin_session,
     api_server,
+    application_ids,
     audit_events,
     epoch_revision,
     fresh_database,
@@ -193,3 +194,48 @@ def test_an_expiring_grant_is_not_served_from_cache_after_its_expiry(stack: Stac
     assert epoch_revision(stack.dbname) == revision
     assert_error(get_application(reader, application_id), 404, "resource_not_found")
     assert list_applications(reader).json == {"items": [], "next_cursor": None}
+
+
+def test_the_list_and_the_detail_agree_at_the_same_grant_expiry(stack: Stack) -> None:
+    """One clock, one answer: the list and the detail read retire a grant together.
+
+    The list query used to compare ``g.expires_at`` with the database's
+    ``now()``, while the detail read went through ``policy.Authorizer`` with the
+    process clock. The list now takes the caller's clock as a parameter, and the
+    API passes ``Authorizer.Clock()``: the two read paths observe the same
+    instant. The Go unit test proves the query receives that clock; this test
+    proves the two HTTP paths agree before and after one crafted expiry update.
+
+    The update expires the stored grant *and* bumps the acl epoch. The bump is
+    deliberate: it forces the detail read to re-read the row instead of serving
+    the cached allow (the cache may serve a still-future cached expiry until the
+    epoch changes; that separate behaviour is pinned by
+    ``test_the_second_read_is_answered_from_the_in_process_decision_cache``).
+    With the row expired, list and detail must return the same answer.
+    """
+    admin = admin_session(stack)
+    owner = invite_and_activate(stack, admin, "clock.owner", roles=("creator",))
+    reader = invite_and_activate(stack, admin, "clock.reader", roles=("user",))
+    application_id = seed_application(stack, owner.principal_id, "clock-application")
+
+    grant_id = grant_read_or_fail(admin, reader.principal_id, application_id)
+
+    # While the grant is valid, both paths see the same row.
+    listed = list_applications(reader)
+    assert listed.status == 200, listed.text
+    assert application_ids(listed) == [application_id]
+    assert get_application(reader, application_id).status == 200
+
+    revision = epoch_revision(stack.dbname)
+    sql(
+        stack.dbname,
+        "UPDATE platform.resource_grants "
+        f"SET expires_at = now() - interval '1 minute' WHERE id = '{grant_id}'::uuid; "
+        "UPDATE platform.policy_epochs SET revision = revision + 1 WHERE scope = 'acl'",
+    )
+    assert epoch_revision(stack.dbname) == revision + 1
+
+    # After the same expiry, both paths are hidden. The list must not use a
+    # second clock authority and disagree with the detail read.
+    assert list_applications(reader).json == {"items": [], "next_cursor": None}
+    assert_error(get_application(reader, application_id), 404, "resource_not_found")

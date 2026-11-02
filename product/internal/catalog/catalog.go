@@ -119,10 +119,16 @@ func DecodeCursor(raw string) (time.Time, string, error) {
 // The ACL predicate is part of the same WHERE as the cursor and LIMIT: filtering
 // happens before pagination, so an injected invisible row can never consume a
 // page slot or leave an empty page before the real end of the list.
+//
+// now is the caller's clock: the API passes policy.Authorizer.Clock(), the same
+// clock GetVisible goes through, so a grant's expiry is judged by one authority
+// for both the list and the detail read instead of mixing the database's now()
+// with the process clock.
 func (r *Reader) ListVisible(
 	ctx context.Context,
 	principalID, cursor string,
 	limit int,
+	now time.Time,
 ) ([]Application, *string, error) {
 	if limit == 0 {
 		limit = DefaultLimit
@@ -152,10 +158,10 @@ func (r *Reader) ListVisible(
 		             SELECT 1
 		               FROM platform.resource_grants AS g
 		              WHERE g.principal_id = $1
-		                AND g.resource_type = 'application'
+		                AND g.resource_type = $6
 		                AND g.resource_id = a.id
-		                AND g.action = 'read'
-		                AND (g.expires_at IS NULL OR g.expires_at > now())
+		                AND g.action = $7
+		                AND (g.expires_at IS NULL OR g.expires_at > $5)
 		           )
 		       )
 		   AND (
@@ -165,6 +171,7 @@ func (r *Reader) ListVisible(
 		 ORDER BY a.created_at DESC, a.id DESC
 		 LIMIT $4`,
 		principalID, cursorAt, cursorID, limit+1,
+		now.UTC(), policy.ResourceApplication, policy.ActionRead,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("listing applications: %w", err)
@@ -247,10 +254,10 @@ func (r *Reader) GetVisible(
 		return nil, ErrNotVisible
 	}
 	allow, err := r.Authorizer.Allow(ctx, policy.PrincipalRef{ID: principalID}, policy.ResourceRef{
-		Type:    "application",
+		Type:    policy.ResourceApplication,
 		ID:      application.ID,
 		OwnerID: ownerID,
-	}, "read")
+	}, policy.ActionRead)
 	if err != nil {
 		return nil, err
 	}

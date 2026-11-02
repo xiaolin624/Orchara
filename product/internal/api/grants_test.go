@@ -17,9 +17,9 @@ const (
 func validGrantRequest() grantRequest {
 	return grantRequest{
 		PrincipalID:  validPrincipalID,
-		ResourceType: "application",
+		ResourceType: policy.ResourceApplication,
 		ResourceID:   validResourceID,
-		Action:       "read",
+		Action:       policy.ActionRead,
 	}
 }
 

@@ -2,6 +2,7 @@ package policy
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,9 +15,9 @@ const (
 func validGrantParams() GrantParams {
 	return GrantParams{
 		PrincipalID:  validPrincipal,
-		ResourceType: "application",
+		ResourceType: ResourceApplication,
 		ResourceID:   validResource,
-		Action:       "read",
+		Action:       ActionRead,
 	}
 }
 
@@ -77,13 +78,44 @@ func TestValidateGrantReportsTheOffendingField(t *testing.T) {
 func TestTheGrantVocabularyIsExtendableButClosed(t *testing.T) {
 	// F01 fixes exactly one resource type and one action. A typo must be a
 	// validation error, not a silently unreadable row.
-	if !ResourceTypes["application"] {
+	if !ResourceTypes[ResourceApplication] {
 		t.Fatal("application is not a known resource type")
 	}
-	if !Actions["read"] {
+	if !Actions[ActionRead] {
 		t.Fatal("read is not a known action")
 	}
 	if len(ResourceTypes) != 1 || len(Actions) != 1 {
 		t.Fatalf("F01 vocabulary changed unexpectedly: %v %v", ResourceTypes, Actions)
+	}
+}
+
+func TestValidateSelfGrantRejectsTheActingAdministratorCaseInsensitively(t *testing.T) {
+	params := validGrantParams()
+	if err := validateSelfGrant(validPrincipal, params); err == nil {
+		t.Fatal("an administrator was allowed to grant themselves read access")
+	} else {
+		if !errors.Is(err, ErrValidation) {
+			t.Fatalf("a self grant is not a validation error: %v", err)
+		}
+		var validation *ValidationError
+		if !errors.As(err, &validation) || validation.Field != "principal_id" {
+			t.Fatalf("a self grant did not report principal_id: %v", err)
+		}
+		if !strings.Contains(validation.Message, "another administrator") {
+			t.Fatalf("the self-grant message does not name the two-person path: %q", validation.Message)
+		}
+	}
+
+	// UUID text is case-insensitive. An upper-case spelling of the caller's own
+	// id must not slip past the check and become a real grant row.
+	upper := strings.ToUpper(validPrincipal)
+	params.PrincipalID = upper
+	if err := validateSelfGrant(validPrincipal, params); err == nil {
+		t.Fatal("an upper-case spelling of the caller's id bypassed the self-grant rule")
+	}
+
+	params.PrincipalID = "33333333-3333-4333-8333-333333333333"
+	if err := validateSelfGrant(validPrincipal, params); err != nil {
+		t.Fatalf("a grant to another principal was refused: %v", err)
 	}
 }
