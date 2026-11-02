@@ -3,8 +3,9 @@
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
 状态取值：`not_started` / `in_progress` / `blocked` / `passed` / `failed` / `not_run`。
-`passed` 必须满足该票在 `contracts/task-graph.json` 的完成条件；缺外部条件写 `blocked`，
-未执行写 `not_run`。**静态校验通过、探测到硬件、stub 成功都不升级为 passed。**
+本分支另用 `partial` 表示“本票范围内的工作已真实交付并验证，但票面验收仍有明确未闭环项，且已指定承接票”；
+`partial` 不等于 `passed`，未运行项必须同时写 `not_run`。`passed` 必须满足该票在 `contracts/task-graph.json`
+的完成条件；缺外部条件写 `blocked`，未执行写 `not_run`。**静态校验通过、探测到硬件、stub 成功都不升级为 passed。**
 
 ## 当前发布范围
 
