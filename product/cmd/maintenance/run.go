@@ -646,6 +646,17 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 						// The lease moved on: stop the handler instead of
 						// letting it finish work whose result cannot be applied.
 						cancel()
+						heartbeatDone <- err
+						return
+					}
+					if ctx.Err() != nil {
+						// execute cancelled lease renewal because the handler
+						// already finished; an in-flight heartbeat then fails
+						// with context.Canceled. That is not a lease loss, and
+						// treating it as one would throw away a result the
+						// server would have accepted.
+						heartbeatDone <- nil
+						return
 					}
 					heartbeatDone <- err
 					return
