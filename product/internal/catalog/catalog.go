@@ -1,16 +1,21 @@
-// Package catalog is the applications read model used to demonstrate the
-// default-deny resource ACL.
+// Package catalog is the applications read model and, from F02A/T023, the draft
+// aggregate and published-version read model.
 //
-// It has exactly two reads: a keyset-paginated list and a single lookup. Both
-// apply the ACL before deciding what the caller may see:
+// Reads apply the resource ACL before deciding what the caller may see:
 //
-//   - the list puts the visibility predicate in the same SQL WHERE as the cursor
-//     and LIMIT, so the page is filtered before it is cut (a grant cannot be
-//     "hidden behind" an invisible row and produce an empty page);
-//   - the single lookup answers every not-visible case with one sentinel, so a
+//   - every list puts the visibility predicate in the same SQL WHERE as the
+//     cursor and LIMIT, so the page is filtered before it is cut (a grant cannot
+//     be "hidden behind" an invisible row and produce an empty page);
+//   - every single lookup answers all not-visible cases with one sentinel, so a
 //     missing row and somebody else's row are indistinguishable to the caller.
 //
-// F02A owns createApplication and application versions; F01 only reads rows.
+// The draft write path adds optimistic concurrency: GetDraft returns a strong
+// ETag, SaveDraft requires If-Match and updates with `WHERE revision = <etag>`.
+// The two counters on a draft are deliberately different (see draft.go and
+// migration 0010): revision is the ETag/CAS counter, execution_revision only
+// moves when the executable content moves.
+//
+// F01 only reads applications; F02A owns createApplication, drafts and versions.
 package catalog
 
 import (

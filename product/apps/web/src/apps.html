@@ -32,12 +32,23 @@
     <a href="/activate">激活账号</a>
   </nav>
 
-  <h1>应用目录（F01 授权）</h1>
+  <h1>应用目录（F01 授权 / F02A 创作）</h1>
   <p class="sub">
     列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
     <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
     没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
+    创建应用会同时建立 revision=1 的空草稿，随后进入编辑器填写用途卡和草稿。
   </p>
+
+  <section class="card">
+    <h2>新建应用</h2>
+    <form id="create-app-form" method="post">
+      <label for="create-app-name">应用名称</label>
+      <input id="create-app-name" name="name" type="text" maxlength="200" autocomplete="off" />
+      <button id="create-app-submit" type="submit">创建并进入编辑器</button>
+    </form>
+    <p id="create-status" class="status" role="status" aria-live="polite"></p>
+  </section>
 
   <section class="card">
     <h2>可见应用</h2>
@@ -53,6 +64,8 @@
     const statusElement = document.getElementById('apps-status');
     const emptyElement = document.getElementById('apps-empty');
     const nextButton = document.getElementById('apps-next');
+    const createForm = document.getElementById('create-app-form');
+    const createStatus = document.getElementById('create-status');
 
     let nextCursor = null;
     let rendered = 0;
@@ -60,6 +73,11 @@
     function setStatus(message, kind) {
       statusElement.textContent = message;
       statusElement.className = 'status ' + (kind || '');
+    }
+
+    function setCreateStatus(message, kind) {
+      createStatus.textContent = message;
+      createStatus.className = 'status ' + (kind || '');
     }
 
     // Build every node with textContent: an application name is user data and
@@ -74,7 +92,10 @@
       version.textContent = application.active_version_id
         ? '当前版本 ' + application.active_version_id
         : '尚未发布版本';
-      item.append(name, ' ', id, ' ', version);
+      const edit = document.createElement('a');
+      edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
+      edit.textContent = '编辑草稿';
+      item.append(name, ' ', id, ' ', version, ' ', edit);
       listElement.appendChild(item);
     }
 
@@ -108,6 +129,27 @@
         setStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
       }
     }
+
+    createForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = document.getElementById('create-app-name').value;
+      setCreateStatus('正在创建…', 'pending');
+      try {
+        await requireLogin();
+        const created = await api('/api/v1/applications', {
+          method: 'POST',
+          body: { name },
+          csrf: await csrf(),
+        });
+        window.location.assign('/apps/' + encodeURIComponent(created.id) + '/edit');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setCreateStatus('创建失败 [' + error.code + '] ' + error.message, 'bad');
+      }
+    });
 
     nextButton.addEventListener('click', () => {
       if (nextCursor) {

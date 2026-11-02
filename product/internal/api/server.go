@@ -92,6 +92,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications", s.handleListApplications)
 	mux.HandleFunc("GET /api/v1/applications/{application_id}", s.handleGetApplication)
 
+	// F02A/T023: the creator's draft path and the immutable version read model.
+	// The version list/detail join applications and apply the same ACL as the
+	// application read; the draft write is owner-only with ETag/If-Match.
+	mux.HandleFunc("POST /api/v1/applications", s.handleCreateApplication)
+	mux.HandleFunc("GET /api/v1/applications/{application_id}/draft", s.handleGetDraft)
+	mux.HandleFunc("PUT /api/v1/applications/{application_id}/draft", s.handleSaveDraft)
+	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
+	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
+
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
 	// separate mTLS listener (RegisterInternal).
@@ -101,7 +110,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
+	// F02A/T023: the editor is served per application so the page never needs a
+	// query string (the path segment is the application id the editor edits).
+	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
+	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 }
 
 type loginRequest struct {
@@ -334,6 +347,10 @@ func validationDetails(err error) map[string]any {
 	var policyValidation *policy.ValidationError
 	if errors.As(err, &policyValidation) && policyValidation.Field != "" {
 		return map[string]any{"field": policyValidation.Field}
+	}
+	var catalogValidation *catalog.ValidationError
+	if errors.As(err, &catalogValidation) && catalogValidation.Field != "" {
+		return map[string]any{"field": catalogValidation.Field}
 	}
 	return nil
 }
