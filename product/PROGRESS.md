@@ -8,20 +8,25 @@
 
 ## 当前发布范围
 
-本轮实现范围（用户确认）：**D00 + P01–P05 + F00 + F01**，其余票保持 open。
+本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
+T026 partial）** 与 **F02A（T023/T025 partial；T027 passed）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
 内部 mTLS API、maintenance 处理器循环、admin enqueue、GET job）；T024 已交付 job 限定文件访问
 与受控模型调用（迁移 0011、HMAC 签名对象链接、5 个内部端点、`internal/modelproxy` 与
-`model_validate` handler、`platform_model_calls` 记账）。F00B 其余票（T026）继续 open。
-F02A 的 T023 已交付草稿 CAS/版本读模型/编辑器；T025 已交付执行清单固化、依赖闭包与
-`POST /applications/{id}/validate`（迁移 0012、`internal/compiler`、`manifest_artifacts` 去重、
-golden 规范字节、`VerifyManifestBytes` 机制）；T027 已交付私有 debug 快照、排队 Run、
-`debugDraft`/`getRun` 与幂等提交（迁移 0014、`execution_snapshots`/`runs`/`jobs`/`run_artifacts`/
-`idempotency_keys`）。F02A 三票范围内的工作完成；执行/领取属 F03、发布提交属 F02B，限制见各票报告。
+`model_validate` handler、`platform_model_calls` 记账；复核修复后强制合成夹具标记）。
+F00B 的 T026 为 `partial`（合成 runner/application-kind 属 F13A，deletion 状态属 F07）。
+F02A 的 T023 已交付草稿 CAS/版本读模型/编辑器（AC3 仍 `partial`：submit 拒绝属 F02B）；T025 已交付
+执行清单固化、依赖闭包与 `POST /applications/{id}/validate`（迁移 0012、`internal/compiler`、
+`manifest_artifacts` 去重、golden 规范字节、`VerifyManifestBytes` 机制；AC3 `partial`：真正
+worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debugDraft`/`getRun` 与幂等提交
+（迁移 0014、`execution_snapshots`/`runs`/`jobs`/`run_artifacts`/`idempotency_keys`）。F02A 三票
+范围内的工作完成，但 T023/T025/T026 的 `partial` 原因分别由 F02B/F03-F04A/F13A-F07 闭环；
+执行/领取属 F03、发布提交属 F02B，限制见各票报告。
 平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备
 等后续 epic 未实现；F01/F00B/F02A 的限制见各票报告 §5/§7。
+本文件 2026-11-02 的两轴复核修复记录见下方“F00B/F02A 两轴复核修复”一节；状态以本节之后的表格为准。
 
 ## 票状态
 
@@ -48,11 +53,11 @@ golden 规范字节、`VerifyManifestBytes` 机制）；T027 已交付私有 deb
 | T019 | F01 | 管理员授予或撤销某个用户的资源访问 | passed | `reports/f01/T019-resource-grants.md`、`db/migrations/0007_authorization.sql`、`internal/policy/`、`internal/catalog/`、`internal/audit/`、`internal/identity/roles.go`、`internal/api/{grants,roles,applications,server}.go`、`apps/web/src/apps.html`、`apps/web/src/admin.html`、`tests/f01/test_t019_*.py`（`tests/f01` 共 94 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T020 | F01 | 创建服务账号并用可撤销 Key 调用授权 API | passed | `reports/f01/T020-service-accounts.md`、`db/migrations/0008_api_keys.sql`、`internal/identity/apikeys.go`、`internal/api/{apikeys,authz,applications,server}.go`、`apps/web/src/admin.html`、`tests/f01/t020_stack.py`、`tests/f01/test_t020_*.py`（`tests/f01` 共 124 passed，真实 PG + 真实二进制 + 真实 HTTP） |
 | T021 | F01 | 禁用人员并安全交接未完成待办 | passed | `reports/f01/T021-disable-and-handover.md`、`internal/identity/{disable,handover}.go`、`internal/api/{principals,server}.go`、`cmd/admin/main.go`、`apps/web/src/admin.html`、`tests/f01/test_t021_*.py`（`tests/f01` 共 142 passed，真实 PG + 真实二进制 + 真实 HTTP） |
-| T022 | F00B | 提交一个后台任务并在重启后得到唯一结果 | passed | `reports/f00b/T022-background-jobs.md`、`db/migrations/0009_background_jobs.sql`、`internal/objectstore/`、`internal/background/`（含 handlers）、`internal/api/{internal,background}.go`、`cmd/api/main.go`、`cmd/maintenance/{main,client,run}.go`、`cmd/admin/{main,background}.go`、`tests/support/`、`tests/f00b/`（60 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
-| T023 | F02A | 创作者编辑用途说明和草稿并处理保存冲突 | passed | `reports/f02a/T023-drafts-and-editor.md`（§8：AC3 由 T025 validate + T027 debug 拒绝闭环后由 `partial` 更正）、`db/migrations/0010_application_drafts.sql`、`internal/catalog/{draft,versions}.go`、`internal/api/{drafts,versions}.go`、`apps/web/src/{editor.html,assets/editor.js}`、`tests/f02a/`（T023 45 用例） |
-| T024 | F00B | 后台评测只读取获准文件并记账模型调用 | passed | `reports/f00b/T024-job-files-and-models.md`、`db/migrations/0011_job_files_and_models.sql`、`internal/objectstore/sign.go`、`internal/background/{attempt,artifacts,scope}.go`、`internal/modelproxy/`、`internal/api/{jobdata,links}.go`、`internal/background/handlers/model_validate.go`、`cmd/maintenance/scope.go`、`tests/support/t024.py`、`tests/f00b/test_t024_*.py`（`tests/f00b` 86 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS） |
-| T025 | F02A | 把当前草稿固化为可核验执行清单 | passed | `reports/f02a/T025-manifest.md`、`db/migrations/0012_manifest_and_tool_versions.sql`、`internal/compiler/`、`internal/catalog/manifest.go`、`internal/api/validate.go`、`internal/config/config.go`、`tests/contracts/snapshots/`、`tests/support/t025.py`、`tests/f02a/test_t025_*.py`（`tests/f02a` 62 passed，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；worker 复核机制已交付、真正 worker 属 F03/F04A） |
-| T026 | F00B | 评测池满载时文件封存仍能完成 | partial | `reports/f00b/T026-evaluation-pool.md`、`db/migrations/0013_evaluation_pool.sql`、`internal/background/{evaluation,complete}.go`、`cmd/maintenance/{run,sweep}.go`、`tests/f00b/test_t026_*.py`（39 用例；`kind=application` 的真实 runner/checker 属 F13A，T027 后 snapshot 绑定结构已可用） |
+| T022 | F00B | 提交一个后台任务并在重启后得到唯一结果 | passed | `reports/f00b/T022-background-jobs.md`、`db/migrations/0009_background_jobs.sql`、`internal/objectstore/`、`internal/background/`（含 handlers、`Notifier` 唤醒缝）、`internal/api/{internal,background}.go`、`cmd/api/main.go`、`cmd/maintenance/{main,client,run}.go`、`cmd/admin/{main,background}.go`、`tests/support/`、`tests/f00b/`（60 passed，真实 PG + 真实二进制 + 真实 HTTP/mTLS；复核修复后新增丢唤醒实测，Redis adapter 仍 not_run） |
+| T023 | F02A | 创作者编辑用途说明和草稿并处理保存冲突 | **partial** | `reports/f02a/T023-drafts-and-editor.md`（§2 AC3/§8：validate T025 + debug T027 的拒绝是真实的；`POST /submit` 的 404 只证明 F02B 端点缺失，不能当拒绝证据）、`db/migrations/0010_application_drafts.sql`、`internal/catalog/{draft,versions}.go`、`internal/api/{drafts,versions}.go`、`apps/web/src/{editor.html,assets/editor.js}`、`tests/f02a/`（T023 45 用例） |
+| T024 | F00B | 后台评测只读取获准文件并记账模型调用 | passed | `reports/f00b/T024-job-files-and-models.md`、`db/migrations/0011_job_files_and_models.sql`、`internal/objectstore/sign.go`、`internal/background/{attempt,artifacts,scope}.go`、`internal/modelproxy/`、`internal/api/{jobdata,links}.go`、`internal/background/handlers/model_validate.go`、`cmd/maintenance/scope.go`、`tests/support/t024.py`、`tests/f00b/test_t024_*.py`（`tests/f00b` 86 passed；复核修复后 T024 28 用例：强制 `purpose='model_fixture'` 的 CLI/model-calls 双端拒绝） |
+| T025 | F02A | 把当前草稿固化为可核验执行清单 | **partial** | `reports/f02a/T025-manifest.md`（AC3 `partial`：`VerifyManifestBytes` 机制 + 真实 sealed-object 篡改测试已交付，真正 worker 属 F03/F04A）、`db/migrations/0012_manifest_and_tool_versions.sql`、`internal/compiler/`、`internal/catalog/manifest.go`、`internal/api/validate.go`、`internal/config/config.go`、`tests/contracts/snapshots/`、`tests/support/t025.py`、`tests/f02a/test_t025_*.py`（T025 16 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节） |
+| T026 | F00B | 评测池满载时文件封存仍能完成 | partial | `reports/f00b/T026-evaluation-pool.md`、`db/migrations/0013_evaluation_pool.sql`、`internal/background/{evaluation,complete}.go`、`cmd/maintenance/{run,sweep}.go`、`tests/f00b/test_t026_*.py`（40 用例；`kind=application` 的真实 runner/checker 属 F13A，T027 后 snapshot 绑定结构可用；**deletion 状态属 F07、未实现**；三条 partial 原因见报告页首） |
 | T027 | F02A | 发布前提交私有草稿并查看固定调试任务 | passed | `reports/f02a/T027-debug-submit.md`、`db/migrations/0014_execution_snapshots_and_runs.sql`、`internal/catalog/{debug.go,debug_test.go}`、`internal/api/debug.go`、`apps/web/src/{debug.html,assets/debug.js}`、`tests/support/t027.py`、`tests/f02a/test_t027_*.py`（38 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；领取/执行属 F03） |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
@@ -266,7 +271,8 @@ T022（GitHub #23）已交付，状态 `passed`。真实 PostgreSQL 16.4 + 真�
 | 测试 | `tests/support/`（真实 PG/二进制/证书/对象/mTLS）+ `tests/f00b/` 8 文件 60 用例；`tests/f00b` 60 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`tests` 全量 **589 passed**、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
 | 证据 | `reports/f00b/T022-background-jobs.md`（AC 逐条、命令原始结果、not_run 清单、下一票接口） |
 
-未运行（如实）：Redis 唤醒集成（本机无实例；以“无唤醒总线时 PG 轮询仍推进”实测）、S3/MinIO、
+未运行（如实）：Redis **传输适配器**（本机无实例；唤醒缝 `Notifier` 已交付，真实栈实测“每次通知
+被丢弃后 PG 轮询仍 claim/完成”，不声称清空过 Redis 队列）、S3/MinIO、
 签名 URL/`input_url`、上传 producer、真实 worker 协议、病毒查杀、字面 SIGKILL 注入；分别由
 T024/T026/F03/F05 或专门故障票承接。本票不推送、不关闭 issue。
 
@@ -285,23 +291,23 @@ HTTP/mTLS；模型侧为**明确的 stub profile**，真实 provider 在本环�
 | 记账 | `platform_model_calls`：owner/job/candidate、`scope_key=job`、逻辑键+params 摘要、`physical_attempt`（job 行锁内 max+1）、prepared→dispatching→succeeded/failed、真实 tokens、decimal reserved/charged（整数 1e-8 单位，无 float）、provider 响应 sealed 为 ready artifact；同键同参幂等、同键异参 409、失败重试新 attempt |
 | handler | `internal/background/handlers/model_validate.go`：经 `background.JobScope` 下载 fixture、调 model-calls、上传/complete/轮询报告、`succeeded` 带 `result_artifact_id`；兼容性失败是 job 成功 + report 失败，provider 未配置是 business 失败；registry + `retryableByKind` 同变更扩展；服务端 Complete 额外校验结果 artifact ready/owner/linked |
 | lease/API | `BackgroundLease.input_url` 为真实签名 sealed URL（无输入/未 ready/无签名 key 时 null）；`Upload.upload_url`/`Download.url` 用 `ORCHARA_PUBLIC_URL` 铸造 |
-| 测试 | `tests/support/t024.py` + `tests/f00b/test_t024_*.py` 5 文件 **26 用例**（迁移 6、上传/最终化/下载 5、签名链接 5、模型调用 7、端到端 3）；`tests/f00b` 86 passed、`tests/f02a` 45 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 测试 | `tests/support/t024.py` + `tests/f00b/test_t024_*.py` 5 文件 **28 用例**（迁移 6、上传/最终化/下载 6、签名链接 5、模型调用 8、端到端 3；复核修复后新增丢唤醒实测与合成夹具负面用例）；`tests/f00b` 86 passed（本票完成时）、`tests/f02a` 45 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
 | 证据 | `reports/f00b/T024-job-files-and-models.md`（AC 逐条、命令原始结果、stub/real 分报、not_run、下一票接口） |
 
 未运行（如实）：真实模型 provider 集成与厂商协议 adapter（本机无 endpoint/凭据，且 F06 才拥有
-adapter；本票交付诚实 503 边界与不泄露密钥的路径）、病毒查杀/深格式扫描（F05/T028）、Redis 唤醒
-（T026/后续）；T026 的运行时双池属其票面，本票测试用两个真实进程驱动 handler + finalize。
-本票不推送、不关闭 issue。
+adapter；本票交付诚实 503 边界与不泄露密钥的路径）、病毒查杀/深格式扫描（F05/T028）、Redis
+传输适配器（唤醒缝已交付，适配器属后续票）；T026 的运行时双池属其票面，本票测试用两个真实进程
+驱动 handler + finalize。本票不推送、不关闭 issue。
 
 ## F02A 草稿与版本读模型（1/3：T023）
 
-T023（GitHub #24）已交付，状态 **`passed`**（2026-11-02 T027 后复核更正；此前为 `partial`）。
-真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP；页面 JS 用 Node 真实执行。原 `partial` 的
-唯一原因是票面验收“非法草稿可保存但**不能调试/提交**”的后半条依赖 T025（validate）与
-T027（debug）的端点：T023 交付“可保存”与 `CheckExecutable` 纯函数。T025 的 validate 与 T027 的
-debug 拒绝已在真实栈闭环该条（证据见 `reports/f02a/T027-debug-submit.md` §4 与
-`reports/f02a/T023-drafts-and-editor.md` §8）；F02B 的发布提交端点仍未实现，但当前没有端点接受
-任何草稿，故不构成失败项。决策边界见 [ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §12–17。
+T023（GitHub #24）已交付，状态 **`partial`**（2026-11-02 两轴复核修复更正；T027 后曾误记为
+`passed`）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP；页面 JS 用 Node 真实执行。
+草稿保存/读回/CAS/冲突/版本读模型/编辑器主体全部真实运行通过。票面 AC3“非法草稿可保存但
+**不能调试/提交**”：T025 的 validate 与 T027 的 debug 拒绝是真实端点证据；但 **submit 拒绝
+未实现**——`POST /submit` 的 404 只证明 F02B 端点不存在，不能当作“提交被拒绝”。因此 AC3 与
+整票保持 `partial`，submit 侧由 F02B 闭环（见 `reports/f02a/T023-drafts-and-editor.md`
+§2/§8）。决策边界见 [ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §12–17。
 
 | 项 | 结果 |
 |---|---|
@@ -315,14 +321,16 @@ debug 拒绝已在真实栈闭环该条（证据见 `reports/f02a/T027-debug-sub
 | 证据 | `reports/f02a/T023-drafts-and-editor.md`（AC 逐条、命令原始结果、契约缺口、not_run、下一票接口） |
 
 未运行（如实）：浏览器 DOM/HCI（无 headless browser；页面为真实 HTML/JS + Node 执行逻辑）；
-debug/submit 端点（T027/F02B；validate 已由 T025 交付）；manifest/hash/对象写入（T025/T024）。
-本票不推送、不关闭 issue。
+**submit 拒绝**（F02B；`/submit` 端点不存在，404 不是拒绝证据）；manifest/hash/对象写入属
+T025/T024。`debug` 拒绝已由 T027 交付。本票不推送、不关闭 issue。
 
 ## F02A 执行清单固化（2/3：T025）
 
-T025（GitHub #26）已交付，状态 `passed`。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
-HTTP + 真实文件系统对象字节；无 mock、无跳过。票面第 3 条“worker 能复核规范字节”按
-**机制已交付、真正 worker 未构建**记录（F03/F04A 拥有 worker）。决策边界见
+T025（GitHub #26）已交付，状态 **`partial`**（复核修复 2026-11-02 更正）。manifest 组合/hash、
+依赖闭包、validate 端点、密封去重与复核机制均真实运行通过；票面第 3 条“worker 能复核规范字节”
+只交付了机制，真正 worker 未构建（F03/F04A 拥有），因此 AC3 记
+`partial (mechanism delivered; worker not built)`，整票随之 `partial`。真实 PostgreSQL 16.4 +
+真实编译二进制 + 真实 HTTP + 真实文件系统对象字节；无 mock、无跳过。决策边界见
 [ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §25–30。
 
 | 项 | 结果 |
@@ -332,14 +340,15 @@ HTTP + 真实文件系统对象字节；无 mock、无跳过。票面第 3 条�
 | 依赖闭包 | `internal/catalog/manifest.go`：model/tool/subapp 引用提取（pointer 精确到 config 字段）、真实表就绪判定（model passed；tool ready+approved+image；作者私有 debug 规则）、sub-app ACL 归属、`version_dependencies` + 自调用环检测；错误码 `capability_card_incomplete`/`dependency_invalid_id`/`dependency_not_found`/`dependency_not_ready`/`dependency_revoked`/`dependency_not_visible`/`dependency_cycle` |
 | API | `POST /api/v1/applications/{id}/validate`：owner-only（其余 404）、CSRF、`application:write` scope；200 `{valid,errors[]}` 定位错误；valid:true 返回 `X-Manifest-SHA256`（契约缺口，非契约扩展）；503 `compiler_unconfigured`/`object_store_unavailable`；不创建 version/review/snapshot/job |
 | 密封/去重 | 规范字节 JCS 原样写 `sealed/<64hex>`（state=ready、`execution_manifest`、application/json），按三元组 advisory lock 去重；重复 validate 不写第二个对象；同一 hash 的 artifact 供 T027/F02B 复用 |
-| 复核机制 | `compiler.VerifyManifestBytes(objects, ArtifactRef)`：先按字节重算 SHA-256/大小比对记录值，再要求精确 JCS 形式，最后严格解码复核 schema；golden 通过 + 篡改/错误 hash/非规范/缺字段/大小不符/缺对象/未配置 store 全拒绝；真正 worker 属 F03/F04A（未构建） |
+| 复核机制 | `compiler.VerifyManifestBytes(objects, ArtifactRef)`：先按字节重算 SHA-256/大小比对记录值，再要求精确 JCS 形式，最后严格解码复核 schema；golden 通过 + **真实 sealed-object 就地篡改**（`TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace`，typed `ErrManifestHashMismatch`）+ 错误 hash/非规范/缺字段/大小不符/缺对象/未配置 store 全拒绝；真正 worker 属 F03/F04A（未构建，AC3 partial） |
 | Golden | `tests/contracts/snapshots/`：`sales` 与 `layout-only` 双胞胎（definition/card/layout + manifest.json/jcs/sha256）；Go 生成/漂移测试、Verify 测试；HTTP 测试断言响应头 == golden sha、密封字节 == `manifest.jcs` |
-| 测试 | `tests/support/t025.py` + `tests/f02a/test_t025_*.py` 4 文件 **17 用例**（迁移 6、validate 3、manifest 3、dependencies 5）；`tests/f02a` 62 passed、`tests/f00b` 86 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 测试 | `tests/support/t025.py` + `tests/f02a/test_t025_*.py` 4 文件 **16 用例**（迁移 6、validate 3、manifest 2、dependencies 5；原先的 Python 单字节 SHA 比较不调用 verifier、已删除，边界移入 Go）；`tests/f02a` 62 passed（本票完成时）、`tests/f00b` 86 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
 | 证据 | `reports/f02a/T025-manifest.md`（AC 逐条、命令原始结果、契约缺口/占位输入、not_run、T027/F03 接口） |
 
 未运行（如实）：真正 worker 的领取/解析/复核（F03/F04A；本票只交付 `VerifyManifestBytes` 机制与
-真实字节/负例测试）；真实 worker 镜像与 state schema 制品（F04A/F15A/F03；digest 是部署方占位输入）；
-全量 `pytest tests`（PLAN §1 由统筹收尾跑一次）。本票不推送、不关闭 issue。
+真实字节/篡改/负例测试，AC3 = `partial`）；真实 worker 镜像与 state schema 制品
+（F04A/F15A/F03；digest 是部署方占位输入）。全量 `pytest tests` 已在复核修复收尾运行（见本节
+之后的复核修复记录）。本票不推送、不关闭 issue。
 
 
 
@@ -347,10 +356,12 @@ HTTP + 真实文件系统对象字节；无 mock、无跳过。票面第 3 条�
 
 T026（GitHub #27）已交付，状态 **`partial`**。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
 HTTP/mTLS/对象字节；评测执行器是**明确的合成占位**（`synthetic-jcs-case/1`，F13A 才有真实
-runner/checker），且 `kind=application` 需要 T027 的 `execution_snapshots`，本批只结构性接受并
-如实失败。`partial` 的唯一原因就是这两条：模型 kind 的“池不饿死 finalize、report failed 与 job
-failed 可区分、owner/admin 读、孤儿清理”全部真实跑通。决策边界见
-[ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §31–37。
+runner/checker），且 `kind=application` 端到端执行同样依赖 F13A 的 runner（T027 已补齐 snapshot
+表/FK，绑定结构可用）。复核修复又明确第三条：票面切片边界要求区分“业务 job/evaluation/
+**deletion** 状态”，而 0013 不建 F07 的 deletion 模型——deletion 状态属 F07、未实现。因此三条
+`partial` 原因是：合成 runner（F13A）、application-kind 真实 runner（F13A）、deletion 状态（F07）。
+模型 kind 的“池不饿死 finalize、report failed 与 job failed 可区分、owner/admin 读、孤儿清理”
+全部真实跑通。决策边界见 [ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §31–37。
 
 | 项 | 结果 |
 |---|---|
@@ -360,15 +371,16 @@ failed 可区分、owner/admin 读、孤儿清理”全部真实跑通。决策�
 | `application_evaluate` | handler 经 job-scoped binding 读取 evaluation 事实；dataset uploading/scanning 时 `artifact-status` 轮询 + heartbeat（可配 timeout，可重试 `dataset_wait_timeout`）；signed download → 合成 JCS case 评测 → signed report upload/complete → 等 finalize ready → `succeeded` + result artifact；等待只在 work 池，不占 system_io |
 | 完成守卫 | `Complete` 同事务：锁 evaluation、核 dataset ready/sha、解析候选/snapshot manifest、读 sealed report（≤1 MiB、重算 sha256、严格 JSON）、绑定 manifest/dataset/identity、passed/failed/not_run 规则；通过才插 immutable report + evaluation succeeded + job succeeded；绑定/格式/非法 passed → job failed（`report_binding_mismatch`/`report_invalid`）+ evaluation failed + **无 report**；sealed 读失败是 `transient_storage_io`（可重试，evaluation 保持 running） |
 | 状态区分 | 业务评测失败 = report `status=failed` + job/evaluation `succeeded`；基础设施失败 = job failed + evaluation failed + 同 error_code、无 report；`not_run`/空 case/空 check 永不 passed；`application_evaluate` 重试表只含 `transient_storage_io`/`transient_internal`/`lease_expired`/`dataset_wait_timeout` |
-| 读权限 | `GET /api/v1/evaluations/{id}`（EvaluationJob 六字段）与 `GET /api/v1/evaluation-reports/{id}`（Report 四字段）：owner 或 admin 200，其余 404（不枚举）；report 的 owner 由产生它的 evaluation join；不返回 dataset/candidate/snapshot/object key/正文；后台 job GET 仍 T022 owner/admin |
+| 读权限 | `GET /api/v1/evaluations/{id}`（EvaluationJob 六字段）与 `GET /api/v1/evaluation-reports/{id}`（Report 四字段）：owner 或 admin 200，其余 404（不枚举）；report 的 owner 由产生它的 evaluation join；不返回 dataset/candidate/snapshot/object key/正文；复核修复后 API key 必须先携带 `application:read`（403 `insufficient_scope`，会话不受限），owner/admin ACL 仍是内容权威 |
 | 孤儿清理 | `cmd/maintenance sweep --orphan-age D [--dry-run]`：只删无 live uploader 的 staging 与无任何 artifact 行引用的 sealed；被引用的 sealed（含 deleted 行）永不删（F07 负责）；mtime 年龄护栏、幂等、逐条 reason、重复 sweep 删 0 |
-| 测试 | `tests/support/t026.py` + `tests/f00b/test_t026_*.py` 7 文件 **39 用例**（迁移 7、CLI 12、双池 2、失败区分 6、报告绑定 8、权限 2、sweep 2）；全部真实 PG/二进制/HTTP/mTLS/对象字节；`tests/f00b` 125 passed、`tests/f02a` 62 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 测试 | `tests/support/t026.py` + `tests/f00b/test_t026_*.py` 7 文件 **40 用例**（迁移 7、CLI 12、双池 2、失败区分 6、报告绑定 8、权限 3（复核修复新增 scope）、sweep 2）；全部真实 PG/二进制/HTTP/mTLS/对象字节；`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
 | 证据 | `reports/f00b/T026-evaluation-pool.md`（AC 逐条、原始命令/结果、池/env/端点、stub/real 分报、T027 交接） |
 
-未运行/部分（如实）：`kind=application` 端到端评测（T027 建 `execution_snapshots` 并补 FK 后才能执行；
-本批结构接受、binding 失败、报告记 partial）；真实评测 runner/checker（F13A；本批是合成占位，不是
-真实模型通过）；API key 的评测 scope（契约未定义，记为缺口）；全量 `pytest tests`（PLAN §1 由统筹
-收尾跑一次）。本票不推送、不关闭 issue。
+未运行/部分（如实）：`kind=application` 端到端评测（T027 已建 `execution_snapshots` 并补 FK，
+绑定结构可用；真实 runner/checker 仍属 F13A）；真实评测 runner/checker（F13A；本批是合成占位，
+不是真实模型通过）；**deletion 状态区分（F07；0013 不建 deletion 模型，票面该维度未实现）**；
+API key 的评测 scope（复核修复后强制平台既有 `application:read`；更细的专用 scope 仍属 F13A/
+契约修订）；全量 `pytest tests` 已在复核修复收尾运行。本票不推送、不关闭 issue。
 
 T027 追加说明（2026-11-02）：0014 已建 `platform.execution_snapshots` 并补齐
 `evaluation_jobs_snapshot_fkey`，因此 `kind=application` 的 `resolveBoundManifest` 现在能解析真实
@@ -380,7 +392,7 @@ snapshot 的 `manifest_sha256`（仍要求 snapshot owner == 评测 owner；他�
 
 T027（GitHub #28）已交付，状态 **`passed`**（本票范围 = **提交与排队**）。真实 PostgreSQL 16.4 +
 真实编译二进制 + 真实 HTTP + 真实文件系统对象字节；页面 JS 用 Node 24 真实执行；无 mock、无跳过。
-边界（如实）：领取/执行/事件/结果/终态属 F03；全量 `pytest tests` 按 PLAN §1 由统筹收尾跑一次。
+边界（如实）：领取/执行/事件/结果/终态属 F03；全量 `pytest tests` 已在复核修复收尾运行。
 决策边界见 [ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §38–44。
 
 | 项 | 结果 |
@@ -391,14 +403,110 @@ T027（GitHub #28）已交付，状态 **`passed`**（本票范围 = **提交与
 | 幂等 | canonical digest（JCS：application_id + artifact_ids 排序 + draft_revision + input）；同 key 同摘要 → 原 202 Run（不重编译/不写对象/不建行，改草稿后仍返回原 Run）；异摘要 409 `idempotency_conflict`；缺/空/重复 header 400；并发重复在唯一键上收敛为恰好一个 Run（输家删除自己的密封输入）；过期收据仍只重放、绝不二次执行 |
 | 契约缺口 | `Run` 无 `manifest_sha256`/`draft_revision` 且契约无 getSnapshot：202/200 用非契约 `X-Manifest-SHA256`（同 T025 §26 先例）；页面展示 snapshot id + hash + 冻结 revision（客户端事实）并注明执行属 F03 |
 | Web | `apps/web/src/debug.html` + `assets/debug.js`：当前 revision 预填、JSON 输入、≤5 artifact、每次提交一个 `Idempotency-Key`、CSRF、`method="post"`；显示 state/kind/Run.revision/冻结 revision/snapshot/hash 并轮询 `GET /runs/{id}`（终态或 40 次停止，本批停在 queued）；编辑器 `#debug-entry` 与 apps 列表“调试”入口 |
-| 测试 | `tests/support/t027.py` + `tests/f02a/test_t027_*.py` 7 文件 **38 用例**（迁移 10、提交 4、不可变 2、权限 2、拒绝 7、幂等 7、页面 6）+ `internal/catalog/debug_test.go` 6 个 Go 单测；`tests/f02a` **100 passed**、`tests/f00b` 125 passed、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift（全部真实 PG/二进制/HTTP/对象字节） |
-| 证据 | `reports/f02a/T027-debug-submit.md`（AC 逐条、原始命令/结果、契约缺口、not_run、F03/F02B 接口）；T023 AC3 闭环补记在 `reports/f02a/T023-drafts-and-editor.md` §8 |
+| 测试 | `tests/support/t027.py` + `tests/f02a/test_t027_*.py` 7 文件 **38 用例**（迁移 10、提交 4、不可变 2、权限 2、拒绝 7、幂等 7、页面 6）+ `internal/catalog/debug_test.go` 6 个 Go 单测；`tests/f02a` **99 passed**（本票完成时 100；复核修复移走一个无效 T025 篡改测试）、`tests/f00b` 129 passed（复核修复后）、`tests/f01` 155 passed、`tests/tooling` 21 passed、`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift（全部真实 PG/二进制/HTTP/对象字节） |
+| 证据 | `reports/f02a/T027-debug-submit.md`（AC 逐条、原始命令/结果、契约缺口、not_run、F03/F02B 接口）；T023 AC3 的边界补记在 `reports/f02a/T023-drafts-and-editor.md` §8（复核修复后为 `partial`） |
 
 未运行（如实）：F03 的领取/租约/attempt/事件/SSE/结果/退出 finalizer/cancel/终态（本票的 run 停在
 queued、start job 停在 ready；F03 必须补两个 attempt 外键并先调 `VerifyManifestBytes`）；F02B 的发布
 审核/version 写入/`submit`（测试断言仍 404）；F05/F07 的 requests/conversations 与 FK、幂等收据清理；
 T028 的用户上传准入；浏览器 DOM 渲染（与 F01/T023 相同）；真实 worker 镜像（占位 digest）；
-F13A 的真实评测 runner；全量 `pytest tests`（PLAN §1）。本票不推送、不关闭 issue。
+F13A 的真实评测 runner。全量 `pytest tests` 已在复核修复收尾运行。本票不推送、不关闭 issue。
+
+## F00B/F02A 两轴复核修复（2026-11-02）
+
+对 `feat/f00b-f02a` HEAD `eebc4c4`（当时全量 754 passed）做 Standards / Spec 两轴复核，发现 15 项；
+全部在本轮修复或如实登记。未推送、未关闭 issue、未修改 `docs/spec/**`、`contracts/**` 或已应用
+迁移 0001–0014。修复顺序：A 状态/证据诚实 → B 安全/行为 → C 代码卫生；决策记录见
+[ADR 0004](docs/adr/0004-f00b-f02a-boundaries.md) §45–52。
+
+| # | 类别 | 复核项 | 处置 | 证据 |
+|---|---|---|---|---|
+| 1 | 状态 | T022 的 Redis AC 只断言“无 REDIS 环境变量”，从未证明清空总线后仍推进 | 新增真实唤醒缝：`background.Notifier` + 默认 `NopNotifier` + `InProcessNotifier`；`Controller.Enqueue`/`ArtifactStore.CompleteUpload` 提交后通知；API 装无消费者实现并把第一次丢弃记日志。真实栈测试让**每次唤醒都被丢弃**，已启动的 maintenance 仍 claim→finalize→ready。Redis 适配器本身仍 `not_run`，不声称清空过 Redis 队列 | `internal/background/notifier.go`、`notifier_test.go`、`cmd/api/main.go`、`tests/f00b/test_t024_artifacts.py::test_a_dropped_wakeup_never_loses_the_finalize_work`、T022 报告 §2/§5.3 |
+| 2 | 状态 | T023 AC3 用 `POST /submit == 404` 当“提交拒绝”，已把票写成 passed | AC3 与整票回到 **`partial`**：validate(T025)/debug(T027) 的拒绝是真实端点；submit 的 404 只证明 F02B 端点不存在。报告 §8、PROGRESS 行/段落同步；测试改名为 `test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent`，docstring 明确“404 是缺失不是拒绝” | T023 报告 §2/§8、`tests/f02a/test_t023_invalid_draft.py` |
+| 3 | 状态 | T025 AC3“worker 能复核字节”只有机制，却写成整票 passed | AC3 记 **`partial (mechanism delivered; worker not built)`**，整票记 `partial`；真正 worker 属 F03/F04A。manifest/golden/依赖/密封/复核机制本身仍 passed | T025 报告页首/§4/§5、`internal/compiler`、PROGRESS T025 行 |
+| 4 | 状态 | T026 票面要求区分“业务 job/evaluation/deletion 状态”，0013 却明确不建 deletion 模型 | T026 增加**第三条** partial 原因：deletion 状态属 **F07**、未实现；报告页首/§4/§6/§7 与 PROGRESS 行同步（另两条是合成 runner 与 application-kind runner，均 F13A） | T026 报告、PROGRESS T026 行 |
+| 5 | 证据 | T025 的 Python“篡改测试”只比较两个 SHA-256，从不调用 `VerifyManifestBytes`，无法因 verifier 缺陷失败 | 删除该假断言；新增真实 sealed-object 篡改 Go 测试：先验证未篡改对象，再就地覆盖已密封文件的一个字节，调用 `VerifyManifestBytes` 断言 typed `ErrManifestHashMismatch`；重记篡改摘要后仍以 `ErrManifestInvalid` 拒绝 | `internal/compiler/verify_test.go::TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace`、T025 报告 §3.2/§4/§5 |
+| 6 | 安全 | `model_validate` 可用任意 ready artifact 当 fixture，违背“不拿业务用户正文试模型” | 新增合成标记 `purpose='model_fixture'`（非上传 purpose）。**两端强制**：CLI enqueue 在写 job 的同一事务校验 purpose/owner/ready（exit 1、零行）；model-calls 在打开字节前重读，非合成 → 422 `fixture_not_synthetic`，他人 → 422 `fixture_missing`，未 ready → 409，缺失 → 404。注册路径仍是管理/测试 SQL 播种（F06 才有 UI），已在报告/ADR 记录 | `internal/background/fixture.go`、`artifacts.go::ReadSyntheticFixture`、`cmd/admin/background.go`、`internal/api/jobdata.go`、`tests/f00b/test_t024_model_calls.py::test_a_business_artifact_is_never_accepted_as_a_model_fixture`、T024 报告 §1.3/§6、ADR §46 |
+| 7 | 安全 | 三个公共读只认证不查 scope，`application:read` key 可读任意 owner-visible 记录 | `GET /evaluations/{id}`、`GET /evaluation-reports/{id}`、`GET /background-jobs/{id}` 对 API key 要求 `application:read`，先 scope(403 `insufficient_scope`) 后 owner/admin(404)；会话不受限。更细 scope 属 F13A/契约修订，ADR 记录这是显式过渡 | `internal/api/{background,evaluations}.go`、`tests/f00b/test_t022_job_get.py::test_an_api_key_needs_the_read_scope`、`tests/f00b/test_t026_authz.py::test_api_keys_need_the_read_scope_for_evaluations_reports_and_jobs`、ADR §10/§36/§47 |
+| 8 | 一致性 | `/object-links/{token}` 用 `not_found`，其余 404 用 `resource_not_found` | 统一为 `resource_not_found`；`test_t024_links.py` 对每个拒绝同时钉状态码与错误码（不再只看非 200） | `internal/api/links.go`、`tests/f00b/test_t024_links.py` |
+| 9 | 卫生 | `catalog/versions.go` 复制了 `catalog.go` 的 owner-or-grant SQL；详情各写各的 | 抽 `catalog.applicationReadPredicate(...)` 供 `ListVisible`/`ListVersions` 共用；`Reader.readAllowed` 供 `GetVisible`/`GetDraft`/`SaveDraft`/`GetVersion` 共用。占位符/参数顺序与行为不变 | `internal/catalog/{catalog,draft,versions}.go`、`catalog_test.go` |
+| 10 | 范围 | `internal/workflow` 保留 P05 的 `Publish`/`BuildProvenance` 发布路径 | 删除 `Publish`/`BuildProvenance`/`WorkflowArtifact`/`ValidationResult.Artifact`；`Validate` 只返回 normal form，wire 不再有 `artifact_sha256`；corpus 仍对拍 verdict/reasons/input hash/normal-form hash/canonical text。执行清单属 `internal/compiler`，发布属 F02B | `internal/workflow/validate.go`、`validate_corpus_test.go` |
+| 11 | 记录 | `/object-links/{token}` 是非契约传输路径，易被误当用户 API | ADR §19/§48 与 T024 报告 §1.2/§6.1 明确：无会话、无列表、token 即权限、404 不泄露存在性，**不是用户 API** | T024 报告、ADR |
+| 12 | 卫生 | `api.New` 十个位置参数，同类型实参可静默互换 | 改为 `api.New(api.Deps{...})` 命名结构体，更新 `cmd/api` 调用点 | `internal/api/server.go`、`cmd/api/main.go` |
+| 13 | 卫生 | 五个 jobdata handler 重复 role→decode→attempt→error 前缀 | 抽 `Server.withJobData`（T024 五端点 + T026 evaluation binding 共用），状态码/错误体形状保持不变 | `internal/api/{jobdata,evaluations}.go` |
+| 14 | 卫生 | `complete.go` 两处重复重试表达式、四处按 kind 分支 | 新增 `background.CompletionGuard`/`completionGuards map[Kind]CompletionGuard`（与 `handlers.Registry` 对称），`Complete` 不再按 kind 分支；重试收敛为 `retryAllowed(job, code)`，与 evaluation guard 共用 | `internal/background/complete.go`、ADR §51 |
+| 15 | 保持 | `/object-links` token 脱敏与 mTLS/Organization 检查 | 保持不削弱：日志仍对 token 脱敏（单测在位），内部 listener 仍要求证书 Organization 与 `X-Internal-Role` 精确相等 | `internal/api/middleware_test.go`、`test_t022_mtls.py` |
+
+### 状态更正汇总（与上方表格一致）
+
+| 票 | 原状态 | 新状态 | 未完成项 / 承接 |
+|---|---|---|---|
+| T022 | passed | passed | AC1 改为“唤醒缝 + 真实丢通知”证据；Redis 传输仍 `not_run`（无实例），不假装已接 |
+| T023 | passed | **partial** | AC3 的 submit 拒绝属 **F02B**；validate/debug 拒绝为真实证据 |
+| T025 | passed | **partial** | AC3 worker 复核属 **F03/F04A**；机制已交付并测试 |
+| T026 | partial | partial（原因 +1） | 合成 runner 与 application-kind runner 属 **F13A**；**deletion 状态属 F07** |
+
+### 最终门禁（2026-11-02 复核修复收尾，工作目录 `product`）
+
+```text
+$ E:\orchara-toolchains\go\bin\gofmt.exe -l internal cmd tools
+(no output)                                    exit=0
+
+$ E:\orchara-toolchains\go\bin\go.exe vet ./...
+(no output)                                    exit=0
+
+$ E:\orchara-toolchains\go\bin\go.exe test -count=1 ./...
+?   	orchara/platform/cmd/admin	[no test files]
+?   	orchara/platform/cmd/api	[no test files]
+?   	orchara/platform/cmd/maintenance	[no test files]
+?   	orchara/platform/cmd/supervisor	[no test files]
+?   	orchara/platform/cmd/worker	[no test files]
+?   	orchara/platform/db	[no test files]
+ok  	orchara/platform/internal/api	2.522s
+?   	orchara/platform/internal/audit	[no test files]
+ok  	orchara/platform/internal/background	2.259s
+?   	orchara/platform/internal/background/handlers	[no test files]
+ok  	orchara/platform/internal/catalog	2.388s
+ok  	orchara/platform/internal/compiler	1.507s
+ok  	orchara/platform/internal/config	0.611s
+ok  	orchara/platform/internal/db	0.819s
+ok  	orchara/platform/internal/health	2.191s
+ok  	orchara/platform/internal/identity	2.436s
+ok  	orchara/platform/internal/jcs	1.090s
+ok  	orchara/platform/internal/modelproxy	1.912s
+ok  	orchara/platform/internal/objectstore	1.784s
+ok  	orchara/platform/internal/policy	1.782s
+ok  	orchara/platform/internal/supervisor	1.691s
+ok  	orchara/platform/internal/uuid	1.634s
+ok  	orchara/platform/internal/workflow	1.714s
+exit=0
+
+$ python -m pytest tests -q
+........................................................................ [  9%]
+........................................................................ [ 19%]
+........................................................................ [ 28%]
+........................................................................ [ 38%]
+........................................................................ [ 47%]
+........................................................................ [ 57%]
+........................................................................ [ 66%]
+........................................................................ [ 76%]
+........................................................................ [ 85%]
+........................................................................ [ 95%]
+.....................................                                    [100%]
+757 passed in 1454.52s (0:24:14)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 4.95s
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+测试计数变化：`tests/f00b` 125 → **129**（+丢唤醒、+三个夹具/scope 用例）、
+`tests/f02a` 100 → **99**（T025 的无效 Python 篡改断言移入 Go）、`tests/f01` 155、`tests/tooling` 21；
+全量 754 → **757 passed**。Go 新增：notifier 4 个单测、compiler 真实 sealed-object 篡改测试 1 个。
+提交后 `git status --short` 为空；未推送、未关闭 issue。
 
 ## 记录模板
 

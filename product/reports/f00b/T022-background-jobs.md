@@ -67,6 +67,12 @@
   第 3 次 failed。
 - `SweepExpired`：过期租约 → `lease_expired`/infrastructure；<3 次回 ready + 退避，第 3 次 failed。
 - 读模型 `Get`：owner-or-admin 一条 SQL 判定，其余 `ErrNotFound`。
+- 唤醒缝（复核修复 2026-11-02）：`internal/background/notifier.go` 定义 `Notifier`
+  （非阻塞、无错误）与默认 `NopNotifier`；本批唯一实现 `InProcessNotifier` 是无缓冲
+  channel（`Deliveries()` 接收端，无消费者即丢弃并回调 `onDrop`）。`Controller.Enqueue`
+  在提交后通知，`ArtifactStore.CompleteUpload` 在 finalize job 提交后通知；`cmd/api` 以
+  “无消费者”的方式安装它并把第一次丢弃记进日志。唤醒只是建议，PostgreSQL 轮询仍是唯一
+  交付权威（ADR §45）。Redis adapter 仍 `not_run`。
 - 错误码/失败分类/隔离集合均为导出常量；本包无 `os/exec`，handler 是编译期 kind→func 映射。
 
 ### 1.4 `artifact_finalize` handler + 服务端守卫
@@ -129,7 +135,7 @@
 
 | # | 验收标准（票面） | 证据（真实命令的测试） | 结果 |
 |---|---|---|---|
-| 1 | Redis 清空仍能从 PG 轮询推进 | `test_t022_polling.py::test_work_created_after_the_poller_started_is_picked_up`：先启动真实 maintenance 轮询进程，再创建两个 job，均从 PG 领取并完成；环境断言无任何 `*REDIS*` 变量。Redis 客户端本身未实现 → `not_run`（§5） | passed（等价实测，见说明） |
+| 1 | Redis 清空仍能从 PG 轮询推进 | **复核修复后的证据**：`test_t022_polling.py::test_work_created_after_the_poller_started_is_picked_up`（先启动真实维护轮询进程、后创建两个 job，均从 PG 领取并完成）证明空轮询后仍有推进；`test_t024_artifacts.py::test_a_dropped_wakeup_never_loses_the_finalize_work` 在真实栈上让 API 的 `InProcessNotifier` **丢弃每一次唤醒**（无消费者，日志记录 drop），已启动的 maintenance 仍 claim→finalize→ready。Redis 适配器本身仍 `not_run`（本机无实例）；本行不声称清空过 Redis 队列（§5.3、ADR §45） | passed（唤醒缝实测；Redis adapter not_run） |
 | 2 | 同键不双建 | `test_t022_enqueue.py::test_the_same_request_is_idempotent`（同 id、1 行）、`::test_a_different_target_under_the_same_key_conflicts`（exit 1、1 行）、`::test_a_different_kind_with_the_same_key_is_a_second_job` | passed |
 | 3 | 用户 shell 文本不能成为 handler | `test_t022_enqueue.py::test_bad_command_lines_exit_2_without_writing[shell text as kind]`、`::test_the_maintenance_registry_refuses_uncompiled_or_unknown_kinds`、`test_t022_lease.py::test_claim_and_result_validation`（claim 422）、`test_t022_migration.py::test_the_database_refuses_an_unknown_kind`（DB CHECK） | passed |
 | 4 | 旧 token 提交拒绝 | `test_t022_lease.py::test_the_old_token_is_refused_after_the_lease_was_recovered`（重领后旧 token 409、job 不变）、`::test_a_result_after_the_lease_expired_changes_nothing`（租约过期后提交 409、无副作用）、`::test_claim_leases_one_job_and_heartbeat_renews_it` | passed |
@@ -166,6 +172,10 @@
 - 失败面断言均来自真实响应/真实行/真实文件，不以进程内 mock 代替。
 
 ## 4. 门禁命令与原始结果
+
+> 以下命令/计数是**本票完成时**（2026-11-02 早于两轴复核修复）的原始结果。复核修复后的最新门禁
+> （全量 `pytest tests`、Go、sync_spec）见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节；
+> `tests/f00b` 的用例数在该节更新，本票自身证据不变。
 
 工作目录 `E:\Orchara\product`；Go 环境 `GOCACHE=E:\orchara-toolchains\gocache`、
 `GOMODCACHE=E:\orchara-toolchains\gomodcache`。
@@ -235,7 +245,7 @@ python -m pytest tests -q          # 全量（时间允许时必跑）
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| Redis 唤醒总线集成（`Notifier`/Redis 客户端） | `not_run` | 本机无 Redis 实例；本批以 PG 轮询推进，测试证明“空轮询后创建的工作仍被领取”。Redis 清空的等价场景已实测，Redis 协议本身未接 |
+| Redis 唤醒总线集成 | `not_run`（仅 Redis 传输） | 唤醒缝已交付：`background.Notifier` + 默认 `NopNotifier` + `InProcessNotifier`（无消费者即丢弃）；真实栈测试证明每次丢弃后 PG 轮询仍 claim/完成（§2 AC1）。**Redis 客户端/实例传输**仍未实现（本机无实例），不得写成 Redis 已验证 |
 | S3/MinIO 对象存储 | `not_run` | 仅本地 FS 实现（D2） |
 | 签名上传/下载 URL、`input_url` | `not_run` | T024 |
 | 上传 producer（`completeUpload` → 自动创建 finalize job） | `not_run` | T024；本票用 SQL 播种真实 artifact 行 |
@@ -263,11 +273,12 @@ python -m pytest tests -q          # 全量（时间允许时必跑）
   `PutSealed`, `Open`, `Hash`, `Stat`, `Delete`; `MaxObjectBytes = 20 MiB`。
 - `internal/background`: `EnqueueTx(ctx, tx, EnqueueParams) (*Job, created bool, error)`,
   `Controller.{Enqueue,Claim,Heartbeat,Complete,SweepExpired,Get}`, `Registry`/`Handler`,
-  `Retryable/ClassifyFailure/ImpliesQuarantine`, 全部错误码常量。
+  `Retryable/ClassifyFailure/ImpliesQuarantine`, 全部错误码常量；复核修复后 `New(db, store,
+  retryBackoff, notifier)` 与 `Notifier`/`NopNotifier`/`InProcessNotifier`（唤醒是建议，轮询是权威）。
 - `internal/background/handlers.Registry`（编译期 handler 映射；新 kind 必须同时扩展
-  `retryableByKind`）。
+  `retryableByKind`）；完成侧的 kind 注册表是 `background.CompletionGuard`。
 - `internal/api`: `Server.RegisterInternal(mux)`、`RequireInternalMTLS`、`InternalRole(ctx)`；
-  `api.New(service, webDir, profile, logger, objects, retryBackoff)`（新签名）。
+  `api.New(api.Deps{...})`（复核修复后的命名结构体签名，见 ADR §51）。
 
 **HTTP**
 

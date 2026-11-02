@@ -2,9 +2,11 @@
 
 - 任务：F00B / GitHub Issue #27（票 `T026`，规划 ID F00B.04），分支 `feat/f00b-f02a`
 - 状态：**`partial`**（真实 PostgreSQL 16.4 + 真实编译 Go 二进制 + 真实 HTTP/mTLS + 真实对象字节；
-  **模型 kind** 的评测池、报告绑定、读权限、孤儿清理全部真实跑通；`kind=application` 评测需要
-  T027 的 `execution_snapshots`，本批只结构性接受并如实失败；真实评测 runner/checker 属 F13A，本票
-  交付的是**显式合成占位**评测器。两条 partial 原因见 §4/§5，不写成 passed）
+  **模型 kind** 的评测池、报告绑定、读权限、孤儿清理全部真实跑通。三条 partial 原因（复核修复
+  2026-11-02 补第三条，全部如实）：1) 票面 `T026.md:9` 要求区分“业务 job/evaluation/**deletion**
+  状态”，而 0013 明确不建 F07 的 deletion 模型——deletion 状态属 F07，未实现；2) 真实评测
+  runner/checker 属 F13A，本票是显式合成占位；3) `kind=application` 端到端执行仍依赖 F13A 的
+  runner（T027 已补齐 snapshot 表/FK，绑定结构可用）。不写成 passed）
 - 代码提交：
   - `21eecff`（`feat(f00b): execute evaluations from a guarded, pool-separated maintenance process`）
   - `73f17eb`（`test(f00b): prove the evaluation pool, report binding and orphan sweep on the real stack`）
@@ -29,7 +31,8 @@
   - profile：`dev-stub`；评测**不调用**任何模型 provider（合成器只对 dataset 做 JCS SHA-256 判定），
     因此本票没有 stub-vs-real 模型结论，见 §5
   - 基线（T025 之后）：`tests/f00b` 86、`tests/f02a` 62、`tests/f01` 155、`tests/tooling` 21
-  - 本票后：`tests/f00b` **125 passed**（其中 T026 39）、`tests/f02a` **62 passed**、
+  - 本票后：`tests/f00b` **125 passed**（其中 T026 39；复核修复后 T026 为 **40**，新增 API-key
+    scope 用例）、`tests/f02a` **62 passed**、
     `tests/f01` **155 passed**、`tests/tooling` **21 passed**；`go vet`/`go test ./...`/`gofmt -l`
     全绿，`sync_spec.py --check` no drift，无失败、无跳过
 
@@ -165,7 +168,7 @@ orchara-maintenance sweep --orphan-age 1h [--dry-run]
 | 等待/env | `--dataset-wait-timeout`/`ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT`（默认 60s）、`--evaluation-poll-interval`/`ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL`（默认 100ms，≥10ms）、`--report-wait-timeout`/`ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT`（默认 60s） |
 | 正式创建 | `cmd/admin evaluations enqueue`（唯一入口；公共评测端点属 F13A） |
 | 内部端点 | 新增 `POST /internal/v1/background/jobs/{job_id}/evaluation`（maintenance 角色 + 活 attempt_token；返回 evaluation_id/kind/dataset_artifact_id/manifest_sha256）；T024 五端点不变 |
-| 公共读 | `GET /api/v1/evaluations/{id}`、`GET /api/v1/evaluation-reports/{id}`（owner/admin，其余 404） |
+| 公共读 | `GET /api/v1/evaluations/{id}`、`GET /api/v1/evaluation-reports/{id}`（owner/admin，其余 404）；复核修复后 API key 还须 `application:read`（§7.4） |
 | 表 | `platform.evaluation_jobs`、`platform.evaluation_reports`；`evaluation_jobs.snapshot_id` 裸 uuid（T027 补 FK `evaluation_jobs_snapshot_fkey`） |
 | 错误码 | business：`evaluation_missing`、`evaluation_state_invalid`、`evaluation_binding_missing`、`evaluation_binding_mismatch`、`evaluation_unsupported_kind`、`dataset_not_ready`、`report_binding_mismatch`、`report_invalid`、`report_not_ready`、`source_deleted`；infra（可重试）：`transient_storage_io`、`transient_internal`、`lease_expired`、`dataset_wait_timeout` |
 | 报告文档 | `background.EvaluationReportDocument`（导出类型；handler 与守卫共用）；上限 `MaxEvaluationReportBytes=1 MiB` |
@@ -182,10 +185,13 @@ orchara-maintenance sweep --orphan-age 1h [--dry-run]
 | `test_t026_pool.py` | 2 | work 池两个等待评测占满时，system_io finalize 仍完成并 ready（finalize terminal 时两评测仍 leased/running）；数据集完成后两评测 succeeded + report passed；`--once` 跨池 drain 覆盖报告 finalize |
 | `test_t026_failures.py` | 6 | case failed → report failed + job/evaluation succeeded；空 cases → not_run；坏 dataset → report failed；dataset 墓碑 → job/evaluation failed + error_code + 无 report；sealed 缺失 → 3 次重试后 `transient_storage_io` + 无 report；application kind → `evaluation_binding_missing` + 无 report |
 | `test_t026_binding.py` | 8 | 直接 claim/upload/complete/finalize 后提交：错 manifest/错 dataset → `report_binding_mismatch`；坏 JSON/空 cases 声称 passed/无 checks/case_count 不符 → `report_invalid`；合法 not_run 被记录但绝不 passed |
-| `test_t026_authz.py` | 2 | 非 admin owner 200、其他用户 404、admin 200（evaluation/report/background job）；未知/畸形 id 404；未认证 401；字段精确且无 body/路径泄漏 |
+| `test_t026_authz.py` | 3 | 非 admin owner 200、其他用户 404、admin 200（evaluation/report/background job）；未知/畸形 id 404；未认证 401；字段精确且无 body/路径泄漏；**复核修复新增 API-key scope**：write-only key 403 `insufficient_scope`，read-scoped key 非 owner 404，真正 owner 后 200（scope 必要但不充分） |
 | `test_t026_sweep.py` | 2 | 真实孤儿 staging/sealed 被删；被引用 sealed（ready 与 deleted 行）保留；ready 行 staging 残留被删；scanning 行 staging 保留；dry-run 不动文件；重复 sweep 删 0；缺 `--orphan-age`/负值 exit 2 |
 
 ### 3.2 收尾门禁（实际命令与原始输出尾部）
+
+> 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；复核修复后最新门禁与
+> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。
 
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
@@ -258,7 +264,7 @@ $ python -m pytest tests/f00b -q -k t026
 | 评测池全等待时 finalize 仍推进 | **passed** | `test_t026_pool.py::test_finalize_progresses_while_both_work_slots_wait`：两个 uploading dataset 评测占满 work 槽，后入队的 finalize job 完成且 artifact ready，此刻两评测 job 仍 leased、evaluation 仍 running；随后数据集就绪，两评测 succeeded + report passed |
 | 报告 failed 与 job failed 可区分 | **passed** | `test_t026_failures.py`：case failed → report failed、job/evaluation succeeded；dataset 墓碑/字节不可读 → job failed + evaluation failed + error_code、report 行 0；绑定/格式非法 → `report_binding_mismatch`/`report_invalid`、job failed、无 report |
 | 状态查询严格按 owner/管理员权限 | **passed** | `test_t026_authz.py`：非 admin owner 200、其他用户 404、admin 200；未知/畸形 id 404；未认证 401；字段精确、无泄漏；background-job GET 仍 T022 规则 |
-| 通过端到端入口实际演示；失败/授权/重试边界有断言，不以单层 mock 代替 | **partial** | 模型 kind 端到端（CLI→双池 maintenance→signed 下载/上传→守卫→公共读）全部真实跑通；application kind 因 T027 的 snapshot 表缺失只能结构性接受并如实失败；真实 F13A checker 未实现（合成占位）。失败（墓碑/坏字节/坏报告）、授权（owner/other/admin）、重试（3 次、退避、bounded wait）均有真实断言 |
+| 通过端到端入口实际演示；失败/授权/重试边界有断言，不以单层 mock 代替 | **partial** | 模型 kind 端到端（CLI→双池 maintenance→signed 下载/上传→守卫→公共读）全部真实跑通；application kind 因 T027 的 snapshot 表缺失只能结构性接受并如实失败；真实 F13A checker 未实现（合成占位）；票面要求区分的 **deletion 状态**不属本票（0013 不建 deletion 模型，F07 承接）。失败（墓碑/坏字节/坏报告）、授权（owner/other/admin + API-key scope）、重试（3 次、退避、bounded wait）均有真实断言 |
 | 记录版本、输入/hash、命令、原始结果、环境 profile；stub/real 分报，缺条件 blocked，未运行 not_run | **passed（本报告）** | 版本/环境见页首；输入/hash 在迁移/测试断言中（candidate/manifest、dataset sha、report sha）；命令与原始输出见 §3；stub/real 见 §5；未运行见 §6 |
 
 ## 5. stub / real 分报
@@ -276,10 +282,11 @@ $ python -m pytest tests/f00b -q -k t026
 
 | 项 | 状态 | 原因/归属 |
 |---|---|---|
+| **业务 job/evaluation/deletion 状态区分**（票面切片边界） | `partial`（**F07**） | 本票交付并测了 job 与 evaluation 两种业务状态（queued/running/succeeded/failed/cancelled）与报告失败/job 失败的区分；但 **deletion 状态机不在本批**：0013 明确不建 F07 的 deletion_jobs/墓碑传播/删除账本，sweep 也不删被引用的 sealed。票面这一句要求的 deletion 维度属 F07，未实现，不能写成“三类状态都已区分” |
 | `kind=application` 评测端到端 | `partial`（T027） | `execution_snapshots` 不存在；本票结构接受、binding 409、job/evaluation failed、无报告；T027 建表+补 FK 后同一代码路径生效 |
 | 真实评测 runner/checker | `not_run`（F13A） | T026 是显式合成占位；真实结果不得由本票声称 |
 | 真实模型 provider 评测 | `not_run`（F13A/F06） | 本票评测不调用模型；无供应商凭据/endpoint |
-| API key 的评测 scope | `not_run`（契约缺口） | 契约只声明 `apiKey` security，未定义 scope；T026 未做 scope 判定（owner/admin 仍严格）；F13A/契约修订补 |
+| API key 的评测 scope | **`partial`（过渡实现）** | 复核修复（ADR §47）：契约未定义评测/job 专用 scope，三个公共读对 API key 强制平台唯一读 scope `application:read`（先 scope 403、后 owner/admin 404；会话不受限）。更细的专用 scope 与契约修订仍属 F13A，本批不假装已有专用 scope |
 | 公共 `POST /applications/{id}/evaluations` | `not_run`（F13A） | 契约的受信 runner 入口；T026 不实现、不伪造 |
 | F07 删除/墓碑传播 | `not_run`（F07） | sweep 永不删被引用的 sealed；deleted artifact 的字节归 F07 |
 | 全量 `python -m pytest tests` | `not_run`（统筹） | PLAN §1 规定全部票完成后只跑一次 |
@@ -299,19 +306,22 @@ $ python -m pytest tests/f00b -q -k t026
    守卫规则和测试，不能只改 handler 自证。
 3. **application kind 的 snapshot FK 继续延期**：`evaluation_jobs.snapshot_id` 无 FK，T027 必须在
    0014 补 `evaluation_jobs_snapshot_fkey`；迁移/ADR/报告均写明。T026 不建 snapshot 行。
-4. **读端点的 API key scope 缺口**：契约给 `getEvaluation`/`getEvaluationReport` 列了 `apiKey`
-   security，但没有评测 scope 词汇；T026 不新增 scope（避免复用 `application:read` 假装授权），
-   owner/admin 判定不变。
+4. **读端点的 API key scope**：契约给 `getEvaluation`/`getEvaluationReport` 列了 `apiKey`
+   security，但没有评测 scope 词汇。复核修复后，三个公共读对 API key 要求平台既有读 scope
+   `application:read`（scope 先于 owner/admin；会话不受限）；更细的评测/job 专用 scope 仍属
+   F13A/契约修订，本批不声称已有专用 scope（ADR §47）。
 5. **`evaluation_reports` 无 owner 列**：契约基线如此；T026 用 `evaluation_jobs.report_id` 的
    EXISTS join 做 owner 判定，不在 reports 表加列。
-6. **T023/T024 延期 FK 的测试适配**：0013 补 FK 后，旧 seed 的随机 `report_id` 不再合法；
+6. **deletion 状态缺失**：票面切片边界要求区分业务 job/evaluation/**deletion** 状态；0013 不建
+   F07 的 deletion 模型，本票只覆盖前两类。该条是显式 partial，F07 承接（见 §4/§6）。
+7. **T023/T024 延期 FK 的测试适配**：0013 补 FK 后，旧 seed 的随机 `report_id` 不再合法；
    测试辅助函数改为插入真实 report 行（见 §3.2 说明），断言从“无 FK”改为“FK 存在且悬空引用被拒”。
    迁移不做事后回填：升级一个已有 dangling `report_id` 的旧库前必须先修正/清空这些行（本批无已部署
    数据，所有门禁都在新库上迁移）。
-7. **`artifact_finalize` 的 T022 interim 维护 DSN 读仍保留**：job-scoped artifact-status 只暴露
+8. **`artifact_finalize` 的 T022 interim 维护 DSN 读仍保留**：job-scoped artifact-status 只暴露
    state/media/size，不暴露 staging key/expected hash/revision，finalize 无法在不扩展该端点的情况下
    迁移；本票不改它，激活仍只在服务端守卫。该 interim read 是只读且已在 ADR §9/§23 记录。
-8. **evaluation job 的 `expected_*` 不参与绑定**：绑定由 `evaluation_jobs` 行决定（kind 选候选/snapshot），
+9. **evaluation job 的 `expected_*` 不参与绑定**：绑定由 `evaluation_jobs` 行决定（kind 选候选/snapshot），
    job 的 `expected_revision/expected_sha256` 留空。这是与 artifact_finalize 的有意区别，已写入 ADR §32。
 
 ## 8. T027 / F13A / F07 交接

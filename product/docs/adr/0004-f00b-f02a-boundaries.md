@@ -139,6 +139,13 @@ exit 2，去重冲突/数据库拒绝 exit 1，成功打印 `{id,state,kind}`。
 API-key scope 尚未定义（F01 注册表只有 `application:read`）；产生后台 job 的 T024 若要给服务账号
 读权限，应新增专用 scope，而不是复用 `application:read`。
 
+**修订（2026-11-02 复核修复，§47）**：三个公共读（`GET /evaluations/{id}`、
+`GET /evaluation-reports/{id}`、`GET /background-jobs/{id}`）对 **API key** 调用方要求
+`application:read`，且 scope 判定在 owner/admin 判定之前（无 scope = 403 `insufficient_scope`）。
+这是显式的过渡决定：契约/注册表还没有评测/job 专用 scope，`application:read` 是平台唯一已注册的
+读 scope；更细的 scope（以及契约修订）仍属 F13A。会话调用方不受 scope 限制，owner/admin ACL
+仍是内容权威（有 scope 不等于可见）。
+
 ### 11. 唤醒总线缺失时的推进方式：PG 轮询
 
 本机没有 Redis，T022 不引入 Redis 客户端。`cmd/maintenance run` 以固定间隔（默认 2s）轮询 claim
@@ -675,6 +682,11 @@ handler 是受信基础设施，不是用户：报告由它生成，但“passed
   owner/admin），记录为契约缺口；F13A/契约修订应为评测读定义专用 scope（不得复用
   `application:read` 假装已授权）。
 
+  **修订（2026-11-02 复核修复，§47）**：复核确认这是可被 `application:read` key 利用的读绕过。
+  三个读现在都要求 API key 携带 `application:read`（scope 先于 ACL；会话不受限）；更细的评测/job
+  scope 仍由 F13A/契约修订拥有。这不是“已授权”的伪装：owner/admin 判定保持原样，scope 只是
+  凭据门槛。
+
 ### 37. 孤儿清理边界（F07 前的最小安全规则）
 
 - `cmd/maintenance sweep --orphan-age D [--dry-run]` 只需要 `ORCHARA_MAINTENANCE_DSN` 与
@@ -865,3 +877,97 @@ F03。以下决定为 F03、F02B、F05/F07 与后续契约修订必须沿用；�
 - `product/tests/f02a/test_t023_invalid_draft.py`、`product/tests/f02a/test_t0{23,25}_migration.py`、
   `product/tests/f00b/test_t026_{migration,enqueue,failures}.py`（schema 收紧后的预期适配）
 - `product/reports/f02a/T027-debug-submit.md`
+
+## 复核修复追加（2026-11-02）：状态诚实、合成夹具、读 scope 与完成守卫
+
+两轴复核（Standards + Spec）对 `eebc4c4` 提出 15 项。以下决定是**对既有条文的修订**，后续票必须
+沿用；改回需新理由。逐条处理与门禁见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节与各票报告。
+状态也按复核更正：T023 AC3、T025 AC3、T026 的 deletion 状态记 `partial`（分别由 F02B、F03/F04A、
+F07 闭环），不把未实现写成通过。
+
+### 45. 唤醒是建议，PostgreSQL 轮询是权威（修订 §11 与 T022 AC1 的证据口径）
+
+- `internal/background.Notifier` 是唯一唤醒缝：`Notify(ctx, *Job)` **非阻塞且无错误返回**。
+  `NopNotifier` 是默认实现；`InProcessNotifier` 是无缓冲 channel + `Deliveries()` 的同进程实现，
+  没有消费者时每次通知都立即丢弃并可调用 `onDrop`。
+- `cmd/api` 以“无消费者”的方式安装 `InProcessNotifier`：第一次丢弃记一行
+  `wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)`。
+  因此生产 API 的每次唤醒都是显式丢失的，而不是被假装投递。
+- 生产者接线：`Controller.Enqueue` 在提交后通知；`ArtifactStore.CompleteUpload` 在 finalize job
+  提交后通知（T024 的 `completeUpload` 是长驻 API 进程里唯一会创建后续 job 的路径）。CLI 的
+  `background-jobs enqueue` / `evaluations enqueue` 是短命进程，不装 notifier——那本身就是
+  “通知不存在”的状态，由轮询推进。
+- **Redis adapter 仍 `not_run`**（本机无实例）。T022 AC1 的证据改为真实栈上“唤醒缝被调用且通知
+  被丢弃，maintenance 仍由 PG 轮询 claim、完成并激活”
+  （`tests/f00b/test_t024_artifacts.py::test_a_dropped_wakeup_never_loses_the_finalize_work`）。
+  该测试不声称清空过 Redis 队列，只证明丢弃唤醒不会丢工作；Redis 传输本身仍未实现。
+
+### 46. `purpose='model_fixture'` 是模型输入的合成标记（新增 T024 不变量）
+
+- 标记是 artifact 的 `purpose`，**不是**契约的上传 purpose（`report`/`log`/`receipt`/`parsed_data`）。
+  普通上传者无法创建它；本批的注册路径是管理/测试的 SQL 播种（T024 报告 §1.3 记录），F06 拥有
+  真正的注册 UI。F06 替换注册路径，不替换谓词：用户上传永远不能变成合成夹具。
+- 两处强制执行（同一标记、同一所有权/就绪规则）：
+  1. `cmd/admin background-jobs enqueue --kind model_validate` 在写 job 行的同一事务里校验
+     `purpose='model_fixture'`、`owner_id = --owner-id`、`state='ready' AND deleted_at IS NULL`；
+     不满足是数据拒绝 exit 1（不是命令行形状错误 exit 2），不写任何行。
+  2. `POST /internal/v1/background/jobs/{id}/model-calls` 在打开任何字节**之前**重读
+     `job.input_artifact_id` 的元数据：非合成 purpose → 422 `fixture_not_synthetic`；
+     他人 artifact → 422 `fixture_missing`（与“没有夹具”同答，不泄露存在性）；
+     未 ready → 409 `artifact_not_ready`；不存在 → 404 `artifact_not_found`。
+     handler 把 `fixture_not_synthetic` 归为 business `model_call_refused`（不重试）。
+- `background.ArtifactStore.ReadSyntheticFixture` 是唯一实现，`ReadReady` 只保留给通用 ready 读取。
+- 证据：真实端到端 handler 用合成夹具通过；负面测试分别在 CLI（业务 artifact/未 ready/他人）与
+  model-calls（purpose 被改、owner 被改）拒绝，且 ledger 零行。
+
+### 47. 公共读的 API-key scope（修订 §10、§36）
+
+`GET /api/v1/evaluations/{id}`、`GET /api/v1/evaluation-reports/{id}`、
+`GET /api/v1/background-jobs/{id}` 对 API-key 调用方要求 `application:read`，判定顺序是
+认证 → scope(403 `insufficient_scope`) → owner/admin(404)。会话不受 scope 限制；有 scope 不等于有
+内容权限（scoped key 非 owner 仍是 404）。契约还没有评测/job 专用 scope，`application:read` 的
+复用是显式过渡；更细的 scope 与契约修订属 F13A。
+
+### 48. 404 错误码统一
+
+`/object-links/{token}` 的过期/篡改/换 key/换 op/sealed-PUT 全部使用平台统一的
+`404 resource_not_found`（此前是 `not_found`）。状态码与错误码都在 `test_t024_links.py` 中钉死，
+但消息仍不泄露对象是否存在；该路径依旧不是用户 API（§19）。
+
+### 49. 单一 application ACL 谓词
+
+`catalog.applicationReadPredicate(principalArg, nowArg, resourceTypeArg, actionArg)` 是列表 SQL 的
+唯一 owner-or-未过期 grant 谓词，被 `ListVisible` 与 `ListVersions` 共用（占位符编号/参数个数保持
+原样，`policy.ResourceApplication`/`policy.ActionRead` 仍是调用参数）。单条读取共用
+`Reader.readAllowed`（`GetVisible`、`GetDraft`、`SaveDraft`、`GetVersion`、依赖可见性），
+不再各自内联 `Authorizer.Allow`。行为与既有测试不变。
+
+### 50. `internal/workflow` 不含发布路径
+
+P05 的 `Publish`/`BuildProvenance`/`WorkflowArtifact` 及 `ValidationResult.Artifact` 已删除：
+`Validate` 只返回规范数据（normal form），共享 wire 不再有 `artifact_sha256`。执行清单的组包/复核
+属于 `internal/compiler`（T025），发布 version 属于 F02B；产品包不得保留一条“能假装发布”的路径。
+corpus 对拍仍在（verdict/reasons/input hash/normal-form hash/canonical text），probes 保持原样。
+
+### 51. `api.Deps`、job-scoped 包装器与完成守卫注册表
+
+- `api.New(deps Deps)` 取代十个位置参数：同类型参数互换不再能静默编译。
+- `api.Server.withJobData` 是一个 job-scoped 内部端点的共同前奏：
+  `requireInternalRole(maintenance) → decodeJSON → CheckAttempt`；T024 五个端点与 T026 的
+  evaluation binding 共用，状态码/错误体形状不变。
+- `background.CompletionGuard`/`completionGuards map[Kind]CompletionGuard` 是完成侧与
+  `handlers.Registry` 对称的注册表；`Complete` 不再按 kind 分支。重试判定收敛到
+  `retryAllowed(job, code)`，由完成重试路径与 `application_evaluate` guard 共用。新增需要完成守卫的
+  kind 必须在同一变更里注册 guard；新增 handler kind 仍必须扩展 registry 与 `retryableByKind`。
+
+### 52. 证据与状态的复核口径
+
+- T022：AC1 见 §45；Redis 适配器仍 `not_run`，但“丢唤醒不丢工作”已由真实栈证明。
+- T023：AC3 保持 `partial`——validate(T025)/debug(T027) 的拒绝是真实的，`POST /submit` 的 404
+  只证明端点不存在，submit 拒绝属 F02B。
+- T025：AC3 记 `partial (机制已交付；worker 未构建)`；manifest/golden/依赖/密封/复核机制本身仍
+  `passed`，真正 worker 属 F03/F04A。Python 的单字节篡改断言已删除，换成
+  `internal/compiler` 的真实 sealed-object 篡改测试（调用 `VerifyManifestBytes`）。
+- T026：deletion 状态区分是票面要求，但 0013 明确不建 F07 的 deletion 模型；该条是第三个
+  `partial` 原因（F07），与合成 runner（F13A）、application-kind runner（F13A）并列。
+- 任何“组件策略确认”都不能写成运行通过；未运行的外部件继续 `not_run`。

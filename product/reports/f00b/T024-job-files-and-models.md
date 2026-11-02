@@ -26,13 +26,18 @@
   - Python 3.12.2；`cryptography` 36.0.2（真实 CA/服务端/客户端证书；**未新增依赖**）
   - profile：`dev-stub`（模型候选显式 `provider:"stub"`）；真实 provider 无 endpoint/凭据
   - 基线（T023 之后）：`tests/f00b` 60、`tests/f02a` 45、`tests/f01` 155、`tests/tooling` 21
-  - 本票后：`tests/f00b` **86 passed**（其中 T024 26）、`tests/f02a` **45 passed**、
+  - 本票后：`tests/f00b` **86 passed**（其中 T024 26）；复核修复后 T024 为 **28**（artifact 6、
+    model_calls 8）。`tests/f02a` **45 passed**、
     `tests/f01` **155 passed**、`tests/tooling` **21 passed**；`go vet`/`go test ./...`/`gofmt -l`
     全绿，`sync_spec.py --check` no drift，无失败、无跳过
 - 真实/桩分报：对象字节、HTTP、mTLS、数据库、maintenance 进程全部真实；模型调用全部经
   `provider:"stub"` 的显式 dev-stub profile。真实 provider 的**未配置路径**是真实运行的
   （503 + 无 ledger 行 + 不泄露密钥），**厂商协议集成** `not_run`（见 §4/§5）。没有 stub 结果
   被写成真实模型通过。
+- 复核修复（2026-11-02）：`model_validate` 的输入改为**强制合成夹具标记**
+  `purpose='model_fixture'`（不是上传 purpose；CLI enqueue 与 model-calls 两端都拒绝业务
+  artifact/未 ready/他人 artifact，见 §1.3/§1.6、ADR §46）；对象链接 404 统一为
+  `resource_not_found`。ticket 仍 passed；真实 provider 集成仍 `not_run`。
 
 ## 1. 交付内容
 
@@ -92,6 +97,19 @@
   候选必须存在、未撤销、`validation_state ∈ {pending,running}`、引用形状合法；fixture 只取
   `job.input_artifact_id`（sealed/ready），请求体没有 artifact id 字段；返回
   `{call_id,state,result_artifact_id,data}`。
+- **合成夹具（复核修复）**：fixture 的 `purpose` 必须是 `model_fixture`。model-calls 在打开任何
+  字节**之前**重读该行：非合成 purpose → 422 `fixture_not_synthetic`；owner ≠ job owner →
+  422 `fixture_missing`（与“没有夹具”同答，不泄露存在性）；未 ready → 409 `artifact_not_ready`；
+  不存在 → 404 `artifact_not_found`。handler 把 `fixture_not_synthetic` 归为 business
+  `model_call_refused`（不重试）。实现入口是
+  `background.ArtifactStore.ReadSyntheticFixture`（ADR §46）。
+- **注册路径（边界）**：`model_fixture` 不在契约上传 purpose 枚举里，普通上传无法创建它。本批
+  没有夹具注册 UI（F06 才有）；唯一注册路径是 T024 文档化的管理/测试 SQL 播种
+  （`tests/support/t024.py::seed_fixture` 就使用该 purpose）。F06 替换注册路径，不替换谓词。
+- **CLI 端同一谓词（复核修复）**：`cmd/admin background-jobs enqueue --kind model_validate
+  --input-artifact-id ...` 在写 job 的同一事务里校验 `purpose='model_fixture'`、
+  `owner_id = --owner-id`、`state='ready' AND deleted_at IS NULL`；不满足是数据拒绝 exit 1
+  （不是形状错误 exit 2），不写行。负面用例覆盖业务 artifact、未 ready、他人 artifact 三种。
 
 ### 1.4 `internal/modelproxy` 与 `platform_model_calls`
 
@@ -144,15 +162,18 @@
 | 文件 | 用例 | 覆盖 |
 |---|---|---|
 | `tests/f00b/test_t024_migration.py` | 6 | 三表列/类型/默认值、两个延期 FK 真不存在、XOR/attempt 唯一/归属表约束、worker/PUBLIC 拒绝、重复 migrate no-op |
-| `tests/f00b/test_t024_artifacts.py` | 5 | upload→真实 PUT→complete 202→真实 finalize→status ready→真实 GET 字节一致（media/size/hash）；upload 参数/kind 拒绝；complete 幂等/异 hash 冲突/跨 job 404；scope 隔离与未 ready 409；lease `input_url` 真实可取 |
-| `tests/f00b/test_t024_links.py` | 5 | 过期（第二个进程 1s TTL）、篡改/换 op/sealed-PUT 404、异 key 404、超限 413 且无残留对象、无签名 key 时 API 仍启动且铸造 503/拒绝旧链接 |
-| `tests/f00b/test_t024_model_calls.py` | 7 | ledger 行全字段与真实 usage；fixture 内容决定结果；候选/kind/validation_state 限制；同键幂等、异参 409；失败后重试 attempt=2；stale/畸形 token；真实 provider 503 + 零 ledger + 密钥/引用不泄露 |
+| `tests/f00b/test_t024_artifacts.py` | 6 | upload→真实 PUT→complete 202→真实 finalize→status ready→真实 GET 字节一致（media/size/hash）；丢唤醒后仍由 PG 轮询完成（复核修复，唤醒缝证据）；upload 参数/kind 拒绝；complete 幂等/异 hash 冲突/跨 job 404；scope 隔离与未 ready 409；lease `input_url` 真实可取 |
+| `tests/f00b/test_t024_links.py` | 5 | 过期（第二个进程 1s TTL）、篡改/换 op/sealed-PUT 404（状态+`resource_not_found` 码都钉死）、异 key 404、超限 413 且无残留对象、无签名 key 时 API 仍启动且铸造 503/拒绝旧链接 |
+| `tests/f00b/test_t024_model_calls.py` | 8 | ledger 行全字段与真实 usage；fixture 内容决定结果；候选/kind/validation_state 限制；**业务/未 ready/他人 artifact 在 CLI 被拒，purpose/owner 被改后在 model-calls 被拒且零 ledger**；同键幂等、异参 409；失败后重试 attempt=2；stale/畸形 token；真实 provider 503 + 零 ledger + 密钥/引用不泄露 |
 | `tests/f00b/test_t024_model_validate.py` | 3 | 端到端报告 artifact ready + ledger；兼容性失败是 report 失败而非 job 失败；provider 未配置 business 失败且不重试 |
 
 另有 Go 单测：`internal/objectstore/sign_test.go`（8）、`internal/modelproxy/modelproxy_test.go`
 （8）、`internal/api/middleware_test.go` 新增 1（token 日志脱敏）。
 
 ### 2.2 收尾门禁（实际命令与原始输出尾部）
+
+> 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；修复后的最新门禁与用例数
+> 见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。本票结论不变。
 
 ```text
 === gofmt -l internal cmd tools
@@ -220,10 +241,10 @@ M product/PROGRESS.md
 | 票面验收 | 状态 | 证据 |
 |---|---|---|
 | 后台凭据不能读任意用户文件 | passed | 所有 job-scoped 读取都先校验活 attempt_token；scope 一条 SQL（input/result/归属表），越界与不存在同为 `404 artifact_not_found`；`tests/f00b/test_t024_artifacts.py::test_artifact_scope_is_job_scoped`（他人 artifact、另一 job artifact、跨 job complete）、`...::test_a_leased_job_carries_a_real_input_url`；签名 token 只能打开它自己的 key |
-| `model_validate` 只用对应候选和合成 fixture | passed | 端点拒绝不同候选（422 `candidate_mismatch`）、撤销/已通过候选（422 `candidate_unavailable`）、非 model_validate kind（422 `model_not_allowed`）；fixture 只从 `job.input_artifact_id` 读取，请求体无 artifact 字段；`test_t024_model_calls.py::test_only_the_jobs_candidate_and_kind_may_call_a_model`、`test_the_handler_produces_a_validated_candidate_report` |
+| `model_validate` 只用对应候选和合成 fixture | passed | 端点拒绝不同候选（422 `candidate_mismatch`）、撤销/已通过候选（422 `candidate_unavailable`）、非 model_validate kind（422 `model_not_allowed`）；fixture 只从 `job.input_artifact_id` 读取，请求体无 artifact 字段；**复核修复后** `purpose` 必须是 `model_fixture`：CLI 拒绝业务/未 ready/他人 artifact（exit 1、零行），model-calls 在打开字节前重读并返回 422 `fixture_not_synthetic` / `fixture_missing`（零 ledger）。证据：`test_only_the_jobs_candidate_and_kind_may_call_a_model`、`test_a_business_artifact_is_never_accepted_as_a_model_fixture`、`test_the_handler_produces_a_validated_candidate_report` |
 | 每次调用有用量 | passed | 每次 attempt 一行 ledger：`tokens_in/tokens_out` 非空真实值（由 fixture/response 字节推导）、decimal reserved/charged、state、physical_attempt、result artifact；`test_every_model_call_is_metered_with_real_usage`、`test_a_retry_after_a_failed_attempt_is_a_new_physical_attempt` |
 | 通过端到端入口实际演示；失败、授权与重试/恢复边界有断言 | passed | `test_t024_model_validate.py` 用真实 maintenance 进程跑完 claim→fixture→model-call→upload/complete→wait→succeeded；失败边界：兼容性失败是 report、provider 未配置是 business 失败（attempt_count=1，不重试）；授权边界：stale=409、跨 job=404；重试边界：可重试码表 + attempt 计数 |
-| 记录版本、输入/hash、实际命令、原始结果与环境 profile；stub/real 分报，缺条件 blocked，未运行 not_run | passed | 本报告 §1–§5：提交、环境、命令原始输出、26 个集成用例、stub 与 real 分开；真实 provider 集成 `not_run`（无 endpoint/凭据、adapter 属 F06） |
+| 记录版本、输入/hash、实际命令、原始结果与环境 profile；stub/real 分报，缺条件 blocked，未运行 not_run | passed | 本报告 §1–§5：提交、环境、命令原始输出、28 个集成用例（复核修复后）、stub 与 real 分开；真实 provider 集成 `not_run`（无 endpoint/凭据、adapter 属 F06） |
 
 票面「完成口径」要求的持久化、服务端校验、接口、行为测试同票交付；本票是控制面/实验票，
 不新增用户页面（票面明确不强行加管理页）。
@@ -257,7 +278,9 @@ M product/PROGRESS.md
 1. **契约没有对象链接端点**：`createBackgroundUpload` 返回 `upload_url`，`createBackgroundDownload`
    返回 `url`，但 `contracts/openapi.json` 未定义 `/object-links/{token}` 的 PUT/GET。T024 按
    ADR 0004 §19 在公共 listener 实现 presigned 传输路径（非契约扩展）；响应仍只出现在
-   `Upload`/`Download` 的 `uri` 字段里。后续票不得把该路径当用户 API。
+   `Upload`/`Download` 的 `uri` 字段里。**该路径不是用户 API**：没有会话、没有列表、没有对象
+   命名空间，token 是唯一权限，且 404 不泄露对象存在性。后续票不得把它当作用户入口或在其上加
+   管理功能。
 2. **`BackgroundLease.input_url` 的形态**在契约里只是 `type: string`；本实现返回绝对 URL
    （`ORCHARA_PUBLIC_URL`），无输入/未 ready 时为 `null`。部署必须设置可达的 `ORCHARA_PUBLIC_URL`。
 3. **`platform_model_calls` 基线缺参数身份**：新增 `params_sha256` 偏离（ADR §18/§22），否则
@@ -268,6 +291,9 @@ M product/PROGRESS.md
    这是刻意的安全边界，不是契约缺口。
 6. **`artifact-status` 的 `size_bytes`**：契约要求非空 integer，而 `artifacts.size_bytes` 可空；
    T024 创建的行总有值，极端历史行为 0（代码注释说明），不伪造未知大小。
+7. **`purpose='model_fixture'` 是显式实现标记（复核修复）**：它不在契约的上传 purpose 枚举中，
+   因此普通上传无法创建它；本批的注册路径是管理/测试 SQL 播种，F06 才拥有注册 UI。这不是契约
+   修改；契约修订时应为“合成夹具注册”定义正式入口/字段（F06/契约票）。边界逻辑见 ADR §46。
 
 ## 7. 下一票（T025，然后 T026）可以依赖的
 
@@ -277,14 +303,17 @@ M product/PROGRESS.md
   `artifact_conflict`/`artifact_not_ready`(409)、`object_signing_unavailable`/
   `object_store_unavailable`/`provider_not_configured`/`provider_adapter_unavailable`(503)、
   `model_call_conflict`(409)、`candidate_mismatch`/`candidate_unavailable`/`model_not_allowed`/
-  `fixture_missing`(422)、`payload_too_large`(413)。
+  `fixture_missing`/`fixture_not_synthetic`(422)、`payload_too_large`(413)。
+  `/object-links/{token}` 的所有拒绝是 `404 resource_not_found`（复核修复统一了 404 词汇，
+  **该路径仍不是用户 API**）。
 - 表：`platform.model_profile_versions`、`platform.platform_model_calls`、
   `platform.background_job_artifacts`；`background_jobs.result_artifact_id` 由 Complete 记录。
 - env：`ORCHARA_OBJECT_SIGNING_KEY`、`ORCHARA_OBJECT_LINK_TTL`、`ORCHARA_PUBLIC_URL`、
   `ORCHARA_SECRET_DIR`（对象目录与内部 mTLS 变量沿用 T022）。
-- 共享实现：`objectstore.Signer`/`PutStaging`、`background.ArtifactStore`、`modelproxy.Service`、
-  `background.JobScope`、`complete.verifyJobResultArtifact`；T025/T026 只扩展 kind/错误码，
-  不得复制签名器/记账/scope 逻辑。
+- 共享实现：`objectstore.Signer`/`PutStaging`、`background.ArtifactStore`（含
+  `ReadSyntheticFixture`）、`modelproxy.Service`、`background.JobScope`、
+  `complete.verifyJobResultArtifact`、`background.Notifier`（唤醒是建议）；T025/T026 只扩展
+  kind/错误码，不得复制签名器/记账/scope/夹具谓词。
 - T026：`application_evaluate` 已允许创建 artifact；需在同一 `retryableByKind` 扩展自己的码，
   并实现 runtime 双池；`input_url` 可直接用，但等待报告 ready 时仍应走 `artifact-status` 续租。
 

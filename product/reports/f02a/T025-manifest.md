@@ -1,9 +1,12 @@
 # F02A T025 验收：把草稿固化为可核验执行清单
 
 - 任务：F02A / GitHub Issue #26（票 `T025`，规划 ID F02A.02），分支 `feat/f00b-f02a`
-- 状态：**`passed`**。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP + 真实文件系统对象存储；
-  无 mock、无跳过。唯一边界是“复核规范字节”的**机制已交付、真正 worker 尚未构建**
-  （F03/F04A 拥有 worker；见 §5），以及按计划本票不跑全量 `pytest tests`（§3.5）。
+- 状态：**`partial`**（复核修复 2026-11-02 更正）。manifest 组合/hash、依赖闭包、密封去重、
+  validate 端点与复核机制全部真实运行通过；票面 AC3“worker 能复核规范字节”只交付了**机制**
+  （`compiler.VerifyManifestBytes`），真正 worker 属 F03/F04A，尚未构建，因此 AC3 记
+  `partial (mechanism delivered; worker not built)`，整票随之记 `partial`——绝不写成 worker
+  已运行。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP + 真实文件系统对象存储；无 mock、
+  无跳过。全量 `pytest tests` 在复核修复收尾运行一次（§3.5）。
 - 主要文件：
   - `db/migrations/0012_manifest_and_tool_versions.sql`（`tool_versions` 只读模型 +
     `manifest_artifacts` 去重表）
@@ -11,7 +14,8 @@
   - `internal/catalog/manifest.go`（依赖闭包/就绪/环/归属检查 + validate 编排 + 密封字节）
   - `internal/api/validate.go`、`internal/api/server.go`、`internal/config/config.go`、`cmd/api/main.go`
   - `tests/contracts/{README.md,snapshots/}`（golden：JSON + JCS 原字节 + sha256，含 layout-only 双胞胎）
-  - `tests/support/t025.py`、`tests/support/fixtures.py`、`tests/f02a/test_t025_*.py`（4 文件 17 用例）
+  - `tests/support/t025.py`、`tests/support/fixtures.py`、`tests/f02a/test_t025_*.py`（4 文件 16 用例；
+    复核修复删除了一个不调用 verifier 的 Python 篡改断言，见 §3.2/§5）
   - `docs/adr/0004-f00b-f02a-boundaries.md` §25–30
 - 版本 / 环境：
   - Go 1.27.3 windows/amd64（`E:\orchara-toolchains\go\bin\go.exe`）
@@ -37,7 +41,8 @@
    按 `(application_id, execution_revision, manifest_sha256)` 去重密封 artifact；纯规则函数有单测。
 5. 写 `POST /applications/{id}/validate`（owner-only、CSRF、`application:write` scope、
    `X-Manifest-SHA256`、503 `compiler_unconfigured`/`object_store_unavailable`），config 增两个部署输入。
-6. 建 `tests/contracts/snapshots` golden（sales + layout-only 双胞胎）与 `tests/f02a` 4 文件 17 用例，
+6. 建 `tests/contracts/snapshots` golden（sales + layout-only 双胞胎）与 `tests/f02a` 4 文件 16 用例
+   （复核修复后的当前数；完成时为 17，其中一个无效篡改断言移入 Go），
    真实 PG/二进制/HTTP 全量跑；T023 两个边界断言随本票闭环更新（validate 存在，debug/submit 仍 404；
    迁移链到 0012）。
 7. 跑完全部门禁（§3），写本报告/ADR/PROGRESS，按 feat/test/docs 三次提交。
@@ -250,6 +255,12 @@ ok  orchara/platform/internal/workflow
 `tests/f02a` 62 = T023 45 + T025 17（迁移 6、validate 3、manifest 3、dependencies 5）。
 T025 全部真实 PG/二进制/HTTP/对象字节；无 skip。
 
+> 复核修复（2026-11-02）：`test_t025_manifest.py` 原先的“单字节篡改后 SHA-256 不同”测试被删除
+> ——它不调用 `VerifyManifestBytes`，无法因 verifier 缺陷而失败。同一边界现在由
+> `internal/compiler/verify_test.go::TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace`
+> 覆盖（真实密封对象就地篡改 + typed `ErrManifestHashMismatch` + 未篡改对象先验证通过）。
+> 因此 T025 的真实栈用例数为 16（f02a 本票相关合计随复核修复节更新）。
+
 ### 3.3 契约同步
 
 ```text
@@ -262,11 +273,12 @@ no drift: spec copy and contract snapshot match the manifest
 空库 `0001→0012` 一次通过，重复 migrate `no pending migrations`（`test_t025_migration.py`
 与 T023 迁移测试都断言；0001–0011 未修改）。
 
-### 3.5 未运行（按 PLAN §1）
+### 3.5 未运行 / 按计划
 
-- 全量 `python -m pytest tests -q` **本票未跑**：PLAN §1 规定每票跑四个包、全量由统筹在全部票完成后
-  只跑一次。本票改动含共享迁移/路由/config，四个包已覆盖现有调用方；统筹收尾时需跑全量。
-- 真实 worker 执行/领取/复核：未构建（F03/F04A）；本票交付 `VerifyManifestBytes` 机制与测试。
+- 全量 `python -m pytest tests -q`：本票完成时按 PLAN §1 未跑；**2026-11-02 复核修复收尾已跑**
+  （最新原始结果见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节）。
+- 真实 worker 执行/领取/复核：未构建（F03/F04A）；本票交付 `VerifyManifestBytes` 机制与测试，
+  票面 AC3 因此记 `partial`。
 - 真实镜像 registry/镜像构建：不在本批（`worker_image_digest` 为占位输入）。
 
 ## 4. 验收标准逐条
@@ -277,7 +289,7 @@ no drift: spec copy and contract snapshot match the manifest
 |---|---|---|---|
 | 1 | 只改布局不变执行 hash | **passed** | `test_layout_only_save_keeps_the_hash_and_definition_change_changes_it`：layout-only 保存后 `revision` 2→`execution_revision` 仍 1，`X-Manifest-SHA256` 与首次相同；golden `sales` vs `layout-only` 的 `manifest.jcs` 逐字节相同 |
 | 2 | 依赖环/归属错误被拒 | **passed** | `test_version_dependency_cycles_and_self_calls_are_refused`（version_dependencies 环、草稿调自身版本、闭包回到本应用）；`test_subapp_readiness_requires_a_live_version_and_a_readable_application`（他人应用无 ACL → `dependency_not_visible`，授权后通过）；工具所有权矩阵见 Go `TestToolReadinessRules`（`PrivateDebug` 规则） |
-| 3 | worker 能复核规范字节 | **机制已交付，worker 未构建** | `compiler.VerifyManifestBytes`（先 hash 后 parse）+ `TestVerifyManifestBytes*`（golden 通过、篡改/非规范/缺字段/大小不符/缺对象/未配置 store 拒绝）+ HTTP 真实字节 hash 断言。真正 worker 属 F03/F04A；不写成 worker 已运行 |
+| 3 | worker 能复核规范字节 | **partial（机制已交付，worker 未构建）** | `compiler.VerifyManifestBytes`（先 hash 后 parse）+ Go 测试：golden 通过、**真实 sealed-object 就地篡改**（先验证未篡改对象，再覆盖已密封文件的一个字节，调用 `VerifyManifestBytes` 断言 `ErrManifestHashMismatch`；重记篡改摘要后仍以 `ErrManifestInvalid` 拒绝）、非规范/缺字段/大小不符/缺对象/未配置 store 拒绝 + HTTP 真实字节 hash 断言。真正 worker 属 F03/F04A；本票不写成 worker 已运行 |
 | 4 | 通过端到端入口实际演示；失败、授权与重试/恢复边界有断言 | **passed** | 真实 HTTP `POST /applications/{id}/validate`：401/403（CSRF、scope）/404（owner-only）/200 valid:false（P05 定位、能力卡、依赖、环）/200 valid:true（golden hash）/503（compiler_unconfigured、object_store_unavailable）。validate 同步、无租约/后台 job；重试边界 = 同项目同 hash 的幂等去重（重复 validate 不新写对象/行），测试断言 |
 | 5 | 记录版本、输入/hash、命令、原始结果、环境；stub/real 分报；缺条件 blocked，未运行 not_run | **passed** | 本报告 §1/§3/§5；real/stub 明确；未运行项列 `not_run` |
 
@@ -288,7 +300,7 @@ Brief §2 交付项：
 | JCS 包真实存在/顺序稳定 | **passed**（复用 T023 `internal/jcs`，新增 map 顺序稳定性测试） |
 | Manifest builder 精确 schema、固定常量、digest/lock 输入、空卡拒绝 | **passed**（`internal/compiler` Go 测试 + HTTP golden） |
 | 规范字节 = JCS、hash 外置、无 layout/身份/审核状态 | **passed**（字段集合断言、无 layout、无 hash 字段） |
-| `VerifyManifestBytes` 先 hash 后 parse、篡改拒绝 | **passed**（Go 负例 + 真实 HTTP 对象篡改 hash 断言） |
+| `VerifyManifestBytes` 先 hash 后 parse、篡改拒绝 | **passed（机制）** | Go：golden 通过 + 真实 sealed-object 就地篡改返回 `ErrManifestHashMismatch`（`TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace`）；另有错误记录 hash/非规范/缺字段/大小不符/缺对象/未配置 store 负例；HTTP 侧断言端点密封字节 == golden `manifest.jcs`，不把“两个 SHA-256 不同”冒充 verifier 证据 |
 | 依赖闭包：model/tool/subapp、排序去重、未知/latest | **passed**（P05 先拒非 UUID；未知 UUID → `dependency_not_found`；Go 排序去重测试） |
 | 就绪/归属/环规则定位错误 | **passed**（4 个真实栈依赖测试 + Go 规则矩阵） |
 | validate 端点 owner-only/CSRF/200/hash/503/不写执行身份 | **passed**（3 个 validate 测试；version/review/job 行数为 0） |
@@ -300,9 +312,10 @@ Brief §2 交付项：
 
 ## 5. 边界与未运行（not_run / 后续票）
 
-- **真正 worker 不存在**：本票交付的是复核机制（`compiler.VerifyManifestBytes` + 真实字节/负例测试）。
-  F03/F04A 构建 worker 后必须：从 snapshot/claim 取 `manifest_artifact_id` 与
-  `{object_key, sha256, size_bytes}`，在解析前调用该函数；当前没有 worker 二进制可跑，记 `not_run`。
+- **真正 worker 不存在（AC3 = `partial`）**：本票交付的是复核机制
+  （`compiler.VerifyManifestBytes` + 真实字节/篡改/负例测试）。F03/F04A 构建 worker 后必须：从
+  snapshot/claim 取 `manifest_artifact_id` 与 `{object_key, sha256, size_bytes}`，在解析前调用该
+  函数；当前没有 worker 二进制可跑，记 `not_run`，票面 AC3 因此不是 `passed`。
 - **worker 镜像未构建**：`ORCHARA_WORKER_IMAGE_DIGEST` 是部署方占位输入；F04A/F15A 必须替换真实
   digest，并接受“所有 manifest hash 变化 + golden 重生成”。
 - **state schema 制品属 F03**：本票只固定 manifest 字段 `orchara-state/1.0`。

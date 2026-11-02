@@ -3,8 +3,7 @@
 - 任务：F02A / GitHub Issue #28（票 `T027`，规划 ID F02A.03），分支 `feat/f00b-f02a`
 - 状态：**`passed`**（本票交付范围 = 提交与排队）。真实 PostgreSQL 16.4 + 真实编译二进制 +
   真实 HTTP + 真实文件系统对象字节；无 mock、无跳过。边界（如实）：真正 worker 的领取/执行/
-  事件/结果属 F03，本批不实现也不声称已执行；全量 `pytest tests` 按 PLAN §1 由统筹收尾跑一次，
-  本票未跑（§3.5）。
+  事件/结果属 F03，本批不实现也不声称已执行；全量 `pytest tests` 已在复核修复收尾运行一次（§3.5）。
 - 主要文件：
   - `db/migrations/0014_execution_snapshots_and_runs.sql`（执行身份五表 +
     `evaluation_jobs_snapshot_fkey` + 三个延期外键的显式记录 + 权限收口）
@@ -222,6 +221,9 @@ ok  	orchara/platform/internal/workflow	(cached)
 
 ### 3.2 Python 真实栈
 
+> 下列计数是本票完成时的原始结果；复核修复（2026-11-02）把 T025 的一个无效篡改测试移入 Go，
+> f02a 总数随之为 99，最新门禁见 `PROGRESS.md`。
+
 ```text
 > python -m pytest tests/f02a -q
 ........................................................................ [ 72%]
@@ -243,7 +245,8 @@ ok  	orchara/platform/internal/workflow	(cached)
 21 passed in 4.95s
 ```
 
-`tests/f02a` 100 = T023 45 + T025 17 + T027 38；全部真实 PG/二进制/HTTP/对象字节，无 skip。
+`tests/f02a` 100 = T023 45 + T025 17 + T027 38（本票完成时；复核修复后 T025 的一个无效篡改测试
+移入 Go，f02a 为 99 = T023 45 + T025 16 + T027 38）；全部真实 PG/二进制/HTTP/对象字节，无 skip。
 
 ### 3.3 迁移
 
@@ -257,10 +260,10 @@ ok  	orchara/platform/internal/workflow	(cached)
 no drift: spec copy and contract snapshot match the manifest
 ```
 
-### 3.5 未运行（按 PLAN §1）
+### 3.5 未运行
 
-- 全量 `python -m pytest tests -q` **本票未跑**：PLAN §1 规定每票跑四个包、全量由统筹在全部票
-  完成后只跑一次。本票改动含共享迁移/API 路由/页面，四个包已覆盖现有调用方；统筹收尾需跑全量。
+- 全量 `python -m pytest tests -q`：本票完成时按 PLAN §1 未跑；**2026-11-02 复核修复收尾已跑**
+  （最新原始结果见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节）。
 - 真实 worker 领取/执行/事件/结果/终态：未构建（F03）；本票只创建 queued run + ready start job。
 - 浏览器 DOM/渲染：无 headless browser（与 F01/T023 相同），页面逻辑用 Node 24 真实执行。
 - 真实 worker 镜像/registry、真实评测 runner：见 §2.6/§2.7。
@@ -286,14 +289,15 @@ Brief §2 交付项：
 | `GET /runs/{run_id}` owner-only，他人/管理员 404 | **passed**（`test_t027_authz.py`） |
 | Web 调试入口（选 revision + 测试输入 + 单次 Idempotency-Key + 展示 snapshot/run + 轮询） | **passed（逻辑层）**；浏览器 DOM `not_run`（Node 行为执行 + 真实页面 HTTP） |
 | 测试：提交建行、字节 hash、改草稿不变、404、拒绝零行、幂等（含并发）、输入 JCS、页面 | **passed**（38 用例） |
-| 报告/PROGRESS/ADR；T023 主表行 + AC3 闭环 | **passed**（本文件、`PROGRESS.md`、ADR §38–44、T023 报告补记） |
+| 报告/PROGRESS/ADR；T023 状态按证据更新 | **passed**（本文件、`PROGRESS.md`、ADR §38–44、T023 报告 §8；复核修复后 T023 为 `partial`，见 §4 末尾） |
 
-**T023 AC3 闭环证据**（本票代 T023 记录）：`test_t023_invalid_draft.py` 现在断言
+**T023 AC3 的边界（复核修复 2026-11-02 更正）**：`test_t023_invalid_draft.py` 现在断言
 `POST /validate` 对空草稿返回 `valid:false`、`POST /debug-runs` 缺 key 返回 400、带 key 对不可
-执行草稿返回 422 定位错误，而 `POST /submit`（F02B）仍是 404；`test_t027_refusals.py` 进一步
-证明“非法 DSL/空卡先保存成功（200）再被 debug 拒绝（422）”在同一真实栈上闭环。因此 T023 的
-“非法草稿可保存但不能调试/提交”已由真实端点闭环（“提交”侧唯一未建的是 F02B 发布提交，当前无
-端点接受任何草稿，故不构成可失败的通过项）。
+执行草稿返回 422 定位错误；`test_t027_refusals.py` 进一步证明“非法 DSL/空卡先保存成功（200）
+再被 debug 拒绝（422）”在同一真实栈上成立。这两条是真实的拒绝证据。但 `POST /submit` 仍是
+**404——端点不存在**，不能当作“提交被拒绝”的通过项；发布提交属 F02B，尚未实现。因此 T023 AC3
+保持 `partial`（validate T025 + debug T027 闭环，submit F02B 闭环），本票不代 T023 宣布
+AC3 已闭环。T023 报告 §8 与 `PROGRESS.md` 的 T023 行/段落同步改为 `partial`。
 
 ## 5. 边界与未运行（not_run / 后续票）
 

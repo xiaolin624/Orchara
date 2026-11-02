@@ -1,9 +1,11 @@
 # F02A T023 验收：创作者编辑用途说明和草稿并处理保存冲突
 
 - 任务：F02A / GitHub Issue #24（票 `T023`，规划 ID F02A.01+F02A.04），分支 `feat/f00b-f02a`
-- 状态：**partial**：草稿保存/读回/冲突/版本读模型/编辑器主体全部真实运行通过；
-  “非法草稿可保存但**不能调试/提交**”的负半条依赖 T025（validate）与 T027（debug）/F02B（submit）
-  的端点，本票只交付保存半条与 `CheckExecutable` 纯函数，**不把该验收写成 passed**。
+- 状态：**`partial`**（复核修复 2026-11-02 更正）。草稿保存/读回/冲突/版本读模型/编辑器主体全部
+  真实运行通过；票面 AC3“非法草稿可保存但**不能调试/提交**”只完成了 validate(T025) 与
+  debug(T027) 两条真实拒绝路径。**submit 拒绝不在本批**：`POST /submit` 返回 404 只证明端点
+  不存在，不能当作“拒绝已实现”的证据；F02B 才实现发布提交。因此 AC3 保持 `partial`，不把
+  F02B 的未实现写成闭环（见 §2 AC3 与 §8）。
 - 代码提交：
   - `ebb8c34`（`feat(f02a): draft CAS, version read model and the creator editor`）
   - `63aa388`（`test(f02a): prove draft CAS, version ACL and editor behaviour on the real stack`）
@@ -128,7 +130,7 @@
 |---|---|---|---|
 | 1 | 缺 If-Match 为 428 | `test_t023_drafts.py::test_missing_or_empty_if_match_is_428_and_changes_nothing`（None 与空串，code `precondition_required`、details.header、DB 不变） | **passed** |
 | 2 | 冲突为 412 | `::test_stale_and_garbled_etags_are_412_and_change_nothing`（`"1"`、`"99"`、`W/"2"`、`"abc"`、`*`、多值；details 带 current revision/etag）、`test_t023_concurrency.py`（两写者恰一 200 一 412） | **passed** |
-| 3 | 非法草稿可保存但不能调试/提交 | 保存：`test_t023_invalid_draft.py::test_a_cyclic_definition_saves_and_reads_back_verbatim`（P05 corpus 的 cycle 定义，200 + 原样读回）；定位：`internal/catalog/draft_test.go::TestCheckExecutableLocatesACycleAndAcceptsAValidWorkflow`（code=cycle）。**不能调试/提交**：`test_validate_debug_and_submit_endpoints_are_still_absent` 证明三端点 404；validate 属 T025、debug 属 T027、submit 属 F02B | **partial**（T025/T027/F02B 闭环；绝不写 passed） |
+| 3 | 非法草稿可保存但不能调试/提交 | 保存：`test_t023_invalid_draft.py::test_a_cyclic_definition_saves_and_reads_back_verbatim`（P05 corpus 的 cycle 定义，200 + 原样读回）；定位：`internal/catalog/draft_test.go::TestCheckExecutableLocatesACycleAndAcceptsAValidWorkflow`（code=cycle）。**调试拒绝已真实**：`test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent`（`POST /validate` 200 valid:false；`POST /debug-runs` 缺 key 400、带 key 422 定位错误）。**提交拒绝未实现**：同测试的 `POST /submit` 仍是 404——这是“端点不存在”，不是“提交被拒绝”，F02B 才实现 submit | **partial**（validate T025 + debug T027 为真实证据；submit 拒绝属 F02B，绝不写成闭环） |
 | 4 | 刷新能加载已保存草稿 | `test_t023_drafts.py::test_save_then_get_round_trips_every_field_and_the_new_revision`（GET after PUT 完全相等 + 新 ETag）、`test_t023_pages.py::test_the_real_creator_path_serves_the_page_and_refreshes_the_saved_draft`、Node 执行 `loadDraftRequest`（GET+ETag） | **passed**（HTTP 层；DOM reload 属浏览器边界，见 §6） |
 | 5 | 并发编辑不静默覆盖 | `test_t023_concurrency.py::test_two_writers_with_the_same_etag_get_exactly_one_200_and_one_412`（两个真实会话、同一 ETag、不同内容；库中恰为胜者内容；败者 details current_revision=2）、`::test_a_sequential_stale_writer_is_refused_and_the_row_is_unchanged` | **passed** |
 | 6 | 列表/详情/固定版本引用一致 | `test_t023_versions.py::test_application_list_and_version_detail_agree_with_the_seeded_rows`（active_version_id == 列表最新项 == getVersion）、`::test_versions_are_newest_first_with_a_stable_cursor_and_bounded_limit`、`::test_version_reads_never_expose_the_draft_body`、`::test_versions_of_an_invisible_or_archived_application_are_404` | **passed** |
@@ -174,6 +176,9 @@ T025 应使用 `execution_revision` 作为 manifest `source_revision`，使用
 见 §1.4。页面入口：`/apps`（新建/进入编辑）→ `/apps/{id}/edit`。
 
 ## 4. 门禁原始结果（本票最终运行）
+
+> 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；复核修复后的最新门禁与
+> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。本票证据本身不变。
 
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
@@ -283,19 +288,19 @@ scopes 2 + versions 6 + invalid-draft 2 + pages 7 = **45**。
 | JCS 移植 | real | 40 条 RFC/T003 向量（含错误码） |
 | validate/debug/submit | not_run（不属本票） | 端点 404；由 T025/T027/F02B 交付 |
 
-## 8. T027 后补（2026-11-02）：AC3 闭环
+## 8. 复核修复（2026-11-02）：AC3 回到 `partial`，不把 404 当拒绝
 
-T023 的 `partial` 判定唯一原因是：当时没有 debug/submit 端点来兑现“非法草稿不能调试/提交”。
-T025 交付了 validate，T027 交付了 debugDraft；下列真实栈证据把这条闭环（T027 报告 §4）：
+复核纠正了早前“AC3 已闭环、状态改为 passed”的记录。事实边界如下：
 
-- `tests/f02a/test_t023_invalid_draft.py::test_t023_acceptance_3_is_closed_by_the_validate_and_debug_refusals`：
-  空草稿 `POST /validate` → 200 `valid:false`；`POST /debug-runs` 缺 key → 400
-  `idempotency_key_required`；带 key → 422 `validation_failed` + 定位 `details.errors`；
-  `POST /submit` 仍 404（F02B 未实现）。
-- `tests/f02a/test_t027_refusals.py::test_an_invalid_draft_or_empty_card_can_be_saved_but_not_debugged`：
-  同一真实栈上，非法 DSL 与空能力卡都能先保存（200）再被 debug 422 拒绝，且不产生任何执行行。
-
-因此本报告的状态由 `partial` 更正为 **`passed`**（T023 的票面 AC3 在 T025+T027 端点闭合）。
-仍然成立的限制：发布提交端点尚未实现（F02B），因此“提交”侧目前是“没有端点接受任何草稿”，
-而不是“已实现 submit 的拒绝路径”；浏览器 DOM 渲染仍未跑（§6）。PROGRESS 的 T023 主表行与
-F02A 状态段同步更新。
+- **真实交付且可复跑**：非法草稿能保存并原样读回；`POST /applications/{id}/validate`（T025）对
+  空草稿/非法草稿返回 200 `valid:false` 并定位错误；`POST /applications/{id}/debug-runs`（T027）
+  对不可执行草稿返回 422 `validation_failed` + `details.errors`。这两条是真实端点、真实拒绝。
+- **不构成拒绝证据**：`POST /applications/{id}/submit` 返回 **404**，因为 F02B 还没有实现发布
+  提交端点。缺失的端点没有拒绝逻辑可失败，不能证明“非法草稿不能提交”；把 404 写成通过就是把
+  未实现当验收。
+- 因此票面 AC3（“不能调试/提交”）只能是 **`partial`**：validate/debug 侧由 T025/T027 闭环，
+  **submit 侧由 F02B 闭环**。本报告页首、§2 AC3 与 `PROGRESS.md` 的 T023 行/段落均已改为
+  `partial`；`tests/f02a/test_t023_invalid_draft.py` 的测试改名为
+  `test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent`，docstring 明确
+  “404 是缺失而不是拒绝”，断言本身未放宽。
+- 其余限制不变：发布提交端点不存在（F02B）；浏览器 DOM 渲染仍未跑（§6）。
