@@ -163,6 +163,54 @@ func (c *Controller) Complete(ctx context.Context, completion Completion) (*Job,
 		}
 	}
 
+	// application_evaluate (T026): the completion guard reads the sealed report
+	// artifact, verifies the manifest/dataset binding and the verdict rules, and
+	// only then records the immutable report. A claimed success that cannot be
+	// proven becomes a failed job with no report row; a business verdict
+	// (status=failed) stays a succeeded job with a failed report. Retryable
+	// guard failures leave the evaluation running for the next attempt; only a
+	// terminal outcome fails/cancels the evaluation row.
+	if job.Kind == KindApplicationEvaluate {
+		if state == StateSucceeded {
+			if resultArtifactID == "" {
+				return nil, &ValidationError{
+					Field:   "result_artifact_id",
+					Message: "application_evaluate success must name the report artifact",
+				}
+			}
+			if err := verifyJobResultArtifact(ctx, tx, job, resultArtifactID); err != nil {
+				return nil, err
+			}
+			failureCode, guardErr := c.guardEvaluationSuccess(ctx, tx, job, resultArtifactID)
+			switch {
+			case errors.Is(guardErr, errGuardTransient):
+				state = StateFailed
+				errorCode = CodeTransientStorageIO
+			case guardErr != nil:
+				return nil, guardErr
+			case failureCode != "":
+				// The report is not something the server can accept: the job
+				// fails with the stable guard code and no report row exists.
+				state = StateFailed
+				errorCode = failureCode
+				resultArtifactID = ""
+			}
+		}
+		if state == StateFailed {
+			retryable := Retryable(job.Kind, errorCode) && job.AttemptCount < MaxAttempts
+			if !retryable {
+				if err := failEvaluationTx(ctx, tx, job.TargetID, errorCode); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if state == StateCancelled {
+			if err := cancelEvaluationTx(ctx, tx, job.TargetID); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if state == StateFailed {
 		retryable := Retryable(job.Kind, errorCode)
 		if retryable && job.AttemptCount < MaxAttempts {

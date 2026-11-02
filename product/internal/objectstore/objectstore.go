@@ -42,7 +42,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 // MaxObjectBytes is the contract's single-object ceiling (contracts/openapi.json
@@ -351,6 +353,65 @@ func (s *Store) Delete(key string) error {
 		return fmt.Errorf("deleting the object: %w", err)
 	}
 	return nil
+}
+
+// ListedObject is one existing object returned by List: key, size and mtime.
+// The mtime is what the orphan sweep uses as its age boundary, so the caller
+// never guesses an object's age from the database row.
+type ListedObject struct {
+	Key     string
+	Size    int64
+	ModTime time.Time
+}
+
+// List returns every valid platform object under one typed prefix
+// (`staging/` or `sealed/`), sorted by key.
+//
+// Only names that parse as a platform key are returned: a stray temporary file
+// or a manually dropped name is not an object the platform created, so a
+// caller cannot mistake it for one. The listing is a point-in-time view; the
+// caller re-checks the database references before deleting anything.
+func (s *Store) List(prefix string) ([]ListedObject, error) {
+	if s == nil {
+		return nil, ErrNotConfigured
+	}
+	var dir string
+	switch prefix {
+	case stagingPrefix:
+		dir = s.stagingDir
+	case sealedPrefix:
+		dir = s.sealedDir
+	default:
+		return nil, ErrInvalidKey
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("listing the object store: %w", err)
+	}
+	objects := make([]ListedObject, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		key := prefix + entry.Name()
+		if !validKey(key) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("inspecting the object: %w", err)
+		}
+		objects = append(objects, ListedObject{
+			Key:     key,
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+	}
+	sort.Slice(objects, func(i, j int) bool { return objects[i].Key < objects[j].Key })
+	return objects, nil
 }
 
 func (s *Store) dirFor(prefix string) string {

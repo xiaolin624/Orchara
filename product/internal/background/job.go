@@ -178,6 +178,22 @@ const (
 	CodeModelCallRefused           = "model_call_refused"
 	CodeFixtureMissing             = "fixture_missing"
 	CodeReportNotReady             = "report_not_ready"
+
+	// application_evaluate failure codes (T026). The first group is
+	// infrastructure: the dataset may still become usable, so a bounded retry is
+	// honest. The second group is business: the evaluation cannot be bound,
+	// read or trusted, so retrying the same facts cannot help and no report row
+	// may be created. A business *verdict* is not in this list at all: a failed
+	// report is a succeeded job.
+	CodeDatasetWaitTimeout        = "dataset_wait_timeout"
+	CodeDatasetNotReady           = "dataset_not_ready"
+	CodeEvaluationMissing         = "evaluation_missing"
+	CodeEvaluationStateInvalid    = "evaluation_state_invalid"
+	CodeEvaluationBindingMissing  = "evaluation_binding_missing"
+	CodeEvaluationBindingMismatch = "evaluation_binding_mismatch"
+	CodeEvaluationUnsupported     = "evaluation_unsupported_kind"
+	CodeReportBindingMismatch     = "report_binding_mismatch"
+	CodeReportInvalid             = "report_invalid"
 )
 
 // Failure codes that quarantine the artifact rather than leave it unavailable.
@@ -210,6 +226,15 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeTransientStorageIO: true,
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,
+	},
+	// application_evaluate (T026): waiting for a dataset or reading bytes can
+	// recover; a binding/report rejection cannot. A failed evaluation verdict is
+	// a report outcome (job succeeded), never a retry.
+	KindApplicationEvaluate: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+		CodeDatasetWaitTimeout: true,
 	},
 }
 

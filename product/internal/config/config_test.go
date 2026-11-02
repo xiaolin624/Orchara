@@ -301,6 +301,88 @@ func TestHeartbeatIntervalMustBePositive(t *testing.T) {
 	}
 }
 
+func TestEvaluationPoolDefaultsAndBounds(t *testing.T) {
+	cfg, err := LoadMaintenance(lookupFrom(validMaintenanceEnv()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// BACKGROUND-JOBS §3: artifact_finalize has its own system_io pool (2) and
+	// everything else shares the work pool (1).
+	if cfg.SystemIOSlots != 2 {
+		t.Fatalf("system_io slots = %d", cfg.SystemIOSlots)
+	}
+	if cfg.WorkSlots != 1 {
+		t.Fatalf("work slots = %d", cfg.WorkSlots)
+	}
+	if cfg.DatasetWaitTimeout != DefaultDatasetWaitTimeout {
+		t.Fatalf("dataset wait = %s", cfg.DatasetWaitTimeout)
+	}
+	if cfg.EvaluationPollInterval != DefaultEvaluationPollInterval {
+		t.Fatalf("evaluation poll = %s", cfg.EvaluationPollInterval)
+	}
+	if cfg.ReportWaitTimeout != DefaultReportWaitTimeout {
+		t.Fatalf("report wait = %s", cfg.ReportWaitTimeout)
+	}
+
+	env := validMaintenanceEnv()
+	env[EnvSystemIOSlots] = "4"
+	env[EnvWorkSlots] = "3"
+	env[EnvDatasetWaitTimeout] = "2s"
+	env[EnvEvaluationPollInterval] = "25ms"
+	env[EnvReportWaitTimeout] = "3s"
+	cfg, err = LoadMaintenance(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SystemIOSlots != 4 || cfg.WorkSlots != 3 {
+		t.Fatalf("slot overrides ignored: %d/%d", cfg.SystemIOSlots, cfg.WorkSlots)
+	}
+	if cfg.DatasetWaitTimeout != 2*time.Second || cfg.ReportWaitTimeout != 3*time.Second {
+		t.Fatalf("wait overrides ignored: %s/%s", cfg.DatasetWaitTimeout, cfg.ReportWaitTimeout)
+	}
+	if cfg.EvaluationPollInterval != 25*time.Millisecond {
+		t.Fatalf("poll override ignored: %s", cfg.EvaluationPollInterval)
+	}
+
+	for key, raw := range map[string]string{
+		EnvSystemIOSlots:          "0",
+		EnvWorkSlots:              "99",
+		EnvDatasetWaitTimeout:     "0s",
+		EnvEvaluationPollInterval: "1ms",
+		EnvReportWaitTimeout:      "48h",
+	} {
+		env := validMaintenanceEnv()
+		env[key] = raw
+		if _, err := LoadMaintenance(lookupFrom(env)); err == nil {
+			t.Fatalf("%s=%q must be rejected", key, raw)
+		}
+	}
+}
+
+func TestSweepConfigurationNeedsOnlyTheStoreAndDatabase(t *testing.T) {
+	env := map[string]string{
+		EnvObjectDir:      `C:\objects`,
+		EnvMaintenanceDSN: "postgresql://orchara_owner:pw@127.0.0.1:55432/db",
+	}
+	cfg, err := LoadSweep(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ObjectDir != `C:\objects` || cfg.DBDSN == "" {
+		t.Fatalf("sweep config = %+v", cfg)
+	}
+	for _, missing := range []string{EnvObjectDir, EnvMaintenanceDSN} {
+		env := map[string]string{
+			EnvObjectDir:      `C:\objects`,
+			EnvMaintenanceDSN: "postgresql://orchara_owner:pw@127.0.0.1:55432/db",
+		}
+		delete(env, missing)
+		if _, err := LoadSweep(lookupFrom(env)); err == nil {
+			t.Fatalf("missing %s must be rejected", missing)
+		}
+	}
+}
+
 func TestObjectLinkConfigurationIsValidated(t *testing.T) {
 	env := validStubEnv()
 	// Empty is legal: the API starts and refuses signed-link traffic. A short

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,6 +99,29 @@ const (
 	EnvMaintenanceDSN = "ORCHARA_MAINTENANCE_DSN"
 	// EnvHeartbeatInterval is how often a running handler renews its lease.
 	EnvHeartbeatInterval = "ORCHARA_BACKGROUND_HEARTBEAT_INTERVAL"
+
+	// F00B/T026 maintenance pool and handler-wait knobs. Every one is also a
+	// `run` flag; the environment is the deployment default, the flag the
+	// per-process override, and both are validated before the process starts.
+	EnvSystemIOSlots          = "ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS"
+	EnvWorkSlots              = "ORCHARA_MAINTENANCE_WORK_SLOTS"
+	EnvDatasetWaitTimeout     = "ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT"
+	EnvEvaluationPollInterval = "ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL"
+	EnvReportWaitTimeout      = "ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT"
+)
+
+// F00B/T026 defaults. artifact_finalize gets a dedicated system_io pool (2
+// slots, BACKGROUND-JOBS.md §3); everything else shares the work pool (1 slot).
+const (
+	DefaultSystemIOSlots          = 2
+	DefaultWorkSlots              = 1
+	DefaultDatasetWaitTimeout     = 60 * time.Second
+	DefaultEvaluationPollInterval = 100 * time.Millisecond
+	DefaultReportWaitTimeout      = 60 * time.Second
+
+	maxMaintenanceSlots     = 32
+	minEvaluationPollPeriod = 10 * time.Millisecond
+	maxHandlerWait          = 24 * time.Hour
 )
 
 // Defaults fixed by BACKGROUND-JOBS.md §1 and the F00B plan.
@@ -200,6 +224,24 @@ type MaintenanceConfig struct {
 	ObjectDir         string
 	DBDSN             string
 	HeartbeatInterval time.Duration
+	// F00B/T026 pool shape and handler wait bounds. SystemIOSlots is how many
+	// concurrent artifact_finalize workers run; WorkSlots is how many workers run
+	// every other compiled kind. A waiting evaluation therefore consumes a work
+	// slot while finalize keeps its own.
+	SystemIOSlots          int
+	WorkSlots              int
+	DatasetWaitTimeout     time.Duration
+	EvaluationPollInterval time.Duration
+	ReportWaitTimeout      time.Duration
+}
+
+// SweepConfig is everything `cmd/maintenance sweep` needs: the object store to
+// inspect and the maintenance database identity to resolve references. It has
+// no internal-API/TLS requirement, because sweeping is a local maintenance
+// operation and never claims work.
+type SweepConfig struct {
+	ObjectDir string
+	DBDSN     string
 }
 
 // ValidationError names the variable that made startup impossible.
@@ -431,15 +473,89 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	systemIOSlots, err := parseSlots(lookup, EnvSystemIOSlots, DefaultSystemIOSlots)
+	if err != nil {
+		return nil, err
+	}
+	workSlots, err := parseSlots(lookup, EnvWorkSlots, DefaultWorkSlots)
+	if err != nil {
+		return nil, err
+	}
+	datasetWait, err := parseHandlerDuration(lookup, EnvDatasetWaitTimeout, DefaultDatasetWaitTimeout)
+	if err != nil {
+		return nil, err
+	}
+	pollInterval, err := parseHandlerDuration(lookup, EnvEvaluationPollInterval, DefaultEvaluationPollInterval)
+	if err != nil {
+		return nil, err
+	}
+	if pollInterval < minEvaluationPollPeriod {
+		return nil, invalid(EnvEvaluationPollInterval,
+			fmt.Sprintf("must be at least %s", minEvaluationPollPeriod))
+	}
+	reportWait, err := parseHandlerDuration(lookup, EnvReportWaitTimeout, DefaultReportWaitTimeout)
+	if err != nil {
+		return nil, err
+	}
 	return &MaintenanceConfig{
-		InternalURL:       strings.TrimSuffix(rawURL, "/"),
-		ClientCert:        values[EnvInternalClientCert],
-		ClientKey:         values[EnvInternalClientKey],
-		CA:                values[EnvInternalCA],
-		ObjectDir:         values[EnvObjectDir],
-		DBDSN:             values[EnvMaintenanceDSN],
-		HeartbeatInterval: heartbeat,
+		InternalURL:            strings.TrimSuffix(rawURL, "/"),
+		ClientCert:             values[EnvInternalClientCert],
+		ClientKey:              values[EnvInternalClientKey],
+		CA:                     values[EnvInternalCA],
+		ObjectDir:              values[EnvObjectDir],
+		DBDSN:                  values[EnvMaintenanceDSN],
+		HeartbeatInterval:      heartbeat,
+		SystemIOSlots:          systemIOSlots,
+		WorkSlots:              workSlots,
+		DatasetWaitTimeout:     datasetWait,
+		EvaluationPollInterval: pollInterval,
+		ReportWaitTimeout:      reportWait,
 	}, nil
+}
+
+// LoadSweep validates the two inputs the orphan sweep needs. A missing object
+// root or database identity is a startup error: the sweep must never guess a
+// directory or run without the authority to resolve references.
+func LoadSweep(lookup Lookup) (*SweepConfig, error) {
+	objectDir := value(lookup, EnvObjectDir)
+	if objectDir == "" {
+		return nil, invalid(EnvObjectDir, "is required for cmd/maintenance sweep")
+	}
+	dsn := value(lookup, EnvMaintenanceDSN)
+	if dsn == "" {
+		return nil, invalid(EnvMaintenanceDSN, "is required for cmd/maintenance sweep")
+	}
+	return &SweepConfig{ObjectDir: objectDir, DBDSN: dsn}, nil
+}
+
+// parseSlots reads a positive worker-slot count with a hard upper bound: a typo
+// must not start hundreds of claim loops against one database.
+func parseSlots(lookup Lookup, key string, fallback int) (int, error) {
+	raw := value(lookup, key)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, invalid(key, fmt.Sprintf("must be an integer, got %q", raw))
+	}
+	if value < 1 || value > maxMaintenanceSlots {
+		return 0, invalid(key, fmt.Sprintf("must be between 1 and %d", maxMaintenanceSlots))
+	}
+	return value, nil
+}
+
+// parseHandlerDuration is parseDuration plus the upper bound a handler wait may
+// have; an accidental "24h" would park a work slot for a day.
+func parseHandlerDuration(lookup Lookup, key string, fallback time.Duration) (time.Duration, error) {
+	duration, err := parseDuration(lookup, key, fallback)
+	if err != nil {
+		return 0, err
+	}
+	if duration > maxHandlerWait {
+		return 0, invalid(key, fmt.Sprintf("must be at most %s", maxHandlerWait))
+	}
+	return duration, nil
 }
 
 func parseDuration(lookup Lookup, key string, fallback time.Duration) (time.Duration, error) {

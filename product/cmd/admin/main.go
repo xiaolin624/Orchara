@@ -44,6 +44,7 @@ commands:
   bootstrap        create the first local administrator (password read from stdin)
   handover         move unfinished service-account responsibility to another administrator
   background-jobs  enqueue fixed-handler background work (background-jobs enqueue --help)
+  evaluations      enqueue one evaluation and its application_evaluate job (evaluations enqueue --help)
 
 handover:
   orchara-admin handover --from <principal> --to <principal> --by <principal>
@@ -68,6 +69,16 @@ background-jobs:
   The command writes a job row in one transaction and prints
   {"id":...,"state":...,"kind":...}. Unknown kinds or malformed ids exit 2;
   a dedup conflict with different facts exits 1 and writes nothing.
+
+evaluations:
+  orchara-admin evaluations enqueue --kind model|application --owner-login LOGIN \
+      --dataset-artifact-id UUID [--model-profile-version-id UUID] [--snapshot-id UUID]
+
+  One transaction writes the evaluation row (queued) and its
+  application_evaluate background job. --kind=model requires the candidate and is
+  the kind T026 can execute end to end; --kind=application requires --snapshot-id
+  and needs T027's execution_snapshots table (structural only in this batch).
+  Shape errors exit 2; refusals against the database exit 1; both write nothing.
 `
 )
 
@@ -98,7 +109,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover' or 'background-jobs'")
+		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs' or 'evaluations'")
 	}
 	switch args[0] {
 	case "migrate":
@@ -109,11 +120,13 @@ func run(args []string) error {
 		return runHandover(args[1:])
 	case "background-jobs":
 		return runBackgroundJobs(args[1:])
+	case "evaluations":
+		return runEvaluations(args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover' or 'background-jobs'", args[0])
+		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs' or 'evaluations'", args[0])
 	}
 }
 

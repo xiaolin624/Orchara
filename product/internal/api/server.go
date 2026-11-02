@@ -134,6 +134,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// separate mTLS listener (RegisterInternal).
 	mux.HandleFunc("GET /api/v1/background-jobs/{job_id}", s.handleGetBackgroundJob)
 
+	// F00B/T026: the evaluation business state and its immutable report. Both
+	// are owner-or-admin (everyone else 404) and project only contract fields;
+	// the report read never returns the report body or an artifact path.
+	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
+	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+
 	// F00B/T024: presigned object transfers. There is deliberately no session
 	// requirement here (the HMAC token is the whole authority) and no list
 	// endpoint: PUT can only fill a reserved staging key, GET can only read a

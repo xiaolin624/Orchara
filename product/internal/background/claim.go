@@ -99,6 +99,11 @@ func (c *Controller) Claim(ctx context.Context, request ClaimRequest) (*Job, err
 	if err != nil {
 		return nil, fmt.Errorf("claiming a background job: %w", err)
 	}
+	// T026: leasing an evaluation job is what moves its business row to running.
+	// A retry keeps it running (an attempt is still in flight).
+	if err := markEvaluationRunning(ctx, tx, job); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the claim transaction: %w", err)
 	}

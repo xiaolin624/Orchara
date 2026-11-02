@@ -11,7 +11,9 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -30,6 +32,7 @@ import (
 type jobReport struct {
 	JobID      string `json:"job_id"`
 	Kind       string `json:"kind"`
+	Pool       string `json:"pool,omitempty"`
 	Result     string `json:"result"` // succeeded|failed|retried|stale|cancelled
 	State      string `json:"state,omitempty"`
 	ErrorCode  string `json:"error_code,omitempty"`
@@ -37,7 +40,8 @@ type jobReport struct {
 	DurationMS int64  `json:"duration_ms"`
 }
 
-// runSummary is the last JSON object a `run` prints.
+// runSummary is the last JSON object a `run` prints. The counts are aggregated
+// across every pool and worker slot.
 type runSummary struct {
 	Status    string `json:"status"`
 	Claimed   int    `json:"claimed"`
@@ -46,6 +50,7 @@ type runSummary struct {
 	Retried   int    `json:"retried"`
 	Stale     int    `json:"stale"`
 	Cancelled int    `json:"cancelled"`
+	Pools     string `json:"pools,omitempty"`
 	Note      string `json:"note"`
 }
 
@@ -70,11 +75,32 @@ type runOptions struct {
 	kinds        []background.Kind
 	pollInterval time.Duration
 	workerID     string
+	// Pool shape and handler waits. The environment supplies deployment
+	// defaults (config.MaintenanceConfig); an explicitly passed flag overrides
+	// it. Values are resolved in applyConfig before the process starts.
+	systemIOSlots      int
+	workSlots          int
+	datasetWaitTimeout time.Duration
+	evaluationPoll     time.Duration
+	reportWaitTimeout  time.Duration
+	// explicit remembers which flags the operator actually set, so "unset" uses
+	// the validated environment default instead of a zero-value guess.
+	explicit map[string]bool
 }
 
 // runMaintenance is the `run` subcommand: a real maintenance client of the
 // internal mTLS API. It is configuration-fail-closed: without the internal URL,
 // client certificate, CA, object store or maintenance DSN it refuses to start.
+//
+// Since T026 the process runs two independent pools:
+//
+//	system_io  artifact_finalize only (default 2 slots)
+//	work       every other compiled kind (default 1 slot)
+//
+// Finalizing a file is what unblocks a waiting evaluation's report, so it must
+// never share the single work pool that a waiting handler occupies. A waiting
+// evaluation heartbeats and polls the job-scoped artifact status; it does not
+// hold a system_io slot.
 func runMaintenance(args []string) {
 	options, err := parseRunOptions(args)
 	if err != nil {
@@ -86,6 +112,10 @@ func runMaintenance(args []string) {
 	cfg, err := config.LoadMaintenance(config.FromEnv())
 	if err != nil {
 		failMaintenance(logger, err)
+	}
+	if err := options.applyConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "orchara-maintenance: %v\n\n%s", err, usage)
+		os.Exit(2)
 	}
 	store, err := objectstore.Open(cfg.ObjectDir)
 	if err != nil {
@@ -121,6 +151,8 @@ func runMaintenance(args []string) {
 	}
 	logger.Printf("run: worker=%s kinds=%v once=%t heartbeat=%s",
 		options.workerID, options.kinds, options.once, cfg.HeartbeatInterval)
+	logger.Printf("run: pools=%s",
+		describePools(options.pools()))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -144,10 +176,21 @@ func failMaintenance(logger *log.Logger, err error) {
 func parseRunOptions(args []string) (*runOptions, error) {
 	flags := flag.NewFlagSet("run", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	once := flags.Bool("once", false, "claim until there is no ready job, then exit")
+	once := flags.Bool("once", false,
+		"drain mode: keep claiming until every pool is idle, then exit")
 	kindsFlag := flags.String("kinds", "", "comma-separated kinds with a compiled handler")
 	pollInterval := flags.Duration("poll-interval", 2*time.Second, "wait between empty claims")
 	workerID := flags.String("worker-id", "", "identity recorded on the leased job")
+	systemIOSlots := flags.Int("system-io-slots", 0,
+		"concurrent artifact_finalize workers (env ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS, default 2)")
+	workSlots := flags.Int("work-slots", 0,
+		"concurrent workers for every other kind (env ORCHARA_MAINTENANCE_WORK_SLOTS, default 1)")
+	datasetWait := flags.Duration("dataset-wait-timeout", 0,
+		"how long one evaluation attempt waits for its dataset (env ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT)")
+	evaluationPoll := flags.Duration("evaluation-poll-interval", 0,
+		"evaluation status-poll/heartbeat cadence (env ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL)")
+	reportWait := flags.Duration("report-wait-timeout", 0,
+		"how long one attempt waits for its report to be finalized (env ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT)")
 	if err := flags.Parse(args); err != nil {
 		return nil, err
 	}
@@ -203,12 +246,76 @@ func parseRunOptions(args []string) (*runOptions, error) {
 	if len(id) > 128 {
 		return nil, errors.New("--worker-id must be at most 128 characters")
 	}
-	return &runOptions{
+	options := &runOptions{
 		once:         *once,
 		kinds:        kinds,
 		pollInterval: *pollInterval,
 		workerID:     id,
-	}, nil
+		explicit:     map[string]bool{},
+	}
+	flags.Visit(func(visited *flag.Flag) { options.explicit[visited.Name] = true })
+	// Keep the raw flag values; applyConfig validates them together with the
+	// environment defaults.
+	options.systemIOSlots = *systemIOSlots
+	options.workSlots = *workSlots
+	options.datasetWaitTimeout = *datasetWait
+	options.evaluationPoll = *evaluationPoll
+	options.reportWaitTimeout = *reportWait
+	return options, nil
+}
+
+// applyConfig resolves every unspecified knob from the validated environment
+// configuration and rejects out-of-range explicit flags. A flag never silently
+// overrides configuration with a zero value.
+func (o *runOptions) applyConfig(cfg *config.MaintenanceConfig) error {
+	resolveSlots := func(name string, explicit bool, value int, fallback int) (int, error) {
+		if !explicit {
+			return fallback, nil
+		}
+		if value < 1 || value > 32 {
+			return 0, fmt.Errorf("--%s must be between 1 and 32", name)
+		}
+		return value, nil
+	}
+	var err error
+	o.systemIOSlots, err = resolveSlots("system-io-slots", o.explicit["system-io-slots"],
+		o.systemIOSlots, cfg.SystemIOSlots)
+	if err != nil {
+		return err
+	}
+	o.workSlots, err = resolveSlots("work-slots", o.explicit["work-slots"],
+		o.workSlots, cfg.WorkSlots)
+	if err != nil {
+		return err
+	}
+	resolveDuration := func(name string, explicit bool, value time.Duration, fallback time.Duration) (time.Duration, error) {
+		if !explicit {
+			return fallback, nil
+		}
+		if value <= 0 {
+			return 0, fmt.Errorf("--%s must be greater than zero", name)
+		}
+		return value, nil
+	}
+	o.datasetWaitTimeout, err = resolveDuration("dataset-wait-timeout",
+		o.explicit["dataset-wait-timeout"], o.datasetWaitTimeout, cfg.DatasetWaitTimeout)
+	if err != nil {
+		return err
+	}
+	o.evaluationPoll, err = resolveDuration("evaluation-poll-interval",
+		o.explicit["evaluation-poll-interval"], o.evaluationPoll, cfg.EvaluationPollInterval)
+	if err != nil {
+		return err
+	}
+	if o.evaluationPoll < 10*time.Millisecond {
+		return errors.New("--evaluation-poll-interval must be at least 10ms")
+	}
+	o.reportWaitTimeout, err = resolveDuration("report-wait-timeout",
+		o.explicit["report-wait-timeout"], o.reportWaitTimeout, cfg.ReportWaitTimeout)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func registryNames() []string {
@@ -220,7 +327,74 @@ func registryNames() []string {
 	return names
 }
 
-// runner owns one maintenance process's loop.
+// ---------------------------------------------------------------------------
+// pools
+// ---------------------------------------------------------------------------
+
+// systemIOKind reports whether a kind belongs to the dedicated system_io pool.
+// Only artifact_finalize does: it is the work that unblocks waiting handlers.
+func systemIOKind(kind background.Kind) bool {
+	return kind == background.KindArtifactFinalize
+}
+
+// pool is one independent claim group with a fixed slot count.
+type pool struct {
+	name  string
+	kinds []background.Kind
+	slots int
+}
+
+// pools partitions the selected kinds. A process started with --kinds
+// artifact_finalize therefore runs only the system_io pool, and one started with
+// --kinds model_validate,application_evaluate runs only the work pool.
+func (o *runOptions) pools() []pool {
+	systemKinds := make([]background.Kind, 0, 1)
+	workKinds := make([]background.Kind, 0, len(o.kinds))
+	for _, kind := range o.kinds {
+		if systemIOKind(kind) {
+			systemKinds = append(systemKinds, kind)
+		} else {
+			workKinds = append(workKinds, kind)
+		}
+	}
+	pools := make([]pool, 0, 2)
+	if len(systemKinds) > 0 {
+		pools = append(pools, pool{name: "system_io", kinds: systemKinds, slots: o.systemIOSlots})
+	}
+	if len(workKinds) > 0 {
+		pools = append(pools, pool{name: "work", kinds: workKinds, slots: o.workSlots})
+	}
+	return pools
+}
+
+func describePools(pools []pool) string {
+	parts := make([]string, 0, len(pools))
+	for _, p := range pools {
+		kinds := make([]string, 0, len(p.kinds))
+		for _, kind := range p.kinds {
+			kinds = append(kinds, string(kind))
+		}
+		parts = append(parts, fmt.Sprintf("%s[slots=%d kinds=%s]", p.name, p.slots, strings.Join(kinds, ",")))
+	}
+	return strings.Join(parts, " ")
+}
+
+// workerIDFor gives every slot its own identity so diagnostics can tell which
+// pool/slot leased a job. The base id stays visible for T022-style startup
+// assertions.
+func workerIDFor(base, poolName string, slot int) string {
+	id := base
+	if len(id) > 80 {
+		id = id[:80]
+	}
+	return fmt.Sprintf("%s:%s:%d", id, poolName, slot)
+}
+
+// ---------------------------------------------------------------------------
+// runner
+// ---------------------------------------------------------------------------
+
+// runner owns one maintenance process's loops.
 type runner struct {
 	client    *internalClient
 	scope     *jobScope
@@ -229,51 +403,205 @@ type runner struct {
 	heartbeat time.Duration
 	options   runOptions
 	logger    *log.Logger
+
+	summaryMu sync.Mutex
 	summary   runSummary
+	outputMu  sync.Mutex
 }
 
-// loop claims until told to stop (continuous mode) or until a claim is empty
-// (--once). Polling PostgreSQL through the claim endpoint is the only wakeup
-// mechanism: there is no Redis or other wakeup bus in this batch, and a lost
-// wakeup can therefore never lose work.
+// drainState makes `--once` a *drain*, not "first empty claim wins": the process
+// exits only when every worker slot has claimed an empty queue at the same
+// activity epoch, meaning no job started or finished anywhere since the last of
+// them looked. Any accepted or finished job bumps the epoch and clears every
+// empty mark, because a work handler's completeUpload creates a system_io job
+// that must still run (and a finalize job may create more work in turn).
+type drainState struct {
+	mu        sync.Mutex
+	total     int
+	epoch     uint64
+	emptyAt   map[string]uint64
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+func newDrainState(total int) *drainState {
+	return &drainState{
+		total:   total,
+		emptyAt: make(map[string]uint64),
+		done:    make(chan struct{}),
+	}
+}
+
+// activity records a job start or finish: work may now exist for another pool.
+func (d *drainState) activity() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.epoch++
+	d.emptyAt = make(map[string]uint64)
+}
+
+// markEmpty records that this slot saw no ready job at the current epoch and
+// reports whether every slot has now done so (the drain is complete).
+func (d *drainState) markEmpty(worker string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.emptyAt[worker] = d.epoch
+	if len(d.emptyAt) < d.total {
+		return false
+	}
+	for _, epoch := range d.emptyAt {
+		if epoch != d.epoch {
+			return false
+		}
+	}
+	d.closeOnce.Do(func() { close(d.done) })
+	return true
+}
+
+// loop starts one goroutine per slot per pool and waits for the signal or (in
+// --once mode) for the drain to complete.
 func (r *runner) loop(ctx context.Context) (runSummary, error) {
+	r.setSummaryNote()
+	pools := r.options.pools()
+	if len(pools) == 0 {
+		return r.summarySnapshot(), errors.New("no pool selected")
+	}
+	total := 0
+	for _, p := range pools {
+		total += p.slots
+	}
+	drain := newDrainState(total)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// In drain mode the coordinator closes drain.done when every worker is idle
+	// with no job in flight; all workers then stop through the cancelled context.
+	// A worker never exits alone while another one may still create work.
+	if r.options.once {
+		go func() {
+			select {
+			case <-drain.done:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	reportError := func(err error) {
+		select {
+		case errCh <- err:
+		default:
+		}
+		cancel()
+	}
+	for _, currentPool := range pools {
+		for slot := 0; slot < currentPool.slots; slot++ {
+			wg.Add(1)
+			go func(currentPool pool, slot int) {
+				defer wg.Done()
+				if err := r.worker(ctx, currentPool, slot, drain); err != nil {
+					reportError(err)
+				}
+			}(currentPool, slot)
+		}
+	}
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return r.summarySnapshot(), err
+	default:
+		return r.summarySnapshot(), nil
+	}
+}
+
+func (r *runner) setSummaryNote() {
+	pools := r.options.pools()
+	parts := make([]string, 0, len(pools))
+	for _, p := range pools {
+		parts = append(parts, p.name)
+	}
+	r.summaryMu.Lock()
 	r.summary = runSummary{
 		Status: "ok",
+		Pools:  strings.Join(parts, ","),
 		Note:   "pg polling only; no wakeup bus configured",
 	}
-	kinds := make([]string, 0, len(r.options.kinds))
-	for _, kind := range r.options.kinds {
+	r.summaryMu.Unlock()
+}
+
+// worker is one claim slot of one pool.
+func (r *runner) worker(ctx context.Context, currentPool pool, slot int, drain *drainState) error {
+	workerID := workerIDFor(r.options.workerID, currentPool.name, slot)
+	kinds := make([]string, 0, len(currentPool.kinds))
+	for _, kind := range currentPool.kinds {
 		kinds = append(kinds, string(kind))
 	}
+	slotID := currentPool.name + "/" + strconv.Itoa(slot)
 	for {
 		if ctx.Err() != nil {
-			return r.summary, nil
+			return nil
 		}
-		job, err := r.client.claim(ctx, r.options.workerID, kinds)
+		job, err := r.client.claim(ctx, workerID, kinds)
 		if err != nil {
 			if ctx.Err() != nil {
-				return r.summary, nil
+				return nil
 			}
-			return r.summary, err
+			return err
 		}
 		if job == nil {
-			if r.options.once {
-				return r.summary, nil
+			if !r.options.once {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(r.options.pollInterval):
+				}
+				continue
 			}
+			if drain.markEmpty(slotID) {
+				return nil
+			}
+			// Another pool/slot has not yet seen the same empty queue (and may
+			// create work for this one); retry after the poll interval.
 			select {
 			case <-ctx.Done():
-				return r.summary, nil
+				return nil
 			case <-time.After(r.options.pollInterval):
 			}
 			continue
 		}
-		report, err := r.execute(ctx, job)
-		if err != nil {
-			return r.summary, err
+		drain.activity()
+		report, execErr := r.execute(ctx, job)
+		report.Pool = currentPool.name
+		drain.activity()
+		if execErr != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return execErr
 		}
-		r.summary.record(report)
-		_ = json.NewEncoder(os.Stdout).Encode(report)
+		r.record(report)
+		r.emit(report)
 	}
+}
+
+func (r *runner) record(report jobReport) {
+	r.summaryMu.Lock()
+	defer r.summaryMu.Unlock()
+	r.summary.record(report)
+}
+
+func (r *runner) emit(report jobReport) {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
+	_ = json.NewEncoder(os.Stdout).Encode(report)
+}
+
+func (r *runner) summarySnapshot() runSummary {
+	r.summaryMu.Lock()
+	defer r.summaryMu.Unlock()
+	return r.summary
 }
 
 // execute heartbeats, runs the compiled handler, and submits the outcome.
@@ -340,6 +668,11 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 			DB:           r.db,
 			Heartbeat: func(heartbeatCtx context.Context) error {
 				return r.client.heartbeat(heartbeatCtx, job.JobID, job.AttemptToken)
+			},
+			Settings: background.HandlerSettings{
+				DatasetWaitTimeout:     r.options.datasetWaitTimeout,
+				EvaluationPollInterval: r.options.evaluationPoll,
+				ReportWaitTimeout:      r.options.reportWaitTimeout,
 			},
 		})
 	}

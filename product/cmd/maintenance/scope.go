@@ -110,6 +110,25 @@ func (s *jobScope) ModelCall(
 	}, nil
 }
 
+// Evaluation resolves the job-scoped evaluation binding. The handler never
+// learns which candidate/snapshot row the manifest came from, only the hash it
+// must declare in the report.
+func (s *jobScope) Evaluation(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (background.EvaluationBinding, error) {
+	binding, err := s.client.evaluationBinding(ctx, jobID, attemptToken)
+	if err != nil {
+		return background.EvaluationBinding{}, err
+	}
+	return background.EvaluationBinding{
+		EvaluationID:      binding.EvaluationID,
+		Kind:              binding.Kind,
+		DatasetArtifactID: binding.DatasetArtifactID,
+		ManifestSHA256:    binding.ManifestSHA256,
+	}, nil
+}
+
 // FetchURL reads one signed GET link, capped at maxBytes.
 func (s *jobScope) FetchURL(ctx context.Context, link string, maxBytes int64) ([]byte, error) {
 	if err := validateSignedURL(link); err != nil {
@@ -215,6 +234,14 @@ type modelCallPayload struct {
 	Data             map[string]any `json:"data"`
 }
 
+// evaluationBindingPayload is the non-contract internal evaluation read (T026).
+type evaluationBindingPayload struct {
+	EvaluationID      string `json:"evaluation_id"`
+	Kind              string `json:"kind"`
+	DatasetArtifactID string `json:"dataset_artifact_id"`
+	ManifestSHA256    string `json:"manifest_sha256"`
+}
+
 func (c *internalClient) createUpload(
 	ctx context.Context,
 	jobID, attemptToken, mediaType string,
@@ -315,6 +342,28 @@ func (c *internalClient) modelCall(
 	}
 	if status != http.StatusOK {
 		return modelCallPayload{}, fmt.Errorf("model-calls returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// evaluationBinding is the T026 job-scoped evaluation read. The job id and the
+// attempt token are the whole request; the server resolves everything else.
+func (c *internalClient) evaluationBinding(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (evaluationBindingPayload, error) {
+	var response evaluationBindingPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return evaluationBindingPayload{}, err
+	}
+	if status != http.StatusOK {
+		return evaluationBindingPayload{}, fmt.Errorf("evaluation binding returned unexpected status %d", status)
 	}
 	return response, nil
 }

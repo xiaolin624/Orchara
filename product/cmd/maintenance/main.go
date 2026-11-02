@@ -3,8 +3,9 @@
 // Subcommands:
 //
 //	(none)  connectivity/visibility pass, one JSON report, exit 0
-//	run     F00B/T022 maintenance client: claim a fixed kind, heartbeat,
-//	        execute the compiled handler, submit the result
+//	run     F00B/T022 maintenance client: claim fixed kinds, heartbeat,
+//	        execute the compiled handlers, submit results
+//	sweep   F00B/T026 object-store orphan cleanup
 //
 // The no-argument behaviour is deliberately unchanged: it proves the maintenance
 // identity can reach the database and read the state the worker writes. The
@@ -24,16 +25,36 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const usage = `usage: orchara-maintenance [run]
+const usage = `usage: orchara-maintenance [run|sweep]
 
   (no argument)  connectivity and visibility pass; prints one JSON report
   run            claim and execute background jobs over the internal mTLS API
+  sweep          delete orphaned staging/sealed objects (never live ones)
 
 run flags:
-  --once                 claim until there is no ready job, then exit
+  --once                 drain every pool until idle, then exit
   --kinds a,b            restrict to these kinds (must have a compiled handler)
   --poll-interval 2s     wait between empty claims (not used with --once)
-  --worker-id NAME       identity recorded on the leased job
+  --worker-id NAME       base identity recorded on the leased job
+  --system-io-slots N    concurrent artifact_finalize workers (default 2)
+  --work-slots N         concurrent workers for every other kind (default 1)
+  --dataset-wait-timeout D   how long one evaluation attempt waits for its dataset
+  --evaluation-poll-interval D   evaluation status-poll/heartbeat cadence
+  --report-wait-timeout D    how long one attempt waits for its report finalize
+
+  Every pool/flag default can also come from the environment:
+  ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS, ORCHARA_MAINTENANCE_WORK_SLOTS,
+  ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT,
+  ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL,
+  ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT.
+
+sweep flags:
+  --orphan-age 1h   required; only delete objects at least this old
+  --dry-run         report what would be deleted, delete nothing
+
+  sweep needs ORCHARA_MAINTENANCE_DSN and ORCHARA_OBJECT_DIR (not the internal
+  TLS client configuration): it reads references from PostgreSQL and deletes
+  objects from the local store.
 `
 
 type report struct {
@@ -53,6 +74,8 @@ func main() {
 	switch os.Args[1] {
 	case "run":
 		runMaintenance(os.Args[2:])
+	case "sweep":
+		runSweep(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 	default:

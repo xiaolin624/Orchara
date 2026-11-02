@@ -28,6 +28,11 @@ type JobScope interface {
 	Status(ctx context.Context, jobID, attemptToken, artifactID string) (ArtifactView, error)
 	// ModelCall invokes the job's candidate through the platform proxy.
 	ModelCall(ctx context.Context, jobID, attemptToken string, request ModelCallRequest) (ModelCallResult, error)
+	// Evaluation returns the job-scoped evaluation binding: which evaluation
+	// this job is, its kind, its dataset and the manifest hash its report must
+	// declare. The server resolves all of them; the handler supplies only its
+	// lease proof.
+	Evaluation(ctx context.Context, jobID, attemptToken string) (EvaluationBinding, error)
 	// FetchURL reads a signed GET link into memory, capped at maxBytes.
 	FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, error)
 	// PutURL writes body to a signed PUT link.

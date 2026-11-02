@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"orchara/platform/internal/objectstore"
 )
@@ -23,6 +24,28 @@ type HandlerWork struct {
 	Store        *objectstore.Store
 	DB           *sql.DB
 	Heartbeat    func(ctx context.Context) error
+	// Settings carries the maintenance process's operator-tunable handler
+	// timeouts (T026). A zero value means "use the handler's documented default";
+	// tests and deployments set short values explicitly rather than waiting a
+	// minute for a bounded wait to expire.
+	Settings HandlerSettings
+}
+
+// HandlerSettings is the per-process configuration a handler may consult.
+//
+// It exists instead of package-level env reads in handlers: the maintenance
+// process loads and validates these once (flags/env) and passes them to every
+// invocation, so a handler never parses configuration itself.
+type HandlerSettings struct {
+	// DatasetWaitTimeout bounds how long application_evaluate waits for its
+	// dataset artifact to become ready.
+	DatasetWaitTimeout time.Duration
+	// EvaluationPollInterval is how often the waiting handler re-checks the
+	// job-scoped artifact status (and heartbeats between checks).
+	EvaluationPollInterval time.Duration
+	// ReportWaitTimeout bounds how long a handler waits for its own report
+	// artifact to be finalized by the system_io pool.
+	ReportWaitTimeout time.Duration
 }
 
 // Outcome is what a handler reports. State is succeeded (the guard then decides
