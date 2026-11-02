@@ -115,7 +115,14 @@ orchara-admin evaluations enqueue --kind model|application --owner-login LOGIN \
 - handler 主动失败：重试表内码 → job ready 重试（evaluation 保持 running）；business 码 → job failed +
   evaluation failed；cancelled → evaluation cancelled。`application_evaluate` 重试表固定为
   `transient_storage_io`/`transient_internal`/`lease_expired`/`dataset_wait_timeout`。
-- Claim 在同一事务把 evaluation `queued -> running`；retry 不减；所有评测终态只由 Complete 写。
+- Claim 在同一事务把 evaluation `queued -> running`；retry 不减。评测终态由 Complete 的守卫
+  写（succeeded/failed/cancelled），**以及租约耗尽时的恢复事务**写 failed：`recoverExpiredTx`
+  （`Claim` 与 `SweepExpired` 共用）在第三次过期租约把 job 置 failed 的同事务里，
+  若 job 是 `application_evaluate` 且 evaluation 尚未终态，则把 evaluation 也置
+  `failed`、同一 `error_code`、`finished_at=now()`（第二次复核修复，ADR §54）。可重试的恢复
+  （回 ready）不触碰 evaluation，它保持 running。测试：
+  `test_t026_failures.py::test_exhausted_leases_fail_the_evaluation_without_a_report`
+  （修前 job failed 而 evaluation 永远停在 running）。
 
 ### 1.5 运行时双池（`cmd/maintenance run`）
 
@@ -154,10 +161,13 @@ orchara-maintenance sweep --orphan-age 1h [--dry-run]
 - `staging/*`：仅当不存在 “live 上传者”（`uploading`/`scanning` 且 `deleted_at IS NULL` 的 artifact
   行以该 key 为目标）且年龄 ≥ orphan-age 时删除；ready/quarantined/deleted 的 staging 残留可删。
   reason 记录 `artifact_ready`/`artifact_quarantined`/`artifact_deleted`/`no_artifact_reference`。
-- `sealed/*`：仅当**没有任何 artifact 行引用**该 key 且年龄达标时删除；被任何行引用（含 deleted 行）
-  永不删（F07 的删除模型负责）。reason `no_artifact_reference`。
+- **`sealed/*` 本命令永不删除（第二次复核修复，ADR §55）**：sealed 对象先于 artifact 行提交写入，
+  一次性引用快照不能证明它没有主人（写入者可能正处于“已 seal、未 commit”之间），旧实现据此删除会
+  误删刚登记的对象。票面只要求“孤儿暂存对象可清理”，因此本票只清 staging；未被引用的 sealed
+  对象计数在 summary 的 `sealed_deferred` 里报告，清理留给 F07/F13A，且必须与登记/删除共享一把锁。
+  staging 对象的旧 key 不会复用，年龄门槛仍用对象 mtime。
 - 每删一条打印一行 JSON（key/store/reason/size/action），最后打印 summary；`--dry-run` 只输出
-  `would_delete` 不动文件；删除幂等。年龄用对象 mtime，是并发护栏；临时文件/非法 key 不参与。
+  `would_delete` 不动文件；删除幂等。临时文件/非法 key 不参与。
 
 ## 2. 池 / 环境 / 接口（T027、F13A、F07 可依赖）
 
@@ -183,15 +193,15 @@ orchara-maintenance sweep --orphan-age 1h [--dry-run]
 | `test_t026_migration.py` | 7 | 0013 记录/重放 no-op；两表列与 FK；补齐的两个延期 FK（含悬空引用被拒）；kind XOR/state CHECK；snapshot 无 FK；索引/UNIQUE；worker/PUBLIC 权限 |
 | `test_t026_enqueue.py` | 12 | 7 种坏命令行 exit 2 且零行；未知 login/缺候选 exit 1 且零行；缺 dataset 由 FK 拒绝；model 成功两行一致；application 结构接受（snapshot 无 FK） |
 | `test_t026_pool.py` | 2 | work 池两个等待评测占满时，system_io finalize 仍完成并 ready（finalize terminal 时两评测仍 leased/running）；数据集完成后两评测 succeeded + report passed；`--once` 跨池 drain 覆盖报告 finalize |
-| `test_t026_failures.py` | 6 | case failed → report failed + job/evaluation succeeded；空 cases → not_run；坏 dataset → report failed；dataset 墓碑 → job/evaluation failed + error_code + 无 report；sealed 缺失 → 3 次重试后 `transient_storage_io` + 无 report；application kind → `evaluation_binding_missing` + 无 report |
+| `test_t026_failures.py` | 7 | case failed → report failed + job/evaluation succeeded；空 cases → not_run；坏 dataset → report failed；dataset 墓碑 → job/evaluation failed + error_code + 无 report；sealed 缺失 → 3 次重试后 `transient_storage_io` + 无 report；application kind → `evaluation_binding_missing` + 无 report；**第二次复核新增**：3 次租约过期（下一次 claim 同时恢复）→ job failed(`lease_expired`) + evaluation failed(同码) + 无 report，且第一次可重试恢复时 evaluation 保持 running（修前 evaluation 永远停在 running） |
 | `test_t026_binding.py` | 8 | 直接 claim/upload/complete/finalize 后提交：错 manifest/错 dataset → `report_binding_mismatch`；坏 JSON/空 cases 声称 passed/无 checks/case_count 不符 → `report_invalid`；合法 not_run 被记录但绝不 passed |
 | `test_t026_authz.py` | 3 | 非 admin owner 200、其他用户 404、admin 200（evaluation/report/background job）；未知/畸形 id 404；未认证 401；字段精确且无 body/路径泄漏；**复核修复新增 API-key scope**：write-only key 403 `insufficient_scope`，read-scoped key 非 owner 404，真正 owner 后 200（scope 必要但不充分） |
-| `test_t026_sweep.py` | 2 | 真实孤儿 staging/sealed 被删；被引用 sealed（ready 与 deleted 行）保留；ready 行 staging 残留被删；scanning 行 staging 保留；dry-run 不动文件；重复 sweep 删 0；缺 `--orphan-age`/负值 exit 2 |
+| `test_t026_sweep.py` | 2 | **第二次复核后**：真实孤儿 staging 被删；ready 行 staging 残留被删；scanning 行 staging 保留；未引用的 sealed 孤儿**保留**并在 `sealed_deferred` 计数（修前被删）；被引用 sealed（ready 与 deleted 行）保留；dry-run 不动文件；重复 sweep 删 0；缺 `--orphan-age`/负值 exit 2 |
 
 ### 3.2 收尾门禁（实际命令与原始输出尾部）
 
 > 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；复核修复后最新门禁与
-> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。
+> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”与“F00B/F02A 第二次复核修复”两节。
 
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
@@ -288,7 +298,7 @@ $ python -m pytest tests/f00b -q -k t026
 | 真实模型 provider 评测 | `not_run`（F13A/F06） | 本票评测不调用模型；无供应商凭据/endpoint |
 | API key 的评测 scope | **`partial`（过渡实现）** | 复核修复（ADR §47）：契约未定义评测/job 专用 scope，三个公共读对 API key 强制平台唯一读 scope `application:read`（先 scope 403、后 owner/admin 404；会话不受限）。更细的专用 scope 与契约修订仍属 F13A，本批不假装已有专用 scope |
 | 公共 `POST /applications/{id}/evaluations` | `not_run`（F13A） | 契约的受信 runner 入口；T026 不实现、不伪造 |
-| F07 删除/墓碑传播 | `not_run`（F07） | sweep 永不删被引用的 sealed；deleted artifact 的字节归 F07 |
+| F07 删除/墓碑传播 | `not_run`（F07） | sweep **不删任何 sealed 对象**（未引用孤儿只在 `sealed_deferred` 计数；清理需与登记共享锁，属 F07/F13A）；deleted artifact 的字节归 F07 |
 | 全量 `python -m pytest tests` | `not_run`（统筹） | PLAN §1 规定全部票完成后只跑一次 |
 | Redis 唤醒 | `not_run`（无实例） | 双池沿用 PG 轮询；`--once`/连续模式均只靠 claim 轮询 |
 
@@ -340,8 +350,9 @@ $ python -m pytest tests/f00b -q -k t026
 - **F13A**：替换合成 checker/runner，扩展 `EvaluationReportDocument`（cases/checks 语义）与守卫的
   状态/绑定规则；必须复用 `evaluation_reports` immutable 行、`succeeded+report_id` 与失败无 report 的
   不变量；不得让 handler/front-end 自证 passed。真实模型调用/预算属 F13A/F05。
-- **F07**：deleted artifact 的 sealed 字节清理、评测/报告删除生命周期；sweep 永不删被任何 artifact
-  行引用的 sealed，也不复活 quarantined。
+- **F07**：deleted artifact 的 sealed 字节清理、评测/报告删除生命周期；sweep **不删任何 sealed
+  对象**（含无行引用的孤儿，只报告 `sealed_deferred`），也不复活 quarantined。sealed 孤儿的
+  安全清理与登记共享一把锁，属 F07/F13A（ADR §55）。
 - **部署方**：设置 `ORCHARA_OBJECT_DIR`/签名 key/`ORCHARA_PUBLIC_URL`/内部 mTLS；按负载调
   system_io/work 槽位与等待超时；sweep 建议 cron + `--orphan-age`（例如 1h）。
 

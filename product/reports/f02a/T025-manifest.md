@@ -14,8 +14,9 @@
   - `internal/catalog/manifest.go`（依赖闭包/就绪/环/归属检查 + validate 编排 + 密封字节）
   - `internal/api/validate.go`、`internal/api/server.go`、`internal/config/config.go`、`cmd/api/main.go`
   - `tests/contracts/{README.md,snapshots/}`（golden：JSON + JCS 原字节 + sha256，含 layout-only 双胞胎）
-  - `tests/support/t025.py`、`tests/support/fixtures.py`、`tests/f02a/test_t025_*.py`（4 文件 16 用例；
-    复核修复删除了一个不调用 verifier 的 Python 篡改断言，见 §3.2/§5）
+  - `tests/support/t025.py`、`tests/support/fixtures.py`、`tests/f02a/test_t025_*.py`（4 文件 17 用例；
+    复核修复删除了一个不调用 verifier 的 Python 篡改断言，见 §3.2/§5；第二次复核新增依赖大小写
+    归一用例，见 §1.3）
   - `docs/adr/0004-f00b-f02a-boundaries.md` §25–30
 - 版本 / 环境：
   - Go 1.27.3 windows/amd64（`E:\orchara-toolchains\go\bin\go.exe`）
@@ -41,8 +42,8 @@
    按 `(application_id, execution_revision, manifest_sha256)` 去重密封 artifact；纯规则函数有单测。
 5. 写 `POST /applications/{id}/validate`（owner-only、CSRF、`application:write` scope、
    `X-Manifest-SHA256`、503 `compiler_unconfigured`/`object_store_unavailable`），config 增两个部署输入。
-6. 建 `tests/contracts/snapshots` golden（sales + layout-only 双胞胎）与 `tests/f02a` 4 文件 16 用例
-   （复核修复后的当前数；完成时为 17，其中一个无效篡改断言移入 Go），
+6. 建 `tests/contracts/snapshots` golden（sales + layout-only 双胞胎）与 `tests/f02a` 4 文件 17 用例
+   （第二次复核后的当前数；完成时为 17，其中一个无效篡改断言移入 Go，随后新增大小写依赖用例），
    真实 PG/二进制/HTTP 全量跑；T023 两个边界断言随本票闭环更新（validate 存在，debug/submit 仍 404；
    迁移链到 0012）。
 7. 跑完全部门禁（§3），写本报告/ADR/PROGRESS，按 feat/test/docs 三次提交。
@@ -105,6 +106,13 @@
   - `model.model_profile_version`、`agent.model_profile_version` → model；
   - `agent.tool_versions[]`、`python.tool_version` → tool；
   - `agent.subapp_versions[]`、`call_app.application_version` → sub-app version。
+- **UUID 大小写归一（第二次复核修复，ADR §58）**：依赖 id 的**身份比较**先
+  `normalizeDependencyID`（trim + 小写）；SQL 查询、就绪 map、去重键、环 roots 与 manifest 的
+  `model_profile_versions`/`tool_artifacts`/`subapp_versions` 都用规范形式。作者原文仍留在
+  definition 文档（及其密封字节）和定位错误中。因此同一 model/tool/subapp id 用大写写与用小写写
+  得到相同的就绪判定与依赖集合；同一 id 以不同大小写被引用两次只算一个依赖。
+  测试：`test_t025_dependencies.py::test_uppercase_dependency_ids_validate_like_their_lowercase_twins`
+  （修前大写 id 报 `dependency_not_found`）。
 - 就绪规则（真实表）：
   - model：存在、`revoked_at IS NULL`、`validation_state='passed'`。
   - tool：存在、未 revoked、`state='ready'`、`image_digest IS NOT NULL`；共享/提交执行还要求
@@ -259,7 +267,8 @@ T025 全部真实 PG/二进制/HTTP/对象字节；无 skip。
 > ——它不调用 `VerifyManifestBytes`，无法因 verifier 缺陷而失败。同一边界现在由
 > `internal/compiler/verify_test.go::TestVerifyManifestBytesRejectsASealedObjectTamperedInPlace`
 > 覆盖（真实密封对象就地篡改 + typed `ErrManifestHashMismatch` + 未篡改对象先验证通过）。
-> 因此 T025 的真实栈用例数为 16（f02a 本票相关合计随复核修复节更新）。
+> 因此 T025 的真实栈用例数为 16（f02a 本票相关合计随两轴复核修复与**第二次复核修复**节更新；
+> 第二次复核新增 1 个依赖大小写用例，见 §1.3 与 `PROGRESS.md`）。
 
 ### 3.3 契约同步
 

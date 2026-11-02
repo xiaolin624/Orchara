@@ -111,10 +111,12 @@
 ### 1.3 API
 
 - `POST /api/v1/applications/{application_id}/debug-runs`（`debugDraft`）：会话 CSRF、API key
-  `application:write`、owner-only（其余含管理员 404）；202 + 契约 `Run`；`X-Manifest-SHA256`
-  返回冻结 hash（非契约扩展，§2.1）。
+  `application:write`、**会话还须 creator 角色（第二次复核修复，ADR §56；管理员不豁免，
+  403 `creator_role_required`，在请求体与 owner 判定之前）**、owner-only（其余含管理员 404）；
+  202 + 契约 `Run`；`X-Manifest-SHA256` 返回冻结 hash（非契约扩展，§2.1）。API key 是服务账号，
+  没有角色，仍只按 scope 判定。
 - `GET /api/v1/runs/{run_id}`（`getRun`）：owner-only（管理员/read grant 均 404；畸形/未知同答）；
-  200 + 同一 `Run` 投影 + `X-Manifest-SHA256`；API key 需 `application:read`。
+  200 + 同一 `Run` 投影 + `X-Manifest-SHA256`；API key 需 `application:read`。读路径不要求 creator。
 - 错误映射：400 `idempotency_key_required`、400 `invalid_json`、409 `revision_conflict`
   （details requested/current）、409 `idempotency_conflict`、422 `validation_failed`
   （`details.field` 或 `details.errors` 定位）、404 `resource_not_found`、503
@@ -143,12 +145,15 @@
 | `test_t027_migration.py` | 10 | 0014 位置/重放、五表列集、真实 FK 与三个延期 FK、契约 CHECK、checkpoint UNIQUE、索引、`evaluation_jobs_snapshot_fkey`（悬空拒绝/真实接受）、worker/PUBLIC 拒绝面 |
 | `test_t027_debug.py` | 4 | 202 契约字段与队列状态、snapshot/run/job/输入 artifact/链接/收据逐字段断言、golden 字节与 hash、无 version/review/job/evaluation、owner 读、额外 artifact 链接 |
 | `test_t027_immutability.py` | 2 | 改草稿后既有 run/snapshot/输入与 manifest 字节/hash 逐字节不变、旧 revision 409、新 revision 产生不同 hash 的第二份快照 |
-| `test_t027_authz.py` | 2 | 匿名 401、管理员/read grant 404、CSRF 403、scope 403、service-account write key 仍 404；run 读同样 owner-only |
+| `test_t027_authz.py` | 2 | 匿名 401、**无 creator 角色管理员 403 `creator_role_required`**、持有 creator 的管理员/read grant 仍 404、CSRF 403、scope 403、service-account write key 仍 404；run 读同样 owner-only |
 | `test_t027_refusals.py` | 7 | 旧 revision 409、非法 DSL/空卡可保存但不能 debug（T023 AC3）、pending model/未就绪/他人未批工具/无 ACL 子应用定位拒绝、作者私有工具规则（validate 拒/debug 收）、artifact 归属/就绪/形状、预算越界、编译器/对象存储 503 |
 | `test_t027_idempotency.py` | 7 | 同 key 同体重放（含对象数不变）、改草稿后重放仍返回原 Run、异体 409、artifact 顺序无关、缺/空/重复 header 400、并发重复仅一个 Run（DB 触发器确定性重叠）、过期仍重放 |
 | `test_t027_pages.py` | 6 | 页面结构与表单规则、JS 资产、编辑器/apps 入口、真实应用页面、Node 语法检查、Node 行为执行 |
 
-合计新增 38 用例；`tests/f02a` 62 → **100 passed**。
+合计新增 38 用例；`tests/f02a` 62 → **100 passed**。第二次复核新增
+`tests/f02a/test_t023_creator_role.py`（4 用例，跨 T023/T025/T027 的 creator 门禁）；T027 的
+`test_t027_authz.py` 按新门禁更新了管理员拒绝码，`tests/f02a` → 103 passed（详见
+`PROGRESS.md` 的“F00B/F02A 第二次复核修复”）。
 
 ## 2. 契约缺口与显式偏离（如实）
 
@@ -275,7 +280,7 @@ no drift: spec copy and contract snapshot match the manifest
 | # | 验收 | 状态 | 证据 |
 |---|---|---|---|
 | 1 | 修改草稿不改变已有 debug | **passed** | `test_t027_immutability.py`：改 definition（revision 2、execution_revision 2）后 snapshot/run/输入 artifact 行逐字段相同、manifest 与输入对象逐字节相同、`X-Manifest-SHA256` 不变；旧 revision 新 key 409 |
-| 2 | 他人不能读私有结果 | **passed** | `test_t027_authz.py`：管理员/read grant/他人 404，owner 200；API key 需 scope 但 scope 不等于所有权；debug 与 run 两个入口都断言 |
+| 2 | 他人不能读私有结果 | **passed** | `test_t027_authz.py`：管理员/read grant/他人 404，owner 200；**写入还要求 creator 角色（无角色管理员 403 `creator_role_required`）**；API key 需 scope 但 scope 不等于所有权；debug 与 run 两个入口都断言（读不要求 creator） |
 | 3 | 未经授权工具或未 ready 依赖不能执行 | **passed** | `test_t027_refusals.py`：pending model、building tool、他人未批工具、无 ACL 子应用全部 422 定位且零行；作者自有 ready 工具在 debug 可用而 validate 拒绝（规则边界）；不创建可执行 job |
 | 4 | 通过端到端入口实际演示；失败、授权与重试/恢复边界有断言 | **passed** | 真实 HTTP `debugDraft` 202 + `getRun` 200（owner）与 400/401/403/404/409/413/422/503；失败零行断言；重试边界 = 同 key 重放（含改草稿后、并发重复、过期收据），不同/缺失 key 的 409/400 |
 | 5 | 记录版本、输入/hash、实际命令、原始结果与环境 profile；stub/real 分报，缺条件 blocked，未运行 not_run | **passed** | 本报告 §1/§2/§3/§5；real/stub 明确；未运行项列 `not_run` |

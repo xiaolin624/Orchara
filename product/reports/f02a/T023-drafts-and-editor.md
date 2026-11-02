@@ -97,9 +97,9 @@
 
 | 方法/路径 | 行为 |
 |---|---|
-| `POST /api/v1/applications` | 201 `Application`；name trim、1..200 字符；422 `validation_failed`（field=name）；API key 需 `application:write` |
+| `POST /api/v1/applications` | 201 `Application`；name trim、1..200 字符；422 `validation_failed`（field=name）；**会话须 creator 角色（第二次复核修复，ADR §56，403 `creator_role_required`）**；API key 需 `application:write` |
 | `GET /api/v1/applications/{id}/draft` | 200 `DraftInput` + `ETag` + `Cache-Control: no-store`；404 不可见 |
-| `PUT /api/v1/applications/{id}/draft` | 200 `Accepted{id,state:"saved"}` + 新 `ETag`；428/412/403/404/422/413 按 §1.2；会话/写 scope 需 CSRF |
+| `PUT /api/v1/applications/{id}/draft` | 200 `Accepted{id,state:"saved"}` + 新 `ETag`；428/412/403/404/422/413 按 §1.2；**会话须 creator 角色（403 `creator_role_required`，先于可见性，不泄露存在性）**；会话/写 scope 需 CSRF |
 | `GET /api/v1/applications/{id}/versions` | 200 `{items[], next_cursor}`；ACL 先于分页；404 不可见；400/422 游标/limit |
 | `GET /api/v1/versions/{version_id}` | 200 `Version`；404 不可见 |
 | `GET /apps/{id}/edit` | 服务编辑器页（`editor.html`），无查询串 |
@@ -178,7 +178,10 @@ T025 应使用 `execution_revision` 作为 manifest `source_revision`，使用
 ## 4. 门禁原始结果（本票最终运行）
 
 > 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；复核修复后的最新门禁与
-> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。本票证据本身不变。
+> 用例数见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”与“F00B/F02A 第二次复核修复”两节。本票证据
+> 本身不变；第二次复核新增 `tests/f02a/test_t023_creator_role.py`（creator 角色门禁）并更新了
+> `test_t023_acl.py` 中“管理员保存”的拒绝码（无 creator → 403，先于可见性；场景本意是 owner-only，
+> 该用例的 outsider 分支仍是 404）。
 
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
@@ -236,7 +239,8 @@ $ git status --short
 ```
 
 `tests/f02a` 分布：migration 8 + drafts 11 + execution_revision 3 + concurrency 2 + ACL 4 +
-scopes 2 + versions 6 + invalid-draft 2 + pages 7 = **45**。
+scopes 2 + versions 6 + invalid-draft 2 + pages 7 = **45**；第二次复核新增
+`test_t023_creator_role.py` 4 个用例（跨 T023/T025/T027 的 creator 角色门禁）。
 
 ## 5. 契约缺口与显式偏离
 

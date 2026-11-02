@@ -79,11 +79,18 @@
 
 - handler（`internal/background/handlers`）：用 maintenance 身份读取 artifact 只读行（T022 还没有
   job-scoped artifact-status 端点，属 T024；见 ADR §9），校验墓碑/`state=scanning`/`expected_revision`，
-  流式读 staging → 20 MiB 上限 → 写预分配 sealed key；size/hash 不符时删除 sealed 副本并报告
-  business 失败。handler 不写任何业务行。
-- 服务端守卫（`internal/background/complete.go`，与激活同事务）：持 artifact 行锁，要求
-  `deleted_at IS NULL`、`state='scanning'`、`revision=expected_revision`，重读 sealed 对象并重新
-  计算 SHA-256/大小；通过才 `state='ready', sha256=实际值, revision+1`。hash/大小/对象缺失/无预期
+  流式读 staging → 20 MiB 上限 → 写**本次尝试自己的 sealed key**；size/hash 不符时只删除该尝试对象并
+  报告 business 失败。handler 不写任何业务行。
+- **尝试栅栏（第二次复核修复，ADR §53）**：尝试对象 key 由 `objectstore.AttemptSealedKey(job_id,
+  attempt_token)` 派生（`sealed/` + 域串+小写 job/token 的 SHA-256），handler 与守卫共用这一个函数。
+  handler 只写/验/删这个 key，**永不写或删除 `artifact.object_key`**；守卫在墓碑/状态/revision/
+  expected hash 都成立后重算该尝试对象，通过才用 `objectstore.Move`（同目录原子 rename）把它搬到
+  `artifact.object_key`，然后 `state='ready'`。任何拒绝只删尝试 key，活动对象不受影响。
+  因此“旧尝试在新尝试激活后继续写/删”只能影响它自己的对象（BACKGROUND-JOBS §3）。
+  paused/崩溃尝试留下的未引用 sealed 尝试对象不清扫：sealed 孤儿清理由 F07/F13A 承接（ADR §55）。
+- 服务端守卫（`internal/background/{complete,finalize}.go`，与激活同事务）：持 artifact 行锁，要求
+  `deleted_at IS NULL`、`state='scanning'`、`revision=expected_revision`，重算**当前尝试对象**并移动；
+  通过才 `state='ready', sha256=实际值, revision+1`。hash/大小/对象缺失/无预期
   hash → `quarantined`（revision+1）+ business failed；墓碑/改版本 → `source_deleted`/`source_changed`
   且不激活。`artifact_finalize` 的 succeeded 不接受 worker 提供的 `result_artifact_id`（422）。
   API 未配置对象目录 → Complete 返回 `503 object_store_unavailable` 且不改变任何行。
@@ -139,7 +146,7 @@
 | 2 | 同键不双建 | `test_t022_enqueue.py::test_the_same_request_is_idempotent`（同 id、1 行）、`::test_a_different_target_under_the_same_key_conflicts`（exit 1、1 行）、`::test_a_different_kind_with_the_same_key_is_a_second_job` | passed |
 | 3 | 用户 shell 文本不能成为 handler | `test_t022_enqueue.py::test_bad_command_lines_exit_2_without_writing[shell text as kind]`、`::test_the_maintenance_registry_refuses_uncompiled_or_unknown_kinds`、`test_t022_lease.py::test_claim_and_result_validation`（claim 422）、`test_t022_migration.py::test_the_database_refuses_an_unknown_kind`（DB CHECK） | passed |
 | 4 | 旧 token 提交拒绝 | `test_t022_lease.py::test_the_old_token_is_refused_after_the_lease_was_recovered`（重领后旧 token 409、job 不变）、`::test_a_result_after_the_lease_expired_changes_nothing`（租约过期后提交 409、无副作用）、`::test_claim_leases_one_job_and_heartbeat_renews_it` | passed |
-| 5 | 源修改/删除后不能激活旧结果 | `test_t022_finalize.py::test_a_deleted_artifact_can_never_be_activated`、`::test_a_revision_change_after_the_claim_cannot_activate`、`::test_a_successful_claim_after_a_tombstone_is_refused_by_the_guard`、`::test_the_guard_rehashes_the_sealed_object_instead_of_trusting_the_worker` | passed |
+| 5 | 源修改/删除后不能激活旧结果 | `test_t022_finalize.py::test_a_deleted_artifact_can_never_be_activated`、`::test_a_revision_change_after_the_claim_cannot_activate`、`::test_a_successful_claim_after_a_tombstone_is_refused_by_the_guard`、`::test_the_guard_rehashes_the_attempt_object_instead_of_trusting_the_worker`；**第二次复核新增**：`::test_a_failed_attempt_never_deletes_an_object_already_sealed_at_the_active_key`（旧 handler 会删掉活动 key，该测试在修前失败）、`::test_a_resumed_old_attempt_cannot_corrupt_the_activated_object`、`::test_a_stale_completion_deletes_only_its_own_attempt_key`、`::test_a_successful_completion_moves_the_attempt_object_and_leaves_no_attempt_key`；Go 真本地 FS 单测 `internal/objectstore/objectstore_test.go::TestAttemptSealedKeyIsStableFencedAndASealedKey`/`::TestMoveSealedIsAtomicAndRefusesNonSealedKeys`、`internal/background/finalize_test.go`（4 个）、`internal/background/handlers/artifact_finalize_test.go`（4 个） | passed |
 | 6 | 业务错误不盲重试 | `test_t022_lease.py::test_a_business_failure_is_never_retried`、`::test_an_unknown_error_code_is_treated_as_business`、`test_t022_finalize.py::test_a_hash_mismatch_is_quarantined_by_the_real_handler`（一次即 failed、quarantined） | passed |
 | 7 | 端到端演示，失败/授权/重试边界有断言 | `test_t022_lifecycle.py::test_a_finalize_job_runs_end_to_end`（admin CLI → 真实 maintenance → 内部 mTLS → handler → 服务端守卫 → ready+sealed bytes）；`test_t022_lease.py::test_a_transient_failure_is_retried_then_fails_on_the_third_attempt`、`::test_an_expired_lease_is_recovered_and_the_retry_succeeds`；`test_t022_job_get.py::test_the_owner_other_users_and_an_admin_get_owner_or_404`；`test_t022_mtls.py` 全部 | passed |
 | 8 | 记录版本/输入/hash/命令/原始结果/环境，stub-real 分报 | 本报告 §1–§5；环境 profile 与版本见页首；`input_url=null`、Redis、S3 等未运行项逐条列出 | passed |
@@ -169,13 +176,23 @@
 - 租约过期不靠 wall clock：测试直接把 `lease_deadline` 移到过去（SQL），租约判定由数据库
   `now()` 单一时钟完成；只有“配置的 50ms 退避已过”这类有界轮询（`wait_until`/`retry_until_claimed`，
   上限 5s）使用短等待。
-- 失败面断言均来自真实响应/真实行/真实文件，不以进程内 mock 代替。
+- **第二次复核：租约恢复测试的确定性（原 flaky）**。出问题的用例是
+  `test_t022_lease.py::test_an_expired_lease_is_recovered_and_the_retry_succeeds`： reviewer 看到
+  “期望 claimed=0、实际 1，单独跑又通过”。根因不是 claim 写错：`--once` 默认起两个池（system_io/work），
+  两个池的 claim 事务都会先 `recoverExpiredTx`；第一个事务把 job 恢复成 ready + 50ms 退避，
+  如果机器负载让**第二个池的 claim 事务**晚于 50ms 开始，它就会合法地领到已可用（available_at 已过）
+  的 job，于是同一次 drain 里 claimed=1。修复是把“只恢复”的那一趟收窄为单池
+  `--kinds artifact_finalize`（一次 drain 只有一个 claim 事务；恢复设置
+  `available_at = now()+backoff`，`now()` 是事务时间戳，所以同一事务不可能再领到它），
+  不引入 sleep。随后的 `retry_until_claimed` 仍用正常双池进程证明重试会成功。
+- 失败面断言均来自真实响应/真实行/真实文件，不以进程内 mock 代替。新增的 objectstore/守卫/handler
+  单测用**真实本地 FS**（`t.TempDir()`），不 mock 文件系统。
 
 ## 4. 门禁命令与原始结果
 
 > 以下命令/计数是**本票完成时**（2026-11-02 早于两轴复核修复）的原始结果。复核修复后的最新门禁
-> （全量 `pytest tests`、Go、sync_spec）见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节；
-> `tests/f00b` 的用例数在该节更新，本票自身证据不变。
+> （全量 `pytest tests`、Go、sync_spec）见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”与
+> “F00B/F02A 第二次复核修复”两节；`tests/f00b` 的用例数在这些节更新，本票自身证据不变。
 
 工作目录 `E:\Orchara\product`；Go 环境 `GOCACHE=E:\orchara-toolchains\gocache`、
 `GOMODCACHE=E:\orchara-toolchains\gomodcache`。
@@ -270,11 +287,15 @@ python -m pytest tests -q          # 全量（时间允许时必跑）
 **Go**
 
 - `internal/objectstore`: `Open(root)`, `StagingKey()`, `SealedKey()`, `CreateStaging/CreateSealed`,
-  `PutSealed`, `Open`, `Hash`, `Stat`, `Delete`; `MaxObjectBytes = 20 MiB`。
+  `PutSealed`, `Open`, `Hash`, `Stat`, `Delete`; `MaxObjectBytes = 20 MiB`；第二次复核新增
+  `AttemptSealedKey(job_id, attempt_token)`（尝试栅栏 key，handler/守卫共用）与
+  `Move(sealed src, sealed dst)`（同目录原子 rename，只接受 sealed→sealed）。
 - `internal/background`: `EnqueueTx(ctx, tx, EnqueueParams) (*Job, created bool, error)`,
   `Controller.{Enqueue,Claim,Heartbeat,Complete,SweepExpired,Get}`, `Registry`/`Handler`,
   `Retryable/ClassifyFailure/ImpliesQuarantine`, 全部错误码常量；复核修复后 `New(db, store,
   retryBackoff, notifier)` 与 `Notifier`/`NopNotifier`/`InProcessNotifier`（唤醒是建议，轮询是权威）。
+  第二次复核后 finalize 守卫只移动 `AttemptSealedKey(job, token)` 指向的对象，`SweepExpired` 的
+  第 3 次失败会同事务把绑定的 `evaluation_jobs` 置 failed（ADR §54）。
 - `internal/background/handlers.Registry`（编译期 handler 映射；新 kind 必须同时扩展
   `retryableByKind`）；完成侧的 kind 注册表是 `background.CompletionGuard`。
 - `internal/api`: `Server.RegisterInternal(mux)`、`RequireInternalMTLS`、`InternalRole(ctx)`；

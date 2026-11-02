@@ -68,6 +68,11 @@ business（fail-safe）**，新 handler 票必须在同一变更里扩展该表�
 
 ### 5. 激活权威只在服务端：handler 永远不能让 artifact 变 ready
 
+> **修订（2026-11-02 第二次复核，§53）**：handler 不再写 `artifact.object_key`，而是写
+> `objectstore.AttemptSealedKey(job_id, attempt_token)` 派生的**本次尝试对象**；守卫验证该对象后
+> 用原子 move 把它搬到 `artifact.object_key`。因此“handler 只做读 staging → 限长/hash → 写 sealed key
+> → 报告”中的 sealed key 是尝试 key，不是活动 key；活动 key 只有守卫能写。
+
 `artifact_finalize` 的 handler 只做“读 staging → 限长/hash → 写预分配 sealed key → 报告”；它不写
 任何业务行。`Complete` 在同一事务里持 artifact 行锁并核对：
 
@@ -593,6 +598,11 @@ T026 把“评测池满载时文件封存仍能完成、业务失败与基础设
 
 ### 33. 完成守卫：报告绑定与状态规则；report failed ≠ job failed
 
+> **修订（2026-11-02 第二次复核，§54）**：评测的 `failed` 终态不只由 Complete 写。
+> `recoverExpiredTx`（Claim/SweepExpired 共用）在第三次过期租约把 job 置 `failed` 的同一事务里，
+> 也必须把尚未终态的 `evaluation_jobs` 置 `failed`（同 error_code、finished_at）。可重试恢复
+> （job 回 ready）不触碰 evaluation。
+
 `Complete` 对 `application_evaluate` 的 `succeeded` 结果执行服务端守卫（同一事务）：
 
 1. `result_artifact_id` 必填，且必须是本 job 的、ready、未墓碑、owner 一致的 artifact（复用
@@ -688,6 +698,10 @@ handler 是受信基础设施，不是用户：报告由它生成，但“passed
   凭据门槛。
 
 ### 37. 孤儿清理边界（F07 前的最小安全规则）
+
+> **修订（2026-11-02 第二次复核，§55）**：本票的 sweep **只清 staging**；`sealed/*` 无论是否被行
+> 引用都不删除。旧条文的“sealed 无引用可删”被撤销：sealed 写于行提交之前，一次性快照不能证明
+> 无主。未被引用的 sealed 对象只在 summary 的 `sealed_deferred` 计数，清理由 F07/F13A 承接。
 
 - `cmd/maintenance sweep --orphan-age D [--dry-run]` 只需要 `ORCHARA_MAINTENANCE_DSN` 与
   `ORCHARA_OBJECT_DIR`（不需要内部 mTLS），它不领取 job、不写业务行。
@@ -971,3 +985,117 @@ corpus 对拍仍在（verdict/reasons/input hash/normal-form hash/canonical text
 - T026：deletion 状态区分是票面要求，但 0013 明确不建 F07 的 deletion 模型；该条是第三个
   `partial` 原因（F07），与合成 runner（F13A）、application-kind runner（F13A）并列。
 - 任何“组件策略确认”都不能写成运行通过；未运行的外部件继续 `not_run`。
+
+## 第二次复核修复追加（2026-11-02）：尝试栅栏、评测对账、staging-only sweep、creator 门禁、replay 与 UUID 归一
+
+第二次两轴复核对 `2191861` 提出 6 项缺陷 + 1 个 flaky 测试（`.scratch/f00b-f02a/FIX2-BRIEF.md`）。
+以下决定是**对既有条文的修订**，后续票必须沿用；改回需新理由。逐条处理、测试与门禁见
+`PROGRESS.md` 的“F00B/F02A 第二次复核修复”一节与各票报告。
+
+### 53. artifact_finalize 的尝试对象栅栏（修订 §5/§6）
+
+- 每次尝试的 sealed key 由 `objectstore.AttemptSealedKey(jobID, attemptToken)` 派生：
+  `sealed/` + SHA-256(`orchara/objectstore/attempt-sealed/v1\n` + 小写 jobID + `\n` + 小写
+  attemptToken) 的小写 hex。handler 与完成守卫共用这一个函数，不能各写一份。Go 单测钉死一个
+  固定向量，Python 测试 helper 复制同一公式用于播种 worker 半场。
+- handler 只写/验/删这个尝试 key；**永不写或删除 `artifact.object_key`**。size/hash 不符时只删
+  自己的对象；成功时把验证过的对象留在原处等守卫处理。
+- 守卫在墓碑/`state='scanning'`/`revision`/expected hash 都成立后重算**当前 token 的尝试对象**，
+  通过才用 `objectstore.Move`（同目录原子 `rename`，仅 sealed→sealed）把它搬到
+  `artifact.object_key`，然后 `state='ready', sha256=实际值, revision+1`。任何业务拒绝只删尝试
+  key（best effort），活动对象不受影响；transient 读/移动失败是可重试基础设施失败，不删除也不激活。
+- 结果：暂停的旧尝试恢复后只能覆盖/删除**它自己的**对象；BACKGROUND-JOBS §3 的“后续覆盖不影响
+  sealed 对象”在尝试重叠时也成立。新尝试成功时活动 key 只有被移动的那份字节，不残留 per-attempt
+  对象。测试：`test_t022_finalize.py::test_a_failed_attempt_never_deletes_an_object_already_sealed_at_the_active_key`
+  （修前失败）、`::test_a_resumed_old_attempt_cannot_corrupt_the_activated_object`、
+  `::test_a_stale_completion_deletes_only_its_own_attempt_key`、
+  `::test_a_successful_completion_moves_the_attempt_object_and_leaves_no_attempt_key`，以及
+  `internal/background/finalize_test.go`、`internal/background/handlers/artifact_finalize_test.go`、
+  `internal/objectstore/objectstore_test.go` 的真本地 FS 单测。
+- 未引用 sealed 尝试对象（崩溃/暂停后不再完成的尝试）不在本批清理：见 §55。
+
+### 54. 评测与后台 job 的终态同事务对账（修订 §33）
+
+- `recoverExpiredTx`（`Claim` 与 `SweepExpired` 共用）在第三次过期租约把 job 置
+  `failed(lease_expired, infrastructure)` 的**同一事务**里，若 job kind 是
+  `application_evaluate` 且 evaluation 尚未终态，则把 evaluation 置 `failed`、同一 `error_code`、
+  `finished_at=now()`。
+- 可重试的恢复（job 回 ready）**不**触碰 evaluation：仍有 attempt 在飞，它保持 running。
+- `failEvaluationForJobTx` 是“终态 job 对账业务行”的唯一入口（Complete 的守卫走已有的
+  `failEvaluationTx`）；新 kind 若有绑定的业务行，必须在同一变更里扩展它。
+- 测试：`test_t026_failures.py::test_exhausted_leases_fail_the_evaluation_without_a_report`
+  （修前 job failed 而 evaluation 永远停在 running；同时断言第一次可重试恢复时 evaluation 仍 running）。
+
+### 55. 孤儿清理只清 staging；sealed 孤儿清理延后（修订 §37）
+
+- `cmd/maintenance sweep` 本票**只删除**未被 live 上传者引用的 staging 对象（ready/quarantined/
+  deleted 行的 staging 残留可删）。**永不删除 sealed 对象**，无论是否被行引用。
+- 理由：sealed 对象写在 artifact 行提交之前；一次性引用快照不能证明“无主”，旧实现可能删除刚登记
+  的对象。票面只要求“孤儿暂存对象可清理”。
+- summary 增 `sealed_deferred`（年龄达标且未被引用的 sealed 对象计数），只报告不删除。
+  sealed 孤儿的清理（含本批尝试栅栏留下的未完成尝试对象、T025 崩溃留下的未引用 manifest 对象）
+  由 F07/F13A 承接，且**必须与登记/删除共享一把锁**；不得用一次性快照直接删。
+- 测试：`test_t026_sweep.py::test_sweep_removes_only_orphans_and_is_idempotent`
+  （修前未引用的 sealed 孤儿被删；现在断言保留且 `sealed_deferred==1`）。
+
+### 56. creator 角色门禁（SECURITY §1；修订 §17 的写能力口径）
+
+- 四个写端点（`POST /applications`、`PUT /applications/{id}/draft`、
+  `POST /applications/{id}/validate`、`POST /applications/{id}/debug-runs`）对**会话**调用方要求
+  human `creator` 角色，否则 `403 creator_role_required`；API key 调用方仍按 `application:write`
+  scope 判定（服务账号没有角色）。读端点不变。
+- 判定发生在请求体解析与可见性/owner 判定**之前**（能力问题，不是资源存在性问题；无角色调用方
+  不会学到应用是否存在）。管理员不豁免：SECURITY §1 的“兼任创作者后”即管理员也须同时是 creator。
+- 实现是单一 `api.requireApplicationWrite`（会话→角色，API key→scope），四个 handler 不得各写一份。
+- 前端页面（`apps.html`/`editor.html`/`debug.html`）显示该要求；服务端门禁才是要求本身。
+- 测试用真实角色发放（`PUT /admin/users/{id}/roles`）给原本只做 owner 场景的 actor 授予 creator，
+  不通过放宽门禁让旧测试通过。证据：`tests/f02a/test_t023_creator_role.py`（4 用例）与更新后的
+  `test_t023_acl.py`、`test_t025_validate.py`、`test_t027_authz.py`。
+
+### 57. 模型调用 replay 返回原结果（修订 §22 的重放语义）
+
+- 同逻辑键 + 同 params 且已成功：同一事务内**重读**该 call 的 sealed `purpose='model_result'`
+  artifact（校验 ledger/owner/ready/未墓碑/记录 sha256），把原数据、state、原 call id、result
+  artifact id 原样返回；不再返回 `{"replayed": true}` 占位。
+- 记录结果不可读/校验不符 → `ErrReplayUnavailable`（显式错误、不重派发、不编造答案）。
+  handler 的报告因此对重试稳定（`compatible`/`check`/`provider`/`stub` 保留）。
+- 该语义是 T022 的“结果事件重放返回记录结果”在模型调用上的对应物：重放返回**记录的事实**，
+  不是请求的推断。测试：`test_t024_model_calls.py::test_the_same_logical_key_replays_and_different_params_conflict`
+  与 `test_t024_model_validate.py::test_a_retry_replays_the_original_call_and_keeps_the_report_passed`
+  （修前报告 `compatible:false`）。
+
+### 58. 依赖 UUID 的大小写归一（修订 §28）
+
+- 依赖 id 的身份比较先 trim+小写：SQL 查询、就绪 map、去重键、环 roots、manifest 的
+  `model_profile_versions`/`tool_artifacts`/`subapp_versions` 都用规范形式。
+- 作者原文仍保留在 definition 文档（及其密封字节）与定位错误中；错误 pointer/node_id 语义不变。
+- 因此同一 model/tool/subapp UUID 的大写与小写写法产生相同就绪判定与依赖集合；同一 id 以不同
+  大小写被引用多次只算一个依赖。测试：
+  `test_t025_dependencies.py::test_uppercase_dependency_ids_validate_like_their_lowercase_twins`
+  （修前大写 id 报 `dependency_not_found`）。
+
+### 59. 确定性复核口径：lease 恢复测试
+
+- 出问题的用例是
+  `tests/f00b/test_t022_lease.py::test_an_expired_lease_is_recovered_and_the_retry_succeeds`
+  （reviewer 看到“期望 claimed=0、实际 1，单独跑通过”）。根因不是 claim 写错：`--once` 两个池
+  各有一个 claim 事务，第一个事务恢复出 ready+50ms 退避；若第二个池的 claim 事务在 50ms 之后才
+  开始，它合法地领到该 job。
+- 修复：把“只恢复”的那一趟收窄为单池 `--kinds artifact_finalize`（一次 drain 只有一个 claim
+  事务；恢复设置 `available_at = now()+backoff`，`now()` 是事务时间戳，同事务不可能再领到），
+  不引入 wall-clock sleep。重试成功的证明仍由正常双池进程完成。
+- 结论：这是测试的时钟假设缺陷，不是 claim 逻辑缺陷；不得为了让它稳定而把退避改成 0 或跳过断言。
+
+## 证据（第二次复核）
+
+- `product/internal/objectstore/{objectstore.go,objectstore_test.go}`（AttemptSealedKey/Move）
+- `product/internal/background/{finalize.go,finalize_test.go,complete.go,sweep.go,evaluation.go,claim.go}`
+- `product/internal/background/handlers/{artifact_finalize.go,artifact_finalize_test.go}`
+- `product/cmd/maintenance/{sweep.go,main.go}`
+- `product/internal/api/{authz.go,drafts.go,validate.go,debug.go}`、`product/internal/identity/service.go`
+- `product/internal/modelproxy/modelproxy.go`、`product/internal/catalog/manifest.go`
+- `product/apps/web/src/{apps.html,editor.html,debug.html}`
+- `product/tests/{support/{f00b,f02a,t026}.py,f00b/test_t022_{finalize,lease}.py,f00b/test_t024_{model_calls,model_validate}.py,f00b/test_t026_{failures,sweep}.py,f02a/test_t023_{acl,creator_role}.py,f02a/test_t025_{dependencies,validate}.py,f02a/test_t027_authz.py}`
+- `product/reports/{f00b/T022-background-jobs.md,f00b/T024-job-files-and-models.md,f00b/T026-evaluation-pool.md,f02a/T025-manifest.md,f02a/T027-debug-submit.md}`、`product/PROGRESS.md`
+
+

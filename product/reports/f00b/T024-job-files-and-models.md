@@ -130,6 +130,15 @@
   `purpose='model_result'` 的 artifact 并登记归属，再关闭 ledger；失败 attempt
   `state='failed', charged_amount=0`，不挂 result artifact。同逻辑键+同 params 且已成功 → 幂等
   返回原 call；不同 params → 409 `model_call_conflict`。
+- **replay 语义（第二次复核修复，ADR §57）**：已成功的逻辑调用重放时**重读**该 call 的 sealed
+  result artifact（同一事务内核对 ledger 行、artifact 状态/owner/记录 hash），把原数据、state、
+  原 call id 与 result artifact id 原样返回；不再返回 `{"replayed": true}` 占位。若记录的结果无法
+  读回/校验不符，返回显式错误（`ErrReplayUnavailable`，不重派发、不编造答案），而不是让 handler
+  从一个空 map 重新推断兼容性。handler 的报告因此对重试稳定（provider/stub 标签与 `check` 保留）。
+  测试：`test_t024_model_calls.py::test_the_same_logical_key_replays_and_different_params_conflict`
+  断言 replay 的 `data` 与首次完全相等；`test_t024_model_validate.py::test_a_retry_replays_the_original_call_and_keeps_the_report_passed`
+  走真实重试（首次调用成功、job 以 transient_storage_io 回到 ready、新进程里的 handler 重放），
+  断言报告仍 `compatible:true`、call id / result artifact 一致、ledger 仍只有一行。
 
 ### 1.5 `model_validate` handler
 
@@ -164,8 +173,8 @@
 | `tests/f00b/test_t024_migration.py` | 6 | 三表列/类型/默认值、两个延期 FK 真不存在、XOR/attempt 唯一/归属表约束、worker/PUBLIC 拒绝、重复 migrate no-op |
 | `tests/f00b/test_t024_artifacts.py` | 6 | upload→真实 PUT→complete 202→真实 finalize→status ready→真实 GET 字节一致（media/size/hash）；丢唤醒后仍由 PG 轮询完成（复核修复，唤醒缝证据）；upload 参数/kind 拒绝；complete 幂等/异 hash 冲突/跨 job 404；scope 隔离与未 ready 409；lease `input_url` 真实可取 |
 | `tests/f00b/test_t024_links.py` | 5 | 过期（第二个进程 1s TTL）、篡改/换 op/sealed-PUT 404（状态+`resource_not_found` 码都钉死）、异 key 404、超限 413 且无残留对象、无签名 key 时 API 仍启动且铸造 503/拒绝旧链接 |
-| `tests/f00b/test_t024_model_calls.py` | 8 | ledger 行全字段与真实 usage；fixture 内容决定结果；候选/kind/validation_state 限制；**业务/未 ready/他人 artifact 在 CLI 被拒，purpose/owner 被改后在 model-calls 被拒且零 ledger**；同键幂等、异参 409；失败后重试 attempt=2；stale/畸形 token；真实 provider 503 + 零 ledger + 密钥/引用不泄露 |
-| `tests/f00b/test_t024_model_validate.py` | 3 | 端到端报告 artifact ready + ledger；兼容性失败是 report 失败而非 job 失败；provider 未配置 business 失败且不重试 |
+| `tests/f00b/test_t024_model_calls.py` | 8 | ledger 行全字段与真实 usage；fixture 内容决定结果；候选/kind/validation_state 限制；**业务/未 ready/他人 artifact 在 CLI 被拒，purpose/owner 被改后在 model-calls 被拒且零 ledger**；同键幂等（**第二次复核后 replay 返回原数据而非 `{replayed:true}`**）、异参 409；失败后重试 attempt=2；stale/畸形 token；真实 provider 503 + 零 ledger + 密钥/引用不泄露 |
+| `tests/f00b/test_t024_model_validate.py` | 4 | 端到端报告 artifact ready + ledger；兼容性失败是 report 失败而非 job 失败；provider 未配置 business 失败且不重试；**第二次复核新增**：真实重试重放原调用，报告仍 `compatible:true`（修前为 false） |
 
 另有 Go 单测：`internal/objectstore/sign_test.go`（8）、`internal/modelproxy/modelproxy_test.go`
 （8）、`internal/api/middleware_test.go` 新增 1（token 日志脱敏）。
@@ -173,7 +182,7 @@
 ### 2.2 收尾门禁（实际命令与原始输出尾部）
 
 > 下列数字是**本票完成时**（早于 2026-11-02 两轴复核修复）的原始结果；修复后的最新门禁与用例数
-> 见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”一节。本票结论不变。
+> 见 `PROGRESS.md` 的“F00B/F02A 两轴复核修复”与“F00B/F02A 第二次复核修复”两节。本票结论不变。
 
 ```text
 === gofmt -l internal cmd tools
