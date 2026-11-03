@@ -298,6 +298,14 @@ func (s *Service) applyWaitingTransitionTx(
 	if err := insertWaitingConditionTx(ctx, tx, run.ID, kind, checkpointID); err != nil {
 		return err
 	}
+	if kind == WaitingKindApproval {
+		// F06/T050: a decision may already be durable (the human decided while
+		// the attempt was still exiting). Adopt it into the fresh waiting row so
+		// the single resume transaction below sees the same decision.
+		if err := adoptApprovalDecisionTx(ctx, tx, run.ID); err != nil {
+			return err
+		}
+	}
 	if err := moveRunToWaitingTx(
 		ctx, tx, run.ID, run.State, run.Revision, kind,
 	); err != nil {
@@ -526,6 +534,24 @@ func (s *Service) maybeEnqueueResumeTx(
 	if waiting.Kind == WaitingKindChildren {
 		if err := checkWaitingChildTx(ctx, tx, run.ID, waiting.Decision); err != nil {
 			return nil, err
+		}
+	}
+	// F06/T050: a human rejection or an expired approval is a refusal, not a
+	// resume. The Run fails with the stable code once the exit fact exists; a
+	// decision that arrives before the exit is failed by ConfirmExit's call into
+	// this same function.
+	if waiting.Kind == WaitingKindApproval {
+		switch waitingDecisionOutcome(waiting.Decision) {
+		case "rejected":
+			if err := failWaitingRunTx(ctx, tx, run, attempt, ApprovalRejectedCode); err != nil {
+				return nil, err
+			}
+			return &resumeOutcome{FailedCode: ApprovalRejectedCode}, nil
+		case "expired":
+			if err := failWaitingRunTx(ctx, tx, run, attempt, ApprovalExpiredCode); err != nil {
+				return nil, err
+			}
+			return &resumeOutcome{FailedCode: ApprovalExpiredCode}, nil
 		}
 	}
 

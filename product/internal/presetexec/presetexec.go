@@ -134,6 +134,10 @@ type Proposal struct {
 	SuggestedState   string
 	OutputArtifactID string
 	ErrorCode        string
+	// CheckpointID is the stable synthetic checkpoint a waiting proposal stops
+	// at. F06/T050 uses "capability:<operation_id>" so the resumed attempt
+	// re-enters the same logical capability call.
+	CheckpointID string
 }
 
 // InputArtifact is one run input the trusted database identity resolved.
