@@ -216,6 +216,86 @@ def test_validate_happy_path_passes_the_model_and_records_the_report(f06_stack) 
     assert visible.json["next_cursor"] is None
 
 
+def test_retryable_failure_keeps_model_running_and_the_retry_passes(f06_stack) -> None:
+    """AC5: a retried attempt must not fail the model or the evaluation.
+
+    The first attempt is claimed by hand and fails after the real model call as a
+    transient storage error — exactly the T024 infrastructure-failure shape. The
+    guard must treat it as retryable: the job returns to ready, the model and the
+    evaluation stay running, and no report exists. The real maintenance process
+    then runs the retry in a new process; the model ends passed, the evaluation
+    succeeded, and exactly one immutable report exists.
+    """
+    admin = f00b.admin_session(f06_stack)
+    model = t039.register_or_fail(admin)
+    accepted = t039.validate(admin, model["id"], key="t039-retry-" + secrets.token_hex(8))
+    assert accepted.status == 202, accepted.text
+    job_id = accepted.json["background_job_id"]
+
+    lease = f06_stack.internal_client().claim(kinds=[t024.KIND_MODEL_VALIDATE])
+    assert lease.status == 200, lease.text
+    assert lease.json["job_id"] == job_id, lease.json
+
+    failed = f06_stack.internal_client().result(
+        job_id,
+        attempt_token=lease.json["attempt_token"],
+        state="failed",
+        error_code="transient_storage_io",
+    )
+    assert failed.status == 200, failed.text
+    assert failed.json["state"] == "ready", failed.json
+
+    running = t039.get_model(admin, model["id"])
+    assert running.status == 200, running.text
+    assert running.json["validation_state"] == "running", running.json
+    assert running.json["evaluation_report_id"] is None, running.json
+    row = t039.evaluation_for_model(f06_stack.dbname, model["id"])
+    assert row["state"] == "running", row
+    assert row["report_id"] is None, row
+    assert st.sql(f06_stack.dbname, "SELECT count(*) FROM platform.evaluation_reports") == "0"
+    assert st.sql(
+        f06_stack.dbname,
+        "SELECT attempt_count FROM platform.background_jobs "
+        f"WHERE id = {st.quote_literal(job_id)}::uuid",
+    ) == "1"
+
+    f00b.wait_until(
+        lambda: st.sql(
+            f06_stack.dbname,
+            "SELECT available_at <= now() FROM platform.background_jobs "
+            f"WHERE id = {st.quote_literal(job_id)}::uuid",
+        )
+        == "t",
+        timeout=5.0,
+        interval=0.01,
+        what="the retry to become claimable",
+    )
+
+    completed, reports, finalizer_log = t039.run_validation(f06_stack)
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}\n{finalizer_log}"
+    job_reports = f00b.job_reports(reports)
+    assert len(job_reports) == 1, reports
+    assert job_reports[0]["result"] == "succeeded", job_reports
+
+    passed = t039.get_model(admin, model["id"])
+    assert passed.status == 200, passed.text
+    assert passed.json["validation_state"] == "passed", passed.json
+    report_id = passed.json["evaluation_report_id"]
+    assert report_id, passed.json
+
+    row = t039.evaluation_for_model(f06_stack.dbname, model["id"])
+    assert row["state"] == "succeeded", row
+    assert row["report_id"] == report_id, row
+    assert st.sql(f06_stack.dbname, "SELECT count(*) FROM platform.evaluation_reports") == "1"
+    assert st.sql(
+        f06_stack.dbname,
+        "SELECT attempt_count FROM platform.background_jobs "
+        f"WHERE id = {st.quote_literal(job_id)}::uuid",
+    ) == "2"
+    document = t039.report_document(f06_stack, report_id)
+    assert document["compatible"] is True, document
+
+
 def test_failed_stub_case_is_a_failed_report_and_a_failed_model(f06_stack) -> None:
     admin = f00b.admin_session(f06_stack)
     model = t039.register_or_fail(admin, model_id="stub-model-incompatible")

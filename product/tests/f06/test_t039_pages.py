@@ -51,6 +51,7 @@ def test_the_models_page_is_served_with_register_list_and_report_sections(f06_st
         "manifest_sha256",
     ):
         assert marker in body, f"models.html is missing {marker!r}"
+    assert '<form id="register-form" method="post">' in body
     assert "localStorage" not in body
     assert "sessionStorage" not in body
     assert "object_key" not in body
