@@ -116,3 +116,42 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   手工 `admin background-jobs enqueue` 的 `model_validate` 仍是 report-only。真实厂商 adapter
   未实现前，真实 provider 失败为 `provider_not_configured`（诚实失败，不伪造成功）。
 - 不修改 `contracts/**`/`docs/spec/**`/迁移 0001–0024；`sync_spec --check` 保持 no drift。
+
+## T040 追加（2026-11-03）：F04A 线性四节点运行时与画布边界
+
+- 相关：F04A / T040（GitHub #41，规划 ID F04A.01/F04A.02）；分支 `t/t040-canvas`
+  （worktree `E:\Orchara-wt\t040`）；报告 `product/reports/f04a/T040-canvas-and-linear-compile.md`；
+  前置 T025（manifest/`ExecutableError`）、T037（工具就绪+审核）、T039（passed 模型）。
+- 备注：简报仍写“append ADR 0006”，但 0006 已被 F05/F03 使用；T039 已在 0007 记录该编号
+  冲突，本票继续追加到 0007，不再新开编号。
+
+### D4 —— F04A 是线性四节点编译器 + LangGraph stub 证明，不是生产 worker
+
+- 生产 Run 运行时仍由 Go supervisor/线性执行器承担（T042/T043 才交付真实 python/agent
+  节点执行）。本票交付的是：Go 权威校验器（`internal/workflow`）之上的一份 **Python
+  防御性重校验**（`worker/platform_worker/compiler/validate.py`，只覆盖
+  `start → python → agent → end` 子集）、一个只会按声明边顺序执行的 LangGraph
+  `StateGraph`（`graph.py`）以及确定性 stub 适配器（`stub.py`）。
+- 共享语料 `tests/f04a/corpus/linear_f04a.json` 的共享用例同时被 Go
+  `TestF04ACorpusParity` 与 Python 测试断言同一 `(verdict, code, pointer)`；F04A 之外的
+  分支/join/其他节点类型在 Python 侧用稳定码拒绝（`unsupported_node_type`、
+  `linear_order`、`not_linear_chain`、`unsupported_port`、`unsupported_subapp`、
+  `bad_output_mapping`），不伪造“与 Go 全量一致”。
+- `NodeOutcome` 是唯一归一化结果（`succeeded/failed/waiting/needs_reconciliation`），
+  适配器永不返回 provider/framework 对象；失败/等待/需对账会短路后续节点。
+- 不新增执行端点、不做真实模型/工具执行；真正数据/文件/日志/沙箱属 T042/T043。
+
+### D5 —— 画布是真实 Vue Flow 应用，产物是提交的静态 bundle
+
+- `apps/web/canvas` 是独立的 Vue 3 + Vue Flow 应用，`build.mjs` 用 esbuild 打成
+  `apps/web/src/assets/canvas.{js,css}` 并**提交**；运行时/测试都不需要 npm；`node_modules/`
+  被忽略。纯逻辑在 `canvas/src/lib/*.js`，由 Node 测试直接执行（DSL↔图、合法变量来源、
+  错误→节点/字段映射、导出清洗、连线拒绝）。
+- 画布只允许 `start → python → agent → end` 单链：连线在右向/入向已存在、自环、成环、
+  端节点越界时被拒绝并显示原因；非法 DSL 仍可保存（既有 T023 语义），但校验/调试/发布
+  由服务端权威判定。
+- 布局只存在独立 `layout`（`{version:1, positions}`），与 `definition` 分开保存；
+  保存仍走 `PUT /draft` + `If-Match`，412/428 分支与调试入口保持 T023 行为；校验调用
+  `POST /applications/{id}/validate`，`{node_id,code,pointer,message}` 映射到节点和配置字段
+  并可点击跳转，成功时显示 `X-Manifest-SHA256`。
+- 契约/迁移零改动：无新字段、无新执行路径；`/assets/canvas.{js,css}` 只是静态页面资产。

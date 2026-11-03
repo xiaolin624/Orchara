@@ -182,6 +182,42 @@ function editorSetRevision(etag) {
   }
 }
 
+// The F04A canvas is mounted lazily after the draft is loaded; it shares the
+// page's save path by mirroring its definition/layout into the JSON textareas,
+// so the ETag/412/428 behaviour above is unchanged.
+let canvasApi = null;
+
+function editorMountCanvas(applicationId, draft) {
+  const root = document.getElementById('canvas-root');
+  if (!root || !window.OrcharaCanvas || typeof window.OrcharaCanvas.mount !== 'function') {
+    return null;
+  }
+  const definition = draft && draft.definition && typeof draft.definition === 'object'
+    ? draft.definition
+    : {};
+  const layout = draft && draft.layout && typeof draft.layout === 'object' ? draft.layout : {};
+  if (canvasApi) {
+    canvasApi.setDraft(definition, layout);
+    return canvasApi;
+  }
+  canvasApi = window.OrcharaCanvas.mount(root, {
+    applicationId,
+    definition,
+    layout,
+    onChange(nextDefinition, nextLayout) {
+      const definitionField = document.getElementById('draft-definition');
+      const layoutField = document.getElementById('draft-layout');
+      if (definitionField) {
+        definitionField.value = JSON.stringify(nextDefinition, null, 2);
+      }
+      if (layoutField) {
+        layoutField.value = JSON.stringify(nextLayout, null, 2);
+      }
+    },
+  });
+  return canvasApi;
+}
+
 function editorFillForm(draft) {
   document.getElementById('draft-definition').value = JSON.stringify(draft.definition || {}, null, 2);
   document.getElementById('draft-layout').value = JSON.stringify(draft.layout || {}, null, 2);
@@ -190,6 +226,10 @@ function editorFillForm(draft) {
   for (const key of ['includes', 'excludes', 'required_inputs', 'expected_outputs', 'examples']) {
     const element = document.getElementById('card-' + key.replace(/_/g, '-'));
     element.value = Array.isArray(card[key]) ? card[key].join('\n') : '';
+  }
+  const applicationId = editorApplicationId(window.location.pathname);
+  if (applicationId) {
+    editorMountCanvas(applicationId, draft);
   }
 }
 
