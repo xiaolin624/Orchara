@@ -154,6 +154,23 @@
       </p>
     </details>
 
+    <details id="agent-node-panel" class="card">
+      <summary>Agent 节点（F04A/T043：最终输出 / 轮次 / 工具调用）</summary>
+      <p
+        id="agent-node-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载 Agent 节点摘要…</p>
+      <div id="agent-node-body"></div>
+      <p class="hint">
+        只显示服务端已登记并校验的 Agent 最终 data、工具产生的文件，以及受控调用账本中的
+        模型轮次、工具调用 id/name 与每次工具操作的状态；不显示提示词、工具参数、回执正文或原始
+        提供方载荷。最终输出未通过 output_schema 时显示 node_output_invalid 与节点 id，具体
+        JSON Pointer 见 supervisor 运行报告。
+      </p>
+    </details>
+
     <details id="capability-panel" class="card">
       <summary>受控调用账本（F06/T041）</summary>
       <p
