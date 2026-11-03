@@ -127,6 +127,9 @@ const (
 	EnvPython      = "ORCHARA_PYTHON"
 	EnvProductRoot = "ORCHARA_PRODUCT_ROOT"
 	EnvToolTimeout = "ORCHARA_MAINTENANCE_TOOL_TIMEOUT"
+	// F05/T037: how long one sandboxed tool build may run. The sandbox driver's
+	// own ORCHARA_SANDBOX_TIMEOUT must be at least as large.
+	EnvToolBuildTimeout = "ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT"
 )
 
 // F00B/T026 defaults. artifact_finalize gets a dedicated system_io pool (2
@@ -141,7 +144,10 @@ const (
 	// longer than a normal run (Python startup + a 20 MiB sheet) and short
 	// enough that a wedged tool cannot hold a work slot indefinitely.
 	DefaultToolRunTimeout = 30 * time.Second
-	// maxToolRunTimeout is the deployment ceiling for the same knob.
+	// DefaultToolBuildTimeout bounds one sandboxed build (untrusted setup.py may
+	// compile a source tree). It is a deployment knob, not a request value.
+	DefaultToolBuildTimeout = 5 * time.Minute
+	// maxToolRunTimeout is the deployment ceiling for both tool knobs.
 	maxToolRunTimeout = 10 * time.Minute
 
 	maxMaintenanceSlots     = 32
@@ -284,9 +290,10 @@ type MaintenanceConfig struct {
 	ReportWaitTimeout      time.Duration
 	// F05/T030: the trusted preset tool's interpreter, product root (the fixed
 	// script lives under it) and per-run timeout.
-	PythonPath  string
-	ProductRoot string
-	ToolTimeout time.Duration
+	PythonPath       string
+	ProductRoot      string
+	ToolTimeout      time.Duration
+	ToolBuildTimeout time.Duration
 }
 
 // SweepConfig is everything `cmd/maintenance sweep` needs: the object store to
@@ -622,6 +629,14 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		return nil, invalid(EnvToolTimeout,
 			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
 	}
+	toolBuildTimeout, err := parseHandlerDuration(lookup, EnvToolBuildTimeout, DefaultToolBuildTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if toolBuildTimeout > maxToolRunTimeout {
+		return nil, invalid(EnvToolBuildTimeout,
+			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
+	}
 	return &MaintenanceConfig{
 		InternalURL:            strings.TrimSuffix(rawURL, "/"),
 		ClientCert:             values[EnvInternalClientCert],
@@ -638,6 +653,7 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		PythonPath:             pythonPath,
 		ProductRoot:            productRoot,
 		ToolTimeout:            toolTimeout,
+		ToolBuildTimeout:       toolBuildTimeout,
 	}, nil
 }
 

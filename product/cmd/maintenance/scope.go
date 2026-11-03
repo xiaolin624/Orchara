@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -129,6 +130,24 @@ func (s *jobScope) Evaluation(
 	}, nil
 }
 
+// ToolBuild resolves the job-scoped build binding (T037).
+func (s *jobScope) ToolBuild(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (background.ToolBuildBinding, error) {
+	binding, err := s.client.toolBuildBinding(ctx, jobID, attemptToken)
+	if err != nil {
+		return background.ToolBuildBinding{}, err
+	}
+	return background.ToolBuildBinding{
+		ToolVersionID:    binding.ToolVersionID,
+		SourceArtifactID: binding.SourceArtifactID,
+		SourceSHA256:     binding.SourceSHA256,
+		DependencyLock:   binding.DependencyLock,
+		ManifestSHA256:   binding.ManifestSHA256,
+	}, nil
+}
+
 // FetchURL reads one signed GET link, capped at maxBytes.
 func (s *jobScope) FetchURL(ctx context.Context, link string, maxBytes int64) ([]byte, error) {
 	if err := validateSignedURL(link); err != nil {
@@ -242,6 +261,15 @@ type evaluationBindingPayload struct {
 	ManifestSHA256    string `json:"manifest_sha256"`
 }
 
+// toolBuildBindingPayload is the non-contract internal tool-build binding (T037).
+type toolBuildBindingPayload struct {
+	ToolVersionID    string          `json:"tool_version_id"`
+	SourceArtifactID string          `json:"source_artifact_id"`
+	SourceSHA256     string          `json:"source_sha256"`
+	DependencyLock   json.RawMessage `json:"dependency_lock"`
+	ManifestSHA256   string          `json:"manifest_sha256"`
+}
+
 func (c *internalClient) createUpload(
 	ctx context.Context,
 	jobID, attemptToken, mediaType string,
@@ -342,6 +370,27 @@ func (c *internalClient) modelCall(
 	}
 	if status != http.StatusOK {
 		return modelCallPayload{}, fmt.Errorf("model-calls returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// toolBuildBinding is the T037 job-scoped build read.
+func (c *internalClient) toolBuildBinding(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (toolBuildBindingPayload, error) {
+	var response toolBuildBindingPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/tool-build",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return toolBuildBindingPayload{}, err
+	}
+	if status != http.StatusOK {
+		return toolBuildBindingPayload{}, fmt.Errorf("tool-build binding returned unexpected status %d", status)
 	}
 	return response, nil
 }

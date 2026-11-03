@@ -151,14 +151,16 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 	if timeout < 100*time.Millisecond || timeout > MaxTimeout {
 		return Outcome{}, fmt.Errorf("sandbox timeout must be between 100ms and %s", MaxTimeout)
 	}
-	if request.Program != ProgramTool && request.Program != ProgramIsolationProbe {
+	switch request.Program {
+	case ProgramTool, ProgramIsolationProbe, ProgramBuildTool:
+	default:
 		return Outcome{}, fmt.Errorf("unknown sandbox program %q", request.Program)
 	}
 	if len(request.Input) == 0 {
 		return Outcome{}, errors.New("sandbox input is empty")
 	}
-	if request.Program == ProgramTool && len(request.InputJSON) == 0 {
-		return Outcome{}, errors.New("sandbox tool input document is missing")
+	if (request.Program == ProgramTool || request.Program == ProgramBuildTool) && len(request.InputJSON) == 0 {
+		return Outcome{}, errors.New("sandbox input document is missing")
 	}
 	if request.Program == ProgramTool {
 		if _, err := inputFileName(request.MediaType); err != nil {
@@ -193,26 +195,33 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 	defer func() { _ = os.RemoveAll(hostWorkspace) }()
 
 	inputName := "input.csv"
-	if request.Program == ProgramTool {
+	switch request.Program {
+	case ProgramTool:
 		inputName, err = inputFileName(request.MediaType)
 		if err != nil {
 			return Outcome{}, err
 		}
+	case ProgramBuildTool:
+		// The build's two mounts are fixed names: the source zip and the
+		// canonical dependency lock (staged as input.json on the host and copied
+		// to lock.json by the driver).
+		inputName = "source.zip"
 	}
 	configPath := filepath.Join(hostWorkspace, "config.json")
 	inputPath := filepath.Join(hostWorkspace, inputName)
 	inputJSONPath := filepath.Join(hostWorkspace, "input.json")
 	spec := bundleSpec{
-		SandboxID:    sandboxID,
-		StateRoot:    options.StateRoot,
-		Rootfs:       options.Rootfs,
-		Program:      request.Program,
-		ProbeMode:    request.ProbeMode,
-		ProbeSeconds: request.ProbeSeconds,
-		InputName:    inputName,
-		MemoryMB:     options.MemoryMB,
-		PIDsLimit:    options.PIDsLimit,
-		CPUSeconds:   options.CPUSeconds,
+		SandboxID:      sandboxID,
+		StateRoot:      options.StateRoot,
+		Rootfs:         options.Rootfs,
+		Program:        request.Program,
+		ProbeMode:      request.ProbeMode,
+		ProbeSeconds:   request.ProbeSeconds,
+		InputName:      inputName,
+		MemoryMB:       options.MemoryMB,
+		PIDsLimit:      options.PIDsLimit,
+		CPUSeconds:     options.CPUSeconds,
+		TimeoutSeconds: int(SandboxTimeout(timeout) / time.Second),
 	}
 	configBytes, err := buildOCI(spec)
 	if err != nil {

@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -33,6 +34,10 @@ type JobScope interface {
 	// declare. The server resolves all of them; the handler supplies only its
 	// lease proof.
 	Evaluation(ctx context.Context, jobID, attemptToken string) (EvaluationBinding, error)
+	// ToolBuild returns the job-scoped build binding (T037): the admitted source
+	// artifact/hash and the canonical dependency lock. The handler never reads
+	// the tool row itself.
+	ToolBuild(ctx context.Context, jobID, attemptToken string) (ToolBuildBinding, error)
 	// FetchURL reads a signed GET link into memory, capped at maxBytes.
 	FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, error)
 	// PutURL writes body to a signed PUT link.
@@ -59,6 +64,16 @@ type ArtifactView struct {
 	State     string
 	MediaType string
 	SizeBytes int64
+}
+
+// ToolBuildBinding is the T037 job-scoped tool build binding. DependencyLock is
+// the canonical JSON the sandbox must receive.
+type ToolBuildBinding struct {
+	ToolVersionID    string
+	SourceArtifactID string
+	SourceSHA256     string
+	DependencyLock   json.RawMessage
+	ManifestSHA256   string
 }
 
 // ModelCallRequest is the handler half of invokeBackgroundModel. The worker

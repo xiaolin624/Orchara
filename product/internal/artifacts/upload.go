@@ -54,26 +54,26 @@ func (e *ValidationError) Error() string { return fmt.Sprintf("%s: %s", e.Field,
 // formats are refused, and a parser for an unlisted format would be an
 // unvalidated attack surface.
 func NormalizeUploadInput(input UploadInput) (UploadInput, Format, error) {
+	purpose := strings.TrimSpace(input.Purpose)
+	if !uploadPurposes[purpose] {
+		return UploadInput{}, "", &ValidationError{
+			Field:   "purpose",
+			Message: "purpose must be task_input, tool_source, knowledge or evaluation_dataset",
+		}
+	}
 	mediaType := strings.ToLower(strings.TrimSpace(input.MediaType))
-	format, supported := SupportedUploadMediaType(mediaType)
+	format, supported := SupportedUploadMediaTypeForPurpose(purpose, mediaType)
 	if !supported {
 		return UploadInput{}, "", &ValidationError{
 			Field: "media_type",
 			Message: "media_type must be one of text/plain, text/csv, application/json or " +
-				XLSXMediaType,
+				XLSXMediaType + " (application/zip is accepted only for purpose=tool_source)",
 		}
 	}
 	if input.SizeBytes < 1 || input.SizeBytes > MaxUploadBytes {
 		return UploadInput{}, "", &ValidationError{
 			Field:   "size_bytes",
 			Message: fmt.Sprintf("size_bytes must be between 1 and %d", MaxUploadBytes),
-		}
-	}
-	purpose := strings.TrimSpace(input.Purpose)
-	if !uploadPurposes[purpose] {
-		return UploadInput{}, "", &ValidationError{
-			Field:   "purpose",
-			Message: "purpose must be task_input, tool_source, knowledge or evaluation_dataset",
 		}
 	}
 	return UploadInput{MediaType: mediaType, SizeBytes: input.SizeBytes, Purpose: purpose}, format, nil

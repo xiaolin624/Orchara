@@ -92,6 +92,10 @@ func BuildRunCommand(options Options, spec bundleSpec, staged Staged) ([]string,
 		return nil, err
 	}
 
+	timeoutSeconds := spec.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = int(options.Timeout / time.Second)
+	}
 	argv := wslPrefix(options, guestDriver, "run")
 	argv = append(argv,
 		"--sandbox-id", spec.SandboxID,
@@ -103,7 +107,7 @@ func BuildRunCommand(options Options, spec bundleSpec, staged Staged) ([]string,
 		"--input-json", guestInputJSON,
 		"--input-name", spec.InputName,
 		"--config", guestConfig,
-		"--timeout", strconv.Itoa(int(options.Timeout/time.Second)),
+		"--timeout", strconv.Itoa(timeoutSeconds),
 		"--memory-mb", strconv.Itoa(spec.MemoryMB),
 		"--pids", strconv.Itoa(spec.PIDsLimit),
 		"--cpu-seconds", strconv.Itoa(spec.CPUSeconds),
@@ -148,11 +152,11 @@ func wslPrefix(options Options, guestDriver, subcommand string) []string {
 	return append(argv, guestDriver, subcommand)
 }
 
-// SandboxTimeout returns the driver-visible timeout in whole seconds (at least
-// one second; runsc needs a positive bound).
-func SandboxTimeout(options Options) time.Duration {
-	if options.Timeout < time.Second {
+// SandboxTimeout returns the driver-visible timeout (at least one second; runsc
+// needs a positive bound).
+func SandboxTimeout(timeout time.Duration) time.Duration {
+	if timeout < time.Second {
 		return time.Second
 	}
-	return options.Timeout
+	return timeout
 }

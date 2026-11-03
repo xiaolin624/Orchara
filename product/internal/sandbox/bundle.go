@@ -98,16 +98,17 @@ type OCIPids struct {
 
 // spec is the internal bundle input after validation.
 type bundleSpec struct {
-	SandboxID    string
-	StateRoot    string
-	Rootfs       string
-	Program      Program
-	ProbeMode    ProbeMode
-	ProbeSeconds int
-	InputName    string
-	MemoryMB     int
-	PIDsLimit    int
-	CPUSeconds   int
+	SandboxID      string
+	StateRoot      string
+	Rootfs         string
+	Program        Program
+	ProbeMode      ProbeMode
+	ProbeSeconds   int
+	InputName      string
+	MemoryMB       int
+	PIDsLimit      int
+	CPUSeconds     int
+	TimeoutSeconds int
 }
 
 // workspaceDir is the guest workspace of one sandbox.
@@ -146,6 +147,18 @@ func buildOCI(spec bundleSpec) ([]byte, error) {
 			"--output", "/workspace/output.json",
 			"--inputs-dir", "/inputs",
 			"--artifacts-dir", "/workspace/artifacts",
+		}
+	case ProgramBuildTool:
+		// Fixed argv: the source zip and the canonical lock are the only inputs,
+		// and both mount names are constants. No user value reaches this argv.
+		args = []string{
+			"/usr/bin/python3.12", "/tool/build_tool.py",
+			"--source", "/inputs/source.zip",
+			"--lock", "/inputs/lock.json",
+			"--output", "/workspace/build.json",
+			"--log", "/workspace/build.log",
+			"--artifacts-dir", "/workspace/artifacts",
+			"--work", "/workspace/work",
 		}
 	case ProgramIsolationProbe:
 		mode := string(spec.ProbeMode)

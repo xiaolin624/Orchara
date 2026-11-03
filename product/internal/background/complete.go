@@ -192,6 +192,7 @@ var completionGuards = map[Kind]CompletionGuard{
 	KindModelValidate:       guardModelValidateCompletion,
 	KindApplicationEvaluate: guardApplicationEvaluateCompletion,
 	KindToolRun:             guardToolRunCompletion,
+	KindToolBuild:           guardToolBuildCompletion,
 }
 
 // retryAllowed is the single retry decision: the code must be in the kind's

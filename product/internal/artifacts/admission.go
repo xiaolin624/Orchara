@@ -26,6 +26,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"unicode/utf8"
@@ -49,6 +50,12 @@ const (
 // says unsupported formats are refused rather than guessed at.
 const XLSXMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+// ZipMediaType is the T037 build-source bundle. It is admitted **only** for
+// purpose=tool_source: the bytes are an untrusted source archive that the
+// sandboxed build unpacks, so the same archive for a task input (where no
+// sandbox build consumes it) stays refused.
+const ZipMediaType = "application/zip"
+
 // Admission verdicts stored in platform.artifact_admissions.verdict.
 const (
 	VerdictAccepted = "accepted"
@@ -70,6 +77,21 @@ const (
 	ReasonXLSXPathTraversal    = "xlsx_path_traversal"
 	ReasonXLSXMissingWorkbook  = "xlsx_missing_workbook"
 	ReasonXLSXInvalidArchive   = "xlsx_invalid_archive"
+
+	// T037 tool-source zip refusals. A tool_source zip is the build input, so the
+	// archive limits are stricter than "a parser will open it": entry count,
+	// total uncompressed bytes, compression ratio, unsafe paths, symlinks,
+	// encrypted entries and unsupported compression are all refused before any
+	// byte is extracted.
+	ReasonZipInvalidArchive   = "zip_invalid_archive"
+	ReasonZipPathTraversal    = "zip_path_traversal"
+	ReasonZipSymlinkEntry     = "zip_symlink_entry"
+	ReasonZipEncryptedEntry   = "zip_encrypted_entry"
+	ReasonZipUnsupportedCodec = "zip_unsupported_compression"
+	ReasonZipEntryLimit       = "zip_entry_limit_exceeded"
+	ReasonZipUncompressed     = "zip_uncompressed_limit_exceeded"
+	ReasonZipRatio            = "zip_ratio_exceeded"
+	ReasonZipEmptyArchive     = "zip_empty_archive"
 )
 
 // Archive limits. They are the "decompression/entry limits" BACKGROUND-JOBS §2
@@ -78,6 +100,11 @@ const (
 	MaxArchiveEntries           = 512
 	MaxArchiveUncompressedBytes = 64 << 20
 	maxContentTypesBytes        = 1 << 20
+
+	// MaxZipCompressionRatio bounds total-uncompressed / total-compressed for a
+	// tool source bundle. A real source tree compresses far below this; a zip
+	// bomb does not.
+	MaxZipCompressionRatio = 100
 )
 
 // supportedUploadMediaTypes is the closed allowlist. The map value is the
@@ -97,6 +124,18 @@ var supportedUploadMediaTypes = map[string]Format{
 func SupportedUploadMediaType(raw string) (Format, bool) {
 	format, ok := supportedUploadMediaTypes[strings.ToLower(strings.TrimSpace(raw))]
 	return format, ok
+}
+
+// SupportedUploadMediaTypeForPurpose is SupportedUploadMediaType plus the one
+// purpose-scoped allowance: application/zip for tool_source. The purpose is
+// already closed by NormalizeUploadInput; a caller that passes an arbitrary
+// string gets the default (restricted) allowlist.
+func SupportedUploadMediaTypeForPurpose(purpose, raw string) (Format, bool) {
+	mediaType := strings.ToLower(strings.TrimSpace(raw))
+	if strings.TrimSpace(purpose) == "tool_source" && mediaType == ZipMediaType {
+		return FormatZip, true
+	}
+	return SupportedUploadMediaType(mediaType)
 }
 
 // Admission is the durable evidence for one artifact's real bytes.
@@ -136,6 +175,8 @@ func sniffedMediaTypeFor(format Format) string {
 		return "application/json"
 	case FormatXLSX:
 		return XLSXMediaType
+	case FormatZip:
+		return ZipMediaType
 	default:
 		return "application/octet-stream"
 	}
@@ -156,11 +197,18 @@ func rejected(declared, sniffed string, format Format, reason string) Admission 
 // VerdictRejected and a safe reason, which the handler records and the
 // completion guard turns into a quarantined artifact.
 func InspectUpload(declaredMediaType string, content []byte) Admission {
+	return InspectUploadForPurpose(declaredMediaType, "", content)
+}
+
+// InspectUploadForPurpose is InspectUpload plus the purpose-scoped tool_source
+// zip allowance. The finalize handler must use this form: the purpose is stored
+// on the artifact row and is the authority for "may this declaration be a zip".
+func InspectUploadForPurpose(declaredMediaType, purpose string, content []byte) Admission {
 	declared := strings.ToLower(strings.TrimSpace(declaredMediaType))
 	if len(content) == 0 {
 		return rejected(declared, "application/octet-stream", FormatUnknown, ReasonEmptyContent)
 	}
-	format, supported := SupportedUploadMediaType(declared)
+	format, supported := SupportedUploadMediaTypeForPurpose(purpose, declared)
 	sniffed, sniffedFormat := sniffContent(content)
 	if !supported {
 		return rejected(declared, sniffed, sniffedFormat, ReasonUnsupportedMediaType)
@@ -199,6 +247,8 @@ func InspectUpload(declaredMediaType string, content []byte) Admission {
 		return accepted(declared, FormatJSON)
 	case FormatXLSX:
 		return inspectXLSX(declared, content)
+	case FormatZip:
+		return inspectToolSourceZip(declared, content)
 	default:
 		return rejected(declared, sniffed, sniffedFormat, ReasonUnsupportedMediaType)
 	}
@@ -294,6 +344,90 @@ func inspectXLSX(declared string, content []byte) Admission {
 		return rejected(declared, "application/zip", FormatZip, ReasonXLSXMissingWorkbook)
 	}
 	return accepted(declared, FormatXLSX)
+}
+
+// inspectToolSourceZip admits a build source bundle. It never extracts bytes:
+// it reads the central directory only, rejects the unsafe shapes up front and
+// bounds entries/uncompressed size/ratio. The sandboxed build script repeats
+// every check while extracting (a zip header can lie about its sizes), so this
+// is the admission gate, not the whole enforcement.
+func inspectToolSourceZip(declared string, content []byte) Admission {
+	if !isZip(content) {
+		sniffed, format := sniffContent(content)
+		return rejected(declared, sniffed, format, ReasonContentTypeMismatch)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return rejected(declared, ZipMediaType, FormatZip, ReasonZipInvalidArchive)
+	}
+	var (
+		totalUncompressed uint64
+		totalCompressed   uint64
+		files             int
+	)
+	for _, entry := range reader.File {
+		if !safeArchivePath(entry.Name) {
+			return rejected(declared, ZipMediaType, FormatZip, ReasonZipPathTraversal)
+		}
+		if entry.Flags&0x1 != 0 {
+			return rejected(declared, ZipMediaType, FormatZip, ReasonZipEncryptedEntry)
+		}
+		if entry.Mode()&os.ModeSymlink != 0 {
+			return rejected(declared, ZipMediaType, FormatZip, ReasonZipSymlinkEntry)
+		}
+		if reason := zipCompressionReason(&entry.FileHeader); reason != "" {
+			return rejected(declared, ZipMediaType, FormatZip, reason)
+		}
+		if entry.UncompressedSize64 > MaxArchiveUncompressedBytes ||
+			totalUncompressed > MaxArchiveUncompressedBytes-entry.UncompressedSize64 {
+			return rejected(declared, ZipMediaType, FormatZip, ReasonZipUncompressed)
+		}
+		totalUncompressed += entry.UncompressedSize64
+		if entry.CompressedSize64 > ^uint64(0)-totalCompressed {
+			return rejected(declared, ZipMediaType, FormatZip, ReasonZipRatio)
+		}
+		totalCompressed += entry.CompressedSize64
+		if !strings.HasSuffix(entry.Name, "/") && !entry.FileInfo().IsDir() {
+			files++
+		}
+	}
+	if files == 0 {
+		return rejected(declared, ZipMediaType, FormatZip, ReasonZipEmptyArchive)
+	}
+	if reason := zipLimitReason(len(reader.File), totalUncompressed, totalCompressed); reason != "" {
+		return rejected(declared, ZipMediaType, FormatZip, reason)
+	}
+	return accepted(declared, FormatZip)
+}
+
+// zipCompressionReason admits only Store and Deflate. Anything else (a codec
+// the platform has no reader for) is refused rather than guessed at.
+func zipCompressionReason(entry *zip.FileHeader) string {
+	switch entry.Method {
+	case zip.Store, zip.Deflate:
+		return ""
+	default:
+		return ReasonZipUnsupportedCodec
+	}
+}
+
+// zipLimitReason is the pure entry/uncompressed/ratio decision, shared by the
+// inspector and its unit test. A compressed size of zero with uncompressed data
+// is an infinite ratio and is refused.
+func zipLimitReason(entries int, uncompressed, compressed uint64) string {
+	if entries > MaxArchiveEntries {
+		return ReasonZipEntryLimit
+	}
+	if uncompressed > MaxArchiveUncompressedBytes {
+		return ReasonZipUncompressed
+	}
+	if uncompressed == 0 {
+		return ""
+	}
+	if compressed == 0 || uncompressed/compressed > MaxZipCompressionRatio {
+		return ReasonZipRatio
+	}
+	return ""
 }
 
 // archiveLimitReason is the pure entry/uncompressed-count decision, shared by

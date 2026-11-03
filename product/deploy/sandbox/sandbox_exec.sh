@@ -21,7 +21,7 @@
 #                           --tool PATH --input PATH --input-json PATH
 #                           --input-name NAME --timeout SEC --memory-mb N
 #                           --pids N --cpu-seconds N
-#                           [--mode tool|probe] [--probe-mode isolation|slow|crash]
+#                           [--mode tool|probe|build] [--probe-mode isolation|slow|crash]
 #                           [--probe-seconds N]
 #   sandbox_exec.sh cleanup --sandbox-id ID --state-root DIR
 set -uo pipefail
@@ -162,7 +162,7 @@ fi
 [[ "$MEMORY_MB" =~ ^[0-9]+$ ]] || die "invalid memory limit"
 [[ "$PIDS_LIMIT" =~ ^[0-9]+$ ]] || die "invalid pids limit"
 [[ "$CPU_SECONDS" =~ ^[0-9]+$ ]] || die "invalid cpu limit"
-[[ "$PROGRAM_MODE" =~ ^(tool|probe)$ ]] || die "invalid program mode"
+[[ "$PROGRAM_MODE" =~ ^(tool|probe|build)$ ]] || die "invalid program mode"
 [[ "$PROBE_MODE" =~ ^(isolation|slow|crash)$ ]] || die "invalid probe mode"
 
 mkdir -p "$STATE_ROOT/foreign" 2>/dev/null || true
@@ -174,14 +174,24 @@ mkdir -p "$WORKSPACE"/tool "$WORKSPACE"/inputs "$WORKSPACE"/output/artifacts "$W
 if [ "$PROGRAM_MODE" = "tool" ]; then
   cp "$TOOL" "$WORKSPACE/tool/sales_stats.py"
   chmod 0444 "$WORKSPACE/tool/sales_stats.py"
-else
+elif [ "$PROGRAM_MODE" = "probe" ]; then
   cp "$TOOL" "$WORKSPACE/tool/probe.py"
   chmod 0444 "$WORKSPACE/tool/probe.py"
+else
+  # F05/T037: the checked-in build script. Its argv is fixed in the OCI config
+  # built by internal/sandbox; this driver only stages the two read-only inputs.
+  cp "$TOOL" "$WORKSPACE/tool/build_tool.py"
+  chmod 0444 "$WORKSPACE/tool/build_tool.py"
 fi
 cp "$INPUT" "$WORKSPACE/inputs/$INPUT_NAME"
 chmod 0444 "$WORKSPACE/inputs/$INPUT_NAME"
-cp "$INPUT_JSON" "$WORKSPACE/output/input.json"
-chmod 0444 "$WORKSPACE/output/input.json"
+if [ "$PROGRAM_MODE" = "build" ]; then
+  cp "$INPUT_JSON" "$WORKSPACE/inputs/lock.json"
+  chmod 0444 "$WORKSPACE/inputs/lock.json"
+else
+  cp "$INPUT_JSON" "$WORKSPACE/output/input.json"
+  chmod 0444 "$WORKSPACE/output/input.json"
+fi
 chown -R 65534:65534 "$WORKSPACE/output"
 chmod 0755 "$WORKSPACE" "$WORKSPACE/inputs" "$WORKSPACE/tool" "$WORKSPACE/bundle" "$WORKSPACE/cwd"
 chmod 0755 "$WORKSPACE/output" "$WORKSPACE/output/artifacts"
@@ -209,6 +219,7 @@ COLLECT="$(mktemp -d "$STATE_ROOT/.collect-$SANDBOX_ID.XXXXXX")"
 mkdir -p "$COLLECT/artifacts"
 [ -f "$WORKSPACE/output/output.json" ] && cp "$WORKSPACE/output/output.json" "$COLLECT/output.json"
 [ -f "$WORKSPACE/output/probe.json" ] && cp "$WORKSPACE/output/probe.json" "$COLLECT/probe.json"
+[ -f "$WORKSPACE/output/build.json" ] && cp "$WORKSPACE/output/build.json" "$COLLECT/output.json"
 [ -f "$WORKSPACE/stdout" ] && cp "$WORKSPACE/stdout" "$COLLECT/stdout"
 [ -f "$WORKSPACE/stderr" ] && cp "$WORKSPACE/stderr" "$COLLECT/stderr"
 if [ -d "$WORKSPACE/output/artifacts" ]; then

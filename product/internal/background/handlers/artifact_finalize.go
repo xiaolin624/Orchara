@@ -24,13 +24,15 @@ import (
 // also has an entry in the fixed retry table (internal/background/job.go); a
 // kind that is absent here is never claimed, even if it is a whitelisted kind.
 // T022 implemented artifact_finalize; T024 adds model_validate; T026 adds
-// application_evaluate; T030 adds tool_run. The remaining whitelisted kinds stay
+// application_evaluate; T030 adds tool_run; T037 adds tool_build. The remaining
+// whitelisted kinds stay
 // ready until their ticket lands (T027/F03/F05/F07/F13A).
 var Registry = background.Registry{
 	background.KindArtifactFinalize:    ArtifactFinalize,
 	background.KindModelValidate:       ModelValidate,
 	background.KindApplicationEvaluate: ApplicationEvaluate,
 	background.KindToolRun:             ToolRun,
+	background.KindToolBuild:           ToolBuild,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from
@@ -142,7 +144,7 @@ func ArtifactFinalize(ctx context.Context, work background.HandlerWork) backgrou
 	if err != nil {
 		return background.Failed(background.CodeTransientStorageIO)
 	}
-	admission := artifacts.InspectUpload(artifact.MediaType, content)
+	admission := artifacts.InspectUploadForPurpose(artifact.MediaType, artifact.Purpose, content)
 	if err := recordAdmission(ctx, work.DB, work.Job.TargetID, admission); err != nil {
 		return background.Failed(background.CodeTransientInternal)
 	}

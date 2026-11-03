@@ -98,6 +98,9 @@ var artifactProducerKinds = map[Kind]bool{
 	// T030: the trusted preset tool registers its summary, CSV, diagnostics and
 	// capped log through the same job-scoped upload flow.
 	KindToolRun: true,
+	// T037: the sandboxed build uploads its capped log and SBOM through the same
+	// job-scoped flow; the completion guard re-checks both.
+	KindToolBuild: true,
 }
 
 // uploadPurposes is the contract's createBackgroundUpload purpose enum plus the
@@ -112,6 +115,10 @@ var uploadPurposes = map[string]bool{
 	"tool_summary":  true,
 	"tool_artifact": true,
 	"diagnostics":   true,
+	// T037 tool build artifacts. `sbom` is the completion's result artifact;
+	// `build_log` is a capped log, never protocol output.
+	"sbom":      true,
+	"build_log": true,
 }
 
 // CreateUpload reserves one artifact for a job. It writes the artifact row and
@@ -140,7 +147,7 @@ func (s *ArtifactStore) CreateUpload(
 		return UploadTicket{}, &ValidationError{
 			Field: "purpose",
 			Message: "purpose must be report, log, receipt, parsed_data, tool_summary, " +
-				"tool_artifact or diagnostics",
+				"tool_artifact, diagnostics, sbom or build_log",
 		}
 	}
 	if request.SizeBytes < 0 || request.SizeBytes > objectstore.MaxObjectBytes {

@@ -52,6 +52,10 @@ const (
 	// the sandbox boundaries in an experiment. It accepts no caller arguments
 	// beyond a fixed mode enum.
 	ProgramIsolationProbe Program = "probe"
+	// ProgramBuildTool is F05/T037's checked-in build script. It receives the
+	// submitted source zip and the canonical dependency lock as read-only inputs
+	// and runs in the same minimal rootfs with no network and no host mounts.
+	ProgramBuildTool Program = "build"
 )
 
 // ProbeMode is the fixed probe behaviour set.
@@ -134,6 +138,8 @@ type Options struct {
 	DriverScript string
 	// ProbeScript is the host path of deploy/sandbox/isolation_probe.py.
 	ProbeScript string
+	// BuildScript is the host path of deploy/sandbox/build_tool.py (T037).
+	BuildScript string
 	// MemoryMB/PIDsLimit/CPUSeconds are the OCI resource limits.
 	MemoryMB   int
 	PIDsLimit  int
@@ -179,6 +185,9 @@ func (o Options) normalized() (Options, error) {
 	}
 	if o.ProbeScript == "" {
 		o.ProbeScript = os.Getenv("ORCHARA_SANDBOX_PROBE")
+	}
+	if o.BuildScript == "" {
+		o.BuildScript = os.Getenv("ORCHARA_SANDBOX_BUILD_TOOL")
 	}
 	if o.MemoryMB <= 0 {
 		o.MemoryMB = DefaultMemoryMB
@@ -243,6 +252,8 @@ func OptionsFromEnv(productRoot string) (Options, error) {
 			filepath.Join(productRoot, "worker", "platform_worker", "nodes", "sales_stats.py")),
 		ProbeScript: envOr("ORCHARA_SANDBOX_PROBE",
 			filepath.Join(productRoot, "deploy", "sandbox", "isolation_probe.py")),
+		BuildScript: envOr("ORCHARA_SANDBOX_BUILD_TOOL",
+			filepath.Join(productRoot, "deploy", "sandbox", "build_tool.py")),
 		DriverScript: envOr("ORCHARA_SANDBOX_DRIVER",
 			filepath.Join(productRoot, "deploy", "sandbox", "sandbox_exec.sh")),
 	}
@@ -369,6 +380,11 @@ func (o Options) toolPathFor(program Program) (string, error) {
 			return "", fmt.Errorf("%w: no probe script configured", ErrToolUnavailable)
 		}
 		return o.ProbeScript, nil
+	case ProgramBuildTool:
+		if strings.TrimSpace(o.BuildScript) == "" {
+			return "", fmt.Errorf("%w: no build script configured", ErrToolUnavailable)
+		}
+		return o.BuildScript, nil
 	default:
 		return "", fmt.Errorf("%w: unknown program %q", ErrToolUnavailable, program)
 	}
@@ -382,6 +398,8 @@ func toolNameInSandbox(program Program) (string, error) {
 		return "sales_stats.py", nil
 	case ProgramIsolationProbe:
 		return "probe.py", nil
+	case ProgramBuildTool:
+		return "build_tool.py", nil
 	default:
 		return "", fmt.Errorf("%w: unknown program %q", ErrToolUnavailable, program)
 	}

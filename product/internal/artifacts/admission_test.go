@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -224,4 +225,149 @@ func TestArchiveLimitsRejectUncompressedBombs(t *testing.T) {
 func TestAnUnsupportedDeclaredTypeIsRejectedWithASafeSniff(t *testing.T) {
 	assertRejected(t, inspect(t, "application/pdf", []byte("%PDF-1.7")), ReasonUnsupportedMediaType)
 	assertRejected(t, inspect(t, "image/png", []byte("\x89PNG\r\n")), ReasonUnsupportedMediaType)
+}
+
+// ---------------------------------------------------------------------------
+// T037: application/zip is admitted only for purpose=tool_source
+// ---------------------------------------------------------------------------
+
+func toolSourceZip(t *testing.T, entries map[string][]byte) []byte {
+	t.Helper()
+	return xlsxZip(t, entries)
+}
+
+func inspectToolSource(t *testing.T, content []byte) Admission {
+	t.Helper()
+	return InspectUploadForPurpose("application/zip", "tool_source", content)
+}
+
+func TestZipIsAllowedOnlyForTheToolSourcePurpose(t *testing.T) {
+	if _, ok := SupportedUploadMediaTypeForPurpose("tool_source", "application/zip"); !ok {
+		t.Fatal("tool_source did not admit application/zip")
+	}
+	for _, purpose := range []string{"task_input", "knowledge", "evaluation_dataset"} {
+		if _, ok := SupportedUploadMediaTypeForPurpose(purpose, "application/zip"); ok {
+			t.Fatalf("purpose %q must not admit application/zip", purpose)
+		}
+	}
+	if _, _, err := NormalizeUploadInput(UploadInput{
+		MediaType: "application/zip", SizeBytes: 10, Purpose: "tool_source",
+	}); err != nil {
+		t.Fatalf("a tool_source zip was refused at declaration time: %v", err)
+	}
+	if _, _, err := NormalizeUploadInput(UploadInput{
+		MediaType: "application/zip", SizeBytes: 10, Purpose: "task_input",
+	}); err == nil {
+		t.Fatal("a task_input zip was admitted at declaration time")
+	}
+}
+
+func TestToolSourceZipAdmissionAcceptsARealSourceBundle(t *testing.T) {
+	admission := inspectToolSource(t, toolSourceZip(t, map[string][]byte{
+		"tool/__init__.py": []byte("VALUE = 1\n"),
+		"tool/main.py":     []byte("from . import VALUE\nprint(VALUE)\n"),
+		"setup.py":         []byte("print('build')\n"),
+	}))
+	if admission.Verdict != VerdictAccepted || admission.DetectedFormat != FormatZip {
+		t.Fatalf("a real source bundle was refused: %+v", admission)
+	}
+	if admission.SniffedMediaType != "application/zip" {
+		t.Fatalf("sniffed media type = %q", admission.SniffedMediaType)
+	}
+}
+
+func TestToolSourceZipAdmissionRejectsUnsafeEntries(t *testing.T) {
+	cases := map[string]struct {
+		entries map[string][]byte
+		reason  string
+	}{
+		"path traversal": {
+			entries: map[string][]byte{"../escape.py": []byte("x")},
+			reason:  ReasonZipPathTraversal,
+		},
+		"absolute path": {
+			entries: map[string][]byte{"/etc/passwd": []byte("x")},
+			reason:  ReasonZipPathTraversal,
+		},
+		"backslash path": {
+			entries: map[string][]byte{`tool\main.py`: []byte("x")},
+			reason:  ReasonZipPathTraversal,
+		},
+		"no files": {
+			entries: map[string][]byte{"tool/": nil},
+			reason:  ReasonZipEmptyArchive,
+		},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			assertRejected(t, inspectToolSource(t, toolSourceZip(t, testCase.entries)), testCase.reason)
+		})
+	}
+
+	// A symlink entry is refused even though the name is harmless.
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	header := &zip.FileHeader{Name: "tool/link.py", Method: zip.Store}
+	header.SetMode(os.ModeSymlink | 0o777)
+	file, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatalf("creating the symlink entry: %v", err)
+	}
+	if _, err := file.Write([]byte("../../etc/passwd")); err != nil {
+		t.Fatalf("writing the symlink entry: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("closing the symlink archive: %v", err)
+	}
+	assertRejected(t, inspectToolSource(t, buffer.Bytes()), ReasonZipSymlinkEntry)
+
+	// An encrypted entry is refused before anything tries to decompress it.
+	buffer.Reset()
+	writer = zip.NewWriter(&buffer)
+	encrypted := &zip.FileHeader{Name: "tool/main.py", Method: zip.Deflate}
+	encrypted.Flags |= 0x1
+	file, err = writer.CreateHeader(encrypted)
+	if err != nil {
+		t.Fatalf("creating the encrypted entry: %v", err)
+	}
+	if _, err := file.Write([]byte("x")); err != nil {
+		t.Fatalf("writing the encrypted entry: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("closing the encrypted archive: %v", err)
+	}
+	assertRejected(t, inspectToolSource(t, buffer.Bytes()), ReasonZipEncryptedEntry)
+
+	// Unsupported compression methods are refused rather than guessed at. The
+	// standard writer refuses to emit an unknown method, so the pure check is
+	// asserted directly (the reader path uses the same helper).
+	unsupported := &zip.FileHeader{Name: "tool/main.py", Method: 99}
+	if reason := zipCompressionReason(unsupported); reason != ReasonZipUnsupportedCodec {
+		t.Fatalf("unsupported method reason = %q", reason)
+	}
+}
+
+func TestToolSourceZipAdmissionEnforcesRatioAndLimits(t *testing.T) {
+	// 8 MiB of zeros compresses to a few KiB: the ratio cap must fire before
+	// anything is decompressed into memory.
+	bomb := toolSourceZip(t, map[string][]byte{"tool/blob.bin": make([]byte, 8<<20)})
+	assertRejected(t, inspectToolSource(t, bomb), ReasonZipRatio)
+
+	if reason := zipLimitReason(1, MaxArchiveUncompressedBytes, MaxArchiveUncompressedBytes); reason != "" {
+		t.Fatalf("an archive at the limits was refused: %s", reason)
+	}
+	if reason := zipLimitReason(MaxArchiveEntries+1, 1, 1); reason != ReasonZipEntryLimit {
+		t.Fatalf("entry limit reason = %q", reason)
+	}
+	if reason := zipLimitReason(1, MaxArchiveUncompressedBytes+1, MaxArchiveUncompressedBytes); reason != ReasonZipUncompressed {
+		t.Fatalf("uncompressed limit reason = %q", reason)
+	}
+	if reason := zipLimitReason(1, 1<<20, 1); reason != ReasonZipRatio {
+		t.Fatalf("ratio reason = %q", reason)
+	}
+
+	// A declared zip whose bytes are not a zip is a content-type mismatch.
+	assertRejected(t, inspectToolSource(t, []byte("not a zip")), ReasonContentTypeMismatch)
+	// An empty body stays the generic empty-content refusal.
+	assertRejected(t, inspectToolSource(t, []byte("")), ReasonEmptyContent)
 }

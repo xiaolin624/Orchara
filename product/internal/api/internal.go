@@ -122,6 +122,10 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// hash) the handler must put in its report. Non-contract internal extension;
 	// see internal/api/evaluations.go for why the lease cannot carry it.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation", s.handleInternalEvaluationBinding)
+	// F05/T037: the job-scoped tool-build binding (source hash, canonical
+	// dependency lock, manifest identity). Non-contract internal extension; the
+	// handler never reads the tool row itself.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/tool-build", s.handleInternalToolBuild)
 
 	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
 	// capacities; heartbeat may be served by either the supervisor or the worker

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
 )
 
@@ -35,6 +36,17 @@ type HandlerWork struct {
 	// per-run timeout); a nil executor means this process cannot run tool_run
 	// jobs and the handler fails closed instead of guessing a command.
 	Tools *tools.Executor
+	// Sandbox is the T033 gVisor executor. The T037 tool_build handler uses it to
+	// run deploy/sandbox/build_tool.py; a nil executor means this process cannot
+	// run tool builds and the handler fails closed with a safe code.
+	Sandbox SandboxRunner
+}
+
+// SandboxRunner is the executor seam for the build handler. The production
+// implementation is *sandbox.Executor; tests may provide a fake that returns a
+// checked-in driver report, but the real-stack tests exercise runsc.
+type SandboxRunner interface {
+	Run(ctx context.Context, request sandbox.Request, control sandbox.Control) (sandbox.Outcome, error)
 }
 
 // HandlerSettings is the per-process configuration a handler may consult.
@@ -52,6 +64,9 @@ type HandlerSettings struct {
 	// ReportWaitTimeout bounds how long a handler waits for its own report
 	// artifact to be finalized by the system_io pool.
 	ReportWaitTimeout time.Duration
+	// ToolBuildTimeout bounds one sandboxed tool build (T037). A zero value means
+	// the handler's documented default.
+	ToolBuildTimeout time.Duration
 }
 
 // Outcome is what a handler reports. State is succeeded (the guard then decides

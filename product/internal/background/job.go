@@ -221,6 +221,22 @@ const (
 	CodeToolArtifactTooLarge = "tool_artifact_too_large"
 	CodeToolArtifactCount    = "tool_artifact_count_exceeded"
 	CodeToolInputInvalid     = "tool_input_invalid"
+
+	// tool_build failure codes (T037). The handler reports the safe code; the
+	// completion guard stores the same closed vocabulary on tool_versions.
+	// Only the three transient codes are retryable; every build rejection is
+	// deterministic (the same source/lock produces the same refusal), so it
+	// fails immediately.
+	CodeBuildFailed              = "build_failed"
+	CodeBuildSourceInvalid       = "build_source_invalid"
+	CodeBuildSourceChanged       = "build_source_changed"
+	CodeBuildSandboxUnavailable  = "build_sandbox_unavailable"
+	CodeBuildTimeout             = "build_timeout"
+	CodeBuildCrashed             = "build_crashed"
+	CodeBuildOutputInvalid       = "build_output_invalid"
+	CodeBuildArtifactsInvalid    = "build_artifacts_invalid"
+	CodeBuildArtifactInvalid     = "build_artifact_invalid"
+	CodeBuildDependenciesMissing = "dependencies_unavailable"
 )
 
 // Failure codes that quarantine the artifact rather than leave it unavailable.
@@ -280,6 +296,14 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeLeaseExpired:       true,
 		CodeToolTimeout:        true,
 		CodeToolCrash:          true,
+	},
+	// tool_build (T037): transient storage/internal/lease failures are retried;
+	// a dependency-unavailable, unsafe-source or sandbox refusal is deterministic
+	// and business. An unknown code classifies as business (fail safe).
+	KindToolBuild: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
 	},
 }
 

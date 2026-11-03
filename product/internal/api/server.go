@@ -19,6 +19,7 @@ import (
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 	"orchara/platform/internal/toolruns"
+	"orchara/platform/internal/toolversions"
 )
 
 // Server serves the F01 identity endpoints, the F02A draft/version paths, the
@@ -40,9 +41,11 @@ type Server struct {
 	userArtifacts *artifacts.Service
 	// toolRuns is the T030 preset-tool run service (non-contract bridge).
 	toolRuns *toolruns.Service
-	models   *modelproxy.Service
-	objects  *objectstore.Store
-	signer   *objectstore.Signer
+	// toolVersions is the F05/T037 submission/build/review service.
+	toolVersions *toolversions.Service
+	models       *modelproxy.Service
+	objects      *objectstore.Store
+	signer       *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -131,6 +134,7 @@ func New(deps Deps) *Server {
 		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
 		toolRuns:          toolruns.New(deps.Service.DB, notifier),
+		toolVersions:      toolversions.New(deps.Service.DB),
 		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
@@ -248,6 +252,16 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/tool-runs", s.handleCreateToolRun)
 	mux.HandleFunc("GET /api/v1/tool-runs/{job_id}", s.handleGetToolRun)
 
+	// F05/T037: tool submission, the contract read model, admin review and the
+	// documented non-contract revoke/build-facts endpoints. No route here names a
+	// user-supplied command or path.
+	mux.HandleFunc("POST /api/v1/tools", s.handleSubmitTool)
+	mux.HandleFunc("GET /api/v1/tools", s.handleListTools)
+	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}", s.handleGetTool)
+	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/review", s.handleReviewTool)
+	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/revoke", s.handleRevokeTool)
+	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}/build", s.handleGetToolBuild)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -255,6 +269,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F05/T028: the attachment upload page. Like every static route, the path is
 	// a compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /attachments", s.staticPage("attachments.html"))
+	// F05/T037: the creator tools page and its admin review queue. Like every
+	// static route, the path is a compile-time constant.
+	mux.HandleFunc("GET /tools", s.staticPage("tools.html"))
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
@@ -267,6 +284,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
+	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
 }
 
