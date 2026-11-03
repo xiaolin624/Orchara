@@ -205,6 +205,72 @@ def run_agent(
     )
 
 
+class StreamingModelAdapter(Protocol):
+    """A model adapter that can stream one generation (F06/T044)."""
+
+    def stream_generate(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[DeclaredTool] | None = None,
+        response_schema: dict[str, Any] | None = None,
+        on_frame: Any = None,
+    ) -> Generation:
+        ...
+
+
+class _StreamingLoopModel:
+    """Adapt ``stream_generate`` to the existing ``run_agent`` loop.
+
+    The loop only ever sees a validated :class:`Generation`; streamed fragments are
+    forwarded for preview and are never treated as executable calls.
+    """
+
+    def __init__(self, model: StreamingModelAdapter, on_frame) -> None:  # noqa: ANN001
+        self.model = model
+        self.on_frame = on_frame
+
+    def generate(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[DeclaredTool] | None = None,
+        response_schema: dict[str, Any] | None = None,
+    ) -> Generation:
+        return self.model.stream_generate(
+            messages=messages,
+            tools=tools,
+            response_schema=response_schema,
+            on_frame=self.on_frame,
+        )
+
+
+def stream_agent(
+    *,
+    model: StreamingModelAdapter,
+    tools: list[DeclaredTool],
+    executor: ToolExecutor,
+    messages: list[dict[str, Any]],
+    response_schema: dict[str, Any] | None = None,
+    max_turns: int = 4,
+    on_frame=None,  # noqa: ANN001 - (frame: dict) -> None
+) -> NodeOutcome:
+    """Run the agent loop over a streaming model (F06/T044).
+
+    The same rules as :func:`run_agent` apply, plus: only the validated ``final``
+    frame of the current generation can contribute tool calls, so a partial
+    streamed tool call is displayed as pending and never executed.
+    """
+    return run_agent(
+        model=_StreamingLoopModel(model, on_frame),
+        tools=tools,
+        executor=executor,
+        messages=messages,
+        response_schema=response_schema,
+        max_turns=max_turns,
+    )
+
+
 def _finish(
     generation: Generation,
     response_schema: dict[str, Any] | None,
@@ -245,4 +311,5 @@ __all__ = [
     "ToolExecutionError",
     "ToolExecutor",
     "run_agent",
+    "stream_agent",
 ]

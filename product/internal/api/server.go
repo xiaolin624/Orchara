@@ -335,6 +335,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
 	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
+	// F06/T044: the shared temporary model preview helpers loaded by /debug and /runs.
+	mux.HandleFunc("GET /assets/stream-preview.js", s.staticPage(filepath.Join("assets", "stream-preview.js")))
 	// F04A/T040: the committed Vue Flow canvas bundle. The page never needs npm;
 	// the bundle and its stylesheet are static build artifacts checked into the tree.
 	mux.HandleFunc("GET /assets/canvas.js", s.staticPage(filepath.Join("assets", "canvas.js")))
