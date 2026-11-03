@@ -1105,6 +1105,31 @@ trace 作为 agent 节点 `context-trace` 文件行持久化并显示在 `/runs`
 | 门禁 | 见 `reports/f06/T047-context.md` §9（go vet/test、gofmt、pytest f06/f04a/tooling、sync_spec --check 顺序执行） |
 | 边界/not_run | 真实厂商 adapter/真实 tokenizer、F09 个人记忆存储与真实记忆消费、摘要生成链路、真实栈 foreign source 注入（只有 Go seam）、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；失败路径不写 trace 文件行（报告 §8 偏差 2）；未 push/未关 issue、未改 docs/spec/contracts、未新增迁移 |
 
+## F06 固定 HTTP 连接器与受控出站（T048，2026-11-04）
+
+T048（GitHub #49）已交付，状态 **`passed`**（范围 = 管理员登记版本化连接器策略并封存不可变
+JCS artifact；工具声明的 connector 版本进入编译期 manifest 闭包；`invokeCapability(kind=connector)`
+校验 manifest 成员/策略 hash/已批准未撤销/method/path/请求 schema/风险后，由 Go 执行一次真实
+HTTP 出站并施加 SSRF/DNS/重定向/私网/元数据/凭据保护；写风险停在 `awaiting_approval`/
+`approval_required`；撤销使下一次调用失败；能力种类歧义拒绝；operation/attempt/回执/owner 账本
+完整；真实厂商连接器仍是部署定义，见报告 §8）。证据：`reports/f06/T048-connectors.md`、
+ADR 0007 D15。
+
+| 项 | 内容 |
+|---|---|
+| 迁移/注册表 | 新增 `0029_connector_policies.sql`：versioned `platform.connector_policies`（origin 恰为 scheme://host[:port]、method 集合、path_prefix、request/response schema、secret_ref/header、risk read|write、allow_private、policy_artifact_id、policy_sha256 UNIQUE、approved_at/revoked_at），撤销保留行不删除；同 0007–0028 权限边界。契约基线无此表：docs/spec/contracts 未改，偏差写入迁移注释/报告 §8 |
+| 管理员 API | `POST/GET /api/v1/admin/connectors`、`POST /api/v1/admin/connectors/{id}/revoke`（admin+CSRF）；校验 origin/method/prefix/schema/secret 引用/header/risk；策略体 RFC 8785 JCS 封存为 `purpose=connector_policy` artifact，`policy_sha256` 为版本身份；重复体 409 `connector_policy_exists`+details.policy_id；响应不含凭据值 |
+| 编译期闭包 | `platform.tool_versions.connector_versions` 展开到工具 document pointer（source=工具版本）；不存在/撤销/未批准分别 `dependency_not_found`/`dependency_revoked`/`dependency_not_ready`；`compiler.Build` 规范化并冻结 `manifest.connector_policies[{version_id,policy_sha256}]`；空集仍为 `[]`，不改既有 manifest 字节。工具提交接受已批准策略 id 并纳入内容身份 |
+| invokeCapability | manifest 成员 + sealed digest 匹配 + 已批准未撤销 + params 仅 path/query/body + method/body 规则 + 请求 schema + query 声明；同 UUID 跨 model/tool/connector 集合 → 409 `capability_kind_ambiguous`；read 风险一次 operation/一次 attempt/一次真实 HTTP/回执；无隐藏重试 |
+| 写风险/审批 | `risk_class=write` → operation `awaiting_approval`、返回 `state=awaiting_approval` + `data.error_code=approval_required`，0 attempt、0 出站；同键重放同一停住结果；T050 写 approval 行并把同一 operation 恢复为 authorized 后调用 `dispatchConnector` |
+| 受控出站 | URL 仅 origin+prefix 内 path（无绝对 URL/点段/fragment/控制字符），query 需 request schema 显式声明；解析全部地址逐个分类（metadata/link-local/multicast/unspecified 即使 allow_private 也拒绝；loopback/RFC1918 仅 allow_private），已验证地址固定进 DialContext 不二次解析；重定向一律拒绝；Proxy=nil、10s 超时、请求/响应 1 MiB 上限、无 keep-alive；凭据只在 Go 内解析并写入 secret_header，不落 params/回执/日志/错误 |
+| 账本/回执 | operation（connector、risk、params artifact、prepared→authorized→dispatching→succeeded/failed）、每物理调用一条 attempt、回执 artifact（status/response_sha256/response_bytes/headers 白名单/JSON body，无请求参数与凭据）；owner `GET /runs/{id}/capabilities` 每项新增 `risk_class`，连接器项新增 `connector_target`（METHOD origin+prefix） |
+| 页面 | `/runs` 账本新增「目标」列与风险标签（读/写/无风险），写风险显示「待审批」；`describeCapabilityOperation` 暴露 `connectorTarget/targetText/riskClass/riskText/isConnector`；不显示 params/query/回执正文/凭据；纯函数 Node 执行 |
+| 真实栈 | 真实 PG（0001–0029）、编译 `cmd/api`、真实 mTLS、对象字节、debug run manifest 编译、真实 loopback HTTP server；`test_t048_connectors.py` 12 用例（成功/凭据/SSRF/私网/DNS/重定向/撤销/歧义/写风险/method-path-schema-query/未入 manifest/管理员校验+ACL+重复+404）+ `test_t048_pages.py` 3 用例通过 |
+| 回归 | T041 账本项集合随新增 `risk_class` 更新（唯一既有断言变化）；两次全量 f06 中 T042 legacy 与 T043 revoked-model 各出现一次 WSL2/runsc `sandbox_failed` 抖动，单独重跑均通过（连接器代码路径未触及）；`tests/f02a` 104 passed、`tests/tooling` 21 passed |
+| 门禁 | 见 `reports/f06/T048-connectors.md` §6/§9（go vet/test、gofmt、pytest f02a/tooling、f06、sync_spec --check 顺序执行） |
+| 边界/not_run | 真实厂商连接器语义、T050 审批写行与恢复、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #49、未改 docs/spec/contracts、迁移仅新增 0029（0001–0028 未改） |
+
 ## 记录模板
 
 ```text

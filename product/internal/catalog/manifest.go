@@ -64,9 +64,10 @@ const (
 )
 
 const (
-	dependencyModel  = "model"
-	dependencyTool   = "tool"
-	dependencySubapp = "subapp"
+	dependencyModel     = "model"
+	dependencyTool      = "tool"
+	dependencySubapp    = "subapp"
+	dependencyConnector = "connector"
 )
 
 // ExecutionOptions selects who is compiling the draft.
@@ -160,6 +161,7 @@ func (r *Reader) ValidateExecution(
 		dependencies.tools,
 		dependencies.models,
 		dependencies.subapps,
+		dependencies.connectors...,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("building the execution manifest: %w", err)
@@ -178,9 +180,10 @@ func (r *Reader) ValidateExecution(
 
 // executionDependencySet is the normalised closure the builder consumes.
 type executionDependencySet struct {
-	tools   []compiler.ToolArtifact
-	models  []string
-	subapps []string
+	tools      []compiler.ToolArtifact
+	models     []string
+	subapps    []string
+	connectors []compiler.ConnectorPolicy
 }
 
 // normalizeDependencyID is the identity form of a dependency reference.
@@ -261,15 +264,34 @@ func (r *Reader) checkDependencies(
 	if err != nil {
 		return nil, nil, err
 	}
+	// F06/T048 §3: a tool version's declared connector ids expand the closure.
+	// The reference is located at the tool's own document pointer (that is the
+	// field that selected the tool) and names the tool as its source, so a
+	// missing/revoked/unapproved connector is reported where the author can fix
+	// it. Connector ids are not a node config field in this batch.
+	connectorRefs := connectorRefsForTools(refs, tools)
+	var connectors map[string]connectorDependency
+	if len(connectorRefs) > 0 {
+		connectorIDs := make([]string, 0, len(connectorRefs))
+		for _, ref := range connectorRefs {
+			connectorIDs = append(connectorIDs, ref.id)
+		}
+		connectors, err = r.loadConnectorDependencies(ctx, connectorIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		refs = append(refs, connectorRefs...)
+	}
 	subapps, err := r.loadSubappDependencies(ctx, subappIDs)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	set := &executionDependencySet{
-		tools:   make([]compiler.ToolArtifact, 0, len(tools)),
-		models:  make([]string, 0, len(models)),
-		subapps: make([]string, 0, len(subapps)),
+		tools:      make([]compiler.ToolArtifact, 0, len(tools)),
+		models:     make([]string, 0, len(models)),
+		subapps:    make([]string, 0, len(subapps)),
+		connectors: make([]compiler.ConnectorPolicy, 0, len(connectors)),
 	}
 	located := make([]ExecutableError, 0)
 	emitted := make(map[string]bool)
@@ -334,6 +356,15 @@ func (r *Reader) checkDependencies(
 				continue
 			}
 			set.subapps = append(set.subapps, id)
+		case dependencyConnector:
+			row, present := connectors[id]
+			if code, message := connectorReadinessProblem(row, present); code != "" {
+				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
+				continue
+			}
+			set.connectors = append(set.connectors, compiler.ConnectorPolicy{
+				VersionID: id, PolicySHA256: row.policySHA256,
+			})
 		}
 	}
 	if len(located) > 0 {
@@ -435,6 +466,17 @@ type toolDependency struct {
 	state       string
 	approved    bool
 	imageDigest sql.NullString
+	// connectorIDs is the tool version's declared connector_versions list
+	// (migration 0012). T048 expands each into the manifest connector closure.
+	connectorIDs []string
+}
+
+// connectorDependency is one registry row reduced to the readiness facts the
+// manifest closure needs.
+type connectorDependency struct {
+	policySHA256 string
+	approved     bool
+	revoked      bool
 }
 
 type subappDependency struct {
@@ -495,6 +537,56 @@ func subappReadinessProblem(row subappDependency, present bool) (string, string)
 		return CodeDependencyNotVisible, "the referenced application version belongs to an archived application"
 	}
 	return "", ""
+}
+
+// connectorReadinessProblem applies the T048 rule: the policy must exist, be
+// approved and not revoked. A revoked policy is dependency_revoked; a missing or
+// unapproved one is dependency_not_ready (or dependency_not_found).
+func connectorReadinessProblem(row connectorDependency, present bool) (string, string) {
+	if !present {
+		return CodeDependencyNotFound, "the connector policy referenced by this tool does not exist; only administrator-registered fixed connectors are executable"
+	}
+	if row.revoked {
+		return CodeDependencyRevoked, "the connector policy referenced by this tool is revoked"
+	}
+	if !row.approved || row.policySHA256 == "" {
+		return CodeDependencyNotReady, "the connector policy referenced by this tool is not approved or has no sealed policy digest; shared execution requires an administrator-approved connector"
+	}
+	return "", ""
+}
+
+// connectorRefsForTools expands each referenced tool version's declared
+// connector_versions into a located dependency reference. The pointer stays the
+// tool's document pointer and source names the tool, so the author sees where
+// the connector was selected. Invalid ids are kept verbatim (readiness reports
+// dependency_invalid_id), never silently dropped.
+func connectorRefsForTools(refs []dependencyRef, tools map[string]toolDependency) []dependencyRef {
+	expanded := make([]dependencyRef, 0)
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if ref.kind != dependencyTool {
+			continue
+		}
+		row, present := tools[normalizeDependencyID(ref.id)]
+		if !present {
+			continue
+		}
+		for _, connectorID := range row.connectorIDs {
+			id := normalizeDependencyID(connectorID)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			expanded = append(expanded, dependencyRef{
+				kind:    dependencyConnector,
+				id:      connectorID,
+				pointer: ref.pointer,
+				nodeID:  ref.nodeID,
+				source:  normalizeDependencyID(ref.id),
+			})
+		}
+	}
+	return expanded
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +695,8 @@ func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[st
 		return rows, nil
 	}
 	result, err := r.DB.QueryContext(ctx, `
-		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest
+		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest,
+		       connector_versions
 		  FROM platform.tool_versions
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
@@ -612,16 +705,68 @@ func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[st
 	defer result.Close()
 	for result.Next() {
 		var (
-			id  string
-			row toolDependency
+			id            string
+			row           toolDependency
+			connectorsRaw []byte
 		)
-		if err := result.Scan(&id, &row.ownerID, &row.state, &row.approved, &row.imageDigest); err != nil {
+		if err := result.Scan(&id, &row.ownerID, &row.state, &row.approved,
+			&row.imageDigest, &connectorsRaw); err != nil {
 			return nil, fmt.Errorf("reading tool versions: %w", err)
 		}
+		row.connectorIDs = connectorVersionIDs(connectorsRaw)
 		rows[id] = row
 	}
 	if err := result.Err(); err != nil {
 		return nil, fmt.Errorf("reading tool versions: %w", err)
+	}
+	return rows, nil
+}
+
+// connectorVersionIDs reads a tool version's connector_versions jsonb list.
+// Invalid entries stay verbatim so readiness can locate dependency_invalid_id.
+func connectorVersionIDs(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []any
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if value, ok := item.(string); ok {
+			ids = append(ids, strings.TrimSpace(value))
+		}
+	}
+	return ids
+}
+
+// loadConnectorDependencies reads the registry rows the tool closure named.
+func (r *Reader) loadConnectorDependencies(ctx context.Context, ids []string) (map[string]connectorDependency, error) {
+	rows := map[string]connectorDependency{}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	result, err := r.DB.QueryContext(ctx, `
+		SELECT id::text, policy_sha256, approved_at IS NOT NULL, revoked_at IS NOT NULL
+		  FROM platform.connector_policies
+		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
+	if err != nil {
+		return nil, fmt.Errorf("reading connector policies: %w", err)
+	}
+	defer result.Close()
+	for result.Next() {
+		var (
+			id  string
+			row connectorDependency
+		)
+		if err := result.Scan(&id, &row.policySHA256, &row.approved, &row.revoked); err != nil {
+			return nil, fmt.Errorf("reading connector policies: %w", err)
+		}
+		rows[id] = row
+	}
+	if err := result.Err(); err != nil {
+		return nil, fmt.Errorf("reading connector policies: %w", err)
 	}
 	return rows, nil
 }

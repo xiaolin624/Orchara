@@ -77,6 +77,20 @@ function capabilityKindText(kind) {
   }
 }
 
+/** The risk class as the short owner-facing label (T048 connector risk). */
+function capabilityRiskText(risk) {
+  switch (String(risk || '')) {
+    case 'pure':
+      return '无风险';
+    case 'read':
+      return '读';
+    case 'write':
+      return '写';
+    default:
+      return '未知风险';
+  }
+}
+
 /** A short, non-secret version label (the full id stays in the title attribute). */
 function capabilityVersionLabel(version) {
   const text = String(version || '');
@@ -115,6 +129,12 @@ function describeCapabilityOperation(operation) {
       }))
     : [];
   const errorCode = value.error_code ? String(value.error_code) : '';
+  // T048: a connector operation shows only the safe target (registered origin +
+  // path prefix) and its risk class. Params, query values, response bodies and
+  // the credential never reach the ledger projection.
+  const connectorTarget = value.connector_target ? String(value.connector_target) : '';
+  const riskClass = value.risk_class ? String(value.risk_class) : '';
+  const riskText = capabilityRiskText(riskClass);
   // T045: a call that switched profiles must not look like a seamless primary
   // success. The ledger projection carries the fallback profile and the closed
   // reason code; the cost/tokens are the sum over every physical attempt.
@@ -148,6 +168,12 @@ function describeCapabilityOperation(operation) {
     attemptsDetailText: attempts + ' 次' + (costText === '' ? '' : ' · ' + costText),
     errorCode,
     errorText: errorCode === '' ? '' : '错误码 ' + errorCode,
+    // T048: the safe connector target (origin + approved path prefix) and risk.
+    connectorTarget,
+    targetText: connectorTarget,
+    riskClass,
+    riskText,
+    isConnector: String(value.capability_kind || '') === 'connector',
     toolCalls,
     toolCallsText: summarizeToolCalls(value.tool_call_summary),
     structuredKeys: keys,
@@ -1358,9 +1384,12 @@ function renderCapabilityRow(operation) {
     operation.versionLabel,
     operation.stateText,
     operation.attemptsDetailText || operation.attemptsText,
+    // T048: the safe connector target, never the params or the credential.
+    operation.targetText || '—',
     operation.structuredText,
     operation.toolCallsText,
-    operation.stubLabel +
+    '风险 ' + operation.riskText + ' · ' +
+      operation.stubLabel +
       (operation.fallbackText ? ' · ' + operation.fallbackText : '') +
       (operation.errorText ? ' · ' + operation.errorText : ''),
   ];

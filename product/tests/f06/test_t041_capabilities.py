@@ -103,6 +103,8 @@ def test_model_call_is_stub_labeled_and_ledgered(f06_stack) -> None:
         "charged_amount",
         "tool_call_summary",
         "structured_output_keys",
+        # T048 adds the risk class to every entry; connector_target is omitempty.
+        "risk_class",
         "stub",
     }, entry
     assert entry["attempts"] == 1

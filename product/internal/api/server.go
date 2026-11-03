@@ -14,6 +14,7 @@ import (
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
@@ -50,6 +51,8 @@ type Server struct {
 	modelRegistry *modelregistry.Service
 	// capabilities is the F06/T041 run-scoped controlled-capability boundary.
 	capabilities *capabilities.Service
+	// connectors is the F06/T048 versioned connector registry (admin-only).
+	connectors *connectors.Service
 	// preview is the F06/T044 temporary in-process model stream preview hub. It
 	// is not persisted and not shared across processes.
 	preview *previewHub
@@ -92,6 +95,9 @@ type Deps struct {
 	Signer  *objectstore.Signer
 	// Providers is the model-proxy provider set built from deployment configuration.
 	Providers *modelproxy.Providers
+	// Connectors is the F06/T048 registry and guarded egress client. Nil fails
+	// closed: no connector capability can be invoked.
+	Connectors *connectors.Service
 	// Catalog is the deployer-registered model endpoint/credential catalog. Nil
 	// means the documented dev-stub default, never an open catalog.
 	Catalog *modelregistry.Catalog
@@ -148,6 +154,8 @@ func New(deps Deps) *Server {
 		// surface failing closed instead of panicking at startup.
 		modelRegistry = nil
 	}
+	capabilityService := capabilities.New(deps.Service.DB, deps.Objects, deps.Providers)
+	capabilityService.Connectors = deps.Connectors
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -161,7 +169,8 @@ func New(deps Deps) *Server {
 		toolVersions:      toolversions.New(deps.Service.DB),
 		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
 		modelRegistry:     modelRegistry,
-		capabilities:      capabilities.New(deps.Service.DB, deps.Objects, deps.Providers),
+		capabilities:      capabilityService,
+		connectors:        deps.Connectors,
 		preview:           newPreviewHub(),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
@@ -308,6 +317,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// Non-contract admin catalog reads: which deployment references exist.
 	mux.HandleFunc("GET /api/v1/admin/model-endpoints", s.handleListModelEndpoints)
 	mux.HandleFunc("GET /api/v1/admin/credential-refs", s.handleListCredentialRefs)
+	// F06/T048: the versioned connector registry (admin-only; non-contract).
+	mux.HandleFunc("POST /api/v1/admin/connectors", s.handleRegisterConnector)
+	mux.HandleFunc("GET /api/v1/admin/connectors", s.handleListConnectors)
+	mux.HandleFunc("POST /api/v1/admin/connectors/{connector_id}/revoke", s.handleRevokeConnector)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

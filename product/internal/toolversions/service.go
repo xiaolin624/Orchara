@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -207,15 +208,13 @@ func (s *Service) Submit(
 			Message: "risk_class must be pure, read or write",
 		}
 	}
-	if len(input.ConnectorVersionIDs) != 0 {
-		// F06 owns connectors. Refuse rather than silently dropping ids: a caller
-		// that believes a connector is bound must not get a tool that silently
-		// lacks it.
-		return nil, &ValidationError{
-			Field: "connector_version_ids",
-			Message: "connector versions are not available yet (F06 owns connectors); " +
-				"the list must be empty",
-		}
+	connectorIDs, err := normaliseConnectorVersionIDs(input.ConnectorVersionIDs)
+	if err != nil {
+		return nil, err
+	}
+	connectorsCanonical, err := canonicalConnectorIDs(connectorIDs)
+	if err != nil {
+		return nil, err
 	}
 	_ = inputCanonical
 	_ = outputCanonical
@@ -259,15 +258,17 @@ func (s *Service) Submit(
 	}
 
 	manifestSHA, manifestBytes, err := toolManifestSHA(
-		sourceSHA, inputSchema, outputSchema, lockCanonical, lockSHA, riskClass,
+		sourceSHA, inputSchema, outputSchema, lockCanonical, lockSHA, riskClass, connectorIDs,
 	)
 	if err != nil {
 		return nil, err
 	}
 	_ = manifestBytes
 
-	connectors := "[]"
 	toolID := uuid.NewString()
+	if err := s.requireConnectorPolicies(ctx, tx, connectorIDs); err != nil {
+		return nil, err
+	}
 	var insertedID string
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO platform.tool_versions
@@ -279,7 +280,7 @@ func (s *Service) Submit(
 		ON CONFLICT (manifest_sha256) DO NOTHING
 		RETURNING id::text`,
 		toolID, callerID, sourceID, string(inputSchema), string(outputSchema),
-		string(lockCanonical), connectors, riskClass, manifestSHA, sourceSHA, lockSHA,
+		string(lockCanonical), string(connectorsCanonical), riskClass, manifestSHA, sourceSHA, lockSHA,
 	).Scan(&insertedID)
 	switch {
 	case err == nil:
@@ -438,6 +439,7 @@ func toolManifestSHA(
 	sourceSHA string,
 	inputSchema, outputSchema, lockCanonical []byte,
 	lockSHA, riskClass string,
+	connectorIDs []string,
 ) (string, []byte, error) {
 	inputCanonical, err := jcs.CanonicalizeBytes(inputSchema)
 	if err != nil {
@@ -448,6 +450,10 @@ func toolManifestSHA(
 		return "", nil, &ValidationError{Field: "output_schema", Message: err.Error()}
 	}
 	riskCanonical, err := jcs.Canonicalize(riskClass)
+	if err != nil {
+		return "", nil, err
+	}
+	connectorCanonical, err := canonicalConnectorIDs(connectorIDs)
 	if err != nil {
 		return "", nil, err
 	}
@@ -463,7 +469,9 @@ func toolManifestSHA(
 	// dependency_lock_sha256, input_schema, output_schema, risk_class,
 	// source_sha256, tool_manifest_version.
 	var builder bytes.Buffer
-	builder.WriteString(`{"connector_version_ids":[],"dependency_lock":`)
+	builder.WriteString(`{"connector_version_ids":`)
+	builder.Write(connectorCanonical)
+	builder.WriteString(`,"dependency_lock":`)
 	builder.Write(lockCanonical)
 	builder.WriteString(`,"dependency_lock_sha256":`)
 	builder.WriteString(lockSHACanonical)
@@ -932,4 +940,68 @@ func nullTime(value sql.NullTime) *time.Time {
 	}
 	copied := value.Time
 	return &copied
+}
+
+// normaliseConnectorVersionIDs canonicalises the declared connector list: UUIDs
+// only, deduplicated and sorted, so the tool manifest identity is stable.
+func normaliseConnectorVersionIDs(ids []string) ([]string, error) {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, raw := range ids {
+		id := strings.ToLower(strings.TrimSpace(raw))
+		if !uuid.Valid(id) {
+			return nil, &ValidationError{
+				Field:   "connector_version_ids",
+				Message: "each connector_version_id must be a UUID of an approved policy",
+			}
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// requireConnectorPolicies refuses a submission that names a connector policy
+// which is not approved or is revoked: a tool must never be built with a dead
+// connector binding that the manifest would later reject.
+func (s *Service) requireConnectorPolicies(ctx context.Context, tx *sql.Tx, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT count(*) FROM platform.connector_policies
+		 WHERE id::text = ANY($1::text[])
+		   AND approved_at IS NOT NULL AND revoked_at IS NULL`, ids).Scan(&count); err != nil {
+		return fmt.Errorf("reading connector policies: %w", err)
+	}
+	if count != len(ids) {
+		return &ValidationError{
+			Field:   "connector_version_ids",
+			Message: "every connector_version_id must be an approved, unrevoked connector policy",
+		}
+	}
+	return nil
+}
+
+// canonicalConnectorIDs serialises the declared connector list as canonical JCS
+// bytes (a JSON string array). It is part of the tool content identity: binding
+// a tool to a different connector set is a different tool version.
+func canonicalConnectorIDs(ids []string) ([]byte, error) {
+	if ids == nil {
+		ids = []string{}
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, &ValidationError{Field: "connector_version_ids", Message: "must be a list of UUIDs"}
+	}
+	canonical, err := jcs.CanonicalizeBytes(encoded)
+	if err != nil {
+		return nil, &ValidationError{Field: "connector_version_ids", Message: "must be a list of UUIDs"}
+	}
+	return canonical, nil
 }

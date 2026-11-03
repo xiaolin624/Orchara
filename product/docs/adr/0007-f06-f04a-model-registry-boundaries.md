@@ -369,3 +369,40 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   读取并展示来源/截断/受保护键名。失败路径（含 `context_budget_exhausted`）不写 trace 文件
   行（报告 §8 偏差 2，未做成假成功）。无新表/新列/新契约端点，迁移 0001–0028 未改。
 
+## T048 追加（2026-11-04）：连接器策略是管理员封存的出站白名单，出站只发生在 Go
+
+### D15 —— manifest 冻结策略身份；worker 只能经能力代理调用；写风险停在审批前
+
+- **策略不是市场对象，也不是脚本可传的 URL。** 管理员登记的那一行是不可变策略：恰好一个
+  `origin`（`scheme://host[:port]`，无 path/query/fragment/userinfo）、一个 method、一个
+  path_prefix、请求/响应 schema、风险类别、`allow_private` 与部署凭据引用/唯一 header 名。
+  策略体按 RFC 8785 JCS 封存为 `platform.artifacts`（`purpose=connector_policy`），
+  `policy_sha256` 是版本身份（UNIQUE）；登记重复体是 409，不是第二个版本。撤销是
+  `revoked_at`，永不删除。`version` 是同一 origin/method/prefix 的登记序号，不进入封存体。
+- **契约基线没有连接器表。** `contracts/database.sql` 只有 `tool_versions.connector_versions`
+  jsonb 列表；新增 `platform.connector_policies` 是记录在案的偏差（迁移 0029 头注释、报告 §8、
+  本 ADR），`docs/spec/**` 与 `contracts/**` 未修改，`sync_spec --check` 无漂移。
+- **冻结的是身份，不是可调用的 URL。** 工具版本声明的 connector id 经 readiness（存在、已批准、
+  未撤销、有 hash）后，把 `{version_id,policy_sha256}` 写入
+  `execution_manifest.connector_policies`（排序/去重规则与其它依赖一致）。运行期
+  `invokeCapability(kind=connector)` 还必须命中 manifest 且 digest 一致；撤销后“下一次调用”
+  以 `connector_policy_revoked` 失败，而不是靠 manifest 过期。同一 UUID 出现在
+  model/tool/connector 任一以上集合是 `capability_kind_ambiguous`，绝不猜类型。
+- **出站守卫在 Go，且不信任第二次 DNS。** URL 只由 origin + prefix 内 path 构成；query 只有
+  管理员在请求 schema 的 `properties.query` 中显式声明才允许。解析出的**每个**地址都分类：
+  loopback/RFC1918 只在 `allow_private=true` 时放行，link-local/metadata/multicast/
+  unspecified 永远拒绝；通过后把全部已验证地址固定进 DialContext（按序尝试，不重新解析，
+  Host/SNI 保持 origin）。重定向一律拒绝（不逐跳重校验），`Proxy=nil`，请求/响应字节与时间
+  上限固定。凭据只在 Go 内按 `env:`/`file:` 解析并写入唯一配置 header，绝不进入 params
+  制品、回执、账本、错误或日志。
+- **一次调用一次物理请求。** 连接器没有隐藏重试：一次 operation 恰好一条 attempt，成功回执
+  只含 status/response_sha256/字节数/header 白名单/JSON body；失败以稳定码记录同一行。
+  写风险策略在派发前停住：operation=`awaiting_approval`、返回 `approval_required`，0 attempt、
+  0 出站；T050 写 approval 行后把同一 operation 恢复为 authorized 再调用 `dispatchConnector`，
+  幂等重放在停住状态只返回停住结果。
+- **工具内容身份扩展。** 工具提交接受已批准未撤销的 connector ids（规范化排序）并纳入
+  `tool_manifest_sha256`；这是本次唯一的既有行为变化（此前 `connector_version_ids` 必须为空），
+  只影响声明连接器的工具。真实厂商连接器语义不在本批编译范围，策略+schema 是部署契约
+  （报告 §8 `not_run`）。
+
+
