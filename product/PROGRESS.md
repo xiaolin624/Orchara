@@ -680,6 +680,35 @@ supervisor 证据、DOM 驱动仍 `not_run`。见报告 §2/§5/§6。
 无输出；`python tools/sync_spec.py --check` = `no drift: spec copy and contract snapshot match the manifest`。
 批次决策边界见 [ADR 0006](docs/adr/0006-f05-f03-execution-boundaries.md)。
 
+## F05/F03 本批最终门禁（2026-11-03）
+
+工作目录 `E:\Orchara\product`；分支 `feat/f05-f03-run-and-tools`（`51b0d4b` + 35 commits，含复核
+修复）；未推送、未关闭 issue。全量测试使用 `--basetemp=E:\orchara-pytest-tmp`（临时目录不占系统盘）。
+
+```text
+$ python -m pytest tests -q --basetemp=E:\orchara-pytest-tmp
+1115 passed in 3379.55s (0:56:19)
+
+$ python -m pytest tests/f03 tests/f05 tests/f02a/test_t025_migration.py -q
+353 passed in 1504.09s (0:25:04)      # f03 200 / f05 147 / t025 迁移 6
+
+$ go test -count=1 ./...
+22 ok / 9 no test files / 0 FAIL
+
+$ go vet ./...
+(no output) exit=0
+
+$ gofmt -l .
+(no output)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+全部测试为真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP/mTLS + 真实对象字节 + 真实
+WSL2/runsc（T033/T037 沙箱与构建）+ Node 页面逻辑；无 mock、无跳过。F04A/F06/F07/F13A/F15A/
+F15B 的后续工作按各票报告记为 successor/`not_run`，不因本批门禁升级为 v1 完成。
+
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
 对 `feat/f00b-f02a` HEAD `eebc4c4`（当时全量 754 passed）做 Standards / Spec 两轴复核，发现 15 项；
