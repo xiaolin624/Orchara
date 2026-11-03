@@ -680,17 +680,36 @@ supervisor 证据、DOM 驱动仍 `not_run`。见报告 §2/§5/§6。
 无输出；`python tools/sync_spec.py --check` = `no drift: spec copy and contract snapshot match the manifest`。
 批次决策边界见 [ADR 0006](docs/adr/0006-f05-f03-execution-boundaries.md)。
 
+## F05/F03 第二次独立复核修复（2026-11-03）
+
+独立复核对 `51b0d4b...b77916c`（36 提交，T028–T038）提出 5 项缺陷：2 项 Standards（退出未核实
+数据库排空、构建 workspace 无磁盘配额）与 3 项 Spec（禁用 owner 仍可领取、输入 artifact 可冒充
+成功输出、地区名含逗号破坏导出 CSV）。全部在代码中复现并修复；未推送、未关闭 issue、未修改
+`contracts/**`/`docs/spec/**`、未改迁移 0001–0024 语义（仅新增列/参数与业务规则）。
+
+| # | 复核项 | 处置 | 证明 |
+|---|---|---|---|
+| 1 | P1 退出确认只核对执行身份，心跳登记的 checkpoint 连接仍有未提交事务时 Run 已 succeeded | 新增 `checkDatabaseDrainedTx`：按 attempt 的 `checkpoint_connections` 查 `pg_stat_activity`，`active`/`idle in transaction*`/`fastpath` 即拒绝；`ConfirmExit` 于任何写入前调用，`finalizeRunTx` 再防御性复核；409 `database_writes_in_flight` 且零写入 | `tests/f03/test_t031_exit_drain.py`（真实 psql 未提交事务阻塞、提交后同一 exit 恰好终结一次；纯 idle 连接不阻塞） |
+| 2 | P1 不可信构建的 `/workspace` 是无配额可写 bind，可写满宿主卷 | 驱动把 `/workspace` 改成 size 限定的 tmpfs（`--workspace-quota-mb`，默认 512，1–4096），cleanup 必须先 umount 并把 `workspace_unmounted` 纳入 `ok`；Go bundle 增加 `RLIMIT_FSIZE`（默认 64 MiB） | `tests/f05/test_t037_build_isolation.py::test_the_build_workspace_has_a_disk_quota`（真实 runsc、8 MiB 配额、hook 捕获 ENOSPC 后继续成功）；`internal/sandbox` 单测断言 RLIMIT_FSIZE/argv |
+| 3 | P1 禁用 owner 后排队 Run 仍被 claim 并 running | claim 事务开头把 disabled owner 的 queued Run 置 `failed(owner_disabled)`、job `void`、同事务事件；候选查询同时排除 disabled owner；无 lease 的返回路径也提交这些失败（否则被 deferred rollback 回滚） | `tests/f03/test_t029_claim.py::test_a_disabled_owner_is_never_leased_and_the_run_fails_closed` |
+| 4 | P1 成功守卫只查“存在任意 run_artifacts 关联”，输入 artifact 可冒充输出 | 读取 `run_artifacts.relation` 并要求 `output`；`input`/`artifact`/`log` 一律拒绝，新增 `artifact_not_output`；输入 artifact 直传的回归用例 | `tests/f03/test_t031_finalizer.py::test_a_succeeded_proposal_needs_an_owned_ready_linked_artifact` |
+| 5 | P2 地区名含逗号/引号/换行时 summary.csv 被字符串拼接破坏 | 改用 `csv.writer`（`lineterminator="\n"`），region 文本做 `= + - @` 公式前缀防护，金额不变；JSON 保留原文 | `tests/f05/test_t030_tool.py::test_region_text_with_csv_metacharacters_stays_one_two_column_row` |
+
+门禁（修复后，`E:\Orchara\product`）：`python -m pytest tests/f03 tests/f05
+tests/f02a/test_t025_migration.py -q` = **358 passed in 1564.32s**；`go test ./...` 全绿、
+`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift。全量门禁结果见下一节。
+
 ## F05/F03 本批最终门禁（2026-11-03）
 
-工作目录 `E:\Orchara\product`；分支 `feat/f05-f03-run-and-tools`（`51b0d4b` + 35 commits，含复核
-修复）；未推送、未关闭 issue。全量测试使用 `--basetemp=E:\orchara-pytest-tmp`（临时目录不占系统盘）。
+工作目录 `E:\Orchara\product`；分支 `feat/f05-f03-run-and-tools`（`51b0d4b` + 38 commits，含两次
+复核修复）；未推送、未关闭 issue。全量测试使用 `--basetemp=E:\orchara-pytest-tmp`（临时目录不占系统盘）。
 
 ```text
 $ python -m pytest tests -q --basetemp=E:\orchara-pytest-tmp
-1115 passed in 3379.55s (0:56:19)
+1120 passed in 3257.27s (0:54:17)
 
 $ python -m pytest tests/f03 tests/f05 tests/f02a/test_t025_migration.py -q
-353 passed in 1504.09s (0:25:04)      # f03 200 / f05 147 / t025 迁移 6
+358 passed in 1564.32s (0:26:04)      # f03 203 / f05 149 / t025 迁移 6
 
 $ go test -count=1 ./...
 22 ok / 9 no test files / 0 FAIL

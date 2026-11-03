@@ -476,3 +476,16 @@ deleted=404 且 job 数不增。
 - `internal/presetexec`: `TestPreStartSandboxRefusalKeepsTheProvenFalseFlag`
   （`sandbox_unavailable`、`sandbox_started=false`、cleanup_verified=false）。
 - 真实 runsc 回归：`tests/f05/test_t033_sandbox_run.py`（含 cancel/timeout/crash）通过。
+
+## 第二次独立复核修复（2026-11-03）
+
+- **缺陷（P1）**：`/workspace` 是宿主目录的无配额 rw bind，不可信工具/构建可持续写入并耗尽宿主卷，
+  违反 SECURITY §2 磁盘限额要求。
+- **修复**：`deploy/sandbox/sandbox_exec.sh` 把 `/workspace` 改为 size 限定的 tmpfs
+  （`--workspace-quota-mb`，默认 512 MiB，范围 1–4096），cleanup 必须先 `umount` 并把
+  `workspace_unmounted` 纳入 `ok`；`internal/sandbox` bundle 增加 `RLIMIT_FSIZE`（默认 64 MiB），
+  Go 侧把 quota 传给每次沙箱运行。
+- **证明**：`tests/f05/test_t037_build_isolation.py::test_the_build_workspace_has_a_disk_quota`
+  在真实 runsc、8 MiB 配额下让 hook 持续写入，沙箱内捕获 ENOSPC 并输出
+  `T037_QUOTA_ENFORCED`，构建仍可完成；`internal/sandbox` 单测断言 RLIMIT_FSIZE 与 argv。
+- 状态仍为 `passed`；tmpfs 配额限制的是总写入量，磁盘/inode 的宿主级配额仍属 F15B 部署面。

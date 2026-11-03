@@ -315,3 +315,14 @@ role 标签是身份的一部分，角色互换必然改变摘要；`build_bundl
 - `tests/f05/test_t037_build.py::test_real_runsc_build_makes_the_tool_ready_with_a_bundle_digest`
   用真实 runsc 构建后的 source/现成 lock/SBOM 字节独立计算并逐字节比对数据库 digest
   （`tests/f05/test_t037_build.py`、`test_t037_build_isolation.py` 6 passed；真实 WSL2/runsc）。
+
+## 第二次独立复核修复（2026-11-03）
+
+- **缺陷（P1）**：构建沙箱的 `/workspace` 无磁盘配额，恶意安装钩子可写满宿主卷。
+- **修复**：复用 T033 的 size 限定 tmpfs `/workspace`（`--workspace-quota-mb`，默认 512 MiB）+ OCI
+  `RLIMIT_FSIZE`（默认 64 MiB）；驱动 cleanup 先 umount，未卸载即判定清理失败。构建失败/超限仍走
+  原有安全码，不把 ENOSPC 当作成功。
+- **证明**：`tests/f05/test_t037_build_isolation.py::test_the_build_workspace_has_a_disk_quota`
+  （真实 runsc、8 MiB 配额、hook 捕获 ENOSPC 后释放并完成，日志含 `T037_QUOTA_ENFORCED` 且无
+  `NOT_ENFORCED`；cleanup 报告 `workspace_removed`/`workspace_unmounted` 为真）。
+- 状态仍为 `passed`；真实 OCI 镜像/宿主级磁盘配额仍属 F15A/F15B。

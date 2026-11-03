@@ -267,3 +267,21 @@ no drift: spec copy and contract snapshot match the manifest
 无。`product/docs/spec/**` 与 `product/contracts/**` 未修改；`python tools/sync_spec.py --check`
 no drift。发现的契约缺口（evidence 身份四字段、新错误码、exit-first 时 200 可为终态、
 needs_reconciliation 的 job 语义）记录在 §2，由后续契约修订统一处理。
+
+## 第二次独立复核修复（2026-11-03）
+
+- **缺陷 1（P1）**：退出确认只核对执行身份，未核实心跳登记的 checkpoint 连接；连接仍有未提交
+  事务时 Run 已 succeeded，违反 STATE-MACHINES §2 的退出 guard。
+  **修复**：新增 `checkDatabaseDrainedTx`（按 attempt 的 `checkpoint_connections` 查
+  `pg_stat_activity`，`active`/`idle in transaction`/`idle in transaction (aborted)`/
+  `fastpath function call` 即拒绝）；`ConfirmExit` 在任何写入前调用，`finalizeRunTx` 终结前再
+  复核一次；409 `database_writes_in_flight`、零写入，连接结束后重试即可终结一次。
+  **证明**：`tests/f03/test_t031_exit_drain.py`（真实 psql 未提交 INSERT 阻塞；`COMMIT`/`ROLLBACK`
+  后同一 exit 成功；纯 `idle` 连接不阻塞）。
+- **缺陷 2（P1）**：成功守卫只检查存在任意 `run_artifacts` 关联，输入 artifact 可被当作输出提交。
+  **修复**：读取 `run_artifacts.relation` 并要求 `relation='output'`；`input`/`artifact`/`log` 返回
+  422 `artifact_not_output`（新增码），未关联仍 `artifact_not_linked`。
+  **证明**：`test_t031_finalizer.py::test_a_succeeded_proposal_needs_an_owned_ready_linked_artifact`
+  新增“输入 artifact / node artifact 直传”用例。
+- 状态仍为 `passed`；上述检查只覆盖 worker 提交的结果路径，F04A 的真实 checkpoint 连接登记需复用
+  同一 heartbeat 形状。

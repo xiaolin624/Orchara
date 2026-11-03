@@ -326,3 +326,15 @@ T030/T031/T032/T038 可直接依赖：
 无。`product/docs/spec/**` 与 `product/contracts/**` 未修改；`python tools/sync_spec.py --check`
 no drift。发现的契约缺口（租约事实无字段、Accepted 取值未定义、新错误码、budget_remaining 语义）
 记录在 §4，由后续契约修订统一处理。
+
+## 第二次独立复核修复（2026-11-03）
+
+- **缺陷**：领取只校验 Run/job/snapshot 形状，不复查 owner 当前状态；管理员禁用 owner 后，
+  已排队 Run 仍会被 claim 成 running（违反 EXECUTION §1/§8“执行仍复查当前撤销状态”）。
+- **修复**：`Service.Claim` 在同一事务开头调用 `failDisabledOwnerRunsTx`：把 disabled owner 的
+  `queued` Run 置 `failed(owner_disabled)`、`revision+1`、`finished_at`，void 其 never-run job，
+  同事务写 `run.status` 事件；候选查询同时 `JOIN principals ... disabled_at IS NULL`。无 lease
+  的返回路径（无候选/配额满）也会提交这些失败，避免被 deferred rollback 撤销。
+- **证明**：`tests/f03/test_t029_claim.py::test_a_disabled_owner_is_never_leased_and_the_run_fails_closed`
+  （真实 PATCH 禁用 owner → claim 204、Run failed/owner_disabled、job void、零 attempt、配额 used=0）。
+- 状态仍为 `passed`；该检查只覆盖 owner 禁用，发布版 ACL/授权快照属 F07/F02B。

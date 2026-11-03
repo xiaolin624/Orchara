@@ -326,3 +326,13 @@ cmd/maintenance run --once \
   owner-only 404、scope 403、409 幂等/冲突、422 media/tool、202 的 `tool`/`artifact_id`。
 - **UI**：`/attachments` 工具区可由 T033 的 Run 页面替换；`toolRunBody`/`createToolRunRequest`/
   `fetchToolRun`/`fetchToolArtifactJSON`/`summaryRows`/`diagnosticsFields` 是可复用的纯 JS 协议函数。
+
+## 第二次独立复核修复（2026-11-03）
+
+- **缺陷（P2）**：`summary.csv` 用字符串拼接，地区名含逗号时被解析成三列（真实合法输入被破坏）。
+- **修复**：`_write_outputs` 改用 `csv.writer`（`lineterminator="\n"`）；region 文本做
+  `= + - @` 公式注入前缀防护（SECURITY §4），金额字段保持原始 Decimal 字符串；`summary.json`
+  保留原文。
+- **证明**：`tests/f05/test_t030_tool.py::test_region_text_with_csv_metacharacters_stays_one_two_column_row`
+  （`East, Zone`、`He said "x"`、含换行地区经 `csv.reader` 解析仍是两列且值与 JSON 一致）。
+- 状态仍为 `passed`；公式前缀防护目前不可由输入触达（CSV/XLSX 已拒绝公式字符），属纵深防御。
