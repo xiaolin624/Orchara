@@ -134,3 +134,23 @@ async function logout() {
   identityCache = null;
   return true;
 }
+
+/**
+ * F04A/T049: the request that copies the server-controlled sales template into
+ * the caller's own application (a private draft, never a published version).
+ *
+ * Kept pure so the Node page test can execute it: the path is built with
+ * encodeURIComponent and the body is exactly the empty object the non-contract
+ * endpoint expects. The page then opens the new application's debug flow.
+ */
+function salesTemplateInstantiateRequest(templateId) {
+  const id = String(templateId === undefined || templateId === null ? 'sales' : templateId).trim();
+  if (!id) {
+    throw new Error('a template id is required');
+  }
+  return {
+    path: '/api/v1/templates/' + encodeURIComponent(id) + '/applications',
+    method: 'POST',
+    body: {},
+  };
+}

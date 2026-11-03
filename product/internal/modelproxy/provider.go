@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
+	"strconv"
 	"strings"
 
 	"orchara/platform/internal/config"
@@ -281,7 +283,15 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 		data["tool_calls"] = calls
 	}
 	if schema, ok := request.Params["response_schema"].(map[string]any); ok {
-		if structured, ok := stubSchemaValue(schema, digest, 0).(map[string]any); ok {
+		// F04A/T049: the sales template's explain node receives the python
+		// node's validated summary in its user message. When the response schema
+		// asks for a report, the deterministic stub copies those verified
+		// numbers verbatim — it never recomputes or invents an amount — and the
+		// totals object is the same summary. Amount truth stays with the python
+		// tool; the model only explains.
+		if structured := verifiedSalesReport(schema, request.Params); structured != nil {
+			data["structured"] = structured
+		} else if structured, ok := stubSchemaValue(schema, digest, 0).(map[string]any); ok {
 			data["structured"] = structured
 		}
 	}
@@ -313,6 +323,124 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 		TokensOut:    tokensOut,
 		ChargedUnits: (tokensIn + tokensOut) * reservedUnitsPerInputToken,
 	}, nil
+}
+
+// verifiedSalesReport builds the deterministic explain answer for the F04A/T049
+// sales template.
+//
+// It is used only when the response schema declares a `report` property and the
+// agent's user message contains the python node's validated summary object. The
+// report sentence copies total/regions/order_count exactly; `totals` is the same
+// object. A schema without `report` (T043's `{text}`) is unaffected, and a
+// message without a summary falls through to the generic deterministic stub.
+func verifiedSalesReport(schema map[string]any, params map[string]any) map[string]any {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if _, ok := properties["report"]; !ok {
+		return nil
+	}
+	summary := verifiedSummaryFromMessages(params)
+	if summary == nil {
+		return nil
+	}
+	total, _ := summary["total"].(string)
+	regions, _ := summary["regions"].(map[string]any)
+	names := make([]string, 0, len(regions))
+	for name := range regions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var report strings.Builder
+	report.WriteString("销售报告：总额 ")
+	report.WriteString(total)
+	report.WriteString("，订单数 ")
+	report.WriteString(strconv.Itoa(int(summary["order_count"].(float64))))
+	report.WriteString("，区域：")
+	for index, name := range names {
+		if index > 0 {
+			report.WriteString("，")
+		}
+		report.WriteString(name)
+		report.WriteString(" ")
+		report.WriteString(regions[name].(string))
+	}
+	report.WriteString("。以上数字全部来自已验证统计，报告未重新计算任何金额。")
+	return map[string]any{"report": report.String(), "totals": summary}
+}
+
+// verifiedSummaryFromMessages finds the validated summary the executor placed in
+// the last user message's inputs JSON. It scans messages from newest to oldest so
+// a later tool turn can never shadow the original inputs, and it accepts only an
+// object with the tool's exact total/regions/order_count shape.
+func verifiedSummaryFromMessages(params map[string]any) map[string]any {
+	messages, _ := params["messages"].([]any)
+	for index := len(messages) - 1; index >= 0; index-- {
+		message, ok := messages[index].(map[string]any)
+		if !ok || message["role"] != "user" {
+			continue
+		}
+		content, ok := message["content"].(string)
+		if !ok {
+			continue
+		}
+		var value any
+		if json.Unmarshal([]byte(content), &value) != nil {
+			continue
+		}
+		if summary := findSummaryObject(value); summary != nil {
+			return summary
+		}
+	}
+	return nil
+}
+
+// findSummaryObject walks a decoded inputs document (nested objects/arrays) for
+// the validated summary shape.
+func findSummaryObject(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		if summary := summaryOf(typed); summary != nil {
+			return summary
+		}
+		for _, child := range typed {
+			if summary := findSummaryObject(child); summary != nil {
+				return summary
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if summary := findSummaryObject(child); summary != nil {
+				return summary
+			}
+		}
+	}
+	return nil
+}
+
+// summaryOf reports whether object is the preset tool's summary document.
+func summaryOf(object map[string]any) map[string]any {
+	total, ok := object["total"].(string)
+	if !ok || strings.TrimSpace(total) == "" {
+		return nil
+	}
+	regions, ok := object["regions"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	for name, value := range regions {
+		amount, ok := value.(string)
+		if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(amount) == "" {
+			return nil
+		}
+	}
+	count, ok := object["order_count"].(float64)
+	if !ok || count < 0 || count != math.Trunc(count) {
+		return nil
+	}
+	return object
 }
 
 // stubModelFault maps a registered stub model id to a deterministic failure.

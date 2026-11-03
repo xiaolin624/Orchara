@@ -234,6 +234,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
+	// F04A/T049: copy the server-controlled sales template into the caller's own
+	// private application. Non-contract and not a publication: the caller then
+	// uses the normal draft/debug path, and F02B still owns shared versions.
+	mux.HandleFunc("POST /api/v1/templates/{template_id}/applications", s.handleInstantiateTemplate)
+
 	// F02A/T025: compile the current draft, resolve its fixed dependency closure
 	// and return located errors. A valid draft also returns the server-side
 	// manifest hash in X-Manifest-SHA256 (the 200 schema has no field for it; the
