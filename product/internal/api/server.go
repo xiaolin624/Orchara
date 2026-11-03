@@ -242,6 +242,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
 	// F05/T033: the owner-only run artifact list.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/artifacts", s.handleListRunArtifacts)
+	// F04A/T042: the owner-only per-node data/file/log provenance read
+	// (non-contract). Content stays on the artifact content/download routes.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/node-results", s.handleListRunNodeResults)
 	// F06/T041: the owner-only controlled-capability ledger read. Non-contract
 	// (no public capability invocation exists); the service projection carries no
 	// params or receipt bodies.
