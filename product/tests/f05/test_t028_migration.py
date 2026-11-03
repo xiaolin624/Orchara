@@ -70,9 +70,9 @@ def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
         dbname,
         "SELECT string_agg(version, ',' ORDER BY version) FROM platform.schema_migrations",
     )
-    # T033 appends 0019; 0015 must stay at its own position.
-    assert versions.split(",")[-1] == "0019", versions
-    assert len(versions.split(",")) == 19, versions
+    # T034 appends 0020; 0015 must stay at its own position.
+    assert versions.split(",")[-1] == "0020", versions
+    assert len(versions.split(",")) == 20, versions
     assert "0015" in versions.split(","), versions
 
     # The one table this ticket adds is present with exactly the columns the

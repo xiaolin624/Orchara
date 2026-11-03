@@ -37,6 +37,8 @@ COLUMNS = {
         "checkpoint_thread_id", "state", "revision", "next_event_seq", "budget_limit",
         "currency", "phase", "active_elapsed_ms", "cancel_requested_at", "error_code",
         "started_at", "finished_at", "deleted_at", "created_at",
+        # T034: the frozen active-time limit (NULL = unknown/no deadline).
+        "max_active_ms",
     ),
     "jobs": (
         "id", "run_id", "kind", "state", "available_at", "current_attempt_token",
@@ -91,10 +93,11 @@ def test_0014_is_recorded_once_at_its_position(migrated_database) -> None:
     )
     versions = [row["version"] for row in ledgers]
     # T032 appends 0018; 0014 must stay at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 20)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 21)], versions
     assert ledgers[13]["name"] == "0014_execution_snapshots_and_runs.sql"
-    assert ledgers[-2]["name"] == "0018_run_events.sql"
-    assert ledgers[-1]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-3]["name"] == "0018_run_events.sql"
+    assert ledgers[-2]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-1]["name"] == "0020_active_time_and_deadline.sql"
 
 
 def test_0014_replays_as_a_noop(migrated_database, go_binaries) -> None:
@@ -165,17 +168,17 @@ def test_the_foreign_keys_are_real_and_the_deferred_ones_are_documented(migrated
     assert receipts["principal_id"] == "platform.principals"
     assert receipts["response_artifact_id"] == "platform.artifacts"
 
-    # The deferred foreign keys: requests/conversations (F05/F07) and
-    # run_attempts (F03) do not exist in this batch, so their columns are plain
-    # uuids. This test pins the deferral so a later migration must be explicit.
+    # The deferred foreign keys: requests/conversations (F05/F07) are still plain
+    # uuids in this chain, while T029's 0016 completed the two run_attempts
+    # references. Both halves are pinned so a later migration must be explicit.
     for table, column in (
         ("runs", "request_id"),
         ("runs", "conversation_id"),
-        ("jobs", "current_attempt_token"),
-        ("run_artifacts", "attempt_token"),
     ):
         assert columns_of(dbname, table)[column]["data_type"] == "uuid", (table, column)
         assert column not in targets(table), (table, column, targets(table))
+    assert targets("jobs")["current_attempt_token"] == "platform.run_attempts"
+    assert targets("run_artifacts")["attempt_token"] == "platform.run_attempts"
 
 
 def test_the_debug_and_published_identity_checks_are_database_facts(migrated_database) -> None:
