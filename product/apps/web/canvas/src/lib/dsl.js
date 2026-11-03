@@ -122,7 +122,7 @@ export function definitionToGraph(definition, layout) {
     label: NODE_LABELS[node.type] || node.type,
     class: 'orchara-node orchara-node-' + node.type,
     position: positions[node.id] || { x: 0, y: 0 },
-    data: { nodeType: node.type },
+    data: { label: NODE_LABELS[node.type] || node.type, nodeType: node.type },
   }));
   const edges = (definition.edges || []).map((edge, index) => ({
     id: edge.source + '->' + edge.target + ':' + index,
@@ -380,7 +380,7 @@ export function addNode(graphNodes, graphEdges, type, layout) {
       label: NODE_LABELS[type],
       class: 'orchara-node orchara-node-' + type,
       position: { ...position },
-      data: { nodeType: type },
+      data: { label: NODE_LABELS[type], nodeType: type },
     },
     layout,
   };
