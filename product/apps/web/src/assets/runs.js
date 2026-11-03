@@ -1948,8 +1948,18 @@ function agentNodeStatus(message, kind) {
 
 /** The persisted T047 context-trace file row of the agent node, if any. */
 function contextTraceRowOf(nodeBody, ledgerBody, statuses) {
-  const nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
   const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  let nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
+  if (nodeID === '') {
+    // An agent node may declare no tools (so it has no tool-log row) and still
+    // persist a context trace; the trace label itself is enough to locate it.
+    const traceRow = items.find(
+      (item) => item && item.kind === 'file' && String(item.label || '') === 'context-trace',
+    );
+    if (traceRow) {
+      nodeID = String(traceRow.node_id || '');
+    }
+  }
   if (nodeID === '') {
     return null;
   }

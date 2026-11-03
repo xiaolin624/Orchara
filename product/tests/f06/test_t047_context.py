@@ -17,11 +17,8 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from support import stack as st
 from support import t033, t041, t043
-from support.fixtures import fresh_database  # noqa: F401 - pytest fixture
 
 
 def agent_definition_with_request() -> dict:
@@ -55,14 +52,22 @@ def analysis_rows(dbname: str, run_id: str) -> list[dict]:
 def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
     t033_stack,
 ) -> None:
-    t041.set_model_config(
-        t033_stack.dbname, {"context_window": 3072, "max_output_tokens": 1024}
-    )
     long_source = "request-source-" + ("verbose-input " * 900)  # ~13 KB
     definition = agent_definition_with_request()
     owner, run, _csv = t043.queue_agent_run(
         t033_stack, definition=definition, input_value={"source": long_source}
     )
+    # The profile row is seeded by the deployment inputs during draft compile, so
+    # the budget is set after the run is queued and before the supervisor invokes
+    # the model capability.
+    t041.set_model_config(
+        t033_stack.dbname, {"context_window": 3072, "max_output_tokens": 1024}
+    )
+    configured = st.sql_rows(
+        t033_stack.dbname,
+        "SELECT id::text, config::text AS config FROM platform.model_profile_versions",
+    )
+    assert any("3072" in row["config"] for row in configured), configured
     completed, report = t043.run_agent_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
@@ -117,9 +122,19 @@ def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
     assert long_source not in user_content, "the full verbose input reached the model"
     assert len(user_content) < 8000, len(user_content)
 
-    # The tool result the model saw still carries the exact total.
-    tool_messages = [message for message in messages if message["role"] == "tool"]
-    assert tool_messages, messages
+    # The tool result the model saw on the second turn still carries the exact
+    # total; the builder rebuilds the full list before each turn.
+    last_params = json.loads(
+        t041.artifact_bytes(
+            t033_stack,
+            t041.artifact_row(
+                t033_stack.dbname, model_operations[-1]["params_artifact_id"]
+            ),
+        )
+    )
+    last_messages = last_params["messages"]
+    tool_messages = [message for message in last_messages if message["role"] == "tool"]
+    assert tool_messages, last_messages
     tool_document = json.loads(tool_messages[0]["content"])
     assert tool_document["total"] == "250.00", tool_document
 
@@ -141,10 +156,10 @@ def test_protected_minimum_over_budget_is_a_stable_context_failure(
     # context_window 200 - max_output_tokens 100 = a 100-token budget, smaller
     # than the fixed system message plus the protected inputs. The executor must
     # fail with the stable code instead of silently trimming a protected fact.
+    owner, run, _csv = t043.queue_agent_run(t033_stack, definition=agent_definition_with_request())
     t041.set_model_config(
         t033_stack.dbname, {"context_window": 200, "max_output_tokens": 100}
     )
-    owner, run, _csv = t043.queue_agent_run(t033_stack, definition=agent_definition_with_request())
     completed, report = t043.run_agent_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "failed", report

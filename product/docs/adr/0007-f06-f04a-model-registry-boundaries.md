@@ -340,3 +340,32 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
 - 权限边界与 0007–0027 相同：`platform` 对 `orchara_worker`/PUBLIC 无权限，唯一写者是 API
   进程；T047/T050 应复用 `internal/budget.Ledger` 的 `Reserve/Settle/Release/Totals`
   与 `AttemptKey`，不得另起一套金额记录。
+
+## T047 追加（2026-11-04）：授权上下文与受保护事实在 builder 内一次判定
+
+### D14 —— 模型输入预算不是金额账本；截断只发生在授权来源的非 protected 分支
+
+- 新增 `internal/context`（package `agentcontext`）作为 agent 每轮模型输入的唯一组装点。输入
+  是本次 sealed plan 已解析的 start/python/tool 值与 tool history；来源必须命中 run 派生的
+  `Scope{NodeIDs,ArtifactIDs}`，foreign node/artifact 是 typed
+  `context_source_unauthorized`，绝不 best-effort 包含。F09 记忆 seam 只接受同
+  owner+application 的 active+confirmed 行；本批次无存储，生产 source 是
+  `NoMemorySource{}`，trace 记 `memory_state="not_run"`，不注入假记忆。
+- 预算固定为 `context_window - max_output_tokens`；token 估算固定为
+  `ceil(UTF-8 bytes/4)` + 每消息 4 tokens 框架开销，不含 provider tokenizer/时钟/随机数，
+  因此重试重放确定。**它是模型容量预算，不是 T046 的金额账本**：`internal/budget`、
+  `usage_ledger`、`operation_attempts` 金额/结算列完全未改，T050 仍复用 T046 的
+  Reserve/Settle/Release；两套“预算”只在名字上相邻，语义不重叠。
+- 超限截断顺序固定：低相关/旧历史（含仅展示摘要）→ 旧工具结果细节 → 冗长上游文本 →
+  最后手段；protected 键（否定/排除、来源/引用/document id、审批/目标/params、精确
+  金额/统计）整枝逐字保留，任何步骤都不裁剪。system + 仅 protected 输入的最小值放不下时
+  立即 `context_budget_exhausted`，不静默丢 protected 事实，也不产生成功 proposal。
+- 摘要（`HistoryMessage.Summary`）只计数、不进入模型输入、不参与 protected 扫描或任何
+  金额/授权派生；本构建无摘要生成器，真实摘要链路是后续票。trace 只含
+  kind/node/artifact/label、reason、protected 键路径与 token 数，绝不含正文/金额原文。
+- 持久化复用 T042 非契约节点结果：agent 成功时额外登记 `kind=file`、`label=context-trace`、
+  `media_type=application/json` 的 JCS 文档
+  `{version:1,node_id,turns:[Trace]}`；`/runs` 通过既有 owner-only artifact content 路由
+  读取并展示来源/截断/受保护键名。失败路径（含 `context_budget_exhausted`）不写 trace 文件
+  行（报告 §8 偏差 2，未做成假成功）。无新表/新列/新契约端点，迁移 0001–0028 未改。
+

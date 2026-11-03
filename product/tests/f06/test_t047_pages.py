@@ -13,11 +13,7 @@ import subprocess
 
 import pytest
 
-from support.fixtures import (  # noqa: F401 - pytest fixtures
-    fresh_database,
-    go_binaries,
-    t033_stack,
-)
+from support.fixtures import t033_stack
 
 NODE = shutil.which("node")
 
@@ -124,11 +120,26 @@ const nodeBody = {
       media_type: 'application/json', size_bytes: 24, sha256: 'e'.repeat(64) },
     { node_id: 'analysis', kind: 'file', artifact_id: 'trace', label: 'context-trace',
       media_type: 'application/json', size_bytes: 200, sha256: 'f'.repeat(64) },
+    { node_id: 'analysis', kind: 'log', artifact_id: 'log', label: 'tool-log-stub-call-1',
+      media_type: 'text/plain', size_bytes: 90, sha256: '2'.repeat(64) },
   ],
 };
 const row = context.contextTraceRowOf(nodeBody, { items: [] }, { analysis: 'succeeded' });
 assert.equal(row && row.artifact_id, 'trace');
 assert.equal(context.contextTraceRowOf({ items: [] }, { items: [] }, {}), null);
+
+// An agent node with no tool calls has no tool-log row; the trace label alone
+// still locates the context trace instead of hiding it.
+const noToolBody = {
+  items: [
+    { node_id: 'quiet', kind: 'data', artifact_id: 'qd', label: 'data',
+      media_type: 'application/json', size_bytes: 24, sha256: 'a'.repeat(64) },
+    { node_id: 'quiet', kind: 'file', artifact_id: 'trace2', label: 'context-trace',
+      media_type: 'application/json', size_bytes: 200, sha256: 'b'.repeat(64) },
+  ],
+};
+const noToolRow = context.contextTraceRowOf(noToolBody, { items: [] }, {});
+assert.equal(noToolRow && noToolRow.artifact_id, 'trace2');
 
 const empty = context.describeContextTrace({ turns: [] });
 assert.equal(empty.visible, false);
