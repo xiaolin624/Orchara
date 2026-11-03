@@ -311,15 +311,28 @@ func (c execClient) ModelProfile(
 ) (presetexec.ModelFact, error) {
 	var fact presetexec.ModelFact
 	var revoked bool
+	var configJSON string
 	err := c.db.db.QueryRowContext(ctx, `
-		SELECT id::text, validation_state, revoked_at IS NOT NULL
+		SELECT id::text, validation_state, revoked_at IS NOT NULL, config::text
 		  FROM platform.model_profile_versions WHERE id = $1::uuid`,
 		modelProfileVersionID,
-	).Scan(&fact.ID, &fact.ValidationState, &revoked)
+	).Scan(&fact.ID, &fact.ValidationState, &revoked, &configJSON)
 	if err != nil {
 		return presetexec.ModelFact{}, err
 	}
 	fact.Revoked = revoked
+	// F06/T047: the declared budget is read from the profile config. Missing
+	// fields stay zero; the executor applies its documented defaults and records
+	// the resulting budget in the context trace.
+	var config struct {
+		ContextWindow   int64 `json:"context_window"`
+		MaxOutputTokens int64 `json:"max_output_tokens"`
+	}
+	if configJSON != "" {
+		_ = json.Unmarshal([]byte(configJSON), &config)
+	}
+	fact.ContextWindow = config.ContextWindow
+	fact.MaxOutputTokens = config.MaxOutputTokens
 	return fact, nil
 }
 

@@ -1083,6 +1083,28 @@ T046（GitHub #47）已交付，状态 **`passed`**（范围 = 一次 Run 树的
 | 门禁 | `go vet ./...` exit 0；`go test ./...` 25 ok/0 FAIL/9 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 106 passed（523.91s）；`pytest tests/f02a -q` 104 passed（689.15s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
 | 边界/not_run | 真实厂商 adapter（真实 usage/流式 not_run）、浏览器 DOM 驱动、全量 `pytest tests`/f00b/f03/f05、跨 run 的父/子预算真实 e2e（只有 F04A 自根 run 被真实验证，递归解析代码有单元级/迁移级证据）；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0028（0001–0027 未改） |
 
+## F06 授权上下文与受保护事实（T047，2026-11-04）
+
+T047（GitHub #48）已交付，状态 **`passed`**（范围 = agent 每轮模型输入只含本次 Run 的已授权
+start/python/tool 来源；预算 `context_window - max_output_tokens` 的确定性 byte/4 估算；超限按
+低相关历史 → 旧工具细节 → 冗长上游文本截断；否定/来源引用/审批参数/精确金额统计逐字保留并
+记 trace；摘要仅展示、绝不进入模型输入或事实派生；F09 记忆存储不存在 → `not_run`，不造假；
+trace 作为 agent 节点 `context-trace` 文件行持久化并显示在 `/runs`）。证据：
+`reports/f06/T047-context.md`、ADR 0007 D14。
+
+| 项 | 内容 |
+|---|---|
+| builder | 新增 `internal/context`（package `agentcontext`）：`Build(ctx, Request) (Output, error)`；`Scope{NodeIDs,ArtifactIDs}` 由 sealed plan 派生，foreign node/artifact → typed `context_source_unauthorized`；`ResolvedInput` 必须带 literal/start/python/tool 来源；`Output.Messages` 为 role/content，`Output.Trace` 只含 id/kind/label/token 数/截断 reason/protected 键路径，绝不含正文或金额原文 |
+| 预算/截断 | `budget = context_window - max_output_tokens`；估算 `ceil(UTF-8 bytes/4)` + 每消息 4 tokens，无 provider tokenizer/时钟/随机，重放确定；顺序：仅展示摘要与低相关历史 → 旧工具结果细节（保留 protected 分支）→ 冗长上游文本（1024→256→64→0）→ 最后手段；system+protected 最小值放不下 → `context_budget_exhausted`，绝不静默裁剪 protected |
+| protected 事实 | 固定键表：`exclude/must_not/negative*/negations`、`sources/citations/document_id(s)/references`、`approval/proposal/target(s)/params`、`amount(s)/total/currency/quantity/price/count/stats` 等；匹配键整枝逐字保留；Go 单测断言 bounded input 仍含否定/来源/审批/金额，真实栈封存 model params 仍含 `"total":"250.00"`、`"order_count":3` |
+| 摘要/记忆 | `HistoryMessage.Summary=true` 不进入模型输入、不扫描 protected、不派生金额/授权（`DisplayOnlySummaryCount` 计数）；`MemorySource` 生产实现 `NoMemorySource{}` 返回空，trace `memory_state=not_run`，模型无 memory 消息；active+confirmed 且同 owner+application 的记忆语义仅 Go 单测 seam，真实 F09 存储 not_run |
+| Agent 集成 | `internal/presetexec/agent.go` 每轮模型调用前重建消息（system+authorized inputs+tool history），`ModelFact` 增 `ContextWindow/MaxOutputTokens`，supervisor 只读 `model_profile_versions.config`；超限/builder 错误以 `contextFailureCode` 作为 run error_code；未复制 T046 金额/预留/结算逻辑（`internal/budget`、`usage_ledger`、金额列零改动） |
+| 持久化/页面 | 成功时新增 `kind=file`、`label=context-trace`、media `application/json` 的 JCS 文档 `{version:1,node_id,turns:[Trace]}`；`/runs` Agent 面板新增 `#agent-context-status`/`#agent-context-trace`，纯函数 `contextTraceRowOf`/`describeContextTrace` 渲染来源/截断原因/受保护键名/`memory_state=not_run`，通过既有 owner-only artifact content 读取，不新增接口 |
+| 真实栈 | 真实 PG（0001–0028）、编译 `cmd/api`/`cmd/supervisor`、真实 mTLS、对象字节、WSL2+runsc python/tool 节点；模型 profile 在 run 入队后改小窗口（3072/1024 或 200/100）；`test_t047_context.py` 2 用例（截断+protected 经封存 model params 验证；protected 最小值超预算稳定失败、0 operation）+ `test_t047_pages.py` 3 用例通过 |
+| 回归 | T043 6+3 用例通过（节点结果 8→9、analysis file 集合加 context-trace，其它断言未削弱）；T044/T046 共 32 用例通过；未跑 f05/f03 |
+| 门禁 | 见 `reports/f06/T047-context.md` §9（go vet/test、gofmt、pytest f06/f04a/tooling、sync_spec --check 顺序执行） |
+| 边界/not_run | 真实厂商 adapter/真实 tokenizer、F09 个人记忆存储与真实记忆消费、摘要生成链路、真实栈 foreign source 注入（只有 Go seam）、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；失败路径不写 trace 文件行（报告 §8 偏差 2）；未 push/未关 issue、未改 docs/spec/contracts、未新增迁移 |
+
 ## 记录模板
 
 ```text

@@ -77,15 +77,15 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     assert output_id, state
 
     # --- owner read: stats rows + one agent data row + tool files/log ---------
-    body = t042.wait_node_results(owner.creator, run["id"], expected=8)
+    body = t042.wait_node_results(owner.creator, run["id"], expected=9)
     items = body["items"]
-    assert len(items) == 8, items
+    assert len(items) == 9, items
     grouped = rows_by_node(items)
     assert set(grouped) == {"stats", "analysis"}, grouped
     stats_kinds = sorted(row["kind"] for row in grouped["stats"])
     assert stats_kinds == ["data", "file", "file", "log"], stats_kinds
     analysis_kinds = sorted(row["kind"] for row in grouped["analysis"])
-    assert analysis_kinds == ["data", "file", "file", "log"], analysis_kinds
+    assert analysis_kinds == ["data", "file", "file", "file", "log"], analysis_kinds
 
     analysis_data = [row for row in grouped["analysis"] if row["kind"] == "data"]
     assert len(analysis_data) == 1, analysis_data
@@ -102,7 +102,7 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     analysis_files = {
         row["label"]: row for row in grouped["analysis"] if row["kind"] == "file"
     }
-    assert set(analysis_files) == {"summary.json", "summary.csv"}, analysis_files
+    assert set(analysis_files) == {"context-trace", "summary.json", "summary.csv"}, analysis_files
     summary_json = content_document(owner.creator, analysis_files["summary.json"]["artifact_id"])
     assert summary_json == EXPECTED_SUMMARY, summary_json
     summary_csv = t033.artifact_content(owner.creator,
@@ -118,7 +118,7 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
 
     # Provenance: data/file are node_output; the agent's data is exactly one row.
     rows = t043.node_rows(t033_stack.dbname, run["id"])
-    assert len(rows) == 8, rows
+    assert len(rows) == 9, rows
     by_node = rows_by_node(rows)
     for row in by_node["analysis"]:
         assert row["state"] == "ready", row
