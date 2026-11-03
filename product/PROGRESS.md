@@ -10,7 +10,8 @@
 ## 当前发布范围
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
-T026 partial）** 与 **F02A（T023/T025 partial；T027 passed）**；其余票保持 open。
+T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030、T033、T037
+passed）** 与 **F03（T029、T031、T032、T034、T035、T036、T038 passed）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -25,8 +26,19 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 （迁移 0014、`execution_snapshots`/`runs`/`jobs`/`run_artifacts`/`idempotency_keys`）。F02A 三票
 范围内的工作完成，但 T023/T025/T026 的 `partial` 原因分别由 F02B/F03-F04A/F13A-F07 闭环；
 执行/领取属 F03、发布提交属 F02B，限制见各票报告。
-平台整体**仍不是完整 v1**：业务执行/路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备
-等后续 epic 未实现；F01/F00B/F02A 的限制见各票报告 §5/§7。
+F03 的 T029 已交付执行领取的首个切片（迁移 0016、`internal/execution`、内部 claim/heartbeat/
+attempt-exit、owner-only `GET /runs` 与运行页面）：真实 mTLS + PG 原子领取/配额/hmac sealed 链接；
+result/finalizer/事件/恢复/取消属 T031+。T031 在 T029 之上交付 result 提议与统一幂等 finalizer：
+同一 attempt 的 result 与 supervisor 身份化 exit 证据按任意顺序到达都只提交一次终态
+（succeeded/failed）、退出无结果转 recovery_pending、waiting/needs_reconciliation 如实非终态。
+T032 再把每个已提交 Run 转换投影为 `platform.run_events` 的持久 `run.status`（同事务 seq 分配）、
+提供 worker `node.status` 批量事件端点与 owner-only SSE 回放（Last-Event-ID 去重、保留窗口 410+快照、
+15s 注释心跳、终态后关闭）；取消与未知操作守卫由 T036 交付，安全恢复/重驱属 T038。F05 的 T030 在此之上交付可信预置销售统计工具：迁移 0017
+只把 `tool_run` 加入后台任务 kind 白名单；真实维护进程用固定 argv 的 Python 子进程执行固定脚本，
+Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；公开 `POST/GET /api/v1/tool-runs`
+是 ADR 0005 记录的非契约桥，T033/F04A 再绑定到 Run/沙箱协议。平台整体**仍不是完整 v1**：业务执行/
+路由/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署灾备等后续 epic 未实现；F01/F00B/F02A/F05/F03
+的限制见各票报告 §5/§7。
 本文件 2026-11-02 的两轴复核修复记录见下方“F00B/F02A 两轴复核修复”一节，第二次独立复核的 6 项
 缺陷 + 1 个 flaky 测试见“F00B/F02A 第二次复核修复”一节；状态以本节之后的表格为准。
 
@@ -61,6 +73,17 @@ worker 属 F03/F04A）；T027 已交付私有 debug 快照、排队 Run、`debug
 | T025 | F02A | 把当前草稿固化为可核验执行清单 | **partial** | `reports/f02a/T025-manifest.md`（AC3 `partial`：`VerifyManifestBytes` 机制 + 真实 sealed-object 篡改测试已交付，真正 worker 属 F03/F04A）、`db/migrations/0012_manifest_and_tool_versions.sql`、`internal/compiler/`、`internal/catalog/manifest.go`、`internal/api/validate.go`、`internal/config/config.go`、`tests/contracts/snapshots/`、`tests/support/t025.py`、`tests/f02a/test_t025_*.py`（T025 17 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；第二次复核新增依赖 UUID 大小写归一） |
 | T026 | F00B | 评测池满载时文件封存仍能完成 | partial | `reports/f00b/T026-evaluation-pool.md`、`db/migrations/0013_evaluation_pool.sql`、`internal/background/{evaluation,complete,sweep}.go`、`cmd/maintenance/{run,sweep}.go`、`tests/f00b/test_t026_*.py`（41 用例；`kind=application` 的真实 runner/checker 属 F13A，T027 后 snapshot 绑定结构可用；**deletion 状态属 F07、未实现**；第二次复核后 sweep 只清 staging、sealed 孤儿清理延后 F07/F13A，租约耗尽的评测终态与 job 同事务对账；三条 partial 原因见报告页首） |
 | T027 | F02A | 发布前提交私有草稿并查看固定调试任务 | passed | `reports/f02a/T027-debug-submit.md`、`db/migrations/0014_execution_snapshots_and_runs.sql`、`internal/catalog/{debug.go,debug_test.go}`、`internal/api/debug.go`、`apps/web/src/{debug.html,assets/debug.js}`、`tests/support/t027.py`、`tests/f02a/test_t027_*.py`（38 用例，真实 PG + 真实二进制 + 真实 HTTP + 对象字节；领取/执行属 F03；第二次复核后 debug 要求会话 creator 角色，无角色管理员 403） |
+| T028 | F05 | 上传、校验封存并授权下载不可覆盖的文件 | passed | `reports/f05/T028-artifact-uploads.md`、`db/migrations/0015_artifact_admissions.sql`、`internal/artifacts/`（服务 + 格式准入分类器）、`internal/api/{artifacts.go,server.go}`、`internal/background/handlers/artifact_finalize.go`、`apps/web/src/{attachments.html,assets/attachments.js}`、`tests/support/t028.py`、`tests/f05/test_t028_*.py`（6 文件 31 用例；真实 PG + 真实二进制 + 真实 HTTP + 真实签名 URL + 真实 maintenance finalize；删除模型/病毒查杀/深工作表解析分别属 F07/F13A，见报告 §5） |
+| T029 | F03 | 提交运行并只让合格执行者在配额内领取 | passed | `reports/f03/T029-claim-and-lease.md`、`db/migrations/0016_execution_claims_and_quota.sql`、`internal/execution/`（store + service：claim/heartbeat/attempt-exit）、`internal/api/{execution.go,runs.go,server.go,internal.go,debug.go}`、`apps/web/src/{runs.html,assets/runs.js,debug.html}`、`tests/support/t029.py`、`tests/f03/test_t029_*.py`（9 文件 51 用例；真实 PG + 真实 mTLS/HTTP + 真实对象字节 + 真实并发；result/finalizer/事件/恢复/取消属 T031–T038，发布版 Run 入口属 F02B/F05，见报告 §4/§5） |
+| T030 | F05 | 用预置工具对销售表格返回统计或具体输入错误 | passed | `reports/f05/T030-sales-tool.md`、`db/migrations/0017_tool_run_kind.sql`（只扩展 kind CHECK）、`internal/tools/`（固定 argv/只读输入/超时/严格 output.json/产物准入）、`internal/toolruns/`（幂等创建 + owner-only 读）、`internal/api/toolruns.go`、`internal/background/handlers/tool_run.go`（summary/CSV/diagnostics/log + 完成守卫）、`worker/platform_worker/nodes/sales_stats.py`（stdlib-only Decimal CSV/XLSX）、`apps/web/src/{attachments.html,assets/attachments.js}`（工具区/统计表/下载/诊断）、`tests/support/t030.py`、`tests/f05/test_t030_*.py`（6 文件 55 用例，含 36 个 Python 工具子进程用例；真实 PG + 二进制 + HTTP + 签名 URL + maintenance 双池 + 真实 Python 子进程；非契约桥见 ADR 0005；沙箱/结果协议/工具构建分别属 T033/T031/T037，见报告 §6） |
+| T031 | F03 | 运行完成后等待真实退出证据再展示终态 | passed | `reports/f03/T031-result-and-finalizer.md`、`internal/execution/`（result 提议 + 身份化 exit 证据 + 统一幂等 finalizer + children guard 扩展点）、`internal/api/execution.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/{t029.py,t031.py}`、`tests/f03/test_t031_*.py`（4 文件 17 用例；T029 exit 用例按新必填证据收紧）；无迁移（`reported_result` 已含 event_id）；真实 PG + 真实 mTLS/HTTP + 真实对象字节；事件/SSE/tools/cancel/recovery 属 T032–T038，见报告 §5/§7 |
+| T032 | F03 | 断开事件流后从持久时间线继续查看运行 | passed | `reports/f03/T032-run-events.md`、`db/migrations/0018_run_events.sql`、`internal/execution/events.go`（同事务 run.status 投影 + 同事务 seq 分配 + worker node.status 批量提交）、`internal/execution/{service.go,execution.go}`、`internal/api/events.go`（submitWorkerEvents + SSE）、`internal/api/{server.go,internal.go,middleware.go}`、`internal/config/config.go`、`catalog/debug.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/t032.py`、`tests/f03/test_t032_*.py`（4 文件 31 用例；真实 PG + 编译 API + 真实 mTLS + 真实 SSE 连接/断开重连 + Node 执行页面逻辑）；retention 默认 24h（`ORCHARA_RUN_EVENT_RETENTION`），410 `event_cursor_expired` + `details.snapshot_url`；Delta 预览/真实 worker/沙箱/取消/恢复属 F06/T033/T036/T038，见报告 §5/§7 |
+| T033 | F05 | 在正式沙箱调试工具并登记可授权下载的产物 | passed | `reports/f05/T033-sandbox-tool-debug.md`、`db/migrations/0019_run_artifact_uploads.sql`（唯一新表：artifact PK + run/attempt FK + 契约 purpose 枚举 + 两索引；无删除模型）、`internal/execution/runartifacts.go`（五个 run-scoped 操作：upload/complete/download/status/register；live attempt + 当前 token 唯一凭据；provenance 决定 scope；complete→CAS scanning + 一个 `artifact_finalize`）、`internal/catalog/runartifacts.go`（owner-only `listRunArtifacts`，4 字段 + 共享 cursor，log/输入不列出）、`internal/api/runartifacts.go`、`internal/execution/{store,service}.go`（live lease 的 execution_unit_id、cancel 读取）、`internal/sandbox/*`（Go 构建 OCI bundle：只读 rootfs、uid 65534、无 caps/no_new_privs、pid/net/ipc/uts/mount ns、--network=none、内存/pid/CPU/timeout、/proc+tmpfs、/tool+/inputs 只读、/workspace 可写、固定 argv；进程组 kill+cleanup 验证；digest 身份；fake-runner 单测）、`deploy/sandbox/{build_python_rootfs.sh,sandbox_exec.sh,isolation_probe.py}`（WSL/runsc driver + 可重放 rootfs 构建，digest `sha256:03c3f6…2ff5`）、`internal/presetexec/`（claim→manifest 字节校验→唯一 python 节点/唯一 task_input→签名下载→沙箱→scoped 上传/登记→result→exit；确定拒绝用 started=true+sandbox_started=false；取消不提交结果停 recovery_pending）、`cmd/supervisor/{main,exec,client}.go`（`exec --once`，supervisor+worker 双证书、只读 DSN）、`cmd/sandboxprobe/`、`apps/web/src/{runs.html,assets/runs.js}`（沙箱面板：执行单元/租约/状态/退出/停止 vs 停止中/T036 诚实说明/产物下载）、`tests/support/{t033.py,fixtures.py}`、`tests/f05/test_t033_*.py`（4 文件 20 用例：迁移 6、端点矩阵 6、真实 runsc e2e/失败/取消/隔离/超时/崩溃 5、页面 3）+ 迁移链 0018→0019；真实 PG + 编译二进制 + 真实 mTLS（三角色）+ WSL2/runsc + Node；`go test ./...` 全绿（新增 27 个 Go 单测）、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T036 取消端点、T037 工具构建、F04A 进程拆分与恢复/T038 属后续票，见报告 §2/§5/§6 |
+| T034 | F03 | 跨尝试累计活跃耗时并在超时时停止 | passed | `reports/f03/T034-active-time.md`、`db/migrations/0020_active_time_and_deadline.sql`（`runs.max_active_ms` + `run_attempts.active_ms/active_settled_at` + policy 回填 + 两个 CHECK；无新表/权限）、`internal/execution/active.go`（唯一结算/投影/截止 helper：`settleAttemptActiveTx`、`deadlineStateOf`、`checkDeadlineTx`、`markDeadlineIntentTx`）、`internal/execution/{store,service,execution}.go`（claim 拒绝已超时 queued Run；heartbeat/result/exit/finalizer 结算；到期记录 intent 一次并复用 T031 `finalizeRunTx` 提交 `failed(deadline_exceeded)`、无 output、slot 一次释放；`ErrDeadlineExceeded` 409）、`internal/catalog/debug.go`（debug Run 创建时从冻结 policy 写 max，不猜）、`internal/api/{debug,execution}.go`（非契约 `X-Run-Active-Elapsed-Ms`/`X-Run-Max-Active-Ms`/`X-Run-Deadline-Exceeded`、409 映射）、`apps/web/src/{runs.html,assets/runs.js}`（累计活跃/上限、一个时钟、deadline 原因、NULL≠0）、`tests/support/t034.py`、`tests/f03/test_t034_*.py`（4 文件 18 用例：迁移 5、累计/幂等/等待 4、截止 5、页面 4）+ 迁移链 0019→0020 与两处先前票陈旧断言适配；真实 PG + 编译二进制 + 真实 mTLS/HTTP + 对象字节 + Node；`tests/f03` 117 passed、`tests/f05` 106 passed 回归；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T035 waiting/resume、T036 cancel/优先级、T038 恢复与到期后能力/注册门禁属后续票，见报告 §2/§5/§6 |
+| T035 | F03 | 等待审批或子任务时只恢复原任务一次 | passed | `reports/f03/T035-waiting-resume.md`、`db/migrations/0021_run_waitings.sql`（唯一新表 `platform.run_waitings`：run_id PK、kind/checkpoint、安全 decision jsonb + decision_at、exit_confirmed_at、UNIQUE resume_job_id、resume_artifact_id、created/updated + 闭合 CHECK；无 approval/child/operation 表，worker/PUBLIC 零权限）、`internal/execution/waiting.go`（waiting 转换 + 合成 resolution 校验 + `maybeEnqueueResumeTx` 唯一恢复事务 + owner-facing facts）、`internal/execution/waiting_store.go`（waiting/决定/退出/恢复 job/失败收尾 SQL）、`internal/execution/service.go`（result 的 waiting 分支、exit 的 waiting 分支、waiting 重放、deadline/权限/预算重查后 `failed(...)`）、`internal/api/{execution,internal,debug}.go`（supervisor mTLS `POST /internal/v1/runs/{id}/waiting-resolution` + 六个非契约 waiting/resume 头）、`apps/web/src/{runs.html,assets/runs.js}`（等待 kind/结果/退出确认/唯一恢复任务/逻辑会话槽仍占用；无恢复输入内容）、`tests/support/t035.py`、`tests/f03/test_t035_*.py`（5 文件 24 用例：waiting 4、resume 5、refusal 4、迁移 7、页面 4）；真实 PG + 编译二进制 + 真实 mTLS/HTTP + 真实对象字节 + Node；迁移链 0020→0021 适配 10 个迁移测试；`tests/f03` 141 passed；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；真实 F06 审批/F07 子应用接入、T036 取消终态、T038 恢复证据属后续票，见报告 §2/§5/§6 |
+| T036 | F03 | 取消正在运行的执行并让迟到消息不能复活终态 | passed | `reports/f03/T036-cancel.md`、`db/migrations/0022_run_unknown_operations.sql`（唯一新表 `platform.run_unknown_operations`：run/operation_id/reason/resolved_at + `UNIQUE(run_id,operation_id)` + 未解决 partial index；`run_waitings.cancel_requested_at`；无 `runs.cancel_reason/cancelled_by`，worker/PUBLIC 零权限）、`internal/execution/cancel.go`（owner-only `Cancel` 两分支：无 live attempt 立即 cancelled/unknown→needs_reconciliation；有 live attempt 记录 intent→cancelling；unknown record/resolve bridge）、`internal/execution/cancel_store.go`（cancel/job/waiting/ledger SQL）、`internal/execution/service.go`（`finalizeRunTx` 单一优先级：live child 阻塞 > unknown→needs_reconciliation > deadline→failed(deadline_exceeded) > cancel→cancelled > proposal；started=false cancel 走 job void）、`internal/execution/{store,waiting,waiting_store,runartifacts}.go`（unknown guard 查询、waiting cancel marker、receipt/query 在 cancelling 仍可用）、`internal/api/{cancel.go,execution.go,server.go,internal.go}`（public `POST /api/v1/runs/{id}/cancel` + 两个 internal unknown bridge）、`apps/web/src/{runs.html,assets/runs.js}`（取消按钮/正在停止 vs 已停止/终态原因/终态不回翻）、`tests/support/t036.py`、`tests/f03/test_t036_*.py`（6 文件 29 用例：cancel 14、unknown 6、migration 5、pages 4，真实 PG + 编译 API + 真实 mTLS + 对象字节 + Node）；迁移链 0021→0022 适配 11 个测试，T033 的取消 interim 断言由 T036 终态取代；`tests/f03` 170 passed；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T038 恢复/核对重驱、F06 真实 operations 属后续票，见报告 §2/§5/§6 |
+| T037 | F05 | 提交脚本依赖并审核成可共享固定工具 | passed | `reports/f05/T037-tool-builds.md`、`db/migrations/0023_tool_builds_and_review.sql`（`tool_versions` 扩展：revision/source_sha256/dependency_lock_sha256/build_log/sbom/build_bundle_digest/build_started_finished/build_error_code + reviewed_*/revoked_*；契约列/状态枚举保留；worker/PUBLIC 零权限；非契约扩展见报告 §4）、`internal/toolversions/service.go`（submit 单事务/幂等/跨 owner `tool_conflict`、JCS `manifest_sha256`、owner-or-admin-or-approved 读、review/revoke CAS+audit、job-scoped build binding）、`internal/api/tools.go`（`submitTool`/`listTools`/`getTool`/`reviewTool` + 非契约 `POST /tools/{id}/revoke`、`GET /tools/{id}/build`、内部 `POST /internal/v1/background/jobs/{job_id}/tool-build`）、`internal/background/{toolbuild.go,handlers/tool_build.go}`（claim submitted→building；完成守卫 CAS revision+source hash+ready/job-linked log+SBOM，唯一 ready 写入者；内容包摘要 `sha256:<hex>`=sorted(source+canonical lock+SBOM) 非 OCI）、`internal/sandbox/*` + `deploy/sandbox/{sandbox_exec.sh,build_tool.py}`（复用 T033 runsc bundle：固定 argv/无网络/uid 65534/只读 rootfs+inputs/可写 workspace；安全解包 + `setup.py build` 钩子；lock 需不可用 wheelhouse 时安全 `dependencies_unavailable`）、`internal/artifacts/admission.go`（`application/zip` 仅 `purpose=tool_source`：entry/解压/ratio/traversal/symlink/encrypted 拒绝；其他 purpose 仍拒绝）、`apps/web/src/{tools.html,assets/tools.js}`（提交/构建日志+SBOM 下载/审核状态 + 管理员审核队列，Node 执行逻辑）、`tests/support/{t037.py,fixtures.py}`、`tests/f05/test_t037_*.py`（8 文件 39 用例：迁移 6、submit 11、admission 4、真实 runsc 构建 2、恶意钩子/崩溃/依赖/源变更 4、审核/撤销 8、internal binding 1、页面 3；真实 PG + 编译二进制 + 真实 mTLS + WSL2/runsc + Node）；`tests/f05` **145 passed in 611.79s**；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；F06 connectors、F15A 镜像构建、F04A 进程拆分属后续票，见报告 §5/§6 |
+| T038 | F03 | 恢复待证据并在核对后安全重驱 | passed | `reports/f03/T038-recovery.md`、`db/migrations/0024_run_recovery_evidence.sql`（唯一新表 `platform.run_recovery_evidence`：run/attempt、闭合证据 jsonb + JCS sha256、真实 principal `recorded_by`、`recorded_at`、UNIQUE `resumed_job_id`、`UNIQUE(run_id,attempt_token)`、run 索引；`runs.recovery_reason/recovery_since` + 配对/闭合 CHECK；worker/PUBLIC 零权限；重复 migrate no-op）、`internal/execution/recovery.go`（证据闭合形状 + JCS SHA-256、`SweepExpiredLeases` 只 park、`Recover` 全检查 + 单事务重排、`RecoveryFacts`、拒绝码）、`internal/execution/recovery_store.go`（sweep/recover/actor/evidence SQL + 行锁复检）、`internal/execution/{store,service,cancel_store}.go`（T031 park 写 `exit_without_result`；离开 recovery_pending 时清列）、`cmd/admin/runs.go` + `cmd/admin/main.go`（`runs sweep-leases [--grace] [--dry-run]` / `runs recover --run --evidence [--check-only] [--actor-login] [--grace]`，stdout 单 JSON，exit 0/1/2，绝不打印 token/DSN）、`internal/api/debug.go`（非契约 `X-Run-Recovery-Reason/Since/Evidence-At/Evidence-SHA256`）、`apps/web/src/{runs.html,assets/runs.js}`（恢复原因/挂起时间/证据/运维命令，无恢复按钮，终态不回翻，`runLifecycle` 增加 recovery_pending）、`tests/support/t038.py`、`tests/f03/test_t038_{migration,sweep,recover,recovery_refusals,pages}.py`（5 文件 27 用例：migration 5、sweep 5、recover 7、refusals 6、pages 4；真实 PG + 编译 admin/API + 真实 mTLS + 真实对象字节 + 真实打开中的 psql 事务/pg_stat_activity + Node）；迁移链 0023→0024 适配 12 个迁移测试；`tests/f03` **197 passed**；`go test ./...` 22 ok/9 no-test/0 FAIL、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；not_run：常驻租约巡检、cancelling/waiting_* 失联恢复、真实 F04A supervisor 证据、浏览器 DOM、25 分钟多套件门禁（orchestrator），见报告 §5 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -411,8 +434,299 @@ T027（GitHub #28）已交付，状态 **`passed`**（本票范围 = **提交与
 未运行（如实）：F03 的领取/租约/attempt/事件/SSE/结果/退出 finalizer/cancel/终态（本票的 run 停在
 queued、start job 停在 ready；F03 必须补两个 attempt 外键并先调 `VerifyManifestBytes`）；F02B 的发布
 审核/version 写入/`submit`（测试断言仍 404）；F05/F07 的 requests/conversations 与 FK、幂等收据清理；
-T028 的用户上传准入；浏览器 DOM 渲染（与 F01/T023 相同）；真实 worker 镜像（占位 digest）；
+浏览器 DOM 渲染（与 F01/T023 相同）；真实 worker 镜像（占位 digest）；
 F13A 的真实评测 runner。全量 `pytest tests` 已在复核修复收尾运行。本票不推送、不关闭 issue。
+
+## F05 用户上传、格式准入与不可覆盖封存（1/N：T028）
+
+T028（GitHub #29）已交付，状态 **`passed`**（本票范围 = **上传 + 准入 + owner-only 读取**）。
+真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP + 真实文件系统对象字节 + 真实 HMAC 签名
+staging/sealed URL + 真实 `cmd/maintenance run --once --kinds artifact_finalize`；无 mock、无跳过。
+复用 T022 的 `artifact_finalize` 流水线（未写第二个 finalizer）。边界（如实）：F07 删除模型、
+病毒查杀、XLSX 工作表/行级深解析、浏览器 DOM 分别见报告 §4/§5 的 `not_run`/后续票。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0015_artifact_admissions.sql`：唯一新表 `platform.artifact_admissions`（PK/FK artifact、declared/sniffed media type、detected_format、verdict、reason、checked_at；accepted 必有 sniff、rejected 必有 reason 的 CHECK）；迁移头列出偏离与 owner（F07/T037）；无 deletion/requests/conversations/tool 表；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op |
+| createUpload | `POST /api/v1/artifacts/uploads`：会话 CSRF / API key `application:write`（普通 user 可上传，不要求 creator）；`UploadInput` 精确校验（4 类 media_type 允许清单、size 1..20971520、4 个 purpose）；预分配不同 staging/sealed key，`uploading` revision=1；201 `Upload` 只含短时 staging PUT URL（max_bytes=声明 size）+ expires_at；sealed key 永不发 PUT |
+| completeUpload | `POST /api/v1/artifacts/{id}/complete`：owner-only（他人含管理员 404）；CAS `uploading→scanning`（revision+1）+ 同事务一个 `artifact_finalize` job（expected_revision=新 revision、`artifact:<id>:<sha>` dedup）；同 hash 在 scanning/ready 幂等且不建第二个 job；异 hash 409 `artifact_hash_conflict`；deleted/quarantined 409 `artifact_conflict`；不读对象存储、不激活 |
+| 格式准入 | handler 在 hash/大小通过后读取**本尝试** sealed 对象并持久化 admission：text/UTF-8、CSV 解析、JSON `json.Valid`、XLSX zip 宏/条目≤512/解压≤64 MiB/路径穿越/必需 workbook；不一致/空/非法/不支持 → `artifact_format_rejected`（quarantine-implying、business、不可重试）；staging 缺失对 user upload → `artifact_upload_incomplete`；非 user-upload purpose 不走本准入（T024/T026 语义不变）；激活仍只由完成守卫决定；新增 Go 分类器单测 |
+| 读取 | `GET /artifacts/{id}` 4 字段（quarantined 附非契约 `X-Artifact-Quarantine-Reason`）；`GET .../download` ready 才签 sealed GET、未 ready 409 `artifact_not_ready`、隔离/他人/已删 404；`GET .../content` 同一 ACL、`Content-Disposition: attachment`、流式复制不把 20 MiB 读进内存；管理员不是任意用户正文读者（404） |
+| Web | `apps/web/src/attachments.html` + `assets/attachments.js`：选文件/类型/用途 → 浏览器 SHA-256 → createUpload → 无凭据 PUT staging → complete → 轮询 state；ready 才显示下载（点击时才取新链接）；quarantined 安全中文文案 + reason；全部 `textContent`，无 URL/localStorage 凭据；apps/debug 导航入口 |
+| 测试 | `tests/support/t028.py` + `tests/f05/test_t028_*.py` 6 文件 **31 用例**（迁移 4、上传 6、隔离 10、ACL 5、删除竞争 1、页面 5）；核心 AC“校验后覆盖 staging 不改变 sealed”与“同 hash 幂等/异 hash 409 + 单 job”逐字节/逐行断言；五套件门禁 `pytest tests/f05 tests/f00b tests/f02a tests/f01 tests/tooling -q` = **446 passed**（f05 31 / f00b 135 / f02a 104 / f01 155 / tooling 21），`go vet`/`go test ./...`/`gofmt -l` 全绿、`sync_spec --check` no drift |
+| 证据 | `reports/f05/T028-artifact-uploads.md`（AC 逐条、命令原始结果、契约缺口、`not_run`、F07/F03 接口） |
+
+未运行/边界（如实）：F07 的 DELETE 端点/deletion_jobs/副本清理/tombstone 传播（本票只用 F07 将写的
+`deleted_at/state=deleted/revision+1` 列做真实 guard 竞争测试，不实现删除）；病毒查杀与 XLSX 工作表/
+行级/公式深解析（属 F13A/`document_ingest`）；管理员诊断授权正文读取（F07/F09）；浏览器 DOM；全量
+`pytest tests`（本票按 brief 跑五套件，见报告 §3.3）。本票不推送、不关闭 issue。
+
+## F03 领取、租约与退出证据（1/N：T029）
+
+T029（GitHub #30）已交付，状态 **`passed`**（本票范围 = **领取 + 租约/心跳 + 退出证据记录 +
+owner-only Run 列表与运行页面**）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 mTLS 客户端证书 +
+真实 HTTP + 真实文件系统对象字节 + 真实 HMAC sealed GET 链接 + 真实并发；无 mock、无跳过。
+边界（如实）：result 提议/事件/统一 finalizer/resume/cancel/recovery/终态/SSE 属 T031–T038；发布版
+Run 入口属 F02B/F05；真实 supervisor/worker 进程属 F04A/F15A。决策见报告 §4/§5。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0016_execution_claims_and_quota.sql`：`run_attempts`/`quota_counters`/`quota_allocations` 契约基线；补齐 T027 延期的 `jobs_current_attempt_token_fkey`、`run_artifacts_attempt_token_fkey`；部分唯一索引 `run_attempts_one_live_per_run`（`exited_at IS NULL AND revoked_at IS NULL`）；租约/心跳索引 `run_attempts_live_lease`、`run_attempts_live_job`；种子 `('global','execution_slots',0,2)`（容量是部署 knob，`ON CONFLICT DO NOTHING`）；`orchara_worker`/PUBLIC 无 platform 权限；重复 migrate no-op；未建 requests/conversations/events/node_attempts/operations/approvals |
+| internal/execution | store + service 两层；**单一数据库时钟**（租约/心跳/过期/退出全部 SQL `now()`）；claim 一个事务：`FOR UPDATE OF j,r SKIP LOCKED` 选 ready job（run queued、snapshot compiler 受支持）→ 配额行锁 + `used<capacity` 原子自增 → holder `job:<id>` 分配（释放后复用/重新武装）→ attempt 行（新 token、`now()+ttl`）→ job `leased` + token → run `running`/phase `executing`/`started_at`/`revision+1` → `compiler.VerifyManifestBytes`（只信密封字节）→ 真实 sealed GET 链接 → commit；任何失败整笔回滚 |
+| claimJob | `POST /internal/v1/jobs/claim`，supervisor only（worker/maintenance 403）；body 严格校验（`worker_id`、非空/唯一/可打印 `supported_compilers`、`execution_unit_id`）；200 契约 `Lease` 14 字段（`protocol_version="1.0"`、manifest=snapshot JSONB 投影、resume 对 start 为 null）；无兼容 job/无容量 → 204 无 body 且零变化；字节/签名不可用 → 503 `object_store_unavailable`/`object_signing_unavailable` 且无租约 |
+| heartbeat | `POST /internal/v1/runs/{run_id}/heartbeat`，supervisor/worker 可、maintenance 403；token 必须绑定该 run/job 且 live（过期/撤销/错 run/错 unit → 409 `stale_attempt`）；`lease_deadline=now()+ttl`（`ORCHARA_EXECUTION_LEASE_TTL`，默认 30s）；`checkpoint_connections` 校验形状后持久化（缺省不覆盖）；`HeartbeatReply`：真实 lease_deadline、`cancel_requested` 来自 `runs.cancel_requested_at`、`policy_revision`=acl epoch、`budget_remaining`=`runs.budget_limit::text`（usage ledger 后续票，报告中明确） |
+| confirmAttemptExit | `POST /internal/v1/attempts/{attempt_id}/exited`，supervisor only；校验 live + execution_unit；持久化 `exited_at/exit_evidence`、撤销 token、`released_at IS NULL` 下只释放一次配额（`used-1`）；`evidence.started=false` → job `ready`、run `queued`/phase `idle`/`revision+1`（`started_at` 不变，未启动由证据证明）；其他 evidence（含缺省 started）→ job `held`、run 非终态（T031 finalizer 边界）；重复相同 evidence 幂等 200、冲突 409 `attempt_evidence_conflict` |
+| 配额/过期 | 唯一维度 `global/execution_slots`；一次 claim 一个槽、一次 exit 释放一次；容量 1 × 10 并发恰 1 个 200；**过期租约不自动回收**：心跳/退出 409，claim 不抢 `leased` job，过期 attempt 的槽保持占用；`recovery_pending`/sweep/撤销旧 token/槽位回收属 T031（EXECUTION §3 保守恢复） |
+| listRuns | `GET /api/v1/runs` owner-only（管理员只看自己的；无 grant 路径），`created_at,id DESC` 稳定 keyset + opaque cursor（过滤先于分页），`{items,next_cursor}` 契约；limit 缺省 20/非法 422、坏 cursor 400；API key 需 `application:read`；复用 T027 `catalog.Run` 投影（抽出 `runColumns/scanRun`，未复制第二份） |
+| 详情扩展 | `GET /api/v1/runs/{id}` 在尝试存活时附非契约头 `X-Run-Attempt-Started-At`/`X-Run-Lease-Deadline`（Run schema 无租约字段；`X-Manifest-SHA256` 先例；attempt token 绝不暴露） |
+| Web | `apps/web/src/runs.html` + `assets/runs.js`：owner-only 列表/分页、点击详情、state/phase/kind/revision/snapshot、manifest hash、运行中的真实 started_at/lease_deadline；无租约时明确“不伪造进度”；全部 `textContent`；debug 页新增 phase/租约行与 `/runs` 链接，apps 页新增 `/runs` 导航 |
+| 测试 | `tests/support/t029.py` + `tests/f03/test_t029_*.py` 9 文件 **51 用例**（迁移 7、claim 6、heartbeat 9、exit 10、listRuns 3、并发 3、原子性 5、不变量 3、页面 5）+ `internal/execution` 4 个 Go 单测；`tests/f03` **51 passed**，`go test ./...` 全绿，`go vet ./...`、`gofmt -l .` 无输出，`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节/并发） |
+| 证据 | `reports/f03/T029-claim-and-lease.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T030/T031 接口） |
+
+## F05 预置销售统计工具（2/N：T030）
+
+T030（GitHub #31）已交付，状态 **`passed`**（本票范围 = **可信预置工具执行 + Decimal 统计 +
+具体输入错误 + 用户可见运行/下载/诊断路径**）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP
++ 真实文件系统对象字节 + 真实 HMAC 签名 URL + 真实 `cmd/maintenance run --once` 双池
+（tool_run work pool + artifact_finalize system_io pool）+ 真实 Python 3.12 子进程；无 mock、无跳过。
+F03 的 result/finalizer/events/SSE/cancel/recovery 尚不存在，因此本票走 ADR 0005 记录的
+**非契约桥**：一个 `tool_run` 后台 job，而不是伪造 Run；T033/F04A 再把预置工具绑定到
+Run/沙箱协议，T037 再开放任意工具构建。边界见报告 §5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0017_tool_run_kind.sql`：guarded、幂等 drop/recreate `background_jobs_kind_check`，只加入第九个 kind `tool_run`；无新表、无新业务行、无权限变化；`orchara_worker`/PUBLIC 仍无 platform 权限；重复 migrate no-op |
+| 后台 kind | `internal/background/{job.go,complete.go,artifacts.go}`：`AllKinds`/`KnownKind`/数据库 CHECK 同步；retry 表 `tool_run` = transient_storage_io/transient_internal/lease_expired/tool_timeout/tool_crash（≤3 次），工具拒绝码与输出违规码 business；`tool_run` 在 work pool（非 system_io）；producer purpose 加入 tool_summary/tool_artifact/diagnostics/log；新增 `guardToolRunCompletion`，成功必须命名本 job 的 ready summary artifact |
+| API | `POST /api/v1/tool-runs`（会话 CSRF / API key `application:write`；`Idempotency-Key` 必需；body 精确 tool+artifact_id；202 `{id,state,tool,artifact_id}`）；同 key 同 body 回放已存 body、异 body 409 `idempotency_conflict`；非本人/已删/畸形 id 404 `resource_not_found`；未 ready 409 `artifact_not_ready`；非 CSV/XLSX 422 `validation_failed`；receipt+job 同事务。`GET /api/v1/tool-runs/{job_id}` owner-only，`{id,state,error_code,artifacts:[...]}`，join `background_job_artifacts`，不含 object key |
+| 执行器 | `internal/tools`：固定 argv（无 shell）、裁剪环境、临时 workspace、输入复制只读（Windows DOS read-only / POSIX 0444，OS 边界见 ADR）、超时 30s 默认（环境可调、≤10m）、stdout/stderr 各 64 KiB 只作 log artifact、严格 output.json 成功/拒绝形状、未知码拒绝、产物准入（相对/目录内/普通文件/无 symlink/`..`/非空/≤20 MiB/≤16 个/SHA-256），`output.json` 未列出的文件不登记；Python 与脚本路径来自 `ORCHARA_PYTHON`/`ORCHARA_PRODUCT_ROOT` 部署配置 |
+| 工具 | `worker/platform_worker/nodes/sales_stats.py`：Python 3.12 stdlib only；CSV 与 XLSX（zip+XML，含 sharedStrings）读取；表头精确 order_id/date/region/amount；Decimal 金额（输出两位小数字符串，永不 float）；产出 summary.json/summary.csv 仅在 artifacts 目录；拒绝缺列/多列/乱序、重复订单、负值/非十进制、空地区、非 ISO 日期、公式、非 UTF-8、宏、DTD/实体、zip 穿越/条目/解压/压缩比、工作表/行/单元格上限、错误单元格类型 |
+| handler | `internal/background/handlers/tool_run.go`：job-scoped Status/Download/FetchURL 取输入 → 执行器 → 校验销售 Schema/Decimal 总和 + summary.json 与 data 规范化一致 → 上传 tool_summary/tool_artifact/log 并等待 ready → 成功提交 summary；工具拒绝/超时/崩溃/IO 失败上传安全 diagnostics+log 后失败，失败永不激活 result artifact |
+| Web | `apps/web/src/attachments.html` + `assets/attachments.js`：上传页新增预置工具区（artifact id、运行、ready/leased/succeeded/failed 中文状态、Decimal 总额/地区表、summary.csv/summary.json 下载、失败诊断 error_code/message/fix/location）；全部 `textContent`，无内联用户内容、无 Number()/parseFloat、无凭据存储 |
+| 测试 | `tests/support/t030.py` + `tests/f05/test_t030_*.py` **6 文件 55 用例**（工具 Python 子进程 36、迁移 5、成功流 4、拒绝 3、失败/重试 3、页面 4）；真实路径覆盖 CSV/XLSX 精确 Decimal、下载字节、日志无正文/secret、10 类拒绝 + 诊断、超时/IO/tombstone、幂等/重跑/ACL/API key scope；`internal/tools` 15 个 Go 单测、`handlers` 7 个、`config` 1 个、后台白名单更新 |
+| 证据 | `reports/f05/T030-sales-tool.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T031/T033 接口）；`docs/adr/0005-t030-tool-run-bridge.md` |
+
+## F03 结果提议与统一幂等终态（2/N：T031）
+
+T031（GitHub #32）已交付，状态 **`passed`**（本票范围 = **worker result 提议 + supervisor 身份化 exit
+证据 + 统一幂等 finalizer + 运行页 finalizing/终态展示**）。真实 PostgreSQL 16.4 + 真实编译二进制 +
+真实 mTLS 内部客户端（worker/supervisor/maintenance 三种证书）+ 真实 HTTP + 真实文件系统对象字节；
+无 mock、无跳过。边界（如实）：T032 的事件/SSE、T033 的 run-bound artifact 注册、T035 的 waiting/
+resume、T036 的 cancel/unknown guard、T038 的恢复证据均不实现；运行页为真实 HTML/JS + Node 执行
+核心逻辑，无浏览器 DOM 驱动。见报告 §5/§7。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | 无。契约基线 `run_attempts.reported_result/reported_at/checkpoint_id` 已够用：proposal 整体（含 `event_id`）存入 `reported_result`，不新增列/表；`contracts/**`、`docs/spec/**` 未改，`sync_spec --check` no drift |
+| submitWorkerResult | `POST /internal/v1/runs/{run_id}/result`，worker 或 supervisor（maintenance 403）；body 按契约 `WorkerResult` 严格解码（additionalProperties:false），条件必填 `output_artifact_id`(succeeded)/`checkpoint_id`(waiting_*)/`error_code`(failed)；token 必须绑定该 run 且为该 run 最新 attempt（跨 run/被取代/已 requeue → 409 `stale_attempt`），run 必须 running 或 recovery_pending（终态 → 409 `run_terminal`，waiting/cancelling/needs_reconciliation → 409 `run_state_conflict`）；同内容重放 200、异内容 409 `event_conflict`；succeeded 的 output artifact 必须存在、owner=run owner、ready 且未删除、并在 `run_artifacts` 关联（422 `validation_failed` + `details.code`=artifact_not_found/not_owned/not_ready/not_linked）；事务只写 proposal/reported_at/checkpoint_id 与 `runs.phase='finalizing'`（state/revision 不变），200 返回契约 Run（proposal-only 时 running/finalizing）。T033 之前由测试/种子写 `run_artifacts` 链接 |
+| confirmAttemptExit | 在 T029 上扩展：evidence 必须携带 `started`(bool)、`protocol_version`、`manifest_sha256`(64 hex)、`image_digest`（非契约 evidence 扩展）；协议/manifest/image 与 claim 时的 run manifest hash + snapshot worker_image_digest 不符 → 409 `execution_identity_mismatch` 且零写入；`started=false` 保持 T029 requeue；`started=true` 且无 result → run `recovery_pending`/phase idle/revision+1、job held、slot 已释放，绝不 requeue |
+| 统一 finalizer | `finalizeRunTx` 由 result+exit 两个入口在各自事务内调用，要求两者齐全；`platform.runs(parent_run_id)` 有非终态子 run 时阻塞（job held、run 保持 running/finalizing，T035/T036 接续）；unknown-operation guard 已结构化（`hasUnknownOperationsTx` 目前恒 false，T036 替换该函数体）；succeeded/failed 同一事务映射 run state/revision+1/finished_at/output_artifact_id/error_code、phase idle、job completed、token revoked、allocation `released_at` 恰好一次（重复调用为 no-op）；needs_reconciliation 非终态提交；waiting_* 只存 proposal、保持 running/finalizing、job held（T035） |
+| 幂等/顺序 | result-first：claim rev2 → proposal rev2/finalizing → exit rev3 终态；exit-first：claim rev2 → park rev3 recovery_pending → result rev4 终态；两种顺序都只有一次终态、一次 job 完成、一次配额释放、无重复行；重复 exit（同 evidence JSONB 相等）200 no-op，重复 result（proposal 已存且 run 非终态）200 no-op；终态后迟到 result 409 `run_terminal`，不同 exit evidence 409 `attempt_evidence_conflict` |
+| 错误码 | 新增 `run_terminal`(409)、`event_conflict`(409)、`execution_identity_mismatch`(409)、`run_state_conflict`(409，T035/T036 之前的显式临时拒绝)、`run_not_found`(404)；复用 `stale_attempt`/`attempt_evidence_conflict`/`validation_failed`/`invalid_json`/`forbidden`；422 `details` 增加 `code` 以定位 artifact 原因 |
+| Web | `runs.html`/`runs.js`：详情新增“执行阶段 executing → finalizing → 终态”行；finalizing 明确写“等待 supervisor 的退出证据……终态提交前这不是成功”；未终态时轮询 `GET /api/v1/runs/{id}`，终态即停，成功只在服务端提交终态后展示；`debug.html`/`debug.js` 同样解释 finalizing（`describeRunStage`）；全部 `textContent`、无凭据存储 |
+| 测试 | `tests/support/t031.py` + `tests/f03/test_t031_{result,finalizer,identity,pages}.py` **4 文件 17 用例**（result 2、finalizer 10、identity 1、pages 4），T029 exit/invariants 用例按新必填证据收紧；`tests/f03` **68 passed**（51 + 17）；`internal/execution` Go 单测扩到 7 个（含 exit identity 必填/定位、WorkerResult 条件必填）；`go test ./...` 全绿、`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift（全部真实 PG/二进制/mTLS/HTTP/对象字节） |
+| 证据 | `reports/f03/T031-result-and-finalizer.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T032/T035/T036/T038 接口） |
+
+## F03 持久事件与 SSE 回放（3/N：T032）
+
+T032（GitHub #33）已交付，状态 **`passed`**（本票范围 = **持久 run_events + 同事务状态投影 +
+worker node.status 批量事件 + owner-only SSE 回放/去重/保留窗口/心跳/终态关闭 + 页面时间线**）。
+真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 mTLS 内部客户端（worker/supervisor/maintenance）+
+真实 HTTP/SSE 连接（含中途断开与 Last-Event-ID 重连）+ Node 真实执行页面逻辑；无 mock、无跳过。
+边界（如实）：模型 delta 临时预览属 F06（UI 明确 `data-preview="not_run"`，不伪造正文）；
+run-bound artifact 注册属 T033；waiting/resume 属 T035；cancel/unknown guard 属 T036；恢复属 T038；
+F07 负责保留窗口的实际清理；浏览器 DOM 驱动页面仍 `not_run`。见报告 §5/§7。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0018_run_events.sql`：唯一新表 `platform.run_events`（run_id FK、seq>0、event_id uuid UNIQUE、type/revision/payload jsonb、created_at；PK `(run_id,seq)`）；命名 replay 索引 `(run_id,seq)` 与 retention 索引 `(created_at)`；事件类型限定契约五值、payload 必须为 JSON 对象、revision>0；`orchara_worker`/PUBLIC 仍零权限。`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| 同事务事件 | `execution.AppendRunStatusTx(tx)` 是唯一控制器写入器：锁 Run→取 `next_event_seq`→以新 uuid 与**转换后** revision 插入→计数+1；debug 创建（queued rev1）、claim（running rev2）、result 提议（running，phase=finalizing 但事件无 phase 字段）、finalizer（succeeded/failed + error_code、needs_reconciliation）、exit 无结果（recovery_pending）、started=false requeue（queued）全部同事务；事件插入失败则业务转换一起回滚（测试用真实 PG trigger 证明） |
+| submitWorkerEvents | `POST /internal/v1/runs/{run_id}/events`，worker|supervisor（maintenance 403）；batch 1..100；body 严格解码 `{attempt_token,events[{event_id,local_sequence,type,payload}]}`；token 必须是该 run 的**当前 live attempt**（job 仍 leased、未 exit/revoke、租约未过期；跨 run/随机 token → 409 `stale_attempt`）；只接受 `node.status`，payload 精确 `{node_id,state,attempt_no}`，content/body/delta 等键 422 定位拒绝；event_id 幂等：同 run+同 type+同 JSONB payload → 200 no-op 不占 seq，异内容/跨 run → 409 `event_conflict`；新事件按请求数组顺序各占一个 seq；终态 run → 409 `run_terminal`；非执行态 → 409 `run_state_conflict`；`local_sequence` 仅诊断（缺口/重复只写日志，绝不当展示顺序，也不入库） |
+| runEvents (SSE) | `GET /api/v1/runs/{run_id}/events`，owner-only（管理员/他人/未知/已删除一律 404 `resource_not_found`）；`Last-Event-ID` 为同 run 本地 seq（非法 → 400 `validation_failed` + `details.field=Last-Event-ID`）；帧 `id: <seq>`、`event: <type>`、`data: <event.schema 封套>`；无事件每 15s 发 `: heartbeat` 注释（不占 seq、无 id/event/data）；空闲时轮询 PostgreSQL（Redis 仅唤醒且本批不存在）；回放期间重复 seq 由客户端按 seq 去重；回放到终态并追平后关闭；回放边界事件早于保留窗口 → 410 `event_cursor_expired` + `details.snapshot_url=/api/v1/runs/{id}`（契约 Error 无 snapshot_url 字段，记录为契约缺口），不静默跳过 |
+| 配置 | `ORCHARA_RUN_EVENT_RETENTION`（默认 24h）、`ORCHARA_RUN_EVENT_POLL_INTERVAL`（默认 500ms）、`ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL`（默认 15s），均由 `config.Load` 校验（正数 + 上限），api.Deps 传入；无请求级覆盖 |
+| Web | `runs.html`/`runs.js`：详情新增持久时间线（fetch+ReadableStream 读 SSE，不用 EventSource，以便观察 410 并显式发送 Last-Event-ID）；按 seq 去重排序；断线显示“按 Last-Event-ID 重连”，410 显示 `details.snapshot_url` 并停止；终态显示“已回放到已提交终态 … 事件流关闭”；`describeRunEvent` 只渲染 run.status state/error_code 与 node.status 元数据，绝不渲染 payload 正文；running/finalizing 明确“尚未成功”；`debug.html`/`debug.js` 复用同一 `beginRunTimeline`；两页都有 `data-preview="not_run"` 的 F06 说明 |
+| 测试 | `tests/support/t032.py` + `tests/f03/test_t032_{migration,events,sse,pages}.py` **4 文件 31 用例**（migration 6、events 13、sse 7、pages 5）；`tests/f03` **99 passed in 420.83s**（基线 68 + 31）；`go test ./...` 19 包 ok、8 包 no test files、0 FAIL；`go vet ./...` exit 0、`gofmt -l .` 无输出、`sync_spec --check` no drift；均为真实 PG/二进制/mTLS/HTTP/SSE/Node |
+| 证据 | `reports/f03/T032-run-events.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T033/T035/T036/T038 接口） |
+
+## F03 跨尝试累计活跃时间与截止（4/N：T034）
+
+T034（GitHub #35）已交付，状态 **`passed`**（本票范围 = **跨 attempt 累计活跃耗时 + 幂等结算 +
+等待/finalizing 不计时 + 冻结活跃时限 + claim/heartbeat/result 截止检查 + 退出后由唯一 finalizer
+提交 `failed(deadline_exceeded)` + 运行页累计时钟/超时原因**）。真实 PostgreSQL 16.4 + 真实编译
+二进制 + 真实 mTLS 内部客户端 + 真实 HTTP + 真实对象字节 + Node 执行页面逻辑；无 mock、无跳过。
+边界（如实）：waiting/resume 属 T035，取消端点/优先级属 T036，恢复扫描属 T038；到期后的能力/
+注册门禁按设计留给后续切片；浏览器 DOM 驱动页面仍 `not_run`。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0020_active_time_and_deadline.sql`：`runs.max_active_ms bigint`（NULL=unknown/no deadline，非空时 CHECK>0）、`run_attempts.active_ms bigint NOT NULL DEFAULT 0` + `active_settled_at timestamptz`（CHECK active_ms>=0）；按 snapshot `definition.policy.max_active_seconds`（1..3600 整数）回填 ×1000，其它保持 NULL；无新表、无新权限、无 trigger；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| 结算 | `settleAttemptActiveTx` 是唯一结算器，在离开 executing 的同一事务调用（result 提议/exit/finalizer；T035/T036 后续转换复用）：锁内 `active_settled_at IS NULL` 的 attempt 写 `active_ms=GREATEST(0, now-started_at)` + `active_settled_at=now()`，同一 delta 加到 `runs.active_elapsed_ms`；重复调用 0；新 attempt 从累计值继续、不重置也不重新获得完整时限；`revision` 不因结算 bump |
+| 投影/截止 | 投影 = `active_elapsed_ms + (phase=executing && 未结算 live attempt ? now-started_at : 0)`（数据库时钟）。at/over 时记录 intent 一次（`cancel_requested_at=COALESCE(now)`、`error_code` 仅 NULL 置 `deadline_exceeded`）；heartbeat 续租并回答 `cancel_requested=true`；result 提交先结算，at/over 返回 409 `deadline_exceeded` 且不落库；exit 后复用 `finalizeRunTx` 提交 failed、无 output、slot 恰好释放一次、同事务 `run.status`；到期仍走 children/unknown guard，阻塞时 park `recovery_pending`；claim 拒绝已超时 queued Run（failed + job void）。NULL max 无截止 |
+| 读接口/UI | `GET /runs/{id}` 非契约头 `X-Run-Active-Elapsed-Ms` / `X-Run-Max-Active-Ms`（NULL 省略）/ `X-Run-Deadline-Exceeded`；`/runs` 详情新增累计活跃/上限与超时原因，两次 attempt 显示为一个累计时钟，NULL 上限写“未知/无截止 ≠ 0”，不渲染百分比/预计完成；列表行不伪造（契约 Run 无该字段） |
+| 错误码/语义 | 新增 409 `deadline_exceeded`（result 提交）；`ErrDeadlineExceeded`。claim 的过期拒绝仍 204（本票唯一会改变状态的 204：Run failed、job void）。T034 是 pre-cancel：只记录 intent/拒绝新结果，不提交 cancelled；T036 细化取消优先级 |
+| 测试 | `tests/support/t034.py` + `tests/f03/test_t034_{migration,accounting,deadline,pages}.py` **4 文件 18 用例**（迁移 5、累计/幂等/等待/finalizing 4、截止 5、页面 4）；`tests/f03` **117 passed**；额外 `tests/f05` **106 passed** 回归；迁移链 0019→0020 适配 T023/T025/T026/T027/T028/T029/T030/T032/T033，另修两处**先前票遗留陈旧断言**（T027 的 `next_event_seq` 与 attempt FK 延期断言）；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift |
+| 证据 | `reports/f03/T034-active-time.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T035/T036/T038 接口） |
+
+## F03 等待条件与唯一恢复（5/N：T035）
+
+T035（GitHub #36）已交付，状态 **`passed`**（本票范围 = **waiting_approval/waiting_children 转换 +
+唯一 `run_waitings` 事实 + 合成审批/子结果 bridge + 单一幂等 `maybe_enqueue_resume` + resume job 的
+canonical payload + 权限/预算/截止/取消重查 + 运行页等待/恢复解释**）。真实 PostgreSQL 16.4 +
+真实编译二进制 + 真实 mTLS（supervisor/worker 证书）+ 真实 HTTP + 真实文件系统对象字节 +
+真实 signed sealed 链接 + Node 执行页面逻辑；无 mock、无跳过。边界（如实）：真实审批属 **F06**、
+真实子应用/子结果属 **F07**，本票用记录在案的非契约 mTLS bridge 提供合成决定/子结果；取消终态属
+**T036**（只记录 intent，不伪造 cancelled）；恢复证据/失联扫描属 **T038**；浏览器 DOM 驱动仍
+`not_run`。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0021_run_waitings.sql`：唯一新表 `platform.run_waitings`（`run_id` PK→runs、`kind`∈{approval,children}、`checkpoint_id` 非空、安全 `decision` jsonb + `decision_at`、`exit_confirmed_at`、`resume_job_id` UNIQUE→jobs、`resume_artifact_id`→artifacts、created/updated）。CHECK 闭合 kind/outcome 联合体与 decision/decision_at 成对，且 resume job/artifact 只能在 `exit_confirmed_at` 之后出现；`orchara_worker`/PUBLIC 仍零 `platform` 权限；无 approvals/operations/children/requests 表（F06/F07 归属），`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| waiting 转换 | 接受的 `waiting_approval`/`waiting_children` result proposal：存 proposal/checkpoint → T034 `settleAttemptActiveTx`（等待不计活跃时间）→ run state `waiting_*`、phase `waiting`、revision+1 → job `held`（attempt 仍 live、保留 token）→ 插入 `run_waitings` → 同事务 `run.status` 事件。attempt 在 supervisor 确认退出前仍 live；退出只写 `exit_confirmed_at` 并清掉 held job 的 token，绝不因此创建 resume。exit-first（先 exit 后 waiting proposal）同样进入 waiting 并在同一调用补齐退出事实 |
+| 合成 resolution | `POST /internal/v1/runs/{run_id}/waiting-resolution`（仅 supervisor mTLS，maintenance/worker 403）。body 严格闭合：approval `{kind,outcome∈approved/rejected/expired,reference}`，children `{kind,outcome∈succeeded/failed,child_run_id}`；未知字段 400 `invalid_json`、非法枚举 422 `validation_failed`（定位 field）、run/kind 不匹配或非 waiting 409 `run_state_conflict`、不存在 404 `run_not_found`；第一次决定权威（同内容 replay 200 no-op，不同内容 409 `decision_conflict`）；children 的 child 必须是本 Run 的 child 且终态（否则 409 `run_state_conflict` + `details.reason`），rollback 不落决定；不接受 Command/thread_id/user_id |
+| maybe_enqueue_resume | 单一事务：锁 Run→run_waitings→旧 job→attempt；要求 decision+decision_at+exit_confirmed_at+checkpoint 齐全且未取消/未终态；children 重查 parent/terminal；重新鉴权（owner `disabled_at`）、预算（`budget_limit > 0`）、T034 deadline（等待不累计，故用已结算 total）。通过后：对象存储写 JCS canonical resume payload（run_id/kind/checkpoint_id/decision）→ 真实 sha256/size 的 ready artifact（purpose `resume_input`、owner=run owner）→ 旧 job completed、旧 token revoked、allocation 恰好释放一次（T031 exit 已释放时为 no-op）→ 插入唯一 `jobs(kind='resume',state='ready',resume_artifact_id)` → `run_waitings.resume_job_id` → run `queued`/phase idle/revision+1 → 同事务 `run.status`。重复调用返回既有 resume；`UNIQUE(run_waitings.resume_job_id)` + `one_live_job_per_run` 让第二次 resume 在 DB 层不可能 |
+| 拒绝语义 | 决定与退出齐备后权限/预算/截止失败 → 不恢复，提交 `failed(permission_revoked)` / `failed(budget_exhausted)` / `failed(deadline_exceeded)`（无 output、job completed、token revoked、slot 释放一次、同事务事件带 error_code）；记录取消意图（`cancel_requested_at`，T036 端点未实现）→ 不恢复、保持 waiting 非终态，不伪造 cancelled；对象存储不可用 → 503 且整笔回滚（无决定/无 resume） |
+| Resume claim | T029 的 claim 已能签发 `job_kind='resume'` lease：真实 signed `resume_url` 的字节等于 canonical payload，新的 attempt token 与等待 attempt 不同；`run_attempts` 仍只有一个 live attempt，旧 attempt exited/revoked；新 job 取得自己的 holder allocation（旧 job 的 allocation 保持 released 历史） |
+| Web | `runs.html`/`runs.js`：详情新增“等待条件”和“恢复任务”两行；显示等待 kind、已保存 outcome/decision_at、退出确认、唯一 resume job id/state；明确“等待释放 worker 执行槽，但逻辑会话槽与 Run 占用到终态”，未齐备时写“尚未创建恢复任务”，绝不显示恢复输入/token/URL；`runLifecycle` 把 waiting 作为真实阶段 |
+| 测试 | `tests/support/t035.py` + `tests/f03/test_t035_{waiting,resume,resume_refusals,migration,pages}.py` **5 文件 24 用例**（waiting 4、resume 5、refusal 4、migration 7、pages 4）：decision-first/exit-first 各恰好一个 resume、重复/冲突幂等、canonical payload 字节、fresh attempt、children parent/terminal、disabled owner/0 budget/deadline/cancel intent 拒绝、迁移 0001→0021/replay no-op/worker 拒绝/top-level session slot 仍占用；`tests/f03` **141 passed**；`tests/f03` 的既有 10 个迁移测试链尾断言 0020→0021 适配（T031 的 waiting interim 断言按本票转换更新）；`go test ./...` 全绿、`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift |
+| 证据 | `reports/f03/T035-waiting-resume.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T036/T038 接口） |
+
+## F03 取消与未知操作守卫（6/N：T036）
+
+T036（GitHub #37）已交付，状态 **`passed`**（本票范围 = **owner-only 幂等取消端点 + cancelling 状态 +
+cancel/unknown 优先级 finalizer + 未解决 unknown-operation ledger/bridge + waiting 取消不恢复 +
+运行页取消/停止反馈**）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 mTLS（supervisor/worker
+证书）+ 真实 HTTP + 真实文件系统对象字节 + Node 执行页面逻辑；无 mock、无跳过。边界（如实）：
+真实外部操作/回执属 **F06**，本票的 unknown 端点只是非契约 bridge；安全恢复/核对后的重驱属 **T038**；
+浏览器 DOM 驱动仍 `not_run`。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0022_run_unknown_operations.sql`：唯一新表 `platform.run_unknown_operations`（`id` PK、`run_id`→runs、`operation_id`、安全 `reason`、`created_at`、`resolved_at`，`UNIQUE(run_id,operation_id)`，未解决 partial index `(run_id) WHERE resolved_at IS NULL`，reason 非空/≤128 CHECK）；`platform.run_waitings` 增加 `cancel_requested_at`（证据保留、仅让 resume 变为 inert）；**不**新增 `runs.cancel_reason`/`cancelled_by`；无真实 operations/approvals 表（F06 归属）；worker/PUBLIC 仍零 `platform` 权限；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| cancelRun | `POST /api/v1/runs/{run_id}/cancel` → 202 契约 Run。owner-only（管理员/他人/未知/畸形一律 404 `resource_not_found`，同 getRun 不可见规则）；浏览器会话需 CSRF、API key 需 `application:write`；幂等。终态 → 202 当前 Run 不变；已有 `cancel_requested_at` → 202 不变且不重复事件（deadline intent 也走此规则，first write wins）；queued/waiting/恢复类且**无 live attempt**（job ready/held）→ 立即 `cancelled`、phase idle、finished_at、revision+1、job `void`、waiting 行标记不可恢复、同事务一条 `run.status`；存在未解决 unknown → 同路径提交 `needs_reconciliation(error_code=unknown_operations)` 而非 cancelled；有 live attempt（running/finalizing/waiting）→ 记录 intent、state `cancelling`（phase 保持原值，枚举无 cancelling）、revision+1、同事务事件 |
+| finalizer 优先级 | 扩展 T031 `finalizeRunTx`（不 fork）：live child run 阻塞一切终态（cancel 保持 cancelling、job held；deadline 仍按 T034 park recovery_pending）；未解决 unknown 优先于 deadline/cancel/proposal → `needs_reconciliation(unknown_operations)`；已记录/已达 deadline → `failed(deadline_exceeded)`；`cancel_requested_at` → cancelled 胜未提交的 success 结果（含 waiting proposal）；started=false 的取消 exit 将 job `void` 而非 completed。cancelled 设置 phase idle/finished_at/revision+1/output NULL/error_code NULL、job completed/void、token revoked、allocation 恰好释放一次、同事务 `run.status`；已终态重复 finalize 为 no-op |
+| unknown bridge | `POST /internal/v1/runs/{run_id}/unknown-operations`（worker\|supervisor，**live** attempt token，run 非终态）记录安全 reason 一次（same id+reason 200 replay，different reason 409 `event_conflict`，bad reason 422 `validation_failed` 定位 field，terminal 409 `run_terminal`）；`POST /internal/v1/runs/{run_id}/unknown-operations/{operation_id}/resolve`（worker 需 live token；supervisor 可在 exit 后解析）；`hasUnknownOperationsTx` 现在查询未解决行。解析最后一个 unknown 且 run 已 cancelling/needs_reconciliation、最新 attempt 已 exit 时重入同一 finalizer → cancelled 恰好一次；terminal 后 record/resolve 409 且绝不复活 |
+| waiting 集成 | 取消时同事务标记 `run_waitings.cancel_requested_at`（不删除决定/checkpoint/exit 证据）；`maybeEnqueueResumeTx` 对该标记 inert（deadline intent 仍按 T035 先判 deadline，避免抢占 deadline 失败路径）；cancelling 时 waiting-resolution 被 409 拒绝；cancel 前已创建的 resume job 在立即取消时置 `void`，不会被 claim；取消后的 Run 不再产生 resume |
+| 拒绝/允许矩阵 | cancelling：heartbeat 继续（`cancel_requested=true`）、exit 接受；result/registration/create-upload/waiting-resolution 409 `run_state_conflict`；已 in-flight 的 upload complete、artifact status/download 仍可用（receipt/query）；终态后 result 409 `run_terminal`，同证据 exit 200 no-op、异证据 409 `attempt_evidence_conflict` |
+| Web | `/runs` 详情新增取消行/按钮/状态：queued 说明立即生效；cancelling 显示“正在停止”；cancelled 显示“已停止”且明确不表示撤销外部写入；failed/succeeded 显示终态原因（error_code）；`runLifecycle` 增加 cancelling 阶段；`mergeRunSnapshot` 保证已提交终态不会被迟到/陈旧快照翻回；按钮 owner-only（页面只列自己的 Run）、幂等重试；沙箱面板停止/已停止措辞同步且不再写“取消未实现” |
+| 测试 | `tests/support/t036.py` + `tests/f03/test_t036_{cancel,unknown,migration,pages}.py` **6 文件 29 用例**（cancel 14、unknown 6、migration 5、pages 4）：queued 立即 cancelled（job void/单事件）、running→cancelling（heartbeat true、result/registration/upload 拒绝、complete/status 可用、exit 后单次 cancelled/单 revision/单释放）、waiting 有 live attempt→exit 后 cancelled 且无 resume、decision 前后取消、resume 后取消 void resume job、terminal 不变、result+exit 先提交后 succeeded 保留、cancel 先提交则 cancelled、deadline 优先级、并发双 cancel 单转换、started=false→void、unknown→needs_reconciliation→resolve last→cancelled、unknown 后 terminal 不复活、live child 阻塞、owner/admin/API-key 权限、迁移 0001→0022/replay no-op/worker 拒绝；`tests/f03` **170 passed**；迁移链 0021→0022 适配 11 个测试，T033 的取消 interim 断言按 T036 终态更新；`go test ./...` 全绿、`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift |
+| 证据 | `reports/f03/T036-cancel.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T038/F06 接口） |
+
+## F05 工具提交、隔离构建与审核（3/N：T037）
+
+T037（GitHub #38）已交付，状态 **`passed`**（本票范围 = **submitTool/listTools/getTool/reviewTool
++ 非契约 revoke/build-facts + `tool_build` 隔离构建 + 完成守卫 + 工具页/审核队列**）。真实
+PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP/mTLS + 真实对象字节 + **真实 WSL2/runsc(gVisor)
+构建** + Node 执行页面逻辑；无 mock、无跳过。边界（如实）：F06 拥有 connectors（非空
+`connector_version_ids` 被 422 拒绝而非静默接受）；F15A 构建 OCI 镜像，本票的 `image_digest` 是
+**内容包摘要**不是镜像；最小 rootfs 没有 pip/wheelhouse/setuptools，lock 需要包时安全失败为
+`dependencies_unavailable`（不伪成功）；F04A 拆真实 worker/supervisor；浏览器 DOM 驱动仍
+`not_run`；全量 `pytest tests` 门禁未跑（批次规则，由 orchestrator 跑）。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0023_tool_builds_and_review.sql`：`tool_versions` 增加 revision、source_sha256、dependency_lock_sha256、build_log_artifact_id、sbom_artifact_id、build_bundle_digest、build_started_at、build_finished_at、build_error_code、reviewed_by、reviewed_at、review_decision、review_reason、revoked_at、revoked_by、revoke_reason + guarded CHECK/索引/COMMENT；契约列、状态枚举与 `state<>'ready' OR image_digest IS NOT NULL` 保留；worker/PUBLIC 零权限；重复 migrate no-op |
+| submitTool | `POST /api/v1/tools`（会话 creator 或 API key `application:write`）：源 artifact 必须 caller 自有/ready/未删/`tool_source`/`application/zip`；schemas/lock 必须是 JSON 对象；risk 枚举；connectors 非空 422；JCS `manifest_sha256` 覆盖 source hash+schemas+lock+risk+空 connectors；单事务插 tool（submitted, revision=1）+ 恰好一个 `tool_build` job；同 owner 同内容幂等 202（不建第二个 job），另一 owner 同内容 409 `tool_conflict`（manifest 全局唯一）；202 Accepted |
+| zip 准入 | T028 允许清单按 purpose 扩展：`application/zip` 只对 `tool_source`，真实字节检查 entry≤512、解压≤64 MiB、压缩比≤100、拒绝绝对/`..`/反斜杠路径、symlink、encrypted、未知压缩方法；既有 text/csv/json/xlsx 规则与测试不变；其他 purpose 的 zip 仍在声明阶段 422 |
+| 构建 | `tool_build` handler 从 job-scoped binding 取 source sha/canonical lock，经 signed link 下载源；`deploy/sandbox/build_tool.py` 在 T033 同一 runsc bundle 内安全解包、语法编译、运行不可信 `setup.py build`（stripped env）；固定 argv、无 shell、无网络、uid 65534、只读 rootfs/`/tool`/`/inputs`、可写 `/workspace`、CPU/mem/pid/timeout；上传 capped `build_log` + `sbom`（job-scoped 端点）；sandbox 错误/崩溃/超时/依赖不可用均映射安全码，日志不含宿主/凭据/对象键 |
+| 完成守卫 | claim 把 submitted→building；只有 `guardToolBuildCompletion` 写 ready：锁 tool 行，要求 state=building、revision/expected source hash/source artifact 未变、源 artifact ready、SBOM 是本次 completion 结果且 ready+job-linked、最新 `build_log` ready+job-linked；重读 sealed source/SBOM+canonical lock 计算 bundle digest；`image_digest=build_bundle_digest=sha256:<hex>`（sorted source+lock+SBOM 拼接的 SHA-256，**非 OCI 镜像**，F15A 才构建镜像）；CAS 失败/源变更→`build_source_changed` 且绝不 ready；失败仅 transient 三种重试，其余业务失败并记录安全 `build_error_code` |
+| review/revoke | `POST /tools/{id}/review`（admin 会话；API key 403）：body 精确 `{decision,manifest_sha256,reason}`，require Idempotency-Key；只接受 state=ready；hash 不匹配 409 `review_conflict` 且零写入；approve 写 approved_by/at+reviewed_*+audit；reject 记录 reason/decision 不改 build state、不置 approved；同 decision+reason 幂等（不重复审计），相反决定 409。非契约 `POST /tools/{id}/revoke`（admin）：state=revoked+revoked_at/by/reason+audit，历史 GET 仍可读；T025 依赖校验返回 `dependency_revoked`；未批准 ready 工具仅作者私有 debug 可用，共享 validate 仍 `dependency_not_ready` |
+| 读/UI | `GET /tools`（cursor，owner-or-admin-or-approved，approved=approved_at 非空；`application_id` 参数接受但过滤延后 F02B，报告记录）+ `GET /tools/{id}` 七字段契约投影；非契约 `GET /tools/{id}/build` 提供 build log/SBOM artifact id、digest、build error、review/revoke facts（不含对象键/正文）；`/tools` 页提交、状态、日志/SBOM 下载、管理员审核队列；全部 `textContent`、无 localStorage |
+| 错误码 | 新增 `tool_conflict`(409)、`review_conflict`(409)、`tool_state_conflict`(409)、`resource_not_found`(404，复用)、`artifact_not_ready`(409，复用)；构建安全码 `dependencies_unavailable`/`build_source_invalid`/`build_source_changed`/`build_sandbox_unavailable`/`build_timeout`/`build_crashed`/`build_output_invalid`/`build_artifacts_invalid`/`build_artifact_invalid`/`build_failed`；internal binding 复用 `stale_attempt`/`forbidden` |
+| 测试 | `tests/support/t037.py` + `tests/f05/test_t037_*.py` **8 文件 39 用例**（migration 6、submit 11、admission 4、真实 runsc build 2、恶意钩子/崩溃/依赖/源变更 4、review/revoke 8、internal 1、pages 3）：真实构建 ready+独立 bundle digest、SBOM/log 字节下载；恶意 setup.py 读宿主/foreign/secret、连网、写只读输入全部失败且日志无 secret；dependencies_unavailable；构建中源变更不 ready；审核 hash 不匹配/CAS；未批/批准/撤销的 T025 共享 vs 私有规则；迁移链 0022→0023（T023/T025/T026/T027/T028/T029/T030/T032/T033/T034/T035/T036 断言更新；T025 基线列集按文档扩展）；`tests/f05` **145 passed in 611.79s**；`go test ./...` 全绿（新增 background/toolversions/artifacts Go 单测）、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift |
+| 证据 | `reports/f05/T037-tool-builds.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T038/F04A/F15A 接口） |
+
+## F03 保守恢复与受审计重驱（7/N：T038）
+
+T038（GitHub #39）已交付，状态 **`passed`**（本票范围 = **租约超期扫描只挂起 + 受审计恢复证据命令 +
+一次事务内的单次重排 + owner-facing recovery 事实/UI**）。真实 PostgreSQL 16.4 + 真实编译
+`cmd/admin`/`cmd/api` + 真实 mTLS（supervisor/worker 证书）+ 真实 HTTP + 真实文件系统对象字节 +
+**真实打开中的 psql 事务/pg_stat_activity** + Node 执行页面逻辑；无 mock、无跳过。边界（如实）：
+**无自动接管**——sweep 只 park（job held、allocation 占用、token 不变），claim 只选 queued；
+recover 是唯一重排路径且要求运维证据；`cancelling`/`waiting_*` 不被 sweep（STATE-MACHINES §2 无
+`waiting_* → recovery_pending` 边，重排 cancel intent 会复活取消）；常驻巡检、F04A 真实
+supervisor 证据、DOM 驱动仍 `not_run`。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0024_run_recovery_evidence.sql`：唯一新表 `platform.run_recovery_evidence`（run/attempt → runs/run_attempts、闭合证据 jsonb + object CHECK、JCS `evidence_sha256` + 64-hex CHECK、真实 principal `recorded_by`、数据库时钟 `recorded_at`、`resumed_job_id`→jobs（非 UNIQUE，每周期记录 requeued job）、`UNIQUE(run_id,attempt_token)`、run 索引）；`runs.recovery_reason`/`recovery_since` + `runs_recovery_pair_check` + 闭合 `runs_recovery_reason_check`；worker/PUBLIC 零 `platform` 权限；重复 migrate no-op；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| sweep-leases | `cmd/admin runs sweep-leases [--grace 60s] [--dry-run]`：扫描 `exited_at/revoked_at IS NULL` 且 `lease_deadline < now()-grace` 的 running Run（未删、无 cancel intent、≤100/次），逐条独立事务 `FOR UPDATE OF a,j,r` 复检 → `recovery_pending`/phase idle/revision+1/`recovery_reason=lease_expired`/`recovery_since=now()`、job `held`（清 token）、**不释放 allocation/不新增 attempt/不换 token**、同事务 `run.status` 事件 + `run.recovery_parked` 审计；`--dry-run` 只报 `would_park` 零写入；stdout 单 JSON，exit 0/2/1 |
+| recover | `cmd/admin runs recover --run UUID --evidence FILE [--check-only] [--actor-login LOGIN] [--grace 60s]`：检查 run=recovery_pending、cancel intent、恰好一个可恢复 attempt、证据 `execution_unit_id` 与 attempt 一致、旧执行非存活（已 exited 或 heartbeat 早于 grace）、一个 held/leased job、冻结 manifest（存在/ready/未删/快照 hash/size、`compiler.VerifyManifestBytes`、manifest worker image digest 与快照一致）、input（存在/ready/未删/真实 sealed bytes sha+size）、`pg_stat_activity` 中所有记录的 checkpoint pid+backend_start 均不存在、真实管理员；证据闭合形状（process/sandbox 销毁结果 + observed_at + notes；自由文本拒绝）并记录 JCS SHA-256；`--check-only` 报告 `checks[]` 零写入 |
+| 单次重排 | 一个事务：evidence 行（`recorded_by`=管理员、`resumed_job_id`=job，后续周期同样记录）→ 已结算则 no-op，否则 `settleAttemptActiveTx`（T034 唯一结算；sweep park 已按 `lease_deadline` 结算）→ 旧 attempt `exited_at`/`exit_evidence`/`revoked_at`（COALESCE 保留 supervisor 证据）→ job `ready`（同 kind、`resume_artifact_id` 保留）→ run `queued`/phase idle/revision+1/清 recovery 列（CAS state+revision）→ allocation 恰好释放一次 → 同事务 `run.status` → `run.recovery_recovered` 审计；`UNIQUE(run_id,attempt_token)` + state/revision CAS + `one_live_job_per_run` 让第二次重排不可能；重复命令 `already_recovered`，旧 token 迟到 result 409 `stale_attempt`、exit 409 `attempt_evidence_conflict` |
+| 拒绝码 | `run_not_found`、`not_recovery_pending`、`already_recovered`、`cancel_requested`、`old_execution_still_live`、`database_writes_in_flight`、`artifact_unavailable`、`input_deleted`、`manifest_hash_mismatch`、`manifest_invalid`、`input_hash_mismatch`、`execution_identity_mismatch`、`evidence_required`、`evidence_invalid`、`evidence_unit_mismatch`、`live_attempt_conflict`、`job_unavailable`、`needs_reconciliation`、`actor_not_found`；用法错误 exit 2；均为 stdout JSON `status=refused` 且零写入 |
+| API/UI | `GET /api/v1/runs/{id}` 非契约头 `X-Run-Recovery-Reason`/`-Since`/`-Evidence-At`/`-Evidence-SHA256`（token/证据正文/对象键不出现）；`/runs` 详情显示 recovery_pending、原因、挂起时间、是否有受审计证据（含 sha256）与运维命令，**无伪造恢复按钮**；`mergeRunSnapshot` 终态不回翻；`runLifecycle` 增加 recovery_pending 阶段 |
+| 测试 | `tests/support/t038.py` + `tests/f03/test_t038_*.py` **5 文件 27 用例**（migration 5、sweep 5、recover 7、refusals 6、pages 4）：活旧 worker 不替换（sweep park、claim 204、recover 拒绝、无第二 attempt/token）、真实打开事务阻塞 `database_writes_in_flight` 且提交后成功、缺 manifest/已删 input/篡改 manifest、完整证据→恰一次重排/新 attempt/旧 token 失效/重复命令幂等/审计行/queued 事件、`--check-only` 与 `--dry-run` 零写入、exit-without-result park 可恢复、resume job 保留 kind+resume_artifact 重排、actor-login 记录真实管理员、无 attempt 的 `needs_reconciliation` 文档化拒绝、页面 Node 行为；`tests/f03` **197 passed in 980.65s**；定向回归 149 passed（T029/T031/T032/T034/T035/T036 + 12 个迁移链文件；T027 基线列集按 0024 扩展），`tests/f05/test_t033_pages.py` 3 passed；迁移链 0023→0024 适配 12 个测试；`go test ./...` 22 ok/9 no-test/0 FAIL、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift |
+| 证据 | `reports/f03/T038-recovery.md`（AC 逐条、原始命令/结果、契约缺口、not_run、F04A/F09 接口） |
+
+## F05/F03 批次复核修复（2026-11-03）
+
+对 `feat/f05-f03-run-and-tools` 的 F05/F03 批次做复核，修复 6 个行为缺陷 + 3 项卫生/审计问题；
+未推送、未关闭 issue、未修改 `contracts/**`/`docs/spec/**`；只就地修正新迁移 0024 与 0015 的注释，
+未改 0001–0023 语义，未开始 F04A/F06/F07。修复提交：`fix(f05,f03): address the batch review findings`
+（test 同提交）+ 本 docs 提交（见 `git log`）。
+
+| # | 复核项 | 处置 | 证明 |
+|---|---|---|---|
+| 1 | T038 `sweep-leases` park 未结算，`recover` 把整个停机窗口计入 T034 `active_elapsed_ms`，可致恢复后立即 `deadline_exceeded` 且 UI 时钟跳变 | park 同事务按 `lease_deadline`（最后可证明活动终点）结算；`recover` 对已结算 attempt no-op | `tests/f03/test_t038_recover.py::test_park_settles_active_time_at_the_lease_deadline`（park 后 `active_ms`∈[4000,7000)，recover 后不变，下一次 claim 成功） |
+| 2 | T036 立即取消绕过 live-child guard：有 live 子 Run 时仍提交 `cancelled` | 立即取消分支复用 `hasLiveChildrenTx`：有 live child 时保持 `cancelling`、记录 intent、job `held`、同事务事件 | `tests/f03/test_t036_cancel.py::test_cancel_with_a_live_child_run_stays_cancelling` |
+| 3 | T033 `completeWorkerUpload` 在 scanning/ready 同 hash 重放时仍尝试入队（注定 dedup 失败）；quarantined/deleted 规则不清 | scanning/ready 重放不再调用 EnqueueTx，返回当前 artifact；quarantined→409 `artifact_conflict`、deleted→404 `artifact_not_found`、异 hash→409；job 数不变 | `tests/f05/test_t033_endpoints.py::test_complete_replay_on_scanning_and_ready_never_enqueues_a_job`、`test_complete_on_quarantined_or_deleted_artifact_is_refused` |
+| 4 | T033 沙箱执行器：`SandboxStarted` 在报告前置 true；pre-start `{"ok":false,"error":...}` 被误分类；损坏 base64 静默 nil | 启动标志由解析出的 run 报告证明；新增 `ErrSandboxRefused`（无 cleanup 断言）；kill 场景用 cleanup `pid` 证明启动；base64 错误→`ErrOutputInvalid`；presetexec 映射 `sandbox_unavailable`，evidence 用 proven flag | Go：`internal/sandbox` 3 个新/强化用例、`internal/presetexec::TestPreStartSandboxRefusalKeepsTheProvenFalseFlag`；真实 `tests/f05/test_t033_sandbox_run.py` |
+| 5 | T037 bundle digest 对无标签 payload 排序拼接，角色互换可能同 digest | 改为 `{role,sha256}`（source/lock/sbom）的 JCS 数组 SHA-256；Go 与 Python oracle 同步 | `internal/background::TestContentBundleDigestIsInjectiveAcrossRoles`；真实 `tests/f05/test_t037_build.py`（独立计算比对） |
+| 6 | T025 迁移测试把 FK targets 从有序列表退化为 set，重复 FK 可蒙混 | 保留 set 相等 + 增加 7 项有序 target 列表（计数/序号）断言 | `tests/f02a/test_t025_migration.py::test_tool_versions_match_the_contract_baseline` |
+| 7 | `handlers/tool_run.go`/`toolbuild.go` 的死赋值 `_ = summary/_ = logID/_ = result` | 改为 `if _, err := ...` / 直接丢弃返回值，逻辑不变 | `go test ./...` |
+| 8 | 0015 注释自相矛盾（insert-once vs upsert） | 改为“一 artifact 一当前事实，重试 upsert 覆盖”；表 COMMENT 同步 | migration 0015 文件头/COMMENT |
+| 9 | T038 恢复证据 `resumed_job_id` UNIQUE 迫使后续周期写 NULL，审计链断裂 | 去掉 UNIQUE（保留 FK），每个周期都写 requeued job；`UNIQUE(run_id,attempt_token)` 不变 | `tests/f03/test_t038_recover.py::test_a_second_recovery_cycle_names_the_same_requeued_job`、`tests/f03/test_t038_migration.py` 更新 |
+
+门禁（`E:\Orchara\product`）：`python -m pytest tests/f03 tests/f05 tests/f02a/test_t025_migration.py -q`
+= **353 passed in 1504.09s**；`go test ./...` = 22 ok / 9 no-test / 0 FAIL；`go vet ./...`/`gofmt -l .`
+无输出；`python tools/sync_spec.py --check` = `no drift: spec copy and contract snapshot match the manifest`。
+批次决策边界见 [ADR 0006](docs/adr/0006-f05-f03-execution-boundaries.md)。
+
+## F05/F03 第二次独立复核修复（2026-11-03）
+
+独立复核对 `51b0d4b...b77916c`（36 提交，T028–T038）提出 5 项缺陷：2 项 Standards（退出未核实
+数据库排空、构建 workspace 无磁盘配额）与 3 项 Spec（禁用 owner 仍可领取、输入 artifact 可冒充
+成功输出、地区名含逗号破坏导出 CSV）。全部在代码中复现并修复；未推送、未关闭 issue、未修改
+`contracts/**`/`docs/spec/**`、未改迁移 0001–0024 语义（仅新增列/参数与业务规则）。
+
+| # | 复核项 | 处置 | 证明 |
+|---|---|---|---|
+| 1 | P1 退出确认只核对执行身份，心跳登记的 checkpoint 连接仍有未提交事务时 Run 已 succeeded | 新增 `checkDatabaseDrainedTx`：按 attempt 的 `checkpoint_connections` 查 `pg_stat_activity`，`active`/`idle in transaction*`/`fastpath` 即拒绝；`ConfirmExit` 于任何写入前调用，`finalizeRunTx` 再防御性复核；409 `database_writes_in_flight` 且零写入 | `tests/f03/test_t031_exit_drain.py`（真实 psql 未提交事务阻塞、提交后同一 exit 恰好终结一次；纯 idle 连接不阻塞） |
+| 2 | P1 不可信构建的 `/workspace` 是无配额可写 bind，可写满宿主卷 | 驱动把 `/workspace` 改成 size 限定的 tmpfs（`--workspace-quota-mb`，默认 512，1–4096），cleanup 必须先 umount 并把 `workspace_unmounted` 纳入 `ok`；Go bundle 增加 `RLIMIT_FSIZE`（默认 64 MiB） | `tests/f05/test_t037_build_isolation.py::test_the_build_workspace_has_a_disk_quota`（真实 runsc、8 MiB 配额、hook 捕获 ENOSPC 后继续成功）；`internal/sandbox` 单测断言 RLIMIT_FSIZE/argv |
+| 3 | P1 禁用 owner 后排队 Run 仍被 claim 并 running | claim 事务开头把 disabled owner 的 queued Run 置 `failed(owner_disabled)`、job `void`、同事务事件；候选查询同时排除 disabled owner；无 lease 的返回路径也提交这些失败（否则被 deferred rollback 回滚） | `tests/f03/test_t029_claim.py::test_a_disabled_owner_is_never_leased_and_the_run_fails_closed` |
+| 4 | P1 成功守卫只查“存在任意 run_artifacts 关联”，输入 artifact 可冒充输出 | 读取 `run_artifacts.relation` 并要求 `output`；`input`/`artifact`/`log` 一律拒绝，新增 `artifact_not_output`；输入 artifact 直传的回归用例 | `tests/f03/test_t031_finalizer.py::test_a_succeeded_proposal_needs_an_owned_ready_linked_artifact` |
+| 5 | P2 地区名含逗号/引号/换行时 summary.csv 被字符串拼接破坏 | 改用 `csv.writer`（`lineterminator="\n"`），region 文本做 `= + - @` 公式前缀防护，金额不变；JSON 保留原文 | `tests/f05/test_t030_tool.py::test_region_text_with_csv_metacharacters_stays_one_two_column_row` |
+
+门禁（修复后，`E:\Orchara\product`）：`python -m pytest tests/f03 tests/f05
+tests/f02a/test_t025_migration.py -q` = **358 passed in 1564.32s**；`go test ./...` 全绿、
+`go vet ./...`/`gofmt -l .` 无输出、`sync_spec --check` no drift。全量门禁结果见下一节。
+
+## F05/F03 本批最终门禁（2026-11-03）
+
+工作目录 `E:\Orchara\product`；分支 `feat/f05-f03-run-and-tools`（`51b0d4b` + 38 commits，含两次
+复核修复）；未推送、未关闭 issue。全量测试使用 `--basetemp=E:\orchara-pytest-tmp`（临时目录不占系统盘）。
+
+```text
+$ python -m pytest tests -q --basetemp=E:\orchara-pytest-tmp
+1120 passed in 3257.27s (0:54:17)
+
+$ python -m pytest tests/f03 tests/f05 tests/f02a/test_t025_migration.py -q
+358 passed in 1564.32s (0:26:04)      # f03 203 / f05 149 / t025 迁移 6
+
+$ go test -count=1 ./...
+22 ok / 9 no test files / 0 FAIL
+
+$ go vet ./...
+(no output) exit=0
+
+$ gofmt -l .
+(no output)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+全部测试为真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP/mTLS + 真实对象字节 + 真实
+WSL2/runsc（T033/T037 沙箱与构建）+ Node 页面逻辑；无 mock、无跳过。F04A/F06/F07/F13A/F15A/
+F15B 的后续工作按各票报告记为 successor/`not_run`，不因本批门禁升级为 v1 完成。
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 

@@ -31,8 +31,10 @@
   <nav>
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
+    <a href="/runs">运行列表</a>
     <a href="/login">登录</a>
     <a href="/admin">管理台</a>
+    <a href="/attachments">附件</a>
   </nav>
 
   <h1>私有调试（F02A 快照）</h1>
@@ -43,8 +45,17 @@
     提交必须带 <code>Idempotency-Key</code>：同一 key 与同一请求会重放原来的 Run，不会创建第二个。
     调试需要 <strong>creator</strong> 角色（管理员也需兼任），否则服务器返回
     <code>403 creator_role_required</code>。
-    提交成功后本页用 <code>GET /api/v1/runs/{id}</code> 显示 Run 的 state / kind / revision /
-    <code>execution_snapshot_id</code>。
+    提交成功后本页用 <code>GET /api/v1/runs/{id}</code> 显示 Run 的 state / phase / kind / revision /
+    <code>execution_snapshot_id</code>，以及服务器返回的真实租约事实
+    （<code>X-Run-Attempt-Started-At</code> / <code>X-Run-Lease-Deadline</code>，仅在尝试存活时出现）。
+    领取、心跳与退出证据由 F03 内部 supervisor 协议完成；页面不伪造进度。
+  </p>
+  <p class="hint">
+    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示结果提议已保存、
+    仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空），本页不会在终态前显示成功；页面会持续轮询
+    <code>GET /api/v1/runs/{id}</code> 直到服务端提交终态。持久时间线来自
+    <code>GET /api/v1/runs/{id}/events</code>（SSE，按 <code>Last-Event-ID</code> 重连、按 seq 去重），
+    关闭/断线不会中断服务端业务；窗口过期时服务端回 410，页面改用 Run 快照。
   </p>
 
   <section class="card">
@@ -75,16 +86,26 @@
     <dl class="run">
       <dt>run id</dt><dd id="run-id"></dd>
       <dt>state</dt><dd id="run-state"></dd>
+      <dt>phase</dt><dd id="run-phase"></dd>
       <dt>kind</dt><dd id="run-kind"></dd>
       <dt>revision（Run 自身）</dt><dd id="run-revision"></dd>
       <dt>冻结的 draft revision</dt><dd id="run-draft-revision"></dd>
       <dt>execution_snapshot_id</dt><dd id="run-snapshot"></dd>
       <dt>manifest_sha256</dt><dd id="run-manifest"></dd>
+      <dt>领取 / 租约</dt><dd id="run-lease"></dd>
+      <dt>持久时间线</dt><dd id="run-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
+    <ul id="run-timeline" aria-live="polite"></ul>
     <p id="run-note" class="hint"></p>
+    <p id="run-preview" class="hint" data-preview="not_run">
+      模型流式 delta 预览未实现（F06 承接）：本页只渲染已提交的持久事件，不伪造正文预览；
+      finalizing 不是成功，终态以 Go finalizer 提交为准。
+    </p>
+    <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/runs.js"></script>
   <script src="/assets/debug.js"></script>
 </body>
 </html>

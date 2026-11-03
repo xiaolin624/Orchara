@@ -11,8 +11,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
+	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
@@ -22,12 +24,15 @@ import (
 // also has an entry in the fixed retry table (internal/background/job.go); a
 // kind that is absent here is never claimed, even if it is a whitelisted kind.
 // T022 implemented artifact_finalize; T024 adds model_validate; T026 adds
-// application_evaluate. The remaining five whitelisted kinds stay ready until
-// their ticket lands (T027/F03/F05/F07/F13A).
+// application_evaluate; T030 adds tool_run; T037 adds tool_build. The remaining
+// whitelisted kinds stay
+// ready until their ticket lands (T027/F03/F05/F07/F13A).
 var Registry = background.Registry{
 	background.KindArtifactFinalize:    ArtifactFinalize,
 	background.KindModelValidate:       ModelValidate,
 	background.KindApplicationEvaluate: ApplicationEvaluate,
+	background.KindToolRun:             ToolRun,
+	background.KindToolBuild:           ToolBuild,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from
@@ -41,6 +46,8 @@ type artifactFinalizeRow struct {
 	State          string
 	DeletedAt      sql.NullTime
 	Revision       int64
+	MediaType      string
+	Purpose        string
 }
 
 // ArtifactFinalize copies the artifact's staging bytes to this attempt's own
@@ -78,12 +85,13 @@ func ArtifactFinalize(ctx context.Context, work background.HandlerWork) backgrou
 	var artifact artifactFinalizeRow
 	err := work.DB.QueryRowContext(ctx, `
 		SELECT staging_object_key, expected_sha256, size_bytes,
-		       state, deleted_at, revision
+		       state, deleted_at, revision, media_type, purpose
 		  FROM platform.artifacts
 		 WHERE id = $1::uuid`, work.Job.TargetID,
 	).Scan(
 		&artifact.StagingKey, &artifact.ExpectedSHA256,
 		&artifact.SizeBytes, &artifact.State, &artifact.DeletedAt, &artifact.Revision,
+		&artifact.MediaType, &artifact.Purpose,
 	)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -121,9 +129,138 @@ func ArtifactFinalize(ctx context.Context, work background.HandlerWork) backgrou
 	case err != nil:
 		return background.Failed(background.CodeTransientStorageIO)
 	case code != "":
-		return background.Failed(code)
+		return finalizeFailure(ctx, work, artifact, code)
+	}
+	if !artifacts.IsUserUploadPurpose(artifact.Purpose) {
+		// Reports/logs/receipts are produced by trusted server handlers and keep
+		// their own shape rules; T028 admission applies to user uploads.
+		return background.Succeeded()
+	}
+
+	// T028: after hashing/sealing the attempt object, inspect the real bytes and
+	// persist the admission fact. The declared media type is never trusted: the
+	// sniffed format is compared with the shape the declaration promises.
+	content, err := readAttemptObject(work.Store, attemptKey)
+	if err != nil {
+		return background.Failed(background.CodeTransientStorageIO)
+	}
+	admission := artifacts.InspectUploadForPurpose(artifact.MediaType, artifact.Purpose, content)
+	if err := recordAdmission(ctx, work.DB, work.Job.TargetID, admission); err != nil {
+		return background.Failed(background.CodeTransientInternal)
+	}
+	if admission.Verdict != artifacts.VerdictAccepted {
+		// Reject: remove only this attempt's fenced object and let the completion
+		// guard see a business failure. The guard quarantines; this handler never
+		// writes a business row.
+		_ = work.Store.Delete(attemptKey)
+		return background.Failed(background.CodeArtifactFormatRejected)
 	}
 	return background.Succeeded()
+}
+
+// finalizeFailure records the admission outcome of a business failure that was
+// discovered before content inspection (missing staging, oversized object,
+// declared size/hash mismatch) and reports the stable code.
+//
+// A user upload whose staging object is missing gets the T028-specific
+// upload-incomplete code (quarantine-implying) instead of T022's
+// artifact_staging_missing, whose documented meaning is "job fails, artifact
+// stays scanning". The two meanings must not be merged.
+func finalizeFailure(
+	ctx context.Context,
+	work background.HandlerWork,
+	artifact artifactFinalizeRow,
+	code string,
+) background.Outcome {
+	if !artifacts.IsUserUploadPurpose(artifact.Purpose) {
+		return background.Failed(code)
+	}
+	failure := code
+	if code == background.CodeArtifactStagingMissing {
+		failure = background.CodeArtifactUploadIncomplete
+	}
+	declared := strings.TrimSpace(artifact.MediaType)
+	if declared == "" {
+		declared = "application/octet-stream"
+	}
+	admission := artifacts.Admission{
+		DeclaredMediaType: declared,
+		Verdict:           artifacts.VerdictRejected,
+		Reason:            failure,
+	}
+	if err := recordAdmission(ctx, work.DB, work.Job.TargetID, admission); err != nil {
+		return background.Failed(background.CodeTransientInternal)
+	}
+	return background.Failed(failure)
+}
+
+// recordAdmission upserts the one admission row for an artifact. It is
+// insert-once evidence: a retried attempt updates the same row instead of
+// accumulating per-attempt facts. Reasonable empty sniff values are stored as
+// NULL, which the table's CHECKs allow only for a rejection.
+func recordAdmission(
+	ctx context.Context,
+	db *sql.DB,
+	artifactID string,
+	admission artifacts.Admission,
+) error {
+	if db == nil {
+		return errors.New("recording an admission requires a database")
+	}
+	declared := strings.TrimSpace(admission.DeclaredMediaType)
+	if declared == "" {
+		declared = "application/octet-stream"
+	}
+	var (
+		sniffed any
+		format  any
+		reason  any
+	)
+	if value := strings.TrimSpace(admission.SniffedMediaType); value != "" {
+		sniffed = value
+	}
+	if value := strings.TrimSpace(string(admission.DetectedFormat)); value != "" {
+		format = value
+	}
+	if value := strings.TrimSpace(admission.Reason); value != "" {
+		reason = value
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO platform.artifact_admissions
+			(artifact_id, declared_media_type, sniffed_media_type, detected_format, verdict, reason)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6)
+		ON CONFLICT (artifact_id) DO UPDATE
+		   SET declared_media_type = EXCLUDED.declared_media_type,
+		       sniffed_media_type = EXCLUDED.sniffed_media_type,
+		       detected_format = EXCLUDED.detected_format,
+		       verdict = EXCLUDED.verdict,
+		       reason = EXCLUDED.reason,
+		       checked_at = now()`,
+		artifactID, declared, sniffed, format, admission.Verdict, reason,
+	)
+	return err
+}
+
+// readAttemptObject reads this attempt's own sealed object for inspection. The
+// read is capped at the platform ceiling: the handler must never inspect bytes
+// larger than an artifact can hold.
+func readAttemptObject(store *objectstore.Store, key string) ([]byte, error) {
+	if store == nil {
+		return nil, objectstore.ErrNotConfigured
+	}
+	reader, _, err := store.Open(key)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+	content, err := io.ReadAll(io.LimitReader(reader, objectstore.MaxObjectBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) > objectstore.MaxObjectBytes {
+		return nil, objectstore.ErrTooLarge
+	}
+	return content, nil
 }
 
 // sealAttemptObject writes the staging bytes to attemptKey and verifies the

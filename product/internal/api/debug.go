@@ -16,7 +16,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
@@ -207,5 +209,97 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("X-Manifest-SHA256", run.ManifestSHA256)
+	// F03/T029: when an attempt is live, expose the claimed-at/lease-deadline
+	// facts so the owner can see execution reality instead of a fabricated
+	// progress bar. The attempt token is a credential and is deliberately not
+	// exposed; the two timestamps are non-secret bookkeeping.
+	if lease, err := s.execution.LiveLease(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if lease != nil {
+		w.Header().Set("X-Run-Attempt-Started-At", lease.StartedAt.UTC().Format(time.RFC3339Nano))
+		w.Header().Set("X-Run-Lease-Deadline", lease.LeaseDeadline.UTC().Format(time.RFC3339Nano))
+		// F05/T033: the sandbox panel shows which execution unit is running. The
+		// unit id is a diagnostic identity (not a credential); the token stays
+		// secret. Non-contract extension, documented in the T033 report.
+		if lease.ExecutionUnitID != "" {
+			w.Header().Set("X-Run-Execution-Unit", lease.ExecutionUnitID)
+		}
+	}
+	// F05/T033: the cancel intent is visible while its transition belongs to
+	// T036, so the UI can render "stopping" without guessing a terminal state.
+	if cancelAt, err := s.execution.CancelRequestedAt(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if cancelAt != nil {
+		w.Header().Set("X-Run-Cancel-Requested-At", cancelAt.UTC().Format(time.RFC3339Nano))
+	}
+	// F03/T034: accumulated/projected active time and the frozen limit, as
+	// non-contract headers (the contract Run schema is additionalProperties:false
+	// and has no such fields; same precedent as X-Manifest-SHA256). A NULL limit
+	// omits X-Run-Max-Active-Ms: unknown is not zero. The user-facing clock is the
+	// single accumulated total across attempts, never a per-attempt reset.
+	if active, err := s.execution.ActiveTime(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if active != nil {
+		w.Header().Set("X-Run-Active-Elapsed-Ms", strconv.FormatInt(active.ActiveElapsedMS, 10))
+		if active.MaxActiveMS != nil {
+			w.Header().Set("X-Run-Max-Active-Ms", strconv.FormatInt(*active.MaxActiveMS, 10))
+		}
+		if active.DeadlineExceeded {
+			w.Header().Set("X-Run-Deadline-Exceeded", "true")
+		}
+	}
+	// F03/T035: the waiting hand-over. The contract Run schema has no waiting/
+	// resume fields, so the owner-facing detail carries them as non-contract
+	// headers (same precedent as X-Run-* above): which condition is awaited, the
+	// stored safe outcome, when it was decided, whether the supervisor confirmed
+	// the exit, and the one resume job's state. The decision reference and every
+	// token stay private.
+	if waiting, err := s.execution.WaitingFacts(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if waiting != nil {
+		w.Header().Set("X-Run-Waiting-Kind", waiting.Kind)
+		if waiting.Outcome != "" {
+			w.Header().Set("X-Run-Waiting-Outcome", waiting.Outcome)
+		}
+		if waiting.DecisionAt != nil {
+			w.Header().Set("X-Run-Waiting-Decided-At", waiting.DecisionAt.UTC().Format(time.RFC3339Nano))
+		}
+		if waiting.ExitConfirmedAt != nil {
+			w.Header().Set("X-Run-Waiting-Exit-Confirmed-At",
+				waiting.ExitConfirmedAt.UTC().Format(time.RFC3339Nano))
+		}
+		if waiting.ResumeJobID != nil {
+			w.Header().Set("X-Run-Resume-Job-ID", *waiting.ResumeJobID)
+		}
+		if waiting.ResumeJobState != "" {
+			w.Header().Set("X-Run-Resume-Job-State", waiting.ResumeJobState)
+		}
+	}
+	// F03/T038: conservative recovery. A parked Run shows why and since when; a
+	// Run that was recovered still shows whether audited operator evidence exists
+	// (and the hash of that exact document). The attempt token and the evidence
+	// document itself are never exposed. The contract Run schema has no recovery
+	// fields, so these are non-contract headers (same precedent as X-Run-* above).
+	if recovery, err := s.execution.RecoveryFacts(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if recovery != nil {
+		if recovery.Reason != "" {
+			w.Header().Set("X-Run-Recovery-Reason", recovery.Reason)
+		}
+		if recovery.Since != nil {
+			w.Header().Set("X-Run-Recovery-Since", recovery.Since.UTC().Format(time.RFC3339Nano))
+		}
+		if recovery.EvidenceAt != nil {
+			w.Header().Set("X-Run-Recovery-Evidence-At", recovery.EvidenceAt.UTC().Format(time.RFC3339Nano))
+		}
+		if recovery.EvidenceSHA256 != "" {
+			w.Header().Set("X-Run-Recovery-Evidence-SHA256", recovery.EvidenceSHA256)
+		}
+	}
 	writeJSON(w, http.StatusOK, run)
 }

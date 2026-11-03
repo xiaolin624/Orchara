@@ -433,7 +433,8 @@ def run_row(dbname: str, run_id: str) -> dict:
         "application_version_id::text AS application_version_id, manifest_sha256, "
         "input_artifact_id::text AS input_artifact_id, output_artifact_id::text AS output_artifact_id, "
         "checkpoint_thread_id::text AS checkpoint_thread_id, state, revision, next_event_seq, "
-        "budget_limit::text AS budget_limit, currency, phase, active_elapsed_ms "
+        "budget_limit::text AS budget_limit, currency, phase, active_elapsed_ms, "
+        "max_active_ms "
         "FROM platform.runs "
         f"WHERE id = {_literal(run_id)}::uuid",
     )

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -18,7 +18,8 @@ def go_binaries(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     out_dir = tmp_path_factory.mktemp("f00b-go-bin")
     return st.build_go_binaries(
         out_dir,
-        {"api": "./cmd/api", "admin": "./cmd/admin", "maintenance": "./cmd/maintenance"},
+        {"api": "./cmd/api", "admin": "./cmd/admin", "maintenance": "./cmd/maintenance",
+         "supervisor": "./cmd/supervisor", "sandboxprobe": "./cmd/sandboxprobe"},
     )
 
 
@@ -215,6 +216,118 @@ def t026_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.
 
 
 @pytest.fixture
+def t028_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t028.T028Stack:
+    """A T024-shaped stack for the user-upload path.
+
+    T028 needs every real primitive at once: a migrated + bootstrapped database,
+    a real API with the object store and HMAC link signing, the internal mTLS
+    listener (used to claim a finalize job deterministically in the deletion
+    race test) and the compiled maintenance process that runs the real handler.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t028.T028Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
+def t030_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t030.T030Stack:
+    """A T028-shaped stack for the T030 preset tool path.
+
+    The tool run needs the same real primitives as T028 (migrated database, real
+    API with object store and signed links, real maintenance process) plus the
+    real Python interpreter. No stack-specific knob is added: the preset tool's
+    script path is resolved from the product root, exactly as in production.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t030.T030Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
+def t032_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t032.T032Stack:
+    """A T029/T031-shaped stack with T032's event-stream deployment knobs.
+
+    The three knobs are validated configuration (not per-request values): the
+    production defaults are 24h retention, 500ms PostgreSQL polling and a 15s
+    heartbeat comment; this fixture shortens polling/heartbeat so the real SSE
+    tests finish quickly while keeping retention long enough that ordinary
+    replay never expires.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    env = t029.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    env.update(
+        {
+            "ORCHARA_RUN_EVENT_RETENTION": "1h",
+            "ORCHARA_RUN_EVENT_POLL_INTERVAL": "20ms",
+            "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL": "100ms",
+        }
+    )
+    server = api_server(dsn, extra_env=env)
+
+    stack = t032.T032Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.T027Stack:
     """A migrated database behind a real API with a real object store.
 
@@ -240,6 +353,81 @@ def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.
     )
 
 
+@pytest.fixture
+def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.T029Stack:
+    """A T024-shaped stack plus the T025 compiler input, for claim/heartbeat/exit.
+
+    F03 needs every real primitive at once: a migrated + bootstrapped database,
+    the internal mTLS listener (the only place claim/heartbeat/exit exist), the
+    object store with HMAC link signing (the lease's manifest_url/input_url are
+    real sealed GET links) and the T025 deployment input so ``debugDraft`` can
+    freeze the checked-in golden manifest.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn,
+        extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
+    )
+
+    stack = t029.T029Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
+def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.T033Stack:
+    """T031's real stack for the T033 tool-debug path.
+
+    Everything the executor needs is real: the internal mTLS listener (claim,
+    heartbeat, result, exit and the five run-scoped artifact routes), the object
+    store with HMAC link signing (the manifest and the CSV move through real
+    signed links), the T025 deployment inputs so ``debugDraft`` freezes the golden
+    manifest, and the compiled supervisor binary. The sandbox itself lives in WSL2
+    and is exercised by the tests, not by this fixture.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn,
+        extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
+    )
+
+    stack = t033.T033Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -252,4 +440,9 @@ __all__ = [
     "t025_stack",
     "t026_stack",
     "t027_stack",
+    "t028_stack",
+    "t029_stack",
+    "t030_stack",
+    "t032_stack",
+    "t033_stack",
 ]

@@ -45,12 +45,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"orchara/platform/internal/compiler"
+	"orchara/platform/internal/execution"
 	"orchara/platform/internal/jcs"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
@@ -414,9 +416,11 @@ func (r *Reader) SubmitDebug(
 		return nil, errors.New("debug validation produced no manifest")
 	}
 
-	// 5. The run's budget is the definition policy. The workflow schema bounds
-	// the shape but not the numeric column's range.
-	budget, currency, policyProblem := debugPolicy(execution.Manifest.Definition)
+	// 5. The run's budget and active-time limit are the definition policy. The
+	// workflow schema bounds the shapes but not the numeric column's range; the
+	// active-time limit is frozen on the Run (T034), never re-read from a newer
+	// draft.
+	budget, currency, maxActiveMS, policyProblem := debugPolicy(execution.Manifest.Definition)
 	if policyProblem != nil {
 		return nil, &ExecutionRefusedError{Errors: []ExecutableError{*policyProblem}}
 	}
@@ -455,6 +459,7 @@ func (r *Reader) SubmitDebug(
 		Execution:      execution,
 		Budget:         budget,
 		Currency:       currency,
+		MaxActiveMS:    maxActiveMS,
 		SealedInputKey: sealedKey,
 		InputSHA256:    inputSHA,
 		InputSize:      int64(len(plan.InputBytes)),
@@ -540,6 +545,7 @@ type createDebugParams struct {
 	Execution      *ValidatedExecution
 	Budget         string
 	Currency       string
+	MaxActiveMS    int64
 	SealedInputKey string
 	InputSHA256    string
 	InputSize      int64
@@ -658,13 +664,20 @@ func (r *Reader) createDebugRun(
 		        owner_id, kind, execution_snapshot_id, application_version_id,
 		        manifest_sha256, input_artifact_id, output_artifact_id,
 		        checkpoint_thread_id, state, revision, next_event_seq,
-		        budget_limit, currency, phase, active_elapsed_ms)
+		        budget_limit, currency, phase, active_elapsed_ms, max_active_ms)
 		VALUES ($1::uuid, NULL, NULL, NULL, NULL, $2::uuid, 'debug', $3::uuid, NULL,
-		        $4, $5::uuid, NULL, $6::uuid, 'queued', 1, 1, $7::numeric, $8, 'idle', 0)`,
+		        $4, $5::uuid, NULL, $6::uuid, 'queued', 1, 1, $7::numeric, $8, 'idle', 0, $9)`,
 		runID, params.CallerID, snapshotID, params.Execution.SHA256, inputArtifactID,
-		checkpointThreadID, params.Budget, params.Currency,
+		checkpointThreadID, params.Budget, params.Currency, params.MaxActiveMS,
 	); err != nil {
 		return nil, fmt.Errorf("creating the debug run: %w", err)
+	}
+
+	// F03/T032: the very first durable timeline fact, in the same transaction as
+	// the queued Run. The execution helper is the single event writer, so the
+	// debug path cannot grow a second seq/payload implementation.
+	if _, err := execution.AppendRunStatusTx(ctx, tx, runID); err != nil {
+		return nil, fmt.Errorf("recording the queued run event: %w", err)
 	}
 
 	// Exactly one ready start job; F03 owns claiming it.
@@ -785,38 +798,72 @@ func (r *Reader) checkDebugArtifacts(
 	return nil
 }
 
-// debugPolicy extracts the run budget/currency from the validated definition.
-// The workflow validator already requires both fields, so a problem here is
-// defence in depth; the numeric(20,8) range is a debug-specific rule.
-func debugPolicy(definition map[string]any) (string, string, *ExecutableError) {
+// debugPolicy extracts the run budget/currency and the frozen active-time limit
+// from the validated definition. The workflow validator already requires all
+// fields, so a problem here is defence in depth; the numeric(20,8) range is a
+// debug-specific rule and the active-time limit mirrors workflow.schema.json's
+// integer [1, 3600] seconds (stored on the Run as milliseconds, T034).
+func debugPolicy(definition map[string]any) (string, string, int64, *ExecutableError) {
 	policy, ok := definition["policy"].(map[string]any)
 	if !ok {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy",
 			Message: "the execution policy is missing or not an object",
 		}
 	}
 	budget, ok := policy["budget_limit"].(string)
 	if !ok {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy/budget_limit",
 			Message: "policy.budget_limit must be a decimal string",
 		}
 	}
 	if !fitsNumeric208(budget) {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodeBudgetOutOfRange, Pointer: "/policy/budget_limit",
 			Message: "policy.budget_limit must fit numeric(20,8): at most 12 integer digits and at most 8 fractional digits",
 		}
 	}
 	currency, ok := policy["currency"].(string)
 	if !ok || len(currency) != 3 {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy/currency",
 			Message: "policy.currency must be a three-letter currency code",
 		}
 	}
-	return budget, currency, nil
+	maxActiveSeconds, ok := wholeSeconds(policy["max_active_seconds"])
+	if !ok || maxActiveSeconds < 1 || maxActiveSeconds > maxActiveSecondsLimit {
+		return "", "", 0, &ExecutableError{
+			Code: CodePolicyIncomplete, Pointer: "/policy/max_active_seconds",
+			Message: "policy.max_active_seconds must be an integer between 1 and 3600",
+		}
+	}
+	return budget, currency, maxActiveSeconds * 1000, nil
+}
+
+// maxActiveSecondsLimit mirrors workflow.schema.json's policy bound.
+const maxActiveSecondsLimit = 3600
+
+// wholeSeconds accepts the JSON number forms the validated definition can carry
+// (encoding/json decodes numbers as float64; unit tests may pass int/int64) and
+// refuses fractions instead of silently truncating a policy.
+func wholeSeconds(value any) (int64, bool) {
+	switch number := value.(type) {
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || number != math.Trunc(number) {
+			return 0, false
+		}
+		return int64(number), true
+	case int:
+		return int64(number), true
+	case int64:
+		return number, true
+	case json.Number:
+		parsed, err := number.Int64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 var decimalPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]{1,8})?$`)
@@ -838,6 +885,44 @@ func intervalOf(duration time.Duration) string {
 	return fmt.Sprintf("%d seconds", int64(duration/time.Second))
 }
 
+// runColumns is the one Run projection every run read shares. The contract Run
+// is ten additionalProperties:false fields; manifest_sha256 is carried in memory
+// for the documented X-Manifest-SHA256 header and created_at only feeds the
+// list's stable keyset cursor (neither is serialised).
+const runColumns = `id::text, state, revision, application_version_id::text,
+	parent_run_id::text, output_artifact_id::text, error_code, kind,
+	execution_snapshot_id::text, phase, manifest_sha256, created_at`
+
+// rowScanner is the common shape of *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanRun reads one row selected with runColumns (plus its created_at keyset
+// position) into the contract Run projection.
+func scanRun(row rowScanner) (*Run, time.Time, error) {
+	var (
+		run                  Run
+		applicationVersionID sql.NullString
+		parentRunID          sql.NullString
+		outputArtifactID     sql.NullString
+		errorCode            sql.NullString
+		createdAt            time.Time
+	)
+	if err := row.Scan(
+		&run.ID, &run.State, &run.Revision, &applicationVersionID, &parentRunID,
+		&outputArtifactID, &errorCode, &run.Kind, &run.ExecutionSnapshotID, &run.Phase,
+		&run.ManifestSHA256, &createdAt,
+	); err != nil {
+		return nil, time.Time{}, err
+	}
+	run.ApplicationVersionID = nullableString(applicationVersionID)
+	run.ParentRunID = nullableString(parentRunID)
+	run.OutputArtifactID = nullableString(outputArtifactID)
+	run.ErrorCode = nullableString(errorCode)
+	return &run, createdAt, nil
+}
+
 // GetRun returns one run when the caller owns it (a run has no grant type in
 // this batch). Unknown, malformed, deleted and not-owned ids are all
 // ErrNotVisible, so the endpoint cannot be used to enumerate runs.
@@ -845,38 +930,104 @@ func (r *Reader) GetRun(ctx context.Context, callerID, runID string) (*Run, erro
 	if !uuid.Valid(runID) || !uuid.Valid(callerID) {
 		return nil, ErrNotVisible
 	}
-	var (
-		run                  Run
-		applicationVersionID sql.NullString
-		parentRunID          sql.NullString
-		outputArtifactID     sql.NullString
-		errorCode            sql.NullString
-	)
-	err := r.DB.QueryRowContext(ctx, `
-		SELECT id::text, state, revision, application_version_id::text, parent_run_id::text,
-		       output_artifact_id::text, error_code, kind, execution_snapshot_id::text,
-		       phase, manifest_sha256
+	run, _, err := scanRun(r.DB.QueryRowContext(ctx, `
+		SELECT `+runColumns+`
 		  FROM platform.runs
 		 WHERE id = $1::uuid
 		   AND owner_id = $2::uuid
 		   AND deleted_at IS NULL`,
 		runID, callerID,
-	).Scan(
-		&run.ID, &run.State, &run.Revision, &applicationVersionID, &parentRunID,
-		&outputArtifactID, &errorCode, &run.Kind, &run.ExecutionSnapshotID, &run.Phase,
-		&run.ManifestSHA256,
-	)
+	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotVisible
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading the run: %w", err)
 	}
-	run.ApplicationVersionID = nullableString(applicationVersionID)
-	run.ParentRunID = nullableString(parentRunID)
-	run.OutputArtifactID = nullableString(outputArtifactID)
-	run.ErrorCode = nullableString(errorCode)
-	return &run, nil
+	return run, nil
+}
+
+// ListRuns returns the caller's own runs, newest first, with the same stable
+// (created_at DESC, id DESC) keyset order as every other cursor list.
+//
+// The list is owner-only and contains no grant path: a run belongs to the
+// principal who submitted it (T027's getRun rule), and an administrator sees
+// only the runs it owns. The owner predicate is in the same WHERE as the cursor
+// and LIMIT, so filtering happens before pagination.
+func (r *Reader) ListRuns(
+	ctx context.Context,
+	ownerID, cursor string,
+	limit int,
+) ([]Run, *string, error) {
+	if !uuid.Valid(ownerID) {
+		return nil, nil, ErrNotVisible
+	}
+	if limit == 0 {
+		limit = DefaultLimit
+	}
+	if limit < MinLimit || limit > MaxLimit {
+		return nil, nil, ErrInvalidLimit
+	}
+	var (
+		cursorAt any
+		cursorID any
+	)
+	if strings.TrimSpace(cursor) != "" {
+		at, id, err := DecodeCursor(cursor)
+		if err != nil {
+			return nil, nil, err
+		}
+		cursorAt, cursorID = at, id
+	}
+
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT `+runColumns+`
+		  FROM platform.runs
+		 WHERE owner_id = $1::uuid
+		   AND deleted_at IS NULL
+		   AND (
+		        $2::timestamptz IS NULL
+		        OR (created_at, id) < ($2::timestamptz, $3::uuid)
+		       )
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $4`,
+		ownerID, cursorAt, cursorID, limit+1,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing runs: %w", err)
+	}
+	defer rows.Close()
+
+	type scored struct {
+		run       Run
+		createdAt time.Time
+	}
+	all := make([]scored, 0, limit+1)
+	for rows.Next() {
+		run, createdAt, err := scanRun(rows)
+		if err != nil {
+			return nil, nil, fmt.Errorf("listing runs: %w", err)
+		}
+		all = append(all, scored{run: *run, createdAt: createdAt})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("listing runs: %w", err)
+	}
+
+	items := make([]Run, 0, len(all))
+	for _, entry := range all {
+		items = append(items, entry.run)
+	}
+	var next *string
+	if len(all) > limit {
+		// One extra row proves another page exists; the cursor names the last
+		// returned row so the next page starts strictly after it.
+		last := all[limit-1]
+		token := EncodeCursor(last.createdAt, last.run.ID)
+		next = &token
+		items = items[:limit]
+	}
+	return items, next, nil
 }
 
 // nullableString converts a SQL NULL into the contract's JSON null.

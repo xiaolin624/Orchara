@@ -104,6 +104,11 @@ func (c *Controller) Claim(ctx context.Context, request ClaimRequest) (*Job, err
 	if err := markEvaluationRunning(ctx, tx, job); err != nil {
 		return nil, err
 	}
+	// T037: leasing a tool build moves its tool row submitted -> building. A
+	// retry keeps it building; only the completion guard sets ready/failed.
+	if err := markToolBuilding(ctx, tx, job); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the claim transaction: %w", err)
 	}

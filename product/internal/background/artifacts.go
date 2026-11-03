@@ -95,14 +95,30 @@ func (e *ArtifactConflictError) Unwrap() error { return ErrArtifactConflict }
 var artifactProducerKinds = map[Kind]bool{
 	KindModelValidate:       true,
 	KindApplicationEvaluate: true,
+	// T030: the trusted preset tool registers its summary, CSV, diagnostics and
+	// capped log through the same job-scoped upload flow.
+	KindToolRun: true,
+	// T037: the sandboxed build uploads its capped log and SBOM through the same
+	// job-scoped flow; the completion guard re-checks both.
+	KindToolBuild: true,
 }
 
-// uploadPurposes is the contract's createBackgroundUpload purpose enum.
+// uploadPurposes is the contract's createBackgroundUpload purpose enum plus the
+// T030 tool-run purposes. `tool_summary` is the result artifact (verified by the
+// tool_run completion guard), `tool_artifact` is the CSV, `diagnostics` is the
+// safe rejection document and `log` is the capped stdout/stderr.
 var uploadPurposes = map[string]bool{
-	"report":      true,
-	"log":         true,
-	"receipt":     true,
-	"parsed_data": true,
+	"report":        true,
+	"log":           true,
+	"receipt":       true,
+	"parsed_data":   true,
+	"tool_summary":  true,
+	"tool_artifact": true,
+	"diagnostics":   true,
+	// T037 tool build artifacts. `sbom` is the completion's result artifact;
+	// `build_log` is a capped log, never protocol output.
+	"sbom":      true,
+	"build_log": true,
 }
 
 // CreateUpload reserves one artifact for a job. It writes the artifact row and
@@ -129,8 +145,9 @@ func (s *ArtifactStore) CreateUpload(
 	purpose := strings.TrimSpace(request.Purpose)
 	if !uploadPurposes[purpose] {
 		return UploadTicket{}, &ValidationError{
-			Field:   "purpose",
-			Message: "purpose must be report, log, receipt or parsed_data",
+			Field: "purpose",
+			Message: "purpose must be report, log, receipt, parsed_data, tool_summary, " +
+				"tool_artifact, diagnostics, sbom or build_log",
 		}
 	}
 	if request.SizeBytes < 0 || request.SizeBytes > objectstore.MaxObjectBytes {

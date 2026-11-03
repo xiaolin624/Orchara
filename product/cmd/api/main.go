@@ -126,17 +126,22 @@ func run(logger *log.Logger) error {
 		logger.Print("wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)")
 	}))
 	apiServer := api.New(api.Deps{
-		Service:      identityService,
-		WebDir:       cfg.WebDir,
-		Profile:      cfg.Profile,
-		Logger:       logger,
-		Objects:      objects,
-		Signer:       signer,
-		Providers:    providers,
-		PublicURL:    cfg.PublicURL,
-		RetryBackoff: cfg.RetryBackoff,
-		Manifest:     manifestInputs,
-		Notifier:     notifier,
+		Service:           identityService,
+		WebDir:            cfg.WebDir,
+		Profile:           cfg.Profile,
+		Logger:            logger,
+		Objects:           objects,
+		Signer:            signer,
+		Providers:         providers,
+		PublicURL:         cfg.PublicURL,
+		RetryBackoff:      cfg.RetryBackoff,
+		ExecutionLeaseTTL: cfg.ExecutionLeaseTTL,
+		Manifest:          manifestInputs,
+		Notifier:          notifier,
+		// F03/T032: the durable event-stream deployment knobs.
+		RunEventRetention:         cfg.RunEventRetention,
+		RunEventPollInterval:      cfg.RunEventPollInterval,
+		RunEventHeartbeatInterval: cfg.RunEventHeartbeatInterval,
 	})
 	apiServer.Register(mux)
 

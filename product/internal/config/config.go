@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -73,6 +74,16 @@ const (
 	// EnvRetryBackoff is the base delay before the second attempt. A duration
 	// ("5s", "50ms") so tests can make retries deterministic without waiting.
 	EnvRetryBackoff = "ORCHARA_BACKGROUND_RETRY_BACKOFF"
+	// EnvExecutionLeaseTTL is the F03 claim lease length. It is a deployment
+	// knob bounded by the execution protocol (1s..1h), not a per-request value.
+	EnvExecutionLeaseTTL = "ORCHARA_EXECUTION_LEASE_TTL"
+	// F03/T032 run-event stream knobs. Retention is the documented replay window
+	// (default 24h); poll is how often an idle SSE stream asks PostgreSQL (Redis
+	// is wakeup-only and absent in this batch); heartbeat is the idle comment
+	// cadence (default 15s, never a business seq).
+	EnvRunEventRetention         = "ORCHARA_RUN_EVENT_RETENTION"
+	EnvRunEventPollInterval      = "ORCHARA_RUN_EVENT_POLL_INTERVAL"
+	EnvRunEventHeartbeatInterval = "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -108,6 +119,17 @@ const (
 	EnvDatasetWaitTimeout     = "ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT"
 	EnvEvaluationPollInterval = "ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL"
 	EnvReportWaitTimeout      = "ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT"
+
+	// F05/T030 trusted preset tool. PythonPath is the interpreter used for the
+	// fixed tool script (default: "python" on Windows, "python3" elsewhere);
+	// ProductRoot anchors the fixed, server-side script path and never comes
+	// from request input. ToolTimeout bounds one tool subprocess.
+	EnvPython      = "ORCHARA_PYTHON"
+	EnvProductRoot = "ORCHARA_PRODUCT_ROOT"
+	EnvToolTimeout = "ORCHARA_MAINTENANCE_TOOL_TIMEOUT"
+	// F05/T037: how long one sandboxed tool build may run. The sandbox driver's
+	// own ORCHARA_SANDBOX_TIMEOUT must be at least as large.
+	EnvToolBuildTimeout = "ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT"
 )
 
 // F00B/T026 defaults. artifact_finalize gets a dedicated system_io pool (2
@@ -118,6 +140,15 @@ const (
 	DefaultDatasetWaitTimeout     = 60 * time.Second
 	DefaultEvaluationPollInterval = 100 * time.Millisecond
 	DefaultReportWaitTimeout      = 60 * time.Second
+	// DefaultToolRunTimeout bounds one trusted preset-tool subprocess. It is
+	// longer than a normal run (Python startup + a 20 MiB sheet) and short
+	// enough that a wedged tool cannot hold a work slot indefinitely.
+	DefaultToolRunTimeout = 30 * time.Second
+	// DefaultToolBuildTimeout bounds one sandboxed build (untrusted setup.py may
+	// compile a source tree). It is a deployment knob, not a request value.
+	DefaultToolBuildTimeout = 5 * time.Minute
+	// maxToolRunTimeout is the deployment ceiling for both tool knobs.
+	maxToolRunTimeout = 10 * time.Minute
 
 	maxMaintenanceSlots     = 32
 	minEvaluationPollPeriod = 10 * time.Millisecond
@@ -132,6 +163,23 @@ const (
 	DefaultBackgroundRetryBackoff = 5 * time.Second
 	// maxBackgroundRetryBackoff keeps a misconfigured base from parking work.
 	maxBackgroundRetryBackoff = time.Hour
+
+	// DefaultExecutionLeaseTTL is the documented claim lease. It matches
+	// execution.DefaultLeaseTTL; a supervisor must heartbeat well inside it.
+	DefaultExecutionLeaseTTL = 30 * time.Second
+	// minExecutionLeaseTTL/maxExecutionLeaseTTL bound the deployment knob.
+	minExecutionLeaseTTL = time.Second
+	maxExecutionLeaseTTL = time.Hour
+
+	// F03/T032 defaults. The retention window is the documented replay horizon;
+	// the heartbeat is API.md §4's 15s idle comment.
+	DefaultRunEventRetention         = 24 * time.Hour
+	DefaultRunEventPollInterval      = 500 * time.Millisecond
+	DefaultRunEventHeartbeatInterval = 15 * time.Second
+	// Upper bounds keep a typo from parking a stream for years or busy-looping.
+	maxRunEventRetention = 365 * 24 * time.Hour
+	maxRunEventPoll      = 5 * time.Minute
+	maxRunEventHeartbeat = time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -190,6 +238,13 @@ type Config struct {
 	SecretDir string
 	// RetryBackoff is the base exponential-retry delay for background jobs.
 	RetryBackoff time.Duration
+	// ExecutionLeaseTTL is the F03 claim lease length (30s by default).
+	ExecutionLeaseTTL time.Duration
+	// RunEventRetention/PollInterval/HeartbeatInterval are the F03/T032 durable
+	// event stream knobs (24h replay window, 500ms PostgreSQL poll, 15s comment).
+	RunEventRetention         time.Duration
+	RunEventPollInterval      time.Duration
+	RunEventHeartbeatInterval time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -233,6 +288,12 @@ type MaintenanceConfig struct {
 	DatasetWaitTimeout     time.Duration
 	EvaluationPollInterval time.Duration
 	ReportWaitTimeout      time.Duration
+	// F05/T030: the trusted preset tool's interpreter, product root (the fixed
+	// script lives under it) and per-run timeout.
+	PythonPath       string
+	ProductRoot      string
+	ToolTimeout      time.Duration
+	ToolBuildTimeout time.Duration
 }
 
 // SweepConfig is everything `cmd/maintenance sweep` needs: the object store to
@@ -366,6 +427,49 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be at most %s", maxBackgroundRetryBackoff))
 	}
 	cfg.RetryBackoff = retryBackoff
+	// F03/T029: the claim lease is a deployment knob, but an absurd value is a
+	// configuration error rather than a silently normalised lease.
+	leaseTTL, err := parseDuration(lookup, EnvExecutionLeaseTTL, DefaultExecutionLeaseTTL)
+	if err != nil {
+		return nil, err
+	}
+	if leaseTTL < minExecutionLeaseTTL || leaseTTL > maxExecutionLeaseTTL {
+		return nil, invalid(EnvExecutionLeaseTTL,
+			fmt.Sprintf("must be between %s and %s", minExecutionLeaseTTL, maxExecutionLeaseTTL))
+	}
+	cfg.ExecutionLeaseTTL = leaseTTL
+	// F03/T032: the durable event-stream knobs. Small values are legal (tests use
+	// them to observe heartbeats/retention quickly); only absurd upper bounds are
+	// configuration errors.
+	retention, err := parseDuration(lookup, EnvRunEventRetention, DefaultRunEventRetention)
+	if err != nil {
+		return nil, err
+	}
+	if retention > maxRunEventRetention {
+		return nil, invalid(EnvRunEventRetention,
+			fmt.Sprintf("must be at most %s", maxRunEventRetention))
+	}
+	eventPoll, err := parseDuration(lookup, EnvRunEventPollInterval, DefaultRunEventPollInterval)
+	if err != nil {
+		return nil, err
+	}
+	if eventPoll > maxRunEventPoll {
+		return nil, invalid(EnvRunEventPollInterval,
+			fmt.Sprintf("must be at most %s", maxRunEventPoll))
+	}
+	eventHeartbeat, err := parseDuration(
+		lookup, EnvRunEventHeartbeatInterval, DefaultRunEventHeartbeatInterval,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if eventHeartbeat > maxRunEventHeartbeat {
+		return nil, invalid(EnvRunEventHeartbeatInterval,
+			fmt.Sprintf("must be at most %s", maxRunEventHeartbeat))
+	}
+	cfg.RunEventRetention = retention
+	cfg.RunEventPollInterval = eventPoll
+	cfg.RunEventHeartbeatInterval = eventHeartbeat
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.
@@ -497,6 +601,42 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	pythonPath := value(lookup, EnvPython)
+	if pythonPath == "" {
+		// The default interpreter for this OS. It is a configured executable
+		// name/path, never a request-supplied command line.
+		if runtime.GOOS == "windows" {
+			pythonPath = "python"
+		} else {
+			pythonPath = "python3"
+		}
+	}
+	if strings.ContainsAny(pythonPath, "\x00\r\n") {
+		return nil, invalid(EnvPython, "must be a single executable path")
+	}
+	productRoot := orDefault(lookup, EnvProductRoot, ".")
+	if strings.ContainsAny(productRoot, "\x00") {
+		return nil, invalid(EnvProductRoot, "must not contain NUL")
+	}
+	if absolute, err := filepath.Abs(productRoot); err == nil {
+		productRoot = absolute
+	}
+	toolTimeout, err := parseHandlerDuration(lookup, EnvToolTimeout, DefaultToolRunTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if toolTimeout > maxToolRunTimeout {
+		return nil, invalid(EnvToolTimeout,
+			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
+	}
+	toolBuildTimeout, err := parseHandlerDuration(lookup, EnvToolBuildTimeout, DefaultToolBuildTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if toolBuildTimeout > maxToolRunTimeout {
+		return nil, invalid(EnvToolBuildTimeout,
+			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
+	}
 	return &MaintenanceConfig{
 		InternalURL:            strings.TrimSuffix(rawURL, "/"),
 		ClientCert:             values[EnvInternalClientCert],
@@ -510,6 +650,10 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		DatasetWaitTimeout:     datasetWait,
 		EvaluationPollInterval: pollInterval,
 		ReportWaitTimeout:      reportWait,
+		PythonPath:             pythonPath,
+		ProductRoot:            productRoot,
+		ToolTimeout:            toolTimeout,
+		ToolBuildTimeout:       toolBuildTimeout,
 	}, nil
 }
 

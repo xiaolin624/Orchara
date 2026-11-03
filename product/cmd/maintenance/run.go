@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,8 @@ import (
 	"orchara/platform/internal/background/handlers"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/sandbox"
+	"orchara/platform/internal/tools"
 	"orchara/platform/internal/uuid"
 )
 
@@ -83,6 +86,10 @@ type runOptions struct {
 	datasetWaitTimeout time.Duration
 	evaluationPoll     time.Duration
 	reportWaitTimeout  time.Duration
+	// toolTimeout bounds one trusted preset-tool subprocess (T030).
+	toolTimeout time.Duration
+	// toolBuildTimeout bounds one sandboxed tool build (T037).
+	toolBuildTimeout time.Duration
 	// explicit remembers which flags the operator actually set, so "unset" uses
 	// the validated environment default instead of a zero-value guess.
 	explicit map[string]bool
@@ -140,6 +147,17 @@ func runMaintenance(args []string) {
 		failMaintenance(logger, err)
 	}
 
+	sandboxOptions, err := sandbox.OptionsFromEnv(cfg.ProductRoot)
+	if err != nil {
+		failMaintenance(logger, fmt.Errorf("sandbox profile rejected: %w", err))
+	}
+	sandboxExecutor, err := sandbox.NewExecutor(sandboxOptions)
+	if err != nil {
+		failMaintenance(logger, fmt.Errorf("sandbox executor rejected: %w", err))
+	}
+	if sandboxOptions.ExpectedRootfsDigest == "" {
+		logger.Printf("run: no ORCHARA_SANDBOX_ROOTFS_DIGEST; tool_build/tool debug runs fail closed")
+	}
 	runner := &runner{
 		client:    client,
 		scope:     newJobScope(client),
@@ -148,6 +166,12 @@ func runMaintenance(args []string) {
 		heartbeat: cfg.HeartbeatInterval,
 		options:   *options,
 		logger:    logger,
+		sandbox:   sandboxExecutor,
+		tools: tools.New(tools.Options{
+			PythonPath: cfg.PythonPath,
+			ScriptPath: filepath.Join(cfg.ProductRoot, tools.SalesStatsScript),
+			Timeout:    options.toolTimeout,
+		}),
 	}
 	logger.Printf("run: worker=%s kinds=%v once=%t heartbeat=%s",
 		options.workerID, options.kinds, options.once, cfg.HeartbeatInterval)
@@ -191,6 +215,10 @@ func parseRunOptions(args []string) (*runOptions, error) {
 		"evaluation status-poll/heartbeat cadence (env ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL)")
 	reportWait := flags.Duration("report-wait-timeout", 0,
 		"how long one attempt waits for its report to be finalized (env ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT)")
+	toolTimeout := flags.Duration("tool-timeout", 0,
+		"how long one trusted preset-tool subprocess may run (env ORCHARA_MAINTENANCE_TOOL_TIMEOUT)")
+	toolBuildTimeout := flags.Duration("tool-build-timeout", 0,
+		"how long one sandboxed tool build may run (env ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT)")
 	if err := flags.Parse(args); err != nil {
 		return nil, err
 	}
@@ -261,6 +289,8 @@ func parseRunOptions(args []string) (*runOptions, error) {
 	options.datasetWaitTimeout = *datasetWait
 	options.evaluationPoll = *evaluationPoll
 	options.reportWaitTimeout = *reportWait
+	options.toolTimeout = *toolTimeout
+	options.toolBuildTimeout = *toolBuildTimeout
 	return options, nil
 }
 
@@ -314,6 +344,22 @@ func (o *runOptions) applyConfig(cfg *config.MaintenanceConfig) error {
 		o.explicit["report-wait-timeout"], o.reportWaitTimeout, cfg.ReportWaitTimeout)
 	if err != nil {
 		return err
+	}
+	o.toolTimeout, err = resolveDuration("tool-timeout",
+		o.explicit["tool-timeout"], o.toolTimeout, cfg.ToolTimeout)
+	if err != nil {
+		return err
+	}
+	if o.toolTimeout > 10*time.Minute {
+		return errors.New("--tool-timeout must be at most 10m")
+	}
+	o.toolBuildTimeout, err = resolveDuration("tool-build-timeout",
+		o.explicit["tool-build-timeout"], o.toolBuildTimeout, cfg.ToolBuildTimeout)
+	if err != nil {
+		return err
+	}
+	if o.toolBuildTimeout > 10*time.Minute {
+		return errors.New("--tool-build-timeout must be at most 10m")
 	}
 	return nil
 }
@@ -403,6 +449,10 @@ type runner struct {
 	heartbeat time.Duration
 	options   runOptions
 	logger    *log.Logger
+	// tools is the trusted preset-tool executor built from deployment config.
+	tools *tools.Executor
+	// sandbox is the T033 gVisor executor used by the T037 tool_build handler.
+	sandbox *sandbox.Executor
 
 	summaryMu sync.Mutex
 	summary   runSummary
@@ -684,7 +734,10 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 				DatasetWaitTimeout:     r.options.datasetWaitTimeout,
 				EvaluationPollInterval: r.options.evaluationPoll,
 				ReportWaitTimeout:      r.options.reportWaitTimeout,
+				ToolBuildTimeout:       r.options.toolBuildTimeout,
 			},
+			Tools:   r.tools,
+			Sandbox: r.sandbox,
 		})
 	}
 	cancel()

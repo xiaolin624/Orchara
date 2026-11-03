@@ -87,6 +87,20 @@ func requireInternalRole(w http.ResponseWriter, r *http.Request, role string) bo
 	return false
 }
 
+// requireAnyInternalRole is the same capacity check for an endpoint that may be
+// served in more than one internal capacity (heartbeat: supervisor or worker).
+func requireAnyInternalRole(w http.ResponseWriter, r *http.Request, roles ...string) bool {
+	role := InternalRole(r.Context())
+	for _, allowed := range roles {
+		if role == allowed {
+			return true
+		}
+	}
+	writeError(w, r, http.StatusForbidden, "forbidden",
+		"this endpoint requires an internal role other than the presented one")
+	return false
+}
+
 // RegisterInternal adds the internal contract routes. The listener that serves
 // this mux is TLS with client certificates; nothing here is reachable on the
 // public listener.
@@ -108,6 +122,39 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// hash) the handler must put in its report. Non-contract internal extension;
 	// see internal/api/evaluations.go for why the lease cannot carry it.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation", s.handleInternalEvaluationBinding)
+	// F05/T037: the job-scoped tool-build binding (source hash, canonical
+	// dependency lock, manifest identity). Non-contract internal extension; the
+	// handler never reads the tool row itself.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/tool-build", s.handleInternalToolBuild)
+
+	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
+	// capacities; heartbeat may be served by either the supervisor or the worker
+	// that holds the attempt token. Worker/maintenance certificates are refused
+	// per endpoint (API.md §6), not by the TLS layer.
+	mux.HandleFunc("POST /internal/v1/jobs/claim", s.handleInternalExecutionClaim)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/heartbeat", s.handleInternalRunHeartbeat)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/result", s.handleInternalRunResult)
+	// F03/T035: the synthetic approval/child-result bridge. Supervisor-only mTLS;
+	// F06/F07 replace it with their real sources (documented non-contract bridge).
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/waiting-resolution", s.handleInternalWaitingResolution)
+	// F03/T036: the documented non-contract unknown-operation bridge. F06 owns the
+	// real operations/receipts; this supervisor|worker surface records and resolves
+	// the safe unresolved-guard ledger the finalizer reads.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/unknown-operations", s.handleInternalUnknownOperation)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/unknown-operations/{operation_id}/resolve",
+		s.handleInternalResolveUnknownOperation)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/events", s.handleInternalRunEvents)
+	mux.HandleFunc("POST /internal/v1/attempts/{attempt_id}/exited", s.handleInternalAttemptExit)
+
+	// F05/T033: run-bound artifact access. The contract says x-internal-role
+	// worker for all five; the supervisor cert is refused 403 (it claims and
+	// certifies exit, it does not move worker artifacts). The attempt token in
+	// the body is re-proved against the run in the path by the service.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-uploads", s.handleInternalRunArtifactUpload)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts/{artifact_id}/complete", s.handleInternalRunArtifactComplete)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-downloads", s.handleInternalRunArtifactDownload)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-status", s.handleInternalRunArtifactStatus)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts", s.handleInternalRegisterRunArtifact)
 }
 
 type internalClaimRequest struct {

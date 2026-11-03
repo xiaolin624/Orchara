@@ -91,6 +91,9 @@ func recoverExpiredTx(ctx context.Context, tx *sql.Tx, base time.Duration) (int,
 				// fails the job fails an evaluation that is not already terminal.
 				// Retryable recoveries below stay non-terminal on purpose.
 				err = failEvaluationForJobTx(ctx, tx, Kind(entry.kind), entry.targetID, CodeLeaseExpired)
+				if err == nil {
+					err = failToolBuildForJobTx(ctx, tx, Kind(entry.kind), entry.targetID, CodeLeaseExpired)
+				}
 			}
 		} else {
 			_, err = tx.ExecContext(ctx, `

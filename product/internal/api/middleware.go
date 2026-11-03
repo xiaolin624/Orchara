@@ -133,3 +133,16 @@ func (r *statusRecorder) Write(body []byte) (int, error) {
 	}
 	return r.ResponseWriter.Write(body)
 }
+
+// Flush forwards the streaming capability through the request-logging wrapper.
+// Without it an SSE handler would only ever see a plain ResponseWriter, even
+// though the server's real writer can flush frames.
+func (r *statusRecorder) Flush() {
+	if !r.wrote {
+		r.status = http.StatusOK
+		r.wrote = true
+	}
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}

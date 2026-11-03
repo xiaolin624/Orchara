@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 运行（F03 领取与租约）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .5rem 0; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    dl.run { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
+    dl.run dt { opacity: .7; }
+    dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/attachments">附件</a>
+    <a href="/tools">工具</a>
+    <a href="/login">登录</a>
+    <a href="/admin">管理台</a>
+  </nav>
+
+  <h1>运行（F03 领取、租约与终态）</h1>
+  <p class="sub">
+    列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
+    同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
+    <strong>真实租约事实</strong>（<code>X-Run-Attempt-Started-At</code>、
+    <code>X-Run-Lease-Deadline</code>，来自数据库时钟）；没有租约事实时本页不伪造进度。
+    领取、心跳与退出证据属于 F03 内部 supervisor 协议，普通页面只读它们的结果。
+  </p>
+  <p class="hint">
+    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
+    但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
+    详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
+    累计活跃时间来自同一响应的非契约响应头 <code>X-Run-Active-Elapsed-Ms</code> /
+    <code>X-Run-Max-Active-Ms</code> / <code>X-Run-Deadline-Exceeded</code>（契约 Run 没有这些字段）：
+    跨尝试累计为一个时钟，新 attempt 不重置；上限为 NULL 表示未知/无截止，不是 0。
+    持久时间线来自 <code>GET /api/v1/runs/{id}/events</code>（SSE，<code>id: seq</code>、
+    <code>event: type</code>、<code>data: event.schema 封套</code>）。断线后客户端按
+    <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
+    <code>details.snapshot_url</code> 指向的 Run 快照，而不是伪装完整历史。
+  </p>
+  <p class="hint">
+    等待审批/子任务（F03/T035）：worker 在固定 checkpoint 停止后，Run 进入
+    <strong>waiting_approval / waiting_children</strong>（phase=waiting），等待事实保存在
+    <code>platform.run_waitings</code>。等待期间<strong>释放 worker 执行槽</strong>，但
+    <strong>逻辑会话槽与 Run 一直占用到终态</strong>：等待与恢复排队都不是终态。
+    只有“解决结果 + supervisor 退出确认 + checkpoint”齐全后才创建<strong>唯一</strong>恢复任务
+    （<code>jobs.kind=resume</code>，携带封存的 canonical 恢复输入）。等待/决定/退出/恢复事实由非契约
+    响应头 <code>X-Run-Waiting-Kind</code> / <code>X-Run-Waiting-Outcome</code> /
+    <code>X-Run-Waiting-Decided-At</code> / <code>X-Run-Waiting-Exit-Confirmed-At</code> /
+    <code>X-Run-Resume-Job-ID</code> / <code>X-Run-Resume-Job-State</code> 提供；本页不伪造批准、
+    不显示恢复输入内容，也不把 202/200 解释为已恢复。
+  </p>
+  <p class="hint">
+    取消（F03/T036）：owner 可在详情中调用 <code>POST /api/v1/runs/{id}/cancel</code>
+    （幂等；会话带 CSRF，API key 需 <code>application:write</code>）。取消只表示<strong>接受停止意图</strong>：
+    有活动执行单元时 Run 进入 <strong>cancelling（正在停止）</strong>，结果/登记/新上传/审批调用被拒绝，
+    supervisor 退出证据齐全后才提交 <strong>cancelled（已停止）</strong>；存在未知外部写时转
+    <code>needs_reconciliation</code>，不假装取消已撤销远端效果。迟到结果/事件不会把终态翻回。
+  </p>
+  <p class="hint">
+    保守恢复（F03/T038）：租约超期的 Run 只会被<strong>挂起</strong>在
+    <strong>recovery_pending</strong>（<code>recovery_reason=lease_expired</code>），supervisor
+    已确认退出但没有结果的 Run 挂起为 <code>exit_without_result</code>。挂起期间 job 保持
+    <strong>held</strong>、执行槽仍占用、旧 attempt token 不被替换；<strong>不会自动接管，也不会创建第二个
+    执行者</strong>（claim 只选 queued Run）。只有运维在证明旧执行单元/沙箱已销毁、checkpoint 数据库连接
+    已排空、冻结 manifest 与输入仍可用之后，用
+    <code>orchara-admin runs sweep-leases --grace 60s [--dry-run]</code>（只挂起）与
+    <code>orchara-admin runs recover --run &lt;id&gt; --evidence &lt;file&gt; [--check-only]</code>
+    重新排队；本页只显示原因、挂起时间与是否已有受审计证据，<strong>不提供伪造的“恢复”按钮</strong>。
+    恢复事实由非契约响应头 <code>X-Run-Recovery-Reason</code> /
+    <code>X-Run-Recovery-Since</code> / <code>X-Run-Recovery-Evidence-At</code> /
+    <code>X-Run-Recovery-Evidence-SHA256</code> 提供；终态不会因恢复证据而改变。
+  </p>
+
+  <section class="card">
+    <h2>我的 Run</h2>
+    <p id="runs-status" class="status" role="status" aria-live="polite">正在加载运行…</p>
+    <ul id="runs-list"></ul>
+    <p id="runs-empty" class="hint" hidden>当前没有属于你的 Run。调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
+    <button id="runs-next" type="button" hidden>下一页</button>
+  </section>
+
+  <section id="run-detail" class="card" hidden aria-live="polite">
+    <h2>Run 详情</h2>
+    <dl class="run">
+      <dt>id</dt><dd id="detail-id"></dd>
+      <dt>state</dt><dd id="detail-state"></dd>
+      <dt>phase</dt><dd id="detail-phase"></dd>
+      <dt>kind</dt><dd id="detail-kind"></dd>
+      <dt>执行阶段</dt><dd id="detail-lifecycle"></dd>
+      <dt>revision（Run 自身）</dt><dd id="detail-revision"></dd>
+      <dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
+      <dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
+      <dt>领取 / 租约</dt><dd id="detail-lease"></dd>
+      <dt>累计活跃 / 上限</dt><dd id="detail-active"></dd>
+      <dt>超时原因</dt><dd id="detail-deadline"></dd>
+      <dt>等待条件</dt><dd id="detail-waiting"></dd>
+      <dt>恢复任务</dt><dd id="detail-resume"></dd>
+      <dt>恢复（recovery_pending）</dt><dd id="detail-recovery"></dd>
+      <dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
+      <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
+    </dl>
+    <button id="detail-cancel-button" type="button" hidden>取消 Run</button>
+    <p id="detail-cancel-status" class="status" role="status" aria-live="polite"></p>
+    <ul id="detail-timeline" aria-live="polite"></ul>
+
+    <section id="sandbox-panel" class="card" hidden aria-live="polite">
+      <h2>沙箱工具调试（F05/T033）</h2>
+      <dl class="run">
+        <dt>执行单元</dt><dd id="sandbox-unit"></dd>
+        <dt>尝试 / 租约</dt><dd id="sandbox-attempt"></dd>
+        <dt>沙箱状态</dt><dd id="sandbox-status"></dd>
+        <dt>退出状态</dt><dd id="sandbox-exit"></dd>
+        <dt>停止状态</dt><dd id="sandbox-stop"></dd>
+      </dl>
+      <p id="sandbox-cancel-note" class="hint"></p>
+      <h3>可下载产物</h3>
+      <ul id="sandbox-artifacts" aria-live="polite"></ul>
+      <p id="sandbox-artifacts-status" class="hint" role="status" aria-live="polite">正在加载产物…</p>
+    </section>
+
+    <p id="detail-note" class="hint"></p>
+    <p id="detail-preview" class="hint" data-preview="not_run">
+      临时模型流式 delta 预览未实现（F06 承接）：本页只显示已提交的持久事件，不把临时 delta
+      当成正文，也不伪造预览文本。finalizing 只是阶段，终态以服务端提交为准。
+    </p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/runs.js"></script>
+</body>
+</html>

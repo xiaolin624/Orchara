@@ -41,12 +41,15 @@ run flags:
   --dataset-wait-timeout D   how long one evaluation attempt waits for its dataset
   --evaluation-poll-interval D   evaluation status-poll/heartbeat cadence
   --report-wait-timeout D    how long one attempt waits for its report finalize
+  --tool-timeout D       how long one trusted preset-tool subprocess may run
 
   Every pool/flag default can also come from the environment:
   ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS, ORCHARA_MAINTENANCE_WORK_SLOTS,
   ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT,
   ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL,
-  ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT.
+  ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT,
+  ORCHARA_MAINTENANCE_TOOL_TIMEOUT. The preset tool's interpreter and product
+  root are ORCHARA_PYTHON and ORCHARA_PRODUCT_ROOT.
 
 sweep flags:
   --orphan-age 1h   required; only delete objects at least this old

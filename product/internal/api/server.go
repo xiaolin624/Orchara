@@ -8,14 +8,18 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
+	"orchara/platform/internal/toolruns"
+	"orchara/platform/internal/toolversions"
 )
 
 // Server serves the F01 identity endpoints, the F02A draft/version paths, the
@@ -26,9 +30,22 @@ type Server struct {
 	catalog   *catalog.Reader
 	jobs      *background.Controller
 	artifacts *background.ArtifactStore
-	models    *modelproxy.Service
-	objects   *objectstore.Store
-	signer    *objectstore.Signer
+	// execution owns the F03 claim/heartbeat/attempt-exit primitive.
+	execution *execution.Service
+	// runArtifacts owns F05/T033's run-bound upload/download/status/register:
+	// the supervisor may claim an attempt, but only the live attempt that
+	// reserved an artifact can complete and register it.
+	runArtifacts *execution.RunArtifactStore
+	// userArtifacts is the T028 user-facing artifact service (distinct from the
+	// job-scoped ArtifactStore above: different purposes, different ACL).
+	userArtifacts *artifacts.Service
+	// toolRuns is the T030 preset-tool run service (non-contract bridge).
+	toolRuns *toolruns.Service
+	// toolVersions is the F05/T037 submission/build/review service.
+	toolVersions *toolversions.Service
+	models       *modelproxy.Service
+	objects      *objectstore.Store
+	signer       *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -37,6 +54,11 @@ type Server struct {
 	secureCookie bool
 	logger       *log.Logger
 	limiter      *loginLimiter
+	// F03/T032: the SSE replay window and its polling/heartbeat cadence. They are
+	// deployment knobs (ORCHARA_RUN_EVENT_*), normalised in New.
+	runEventRetention time.Duration
+	runEventPoll      time.Duration
+	runEventHeartbeat time.Duration
 }
 
 // Deps is everything the HTTP surface needs from the process that owns it.
@@ -65,12 +87,25 @@ type Deps struct {
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
 	RetryBackoff time.Duration
+	// ExecutionLeaseTTL is the F03 claim lease length. Zero falls back to
+	// execution.DefaultLeaseTTL (30s); a value outside the documented bounds is
+	// normalised by the execution service.
+	ExecutionLeaseTTL time.Duration
 	// Manifest carries the deployment inputs the validate endpoint needs; absent
 	// inputs are a 503, not a startup error.
 	Manifest compiler.Inputs
 	// Notifier is the best-effort background wakeup hook. Nil means NopNotifier:
 	// losing every notification is a supported state because claim polls PostgreSQL.
 	Notifier background.Notifier
+	// RunEventRetention is how far back GET /runs/{id}/events can replay before
+	// answering 410 event_cursor_expired. Zero falls back to the documented 24h.
+	RunEventRetention time.Duration
+	// RunEventPollInterval is the idle SSE PostgreSQL poll cadence. Zero falls
+	// back to 500ms.
+	RunEventPollInterval time.Duration
+	// RunEventHeartbeatInterval is the idle SSE comment cadence. Zero falls back
+	// to the documented 15s.
+	RunEventHeartbeatInterval time.Duration
 }
 
 // New builds the HTTP surface. See Deps for each dependency's contract.
@@ -84,21 +119,43 @@ func New(deps Deps) *Server {
 		notifier = background.NopNotifier{}
 	}
 	authorizer := policy.New(deps.Service.DB)
+	executionService := execution.New(
+		deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL,
+	)
+	// local_sequence diagnostics go to the process log, never the API body.
+	executionService.Logger = logger
 	return &Server{
-		service:      deps.Service,
-		policy:       authorizer,
-		catalog:      catalog.New(deps.Service.DB, authorizer),
-		jobs:         background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
-		artifacts:    background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		models:       modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
-		objects:      deps.Objects,
-		signer:       deps.Signer,
-		manifest:     deps.Manifest,
-		webDir:       deps.WebDir,
-		secureCookie: SecureCookie(deps.Profile),
-		logger:       logger,
-		limiter:      newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
+		service:           deps.Service,
+		policy:            authorizer,
+		catalog:           catalog.New(deps.Service.DB, authorizer),
+		jobs:              background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
+		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:         executionService,
+		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		toolRuns:          toolruns.New(deps.Service.DB, notifier),
+		toolVersions:      toolversions.New(deps.Service.DB),
+		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		objects:           deps.Objects,
+		signer:            deps.Signer,
+		manifest:          deps.Manifest,
+		webDir:            deps.WebDir,
+		secureCookie:      SecureCookie(deps.Profile),
+		logger:            logger,
+		limiter:           newLoginLimiter(loginFailureLimit, loginFailureWindow, time.Now),
+		runEventRetention: durationOrDefault(deps.RunEventRetention, DefaultRunEventRetention),
+		runEventPoll:      durationOrDefault(deps.RunEventPollInterval, DefaultRunEventPollInterval),
+		runEventHeartbeat: durationOrDefault(deps.RunEventHeartbeatInterval, DefaultRunEventHeartbeatInterval),
 	}
+}
+
+// durationOrDefault keeps a zero dependency (an older caller) on the documented
+// deployment default instead of a zero-duration ticker panic.
+func durationOrDefault(value, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 // Register adds the identity routes to mux.
@@ -152,7 +209,16 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// read. The fixed manifest hash travels in X-Manifest-SHA256 on both, because
 	// the contract Run schema has no field for it (ADR 0004 §38).
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
+	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+	// F03/T036: owner-only, idempotent cancel intent. 202 with the contract Run;
+	// "accepted" never means the external effect was undone.
+	mux.HandleFunc("POST /api/v1/runs/{run_id}/cancel", s.handleCancelRun)
+	// F03/T032: the owner-only durable event stream. Last-Event-ID is this Run's
+	// local seq; the handler is SSE, not JSON.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
+	// F05/T033: the owner-only run artifact list.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/artifacts", s.handleListRunArtifacts)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
@@ -172,18 +238,54 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /object-links/{token}", s.handleObjectLinkPut)
 	mux.HandleFunc("GET /object-links/{token}", s.handleObjectLinkGet)
 
+	// F05/T028: user uploads and the owner-only artifact reads. The sealed key
+	// is preallocated on the row and never a PUT target; completion only moves
+	// uploading -> scanning and enqueues the shared finalize handler.
+	mux.HandleFunc("POST /api/v1/artifacts/uploads", s.handleCreateUpload)
+	mux.HandleFunc("POST /api/v1/artifacts/{artifact_id}/complete", s.handleCompleteUpload)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}", s.handleGetArtifact)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/download", s.handleDownloadArtifact)
+	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/content", s.handleArtifactContent)
+
+	// F05/T030: the trusted preset tool. A documented non-contract bridge over
+	// the durable background-job pipeline (T033/F04A bind tools to runs later).
+	mux.HandleFunc("POST /api/v1/tool-runs", s.handleCreateToolRun)
+	mux.HandleFunc("GET /api/v1/tool-runs/{job_id}", s.handleGetToolRun)
+
+	// F05/T037: tool submission, the contract read model, admin review and the
+	// documented non-contract revoke/build-facts endpoints. No route here names a
+	// user-supplied command or path.
+	mux.HandleFunc("POST /api/v1/tools", s.handleSubmitTool)
+	mux.HandleFunc("GET /api/v1/tools", s.handleListTools)
+	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}", s.handleGetTool)
+	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/review", s.handleReviewTool)
+	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/revoke", s.handleRevokeTool)
+	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}/build", s.handleGetToolBuild)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
+	// F05/T028: the attachment upload page. Like every static route, the path is
+	// a compile-time constant and no request input participates in it.
+	mux.HandleFunc("GET /attachments", s.staticPage("attachments.html"))
+	// F05/T037: the creator tools page and its admin review queue. Like every
+	// static route, the path is a compile-time constant.
+	mux.HandleFunc("GET /tools", s.staticPage("tools.html"))
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F03/T029: the owner-only runs view. Like every static route, the path is a
+	// compile-time constant and no request input participates in it.
+	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
+	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
+	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
+	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
 }
 
 type loginRequest struct {

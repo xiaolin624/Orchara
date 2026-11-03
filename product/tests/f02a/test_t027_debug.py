@@ -87,7 +87,11 @@ def test_debug_creates_a_private_snapshot_run_and_ready_job(t027_stack) -> None:
     assert run_row["state"] == "queued"
     assert run_row["phase"] == "idle"
     assert run_row["revision"] == 1
-    assert run_row["next_event_seq"] == 1
+    # T032 writes the queued run.status event (seq 1) in the same transaction, so
+    # the next free seq is 2. T034 freezes the policy's 900s active-time limit on
+    # the Run at creation (milliseconds; 900 * 1000).
+    assert run_row["next_event_seq"] == 2
+    assert run_row["max_active_ms"] == 900_000
     assert decimal.Decimal(run_row["budget_limit"]) == decimal.Decimal("1.00")
     assert run_row["currency"] == "USD"
     assert run_row["active_elapsed_ms"] == 0

@@ -1,9 +1,13 @@
-// Command supervisor parks the runs of dead workers (F00 skeleton).
+// Command supervisor parks the runs of dead workers (F00 skeleton) and, from
+// F05/T033, runs one claimed tool-debug attempt in the gVisor sandbox.
 //
-// One pass per invocation: take the supervisor lease, find workers that stopped
-// heartbeating, move their running runs to `recovery_pending`, exit. It never
-// restarts a run — restarting needs evidence that the old process and its writes
-// drained, which is a later ticket.
+// The no-argument behaviour is unchanged: one pass, take the supervisor lease,
+// find workers that stopped heartbeating, move their running runs to
+// `recovery_pending`, exit. It never restarts a run — restarting needs evidence
+// that the old process and its writes drained, which is a later ticket.
+//
+// `exec --once` is the new tool-debug executor (cmd/supervisor/exec.go); it talks
+// only to the internal mTLS API and runs at most one attempt per invocation.
 package main
 
 import (
@@ -11,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -21,6 +26,20 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "exec":
+			runExec(os.Args[2:])
+			return
+		case "help", "-h", "--help":
+			fmt.Fprint(os.Stdout, execUsage)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "orchara-supervisor: unknown command %q\n\n%s", os.Args[1], execUsage)
+			os.Exit(2)
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

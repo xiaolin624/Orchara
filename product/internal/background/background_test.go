@@ -6,10 +6,11 @@ import (
 	"time"
 )
 
-func TestTheWhitelistIsTheEightSpecifiedKinds(t *testing.T) {
+func TestTheWhitelistIsTheEightSpecifiedKindsPlusToolRun(t *testing.T) {
 	want := []Kind{
 		KindArtifactFinalize, KindRouteRequest, KindToolBuild, KindDocumentIngest,
 		KindApplicationEvaluate, KindModelValidate, KindDeleteContent, KindCatalogIndex,
+		KindToolRun,
 	}
 	got := AllKinds()
 	if len(got) != len(want) {

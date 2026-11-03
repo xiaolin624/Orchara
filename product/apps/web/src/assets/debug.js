@@ -12,12 +12,13 @@
  *     optionally up to five artifact ids. The submission carries one generated
  *     Idempotency-Key per attempt, so a retried click cannot create a second run
  *     and a network failure is safe to repeat.
- *   - After 202 the page shows the queued run: state, kind, revision, the fixed
- *     execution_snapshot_id and the manifest hash from the non-contract
+ *   - After 202 the page shows the queued run: state, phase, kind, revision, the
+ *     fixed execution_snapshot_id and the manifest hash from the non-contract
  *     X-Manifest-SHA256 header (the Run schema has no hash field, ADR 0004 §38).
  *     It then polls GET /runs/{id} and stops on a terminal state.
- *   - This batch has no worker (F03), so a released run stays `queued`. The page
- *     says so instead of pretending execution happened.
+ *   - F03 delivers claiming: while an attempt is live the detail response also
+ *     carries X-Run-Attempt-Started-At / X-Run-Lease-Deadline, and the page shows
+ *     those real facts. It never fakes progress.
  *   - No secret is ever put in a URL or in browser storage: the session cookie is
  *     HttpOnly, CSRF comes from GET /auth/me, and the idempotency key lives only
  *     in this page's memory.
@@ -142,6 +143,35 @@ function runIsTerminal(state) {
   return state === 'succeeded' || state === 'failed' || state === 'cancelled';
 }
 
+/**
+ * T031: one honest sentence per execution stage. A result proposal moves the
+ * Run to phase=finalizing, but that is still not success: the Go finalizer waits
+ * for supervisor exit/sandbox/DB-drain evidence. Success is only ever described
+ * for a committed terminal state.
+ */
+function describeRunStage(run) {
+  const summary = runSummary(run || {});
+  // The debug page's runSummary deliberately carries no phase; read the field
+  // from the contract Run body itself.
+  const phase = (run && run.phase) || '';
+  if (runIsTerminal(summary.state)) {
+    return '已进入终态 ' + summary.state + '（由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
+  }
+  if (summary.state === 'recovery_pending') {
+    return '已确认退出但没有结果，Run 挂起在 recovery_pending；恢复证据齐全前不会重新执行。';
+  }
+  if (summary.state === 'needs_reconciliation') {
+    return 'Run 等待人工核对（needs_reconciliation）；不显示为成功或失败。';
+  }
+  if (summary.state === 'running' && phase === 'finalizing') {
+    return '结果提议已保存，正在 finalizing：等待 supervisor 的退出证据（进程/沙箱/数据库排空），终态前这不是成功。';
+  }
+  if (summary.state === 'running') {
+    return '正在执行（executing）；结果提议与退出证据由 F03 supervisor 协议提交。';
+  }
+  return '当前阶段 ' + (phase || 'idle') + '（' + summary.state + '）。';
+}
+
 function shouldPollRun(run, pollsSoFar, maxPolls) {
   if (!run || typeof run.state !== 'string') {
     return false;
@@ -162,6 +192,20 @@ function manifestSHAFromHeaders(headers) {
   return headers.get('X-Manifest-SHA256') || '';
 }
 
+/**
+ * The real claim/lease facts F03 attaches to a run detail while an attempt is
+ * live. They are non-secret timestamps; the attempt token is never exposed.
+ */
+function leaseFactsFromHeaders(headers) {
+  if (!headers || typeof headers.get !== 'function') {
+    return { startedAt: '', leaseDeadline: '' };
+  }
+  return {
+    startedAt: headers.get('X-Run-Attempt-Started-At') || '',
+    leaseDeadline: headers.get('X-Run-Lease-Deadline') || '',
+  };
+}
+
 /** Submit one debug run. A 202 body is the queued Run. */
 async function submitDebugRequest(applicationId, payload, idempotencyKey) {
   if (!idempotencyKey) {
@@ -173,13 +217,21 @@ async function submitDebugRequest(applicationId, payload, idempotencyKey) {
     csrf: await csrf(),
     headers: { 'Idempotency-Key': idempotencyKey },
   });
-  return { run: result.payload, manifestSHA256: manifestSHAFromHeaders(result.headers) };
+  return {
+    run: result.payload,
+    manifestSHA256: manifestSHAFromHeaders(result.headers),
+    lease: leaseFactsFromHeaders(result.headers),
+  };
 }
 
 /** One poll of GET /runs/{id}. */
 async function fetchRun(runId) {
   const result = await apiFull(debugRunPath(runId));
-  return { run: result.payload, manifestSHA256: manifestSHAFromHeaders(result.headers) };
+  return {
+    run: result.payload,
+    manifestSHA256: manifestSHAFromHeaders(result.headers),
+    lease: leaseFactsFromHeaders(result.headers),
+  };
 }
 
 /** The current draft revision, so the creator never has to guess it. */
@@ -206,7 +258,7 @@ function debugStatus(message, kind) {
   element.className = 'status ' + (kind || '');
 }
 
-function debugShowRun(run, manifestSHA256, note, frozenRevision) {
+function debugShowRun(run, manifestSHA256, note, frozenRevision, lease) {
   const panel = document.getElementById('run-panel');
   if (!panel) {
     return;
@@ -214,10 +266,16 @@ function debugShowRun(run, manifestSHA256, note, frozenRevision) {
   const summary = runSummary(run);
   document.getElementById('run-id').textContent = summary.id;
   document.getElementById('run-state').textContent = summary.state;
+  document.getElementById('run-phase').textContent = (run && run.phase) || 'idle';
   document.getElementById('run-kind').textContent = summary.kind;
   document.getElementById('run-revision').textContent = summary.revision;
   document.getElementById('run-snapshot').textContent = summary.executionSnapshotID;
   document.getElementById('run-manifest').textContent = manifestSHA256 || '（响应头未提供）';
+  const facts = lease || {};
+  document.getElementById('run-lease').textContent =
+    summary.state === 'running' && facts.leaseDeadline
+      ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
+      : '（没有可显示的租约事实）';
   if (frozenRevision !== undefined && frozenRevision !== null && frozenRevision !== '') {
     // The frozen draft revision is a submission fact: the contract Run schema
     // does not expose the snapshot's draft_revision (there is no snapshot read
@@ -272,8 +330,9 @@ function initDebug() {
       debugShowRun(
         polled.run,
         polled.manifestSHA256,
-        '这是一个私有 debug Run。本批（T027）只交付提交与排队：领取、执行、事件和结果属 F03，因此它会停在 queued。',
+        describeRunStage(polled.run) + ' 本页只显示服务端返回的 state/phase 与租约事实。',
         frozenRevision,
+        polled.lease,
       );
       if (shouldPollRun(polled.run, polls, DEBUG_MAX_POLLS)) {
         pollTimer = setTimeout(() => poll(runId), DEBUG_POLL_INTERVAL_MS);
@@ -282,7 +341,7 @@ function initDebug() {
         if (runIsTerminal(polled.run.state)) {
           debugStatus('Run 已进入终态 ' + polled.run.state + '。', 'ok');
         } else {
-          debugStatus('已停止轮询（' + polls + ' 次）；Run 仍为 ' + polled.run.state + '，执行由 F03 接通。', 'pending');
+          debugStatus('已停止轮询（' + polls + ' 次）；Run 仍为 ' + polled.run.state + '。', 'pending');
         }
       }
     } catch (error) {
@@ -317,10 +376,21 @@ function initDebug() {
       debugShowRun(
         submitted.run,
         submitted.manifestSHA256,
-        '已固定快照 ' + summary.executionSnapshotID + '。本批只交付提交与排队：领取、执行和结果属 F03，因此它会停在 queued。',
+        '已固定快照 ' + summary.executionSnapshotID + '。Run 现在排队；领取与执行由 F03 supervisor 协议完成。',
         frozenRevision,
+        submitted.lease,
       );
       debugStatus('已创建 queued debug Run ' + summary.id + '（revision ' + summary.revision + '）。', 'ok');
+      // T032: the panel's durable timeline is the same SSE client the runs page
+      // uses (runs.js is loaded first). It dedupes by seq, reconnects with
+      // Last-Event-ID, and shows the 410 snapshot URL instead of faking history.
+      if (typeof beginRunTimeline === 'function') {
+        beginRunTimeline(summary.id, {
+          listID: 'run-timeline',
+          statusID: 'run-timeline-status',
+          previewID: 'run-preview',
+        });
+      }
       // A new attempt gets a new key; the completed one is never reused.
       idempotencyKey = newIdempotencyKey();
       document.getElementById('debug-key').textContent = idempotencyKey;

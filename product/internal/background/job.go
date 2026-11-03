@@ -47,9 +47,14 @@ const (
 	KindModelValidate       Kind = "model_validate"
 	KindDeleteContent       Kind = "delete_content"
 	KindCatalogIndex        Kind = "catalog_index"
+	// KindToolRun is the T030 non-contract bridge for the trusted preset tool:
+	// one caller-owned ready CSV/XLSX artifact in, summary/log/diagnostics
+	// artifacts out. T033 binds preset tools to the sandboxed run protocol.
+	KindToolRun Kind = "tool_run"
 )
 
-// allKinds is the closed whitelist from BACKGROUND-JOBS.md §2.
+// allKinds is the closed whitelist from BACKGROUND-JOBS.md §2, extended by T030
+// with the documented non-contract kind tool_run.
 var allKinds = []Kind{
 	KindArtifactFinalize,
 	KindRouteRequest,
@@ -59,6 +64,7 @@ var allKinds = []Kind{
 	KindModelValidate,
 	KindDeleteContent,
 	KindCatalogIndex,
+	KindToolRun,
 }
 
 var knownKinds = func() map[Kind]bool {
@@ -169,6 +175,12 @@ const (
 	CodeAttemptsExhausted        = "attempts_exhausted"
 	CodeArtifactStateNotScanning = "artifact_state_not_scanning"
 
+	// T028 format admission codes. Both are content refusals: the artifact can
+	// never become ready, so the completion guard quarantines it. They are
+	// deliberately not retryable — the same bytes cannot pass a later attempt.
+	CodeArtifactFormatRejected   = "artifact_format_rejected"
+	CodeArtifactUploadIncomplete = "artifact_upload_incomplete"
+
 	// model_validate failure codes (T024). A model provider that is not
 	// configured is a deployment fact, not a transient outage: retrying cannot
 	// fix it, so it is a business failure. The compatibility report itself is a
@@ -194,6 +206,37 @@ const (
 	CodeEvaluationUnsupported     = "evaluation_unsupported_kind"
 	CodeReportBindingMismatch     = "report_binding_mismatch"
 	CodeReportInvalid             = "report_invalid"
+
+	// tool_run failure codes (T030). A tool rejection (missing_column,
+	// duplicate_order_id, ...) is submitted verbatim: it is a business failure
+	// and the unknown-code rule keeps it non-retryable. The codes below are the
+	// platform-side edges: invalid/oversized/escaping output is a tool defect
+	// that cannot improve on retry, while timeout/crash/storage IO may.
+	CodeToolTimeout          = "tool_timeout"
+	CodeToolCrash            = "tool_crash"
+	CodeToolOutputInvalid    = "tool_output_invalid"
+	CodeToolArtifactInvalid  = "tool_artifact_invalid"
+	CodeToolArtifactEscape   = "tool_artifact_path_escape"
+	CodeToolArtifactSymlink  = "tool_artifact_symlink"
+	CodeToolArtifactTooLarge = "tool_artifact_too_large"
+	CodeToolArtifactCount    = "tool_artifact_count_exceeded"
+	CodeToolInputInvalid     = "tool_input_invalid"
+
+	// tool_build failure codes (T037). The handler reports the safe code; the
+	// completion guard stores the same closed vocabulary on tool_versions.
+	// Only the three transient codes are retryable; every build rejection is
+	// deterministic (the same source/lock produces the same refusal), so it
+	// fails immediately.
+	CodeBuildFailed              = "build_failed"
+	CodeBuildSourceInvalid       = "build_source_invalid"
+	CodeBuildSourceChanged       = "build_source_changed"
+	CodeBuildSandboxUnavailable  = "build_sandbox_unavailable"
+	CodeBuildTimeout             = "build_timeout"
+	CodeBuildCrashed             = "build_crashed"
+	CodeBuildOutputInvalid       = "build_output_invalid"
+	CodeBuildArtifactsInvalid    = "build_artifacts_invalid"
+	CodeBuildArtifactInvalid     = "build_artifact_invalid"
+	CodeBuildDependenciesMissing = "dependencies_unavailable"
 )
 
 // Failure codes that quarantine the artifact rather than leave it unavailable.
@@ -203,6 +246,11 @@ var quarantineCodes = map[string]bool{
 	CodeArtifactTooLarge:         true,
 	CodeArtifactObjectMissing:    true,
 	CodeArtifactExpectedHashMiss: true,
+	// T028: user-upload content that the platform refuses to admit, and an
+	// upload whose staging bytes never arrived. Both can never become ready, so
+	// the owner must see quarantined rather than a permanent scanning state.
+	CodeArtifactFormatRejected:   true,
+	CodeArtifactUploadIncomplete: true,
 }
 
 // ImpliesQuarantine reports whether a reported artifact_finalize failure must
@@ -235,6 +283,27 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,
 		CodeDatasetWaitTimeout: true,
+	},
+	// tool_run (T030): the trusted tool runs in a bounded subprocess. A timeout
+	// or crash can be transient (a loaded host, a transient Python failure) and
+	// is retried at most MaxAttempts; a user-input rejection or an invalid tool
+	// output is deterministic and fails immediately. The tool's rejection codes
+	// are deliberately absent here: an unknown code classifies as business, so a
+	// later tool cannot accidentally introduce an infinite retry loop.
+	KindToolRun: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+		CodeToolTimeout:        true,
+		CodeToolCrash:          true,
+	},
+	// tool_build (T037): transient storage/internal/lease failures are retried;
+	// a dependency-unavailable, unsafe-source or sandbox refusal is deterministic
+	// and business. An unknown code classifies as business (fail safe).
+	KindToolBuild: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
 	},
 }
 

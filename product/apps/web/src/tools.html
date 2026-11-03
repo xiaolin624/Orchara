@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 工具提交与审核（F05）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .86rem; margin: .55rem 0 .2rem; }
+    input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
+    textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    button.secondary { background: transparent; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .6rem 0; }
+    code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .72; }
+    .build { border-top: 1px dashed rgba(128,128,128,.35); margin-top: .55rem; padding-top: .55rem; }
+    .review-box { margin-top: .5rem; display: grid; gap: .3rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用</a>
+    <a href="/attachments">附件</a>
+    <a href="/runs">运行</a>
+    <a href="/tools">工具</a>
+    <a href="/admin">管理台</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>工具提交、隔离构建与审核（F05/T037）</h1>
+  <p class="sub">
+    创作者提交一个已上传为 <code>purpose=tool_source</code> 的 zip 源包、输入/输出 Schema
+    与依赖锁，平台在隔离沙箱（gVisor/runsc、无网络、只读输入）中构建，成功后才写入
+    <code>ready</code>。构建成功不等于组织批准：只有管理员审核通过的工具才能进入共享执行；
+    作者自己的未批准 ready 工具只能用于私有调试。撤销后新执行与依赖校验都会被拒绝。
+  </p>
+  <p class="hint">
+    <code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
+    SHA-256），不是 OCI 镜像；F15A 才构建镜像。依赖锁需要本地 wheelhouse 的包在最小根文件系统上
+    会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。
+  </p>
+
+  <section class="card" id="submit-card">
+    <h2>提交工具源包</h2>
+    <p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把 artifact id 填在这里。</p>
+    <form id="submit-form">
+      <label for="source-artifact-id">source_artifact_id</label>
+      <input id="source-artifact-id" name="source_artifact_id" type="text" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" />
+      <label for="risk-class">risk_class</label>
+      <select id="risk-class" name="risk_class">
+        <option value="pure">pure</option>
+        <option value="read">read</option>
+        <option value="write">write</option>
+      </select>
+      <label for="input-schema">input_schema（JSON 对象）</label>
+      <textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
+      <label for="output-schema">output_schema（JSON 对象）</label>
+      <textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
+      <label for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label>
+      <textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea>
+      <p class="hint">连接器版本当前恒为空：F06 负责连接器，服务器会拒绝非空列表而不是静默丢弃。</p>
+      <button id="submit-button" type="submit">提交并排队隔离构建</button>
+    </form>
+    <p id="submit-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card" id="review-card" hidden>
+    <h2>管理员审核队列</h2>
+    <p id="review-status" class="status" role="status" aria-live="polite"></p>
+    <ul id="review-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2>可见工具</h2>
+    <p id="tools-status" class="status" role="status" aria-live="polite">正在加载工具…</p>
+    <ul id="tools-list"></ul>
+    <p id="tools-empty" class="hint" hidden>当前没有可见的工具：你既不是所有者，也没有已批准共享的工具。</p>
+    <button id="tools-next" type="button" hidden>下一页</button>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/tools.js"></script>
+  <script>
+    const submitForm = document.getElementById('submit-form');
+    const submitStatus = document.getElementById('submit-status');
+    const toolsList = document.getElementById('tools-list');
+    const toolsStatus = document.getElementById('tools-status');
+    const toolsEmpty = document.getElementById('tools-empty');
+    const toolsNext = document.getElementById('tools-next');
+    const reviewCard = document.getElementById('review-card');
+    const reviewList = document.getElementById('review-list');
+    const reviewStatus = document.getElementById('review-status');
+
+    let identityState = null;
+    let nextCursor = null;
+    let rendered = 0;
+    let visibleItems = [];
+
+    function setStatus(element, message, kind) {
+      element.textContent = message;
+      element.className = 'status ' + (kind || '');
+    }
+
+    function node(tag, text, className) {
+      const element = document.createElement(tag);
+      if (text !== undefined && text !== null) {
+        element.textContent = String(text);
+      }
+      if (className) {
+        element.className = className;
+      }
+      return element;
+    }
+
+    function buildLine(tool) {
+      const described = describeToolVersion(tool);
+      const item = document.createElement('li');
+      item.dataset.toolId = described.id;
+
+      const head = document.createElement('strong');
+      head.textContent = described.stateText;
+      const id = node('code', described.id);
+      item.append(head, ' ', id);
+
+      const approved = node('div', described.approvedText, 'hint');
+      item.appendChild(approved);
+
+      const manifest = node('div', 'manifest_sha256: ' + described.manifestSha256, 'mono');
+      item.appendChild(manifest);
+
+      const digest = node('div', described.digest ? '内容包摘要: ' + described.digest : '摘要: 尚未构建', 'mono');
+      item.appendChild(digest);
+
+      const detailsButton = node('button', '构建日志 / SBOM / 审核记录', 'secondary');
+      detailsButton.type = 'button';
+      const details = node('div', '', 'build');
+      details.hidden = true;
+      detailsButton.addEventListener('click', async () => {
+        details.hidden = !details.hidden;
+        if (details.hidden) {
+          return;
+        }
+        await loadBuildFacts(described.id, details);
+      });
+      item.append(detailsButton, details);
+
+      if (canReview(identityState)) {
+        item.appendChild(buildReviewControls(described));
+      }
+      return item;
+    }
+
+    async function loadBuildFacts(toolId, container) {
+      container.replaceChildren(node('p', '正在加载构建事实…', 'hint'));
+      try {
+        const facts = await api(toolBuildPath(toolId));
+        const described = describeBuildFacts(facts);
+        container.replaceChildren();
+        const line = node('p', described.stateLine, 'hint');
+        container.appendChild(line);
+        if (described.logPath) {
+          const log = document.createElement('a');
+          log.href = described.logPath;
+          log.textContent = '下载构建日志';
+          container.append(log, ' ');
+        }
+        if (described.sbomPath) {
+          const sbom = document.createElement('a');
+          sbom.href = described.sbomPath;
+          sbom.textContent = '下载 SBOM';
+          container.appendChild(sbom);
+        }
+        if (described.buildErrorCode) {
+          container.appendChild(node('p', '构建失败码：' + described.buildErrorCode, 'status bad'));
+        }
+        container.appendChild(node('p', 'artifact id 只用于本页下载；对象键不会出现在页面或日志里。', 'hint'));
+      } catch (error) {
+        container.replaceChildren(node('p', '构建事实读取失败 ' + describeFailure(error), 'status bad'));
+      }
+    }
+
+    function buildReviewControls(described) {
+      const box = node('div', '', 'review-box');
+      const reasonLabel = node('label', '审核/撤销原因');
+      const reason = document.createElement('textarea');
+      reason.placeholder = '审核意见或撤销原因（必填）';
+      box.append(reasonLabel, reason);
+
+      const decisionRow = document.createElement('div');
+      const approve = node('button', '批准共享');
+      approve.type = 'button';
+      const reject = node('button', '拒绝（不改变构建结果）', 'secondary');
+      reject.type = 'button';
+      const revoke = node('button', '撤销工具', 'secondary');
+      revoke.type = 'button';
+      decisionRow.append(approve, ' ', reject, ' ', revoke);
+
+      const status = node('p', '', 'status');
+      box.append(decisionRow, status);
+
+      async function sendReview(decision) {
+        const payload = reviewBody(decision, described.manifestSha256, reason.value);
+        if (!payload.ok) {
+          setStatus(status, payload.error, 'bad');
+          return;
+        }
+        try {
+          await api(toolReviewPath(described.id), {
+            method: 'POST',
+            body: payload.body,
+            csrf: await csrf(),
+            headers: { 'Idempotency-Key': 'tools-review-' + described.id + '-' + Date.now() },
+          });
+          setStatus(status, decision === 'approve' ? '已批准共享。' : '已记录拒绝意见（构建仍为 ready）。', 'ok');
+          await loadPage(null, true);
+        } catch (error) {
+          setStatus(status, '审核失败 ' + describeFailure(error), 'bad');
+        }
+      }
+
+      approve.addEventListener('click', () => sendReview('approve'));
+      reject.addEventListener('click', () => sendReview('reject'));
+      revoke.addEventListener('click', async () => {
+        const payload = revokeBody(reason.value);
+        if (!payload.ok) {
+          setStatus(status, payload.error, 'bad');
+          return;
+        }
+        try {
+          await api(toolRevokePath(described.id), {
+            method: 'POST',
+            body: payload.body,
+            csrf: await csrf(),
+          });
+          setStatus(status, '已撤销：新的依赖校验将返回 dependency_revoked。', 'ok');
+          await loadPage(null, true);
+        } catch (error) {
+          setStatus(status, '撤销失败 ' + describeFailure(error), 'bad');
+        }
+      });
+      return box;
+    }
+
+    function renderReviewQueue(items) {
+      const queue = describeReviewQueue(items);
+      reviewList.replaceChildren();
+      setStatus(reviewStatus, queue.text, queue.count === 0 ? 'ok' : 'pending');
+      for (const tool of queue.items) {
+        reviewList.appendChild(buildLine(tool));
+      }
+    }
+
+    async function loadPage(cursor, reset) {
+      if (reset) {
+        rendered = 0;
+        visibleItems = [];
+        toolsList.replaceChildren();
+      }
+      setStatus(toolsStatus, '正在加载工具…', 'pending');
+      try {
+        await requireLogin();
+        const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+        const page = await api(toolsPath() + query);
+        const items = page.items || [];
+        for (const tool of items) {
+          toolsList.appendChild(buildLine(tool));
+          visibleItems.push(tool);
+          rendered += 1;
+        }
+        nextCursor = page.next_cursor || null;
+        toolsNext.hidden = !nextCursor;
+        toolsEmpty.hidden = rendered !== 0;
+        setStatus(
+          toolsStatus,
+          rendered === 0 ? '没有可见的工具。' : '共显示 ' + rendered + ' 个工具' + (nextCursor ? '，还有下一页。' : '。'),
+          'ok',
+        );
+        if (canReview(identityState)) {
+          reviewCard.hidden = false;
+          renderReviewQueue(visibleItems);
+        }
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(toolsStatus, '加载失败 ' + describeFailure(error), 'bad');
+      }
+    }
+
+    submitForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = buildSubmitBody({
+        sourceArtifactId: document.getElementById('source-artifact-id').value,
+        riskClass: document.getElementById('risk-class').value,
+        inputSchema: document.getElementById('input-schema').value,
+        outputSchema: document.getElementById('output-schema').value,
+        dependencyLock: document.getElementById('dependency-lock').value,
+      });
+      if (!payload.ok) {
+        setStatus(submitStatus, payload.error, 'bad');
+        return;
+      }
+      setStatus(submitStatus, '正在提交…', 'pending');
+      try {
+        const accepted = await api(toolsPath(), {
+          method: 'POST',
+          body: payload.body,
+          csrf: await csrf(),
+        });
+        setStatus(submitStatus, '已排队：' + accepted.id + '（' + accepted.state + '）', 'ok');
+        await loadPage(null, true);
+      } catch (error) {
+        setStatus(submitStatus, '提交失败 ' + describeFailure(error), 'bad');
+      }
+    });
+
+    toolsNext.addEventListener('click', () => {
+      if (nextCursor) {
+        loadPage(nextCursor, false);
+      }
+    });
+
+    (async () => {
+      try {
+        identityState = await requireLogin();
+        document.getElementById('submit-card').hidden = !canSubmit(identityState);
+        if (canReview(identityState)) {
+          reviewCard.hidden = false;
+        }
+        await loadPage(null, true);
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(toolsStatus, '初始化失败 ' + describeFailure(error), 'bad');
+      }
+    })();
+  </script>
+</body>
+</html>
