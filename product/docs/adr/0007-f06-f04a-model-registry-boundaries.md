@@ -214,3 +214,25 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   既有 `GET /artifacts/{id}/content`，且因 `purpose=log` 不出现在 `listRunArtifacts`。
 - `/runs` 节点结果面板只读上述投影，纯函数由 Node 执行；"无结果"与"失败"是两种显示，
   不互相顶替；页面不存 localStorage/sessionStorage，不显示 object key。
+
+## T043 追加（2026-11-04）：受控 Agent 节点是能力循环 + 节点 schema 二次校验
+
+### D10 — Agent 节点只经由 T041 capability  seam 行动，最终输出由平台校验
+
+- 四节点线性链 `start → python → agent → end` 的 agent 段是一个有界循环：每轮模型调用、每次
+  工具调用都各是一个 T041 operation（`agent:<node>:model:<turn>` / `agent:<node>:tool:<call_id>`），
+  operation id 由 run id + logical key 派生确定性 UUIDv5，重试重放同一 operation；executor 不直接
+  访问 provider，也不在沙箱外执行工具。
+- agent `tool_versions` 必须是密封 `manifest.tool_artifacts` 的子集；本构建只执行固定预设
+  `sales_stats`，其他声明在模型调用前拒绝。执行前再经 supervisor 只读 `Facts` 复核 passed/
+  ready/callable（与 T041 服务端同一规则），执行后经 `capability-results` 成功/失败回报。
+- 最终输出：模型被请求以节点 `output_schema` 作为 `response_schema` 返回结构化结果；executor
+  仍按同一节点 schema 再校验一次（定位到 JSON Pointer），失败即 `node_output_invalid`，不产生
+  成功 proposal/final artifact。等待/未知/超限/能力错误都映射为平台稳定码
+  （`agent_awaiting_approval`/`agent_unknown`/`agent_turn_limit`/T041 码），绝不透传 provider 对象。
+- Legacy 选择改为显式形状：恰好一个预设 python 节点且 `file` 绑定为 `input#...` → T033 单
+  python 路径；`node:start#/artifact` → T042/T043 线性链。带 agent 的非法图绝不 legacy 回退。
+  这修正了 T042 报告“T043 落地后删除兼容分支”的措辞：兼容分支是 T033 golden 图的必要条件。
+- `/runs` Agent 面板只读既有 node-results 与 T041 账本投影；不用逻辑键扩展 T041 账本投影
+  （会破坏 T041 冻结的 owner 读取形状），而以 executor 文档化的 `tool-log-<call id>` label 与
+  failed-node 状态关联。`node_output_invalid` 的 JSON Pointer 只在 supervisor 报告，不在 owner API。
