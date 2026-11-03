@@ -8,11 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	"orchara/platform/internal/budget"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
@@ -51,6 +51,9 @@ type Service struct {
 	DB        *sql.DB
 	Store     *objectstore.Store
 	Providers *modelproxy.Providers
+	// Budget is the F06/T046 decimal budget ledger. It is the single budget
+	// authority for every model attempt of the run tree.
+	Budget *budget.Ledger
 	// ToolExecutor is reserved for T042/T043; nil means worker execution (the
 	// only path in this batch).
 	ToolExecutor ToolExecutor
@@ -59,7 +62,7 @@ type Service struct {
 // New builds the capability service. Store/Providers may be nil in a process
 // that never calls a capability; every operation that needs them fails closed.
 func New(db *sql.DB, store *objectstore.Store, providers *modelproxy.Providers) *Service {
-	return &Service{DB: db, Store: store, Providers: providers}
+	return &Service{DB: db, Store: store, Providers: providers, Budget: budget.New(db)}
 }
 
 // Input is the contract's CapabilityInput plus no worker-chosen identity beyond
@@ -100,6 +103,8 @@ type runContext struct {
 	OwnerID         string
 	Kind            string
 	State           string
+	BudgetLimit     string
+	Currency        string
 	ManifestSHA256  string
 	Manifest        *compiler.Manifest
 	CancelRequested bool
@@ -224,6 +229,7 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 	)
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT r.owner_id::text, r.kind, r.state, r.cancel_requested_at,
+		       r.budget_limit::text, r.currency,
 		       r.manifest_sha256, s.id::text, s.manifest_sha256,
 		       s.manifest_artifact_id::text, a.owner_id::text, a.state, a.object_key, a.sha256,
 		       EXISTS (
@@ -242,7 +248,8 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 		  JOIN platform.artifacts AS a ON a.id = s.manifest_artifact_id
 		 WHERE r.id = $1::uuid`, runID, attemptToken,
 	).Scan(
-		&run.OwnerID, &run.Kind, &run.State, &cancel, &run.ManifestSHA256,
+		&run.OwnerID, &run.Kind, &run.State, &cancel, &run.BudgetLimit, &run.Currency,
+		&run.ManifestSHA256,
 		&snapshotID, &snapshotSHA, &artifactId, &artifactOwner, &artifactState,
 		&artifactKey, &artifactSHA, &live,
 	)
@@ -813,11 +820,20 @@ func (s *Service) dispatchModel(
 	if err != nil {
 		return nil, providerFailure(err)
 	}
-	reserved := estimateReservedUnits(input.Params)
+	// F06/T046: the conservative price-version reservation of this profile. It
+	// is reserved before every physical attempt and settled/released after it.
+	reservation, capErr := reservationFor(spec.Profile, run, input.Params)
+	if capErr != nil {
+		return nil, capErr
+	}
+	pricing, capErr := priceForProfile(spec.Profile, run.Currency)
+	if capErr != nil {
+		return nil, capErr
+	}
 	failureCode := CodeProviderTransient
 	failureReason := ""
 	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
-		if _, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
+		if _, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation); capErr != nil {
 			return nil, capErr
 		}
 		response, callErr := provider.Call(ctx, modelproxy.CallRequest{
@@ -826,7 +842,7 @@ func (s *Service) dispatchModel(
 			Attempt:   attempt,
 		})
 		if callErr == nil {
-			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil)
+			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil, pricing)
 		}
 		transient := modelproxy.IsTransient(callErr)
 		code := CodeProviderTransient
@@ -844,7 +860,7 @@ func (s *Service) dispatchModel(
 		}
 		failureCode, failureReason = code, reason
 		if attempt < maxPhysicalAttempts {
-			if capErr := s.resetAttemptForRetry(ctx, operationID, code); capErr != nil {
+			if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
 				return nil, capErr
 			}
 			if err := sleepBackoff(ctx, attempt); err != nil {
@@ -861,11 +877,11 @@ func (s *Service) dispatchModel(
 		if selection.Reason == "" {
 			selection.Reason = FallbackReasonAvailability
 		}
-		if capErr := s.resetAttemptForRetry(ctx, operationID, failureCode); capErr != nil {
+		if capErr := s.resetAttemptForRetry(ctx, operationID, maxPhysicalAttempts, failureCode); capErr != nil {
 			return nil, capErr
 		}
 		return s.dispatchFallback(ctx, run, input, spec, operationID,
-			maxPhysicalAttempts+1, reserved, selection)
+			maxPhysicalAttempts+1, selection)
 	}
 	if capErr := s.failOperation(ctx, operationID, failureCode); capErr != nil {
 		return nil, capErr
@@ -890,7 +906,6 @@ func (s *Service) dispatchFallback(
 	spec *capabilitySpec,
 	operationID string,
 	attempt int,
-	reserved string,
 	selection *fallbackSelection,
 ) (*Result, error) {
 	profile := selection.Profile
@@ -912,7 +927,17 @@ func (s *Service) dispatchFallback(
 		}
 		return nil, providerFailure(err)
 	}
-	if _, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
+	reservation, capErr := reservationFor(profile, run, input.Params)
+	if capErr != nil {
+		_ = s.failOperation(ctx, operationID, capErr.Code)
+		return nil, capErr
+	}
+	pricing, capErr := priceForProfile(profile, run.Currency)
+	if capErr != nil {
+		_ = s.failOperation(ctx, operationID, capErr.Code)
+		return nil, capErr
+	}
+	if _, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation); capErr != nil {
 		return nil, capErr
 	}
 	response, callErr := provider.Call(ctx, modelproxy.CallRequest{
@@ -922,7 +947,7 @@ func (s *Service) dispatchFallback(
 	})
 	if callErr == nil {
 		fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
-		return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact)
+		return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact, pricing)
 	}
 	code := providerErrorCode(callErr)
 	if modelproxy.IsTransient(callErr) {
@@ -954,7 +979,6 @@ func (s *Service) selectFallback(
 	if len(ids) == 0 {
 		return nil
 	}
-	reserved := estimateReservedUnits(params)
 	budgetChecked := false
 	budgetAllowed := false
 	for _, id := range ids {
@@ -984,7 +1008,7 @@ func (s *Service) selectFallback(
 		}
 		if !budgetChecked {
 			budgetChecked = true
-			budgetAllowed = s.budgetAllowsFallback(ctx, run.ID, reserved)
+			budgetAllowed = s.budgetAllowsFallback(ctx, run, profile, params)
 		}
 		if !budgetAllowed {
 			// The conservative reservation of this fallback does not fit the
@@ -996,37 +1020,49 @@ func (s *Service) selectFallback(
 	return nil
 }
 
-// budgetAllowsFallback asks PostgreSQL whether the conservative fallback
-// reservation still fits the run's remaining budget. T046 owns the full budget
-// ledger; T045 only refuses a fallback that cannot be paid for. A read error
-// refuses the fallback (fail closed) instead of failing the primary result.
-func (s *Service) budgetAllowsFallback(ctx context.Context, runID, reserved string) bool {
-	var fits bool
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT r.budget_limit
-		       - COALESCE((SELECT sum(a.reserved_amount)
-		                     FROM platform.operation_attempts AS a
-		                     JOIN platform.operations AS o ON o.id = a.operation_id
-		                    WHERE o.run_id = r.id AND a.state = 'dispatching'), 0)
-		       - COALESCE((SELECT sum(a.charged_amount)
-		                     FROM platform.operation_attempts AS a
-		                     JOIN platform.operations AS o ON o.id = a.operation_id
-		                    WHERE o.run_id = r.id AND a.charged_amount IS NOT NULL), 0)
-		       >= $2::numeric
-		  FROM platform.runs AS r
-		 WHERE r.id = $1::uuid`, runID, reserved,
-	).Scan(&fits)
+// budgetAllowsFallback asks the decimal ledger whether the fallback profile's
+// own conservative reservation still fits the run tree's remaining budget. The
+// authoritative refusal remains ReserveTx; this pre-check keeps T045's rule
+// that no fallback is attempted beyond budget (the primary's typed failure is
+// returned instead). A read error refuses the fallback (fail closed).
+func (s *Service) budgetAllowsFallback(ctx context.Context, run *runContext, profile *ModelProfile, params map[string]any) bool {
+	if s.Budget == nil {
+		return false
+	}
+	reservation, capErr := reservationFor(profile, run, params)
+	if capErr != nil {
+		return false
+	}
+	totals, err := s.Budget.Totals(ctx, run.ID)
 	if err != nil {
 		return false
 	}
-	return fits
+	if totals.Overrun {
+		return false
+	}
+	required, err := budget.CompareAmounts(reservation.Amount, totals.Remaining)
+	if err != nil {
+		return false
+	}
+	return required <= 0
 }
 
-// beginModelAttempt CASes the operation from authorized to dispatching and
-// records the physical attempt row before the provider is touched. It returns
-// the attempt row id, which the streaming path uses as the frame generation id:
-// every streamed frame is thereby traceable to a persisted physical attempt.
-func (s *Service) beginModelAttempt(ctx context.Context, operationID, attemptToken string, attempt int, reserved string) (string, *Error) {
+// beginModelAttempt CASes the operation from authorized to dispatching, reserves
+// the conservative budget hold and records the physical attempt row atomically.
+// A budget refusal rolls the whole transaction back, so no attempt row and no
+// provider call exist, then fails the operation with the typed budget code so
+// the owner ledger shows why the call stopped. It returns the attempt row id,
+// which the streaming path uses as the frame generation id.
+func (s *Service) beginModelAttempt(
+	ctx context.Context,
+	run *runContext,
+	operationID, attemptToken string,
+	attempt int,
+	reservation *budget.ReserveRequest,
+) (string, *Error) {
+	if s.Budget == nil {
+		return "", capFailure(503, "budget_unavailable", "the budget ledger is not configured")
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return "", capFailure(500, CodeInternal, "the attempt transaction could not start")
@@ -1042,12 +1078,30 @@ func (s *Service) beginModelAttempt(ctx context.Context, operationID, attemptTok
 	if state != "authorized" {
 		return "", capFailure(409, CodeOperationInProgress, "the operation is not in an authorized state")
 	}
+	request := *reservation
+	request.RunID = run.ID
+	request.OperationID = operationID
+	request.AttemptKey = budget.AttemptKey(operationID, attempt)
+	held, err := s.Budget.ReserveTx(ctx, tx, request)
+	if err != nil {
+		// Roll back the operation lock before recording the refusal: the failed
+		// operation write must be its own committed transaction.
+		_ = tx.Rollback()
+		mapped := mapBudgetError(err)
+		if mapped.Code == CodeBudgetExhausted || mapped.Code == CodeBudgetCurrencyMismatch {
+			_ = s.failOperation(ctx, operationID, mapped.Code)
+		}
+		return "", mapped
+	}
 	attemptID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO platform.operation_attempts
-			(id, operation_id, attempt_no, state, attempt_token, reserved_amount, currency)
-		VALUES ($1::uuid, $2::uuid, $3, 'dispatching', $4::uuid, $5::numeric, 'USD')`,
-		attemptID, operationID, attempt, attemptToken, reserved,
+			(id, operation_id, attempt_no, state, attempt_token,
+			 reserved_amount, currency, price_version, settlement_state)
+		VALUES ($1::uuid, $2::uuid, $3, 'dispatching', $4::uuid,
+		        $5::numeric, $6, $7, 'reserved')`,
+		attemptID, operationID, attempt, attemptToken,
+		held.Amount, held.Currency, held.PriceVersion,
 	); err != nil {
 		if isUniqueViolation(err) {
 			return "", capFailure(409, CodeOperationInProgress, "the operation already has that attempt")
@@ -1076,6 +1130,7 @@ func (s *Service) finishModelSuccess(
 	attempt int,
 	response modelproxy.ProviderResponse,
 	fallback *fallbackFact,
+	pricing *modelPrice,
 ) (*Result, error) {
 	projection, problems := validateProviderResponse(response.Data, spec.Model)
 	if len(problems) > 0 {
@@ -1121,22 +1176,63 @@ func (s *Service) finishModelSuccess(
 	receiptArtifactID, capErr := s.sealTx(ctx, tx, run, input.AttemptToken,
 		"receipt", "capability_receipt", content)
 	if capErr != nil {
+		_ = tx.Rollback()
+		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeInternal)
 		return nil, capErr
 	}
-	chargedAmount := formatUnits((projection.TokensIn + projection.TokensOut) * 100)
-	result, err := tx.ExecContext(ctx, `
-		UPDATE platform.operation_attempts
-		   SET state = 'succeeded', result_artifact_id = $3::uuid,
-		       tokens_in = $4, tokens_out = $5, charged_amount = $6::numeric,
-		       finished_at = now()
-		 WHERE operation_id = $1::uuid AND attempt_no = $2 AND state = 'dispatching'`,
-		operationID, attempt, receiptArtifactID, projection.TokensIn, projection.TokensOut, chargedAmount,
-	)
-	if err != nil {
-		return nil, capFailure(500, CodeInternal, "the attempt could not be closed")
+	// F06/T046: settle the actual usage against the price version. The charge
+	// and its paired release, the receipt and the attempt projection commit
+	// together, so a recorded success always has exactly one settled charge.
+	// A provider answer without a usage object keeps the conservative
+	// reservation (`usage_missing`) for maintenance reconciliation.
+	if pricing == nil {
+		return nil, capFailure(500, CodeInternal, "the settled price version is missing")
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return nil, capFailure(500, CodeInternal, "the attempt was not dispatching")
+	if projection.Usage == nil {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operation_attempts
+			   SET state = 'succeeded', result_artifact_id = $3::uuid,
+			       tokens_in = 0, tokens_out = 0, charged_amount = NULL,
+			       price_version = $4, settlement_state = 'usage_missing',
+			       finished_at = now()
+			 WHERE operation_id = $1::uuid AND attempt_no = $2 AND state = 'dispatching'`,
+			operationID, attempt, receiptArtifactID, pricing.version,
+		); err != nil {
+			return nil, capFailure(500, CodeInternal, "the attempt could not be closed")
+		}
+	} else {
+		chargedAmount, err := budget.ActualCharge(pricing.price, projection.TokensIn, projection.TokensOut)
+		if err != nil {
+			return nil, capFailure(500, CodeInternal, "the actual usage cannot be priced")
+		}
+		tokensIn, tokensOut := projection.TokensIn, projection.TokensOut
+		settled, err := s.Budget.SettleTx(ctx, tx, budget.Settlement{
+			AttemptKey:   budget.AttemptKey(operationID, attempt),
+			Amount:       chargedAmount,
+			Currency:     pricing.price.Currency,
+			PriceVersion: pricing.version,
+			TokensIn:     &tokensIn,
+			TokensOut:    &tokensOut,
+		})
+		if err != nil {
+			return nil, mapBudgetError(err)
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE platform.operation_attempts
+			   SET state = 'succeeded', result_artifact_id = $3::uuid,
+			       tokens_in = $4, tokens_out = $5, charged_amount = $6::numeric,
+			       price_version = $7, settlement_state = 'settled',
+			       finished_at = now()
+			 WHERE operation_id = $1::uuid AND attempt_no = $2 AND state = 'dispatching'`,
+			operationID, attempt, receiptArtifactID, projection.TokensIn, projection.TokensOut,
+			settled.ChargedAmount, pricing.version,
+		)
+		if err != nil {
+			return nil, capFailure(500, CodeInternal, "the attempt could not be closed")
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return nil, capFailure(500, CodeInternal, "the attempt was not dispatching")
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
@@ -1172,15 +1268,22 @@ func (s *Service) finishModelSuccess(
 	}, nil
 }
 
-func (s *Service) resetAttemptForRetry(ctx context.Context, operationID, code string) *Error {
+func (s *Service) resetAttemptForRetry(ctx context.Context, operationID string, attempt int, code string) *Error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return capFailure(500, CodeInternal, "the retry transaction could not start")
 	}
 	defer func() { _ = tx.Rollback() }()
+	if s.Budget != nil {
+		if _, err := s.Budget.ReleaseTx(ctx, tx, budget.AttemptKey(operationID, attempt)); err != nil {
+			return capFailure(500, CodeInternal, "the failed attempt reservation could not be released")
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operation_attempts
-		   SET state = 'failed', error_code = $2, finished_at = now()
+		   SET state = 'failed', error_code = $2, finished_at = now(),
+		       settlement_state = CASE WHEN settlement_state = 'reserved'
+		                                THEN 'released' ELSE settlement_state END
 		 WHERE operation_id = $1::uuid AND state = 'dispatching'`, operationID, code,
 	); err != nil {
 		return capFailure(500, CodeInternal, "the failed attempt could not be recorded")
@@ -1204,9 +1307,16 @@ func (s *Service) failAttemptAndOperation(ctx context.Context, operationID strin
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if s.Budget != nil {
+		if _, err := s.Budget.ReleaseTx(ctx, tx, budget.AttemptKey(operationID, attempt)); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operation_attempts
-		   SET state = 'failed', error_code = $3, finished_at = now()
+		   SET state = 'failed', error_code = $3, finished_at = now(),
+		       settlement_state = CASE WHEN settlement_state = 'reserved'
+		                                THEN 'released' ELSE settlement_state END
 		 WHERE operation_id = $1::uuid AND attempt_no = $2`, operationID, attempt, code,
 	); err != nil {
 		return err
@@ -1555,6 +1665,51 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 	return operations, nil
 }
 
+// LedgerBudget is the owner-facing budget projection. It is computed from the
+// usage ledger, never from a client hint; Overrun means actual usage exceeded
+// the limit and the run must not be presented as a clean success.
+type LedgerBudget struct {
+	BudgetLimit string `json:"budget_limit"`
+	Reserved    string `json:"reserved_amount"`
+	Charged     string `json:"charged_amount"`
+	Remaining   string `json:"remaining_amount"`
+	Currency    string `json:"currency"`
+	Overrun     bool   `json:"overrun"`
+}
+
+// BudgetFacts returns the run tree's decimal budget projection for its owner.
+func (s *Service) BudgetFacts(ctx context.Context, ownerID, runID string) (*LedgerBudget, *Error) {
+	if s.Budget == nil {
+		return nil, capFailure(503, "budget_unavailable", "the budget ledger is not configured")
+	}
+	if !uuid.Valid(runID) || !uuid.Valid(ownerID) {
+		return nil, capFailure(404, CodeRunNotFound, "that run does not exist")
+	}
+	var actualOwner string
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT owner_id::text FROM platform.runs WHERE id = $1::uuid AND deleted_at IS NULL`,
+		runID,
+	).Scan(&actualOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, capFailure(404, CodeRunNotFound, "that run does not exist")
+	}
+	if err != nil {
+		return nil, capFailure(500, CodeInternal, "the run could not be read")
+	}
+	if !strings.EqualFold(actualOwner, ownerID) {
+		return nil, capFailure(404, CodeRunNotFound, "that run does not exist")
+	}
+	totals, err := s.Budget.Totals(ctx, runID)
+	if err != nil {
+		return nil, capFailure(500, CodeInternal, "the run budget could not be read")
+	}
+	return &LedgerBudget{
+		BudgetLimit: totals.BudgetLimit, Reserved: totals.Reserved,
+		Charged: totals.Charged, Remaining: totals.Remaining,
+		Currency: totals.Currency, Overrun: totals.Overrun,
+	}, nil
+}
+
 // summariseReceipt extracts only the safe summary fields from a sealed receipt.
 func summariseReceipt(content []byte) ([]LedgerToolCall, []string, bool) {
 	var receipt map[string]any
@@ -1616,24 +1771,8 @@ func providerErrorCode(err error) string {
 	}
 }
 
-// estimateReservedUnits is the conservative pre-dispatch reservation in 1e-8
-// currency units: one token per four canonical params bytes at 1e-6 per token.
-// T046 owns the real budget; this only makes the reservation non-zero.
-func estimateReservedUnits(params map[string]any) string {
-	raw, err := json.Marshal(params)
-	if err != nil {
-		return "0.00000000"
-	}
-	return formatUnits(int64((len(raw)+3)/4) * 100)
-}
-
-func formatUnits(units int64) string {
-	if units < 0 {
-		units = 0
-	}
-	return fmt.Sprintf("%d.%08d", units/100000000, units%100000000)
-}
-
+// sleepBackoff is the bounded retry pause. It is not a budget gate: the
+// reservation and settlement are durable ledgers, not timing heuristics.
 func sleepBackoff(ctx context.Context, attempt int) error {
 	delay := time.Duration(attempt) * 20 * time.Millisecond
 	timer := time.NewTimer(delay)

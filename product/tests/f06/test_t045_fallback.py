@@ -230,14 +230,22 @@ def test_unpassed_fallback_is_refused_at_compile(f06_stack) -> None:
 
 def test_budget_exhaustion_blocks_the_fallback(f06_stack) -> None:
     owner = t041.owner(f06_stack)
+    # T046 settles real price-version reservations. The fallback profile is
+    # priced far above the run budget so the primary's own reservation fits the
+    # 0.01 budget while the fallback's conservative reservation cannot: the
+    # fallback is refused, the primary's typed failure is returned.
+    expensive = t045.compatible_config(price={
+        "currency": "USD",
+        "input_per_million": "1000000000",
+        "output_per_million": "1000000000",
+    })
     fallback_id = t045.seed_profile(
-        f06_stack.dbname, owner.creator.principal_id, model_id="stub-model"
+        f06_stack.dbname, owner.creator.principal_id, model_id="stub-model", config=expensive
     )
     configure_primary(f06_stack, owner, model_id="stub-unavailable-primary",
                       fallback_ids=[fallback_id])
     owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
-    # Smaller than the fallback's conservative reservation: no fallback beyond budget.
-    t045.set_run_budget(f06_stack.dbname, run["id"], "0.000001")
+    t045.set_run_budget(f06_stack.dbname, run["id"], "0.01")
 
     operation_id = t041.new_uuid()
     response = t041.invoke(t041.worker_client(f06_stack), lease, operation_id=operation_id,

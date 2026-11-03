@@ -310,9 +310,16 @@ func (s *Service) dispatchStream(
 	if err != nil {
 		return nil, providerFailure(err)
 	}
-	reserved := estimateReservedUnits(input.Params)
+	reservation, capErr := reservationFor(spec.Profile, run, input.Params)
+	if capErr != nil {
+		return nil, capErr
+	}
+	pricing, capErr := priceForProfile(spec.Profile, run.Currency)
+	if capErr != nil {
+		return nil, capErr
+	}
 	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
-		attemptID, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved)
+		attemptID, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation)
 		if capErr != nil {
 			return nil, capErr
 		}
@@ -350,7 +357,7 @@ func (s *Service) dispatchStream(
 				code = providerErrorCode(streamErr)
 			}
 			if transient && attempt < maxPhysicalAttempts {
-				if capErr := s.resetAttemptForRetry(ctx, operationID, code); capErr != nil {
+				if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
 					return nil, capErr
 				}
 				// The failed generation gets a terminal-for-itself frame with
@@ -370,7 +377,7 @@ func (s *Service) dispatchStream(
 			// it. A permission/schema answer is terminal and never falls back.
 			if reason, eligible := fallbackReasonFor(streamErr); eligible {
 				if selection := s.selectFallback(ctx, run, spec, input.Params, reason); selection != nil {
-					if capErr := s.resetAttemptForRetry(ctx, operationID, code); capErr != nil {
+					if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
 						return nil, capErr
 					}
 					_ = emit(Frame{
@@ -412,7 +419,7 @@ func (s *Service) dispatchStream(
 		}
 		data["tool_calls"] = generation.completeToolCalls()
 		response.Data = data
-		result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil)
+		result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil, pricing)
 		if sealErr != nil {
 			code := CodeInternal
 			message := "the streamed model answer could not be sealed"
@@ -465,8 +472,17 @@ func (s *Service) dispatchStreamFallback(
 		})
 		return nil, providerFailure(err)
 	}
-	attemptID, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt,
-		estimateReservedUnits(input.Params))
+	reservation, capErr := reservationFor(profile, run, input.Params)
+	if capErr != nil {
+		_ = s.failOperation(ctx, operationID, capErr.Code)
+		return nil, capErr
+	}
+	pricing, capErr := priceForProfile(profile, run.Currency)
+	if capErr != nil {
+		_ = s.failOperation(ctx, operationID, capErr.Code)
+		return nil, capErr
+	}
+	attemptID, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation)
 	if capErr != nil {
 		return nil, capErr
 	}
@@ -526,7 +542,7 @@ func (s *Service) dispatchStreamFallback(
 	data["tool_calls"] = generation.completeToolCalls()
 	response.Data = data
 	fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
-	result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact)
+	result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact, pricing)
 	if sealErr != nil {
 		code := CodeInternal
 		message := "the streamed fallback answer could not be sealed"

@@ -201,6 +201,47 @@ function describeCapabilityLedger(body) {
   };
 }
 
+/**
+ * F06/T046: the decimal budget projection of one run tree. Amounts are opaque
+ * decimal strings from the ledger and are displayed verbatim; the page never
+ * re-computes money with binary floats.
+ */
+function describeRunBudget(body) {
+  const budget =
+    body && typeof body.budget === 'object' && body.budget !== null ? body.budget : null;
+  if (!budget) {
+    return {
+      known: false,
+      overrun: false,
+      currency: '',
+      limit: '',
+      reserved: '',
+      charged: '',
+      remaining: '',
+      text: '预算投影不可用（账本未返回 budget 字段）。',
+    };
+  }
+  const currency = String(budget.currency || '');
+  const limit = String(budget.budget_limit || '0.00000000');
+  const reserved = String(budget.reserved_amount || '0.00000000');
+  const charged = String(budget.charged_amount || '0.00000000');
+  const remaining = String(budget.remaining_amount || '0.00000000');
+  const overrun = budget.overrun === true;
+  return {
+    known: true,
+    overrun,
+    currency,
+    limit,
+    reserved,
+    charged,
+    remaining,
+    text:
+      '预算 ' + limit + ' ' + currency + '：已结算 ' + charged +
+      '，预留中 ' + reserved + '，剩余 ' + remaining +
+      (overrun ? '（已超支：运行不能被呈现为成功）' : ''),
+  };
+}
+
 /** One owner-visible artifact download path. */
 function artifactDownloadPath(artifactID) {
   return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/download';
@@ -1299,6 +1340,17 @@ function capabilityStatus(message, kind) {
   element.className = 'status ' + (kind || '');
 }
 
+// F06/T046: the same status pattern for the decimal budget line. An overrun is
+// a 'bad' status, never a neutral one.
+function budgetStatus(message, kind) {
+  const element = document.getElementById('budget-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
 function renderCapabilityRow(operation) {
   const row = document.createElement('tr');
   const cells = [
@@ -1338,6 +1390,8 @@ async function loadCapabilityLedger(runId) {
     lastCapabilityLedger = body && typeof body === 'object' ? body : null;
     const ledger = describeCapabilityLedger(body);
     capabilityStatus(ledger.text, ledger.empty ? '' : 'ok');
+    const budget = describeRunBudget(body);
+    budgetStatus(budget.text, budget.overrun ? 'bad' : budget.known ? 'ok' : '');
     for (const operation of ledger.items) {
       rows.appendChild(renderCapabilityRow(operation));
     }
@@ -1352,11 +1406,11 @@ async function loadCapabilityLedger(runId) {
         (error && error.message ? error.message : '未知错误'),
       'bad',
     );
+    budgetStatus('预算投影不可用（账本请求失败）。', 'bad');
   }
 }
 
-function cancelDetailStatus(message, kind) {
-  const element = document.getElementById('detail-cancel-status');
+function cancelDetailStatus(message, kind) {  const element = document.getElementById('detail-cancel-status');
   if (!element) {
     return;
   }

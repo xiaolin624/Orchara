@@ -287,6 +287,17 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 	}
 	tokensIn := int64((len(canonical) + 3) / 4)
 	tokensOut := int64((len(text) + 3) / 4)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(request.Candidate.ModelID)), "stub-usage-missing") {
+		// F06/T046: a provider answer without a usage object. The capability
+		// service keeps the conservative reservation (usage_missing) until a
+		// maintenance reconciliation settles it; the stub is honest about not
+		// knowing the cost instead of inventing one.
+		output, err := canonicalJSON(data)
+		if err != nil {
+			return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent answer: %w", err)
+		}
+		return ProviderResponse{Data: data, Output: output}, nil
+	}
 	data["usage"] = map[string]any{
 		"input_tokens":  tokensIn,
 		"output_tokens": tokensOut,
@@ -315,6 +326,7 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 //   - stub-adapter-down*     deployment availability fault (no adapter)
 //   - stub-permission-denied* terminal provider refusal (never retried/fallen back)
 //   - stub-schema-error*     terminal schema refusal (never retried/fallen back)
+//   - stub-usage-missing*    success without a usage object (T046 reconciliation path)
 func stubModelFault(modelID string) error {
 	normalized := strings.ToLower(strings.TrimSpace(modelID))
 	switch {
