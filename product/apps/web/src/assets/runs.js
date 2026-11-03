@@ -1946,6 +1946,224 @@ function agentNodeStatus(message, kind) {
   element.className = 'status ' + (kind || '');
 }
 
+/** The persisted T047 context-trace file row of the agent node, if any. */
+function contextTraceRowOf(nodeBody, ledgerBody, statuses) {
+  const nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  if (nodeID === '') {
+    return null;
+  }
+  return (
+    items.find(
+      (item) =>
+        String((item && item.node_id) || '') === nodeID &&
+        item &&
+        item.kind === 'file' &&
+        String(item.label || '') === 'context-trace',
+    ) || null
+  );
+}
+
+/** The fixed truncation-reason labels of the T047 trace document. */
+function contextTruncationReasonText(reason) {
+  switch (String(reason || '')) {
+    case 'low_relevance_history':
+      return '低相关历史';
+    case 'display_only_summary':
+      return '仅展示摘要';
+    case 'old_tool_detail':
+      return '旧工具结果细节';
+    case 'verbose_upstream_text':
+      return '冗长上游文本';
+    case 'optional_memory':
+      return '可选个人记忆';
+    case 'protected_minimum':
+      return '受保护最小输入';
+    default:
+      return String(reason || '未知原因');
+  }
+}
+
+/**
+ * Pure projection of the persisted T047 trace document. It renders identifiers,
+ * truncation reasons, protected key paths and token counts only: the trace has
+ * no message text, memory text or credential, and this function never invents
+ * one.
+ */
+function describeContextTrace(document_) {
+  const value = document_ && typeof document_ === 'object' ? document_ : {};
+  const turns = Array.isArray(value.turns) ? value.turns : [];
+  const sources = [];
+  const truncations = [];
+  const protectedPaths = [];
+  let budgetTokens = 0;
+  let reservedOutputTokens = 0;
+  let estimatedTokens = 0;
+  let memoryState = 'not_run';
+  for (const turn of turns) {
+    const item = turn && typeof turn === 'object' ? turn : {};
+    budgetTokens = Math.max(budgetTokens, Number(item.budget_tokens || 0));
+    reservedOutputTokens = Math.max(reservedOutputTokens, Number(item.reserved_output_tokens || 0));
+    estimatedTokens = Math.max(estimatedTokens, Number(item.estimated_tokens || 0));
+    if (item.memory_state) {
+      memoryState = String(item.memory_state);
+    }
+    for (const source of Array.isArray(item.sources) ? item.sources : []) {
+      const entry = source && typeof source === 'object' ? source : {};
+      const kind = String(entry.kind || '');
+      const nodeID = String(entry.node_id || '');
+      const artifactID = String(entry.artifact_id || '');
+      const label = String(entry.label || '');
+      const key = [kind, nodeID, artifactID, label, String(entry.estimated_tokens || 0)].join('|');
+      if (!sources.some((existing) => existing.key === key)) {
+        sources.push({
+          key,
+          kind,
+          nodeID,
+          artifactID,
+          label,
+          tokens: Number(entry.estimated_tokens || 0),
+          protected: Boolean(entry.protected),
+        });
+      }
+    }
+    for (const truncation of Array.isArray(item.truncations) ? item.truncations : []) {
+      const entry = truncation && typeof truncation === 'object' ? truncation : {};
+      truncations.push({
+        source: String(entry.source || ''),
+        reason: String(entry.reason || ''),
+        reasonText: contextTruncationReasonText(entry.reason),
+        tokensRemoved: Number(entry.tokens_removed || 0),
+      });
+    }
+    for (const path of Array.isArray(item.protected) ? item.protected : []) {
+      const text = String(path || '');
+      if (text !== '' && !protectedPaths.includes(text)) {
+        protectedPaths.push(text);
+      }
+    }
+  }
+  const sourceText =
+    sources.length === 0
+      ? '没有授权来源记录'
+      : sources
+          .map((source) => {
+            const where = [source.kind, source.nodeID, source.artifactID, source.label]
+              .filter((part) => part !== '')
+              .join('/');
+            return where + '（约 ' + String(source.tokens) + ' tokens）';
+          })
+          .join('；');
+  const truncationText =
+    truncations.length === 0
+      ? '本次上下文未触发截断'
+      : truncations
+          .map(
+            (entry) =>
+              entry.source + ' · ' + entry.reasonText + ' · 移除 ' +
+              String(entry.tokensRemoved) + ' tokens',
+          )
+          .join('；');
+  const protectedText =
+    protectedPaths.length === 0 ? '没有受保护事实键' : protectedPaths.join('、');
+  const memoryText =
+    memoryState === 'not_run'
+      ? 'not_run（F09 个人记忆存储未实现，未注入任何记忆）'
+      : memoryState;
+  return {
+    visible: turns.length > 0,
+    turnCount: turns.length,
+    budgetTokens,
+    reservedOutputTokens,
+    estimatedTokens,
+    memoryState,
+    memoryText,
+    sources,
+    truncations,
+    protectedPaths,
+    sourceText,
+    truncationText,
+    protectedText,
+    budgetText:
+      '预算 ' +
+      String(budgetTokens) +
+      ' tokens（预留输出 ' +
+      String(reservedOutputTokens) +
+      '，估算输入 ' +
+      String(estimatedTokens) +
+      '）',
+  };
+}
+
+function contextTraceStatus(message, kind) {
+  const element = document.getElementById('agent-context-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+/**
+ * Load and render the persisted context trace of the agent node. The trace is a
+ * registered run file, read through the existing owner-only artifact content
+ * route; a missing trace is stated plainly, never re-created from model text.
+ */
+async function renderContextTrace(described) {
+  const container = document.getElementById('agent-context-trace');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  if (!described || !described.present) {
+    contextTraceStatus('该 Run 没有 Agent 节点，因此没有上下文跟踪。', '');
+    return null;
+  }
+  const row = contextTraceRowOf(lastNodeResults, lastCapabilityLedger, nodeStatusByID);
+  if (!row) {
+    contextTraceStatus(
+      '该 Run 没有持久化的上下文跟踪文件（失败发生在首次模型调用前，或该 Run 来自旧版本）。',
+      'pending',
+    );
+    return null;
+  }
+  contextTraceStatus('正在加载上下文跟踪…', 'pending');
+  try {
+    const document_ = JSON.parse(await fetchArtifactText(String(row.artifact_id || '')));
+    const trace = describeContextTrace(document_);
+    if (!trace.visible) {
+      contextTraceStatus('上下文跟踪文件没有轮次记录。', 'pending');
+      return trace;
+    }
+    const summary = document.createElement('dl');
+    summary.className = 'run';
+    const add = (label, content) => {
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const definition = document.createElement('dd');
+      definition.textContent = content;
+      summary.append(term, definition);
+    };
+    add('轮次 / 预算', '第 ' + String(trace.turnCount) + ' 轮 · ' + trace.budgetText);
+    add('授权来源', trace.sourceText);
+    add('截断', trace.truncationText);
+    add('受保护事实', trace.protectedText);
+    add('个人记忆', trace.memoryText);
+    container.appendChild(summary);
+    contextTraceStatus(
+      '上下文跟踪来自服务端登记的 context-trace 文件；只含来源、截断原因与受保护键名，不含提示词或正文。',
+      'ok',
+    );
+    return trace;
+  } catch (error) {
+    contextTraceStatus(
+      '上下文跟踪不可用 [' + (error && error.code ? error.code : 'error') + ']',
+      'bad',
+    );
+    return null;
+  }
+}
+
 function renderAgentNodePanel() {
   const container = document.getElementById('agent-node-body');
   if (!container) {
@@ -1960,6 +2178,7 @@ function renderAgentNodePanel() {
     displayedRun && displayedRun.error_code,
   );
   agentNodeStatus(described.text, described.present ? 'ok' : '');
+  void renderContextTrace(described);
   if (!described.present) {
     return described;
   }

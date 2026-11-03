@@ -213,15 +213,23 @@ func TestAgentChainCallsToolAndValidatesFinalOutput(t *testing.T) {
 		t.Fatalf("tool report operation = %q", reportRow.OperationID)
 	}
 
-	// Node results: one agent data row plus the tool's files and log.
+	// Node results: one agent data row, one context-trace file row (T047), the
+	// tool's files and its log.
 	agentResults := 0
+	traceRows := 0
 	for _, result := range client.nodeResults {
 		if result.NodeID == "analysis" {
 			agentResults++
+			if result.Kind == "file" && result.Label == "context-trace" {
+				traceRows++
+			}
 		}
 	}
-	if agentResults != 4 {
+	if agentResults != 5 {
 		t.Fatalf("agent node results = %d: %+v", agentResults, client.nodeResults)
+	}
+	if traceRows != 1 {
+		t.Fatalf("context trace rows = %d: %+v", traceRows, client.nodeResults)
 	}
 	kinds := map[string]int{}
 	for _, result := range client.nodeResults {
@@ -229,8 +237,29 @@ func TestAgentChainCallsToolAndValidatesFinalOutput(t *testing.T) {
 			kinds[result.Kind]++
 		}
 	}
-	if kinds["data"] != 1 || kinds["file"] != 2 || kinds["log"] != 1 {
+	if kinds["data"] != 1 || kinds["file"] != 3 || kinds["log"] != 1 {
 		t.Fatalf("agent node result kinds = %+v", kinds)
+	}
+	// The trace artifact carries budget metadata and protected key paths, never
+	// the message text or a raw amount.
+	var traceUpload *recordedUpload
+	for index := range client.uploads {
+		upload := &client.uploads[index]
+		if upload.Request.Purpose == "node_output" && strings.Contains(string(upload.Content), `"turns"`) {
+			traceUpload = upload
+		}
+	}
+	if traceUpload == nil {
+		t.Fatalf("no context trace upload: %+v", client.uploads)
+	}
+	traceText := string(traceUpload.Content)
+	for _, marker := range []string{`"turns"`, `"protected"`, `"memory_state":"not_run"`, `"budget_tokens"`} {
+		if !strings.Contains(traceText, marker) {
+			t.Fatalf("context trace misses %s: %s", marker, traceText)
+		}
+	}
+	if strings.Contains(traceText, "250.00") || strings.Contains(traceText, "validated summary") {
+		t.Fatalf("context trace leaks content: %s", traceText)
 	}
 
 	// Node status: every node pending/running/succeeded, exactly once.

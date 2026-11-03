@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/capabilities"
+	agentcontext "orchara/platform/internal/context"
 	"orchara/platform/internal/jcs"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
@@ -93,6 +94,11 @@ type ModelFact struct {
 	ID              string
 	ValidationState string
 	Revoked         bool
+	// ContextWindow and MaxOutputTokens are the model profile's declared budget
+	// (F06/T047). Zero means "not declared"; the executor applies the documented
+	// defaults and records the resulting budget in the context trace.
+	ContextWindow   int64
+	MaxOutputTokens int64
 }
 
 // ToolFact is the read-only tool fact the executor needs before the model call:
@@ -287,21 +293,25 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 		}
 	}
 
-	inputJSON, err := canonicalJSONDocument(bindings)
-	if err != nil {
-		return nil, r.failAgent(ctx, run, CodeNodeInputInvalid,
-			"the resolved agent inputs cannot be encoded"), true
-	}
-	messages := []map[string]any{
-		{"role": "system", "content": config.Instructions + "\n\n" + agentPlatformConstraints},
-		{"role": "user", "content": string(inputJSON)},
-	}
+	// F06/T047: the message list is rebuilt by the authorized-context builder
+	// before every model turn. The executor passes only this run's resolved
+	// bindings; the builder owns the token budget and the protected facts.
+	authorizedInputs := resolvedAgentInputs(run.plan, node, bindings)
+	contextScope := agentContextScope(run.plan, node)
+	modelBudget := modelContextBudget(modelFact)
+	authorizedTools := make([]agentcontext.DeclaredTool, 0, len(config.ToolVersions))
 	declared := make([]map[string]string, 0, len(config.ToolVersions))
 	for _, version := range config.ToolVersions {
+		authorizedTools = append(authorizedTools, agentcontext.DeclaredTool{
+			Name: PresetToolName, CapabilityVersion: version,
+		})
 		declared = append(declared, map[string]string{
 			"name": PresetToolName, "capability_version": version,
 		})
 	}
+	history := make([]agentcontext.HistoryMessage, 0, 4)
+	contextTraces := make([]agentcontext.Trace, 0, config.MaxTurns)
+	var messages []map[string]any
 
 	fileResults := make([]NodeResult, 0, 4)
 	var final map[string]any
@@ -312,6 +322,24 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			return nil, outcome, stopped
 		}
 		turns = turn
+		built, buildErr := agentcontext.Build(ctx, agentcontext.Request{
+			Scope:   contextScope,
+			System:  config.Instructions + "\n\n" + agentPlatformConstraints,
+			Inputs:  authorizedInputs,
+			History: history,
+			Tools:   authorizedTools,
+			Model:   modelBudget,
+			// F09 personal-memory storage does not exist in this batch. The
+			// production seam therefore reads nothing and the trace records
+			// memory_state=not_run; no canned memory is injected.
+			Memory: agentcontext.NoMemorySource{},
+		})
+		if buildErr != nil {
+			return nil, r.failAgent(ctx, run, contextFailureCode(buildErr),
+				"the authorized agent context could not be built: "+buildErr.Error()), true
+		}
+		messages = built.Messages
+		contextTraces = append(contextTraces, built.Trace)
 		params := map[string]any{
 			"task":     "agent",
 			"messages": messagesToAny(messages),
@@ -411,8 +439,11 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 				return nil, *failOutcome, true
 			}
 			fileResults = append(fileResults, results...)
-			messages = append(messages, map[string]any{"role": "tool", "content": message})
-			if len(messages) >= 250 {
+			history = append(history, agentcontext.HistoryMessage{
+				Role: "tool", Content: message, Relevance: turn,
+				Source: agentcontext.Source{Kind: "tool", NodeID: node.ID},
+			})
+			if len(history)+2 >= 250 {
 				return nil, r.failAgent(ctx, run, CodeAgentTurnLimit,
 					"the agent conversation reached the platform message cap"), true
 			}
@@ -437,8 +468,27 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 		return nil, r.failAgent(ctx, run, CodeSandboxFailed,
 			"registering the agent node data failed: "+err.Error()), true
 	}
-	results := make([]NodeResult, 0, len(fileResults)+1)
+	// F06/T047: the trace is one durable file row of the agent node. It carries
+	// source kinds/ids, truncation reasons, protected key paths and token counts;
+	// it never carries message text, memory text or secrets.
+	traceBytes, traceEncodeErr := canonicalJSONDocument(agentContextTraceDocument{
+		Version: 1, NodeID: node.ID, Turns: contextTraces,
+	})
+	if traceEncodeErr != nil {
+		return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+			"the agent context trace cannot be encoded"), true
+	}
+	traceID, traceErr := r.uploadNodeArtifact(ctx, "node_output", "application/json",
+		traceBytes, "artifact")
+	if traceErr != nil {
+		return nil, r.failAgent(ctx, run, CodeSandboxFailed,
+			"registering the agent context trace failed: "+traceErr.Error()), true
+	}
+	results := make([]NodeResult, 0, len(fileResults)+2)
 	results = append(results, NodeResult{NodeID: node.ID, Kind: "data", ArtifactID: dataID, Label: "data"})
+	results = append(results, NodeResult{
+		NodeID: node.ID, Kind: "file", ArtifactID: traceID, Label: "context-trace",
+	})
 	results = append(results, fileResults...)
 	if err := r.deps.Client.RecordNodeResults(
 		ctx, r.lease.RunID, r.lease.AttemptToken, results,
