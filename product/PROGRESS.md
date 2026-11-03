@@ -10,8 +10,8 @@
 ## 当前发布范围
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
-T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030 passed）** 与
-**F03（T029、T031、T032 passed；T033+ open）**；其余票保持 open。
+T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030、T033
+passed）** 与 **F03（T029、T031、T032、T034 passed；T035+ open）**；其余票保持 open。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -79,6 +79,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T031 | F03 | 运行完成后等待真实退出证据再展示终态 | passed | `reports/f03/T031-result-and-finalizer.md`、`internal/execution/`（result 提议 + 身份化 exit 证据 + 统一幂等 finalizer + children guard 扩展点）、`internal/api/execution.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/{t029.py,t031.py}`、`tests/f03/test_t031_*.py`（4 文件 17 用例；T029 exit 用例按新必填证据收紧）；无迁移（`reported_result` 已含 event_id）；真实 PG + 真实 mTLS/HTTP + 真实对象字节；事件/SSE/tools/cancel/recovery 属 T032–T038，见报告 §5/§7 |
 | T032 | F03 | 断开事件流后从持久时间线继续查看运行 | passed | `reports/f03/T032-run-events.md`、`db/migrations/0018_run_events.sql`、`internal/execution/events.go`（同事务 run.status 投影 + 同事务 seq 分配 + worker node.status 批量提交）、`internal/execution/{service.go,execution.go}`、`internal/api/events.go`（submitWorkerEvents + SSE）、`internal/api/{server.go,internal.go,middleware.go}`、`internal/config/config.go`、`catalog/debug.go`、`apps/web/src/{runs.html,assets/runs.js,debug.html,assets/debug.js}`、`tests/support/t032.py`、`tests/f03/test_t032_*.py`（4 文件 31 用例；真实 PG + 编译 API + 真实 mTLS + 真实 SSE 连接/断开重连 + Node 执行页面逻辑）；retention 默认 24h（`ORCHARA_RUN_EVENT_RETENTION`），410 `event_cursor_expired` + `details.snapshot_url`；Delta 预览/真实 worker/沙箱/取消/恢复属 F06/T033/T036/T038，见报告 §5/§7 |
 | T033 | F05 | 在正式沙箱调试工具并登记可授权下载的产物 | passed | `reports/f05/T033-sandbox-tool-debug.md`、`db/migrations/0019_run_artifact_uploads.sql`（唯一新表：artifact PK + run/attempt FK + 契约 purpose 枚举 + 两索引；无删除模型）、`internal/execution/runartifacts.go`（五个 run-scoped 操作：upload/complete/download/status/register；live attempt + 当前 token 唯一凭据；provenance 决定 scope；complete→CAS scanning + 一个 `artifact_finalize`）、`internal/catalog/runartifacts.go`（owner-only `listRunArtifacts`，4 字段 + 共享 cursor，log/输入不列出）、`internal/api/runartifacts.go`、`internal/execution/{store,service}.go`（live lease 的 execution_unit_id、cancel 读取）、`internal/sandbox/*`（Go 构建 OCI bundle：只读 rootfs、uid 65534、无 caps/no_new_privs、pid/net/ipc/uts/mount ns、--network=none、内存/pid/CPU/timeout、/proc+tmpfs、/tool+/inputs 只读、/workspace 可写、固定 argv；进程组 kill+cleanup 验证；digest 身份；fake-runner 单测）、`deploy/sandbox/{build_python_rootfs.sh,sandbox_exec.sh,isolation_probe.py}`（WSL/runsc driver + 可重放 rootfs 构建，digest `sha256:03c3f6…2ff5`）、`internal/presetexec/`（claim→manifest 字节校验→唯一 python 节点/唯一 task_input→签名下载→沙箱→scoped 上传/登记→result→exit；确定拒绝用 started=true+sandbox_started=false；取消不提交结果停 recovery_pending）、`cmd/supervisor/{main,exec,client}.go`（`exec --once`，supervisor+worker 双证书、只读 DSN）、`cmd/sandboxprobe/`、`apps/web/src/{runs.html,assets/runs.js}`（沙箱面板：执行单元/租约/状态/退出/停止 vs 停止中/T036 诚实说明/产物下载）、`tests/support/{t033.py,fixtures.py}`、`tests/f05/test_t033_*.py`（4 文件 20 用例：迁移 6、端点矩阵 6、真实 runsc e2e/失败/取消/隔离/超时/崩溃 5、页面 3）+ 迁移链 0018→0019；真实 PG + 编译二进制 + 真实 mTLS（三角色）+ WSL2/runsc + Node；`go test ./...` 全绿（新增 27 个 Go 单测）、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T036 取消端点、T037 工具构建、F04A 进程拆分与恢复/T038 属后续票，见报告 §2/§5/§6 |
+| T034 | F03 | 跨尝试累计活跃耗时并在超时时停止 | passed | `reports/f03/T034-active-time.md`、`db/migrations/0020_active_time_and_deadline.sql`（`runs.max_active_ms` + `run_attempts.active_ms/active_settled_at` + policy 回填 + 两个 CHECK；无新表/权限）、`internal/execution/active.go`（唯一结算/投影/截止 helper：`settleAttemptActiveTx`、`deadlineStateOf`、`checkDeadlineTx`、`markDeadlineIntentTx`）、`internal/execution/{store,service,execution}.go`（claim 拒绝已超时 queued Run；heartbeat/result/exit/finalizer 结算；到期记录 intent 一次并复用 T031 `finalizeRunTx` 提交 `failed(deadline_exceeded)`、无 output、slot 一次释放；`ErrDeadlineExceeded` 409）、`internal/catalog/debug.go`（debug Run 创建时从冻结 policy 写 max，不猜）、`internal/api/{debug,execution}.go`（非契约 `X-Run-Active-Elapsed-Ms`/`X-Run-Max-Active-Ms`/`X-Run-Deadline-Exceeded`、409 映射）、`apps/web/src/{runs.html,assets/runs.js}`（累计活跃/上限、一个时钟、deadline 原因、NULL≠0）、`tests/support/t034.py`、`tests/f03/test_t034_*.py`（4 文件 18 用例：迁移 5、累计/幂等/等待 4、截止 5、页面 4）+ 迁移链 0019→0020 与两处先前票陈旧断言适配；真实 PG + 编译二进制 + 真实 mTLS/HTTP + 对象字节 + Node；`tests/f03` 117 passed、`tests/f05` 106 passed 回归；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T035 waiting/resume、T036 cancel/优先级、T038 恢复与到期后能力/注册门禁属后续票，见报告 §2/§5/§6 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -541,6 +542,25 @@ F07 负责保留窗口的实际清理；浏览器 DOM 驱动页面仍 `not_run`�
 | Web | `runs.html`/`runs.js`：详情新增持久时间线（fetch+ReadableStream 读 SSE，不用 EventSource，以便观察 410 并显式发送 Last-Event-ID）；按 seq 去重排序；断线显示“按 Last-Event-ID 重连”，410 显示 `details.snapshot_url` 并停止；终态显示“已回放到已提交终态 … 事件流关闭”；`describeRunEvent` 只渲染 run.status state/error_code 与 node.status 元数据，绝不渲染 payload 正文；running/finalizing 明确“尚未成功”；`debug.html`/`debug.js` 复用同一 `beginRunTimeline`；两页都有 `data-preview="not_run"` 的 F06 说明 |
 | 测试 | `tests/support/t032.py` + `tests/f03/test_t032_{migration,events,sse,pages}.py` **4 文件 31 用例**（migration 6、events 13、sse 7、pages 5）；`tests/f03` **99 passed in 420.83s**（基线 68 + 31）；`go test ./...` 19 包 ok、8 包 no test files、0 FAIL；`go vet ./...` exit 0、`gofmt -l .` 无输出、`sync_spec --check` no drift；均为真实 PG/二进制/mTLS/HTTP/SSE/Node |
 | 证据 | `reports/f03/T032-run-events.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T033/T035/T036/T038 接口） |
+
+## F03 跨尝试累计活跃时间与截止（4/N：T034）
+
+T034（GitHub #35）已交付，状态 **`passed`**（本票范围 = **跨 attempt 累计活跃耗时 + 幂等结算 +
+等待/finalizing 不计时 + 冻结活跃时限 + claim/heartbeat/result 截止检查 + 退出后由唯一 finalizer
+提交 `failed(deadline_exceeded)` + 运行页累计时钟/超时原因**）。真实 PostgreSQL 16.4 + 真实编译
+二进制 + 真实 mTLS 内部客户端 + 真实 HTTP + 真实对象字节 + Node 执行页面逻辑；无 mock、无跳过。
+边界（如实）：waiting/resume 属 T035，取消端点/优先级属 T036，恢复扫描属 T038；到期后的能力/
+注册门禁按设计留给后续切片；浏览器 DOM 驱动页面仍 `not_run`。见报告 §2/§5/§6。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | `db/migrations/0020_active_time_and_deadline.sql`：`runs.max_active_ms bigint`（NULL=unknown/no deadline，非空时 CHECK>0）、`run_attempts.active_ms bigint NOT NULL DEFAULT 0` + `active_settled_at timestamptz`（CHECK active_ms>=0）；按 snapshot `definition.policy.max_active_seconds`（1..3600 整数）回填 ×1000，其它保持 NULL；无新表、无新权限、无 trigger；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| 结算 | `settleAttemptActiveTx` 是唯一结算器，在离开 executing 的同一事务调用（result 提议/exit/finalizer；T035/T036 后续转换复用）：锁内 `active_settled_at IS NULL` 的 attempt 写 `active_ms=GREATEST(0, now-started_at)` + `active_settled_at=now()`，同一 delta 加到 `runs.active_elapsed_ms`；重复调用 0；新 attempt 从累计值继续、不重置也不重新获得完整时限；`revision` 不因结算 bump |
+| 投影/截止 | 投影 = `active_elapsed_ms + (phase=executing && 未结算 live attempt ? now-started_at : 0)`（数据库时钟）。at/over 时记录 intent 一次（`cancel_requested_at=COALESCE(now)`、`error_code` 仅 NULL 置 `deadline_exceeded`）；heartbeat 续租并回答 `cancel_requested=true`；result 提交先结算，at/over 返回 409 `deadline_exceeded` 且不落库；exit 后复用 `finalizeRunTx` 提交 failed、无 output、slot 恰好释放一次、同事务 `run.status`；到期仍走 children/unknown guard，阻塞时 park `recovery_pending`；claim 拒绝已超时 queued Run（failed + job void）。NULL max 无截止 |
+| 读接口/UI | `GET /runs/{id}` 非契约头 `X-Run-Active-Elapsed-Ms` / `X-Run-Max-Active-Ms`（NULL 省略）/ `X-Run-Deadline-Exceeded`；`/runs` 详情新增累计活跃/上限与超时原因，两次 attempt 显示为一个累计时钟，NULL 上限写“未知/无截止 ≠ 0”，不渲染百分比/预计完成；列表行不伪造（契约 Run 无该字段） |
+| 错误码/语义 | 新增 409 `deadline_exceeded`（result 提交）；`ErrDeadlineExceeded`。claim 的过期拒绝仍 204（本票唯一会改变状态的 204：Run failed、job void）。T034 是 pre-cancel：只记录 intent/拒绝新结果，不提交 cancelled；T036 细化取消优先级 |
+| 测试 | `tests/support/t034.py` + `tests/f03/test_t034_{migration,accounting,deadline,pages}.py` **4 文件 18 用例**（迁移 5、累计/幂等/等待/finalizing 4、截止 5、页面 4）；`tests/f03` **117 passed**；额外 `tests/f05` **106 passed** 回归；迁移链 0019→0020 适配 T023/T025/T026/T027/T028/T029/T030/T032/T033，另修两处**先前票遗留陈旧断言**（T027 的 `next_event_seq` 与 attempt FK 延期断言）；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift |
+| 证据 | `reports/f03/T034-active-time.md`（AC 逐条、原始命令/结果、契约缺口、not_run、T035/T036/T038 接口） |
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 
