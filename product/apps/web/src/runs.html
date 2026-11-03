@@ -48,6 +48,9 @@
     执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
     但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
     详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
+    累计活跃时间来自同一响应的非契约响应头 <code>X-Run-Active-Elapsed-Ms</code> /
+    <code>X-Run-Max-Active-Ms</code> / <code>X-Run-Deadline-Exceeded</code>（契约 Run 没有这些字段）：
+    跨尝试累计为一个时钟，新 attempt 不重置；上限为 NULL 表示未知/无截止，不是 0。
     持久时间线来自 <code>GET /api/v1/runs/{id}/events</code>（SSE，<code>id: seq</code>、
     <code>event: type</code>、<code>data: event.schema 封套</code>）。断线后客户端按
     <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
@@ -74,6 +77,8 @@
       <dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
       <dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
       <dt>领取 / 租约</dt><dd id="detail-lease"></dd>
+      <dt>累计活跃 / 上限</dt><dd id="detail-active"></dd>
+      <dt>超时原因</dt><dd id="detail-deadline"></dd>
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
     <ul id="detail-timeline" aria-live="polite"></ul>

@@ -45,6 +45,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -415,9 +416,11 @@ func (r *Reader) SubmitDebug(
 		return nil, errors.New("debug validation produced no manifest")
 	}
 
-	// 5. The run's budget is the definition policy. The workflow schema bounds
-	// the shape but not the numeric column's range.
-	budget, currency, policyProblem := debugPolicy(execution.Manifest.Definition)
+	// 5. The run's budget and active-time limit are the definition policy. The
+	// workflow schema bounds the shapes but not the numeric column's range; the
+	// active-time limit is frozen on the Run (T034), never re-read from a newer
+	// draft.
+	budget, currency, maxActiveMS, policyProblem := debugPolicy(execution.Manifest.Definition)
 	if policyProblem != nil {
 		return nil, &ExecutionRefusedError{Errors: []ExecutableError{*policyProblem}}
 	}
@@ -456,6 +459,7 @@ func (r *Reader) SubmitDebug(
 		Execution:      execution,
 		Budget:         budget,
 		Currency:       currency,
+		MaxActiveMS:    maxActiveMS,
 		SealedInputKey: sealedKey,
 		InputSHA256:    inputSHA,
 		InputSize:      int64(len(plan.InputBytes)),
@@ -541,6 +545,7 @@ type createDebugParams struct {
 	Execution      *ValidatedExecution
 	Budget         string
 	Currency       string
+	MaxActiveMS    int64
 	SealedInputKey string
 	InputSHA256    string
 	InputSize      int64
@@ -659,11 +664,11 @@ func (r *Reader) createDebugRun(
 		        owner_id, kind, execution_snapshot_id, application_version_id,
 		        manifest_sha256, input_artifact_id, output_artifact_id,
 		        checkpoint_thread_id, state, revision, next_event_seq,
-		        budget_limit, currency, phase, active_elapsed_ms)
+		        budget_limit, currency, phase, active_elapsed_ms, max_active_ms)
 		VALUES ($1::uuid, NULL, NULL, NULL, NULL, $2::uuid, 'debug', $3::uuid, NULL,
-		        $4, $5::uuid, NULL, $6::uuid, 'queued', 1, 1, $7::numeric, $8, 'idle', 0)`,
+		        $4, $5::uuid, NULL, $6::uuid, 'queued', 1, 1, $7::numeric, $8, 'idle', 0, $9)`,
 		runID, params.CallerID, snapshotID, params.Execution.SHA256, inputArtifactID,
-		checkpointThreadID, params.Budget, params.Currency,
+		checkpointThreadID, params.Budget, params.Currency, params.MaxActiveMS,
 	); err != nil {
 		return nil, fmt.Errorf("creating the debug run: %w", err)
 	}
@@ -793,38 +798,72 @@ func (r *Reader) checkDebugArtifacts(
 	return nil
 }
 
-// debugPolicy extracts the run budget/currency from the validated definition.
-// The workflow validator already requires both fields, so a problem here is
-// defence in depth; the numeric(20,8) range is a debug-specific rule.
-func debugPolicy(definition map[string]any) (string, string, *ExecutableError) {
+// debugPolicy extracts the run budget/currency and the frozen active-time limit
+// from the validated definition. The workflow validator already requires all
+// fields, so a problem here is defence in depth; the numeric(20,8) range is a
+// debug-specific rule and the active-time limit mirrors workflow.schema.json's
+// integer [1, 3600] seconds (stored on the Run as milliseconds, T034).
+func debugPolicy(definition map[string]any) (string, string, int64, *ExecutableError) {
 	policy, ok := definition["policy"].(map[string]any)
 	if !ok {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy",
 			Message: "the execution policy is missing or not an object",
 		}
 	}
 	budget, ok := policy["budget_limit"].(string)
 	if !ok {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy/budget_limit",
 			Message: "policy.budget_limit must be a decimal string",
 		}
 	}
 	if !fitsNumeric208(budget) {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodeBudgetOutOfRange, Pointer: "/policy/budget_limit",
 			Message: "policy.budget_limit must fit numeric(20,8): at most 12 integer digits and at most 8 fractional digits",
 		}
 	}
 	currency, ok := policy["currency"].(string)
 	if !ok || len(currency) != 3 {
-		return "", "", &ExecutableError{
+		return "", "", 0, &ExecutableError{
 			Code: CodePolicyIncomplete, Pointer: "/policy/currency",
 			Message: "policy.currency must be a three-letter currency code",
 		}
 	}
-	return budget, currency, nil
+	maxActiveSeconds, ok := wholeSeconds(policy["max_active_seconds"])
+	if !ok || maxActiveSeconds < 1 || maxActiveSeconds > maxActiveSecondsLimit {
+		return "", "", 0, &ExecutableError{
+			Code: CodePolicyIncomplete, Pointer: "/policy/max_active_seconds",
+			Message: "policy.max_active_seconds must be an integer between 1 and 3600",
+		}
+	}
+	return budget, currency, maxActiveSeconds * 1000, nil
+}
+
+// maxActiveSecondsLimit mirrors workflow.schema.json's policy bound.
+const maxActiveSecondsLimit = 3600
+
+// wholeSeconds accepts the JSON number forms the validated definition can carry
+// (encoding/json decodes numbers as float64; unit tests may pass int/int64) and
+// refuses fractions instead of silently truncating a policy.
+func wholeSeconds(value any) (int64, bool) {
+	switch number := value.(type) {
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || number != math.Trunc(number) {
+			return 0, false
+		}
+		return int64(number), true
+	case int:
+		return int64(number), true
+	case int64:
+		return number, true
+	case json.Number:
+		parsed, err := number.Int64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 var decimalPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]{1,8})?$`)

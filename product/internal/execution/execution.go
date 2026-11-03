@@ -18,6 +18,9 @@
 //	              the slot and either return the work to the queue (evidence
 //	              says it never started), park the run for recovery (no result)
 //	              or run the finalizer (result present).
+//	Deadline      the frozen active-time limit (T034): claim/heartbeat/result and
+//	              the finalizer enforce it; at/over it records the pre-cancel
+//	              intent and commits failed(deadline_exceeded) with no output.
 //	AppendRunStatusTx  project every committed Run transition as a durable
 //	              run.status event in the same transaction (T032); the worker
 //	              event batch (node.status) uses the same seq allocator.
@@ -128,6 +131,11 @@ var (
 	// names a protocol version, manifest hash or worker image digest that is not
 	// the one this attempt was claimed with.
 	ErrIdentityMismatch = errors.New("the exit evidence does not match the claimed execution identity")
+	// ErrDeadlineExceeded is 409 deadline_exceeded: the Run reached its frozen
+	// active-time limit, so its result proposal is refused (no new work) and the
+	// finalizer will commit failed(deadline_exceeded) once the unit exits. It is a
+	// control refusal, not a terminal answer; the same call never stores a result.
+	ErrDeadlineExceeded = errors.New("the run reached its active-time deadline")
 )
 
 // OutputArtifactError is one located 422 for a succeeded proposal whose output

@@ -6,7 +6,9 @@
  *   GET /api/v1/runs            -> {items: Run[], next_cursor}
  *   GET /api/v1/runs/{id}       -> Run (+ X-Manifest-SHA256, and while an attempt
  *                                  is live X-Run-Attempt-Started-At /
- *                                  X-Run-Lease-Deadline)
+ *                                  X-Run-Lease-Deadline; plus the T034 active
+ *                                  clock headers X-Run-Active-Elapsed-Ms /
+ *                                  X-Run-Max-Active-Ms / X-Run-Deadline-Exceeded)
  *
  * What the page shows, and what it deliberately does not:
  *
@@ -69,12 +71,29 @@ function runSummary(run) {
   };
 }
 
+/** Read one non-negative integer header; absent/malformed becomes null, never 0. */
+function headerNumber(headers, name) {
+  if (!headers || typeof headers.get !== 'function') {
+    return null;
+  }
+  const raw = headers.get(name);
+  if (raw === null || raw === undefined || String(raw).trim() === '') {
+    return null;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    return null;
+  }
+  return value;
+}
+
 /** Read the non-contract headers the run detail carries (never a token). */
 function runRuntimeFacts(headers) {
   if (!headers || typeof headers.get !== 'function') {
     return {
       manifestSHA256: '', startedAt: '', leaseDeadline: '',
       executionUnit: '', cancelRequestedAt: '',
+      activeElapsedMS: null, maxActiveMS: null, deadlineExceeded: false,
     };
   }
   return {
@@ -85,6 +104,78 @@ function runRuntimeFacts(headers) {
     // cancel intent (the attempt token itself is never exposed).
     executionUnit: headers.get('X-Run-Execution-Unit') || '',
     cancelRequestedAt: headers.get('X-Run-Cancel-Requested-At') || '',
+    // T034: accumulated/projected active time and the frozen limit. A missing
+    // max header means NULL (unknown/no deadline), never 0.
+    activeElapsedMS: headerNumber(headers, 'X-Run-Active-Elapsed-Ms'),
+    maxActiveMS: headerNumber(headers, 'X-Run-Max-Active-Ms'),
+    deadlineExceeded: String(headers.get('X-Run-Deadline-Exceeded') || '').toLowerCase() === 'true',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// T034: the cross-attempt active clock (pure helpers, executed by the Node test)
+// ---------------------------------------------------------------------------
+
+/** One human second value from milliseconds; never a fabricated estimate. */
+function formatActiveSeconds(milliseconds) {
+  if (milliseconds === null || milliseconds === undefined || milliseconds === '') {
+    return '未知';
+  }
+  const value = Number(milliseconds);
+  if (!Number.isFinite(value) || value < 0) {
+    return '未知';
+  }
+  const seconds = value / 1000;
+  return (seconds >= 100 ? seconds.toFixed(0) : seconds.toFixed(1)) + ' 秒';
+}
+
+/**
+ * The accumulated active clock and the deadline reason. The API exposes one
+ * accumulated total per Run (never per-attempt rows), so two attempts render as
+ * one clock that the second attempt continues rather than resets. A NULL limit is
+ * reported as unknown/no deadline, not as "0 seconds".
+ */
+function describeActiveClock(run, facts) {
+  const runtime = facts || {};
+  const elapsed = Number(runtime.activeElapsedMS);
+  const max = Number(runtime.maxActiveMS);
+  const hasElapsed = runtime.activeElapsedMS !== undefined &&
+    runtime.activeElapsedMS !== null && Number.isFinite(elapsed) && elapsed >= 0;
+  const hasMax = runtime.maxActiveMS !== undefined &&
+    runtime.maxActiveMS !== null && Number.isFinite(max) && max > 0;
+  const errorCode = String((run && run.error_code) || '');
+  const exceeded = runtime.deadlineExceeded === true || errorCode === 'deadline_exceeded';
+
+  let line;
+  if (hasElapsed) {
+    line = '跨尝试累计活跃 ' + formatActiveSeconds(elapsed) + '（' + elapsed + ' ms）' +
+      (hasMax
+        ? ' / 上限 ' + formatActiveSeconds(max) + '（' + max + ' ms）'
+        : ' / 上限未知（max_active_ms 为 NULL：未设置/无截止，不等于 0）');
+  } else {
+    line = '服务器没有返回累计活跃时间（本页不估算）' +
+      (hasMax ? '；上限 ' + formatActiveSeconds(max) + '。' : '；上限未知（NULL = 无截止）。');
+  }
+
+  let reasonLine;
+  if (exceeded) {
+    reasonLine = '超时原因：累计活跃已达到/超过上限（' +
+      (errorCode || 'deadline_exceeded') + '）。平台已停止接受新结果；执行单元退出后按 ' +
+      'deadline_exceeded 失败收尾，且不发布输出产物。';
+  } else if (hasMax) {
+    reasonLine = '未超时：累计活跃仍在上限内；达到上限会记录 cancel_requested_at 与 ' +
+      'error_code=deadline_exceeded，并拒绝新结果。';
+  } else {
+    reasonLine = '该 Run 没有活跃时间截止（max_active_ms 为 NULL = 未知/未设置，不是 0）。';
+  }
+
+  return {
+    elapsedMS: hasElapsed ? elapsed : null,
+    maxMS: hasMax ? max : null,
+    exceeded: exceeded,
+    line: line,
+    reasonLine: reasonLine,
+    oneClockNote: '同一 Run 的多次尝试显示为同一个累计时钟：新 attempt 从累计值继续，不重置，也不会重新获得完整时限。',
   };
 }
 
@@ -616,6 +707,9 @@ function showRunDetail(run, facts) {
       ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
       : '（没有可显示的租约事实）';
   document.getElementById('detail-note').textContent = describeRunState(run, facts);
+  const active = describeActiveClock(run, facts);
+  document.getElementById('detail-active').textContent = active.line + ' ' + active.oneClockNote;
+  document.getElementById('detail-deadline').textContent = active.reasonLine;
   renderSandboxPanel(run, facts);
   document.getElementById('run-detail').hidden = false;
 }

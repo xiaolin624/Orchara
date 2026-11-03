@@ -54,7 +54,10 @@ func (s *Server) handleInternalExecutionClaim(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if lease == nil {
-		// No compatible job or no capacity: 204 with no body, nothing changed.
+		// No compatible job, no capacity, or an overdue queued Run that the claim
+		// just terminalised (T034): 204 with no body and no lease. The overdue case
+		// is the only 204 that changed a row: the Run is failed(deadline_exceeded)
+		// and its never-run job is void, so nothing is dispatched.
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -185,6 +188,13 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 	case errors.Is(err, execution.ErrIdentityMismatch):
 		writeError(w, r, http.StatusConflict, "execution_identity_mismatch",
 			"the exit evidence does not match the claimed protocol/manifest/image identity")
+		return false
+	case errors.Is(err, execution.ErrDeadlineExceeded):
+		// F03/T034: the run reached its frozen active-time limit, so this result is
+		// not accepted. The intent is already committed; the supervisor's exit
+		// finalizes failed(deadline_exceeded).
+		writeError(w, r, http.StatusConflict, execution.DeadlineErrorCode,
+			"the run reached its active-time deadline; no result is accepted")
 		return false
 	case errors.Is(err, execution.ErrObjectSigningUnavailable):
 		writeError(w, r, http.StatusServiceUnavailable, "object_signing_unavailable",

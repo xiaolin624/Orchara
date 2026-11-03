@@ -16,6 +16,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -232,6 +233,23 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if cancelAt != nil {
 		w.Header().Set("X-Run-Cancel-Requested-At", cancelAt.UTC().Format(time.RFC3339Nano))
+	}
+	// F03/T034: accumulated/projected active time and the frozen limit, as
+	// non-contract headers (the contract Run schema is additionalProperties:false
+	// and has no such fields; same precedent as X-Manifest-SHA256). A NULL limit
+	// omits X-Run-Max-Active-Ms: unknown is not zero. The user-facing clock is the
+	// single accumulated total across attempts, never a per-attempt reset.
+	if active, err := s.execution.ActiveTime(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if active != nil {
+		w.Header().Set("X-Run-Active-Elapsed-Ms", strconv.FormatInt(active.ActiveElapsedMS, 10))
+		if active.MaxActiveMS != nil {
+			w.Header().Set("X-Run-Max-Active-Ms", strconv.FormatInt(*active.MaxActiveMS, 10))
+		}
+		if active.DeadlineExceeded {
+			w.Header().Set("X-Run-Deadline-Exceeded", "true")
+		}
 	}
 	writeJSON(w, http.StatusOK, run)
 }

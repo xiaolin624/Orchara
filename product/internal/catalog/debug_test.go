@@ -253,24 +253,32 @@ func TestFitsNumeric208(t *testing.T) {
 }
 
 func TestDebugPolicyReadsTheBudgetAndRefusesOutOfRangeValues(t *testing.T) {
-	budget, currency, problem := debugPolicy(map[string]any{
-		"policy": map[string]any{"budget_limit": "12.50", "currency": "USD"},
+	budget, currency, maxActiveMS, problem := debugPolicy(map[string]any{
+		"policy": map[string]any{
+			"budget_limit": "12.50", "currency": "USD", "max_active_seconds": float64(900),
+		},
 	})
 	if problem != nil {
 		t.Fatalf("a valid policy was refused: %v", problem)
 	}
-	if budget != "12.50" || currency != "USD" {
-		t.Fatalf("budget/currency = %q/%q, want 12.50/USD", budget, currency)
+	if budget != "12.50" || currency != "USD" || maxActiveMS != 900_000 {
+		t.Fatalf("budget/currency/max = %q/%q/%d, want 12.50/USD/900000",
+			budget, currency, maxActiveMS)
 	}
 
 	for name, definition := range map[string]map[string]any{
-		"missing policy": {},
-		"no budget":      {"policy": map[string]any{"currency": "USD"}},
-		"bad budget":     {"policy": map[string]any{"budget_limit": "1e3", "currency": "USD"}},
-		"huge budget":    {"policy": map[string]any{"budget_limit": "1000000000000", "currency": "USD"}},
-		"bad currency":   {"policy": map[string]any{"budget_limit": "1", "currency": "US"}},
+		"missing policy":  {},
+		"no budget":       {"policy": map[string]any{"currency": "USD", "max_active_seconds": float64(900)}},
+		"bad budget":      {"policy": map[string]any{"budget_limit": "1e3", "currency": "USD", "max_active_seconds": float64(900)}},
+		"huge budget":     {"policy": map[string]any{"budget_limit": "1000000000000", "currency": "USD", "max_active_seconds": float64(900)}},
+		"bad currency":    {"policy": map[string]any{"budget_limit": "1", "currency": "US", "max_active_seconds": float64(900)}},
+		"no max active":   {"policy": map[string]any{"budget_limit": "1", "currency": "USD"}},
+		"zero max active": {"policy": map[string]any{"budget_limit": "1", "currency": "USD", "max_active_seconds": float64(0)}},
+		"fractional max":  {"policy": map[string]any{"budget_limit": "1", "currency": "USD", "max_active_seconds": 1.5}},
+		"huge max active": {"policy": map[string]any{"budget_limit": "1", "currency": "USD", "max_active_seconds": float64(3601)}},
+		"string max":      {"policy": map[string]any{"budget_limit": "1", "currency": "USD", "max_active_seconds": "900"}},
 	} {
-		_, _, problem := debugPolicy(definition)
+		_, _, _, problem := debugPolicy(definition)
 		if problem == nil {
 			t.Fatalf("%s: accepted an unusable policy", name)
 		}
@@ -281,6 +289,9 @@ func TestDebugPolicyReadsTheBudgetAndRefusesOutOfRangeValues(t *testing.T) {
 			if problem.Pointer != "/policy/budget_limit" {
 				t.Fatalf("huge budget: pointer = %q", problem.Pointer)
 			}
+		}
+		if problem.Code != CodePolicyIncomplete && problem.Code != CodeBudgetOutOfRange {
+			t.Fatalf("%s: unexpected code %q", name, problem.Code)
 		}
 	}
 }

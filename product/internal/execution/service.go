@@ -31,8 +31,11 @@ import (
 //  5. re-verify the sealed manifest bytes and mint real sealed GET links.
 //
 // A nil lease with a nil error is "no compatible job or no capacity": the HTTP
-// layer answers 204 and the database is unchanged. Every error path rolls back,
-// so a failed verification/signing never leaves a lease behind.
+// layer answers 204 and no execution state changes. T034 adds one deliberate
+// exception: a queued Run whose accumulated active time already reached its frozen
+// limit is committed failed(deadline_exceeded) (its never-run job becomes void)
+// and the same 204 tells the caller there is no lease. Every error path rolls
+// back, so a failed verification/signing never leaves a lease behind.
 func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, error) {
 	normalized, err := validateClaimRequest(request)
 	if err != nil {
@@ -50,6 +53,28 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 		return nil, err
 	}
 	if candidate == nil {
+		return nil, nil
+	}
+	// T034: an already-over queued Run is never leased. Its accumulated active
+	// time (settled by its previous attempt) already reached the frozen limit, so
+	// a new attempt would only burn more time without a chance to finish. The Run
+	// is committed failed(deadline_exceeded), the never-run job is voided and the
+	// claim answers 204 (no lease, nothing to execute).
+	if deadlineExceeded(candidate.MaxActiveMS, candidate.ActiveElapsedMS) {
+		if err := failQueuedRunOnDeadlineTx(
+			ctx, tx, candidate.RunID, candidate.Revision,
+		); err != nil {
+			return nil, err
+		}
+		if err := voidJobTx(ctx, tx, candidate.JobID); err != nil {
+			return nil, err
+		}
+		if _, err := AppendRunStatusTx(ctx, tx, candidate.RunID); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing the overdue claim refusal: %w", err)
+		}
 		return nil, nil
 	}
 
@@ -241,6 +266,18 @@ func (s *Service) Heartbeat(ctx context.Context, request HeartbeatRequest) (*Hea
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Lock the Run first: the heartbeat may record the deadline intent on the Run
+	// row, and taking the lock in the same order as the result/finalizer paths
+	// (run -> attempt) avoids a lock-order inversion under a concurrent result.
+	runFacts, err := lockRunActiveFactsTx(ctx, tx, normalized.RunID)
+	if err != nil {
+		if errors.Is(err, ErrRunNotFound) {
+			// The heartbeat protocol keeps one answer for every stale/unknown
+			// credential: a nonexistent Run is not an enumeration oracle.
+			return nil, ErrStaleAttempt
+		}
+		return nil, err
+	}
 	facts, err := loadHeartbeatAttemptTx(ctx, tx, normalized.RunID, normalized.AttemptToken)
 	if err != nil {
 		return nil, err
@@ -250,6 +287,15 @@ func (s *Service) Heartbeat(ctx context.Context, request HeartbeatRequest) (*Hea
 	}
 	if facts.ExecutionUnitID != normalized.ExecutionUnitID {
 		return nil, ErrStaleAttempt
+	}
+	deadlineState := deadlineStateOf(runFacts, facts.LiveActiveMS, !facts.ActiveSettled)
+	if deadlineState.Over {
+		// T034 pre-cancel deadline path: record the intent once, keep renewing the
+		// lease so the supervisor can still confirm the exit that lets the
+		// finalizer commit failed(deadline_exceeded). T036 refines cancel priority.
+		if err := markDeadlineIntentTx(ctx, tx, normalized.RunID); err != nil {
+			return nil, err
+		}
 	}
 	deadline, err := renewLeaseTx(
 		ctx, tx, normalized.AttemptToken, s.LeaseTTL.Seconds(), normalized.CheckpointConnections,
@@ -263,8 +309,9 @@ func (s *Service) Heartbeat(ctx context.Context, request HeartbeatRequest) (*Hea
 	return &HeartbeatReply{
 		LeaseDeadline: deadline,
 		// Cancel is intent, not a terminal state: the worker stops scheduling and
-		// the cancel endpoint (T038) owns the confirmed transition.
-		CancelRequested: facts.CancelRequestedAt.Valid,
+		// the cancel endpoint (T036) owns the confirmed transition. A deadline sets
+		// the same intent so the worker sees one control flag.
+		CancelRequested: runFacts.CancelRequestedAt.Valid || deadlineState.Over,
 		PolicyRevision:  facts.PolicyRevision.Int64,
 		// The usage ledger is a later ticket. Until then the honest remaining
 		// budget is the run's whole limit, not a fabricated spend figure.
@@ -342,7 +389,49 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	if err := releaseAllocationOnceTx(ctx, tx, "job:"+facts.JobID); err != nil {
 		return nil, err
 	}
-	if !evidence.Started {
+	// T034: the exit is the transition out of executing, so the attempt's active
+	// interval is settled once here (idempotent if a result proposal already
+	// settled it). The deadline decision is then made against the settled total.
+	if _, err := settleAttemptActiveTx(ctx, tx, facts.RunID); err != nil {
+		return nil, err
+	}
+	deadlineState, err := checkDeadlineTx(ctx, tx, facts.RunID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case deadlineState.Over:
+		// Pre-cancel deadline path (T036 refines cancel priority): the intent is
+		// already recorded and the one finalizer commits failed(deadline_exceeded)
+		// with no output artifact. A guard that blocks the terminal transition
+		// (live children/unknown operations) parks the Run instead of leaving it
+		// "executing" with no unit; T035/T038 own the re-drive.
+		finalized, err := s.finalizeRunTx(ctx, tx, finalizeInput{
+			RunID:            facts.RunID,
+			RunOwnerID:       facts.RunOwnerID,
+			RunState:         facts.RunState,
+			RunRevision:      facts.RunRevision,
+			JobID:            facts.JobID,
+			AttemptToken:     facts.Token,
+			ReportedResult:   facts.ReportedResult,
+			Exited:           true,
+			DeadlineExceeded: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !finalized {
+			if err := parkRunForRecoveryTx(ctx, tx, facts.RunID); err != nil {
+				return nil, err
+			}
+			if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
+				return nil, err
+			}
+			if _, err := AppendRunStatusTx(ctx, tx, facts.RunID); err != nil {
+				return nil, err
+			}
+		}
+	case !evidence.Started:
 		if err := returnJobToQueueTx(ctx, tx, facts.JobID, facts.RunID); err != nil {
 			return nil, err
 		}
@@ -350,7 +439,7 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		if _, err := AppendRunStatusTx(ctx, tx, facts.RunID); err != nil {
 			return nil, err
 		}
-	} else if len(facts.ReportedResult) > 0 {
+	case len(facts.ReportedResult) > 0:
 		if _, err := s.finalizeRunTx(ctx, tx, finalizeInput{
 			RunID:          facts.RunID,
 			RunOwnerID:     facts.RunOwnerID,
@@ -363,7 +452,7 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		}); err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		// Exit with no result: park for recovery, hold the job, never requeue.
 		if err := parkRunForRecoveryTx(ctx, tx, facts.RunID); err != nil {
 			return nil, err
@@ -392,6 +481,10 @@ type finalizeInput struct {
 	AttemptToken   string
 	ReportedResult []byte
 	Exited         bool
+	// DeadlineExceeded tells the finalizer that the pre-cancel deadline path is
+	// already decided (T034). The finalizer re-checks the settled total anyway, so
+	// a caller that forgot the flag cannot make an overdue run succeed.
+	DeadlineExceeded bool
 }
 
 // finalizeRunTx is the one idempotent finalizer for result+exit, in either
@@ -415,7 +508,7 @@ type finalizeInput struct {
 func (s *Service) finalizeRunTx(
 	ctx context.Context, tx *sql.Tx, input finalizeInput,
 ) (bool, error) {
-	if !input.Exited || len(input.ReportedResult) == 0 {
+	if !input.Exited {
 		return false, nil
 	}
 	if input.RunState != "running" && input.RunState != "recovery_pending" {
@@ -423,22 +516,40 @@ func (s *Service) finalizeRunTx(
 		// a no-op, never a second transition.
 		return false, nil
 	}
+	// T034: every finalizer entry has left executing, so the attempt interval is
+	// settled once here (idempotent when the caller already settled it). The
+	// deadline decision is then made against the settled total plus the recorded
+	// intent: an overdue Run never commits a success, even if a result proposal
+	// was accepted earlier.
+	if _, err := settleAttemptActiveTx(ctx, tx, input.RunID); err != nil {
+		return false, err
+	}
+	deadlineState, err := checkDeadlineTx(ctx, tx, input.RunID)
+	if err != nil {
+		return false, err
+	}
+	deadline := input.DeadlineExceeded || deadlineState.Over
+	if !deadline && len(input.ReportedResult) == 0 {
+		return false, nil
+	}
+
 	var proposal struct {
 		SuggestedState   string  `json:"suggested_state"`
 		OutputArtifactID *string `json:"output_artifact_id"`
 		ErrorCode        *string `json:"error_code"`
 	}
-	if err := json.Unmarshal(input.ReportedResult, &proposal); err != nil {
-		return false, fmt.Errorf("decoding the stored result proposal: %w", err)
-	}
-
-	if proposal.SuggestedState == "waiting_approval" || proposal.SuggestedState == "waiting_children" {
-		// Stored, not terminal: T035 turns the waiting proposal into the waiting
-		// state and the single resume job. The execution slot is already free.
-		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
-			return false, err
+	if !deadline {
+		if err := json.Unmarshal(input.ReportedResult, &proposal); err != nil {
+			return false, fmt.Errorf("decoding the stored result proposal: %w", err)
 		}
-		return false, nil
+		if proposal.SuggestedState == "waiting_approval" || proposal.SuggestedState == "waiting_children" {
+			// Stored, not terminal: T035 turns the waiting proposal into the waiting
+			// state and the single resume job. The execution slot is already free.
+			if err := holdJobTx(ctx, tx, input.JobID); err != nil {
+				return false, err
+			}
+			return false, nil
+		}
 	}
 
 	blocked, err := finalizerBlockedTx(ctx, tx, input.RunID)
@@ -447,7 +558,8 @@ func (s *Service) finalizeRunTx(
 	}
 	if blocked {
 		// Keep the run finalizing with its evidence; hold the job so no new
-		// attempt is dispatched. T035/T036 own the next transition.
+		// attempt is dispatched. T035/T036 own the next transition. An overdue run
+		// whose guard blocks is parked by its caller instead of left executing.
 		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
 			return false, err
 		}
@@ -455,42 +567,49 @@ func (s *Service) finalizeRunTx(
 	}
 
 	outcome := runOutcome{}
-	switch proposal.SuggestedState {
-	case "succeeded":
-		if proposal.OutputArtifactID == nil {
-			return false, errors.New("the stored succeeded proposal has no output artifact")
+	if deadline {
+		// Pre-cancel deadline outcome (T036 refines cancel priority): failed with
+		// the stable code, no output artifact, terminal and finished.
+		code := DeadlineErrorCode
+		outcome = runOutcome{State: "failed", ErrorCode: &code, Finished: true}
+	} else {
+		switch proposal.SuggestedState {
+		case "succeeded":
+			if proposal.OutputArtifactID == nil {
+				return false, errors.New("the stored succeeded proposal has no output artifact")
+			}
+			if err := checkOutputArtifactTx(
+				ctx, tx, input.RunID, input.RunOwnerID, *proposal.OutputArtifactID,
+			); err != nil {
+				// The artifact was acceptable when the proposal was stored; if it is
+				// no longer owned/ready/linked the platform cannot honestly claim
+				// success, so the run parks for reconciliation instead.
+				code := "output_artifact_invalid"
+				outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
+				break
+			}
+			outcome = runOutcome{
+				State:            "succeeded",
+				OutputArtifactID: proposal.OutputArtifactID,
+				Finished:         true,
+			}
+		case "failed":
+			if proposal.ErrorCode == nil {
+				return false, errors.New("the stored failed proposal has no error_code")
+			}
+			outcome = runOutcome{
+				State:     "failed",
+				ErrorCode: proposal.ErrorCode,
+				Finished:  true,
+			}
+		case "needs_reconciliation":
+			outcome = runOutcome{
+				State:     "needs_reconciliation",
+				ErrorCode: proposal.ErrorCode,
+			}
+		default:
+			return false, fmt.Errorf("unknown stored result proposal %q", proposal.SuggestedState)
 		}
-		if err := checkOutputArtifactTx(
-			ctx, tx, input.RunID, input.RunOwnerID, *proposal.OutputArtifactID,
-		); err != nil {
-			// The artifact was acceptable when the proposal was stored; if it is
-			// no longer owned/ready/linked the platform cannot honestly claim
-			// success, so the run parks for reconciliation instead.
-			code := "output_artifact_invalid"
-			outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
-			break
-		}
-		outcome = runOutcome{
-			State:            "succeeded",
-			OutputArtifactID: proposal.OutputArtifactID,
-			Finished:         true,
-		}
-	case "failed":
-		if proposal.ErrorCode == nil {
-			return false, errors.New("the stored failed proposal has no error_code")
-		}
-		outcome = runOutcome{
-			State:     "failed",
-			ErrorCode: proposal.ErrorCode,
-			Finished:  true,
-		}
-	case "needs_reconciliation":
-		outcome = runOutcome{
-			State:     "needs_reconciliation",
-			ErrorCode: proposal.ErrorCode,
-		}
-	default:
-		return false, fmt.Errorf("unknown stored result proposal %q", proposal.SuggestedState)
 	}
 
 	if err := completeJobTx(ctx, tx, input.JobID); err != nil {
@@ -632,6 +751,24 @@ func (s *Service) SubmitResult(
 			return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 		}
 		return nil, ErrEventConflict
+	}
+	// T034: a result proposal is work. Settle the attempt's interval once and
+	// refuse the proposal at/over the frozen limit, so a worker that reaches the
+	// deadline cannot publish an outcome or keep working. The intent is recorded
+	// in the same transaction; the supervisor's exit then drives the one
+	// finalizer to failed(deadline_exceeded).
+	if _, err := settleAttemptActiveTx(ctx, tx, run.ID); err != nil {
+		return nil, err
+	}
+	deadlineState, err := checkDeadlineTx(ctx, tx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	if deadlineState.Over {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing the deadline refusal: %w", err)
+		}
+		return nil, ErrDeadlineExceeded
 	}
 	if normalized.SuggestedState == "succeeded" {
 		if err := checkOutputArtifactTx(

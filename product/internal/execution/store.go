@@ -32,6 +32,12 @@ type claimCandidate struct {
 	RunManifestSHA256  string
 	BudgetLimit        string
 	Currency           string
+	// Revision and the active-time facts let Claim refuse a queued Run whose
+	// accumulated active time already reached its frozen limit, before any slot
+	// or attempt exists (T034).
+	Revision        int64
+	MaxActiveMS     sql.NullInt64
+	ActiveElapsedMS int64
 }
 
 // artifactFacts is the sealed-object identity the lease links are minted from.
@@ -71,6 +77,12 @@ type attemptFacts struct {
 	ImageDigest       string
 	ReportedResult    []byte
 	CheckpointID      sql.NullString
+	// T034: the database-clock length of this attempt so far and whether its
+	// interval was already settled into runs.active_elapsed_ms.
+	LiveActiveMS   int64
+	ActiveSettled  bool
+	RunActiveMS    int64
+	RunMaxActiveMS sql.NullInt64
 }
 
 // selectClaimCandidateTx picks one ready job whose run is queued and whose
@@ -94,7 +106,8 @@ func selectClaimCandidateTx(
 		SELECT j.id::text, j.run_id::text, j.kind, j.resume_artifact_id::text,
 		       r.execution_snapshot_id::text, s.manifest, s.manifest_sha256,
 		       s.manifest_artifact_id::text, r.input_artifact_id::text,
-		       r.manifest_sha256, r.budget_limit::text, r.currency
+		       r.manifest_sha256, r.budget_limit::text, r.currency,
+		       r.revision, r.max_active_ms, r.active_elapsed_ms
 		  FROM platform.jobs AS j
 		  JOIN platform.runs AS r ON r.id = j.run_id
 		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
@@ -112,6 +125,7 @@ func selectClaimCandidateTx(
 		&candidate.SnapshotID, &manifest, &candidate.ManifestSHA256,
 		&candidate.ManifestArtifactID, &candidate.InputArtifactID,
 		&candidate.RunManifestSHA256, &candidate.BudgetLimit, &candidate.Currency,
+		&candidate.Revision, &candidate.MaxActiveMS, &candidate.ActiveElapsedMS,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -338,9 +352,14 @@ func loadHeartbeatAttemptTx(ctx context.Context, tx *sql.Tx, runID, token string
 		SELECT a.token::text, a.job_id::text, a.run_id::text, a.execution_unit_id,
 		       a.heartbeat_at::text, a.exited_at, a.revoked_at,
 		       a.lease_deadline > now() AS lease_live,
+		       a.active_settled_at IS NOT NULL AS active_settled,
+		       GREATEST(
+		           0,
+		           floor(extract(epoch FROM (now() - a.started_at)) * 1000)::bigint
+		       ) AS live_active_ms,
 		       r.cancel_requested_at, r.budget_limit::text,
 		       (SELECT revision FROM platform.policy_epochs WHERE scope = 'acl'),
-		       j.state
+		       j.state, r.phase, r.active_elapsed_ms, r.max_active_ms
 		  FROM platform.run_attempts AS a
 		  JOIN platform.jobs AS j ON j.id = a.job_id AND j.run_id = a.run_id
 		  JOIN platform.runs AS r ON r.id = a.run_id
@@ -352,8 +371,9 @@ func loadHeartbeatAttemptTx(ctx context.Context, tx *sql.Tx, runID, token string
 	).Scan(
 		&facts.Token, &facts.JobID, &facts.RunID, &facts.ExecutionUnitID,
 		&facts.HeartbeatAt, &facts.ExitedAt, &facts.RevokedAt,
-		&facts.LeaseLive, &facts.CancelRequestedAt, &facts.BudgetLimit,
-		&policy, &facts.JobState,
+		&facts.LeaseLive, &facts.ActiveSettled, &facts.LiveActiveMS,
+		&facts.CancelRequestedAt, &facts.BudgetLimit,
+		&policy, &facts.JobState, &facts.RunPhase, &facts.RunActiveMS, &facts.RunMaxActiveMS,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrStaleAttempt
@@ -500,6 +520,67 @@ func holdJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
 		if err != nil {
 			return fmt.Errorf("holding the job: %w", err)
 		}
+		return ErrStaleAttempt
+	}
+	return nil
+}
+
+// failQueuedRunOnDeadlineTx is the "already over before any attempt" deadline
+// transition: a queued Run whose settled active time already reached its frozen
+// limit is committed failed(deadline_exceeded) instead of being leased. No worker
+// slot/attempt ever exists, so there is no allocation to release; the start job is
+// voided (never ran) and the Run keeps its accumulated total. The CAS on
+// state+revision makes a race a no-op rather than an overwrite.
+func failQueuedRunOnDeadlineTx(
+	ctx context.Context, tx *sql.Tx, runID string, expectedRevision int64,
+) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.runs
+		   SET state = 'failed',
+		       phase = 'idle',
+		       revision = revision + 1,
+		       finished_at = now(),
+		       output_artifact_id = NULL,
+		       error_code = $2,
+		       cancel_requested_at = COALESCE(cancel_requested_at, now())
+		 WHERE id = $1::uuid
+		   AND state = 'queued'
+		   AND revision = $3
+		   AND deleted_at IS NULL`,
+		runID, DeadlineErrorCode, expectedRevision,
+	)
+	if err != nil {
+		return fmt.Errorf("failing the overdue queued run: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failing the overdue queued run: %w", err)
+	}
+	if affected != 1 {
+		return ErrStaleAttempt
+	}
+	return nil
+}
+
+// voidJobTx voids a job that never ran because its Run was terminalised before a
+// claim. STATE-MACHINES §3 uses `void` for a terminal Run's job; `completed` is
+// reserved for an execution that actually finished. A repeated call is a no-op.
+func voidJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE platform.jobs
+		   SET state = 'void',
+		       current_attempt_token = NULL
+		 WHERE id = $1::uuid AND state IN ('ready', 'void')`,
+		jobID,
+	)
+	if err != nil {
+		return fmt.Errorf("voiding the job: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("voiding the job: %w", err)
+	}
+	if affected != 1 {
 		return ErrStaleAttempt
 	}
 	return nil
