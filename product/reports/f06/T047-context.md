@@ -40,7 +40,8 @@
      typed `context_budget_exhausted`。**protected 分支在所有步骤中逐字保留**，不会静默截断。
 - `protectedMinimum` 先计算：system + 仅 protected 分支的当前输入；超过预算立即
   `context_budget_exhausted`，不进入任何截断尝试。
-- Trace：`sources`（kind/node_id/artifact_id/label/estimated_tokens/protected）、`truncations`
+- Trace：`sources`（kind/node_id/artifact_id/label/estimated_tokens/protected；当前输入按
+  python/start/literal 记录，tool history 记 `kind=tool` 与来源节点 id）、`truncations`
   （source/reason/tokens_removed）、`protected`（排序后的点路径键名）、`estimated_tokens`、
   `budget_tokens`、`reserved_output_tokens`、`memory_state`、`display_only_summary_count`；
   **不含任何消息正文、金额原文、记忆文本或 secret**（`TestTraceShapeNamesSourcesAndBudgetWithoutContent`）。
@@ -208,14 +209,14 @@ $ gofmt -l internal cmd tools
 （空输出，exit 0）
 
 $ python -m pytest tests/f06 -q
-111 passed in 564.98s (0:09:24)
+111 passed in 549.64s (0:09:09)
 
 $ $env:ORCHARA_P01_PYTHON='E:\Orchara\product\probes\agent_min\.venv\Scripts\python.exe'
 $ python -m pytest tests/f04a -q
-36 passed in 64.76s (0:01:04)
+36 passed in 63.91s (0:01:03)
 
 $ python -m pytest tests/tooling -q
-21 passed in 5.70s
+21 passed in 6.06s
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
@@ -257,7 +258,7 @@ no drift: spec copy and contract snapshot match the manifest
 ## 9. 提交与最终门禁
 
 - 提交：`37c0966`（builder + 单测）、`c1dae1f`（agent 集成/trace/UI/T047 测试/T043 期望）、
-  本报告/PROGRESS/ADR 追加提交（docs）。
+  `d5e1a0b`（本报告/PROGRESS/ADR 追加）、`4eb0182`（tool history 来源写入 trace）。
 - 最终门禁（本报告提交前的最后一次顺序复跑）：
 
 ```text
@@ -271,14 +272,14 @@ $ gofmt -l internal cmd tools
 （空输出）
 
 $ python -m pytest tests/f06 -q
-111 passed in 564.98s (0:09:24)
+111 passed in 549.64s (0:09:09)
 
 $ $env:ORCHARA_P01_PYTHON='E:\Orchara\product\probes\agent_min\.venv\Scripts\python.exe'
 $ python -m pytest tests/f04a -q
-36 passed in 64.76s (0:01:04)
+36 passed in 63.91s (0:01:03)
 
 $ python -m pytest tests/tooling -q
-21 passed in 5.70s
+21 passed in 6.06s
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
