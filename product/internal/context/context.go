@@ -343,6 +343,15 @@ func Build(ctx stdcontext.Context, request Request) (Output, error) {
 				"a tool history message is not validated JSON: %v", decodeErr)
 		}
 		collectProtected(value, "", protected)
+		source := item.Source
+		if strings.TrimSpace(source.Kind) == "" {
+			source.Kind = "tool"
+		}
+		trace.Sources = append(trace.Sources, TraceSource{
+			Kind: traceKind(source), NodeID: source.NodeID,
+			ArtifactID: source.ArtifactID, Label: "tool_history",
+			EstimatedTokens: EstimateTokens(content),
+		})
 	}
 	trace.Protected = sortedKeys(protected)
 

@@ -253,6 +253,15 @@ func TestOverLimitOrderAndProtectedFactsSurvive(t *testing.T) {
 		t.Fatalf("estimated tokens = %d exceed the budget %d",
 			output.Trace.EstimatedTokens, output.Trace.BudgetTokens)
 	}
+	hasToolSource := false
+	for _, source := range output.Trace.Sources {
+		if source.Kind == "tool" && source.NodeID == "analysis" {
+			hasToolSource = true
+		}
+	}
+	if !hasToolSource {
+		t.Fatalf("the tool history source is missing from the trace: %+v", output.Trace.Sources)
+	}
 }
 
 func TestSummaryIsDisplayOnlyAndNeverChangesAmount(t *testing.T) {

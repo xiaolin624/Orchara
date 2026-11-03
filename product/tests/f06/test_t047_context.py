@@ -93,7 +93,7 @@ def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
     reasons = [entry["reason"] for entry in last["truncations"]]
     assert "verbose_upstream_text" in reasons, reasons
     source_kinds = {entry["kind"] for entry in last["sources"]}
-    assert {"python", "start"} <= source_kinds, source_kinds
+    assert {"python", "start", "tool"} <= source_kinds, source_kinds
     # The trace names sources and keys only; it never carries raw content.
     encoded_trace = json.dumps(trace)
     assert "250.00" not in encoded_trace, encoded_trace
