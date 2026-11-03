@@ -200,41 +200,43 @@ max_turns、结构化 schema 错误不重试、needs_reconciliation、waiting、
 
 ## 3. 门禁（原始输出尾部）
 
+最终复跑（在 worker 角色与 manifest digest 加固之后，2026-11-03）：
+
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
 (vet exit=0, no output)
 
 $ E:\orchara-toolchains\go\bin\go.exe test ./...
-ok  	orchara/platform/internal/supervisor	1.352s
+ok  	orchara/platform/internal/supervisor	(cached)
 ?   	orchara/platform/internal/toolruns	[no test files]
-ok  	orchara/platform/internal/tools	4.663s
-ok  	orchara/platform/internal/toolversions	2.263s
-ok  	orchara/platform/internal/uuid	1.081s
-ok  	orchara/platform/internal/workflow	1.939s
+ok  	orchara/platform/internal/tools	(cached)
+ok  	orchara/platform/internal/toolversions	(cached)
+ok  	orchara/platform/internal/uuid	(cached)
+ok  	orchara/platform/internal/workflow	(cached)
 (exit=0; 24 packages ok, 0 FAIL)
 
 $ gofmt -l internal cmd tools
 (empty; exit=0)
 
 $ python -m pytest tests/f06 -q
-..........................................                               [100%]
-42 passed in 143.16s (0:02:23)
+42 passed in 133.84s (0:02:13)
 
-$ python -m pytest tests/f04a -q   # ORCHARA_P01_PYTHON=E:\Orchara\product\probes\agent_min\.venv\Scripts\python.exe
-....................................                                   [100%]
-36 passed in 74.44s (0:01:14)
+$ python -m pytest tests/f04a -q   # ORCHARA_P01_PYTHON=...agent_min\.venv\Scripts\python.exe
+36 passed in 61.42s (0:01:01)
 
 $ python -m pytest tests/tooling -q
-.....................                                                    [100%]
-21 passed in 4.81s
+21 passed in 6.30s
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f00b/test_t024_model_calls.py tests/f00b/test_t024_model_validate.py -q
-............                                                             [100%]
-12 passed in 71.21s (0:01:11)
+12 passed in 57.65s
 ```
+
+加固前同一套门禁的首次结果（片段，数字一致）：`tests/f06` 42 passed (143.16s)、
+`tests/f04a` 36 passed (74.44s)、`tests/tooling` 21 passed (4.81s)、目标 T024 12 passed
+(71.21s)。两轮均 exit 0。
 
 ## 4. T042/T043 可用的精确接口
 
@@ -282,4 +284,4 @@ $ python -m pytest tests/f00b/test_t024_model_calls.py tests/f00b/test_t024_mode
   （Node 只执行纯 helpers）；全量 `pytest tests`/全量 `tests/f00b`（Windows 管道挂起风险，
   本票按建议只跑目标 T024 文件）；真实 SSE/流式增量（T044，本票不实现）。
 - 未 push、未关闭 issue #42；未改 `docs/spec/**`、`contracts/**`、迁移 0001–0024；工作树
-  干净。提交为 5 个里程碑提交 + 1 个 worker 角色参数对齐（服务层再校验 role=worker）提交。
+  干净。提交为 5 个里程碑提交 + 2 个加固/证据刷新提交（worker 角色 + manifest digest 校验；门禁复跑记录）。
