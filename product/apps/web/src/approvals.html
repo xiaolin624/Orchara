@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 运行审批（F06/T050）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 56rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .5rem 0; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    dl.proposal { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
+    dl.proposal dt { opacity: .7; }
+    dl.proposal dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; white-space: pre-wrap; }
+    .decision-buttons { display: flex; gap: .75rem; margin-top: .9rem; }
+    button { padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/runs">运行</a>
+    <a href="/tools">工具</a>
+    <a href="/login">登录</a>
+    <a href="/admin">管理台</a>
+  </nav>
+
+  <h1>运行审批（F06/T050）</h1>
+  <p class="sub">
+    审批只针对本 Run 的某一个受控操作。页面显示的是<strong>服务端封存的真实提案</strong>
+    （原始目标、方法/路径、规范化参数与哈希、数据去向、来源版本、过期时间），不是 worker 自报的文案。
+    批准<strong>不会赋予额外权限</strong>：恢复后的尝试仍会重新校验 attempt、manifest、策略、权限与预算，
+    并通过唯一的 <code>authorized → dispatching</code> CAS 最多派发一次。
+  </p>
+  <p class="hint">
+    <strong>诚实边界：</strong>取消/拒绝不会撤销已经发生的外部写入；本页不提供“撤销”。审批必须由
+    <strong>指定的人类审批人</strong>（F04A 为 Run 所有者）做出，管理员不是默认审批人；发布审核是另一个
+    聚合，不能代替运行审批。批准/拒绝按钮<strong>没有默认选择</strong>，只有你明确点击才会提交。
+  </p>
+
+  <section class="card">
+    <h2>待我审批</h2>
+    <p id="approvals-status" class="status" role="status" aria-live="polite">正在加载审批…</p>
+    <ul id="approvals-list"></ul>
+    <p id="approvals-empty" class="hint" hidden>当前没有指定给你的待审批操作。</p>
+    <button id="approvals-next" type="button" hidden>下一页</button>
+  </section>
+
+  <section id="approval-detail" class="card" hidden aria-live="polite">
+    <h2>审批详情</h2>
+    <dl class="proposal">
+      <dt>审批 id</dt><dd id="detail-id"></dd>
+      <dt>Run</dt><dd id="detail-run"></dd>
+      <dt>状态</dt><dd id="detail-state"></dd>
+      <dt>参数哈希</dt><dd id="detail-params-sha"></dd>
+      <dt>过期时间</dt><dd id="detail-expires"></dd>
+      <dt>真实目标</dt><dd id="detail-target"></dd>
+      <dt>风险</dt><dd id="detail-risk"></dd>
+      <dt>规范化参数</dt><dd id="detail-params"></dd>
+      <dt>数据去向</dt><dd id="detail-destination"></dd>
+      <dt>来源版本（快照 / manifest / 策略）</dt><dd id="detail-sources"></dd>
+      <dt>提案封装</dt><dd id="detail-proposal-sha"></dd>
+    </dl>
+    <div class="decision-buttons">
+      <button id="approve-button" type="button" disabled>批准这次操作</button>
+      <button id="reject-button" type="button" disabled>拒绝这次操作</button>
+    </div>
+    <p id="decision-status" class="status" role="status" aria-live="polite"></p>
+    <p class="hint">
+      批准后平台会先保存决定，再由唯一的 resume 事务在旧尝试退出后排队；恢复的尝试仍在
+      capability 代理中重新校验权限/预算，并在派发前做状态 CAS。拒绝或过期会让等待中的 Run 以
+      <code>approval_rejected</code> / <code>approval_expired</code> 失败，且不产生外部写入。
+    </p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/approvals.js"></script>
+</body>
+</html>
