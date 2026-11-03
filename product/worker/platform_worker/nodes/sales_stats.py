@@ -828,12 +828,28 @@ def _write_json(path: str, document: dict) -> None:
         handle.write(payload)
 
 
+def _csv_text_field(value: str) -> str:
+    """Escape spreadsheet formula prefixes; the CSV writer handles quoting.
+
+    SECURITY §4: text exported to a spreadsheet must not become a formula. The
+    sales tool rejects such input already, so this is defence in depth for a
+    future caller; amounts are never altered (they cannot start with these
+    prefixes because the input parser rejects them).
+    """
+    text = str(value)
+    if text[:1] in ("=", "+", "-", "@"):
+        return "'" + text
+    return text
+
+
 def _write_outputs(output_path: str, artifacts_dir: str, summary: dict) -> None:
     summary_json = json.dumps(summary, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
-    region_lines = ["region,total"]
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["region", "total"])
     for region, total in summary["regions"].items():
-        region_lines.append(f"{region},{total}")
-    summary_csv = ("\n".join(region_lines) + "\n").encode("utf-8")
+        writer.writerow([_csv_text_field(region), total])
+    summary_csv = buffer.getvalue().encode("utf-8")
     _write_artifact(artifacts_dir, "summary.json", summary_json)
     _write_artifact(artifacts_dir, "summary.csv", summary_csv)
     _write_json(

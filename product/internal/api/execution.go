@@ -364,6 +364,13 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 		writeError(w, r, http.StatusConflict, "execution_identity_mismatch",
 			"the exit evidence does not match the claimed protocol/manifest/image identity")
 		return false
+	case errors.Is(err, execution.ErrDatabaseWritesInFlight):
+		// F03 exit guard: the recorded checkpoint connection still has an active
+		// transaction, so the old execution's writes are not drained and no terminal
+		// state may be committed yet. Nothing is written; the supervisor retries.
+		writeError(w, r, http.StatusConflict, "database_writes_in_flight",
+			"a checkpoint database connection still has an open transaction; the run is not finalized")
+		return false
 	case errors.Is(err, execution.ErrDeadlineExceeded):
 		// F03/T034: the run reached its frozen active-time limit, so this result is
 		// not accepted. The intent is already committed; the supervisor's exit

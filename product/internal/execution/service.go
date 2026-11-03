@@ -48,11 +48,36 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// EXECUTION §1/§8: claiming re-checks the owner's current state, not only the
+	// state that existed when the Run was queued. A disabled owner's queued Runs
+	// are failed here (job void, one status event) and are never leased; the
+	// candidate query below also excludes disabled owners so a race cannot slip
+	// one through.
+	disabledFailed, err := failDisabledOwnerRunsTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	// The failure must survive a "nothing to lease" return: the deferred rollback
+	// would otherwise undo it. Every no-lease path below commits when this claim
+	// changed any Run.
+	commitFailures := func() error {
+		if disabledFailed == 0 {
+			return nil
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("committing the disabled-owner claim refusals: %w", err)
+		}
+		return nil
+	}
+
 	candidate, err := selectClaimCandidateTx(ctx, tx, normalized.SupportedCompilers)
 	if err != nil {
 		return nil, err
 	}
 	if candidate == nil {
+		if err := commitFailures(); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 	// T034: an already-over queued Run is never leased. Its accumulated active
@@ -83,11 +108,17 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 		return nil, err
 	}
 	if used >= capacity {
-		// Nothing has been written yet; the row locks are simply released.
+		// Nothing was leased; only the disabled-owner refusals (if any) commit.
+		if err := commitFailures(); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 	if err := takeQuotaSlotTx(ctx, tx); err != nil {
 		if errors.Is(err, errNotEnoughCapacity) {
+			if err := commitFailures(); err != nil {
+				return nil, err
+			}
 			return nil, nil
 		}
 		return nil, err
@@ -400,6 +431,13 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		evidence.ImageDigest != facts.ImageDigest {
 		return nil, ErrIdentityMismatch
 	}
+	// STATE-MACHINES §2 exit guard: the supervisor's word that the old unit
+	// drained is not enough. Re-check every checkpoint backend the worker
+	// reported; an open transaction refuses the exit (nothing is written) so the
+	// supervisor can retry after it commits/rolls back.
+	if err := checkDatabaseDrainedTx(ctx, tx, facts.RunID, normalized.AttemptID); err != nil {
+		return nil, err
+	}
 
 	if err := recordExitTx(ctx, tx, normalized.AttemptID, normalized.Evidence); err != nil {
 		return nil, err
@@ -586,6 +624,12 @@ func (s *Service) finalizeRunTx(
 		// exactly once. Any other state (terminal/waiting/queued) is a no-op.
 	default:
 		return false, nil
+	}
+	// Defensive second half of the exit guard: even when the exit was recorded
+	// earlier (exit-then-result), a backend that acquired an open transaction in
+	// the meantime blocks the terminal commit. Nothing has been written yet.
+	if err := checkDatabaseDrainedTx(ctx, tx, input.RunID, ""); err != nil {
+		return false, err
 	}
 	// T034: every finalizer entry has left executing, so the attempt interval is
 	// settled once here (idempotent when the caller already settled it). The

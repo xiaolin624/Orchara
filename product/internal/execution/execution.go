@@ -131,6 +131,11 @@ var (
 	// names a protocol version, manifest hash or worker image digest that is not
 	// the one this attempt was claimed with.
 	ErrIdentityMismatch = errors.New("the exit evidence does not match the claimed execution identity")
+	// ErrDatabaseWritesInFlight is 409 database_writes_in_flight: a checkpoint
+	// connection recorded by heartbeat still has an active transaction, so the
+	// exit guard cannot prove the old execution's writes drained. The supervisor
+	// may retry after the connection commits or rolls back.
+	ErrDatabaseWritesInFlight = errors.New("a checkpoint database connection still has writes in flight")
 	// ErrDeadlineExceeded is 409 deadline_exceeded: the Run reached its frozen
 	// active-time limit, so its result proposal is refused (no new work) and the
 	// finalizer will commit failed(deadline_exceeded) once the unit exits. It is a
@@ -160,6 +165,9 @@ const (
 	// CodeArtifactNotLinked: no run_artifacts row links it to this Run (the
 	// registration endpoint is T033; until then the link is the admission).
 	CodeArtifactNotLinked = "artifact_not_linked"
+	// CodeArtifactNotOutput: a link exists but not with relation='output'
+	// (input/node/log artifacts must never be published as the final output).
+	CodeArtifactNotOutput = "artifact_not_output"
 )
 
 // ValidationError is one located request-shape problem (422 validation_failed).

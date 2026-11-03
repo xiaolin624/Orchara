@@ -69,18 +69,24 @@ const (
 
 // Defaults for the deployment profile. They are constants, not request values.
 const (
-	DefaultDistro        = "Ubuntu-24.04"
-	DefaultStateRoot     = "/var/tmp/orchara-sandbox"
-	DefaultRootfs        = "/opt/orchara-sandbox/python-rootfs"
-	DefaultPython        = "/usr/bin/python3.12"
-	DefaultMemoryMB      = 256
-	DefaultPIDsLimit     = 64
-	DefaultCPUSeconds    = 60
-	DefaultTimeout       = 60 * time.Second
-	DefaultGracePeriod   = 60 * time.Second
-	DefaultHeartbeatTick = 5 * time.Second
-	MaxMemoryMB          = 8192
-	MaxTimeout           = 10 * time.Minute
+	DefaultDistro     = "Ubuntu-24.04"
+	DefaultStateRoot  = "/var/tmp/orchara-sandbox"
+	DefaultRootfs     = "/opt/orchara-sandbox/python-rootfs"
+	DefaultPython     = "/usr/bin/python3.12"
+	DefaultMemoryMB   = 256
+	DefaultPIDsLimit  = 64
+	DefaultCPUSeconds = 60
+	// The writable workspace is a quota-limited tmpfs; a single file is also
+	// bounded by RLIMIT_FSIZE (SECURITY §2 disk limits).
+	DefaultWorkspaceQuotaMB = 512
+	MaxWorkspaceQuotaMB     = 4096
+	DefaultFileSizeBytes    = 64 << 20
+	MaxFileSizeBytes        = 1 << 30
+	DefaultTimeout          = 60 * time.Second
+	DefaultGracePeriod      = 60 * time.Second
+	DefaultHeartbeatTick    = 5 * time.Second
+	MaxMemoryMB             = 8192
+	MaxTimeout              = 10 * time.Minute
 )
 
 // sandboxIDPattern is the only shape a sandbox id may have; it becomes a
@@ -148,6 +154,10 @@ type Options struct {
 	MemoryMB   int
 	PIDsLimit  int
 	CPUSeconds int
+	// WorkspaceQuotaMB bounds the writable /workspace tmpfs (host volume
+	// protection); FileSizeBytes bounds any single file via RLIMIT_FSIZE.
+	WorkspaceQuotaMB int
+	FileSizeBytes    int64
 	// Timeout bounds one sandbox process; GracePeriod bounds the whole driver
 	// invocation (staging + cleanup), which is longer on purpose.
 	Timeout     time.Duration
@@ -204,6 +214,33 @@ func (o Options) normalized() (Options, error) {
 	}
 	if o.CPUSeconds <= 0 {
 		o.CPUSeconds = DefaultCPUSeconds
+	}
+	// SECURITY §2: an untrusted process must not be able to fill the host volume.
+	// /workspace is a size-limited tmpfs and every file is additionally bounded
+	// by RLIMIT_FSIZE; both are deployment knobs with safe defaults.
+	if o.WorkspaceQuotaMB <= 0 {
+		if raw := strings.TrimSpace(os.Getenv("ORCHARA_SANDBOX_WORKSPACE_QUOTA_MB")); raw != "" {
+			value, err := strconv.Atoi(raw)
+			if err != nil || value <= 0 || value > MaxWorkspaceQuotaMB {
+				return Options{}, fmt.Errorf(
+					"ORCHARA_SANDBOX_WORKSPACE_QUOTA_MB must be a positive integer at most %d",
+					MaxWorkspaceQuotaMB,
+				)
+			}
+			o.WorkspaceQuotaMB = value
+		}
+	}
+	if o.WorkspaceQuotaMB <= 0 {
+		o.WorkspaceQuotaMB = DefaultWorkspaceQuotaMB
+	}
+	if o.WorkspaceQuotaMB > MaxWorkspaceQuotaMB {
+		return Options{}, fmt.Errorf("sandbox workspace quota must be at most %d MiB", MaxWorkspaceQuotaMB)
+	}
+	if o.FileSizeBytes <= 0 {
+		o.FileSizeBytes = DefaultFileSizeBytes
+	}
+	if o.FileSizeBytes > MaxFileSizeBytes {
+		return Options{}, fmt.Errorf("sandbox file-size limit must be at most %d bytes", MaxFileSizeBytes)
 	}
 	if o.Timeout <= 0 {
 		o.Timeout = DefaultTimeout

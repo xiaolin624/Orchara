@@ -327,14 +327,20 @@ def test_a_succeeded_proposal_needs_an_owned_ready_linked_artifact(t029_stack) -
     unlinked = t031.seed_output_artifact(t029_stack, owner.creator.principal_id)
     uploading = t031.seed_output_artifact(t029_stack, owner.creator.principal_id, state="uploading")
     deleted = t031.seed_output_artifact(t029_stack, owner.creator.principal_id, deleted=True)
+    node_relation = t031.seed_output_artifact(t029_stack, owner.creator.principal_id)
     foreign_owner = t025.seed_principal(t029_stack.dbname, "t031 foreign")
     foreign = t031.seed_output_artifact(t029_stack, foreign_owner)
     for artifact in (uploading, deleted, foreign):
         t031.link_output(t029_stack.dbname, lease["run_id"], artifact)
+    t031.link_output(t029_stack.dbname, lease["run_id"], node_relation, relation="artifact")
 
     cases = [
         (t029.new_uuid(), "artifact_not_found"),
         (unlinked, "artifact_not_linked"),
+        # The Run's own input artifact is linked as relation='input'; a link is not
+        # an output registration, so it can never be published as the result.
+        (lease["input_artifact_id"], "artifact_not_output"),
+        (node_relation, "artifact_not_output"),
         (foreign, "artifact_not_owned"),
         (uploading, "artifact_not_ready"),
         (deleted, "artifact_not_ready"),

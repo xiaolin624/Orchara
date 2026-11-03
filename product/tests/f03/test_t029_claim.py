@@ -219,3 +219,31 @@ def test_the_public_listener_does_not_serve_the_internal_execution_paths(t029_st
     ):
         response = public.post(path, body=body, headers={"X-Internal-Role": "supervisor"})
         assert response.status == 404, (path, response.text)
+
+
+def test_a_disabled_owner_is_never_leased_and_the_run_fails_closed(t029_stack) -> None:
+    """EXECUTION §1/§8: claiming re-checks the owner's current state.
+
+    The Run was queued while the owner was enabled; disabling the owner before
+    the claim must fail the Run (and void its never-run job) instead of starting
+    an execution. This is the execution plane's revocation checkpoint, not a UI
+    preference.
+    """
+    from support import t035
+
+    owner = t029.golden_owner(t029_stack)
+    run = t029.queued_run(t029_stack, owner)
+    t035.disable_owner(owner, reason="t029 disabled before claim")
+
+    response = t029.execution_client(t029_stack, "supervisor").claim_job(
+        worker_id="t029-supervisor-disabled", execution_unit_id="unit-disabled"
+    )
+    assert response.status == 204, response.text
+
+    row = t029.run_state_row(t029_stack.dbname, run["id"])
+    assert row["state"] == "failed", row
+    assert row["error_code"] == "owner_disabled", row
+    jobs = t029.jobs_for_run(t029_stack.dbname, run["id"])
+    assert len(jobs) == 1 and jobs[0]["state"] == "void", jobs
+    assert t029.attempt_count(t029_stack.dbname) == 0
+    assert t029.quota_counter(t029_stack.dbname)["used"] == 0

@@ -40,6 +40,7 @@ TIMEOUT_SECONDS=60
 MEMORY_MB=256
 PIDS_LIMIT=64
 CPU_SECONDS=30
+WORKSPACE_QUOTA_MB=512
 PROGRAM_MODE="tool"
 PROBE_MODE="isolation"
 PROBE_SECONDS=60
@@ -68,6 +69,7 @@ while [ $# -gt 0 ]; do
     --memory-mb) MEMORY_MB="${2:-}"; shift 2 ;;
     --pids) PIDS_LIMIT="${2:-}"; shift 2 ;;
     --cpu-seconds) CPU_SECONDS="${2:-}"; shift 2 ;;
+    --workspace-quota-mb) WORKSPACE_QUOTA_MB="${2:-}"; shift 2 ;;
     --mode) PROGRAM_MODE="${2:-}"; shift 2 ;;
     --probe-mode) PROBE_MODE="${2:-}"; shift 2 ;;
     --probe-seconds) PROBE_SECONDS="${2:-}"; shift 2 ;;
@@ -103,6 +105,14 @@ cleanup() {
   fi
   local ps_matches
   ps_matches="$(ps -eo args 2>/dev/null | grep -c -E "[r]unsc.*$SANDBOX_ID" || true)"
+  # SECURITY §2: the writable workspace is a size-limited tmpfs, never the host
+  # volume. Unmount it before deleting the directory so the quota cannot leak
+  # into the next run and `rm -rf` actually removes the staging tree.
+  local workspace_unmounted=true
+  if grep -q " $WORKSPACE/output " /proc/mounts 2>/dev/null; then
+    umount "$WORKSPACE/output" 2>/dev/null || umount -l "$WORKSPACE/output" 2>/dev/null || true
+    if grep -q " $WORKSPACE/output " /proc/mounts 2>/dev/null; then workspace_unmounted=false; fi
+  fi
   local workspace_removed=false
   if [ "${KEEP_WORKSPACE:-false}" != "true" ]; then
     rm -rf "$WORKSPACE" 2>/dev/null || true
@@ -115,18 +125,22 @@ cleanup() {
   CLEANUP_PID_ALIVE="$pid_alive"
   CLEANUP_PS="$ps_matches"
   CLEANUP_WORKSPACE="$workspace_removed"
+  CLEANUP_UNMOUNT="$workspace_unmounted"
   CLEANUP_PID="${pid:-0}"
 }
 
 emit_cleanup_only() {
-  python3 - "$SANDBOX_ID" "$CLEANUP_LIST" "$CLEANUP_PID" "$CLEANUP_PID_ALIVE" "$CLEANUP_PS" "$CLEANUP_WORKSPACE" <<'PY'
+  python3 - "$SANDBOX_ID" "$CLEANUP_LIST" "$CLEANUP_PID" "$CLEANUP_PID_ALIVE" "$CLEANUP_PS" "$CLEANUP_WORKSPACE" "$CLEANUP_UNMOUNT" "$WORKSPACE_QUOTA_MB" <<'PY'
 import json, sys
-sandbox_id, list_matches, pid, pid_alive, ps_matches, workspace_removed = sys.argv[1:]
-clean = int(list_matches) == 0 and pid_alive == "false" and int(ps_matches) == 0 and workspace_removed == "true"
+(sandbox_id, list_matches, pid, pid_alive, ps_matches, workspace_removed,
+ workspace_unmounted, quota_mb) = sys.argv[1:]
+clean = (int(list_matches) == 0 and pid_alive == "false" and int(ps_matches) == 0
+         and workspace_removed == "true" and workspace_unmounted == "true")
 print(json.dumps({
     "ok": clean,
     "mode": "cleanup",
     "sandbox_id": sandbox_id,
+    "workspace_quota_mb": int(quota_mb),
     "cleanup": {
         "sandbox_list_matches": int(list_matches),
         # A non-zero pid is the proof that a process was actually launched: the
@@ -135,6 +149,7 @@ print(json.dumps({
         "pid_alive": pid_alive == "true",
         "ps_matches": int(ps_matches),
         "workspace_removed": workspace_removed == "true",
+        "workspace_unmounted": workspace_unmounted == "true",
     },
 }))
 PY
@@ -165,6 +180,10 @@ fi
 [[ "$MEMORY_MB" =~ ^[0-9]+$ ]] || die "invalid memory limit"
 [[ "$PIDS_LIMIT" =~ ^[0-9]+$ ]] || die "invalid pids limit"
 [[ "$CPU_SECONDS" =~ ^[0-9]+$ ]] || die "invalid cpu limit"
+[[ "$WORKSPACE_QUOTA_MB" =~ ^[0-9]+$ ]] || die "invalid workspace quota"
+if [ "$WORKSPACE_QUOTA_MB" -lt 1 ] || [ "$WORKSPACE_QUOTA_MB" -gt 4096 ]; then
+  die "workspace quota must be between 1 and 4096 MiB"
+fi
 [[ "$PROGRAM_MODE" =~ ^(tool|probe|build)$ ]] || die "invalid program mode"
 [[ "$PROBE_MODE" =~ ^(isolation|slow|crash)$ ]] || die "invalid probe mode"
 
@@ -172,8 +191,14 @@ mkdir -p "$STATE_ROOT/foreign" 2>/dev/null || true
 printf 'foreign-secret\n' > "$STATE_ROOT/foreign/secret.txt" 2>/dev/null || true
 
 rm -rf "$WORKSPACE"
-mkdir -p "$WORKSPACE"/tool "$WORKSPACE"/inputs "$WORKSPACE"/output/artifacts "$WORKSPACE"/bundle \
+mkdir -p "$WORKSPACE"/tool "$WORKSPACE"/inputs "$WORKSPACE"/output "$WORKSPACE"/bundle \
          "$WORKSPACE"/cwd
+# SECURITY §2: the only writable mount is a size-limited tmpfs, not the host
+# volume. A process that keeps writing hits ENOSPC at WORKSPACE_QUOTA_MB instead
+# of filling the guest disk; RLIMIT_FSIZE additionally bounds each file.
+mount -t tmpfs -o "size=${WORKSPACE_QUOTA_MB}m,nosuid,nodev,mode=0755" tmpfs "$WORKSPACE/output" \
+  || die "cannot mount the quota-limited workspace"
+mkdir -p "$WORKSPACE/output/artifacts"
 if [ "$PROGRAM_MODE" = "tool" ]; then
   cp "$TOOL" "$WORKSPACE/tool/sales_stats.py"
   chmod 0444 "$WORKSPACE/tool/sales_stats.py"
@@ -239,11 +264,13 @@ MAX_ARTIFACT_BYTES=10485760
 python3 - \
   "$SANDBOX_ID" "$COLLECT" "$ROOTFS" "$EXIT_CODE" "$TIMED_OUT" "$DURATION_MS" \
   "$CLEANUP_LIST" "$CLEANUP_PID" "$CLEANUP_PID_ALIVE" "$CLEANUP_PS" "$CLEANUP_WORKSPACE" \
+  "$CLEANUP_UNMOUNT" "$WORKSPACE_QUOTA_MB" \
   "$OUTPUT_JSON" "$PROBE_JSON" "$MAX_ARTIFACT_BYTES" "$PROGRAM_MODE" "$TIMEOUT_SECONDS" <<'PY'
 import base64, json, os, sys
 (
     sandbox_id, workspace, rootfs, exit_code, timed_out, duration_ms,
     cleanup_list, cleanup_pid, cleanup_pid_alive, cleanup_ps, cleanup_workspace,
+    cleanup_unmounted, workspace_quota_mb,
     output_json, probe_json, max_artifact_bytes, program_mode, timeout_seconds,
 ) = sys.argv[1:]
 
@@ -307,6 +334,7 @@ clean = (
     and cleanup_pid_alive == "false"
     and int(cleanup_ps) == 0
     and cleanup_workspace == "true"
+    and cleanup_unmounted == "true"
 )
 document = {
     "ok": clean,
@@ -317,6 +345,7 @@ document = {
     "exit_code": int(exit_code),
     "timed_out": timed_out == "true",
     "timeout_seconds": int(timeout_seconds),
+    "workspace_quota_mb": int(workspace_quota_mb),
     "rootfs_digest": rootfs_digest,
     "stdout": stdout_b64,
     "stdout_size": stdout_size,
@@ -336,6 +365,7 @@ document = {
         "pid_alive": cleanup_pid_alive == "true",
         "ps_matches": int(cleanup_ps),
         "workspace_removed": cleanup_workspace == "true",
+        "workspace_unmounted": cleanup_unmounted == "true",
     },
 }
 if not clean:

@@ -221,6 +221,7 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 		MemoryMB:       options.MemoryMB,
 		PIDsLimit:      options.PIDsLimit,
 		CPUSeconds:     options.CPUSeconds,
+		FileSizeBytes:  options.FileSizeBytes,
 		TimeoutSeconds: int(SandboxTimeout(timeout) / time.Second),
 	}
 	configBytes, err := buildOCI(spec)

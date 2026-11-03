@@ -44,6 +44,8 @@ func testProfile(t *testing.T) (Options, string) {
 		MemoryMB:             256,
 		PIDsLimit:            64,
 		CPUSeconds:           30,
+		WorkspaceQuotaMB:     512,
+		FileSizeBytes:        DefaultFileSizeBytes,
 		Timeout:              2 * time.Second,
 		GracePeriod:          2 * time.Second,
 		HeartbeatTick:        20 * time.Millisecond,
@@ -191,6 +193,18 @@ func TestBuildOCIFixesTheSandboxProfile(t *testing.T) {
 	if got := config.Linux.Resources.Pids.Limit; got != 64 {
 		t.Fatalf("pids limit = %d, want 64", got)
 	}
+	fileSizeLimited := false
+	for _, limit := range config.Process.Rlimits {
+		if limit.Type == "RLIMIT_FSIZE" {
+			fileSizeLimited = true
+			if limit.Soft != uint64(DefaultFileSizeBytes) || limit.Hard != uint64(DefaultFileSizeBytes) {
+				t.Fatalf("RLIMIT_FSIZE = %d/%d, want the default file-size bound", limit.Soft, limit.Hard)
+			}
+		}
+	}
+	if !fileSizeLimited {
+		t.Fatal("the sandbox must bound a single file with RLIMIT_FSIZE")
+	}
 	mounts := map[string]OCIMount{}
 	for _, mount := range config.Mounts {
 		mounts[mount.Destination] = mount
@@ -297,6 +311,7 @@ func TestBuildRunCommandIsAFixedArgv(t *testing.T) {
 		"sandbox_exec.sh run", "--sandbox-id unit-t033-test-1",
 		"--state-root /var/tmp/orchara-sandbox", "--mode tool",
 		"--timeout 2", "--memory-mb 256", "--pids 64", "--cpu-seconds 30",
+		"--workspace-quota-mb 512",
 	} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("command %q is missing %q", joined, required)

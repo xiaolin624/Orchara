@@ -108,6 +108,7 @@ type bundleSpec struct {
 	MemoryMB       int
 	PIDsLimit      int
 	CPUSeconds     int
+	FileSizeBytes  int64
 	TimeoutSeconds int
 }
 
@@ -134,6 +135,9 @@ func buildOCI(spec bundleSpec) ([]byte, error) {
 	}
 	if spec.MemoryMB <= 0 || spec.PIDsLimit <= 0 || spec.CPUSeconds <= 0 {
 		return nil, fmt.Errorf("sandbox resource limits must be positive")
+	}
+	if spec.FileSizeBytes <= 0 {
+		spec.FileSizeBytes = DefaultFileSizeBytes
 	}
 	workspace := spec.workspaceDir()
 
@@ -200,6 +204,9 @@ func buildOCI(spec bundleSpec) ([]byte, error) {
 			Rlimits: []OCIRlimit{
 				{Type: "RLIMIT_CPU", Soft: uint64(spec.CPUSeconds), Hard: uint64(spec.CPUSeconds)},
 				{Type: "RLIMIT_NOFILE", Soft: 256, Hard: 256},
+				// SECURITY §2: no single file may exceed the configured bound, even
+				// inside the quota-limited workspace tmpfs.
+				{Type: "RLIMIT_FSIZE", Soft: uint64(spec.FileSizeBytes), Hard: uint64(spec.FileSizeBytes)},
 			},
 		},
 		Root:     OCIRoot{Path: spec.Rootfs, Readonly: true},

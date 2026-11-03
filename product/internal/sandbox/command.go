@@ -111,6 +111,7 @@ func BuildRunCommand(options Options, spec bundleSpec, staged Staged) ([]string,
 		"--memory-mb", strconv.Itoa(spec.MemoryMB),
 		"--pids", strconv.Itoa(spec.PIDsLimit),
 		"--cpu-seconds", strconv.Itoa(spec.CPUSeconds),
+		"--workspace-quota-mb", strconv.Itoa(options.WorkspaceQuotaMB),
 		"--mode", string(spec.Program),
 	)
 	if spec.Program == ProgramIsolationProbe {

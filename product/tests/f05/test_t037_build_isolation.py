@@ -224,3 +224,67 @@ def test_a_source_change_during_the_build_can_never_become_ready(t033_stack) -> 
     # The original source hash is not the recorded one anymore: the stale build's
     # success claim was refused, never silently written as ready.
     assert row["source_sha256"] == "c" * 64
+
+FILL_HOOK = r"""
+import os
+
+print("T037_QUOTA_START", flush=True)
+written = 0
+try:
+    with open("/workspace/fill.bin", "wb") as handle:
+        chunk = b"A" * (1024 * 1024)
+        for _ in range(64):
+            handle.write(chunk)
+            written += 1
+except OSError as error:
+    print(
+        "T037_QUOTA_ENFORCED after %d MiB: %s" % (written, error.__class__.__name__),
+        flush=True,
+    )
+    try:
+        os.remove("/workspace/fill.bin")
+    except OSError:
+        pass
+else:
+    print("T037_QUOTA_NOT_ENFORCED", flush=True)
+print("T037_QUOTA_DONE", flush=True)
+"""
+
+
+def test_the_build_workspace_has_a_disk_quota(t033_stack) -> None:
+    """SECURITY §2: an untrusted build must not fill the host volume.
+
+    The writable workspace is a size-limited tmpfs. A hook that keeps writing
+    catches ENOSPC at the quota instead of growing the guest disk; it then frees
+    the fill file so the build can still finish and the log is readable. The
+    marker is the sandbox's own answer, not a host-side guess.
+    """
+    admin = t037.admin_session(t033_stack)
+    owner = creator(t033_stack, admin, "t037.quota")
+    tool = submit(t033_stack, owner, t037.setup_py_source(FILL_HOOK))
+
+    env = t037.build_env(t033_stack)
+    env["ORCHARA_SANDBOX_WORKSPACE_QUOTA_MB"] = "8"
+    completed, reports = t037.run_build_once(t033_stack, env=env)
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    facts = t037.wait_build_finished(t033_stack, owner, tool["id"], timeout=240)
+    assert facts["state"] == "ready", facts
+    assert facts["build_log_artifact_id"], facts
+
+    log = t037.download_artifact_bytes(owner, facts["build_log_artifact_id"])
+    text = log.decode("utf-8", "replace")
+    assert "T037_QUOTA_START" in text, text
+    assert "T037_QUOTA_ENFORCED" in text, text
+    assert "T037_QUOTA_NOT_ENFORCED" not in text, text
+
+    # The fill did not leak into the image digest or the approved state.
+    row = t037.tool_row(t033_stack.dbname, tool["id"])
+    assert row["image_digest"] == row["build_bundle_digest"], row
+    assert row["approved_at"] is None, row
+
+    # The driver's cleanup report proves the workspace was removed and unmounted.
+    for report in reports or []:
+        cleanup = report.get("cleanup") if isinstance(report, dict) else None
+        if isinstance(cleanup, dict):
+            assert cleanup.get("workspace_removed") is not False, report
+            assert cleanup.get("workspace_unmounted") is not False, report

@@ -20,6 +20,8 @@ What is proven here:
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 import subprocess
@@ -720,3 +722,34 @@ def test_the_default_paths_match_the_workflow_spec_protocol() -> None:
     assert "/workspace/output.json" in source
     assert "/workspace/inputs" in source
     assert "/workspace/artifacts" in source
+
+
+def test_region_text_with_csv_metacharacters_stays_one_two_column_row(tmp_path) -> None:
+    """Legal region names must round-trip through summary.csv.
+
+    A comma, a quote or a newline in a region is data, not structure: the export
+    must use a real CSV writer. The summary.json value stays the raw region text.
+    """
+    payload = (
+        "order_id,date,region,amount\n"
+        'A1,2026-01-01,"East, Zone",10.00\n'
+        'A2,2026-01-02,"He said ""x""",20.00\n'
+        'A3,2026-01-03,"line\nbreak",30.00\n'
+    ).encode("utf-8")
+    run = run_tool(tmp_path, payload)
+    assert run.returncode == 0, (run.stdout, run.stderr)
+
+    data = run.data()
+    assert data["total"] == "60.00"
+    assert data["order_count"] == 3
+    assert data["regions"] == {
+        "East, Zone": "10.00",
+        'He said "x"': "20.00",
+        "line\nbreak": "30.00",
+    }
+
+    parsed = list(csv.reader(io.StringIO(run.artifact("summary.csv").decode("utf-8"), newline="")))
+    assert parsed[0] == ["region", "total"]
+    assert all(len(row) == 2 for row in parsed), parsed
+    by_region = {row[0]: row[1] for row in parsed[1:]}
+    assert by_region == data["regions"]

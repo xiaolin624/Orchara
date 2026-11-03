@@ -114,6 +114,7 @@ func selectClaimCandidateTx(
 		       r.revision, r.max_active_ms, r.active_elapsed_ms
 		  FROM platform.jobs AS j
 		  JOIN platform.runs AS r ON r.id = j.run_id
+		  JOIN platform.principals AS p ON p.id = r.owner_id AND p.disabled_at IS NULL
 		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
 		 WHERE j.state = 'ready'
 		   AND j.available_at <= now()
@@ -620,8 +621,69 @@ func voidJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
 	return nil
 }
 
-// liveLease returns the live attempt's non-secret lease facts for one run, for
-// the owner-facing run detail extension. It never returns the attempt token: the
+// OwnerDisabledErrorCode is the stable Run error_code for a queued Run whose
+// owner was disabled before it was ever leased.
+const OwnerDisabledErrorCode = "owner_disabled"
+
+// failDisabledOwnerRunsTx fails every queued Run whose owner is currently
+// disabled, voids its never-run job(s) and appends one run.status event. It is
+// called inside the claim transaction, before candidate selection: claim is the
+// execution plane's "current authorization" checkpoint, so a Run must not start
+// merely because it was queued while the owner was still enabled.
+//
+// The UPDATE is atomic (no read-then-write race) and idempotent: after the first
+// call the Run is no longer `queued`, so a later claim sees nothing to fail.
+func failDisabledOwnerRunsTx(ctx context.Context, tx *sql.Tx) (int, error) {
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE platform.runs AS r
+		   SET state = 'failed',
+		       phase = 'idle',
+		       revision = revision + 1,
+		       finished_at = now(),
+		       output_artifact_id = NULL,
+		       error_code = $1
+		  FROM platform.principals AS p
+		 WHERE p.id = r.owner_id
+		   AND p.disabled_at IS NOT NULL
+		   AND r.state = 'queued'
+		   AND r.deleted_at IS NULL
+		RETURNING r.id::text`, OwnerDisabledErrorCode)
+	if err != nil {
+		return 0, fmt.Errorf("failing queued runs of disabled owners: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	runIDs := make([]string, 0, 4)
+	for rows.Next() {
+		var runID string
+		if err := rows.Scan(&runID); err != nil {
+			return 0, fmt.Errorf("failing queued runs of disabled owners: %w", err)
+		}
+		runIDs = append(runIDs, runID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("failing queued runs of disabled owners: %w", err)
+	}
+	// Close before the follow-up statements: this transaction cannot run another
+	// statement while the RETURNING cursor is open.
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("failing queued runs of disabled owners: %w", err)
+	}
+	for _, runID := range runIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.jobs
+			   SET state = 'void', current_attempt_token = NULL
+			 WHERE run_id = $1::uuid AND state IN ('ready', 'held')`, runID); err != nil {
+			return 0, fmt.Errorf("voiding the disabled owner's job: %w", err)
+		}
+		if _, err := AppendRunStatusTx(ctx, tx, runID); err != nil {
+			return 0, err
+		}
+	}
+	return len(runIDs), nil
+}
+
+// LiveLease is the current attempt's non-secret lease facts for one run, for the
+// owner-facing run detail extension. It never returns the attempt token: the
 // token is a credential and must not be exposed by a public read.
 type LiveLease struct {
 	LeaseDeadline   time.Time
@@ -787,18 +849,18 @@ func checkOutputArtifactTx(
 		deletedAt sql.NullTime
 		sha256    sql.NullString
 		sizeBytes sql.NullInt64
-		linked    bool
+		relation  sql.NullString
 	)
 	err := tx.QueryRowContext(ctx, `
 		SELECT a.owner_id::text, a.state, a.deleted_at, a.sha256, a.size_bytes,
-		       EXISTS (
-		           SELECT 1 FROM platform.run_artifacts AS ra
+		       (
+		           SELECT ra.relation FROM platform.run_artifacts AS ra
 		            WHERE ra.run_id = $1::uuid AND ra.artifact_id = a.id
 		       )
 		  FROM platform.artifacts AS a
 		 WHERE a.id = $2::uuid`,
 		runID, artifactID,
-	).Scan(&ownerID, &state, &deletedAt, &sha256, &sizeBytes, &linked)
+	).Scan(&ownerID, &state, &deletedAt, &sha256, &sizeBytes, &relation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return &OutputArtifactError{
 			Code:    CodeArtifactNotFound,
@@ -819,10 +881,18 @@ func checkOutputArtifactTx(
 			Code:    CodeArtifactNotReady,
 			Message: "the output artifact is not ready (state=" + state + ")",
 		}
-	case !linked:
+	case !relation.Valid:
 		return &OutputArtifactError{
 			Code:    CodeArtifactNotLinked,
 			Message: "the output artifact is not registered to this run",
+		}
+	case relation.String != "output":
+		// A link is not enough: the input artifact (relation=input), a node
+		// artifact or a log must never be published as the run's final output.
+		// T033 closes the vocabulary to output/artifact/log.
+		return &OutputArtifactError{
+			Code:    CodeArtifactNotOutput,
+			Message: "the artifact is linked to this run as " + relation.String + ", not as the final output",
 		}
 	}
 	return nil
