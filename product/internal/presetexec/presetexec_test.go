@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/sandbox"
 )
 
@@ -65,6 +66,12 @@ type fakeClient struct {
 	statusErr     error
 	nodeEventErr  error
 	nodeResultErr error
+
+	// scripted capability seam (agent tests)
+	invokeCapability  func(capabilities.Input) (*capabilities.Result, error)
+	reportCapability  func(capabilities.ResultReport) (*capabilities.Result, error)
+	capabilityInputs  []capabilities.Input
+	capabilityReports []capabilities.ResultReport
 }
 
 // recordedNodeEvent is one observed node.status transition.
@@ -197,6 +204,36 @@ func (f *fakeClient) Download(context.Context, string, string, string) ([]byte, 
 
 func (f *fakeClient) RunState(context.Context, string) (string, string, error) {
 	return f.runState, f.runError, nil
+}
+
+// InvokeCapability implements Client with the test's scripted capability seam.
+func (f *fakeClient) InvokeCapability(
+	_ context.Context, _ string, _ string, input capabilities.Input,
+) (*capabilities.Result, error) {
+	f.mu.Lock()
+	f.capabilityInputs = append(f.capabilityInputs, input)
+	handler := f.invokeCapability
+	f.mu.Unlock()
+	if handler == nil {
+		return nil, errors.New("no capability handler is scripted")
+	}
+	return handler(input)
+}
+
+// ReportCapabilityResult implements Client with the test's scripted seam.
+func (f *fakeClient) ReportCapabilityResult(
+	_ context.Context, _ string, _ string, report capabilities.ResultReport,
+) (*capabilities.Result, error) {
+	f.mu.Lock()
+	f.capabilityReports = append(f.capabilityReports, report)
+	handler := f.reportCapability
+	f.mu.Unlock()
+	if handler == nil {
+		return &capabilities.Result{
+			OperationID: report.OperationID, State: report.State,
+		}, nil
+	}
+	return handler(report)
 }
 
 func (f *fakeClient) uploadsByPurpose() map[string]recordedUpload {

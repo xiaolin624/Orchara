@@ -40,6 +40,7 @@ type linearRun struct {
 	inputs  []InputArtifact
 	start   map[string]any
 	python  map[string]any
+	agent   map[string]any
 	outcome sandbox.Outcome
 	report  *SandboxReport
 }
@@ -68,6 +69,13 @@ func (r *runner) executeLinear(ctx context.Context, plan *linearPlan) executionO
 		return pythonOutcome
 	}
 	run.python = pythonOutput
+	if plan.agent != nil {
+		agentOutput, agentOutcome, done := r.runAgentNode(ctx, run)
+		if done {
+			return agentOutcome
+		}
+		run.agent = agentOutput
+	}
 	return r.runEndNode(ctx, run)
 }
 
@@ -414,6 +422,9 @@ func (r *runner) runEndNode(ctx context.Context, run *linearRun) executionOutcom
 		"input":            run.start,
 		run.plan.start.ID:  run.start,
 		run.plan.python.ID: run.python,
+	}
+	if run.plan.agent != nil {
+		available[run.plan.agent.ID] = run.agent
 	}
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {

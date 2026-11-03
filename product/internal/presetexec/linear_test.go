@@ -20,6 +20,10 @@ func linearLease(t *testing.T, definition map[string]any) (*Lease, []byte, strin
 		"compiler_version":    CompilerVersion,
 		"worker_image_digest": "sha256:" + strings.Repeat("aa", 32),
 		"definition":          definition,
+		"tool_artifacts": []any{map[string]any{
+			"id": PresetToolID, "image_digest": "sha256:" + strings.Repeat("bb", 32),
+		}},
+		"model_profile_versions": []any{testModelProfileID},
 	}
 	payload, err := json.Marshal(document)
 	if err != nil {
@@ -296,7 +300,9 @@ func TestLegacyAgentGraphStillTakesTheLegacyPath(t *testing.T) {
 	definition := map[string]any{
 		"nodes": []any{
 			map[string]any{"id": "start", "type": "start", "config": map[string]any{}},
-			map[string]any{"id": "stats", "type": "python", "config": map[string]any{"tool_version": PresetToolID}},
+			map[string]any{"id": "stats", "type": "python",
+				"inputs": map[string]any{"file": map[string]any{"ref": "input#/file"}},
+				"config": map[string]any{"tool_version": PresetToolID}},
 			map[string]any{"id": "analysis", "type": "agent", "config": map[string]any{}},
 			map[string]any{"id": "end", "type": "end", "config": map[string]any{}},
 		},
@@ -339,7 +345,9 @@ func TestAgentOnlyGraphIsRefusedWithTheStableCode(t *testing.T) {
 	client := linearClient(t, lease, manifest, input, []byte(salesCSV))
 	box := successSandbox()
 	report := Run(context.Background(), baseDeps(t, client, &fakeInputs{inputs: client.inputs}, box))
-	if report.Outcome != "refused" || report.ErrorCode != CodeAgentNodeUnsupported {
+	// There is no preset python node, so the legacy path cannot serve this graph
+	// and the linear plan refuses it before any sandbox starts.
+	if report.Outcome != "refused" || report.ErrorCode != CodeToolUnsupportedGraph {
 		t.Fatalf("report = %+v", report)
 	}
 	if box.calls != 0 {

@@ -8,15 +8,24 @@ import (
 )
 
 // testDefinition decodes one definition JSON document into the sealed shape the
-// executor reads.
-func testDefinition(t *testing.T, raw string) *manifestDefinition {
+// executor reads. Agent plan tests need the manifest's fixed sets, so the helper
+// supplies the preset tool and one model profile version.
+func testDefinition(t *testing.T, raw string) *manifestDocument {
 	t.Helper()
 	var definition manifestDefinition
 	if err := json.Unmarshal([]byte(raw), &definition); err != nil {
 		t.Fatalf("parse the test definition: %v", err)
 	}
-	return &definition
+	return &manifestDocument{
+		Definition: definition,
+		ToolArtifacts: []manifestToolArtifact{{
+			ID: PresetToolID, ImageDigest: "sha256:" + strings.Repeat("aa", 32),
+		}},
+		ModelProfileVersions: []string{testModelProfileID},
+	}
 }
+
+const testModelProfileID = "22222222-2222-4222-8222-222222222222"
 
 const linearDefinitionJSON = `{
   "dsl_version": "1.0",
@@ -42,6 +51,127 @@ const linearDefinitionJSON = `{
              "budget_limit":"1.00","currency":"USD"}
 }`
 
+func TestBuildLinearPlanAcceptsAStartPythonAgentEndChain(t *testing.T) {
+	plan, err := buildLinearPlan(testDefinition(t, agentDefinitionJSON))
+	if err != nil {
+		t.Fatalf("a legal agent chain was refused: %v", err)
+	}
+	if plan.agent == nil || plan.agent.ID != "analysis" {
+		t.Fatalf("agent node missing from the plan: %+v", plan)
+	}
+	if len(plan.order) != 4 || plan.order[2] != plan.agent || plan.order[3] != plan.end {
+		t.Fatalf("unexpected order: %+v", plan.order)
+	}
+	config := plan.agentConfig
+	if config == nil || config.ModelProfileVersion != testModelProfileID ||
+		config.MaxTurns != 3 || len(config.ToolVersions) != 1 {
+		t.Fatalf("agent config was not parsed: %+v", config)
+	}
+}
+
+const agentDefinitionJSON = `{
+  "dsl_version": "1.0",
+  "input_schema": {"type":"object","properties":{"source":{"type":"string"}},
+                   "required":["source"],"additionalProperties":false},
+  "output_schema": {"type":"object","properties":{"text":{"type":"string"}},
+                    "required":["text"],"additionalProperties":false},
+  "nodes": [
+    {"id":"start","type":"start","inputs":{},"output_schema":{"type":"object"},"config":{}},
+    {"id":"stats","type":"python",
+     "inputs":{"file":{"ref":"node:start#/artifact"}},
+     "output_schema":{"type":"object","properties":{"total":{"type":"string"}},
+                      "required":["total"]},
+     "config":{"tool_version":"` + PresetToolID + `"}},
+    {"id":"analysis","type":"agent",
+     "inputs":{"stats":{"ref":"node:stats#"}},
+     "output_schema":{"type":"object","properties":{"text":{"type":"string"}},
+                      "required":["text"],"additionalProperties":false},
+     "config":{"model_profile_version":"` + testModelProfileID + `",
+               "instructions":"Summarise the statistics.",
+               "max_turns":3,
+               "tool_versions":["` + PresetToolID + `"],
+               "subapp_versions":[]}},
+    {"id":"end","type":"end",
+     "inputs":{"text":{"ref":"node:analysis#/text"}},
+     "output_schema":{},"config":{}}
+  ],
+  "edges": [{"source":"start","target":"stats"},{"source":"stats","target":"analysis"},
+            {"source":"analysis","target":"end"}]
+}`
+
+// TestBuildLinearPlanRefusesUnsafeAgentConfigs pins the closed agent vocabulary:
+// every unsafe config is refused before the first model call with a stable code.
+func TestBuildLinearPlanRefusesUnsafeAgentConfigs(t *testing.T) {
+	node := func(config string) string {
+		return `{"nodes":[
+			{"id":"start","type":"start","config":{}},
+			{"id":"stats","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+			 "config":{"tool_version":"` + PresetToolID + `"}},
+			{"id":"analysis","type":"agent",
+			 "inputs":{"stats":{"ref":"node:stats#"}},
+			 "output_schema":{"type":"object","properties":{"text":{"type":"string"}}},
+			 "config":` + config + `},
+			{"id":"end","type":"end","config":{}}],
+			"edges":[{"source":"start","target":"stats"},{"source":"stats","target":"analysis"},
+			         {"source":"analysis","target":"end"}]}`
+	}
+	valid := `{"model_profile_version":"` + testModelProfileID + `",
+	           "instructions":"go","max_turns":3,
+	           "tool_versions":[], "subapp_versions":[]}`
+	cases := []struct {
+		name   string
+		config string
+		code   string
+	}{
+		{"missing model", `{"instructions":"go","max_turns":3}`, CodeAgentConfigInvalid},
+		{"missing instructions", `{"model_profile_version":"` + testModelProfileID + `","max_turns":3}`, CodeAgentConfigInvalid},
+		{"zero turns", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":0}`, CodeAgentConfigInvalid},
+		{"too many turns", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":51}`, CodeAgentConfigInvalid},
+		{"subapps", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":1,
+		              "subapp_versions":["33333333-3333-4333-8333-333333333333"]}`, CodeAgentSubappUnsupported},
+		{"unknown tool", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":1,
+		              "tool_versions":["33333333-3333-4333-8333-333333333333"]}`, CodeToolUnsupportedTool},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := buildLinearPlan(testDefinition(t, node(testCase.config)))
+			var planErr *planError
+			if !errors.As(err, &planErr) {
+				t.Fatalf("want *planError, got %T: %v", err, err)
+			}
+			if planErr.code != testCase.code {
+				t.Fatalf("code = %q, want %q", planErr.code, testCase.code)
+			}
+		})
+	}
+	// The same node with a legal config is accepted, proving the matrix is not
+	// passing because everything is refused.
+	if _, err := buildLinearPlan(testDefinition(t, node(valid))); err != nil {
+		t.Fatalf("a valid config was refused: %v", err)
+	}
+}
+
+// TestBuildLinearPlanRefusesAgentChainShapes pins the four-node shape.
+func TestBuildLinearPlanRefusesAgentChainShapes(t *testing.T) {
+	twoAgents := `{"nodes":[
+		{"id":"start","type":"start","config":{}},
+		{"id":"stats","type":"python","config":{"tool_version":"` + PresetToolID + `"}},
+		{"id":"a","type":"agent","config":{}},
+		{"id":"b","type":"agent","config":{}},
+		{"id":"end","type":"end","config":{}}],
+		"edges":[{"source":"start","target":"stats"},{"source":"stats","target":"a"},
+		         {"source":"a","target":"b"},{"source":"b","target":"end"}]}`
+	if _, err := buildLinearPlan(testDefinition(t, twoAgents)); err == nil {
+		t.Fatal("two agent nodes were accepted")
+	}
+	badEdges := strings.Replace(agentDefinitionJSON,
+		`{"source":"stats","target":"analysis"},`,
+		`{"source":"stats","target":"analysis"},{"source":"start","target":"end"},`, 1)
+	if _, err := buildLinearPlan(testDefinition(t, badEdges)); err == nil {
+		t.Fatal("a shortcut edge was accepted")
+	}
+}
+
 func TestBuildLinearPlanAcceptsAStartPythonEndChain(t *testing.T) {
 	plan, err := buildLinearPlan(testDefinition(t, linearDefinitionJSON))
 	if err != nil {
@@ -65,13 +195,13 @@ func TestBuildLinearPlanRefusesNonLinearGraphs(t *testing.T) {
 		code string
 	}{
 		{
-			name: "agent node",
+			name: "agent without a python node",
 			raw: `{"nodes":[
 				{"id":"start","type":"start","config":{}},
 				{"id":"agent","type":"agent","config":{}},
 				{"id":"end","type":"end","config":{}}],
 				"edges":[{"source":"start","target":"agent"},{"source":"agent","target":"end"}]}`,
-			code: CodeAgentNodeUnsupported,
+			code: CodeToolUnsupportedGraph,
 		},
 		{
 			name: "branch",
@@ -275,7 +405,7 @@ func TestPlanErrorsCarryStableCodes(t *testing.T) {
 	if !errors.As(err, &planErr) || planErr.code == "" {
 		t.Fatalf("plan error has no stable code: %v", err)
 	}
-	if !strings.HasPrefix(planErr.code, "agent_node_") && !strings.HasPrefix(planErr.code, "tool_") {
+	if !strings.HasPrefix(planErr.code, "agent_") && !strings.HasPrefix(planErr.code, "tool_") {
 		t.Fatalf("unexpected plan code: %q", planErr.code)
 	}
 }

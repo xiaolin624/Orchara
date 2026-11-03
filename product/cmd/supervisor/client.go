@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/presetexec"
 )
@@ -412,6 +413,81 @@ func (c *supClient) Download(
 		return nil, fmt.Errorf("artifact-downloads returned status %d without a URL", status)
 	}
 	return c.Fetch(ctx, ticket.URL)
+}
+
+// capabilityResultPayload is the exact CapabilityResult subset the worker reads.
+type capabilityResultPayload struct {
+	OperationID       string         `json:"operation_id"`
+	State             string         `json:"state"`
+	ReceiptArtifactID *string        `json:"receipt_artifact_id"`
+	ApprovalID        *string        `json:"approval_id"`
+	Data              map[string]any `json:"data,omitempty"`
+}
+
+func (p capabilityResultPayload) result() *capabilities.Result {
+	return &capabilities.Result{
+		OperationID:       p.OperationID,
+		State:             p.State,
+		ReceiptArtifactID: p.ReceiptArtifactID,
+		ApprovalID:        p.ApprovalID,
+		Data:              p.Data,
+	}
+}
+
+// InvokeCapability implements presetexec.Client: one T041 capability call over
+// the worker mTLS capacity. The worker never talks to a provider directly.
+func (c *supClient) InvokeCapability(
+	ctx context.Context, runID, attemptToken string, input capabilities.Input,
+) (*capabilities.Result, error) {
+	body := map[string]any{
+		"attempt_token":      attemptToken,
+		"operation_id":       input.OperationID,
+		"logical_key":        input.LogicalKey,
+		"capability_version": input.CapabilityVersion,
+		"capability_kind":    input.CapabilityKind,
+		"params":             input.Params,
+	}
+	var response capabilityResultPayload
+	status, err := c.post(ctx, c.worker, workerRole,
+		runPath(runID, "/capabilities"), body, &response)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("capabilities returned unexpected status %d", status)
+	}
+	return response.result(), nil
+}
+
+// ReportCapabilityResult implements presetexec.Client: the non-contract
+// capability-results bridge for a granted tool call.
+func (c *supClient) ReportCapabilityResult(
+	ctx context.Context, runID, attemptToken string, report capabilities.ResultReport,
+) (*capabilities.Result, error) {
+	body := map[string]any{
+		"attempt_token": attemptToken,
+		"operation_id":  report.OperationID,
+		"state":         report.State,
+	}
+	if report.ResultArtifactID != "" {
+		body["result_artifact_id"] = report.ResultArtifactID
+	}
+	if report.Data != nil {
+		body["data"] = report.Data
+	}
+	if report.ErrorCode != "" {
+		body["error_code"] = report.ErrorCode
+	}
+	var response capabilityResultPayload
+	status, err := c.post(ctx, c.worker, workerRole,
+		runPath(runID, "/capability-results"), body, &response)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("capability-results returned unexpected status %d", status)
+	}
+	return response.result(), nil
 }
 
 // validateSignedURL keeps bytes moving only to HTTP(S) links the server minted.

@@ -151,9 +151,11 @@ func runExec(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	execClient := execClient{supClient: client, db: dbAccess{db: db}}
 	report := presetexec.Run(ctx, presetexec.Deps{
-		Client:  execClient{supClient: client, db: dbAccess{db: db}},
+		Client:  execClient,
 		Inputs:  dbAccess{db: db},
+		Facts:   execClient,
 		Sandbox: executor,
 		Options: presetexec.Options{
 			WorkerID:        options.workerID,
@@ -299,4 +301,54 @@ func (c execClient) RecordNodeResults(
 	body := map[string]any{"attempt_token": attemptToken, "results": items}
 	_, err := c.post(ctx, c.worker, workerRole, runPath(runID, "/node-results"), body, nil)
 	return err
+}
+
+// ModelProfile implements presetexec.Facts. It is the supervisor's trusted
+// read-only model identity: only a passed, unrevoked profile may be spent on a
+// model call.
+func (c execClient) ModelProfile(
+	ctx context.Context, modelProfileVersionID string,
+) (presetexec.ModelFact, error) {
+	var fact presetexec.ModelFact
+	var revoked bool
+	err := c.db.db.QueryRowContext(ctx, `
+		SELECT id::text, validation_state, revoked_at IS NOT NULL
+		  FROM platform.model_profile_versions WHERE id = $1::uuid`,
+		modelProfileVersionID,
+	).Scan(&fact.ID, &fact.ValidationState, &revoked)
+	if err != nil {
+		return presetexec.ModelFact{}, err
+	}
+	fact.Revoked = revoked
+	return fact, nil
+}
+
+// ToolFacts implements presetexec.Facts. Callable mirrors the T041 server rule:
+// ready and either approved or (debug run) owned by the run's author. The
+// capability server re-proves the same fact on invoke.
+func (c execClient) ToolFacts(
+	ctx context.Context, runID string, toolVersionIDs []string,
+) ([]presetexec.ToolFact, error) {
+	rows, err := c.db.db.QueryContext(ctx, `
+		SELECT t.id::text, t.state,
+		       (t.approved_at IS NOT NULL OR (r.kind = 'debug' AND t.owner_id = r.owner_id)),
+		       t.input_schema::text
+		  FROM platform.tool_versions AS t
+		  JOIN platform.runs AS r ON r.id = $1::uuid
+		 WHERE t.id::text = ANY($2::text[])`, runID, toolVersionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	facts := make([]presetexec.ToolFact, 0, len(toolVersionIDs))
+	for rows.Next() {
+		var fact presetexec.ToolFact
+		var schema string
+		if err := rows.Scan(&fact.ID, &fact.State, &fact.Callable, &schema); err != nil {
+			return nil, err
+		}
+		fact.InputSchema = json.RawMessage(schema)
+		facts = append(facts, fact)
+	}
+	return facts, rows.Err()
 }

@@ -35,6 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
 	"orchara/platform/internal/uuid"
@@ -71,9 +72,8 @@ const (
 	CodeProtocolMismatch     = "worker_protocol_mismatch"
 	// F04A/T042 linear-plan codes. T043 replaces the agent refusal; the node
 	// input/output codes are the located binding/schema failures of one node.
-	CodeAgentNodeUnsupported = "agent_node_not_supported"
-	CodeNodeInputInvalid     = "node_input_invalid"
-	CodeNodeOutputInvalid    = "node_output_invalid"
+	CodeNodeInputInvalid  = "node_input_invalid"
+	CodeNodeOutputInvalid = "node_output_invalid"
 )
 
 // Defaults for the wait bounds. A deployment can shorten them; a tiny value is
@@ -179,6 +179,17 @@ type Client interface {
 	// artifacts are registered. The server re-proves the live attempt and the
 	// artifact/purpose before writing a row.
 	RecordNodeResults(ctx context.Context, runID, attemptToken string, results []NodeResult) error
+	// InvokeCapability is one T041 run-scoped capability call (model or tool)
+	// over the worker mTLS capacity. The server authorizes, meters and seals; the
+	// worker never talks to a provider directly.
+	InvokeCapability(
+		ctx context.Context, runID, attemptToken string, input capabilities.Input,
+	) (*capabilities.Result, error)
+	// ReportCapabilityResult reports the validated result of a granted tool call
+	// through the non-contract capability-results bridge. Idempotent.
+	ReportCapabilityResult(
+		ctx context.Context, runID, attemptToken string, report capabilities.ResultReport,
+	) (*capabilities.Result, error)
 }
 
 // InputSource resolves the run's linked input artifacts. The supervisor's
@@ -274,6 +285,9 @@ type Deps struct {
 	Client  Client
 	Inputs  InputSource
 	Sandbox Sandbox
+	// Facts is the trusted read-only capability catalog. Agent nodes require it;
+	// the T042 python chain does not.
+	Facts   Facts
 	Options Options
 	Logger  *log.Logger
 }
@@ -378,35 +392,66 @@ func (r *runner) execute(ctx context.Context) executionOutcome {
 	}
 	r.manifest = manifest
 
-	// F04A/T042: an explicit start -> python -> end chain takes the linear path.
-	// The legacy T033 path stays available because its sealed golden graph
-	// (start/python/agent/end) contains an agent node but exactly one preset
-	// python node and the legacy single-CSV input; that behavior is preserved
-	// bit-for-bit (documented in the T042 report), and an agent graph with no
-	// runnable python node is refused with agent_node_not_supported until T043.
-	plan, planErr := buildLinearPlan(&manifest.Definition)
-	if planErr == nil {
-		return r.executeLinear(ctx, plan)
+	// F04A/T042/T043: legacy compatibility first. A graph whose single preset
+	// python node binds the legacy `input#/file` shape is served by the unchanged
+	// T033 single-python path; T033/T037 and T042's golden-graph regression depend
+	// on it. The linear path requires the explicit `node:start#/artifact` facts
+	// binding the T042 chain (and the T043 agent chain) documents.
+	if legacyPreferred(manifest) {
+		return r.executeLegacy(ctx)
 	}
-	pythonNodes := 0
-	for _, node := range manifest.Definition.Nodes {
-		if node.Type == "python" {
-			pythonNodes++
+	plan, planErr := buildLinearPlan(manifest)
+	if planErr != nil {
+		return r.refuse(ctx, codeOfPlanError(planErr), planErr.Error())
+	}
+	return r.executeLinear(ctx, plan)
+}
+
+// legacyPreferred reports whether the graph has exactly one executable preset
+// python node bound the legacy way (`input#/file`). It is the documented
+// compatibility selection between T033's single-python executor and the T042/T043
+// linear chain.
+func legacyPreferred(manifest *manifestDocument) bool {
+	var python *manifestNode
+	count, agents := 0, 0
+	for index := range manifest.Definition.Nodes {
+		node := &manifest.Definition.Nodes[index]
+		if node.Type == "agent" {
+			agents++
+			continue
+		}
+		if node.Type != "python" {
+			continue
+		}
+		var config struct {
+			ToolVersion string `json:"tool_version"`
+		}
+		if json.Unmarshal(node.Config, &config) != nil || config.ToolVersion != PresetToolID {
+			continue
+		}
+		count++
+		python = node
+	}
+	if count != 1 || python == nil {
+		return false
+	}
+	binding, ok := python.Inputs["file"]
+	if ok && strings.TrimSpace(binding.Ref) != "" {
+		base, _, _ := strings.Cut(binding.Ref, "#")
+		if base == "input" {
+			return true
 		}
 	}
-	if pythonNodes == 1 {
-		if _, legacyErr := presetNode(manifest); legacyErr == nil {
-			return r.executeLegacy(ctx)
-		} else {
-			var unsupported *unsupportedError
-			// The closed legacy vocabulary wins for a graph the old path already
-			// refused (for example a python node naming another tool).
-			if errors.As(legacyErr, &unsupported) && unsupported.code == CodeToolUnsupportedTool {
-				return r.refuse(ctx, unsupported.code, unsupported.message)
-			}
+	// Legacy fallback for a single-python graph the linear plan does not accept
+	// (for example the T033 fixtures with no explicit chain edges). An agent
+	// node never falls back: an invalid agent graph must be a typed refusal, not
+	// a silently different execution.
+	if agents == 0 {
+		if _, err := buildLinearPlan(manifest); err != nil {
+			return true
 		}
 	}
-	return r.refuse(ctx, codeOfPlanError(planErr), planErr.Error())
+	return false
 }
 
 // executeLegacy is the T033 single-python attempt flow: exactly one task_input
@@ -696,10 +741,19 @@ func (r *runner) verifyManifest(ctx context.Context) ([]byte, *manifestDocument,
 
 // manifestDocument is the subset of the frozen manifest this executor reads.
 type manifestDocument struct {
-	ManifestVersion   string             `json:"manifest_version"`
-	CompilerVersion   string             `json:"compiler_version"`
-	WorkerImageDigest string             `json:"worker_image_digest"`
-	Definition        manifestDefinition `json:"definition"`
+	ManifestVersion      string                 `json:"manifest_version"`
+	CompilerVersion      string                 `json:"compiler_version"`
+	WorkerImageDigest    string                 `json:"worker_image_digest"`
+	Definition           manifestDefinition     `json:"definition"`
+	ToolArtifacts        []manifestToolArtifact `json:"tool_artifacts"`
+	ModelProfileVersions []string               `json:"model_profile_versions"`
+}
+
+// manifestToolArtifact is one manifest.tool_artifacts entry (the id is the tool
+// version id a python/agent config references).
+type manifestToolArtifact struct {
+	ID          string `json:"id"`
+	ImageDigest string `json:"image_digest"`
 }
 
 type manifestDefinition struct {
