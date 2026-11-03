@@ -269,3 +269,41 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   一条物理流、无隐藏重试；转发全部帧给预览，新 generation 重置草稿；只有 final 经
   `_validate_generation` 的 tool calls 才进入 agent loop 执行。Go agent loop 仍使用非流式
   `invokeCapability`（T043 保持不变），流式路径服务于预览/协议边界。
+
+## T045 追加（2026-11-04）：只有兼容的备用才在可用性故障后接管
+
+### D12 — 备用清单进入冻结闭包；兼容性/预算由 Go 在派发前判定
+
+- 唯一备用来源是主 profile 行的 `ModelConfig.fallback_profile_version_ids`（契约字段），
+  不从 worker params 读取。`catalog.collectDependencyRefs` 仍是文档结构遍历；其扩展在
+  `checkDependencies`：加载主 model 行后读取该配置，把每个备用作为同一 `dependencyModel`
+  加入闭包（pointer 保留主声明的 `/nodes/<i>/config/model_profile_version`，message 标出
+  备用 id 与来源主 profile），再按 `modelReadinessProblem` 要求存在/passed/未 revoke。
+  因此 `execution_manifest.model_profile_versions` 同时冻结主与备用；run 之后改配置不能
+  把未冻结的 profile 塞进本次运行（派发前仍显式检查 manifest 成员）。
+- 兼容性判定在 Go，纯函数：kind 与 protocol 相同且为 `generation`/`chat_compatible`；
+  备用 `context_window` ≥ 本次输入估计（canonical messages 每 4 字节 1 token）+ 请求的
+  `max_output_tokens`；备用 `max_output_tokens` ≥ 请求值；显式声明 `tools: false` 的备用
+  不接带工具调用的请求，显式 `structured_output: false` 不接带 `response_schema` 的请求
+  （契约 ModelConfig 无此二字段，缺省视为允许，只有显式 false 才拒绝）；备用必须 passed、
+  未 revoke、provider 可派发、在该 run manifest 中，且保守预留仍能放进
+  `runs.budget_limit`（扣除本 run 已知 reserved/charged；T046 接管完整账本）。
+  仅“已配置”绝不构成可用。
+- 派发：主 profile 的 transient 故障最多 3 次物理尝试（T041 不变）；第 3 次仍失败且属
+  availability/rate_limited/adapter_unavailable 时，按配置顺序取第一个通过全部门禁的备用，
+  记 1 次物理尝试（attempt_no=4），成功则由该备用作答。权限/授权/语法/schema 校验/
+  工具参数/策略错误始终终止：不重试、不切换。
+- 账本：`platform.operations.fallback_profile_version_id`（FK）+ `fallback_reason`
+  （0027；`availability|rate_limited|adapter_unavailable`，二元组同现同空）。
+  `capability_version` 保持 worker 请求的主版本；receipt 的 `fallback`
+  子对象记录主/实际 profile 与原因。owner 账本投影新增
+  `fallback_profile_version_id`/`fallback_reason`/`tokens_in`/`tokens_out`/`charged_amount`
+  （所有物理尝试求和），页面显示“已切换到 …，原因：…”与合计费用/令牌；用了备用的调用
+  不再看起来像一次无缝的主模型成功。物理尝试与费用仍以 `platform.operation_attempts`
+  为唯一权威。
+- 流式路径同一套门禁：主 3 代次失败后，兼容备用在**新 generation**里作答；主代次文本/
+  工具片段绝不与备用拼接，final/receipt 只来自备用成功代次。
+- dev stub 用 registered `model_id` 前缀制造确定性故障（`stub-unavailable*`、
+  `stub-rate-limited*`、`stub-adapter-down*`、`stub-permission-denied*`、
+  `stub-schema-error*`），因为故障属于服务端解析出的候选而不是 worker params；真实厂商
+  adapter 仍未编译，真实 provider 仍以 `adapter_unavailable` 诚实失败。
