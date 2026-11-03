@@ -1041,7 +1041,7 @@ tool-call 丢弃不执行、owner-only 临时预览 + `/debug`/`/runs` 面板、
 | 页面 | 新共享 `assets/stream-preview.js`（`previewPath`/`parsePreviewEvent`/`applyPreviewFrame`/`describePreview`/`beginModelPreview`）；`/debug`、`/runs` 预览面板显示 generation、流式文本、工具片段“待定、未执行”，新代次整块丢弃旧草稿，final/error 关闭并指向持久 Run；纯 helper Node 执行 |
 | Worker | `PlatformChatModel.stream_generate` + `StreamingCapabilityTransport.stream` + `stream_agent`：每 generate 一条物理流、无隐藏重试；新 generation 重置草稿；只有 final 经 T041 同规则校验后的 tool calls 进入 agent loop 执行 |
 | 真实栈 | 真实 PG（0001–0026）、编译二进制、真实 worker mTLS、对象字节、公网 owner SSE、真实 TLS socket RST 断开；`tests/f06/test_t044_*` 21 用例（10 流式 + 4 页面 + 7 Python worker）通过；断连时用不可取消清理上下文落 `stream_cancelled`，绝无成功 receipt |
-| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l` 空；`pytest tests/f04a` 36；`pytest tests/tooling` 21；`sync_spec --check` no drift；`pytest tests/f06` __F06_COUNT__ |
+| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l` 空；`pytest tests/f04a` 36；`pytest tests/tooling` 21；`sync_spec --check` no drift；`pytest tests/f06` 83 passed + 1 个与本票无关的 T043 sandbox/lease 计时 flake（该文件隔离重跑 6 passed；T044 三文件 22 passed） |
 | 边界/not_run | 真实厂商流式 adapter、浏览器 DOM 驱动、多进程预览 fan-out、全量 `pytest tests`/`tests/f00b`、T045/T046 预算与切换；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026、未新增迁移 |
 
 ## 记录模板

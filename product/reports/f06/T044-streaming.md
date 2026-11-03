@@ -103,10 +103,15 @@ provider 诚实返回 `adapter_unavailable`，绝不伪造。
   real provider `ErrAdapterUnavailable`；real profile 下 stub 不可流。
 - `internal/capabilities/stream_test.go`（5）：代次文本/工具缓冲；残缺调用丢弃；两代次缓冲
   永不混合；非 object arguments 不完成调用；终态帧分类（retryable error 非终态）。
+- `internal/api/preview_test.go`（3）：新 generation 整块替换旧缓冲；retryable error 不关闭、
+  非 retryable error 关闭；TTL 后不重放。
 
 ### 2.2 真实栈 `tests/f06/`（真实 PG + 编译二进制 + mTLS/HTTP/SSE + 对象字节）
 
-`test_t044_streaming.py`（10）：
+`test_t044_streaming.py`（11）+ `test_t044_pages.py`（4）+ `test_t044_python.py`（7）共
+**22 passed**（真实 PG + 编译二进制 + mTLS/HTTP/SSE + 对象字节 + Node + P01 Python）。
+
+`test_t044_streaming.py`（11）：
 
 1. 单代次帧序 `delta×3 + final`；每帧 operation/generation；final text = 拼接 delta；
    attempts=1、operation succeeded、receipt 与 attempt 互指、对象字节 text 一致；
@@ -125,6 +130,7 @@ provider 诚实返回 `adapter_unavailable`，绝不伪造。
    非 owner 404。
 9. 并发 preview 线程 + 真实延迟流：预览收到与 model-stream 相同的帧序与 final。
 10. run 已终态且无预览缓冲：404 `resource_not_found`。
+11. 重放已失败的 operation：只回放 `error` 帧、无 final、attempt 数不变（幂等不伪造成功）。
 
 `test_t044_pages.py`（4）：`/debug`、`/runs` 静态面板与共享资产；`stream-preview.js` 无持久化
 /无 innerHTML/无 fetch；Node 执行 helper：URL 编码、拒绝坏帧、新旧代次整体替换（`old` 不拼入
@@ -136,7 +142,9 @@ provider 诚实返回 `adapter_unavailable`，绝不伪造。
 
 ### 2.3 回归
 
-- `tests/f06` 全量（含 T039/T041/T042/T043 与本票）见 §3 原始尾部。
+- `tests/f06` 全量（含 T039/T041/T042/T043 与本票）见 §3 原始尾部。首两次全量运行各出现一次
+  与本票无关的沙箱/租约计时 flake（T043 cancel、T042 python node），对应测试单独重跑均通过；
+  以下尾部为最终全量运行。
 - `tests/f04a` 36 passed（使用 P01 locked interpreter，见 §3/§5）。
 - `tests/tooling` 21 passed；`sync_spec --check` no drift。
 
@@ -176,7 +184,17 @@ sync exit: 0
 
 ```text
 > python -m pytest tests/f06 -q
-__F06_TAIL__
+1 failed, 83 passed in 409.40s (0:06:49)
+  FAILED tests/f06/test_t043_agent_node.py::test_agent_turn_limit_fails_without_a_final_output
+  → "the attempt lease was lost while the sandbox ran" / heartbeat context canceled
+    （T042/T043 既有 supervisor 心跳/租约计时 flake，与本票改动路径无关；隔离重跑通过）
+
+> python -m pytest tests/f06/test_t043_agent_node.py -q
+6 passed in 84.26s (0:01:24)
+
+> python -m pytest tests/f06/test_t044_streaming.py tests/f06/test_t044_pages.py \
+                     tests/f06/test_t044_python.py -q
+22 passed in 81.02s (0:01:21)
 ```
 
 ## 4. T045/T046 可用的精确接口
