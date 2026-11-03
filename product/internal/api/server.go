@@ -50,8 +50,11 @@ type Server struct {
 	modelRegistry *modelregistry.Service
 	// capabilities is the F06/T041 run-scoped controlled-capability boundary.
 	capabilities *capabilities.Service
-	objects      *objectstore.Store
-	signer       *objectstore.Signer
+	// preview is the F06/T044 temporary in-process model stream preview hub. It
+	// is not persisted and not shared across processes.
+	preview *previewHub
+	objects *objectstore.Store
+	signer  *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -159,6 +162,7 @@ func New(deps Deps) *Server {
 		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
 		modelRegistry:     modelRegistry,
 		capabilities:      capabilities.New(deps.Service.DB, deps.Objects, deps.Providers),
+		preview:           newPreviewHub(),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -249,6 +253,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// (no public capability invocation exists); the service projection carries no
 	// params or receipt bodies.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/capabilities", s.handleRunCapabilities)
+	// F06/T044: the temporary owner-only model stream preview (non-contract). It
+	// is separate from the durable Run SSE above: it replays the current
+	// generation from in-process memory only and closes on final/error.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/model-preview", s.handleRunModelPreview)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
