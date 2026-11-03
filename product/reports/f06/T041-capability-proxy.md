@@ -129,6 +129,22 @@
 `runs.js` 新增纯 helpers（`runCapabilitiesPath`、`describeCapabilityOperation`、
 `describeCapabilityLedger`、`capabilityStateText` 等）由 Node 执行测试。
 
+### 1.7 与简报的已知偏差（如实）
+
+- params artifact 的 purpose 用 `capability_params`（简报括注 `receipt`），回执用 `receipt`，
+  工具结果用 `capability_result`：三种对象在审计/产物列表里可区分，且都 ready、封存、
+  `run_artifacts` 链接；`params_artifact_id` 语义不变。
+- `operation_attempts` 增加 `attempt_token`（绑定物理 attempt 与 run attempt，结果端点用它
+  证明“属于本次 run/attempt”）；`operations` 增加 `created_at`/`updated_at`/`last_error_code`；
+  迁移 0025 的 COMMENT 逐条记录，未建 approvals/connectors/budget 表。
+- transient 的“最多重试两次”实现为最多 2 次重试（≤3 次物理尝试）；测试用
+  `stub_transient_failures=1` 得到 attempts=2，与简报验收描述一致。
+- `Service.Invoke` 带 `role` 参数（简报固定设计），服务内再校验 role=`worker`；
+  `ToolExecutor` 字段是 T042/T043 预留 seam，本票不经服务端执行工具（实际执行在 worker）。
+- 模型 params 的 tool 声明用 `{name, capability_version}`（name 是模型看到的工具名，
+  capability_version 是 manifest 内的工具版本 id），这样 tool_call.name 才能被确定性校验到
+  声明工具；`params` 仍是不透明对象，未改契约。
+
 ## 2. 测试
 
 ### 2.1 Go 单元测试（先红后绿）
@@ -284,4 +300,4 @@ $ python -m pytest tests/f00b/test_t024_model_calls.py tests/f00b/test_t024_mode
   （Node 只执行纯 helpers）；全量 `pytest tests`/全量 `tests/f00b`（Windows 管道挂起风险，
   本票按建议只跑目标 T024 文件）；真实 SSE/流式增量（T044，本票不实现）。
 - 未 push、未关闭 issue #42；未改 `docs/spec/**`、`contracts/**`、迁移 0001–0024；工作树
-  干净。提交为 5 个里程碑提交 + 2 个加固/证据刷新提交（worker 角色 + manifest digest 校验；门禁复跑记录）。
+  干净。提交为 5 个里程碑提交 + 3 个加固/证据/偏差说明提交（worker 角色 + manifest digest 校验；门禁复跑记录；已知偏差）。
