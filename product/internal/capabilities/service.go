@@ -14,6 +14,7 @@ import (
 
 	"orchara/platform/internal/budget"
 	"orchara/platform/internal/compiler"
+	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
@@ -54,6 +55,9 @@ type Service struct {
 	// Budget is the F06/T046 decimal budget ledger. It is the single budget
 	// authority for every model attempt of the run tree.
 	Budget *budget.Ledger
+	// Connectors is the F06/T048 versioned connector registry and the guarded
+	// egress client. Nil fails closed: no connector can be invoked.
+	Connectors *connectors.Service
 	// ToolExecutor is reserved for T042/T043; nil means worker execution (the
 	// only path in this batch).
 	ToolExecutor ToolExecutor
@@ -110,14 +114,17 @@ type runContext struct {
 	CancelRequested bool
 }
 
-// capabilitySpec is one resolved capability. Exactly one of Profile/Tool is set.
+// capabilitySpec is one resolved capability. Exactly one of Profile/Tool/
+// Connector is set.
 type capabilitySpec struct {
-	Kind      string
-	RiskClass string
-	Profile   *ModelProfile
-	Tools     map[string]*ToolSpec
-	Tool      *ToolSpec
-	Model     *ModelParams
+	Kind          string
+	RiskClass     string
+	Profile       *ModelProfile
+	Tools         map[string]*ToolSpec
+	Tool          *ToolSpec
+	Model         *ModelParams
+	Connector     *connectors.Policy
+	ConnectorCall connectors.Call
 }
 
 // Invoke authorizes and performs one logical capability call.
@@ -158,6 +165,9 @@ func (s *Service) Invoke(ctx context.Context, runID, role string, input Input) (
 	if prepared.replay != nil {
 		return prepared.replay, nil
 	}
+	if prepared.awaitingApproval {
+		return connectorApprovalResult(prepared.operationID, spec), nil
+	}
 	if spec.Kind == "tool" {
 		// The grant is the whole answer: the worker executes and reports back.
 		return &Result{
@@ -165,6 +175,9 @@ func (s *Service) Invoke(ctx context.Context, runID, role string, input Input) (
 			State:       "dispatching",
 			Data:        map[string]any{"grant": prepared.grant},
 		}, nil
+	}
+	if spec.Kind == ConnectorKind {
+		return s.dispatchConnector(ctx, run, normalized, spec, prepared.operationID)
 	}
 	return s.dispatchModel(ctx, run, normalized, spec, digest, prepared.operationID)
 }
@@ -189,10 +202,7 @@ func normalizeInput(runID string, input Input) (Input, *Error) {
 	}
 	input.CapabilityKind = strings.ToLower(strings.TrimSpace(input.CapabilityKind))
 	switch input.CapabilityKind {
-	case "model", "tool":
-	case "connector":
-		return input, capFailure(422, CodeKindUnsupported,
-			"connector capabilities are not executable in this batch")
+	case "model", "tool", "connector":
 	default:
 		return input, validationFailure("capability_kind", "capability_kind must be model, tool or connector")
 	}
@@ -325,7 +335,8 @@ func (s *Service) readSealed(key, digest string) ([]byte, error) {
 }
 
 // resolveCapability applies the manifest allowlist and kind-ambiguity rule, then
-// loads and validates the capability version itself.
+// loads and validates the capability version itself. A version id declared in
+// more than one of the model/tool/connector sets is refused rather than guessed.
 func (s *Service) resolveCapability(ctx context.Context, run *runContext, input Input) (*capabilitySpec, *Error) {
 	modelAllowed := containsString(run.Manifest.ModelProfileVersions, input.CapabilityVersion)
 	toolAllowed := false
@@ -335,9 +346,16 @@ func (s *Service) resolveCapability(ctx context.Context, run *runContext, input 
 			break
 		}
 	}
-	if modelAllowed && toolAllowed {
+	connectorAllowed := manifestConnectorPolicy(run.Manifest, input.CapabilityVersion) != nil
+	memberships := 0
+	for _, allowed := range []bool{modelAllowed, toolAllowed, connectorAllowed} {
+		if allowed {
+			memberships++
+		}
+	}
+	if memberships > 1 {
 		return nil, capFailure(409, CodeCapabilityKindAmbiguous,
-			"that capability version is declared as both a model profile and a tool")
+			"that capability version is declared as more than one capability kind (model, tool, connector)")
 	}
 	switch input.CapabilityKind {
 	case "model":
@@ -352,6 +370,12 @@ func (s *Service) resolveCapability(ctx context.Context, run *runContext, input 
 				"the capability version is not a tool artifact of this run's manifest")
 		}
 		return s.resolveTool(ctx, run, input)
+	case ConnectorKind:
+		if !connectorAllowed {
+			return nil, capFailure(403, CodeCapabilityNotAllowed,
+				"the capability version is not a connector policy version of this run's manifest")
+		}
+		return s.resolveConnector(ctx, run, input)
 	default:
 		return nil, capFailure(422, CodeKindUnsupported, "that capability kind is not executable")
 	}
@@ -501,9 +525,10 @@ func (s *Service) resolveTool(ctx context.Context, run *runContext, input Input)
 // applies replay/conflict rules, seals the canonical params and writes the
 // operation row (plus the tool attempt/grant when this is a tool call).
 type preparedOperation struct {
-	operationID string
-	replay      *Result
-	grant       map[string]any
+	operationID      string
+	replay           *Result
+	grant            map[string]any
+	awaitingApproval bool
 }
 
 func (s *Service) prepareOperation(
@@ -603,6 +628,19 @@ func (s *Service) prepareOperation(
 	}
 
 	prepared := &preparedOperation{operationID: operationID}
+	if s.connectorAwaitingApproval(spec) {
+		// F06/T048 §4: a write-risk connector never dispatches without approval.
+		// The operation is parked in awaiting_approval; T050 owns the approval
+		// row and the resume, so this ticket records the honest state and stops.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operations
+			   SET state = 'awaiting_approval', updated_at = now()
+			 WHERE id = $1::uuid AND state = 'authorized'`, operationID,
+		); err != nil {
+			return nil, capFailure(500, CodeInternal, "the connector approval state could not be recorded")
+		}
+		prepared.awaitingApproval = true
+	}
 	if spec.Kind == "tool" {
 		grant := map[string]any{
 			"operation_id":       operationID,
@@ -720,6 +758,16 @@ func (s *Service) replayTx(
 		}
 		return nil, capFailure(409, CodeOperationInProgress,
 			"the operation is already dispatching")
+	case "awaiting_approval":
+		// A replayed write-risk connector answers the same parked state; it must
+		// never become a second egress attempt for the same logical key.
+		result.Data = map[string]any{
+			"error_code":                  "approval_required",
+			"connector_policy_version_id": op.CapabilityVersion,
+			"risk_class":                  "write",
+			"status":                      "awaiting_approval",
+		}
+		return result, nil
 	default:
 		return nil, capFailure(409, CodeOperationInProgress,
 			"the operation is recorded but not dispatchable")
@@ -1553,6 +1601,8 @@ func (s *Service) verifyResultArtifactTx(ctx context.Context, tx *sql.Tx, run *r
 type LedgerOperation struct {
 	ID                       string           `json:"id"`
 	CapabilityKind           string           `json:"capability_kind"`
+	RiskClass                string           `json:"risk_class"`
+	ConnectorTarget          *string          `json:"connector_target,omitempty"`
 	CapabilityVersion        string           `json:"capability_version"`
 	State                    string           `json:"state"`
 	Attempts                 int              `json:"attempts"`
@@ -1596,6 +1646,7 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 	}
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT o.id::text, o.capability_kind, o.capability_version, o.state,
+		       o.risk_class, cp.origin, cp.method, cp.path_prefix,
 		       o.last_error_code, o.receipt_artifact_id::text,
 		       o.fallback_profile_version_id::text, o.fallback_reason,
 		       (SELECT count(*) FROM platform.operation_attempts AS a
@@ -1609,6 +1660,8 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 		       a.object_key, a.sha256, a.state, a.deleted_at
 		  FROM platform.operations AS o
 		  LEFT JOIN platform.artifacts AS a ON a.id = o.receipt_artifact_id
+		  LEFT JOIN platform.connector_policies AS cp
+		         ON o.capability_kind = 'connector' AND cp.id::text = o.capability_version
 		 WHERE o.run_id = $1::uuid
 		 ORDER BY o.created_at DESC, o.id`, runID,
 	)
@@ -1624,19 +1677,26 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 			receiptID     sql.NullString
 			fallbackID    sql.NullString
 			fallbackWhy   sql.NullString
+			origin        sql.NullString
+			method        sql.NullString
+			pathPrefix    sql.NullString
 			objectKey     sql.NullString
 			digest        sql.NullString
 			artifactState sql.NullString
 			deleted       sql.NullTime
 		)
 		if err := rows.Scan(&entry.ID, &entry.CapabilityKind, &entry.CapabilityVersion,
-			&entry.State, &errorCode, &receiptID, &fallbackID, &fallbackWhy,
+			&entry.State, &entry.RiskClass, &origin, &method, &pathPrefix, &errorCode, &receiptID, &fallbackID, &fallbackWhy,
 			&entry.Attempts, &entry.TokensIn, &entry.TokensOut, &entry.ChargedAmount,
 			&objectKey, &digest, &artifactState, &deleted); err != nil {
 			return nil, capFailure(500, CodeInternal, "the capability ledger could not be read")
 		}
 		entry.ToolCallSummary = []LedgerToolCall{}
 		entry.StructuredKeys = []string{}
+		if origin.Valid && method.Valid && pathPrefix.Valid {
+			target := method.String + " " + origin.String + pathPrefix.String
+			entry.ConnectorTarget = &target
+		}
 		if errorCode.Valid {
 			value := errorCode.String
 			entry.ErrorCode = &value

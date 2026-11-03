@@ -18,7 +18,7 @@ func TestToolManifestIdentityIsContentAddressed(t *testing.T) {
 	}
 	lockSHA := jcs.SHA256Hex(lockCanonical)
 
-	hash, payload, err := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure")
+	hash, payload, err := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure", nil)
 	if err != nil {
 		t.Fatalf("manifest hash: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestToolManifestIdentityIsContentAddressed(t *testing.T) {
 		t.Fatalf("the manifest version is missing: %s", payload)
 	}
 
-	same, _, err := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure")
+	same, _, err := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure", nil)
 	if err != nil || same != hash {
 		t.Fatalf("the same content produced %q vs %q (%v)", hash, same, err)
 	}
@@ -42,22 +42,22 @@ func TestToolManifestIdentityIsContentAddressed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reorderedHash, _, _ := toolManifestSHA("a"+strings.Repeat("b", 63), reorderedCanonical, outputSchema, lockCanonical, lockSHA, "pure")
+	reorderedHash, _, _ := toolManifestSHA("a"+strings.Repeat("b", 63), reorderedCanonical, outputSchema, lockCanonical, lockSHA, "pure", nil)
 	if reorderedHash != hash {
 		t.Fatalf("reordered schema changed the content identity: %q vs %q", hash, reorderedHash)
 	}
 
-	changedRisk, _, _ := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "write")
+	changedRisk, _, _ := toolManifestSHA("a"+strings.Repeat("b", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "write", nil)
 	if changedRisk == hash {
 		t.Fatal("risk_class did not change the content identity")
 	}
-	changedSource, _, _ := toolManifestSHA("c"+strings.Repeat("d", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure")
+	changedSource, _, _ := toolManifestSHA("c"+strings.Repeat("d", 63), inputSchema, outputSchema, lockCanonical, lockSHA, "pure", nil)
 	if changedSource == hash {
 		t.Fatal("source hash did not change the content identity")
 	}
 	changedLock, _, _ := toolManifestSHA(
 		"a"+strings.Repeat("b", 63), inputSchema, outputSchema,
-		[]byte(`{"requirements":["x"]}`), jcs.SHA256Hex([]byte(`{"requirements":["x"]}`)), "pure",
+		[]byte(`{"requirements":["x"]}`), jcs.SHA256Hex([]byte(`{"requirements":["x"]}`)), "pure", nil,
 	)
 	if changedLock == hash {
 		t.Fatal("dependency lock did not change the content identity")

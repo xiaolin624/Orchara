@@ -19,6 +19,7 @@ func TestResolveCapabilityAllowlistAndAmbiguity(t *testing.T) {
 	run := &runContext{Manifest: &compiler.Manifest{
 		ModelProfileVersions: []string{modelOnly, ambiguous},
 		ToolArtifacts:        []compiler.ToolArtifact{{ID: ambiguous}},
+		ConnectorPolicies:    []compiler.ConnectorPolicy{{VersionID: ambiguous, PolicySHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
 	}}
 	service := &Service{}
 
@@ -33,7 +34,8 @@ func TestResolveCapabilityAllowlistAndAmbiguity(t *testing.T) {
 		{"model not in manifest", "model", unknown, 403, CodeCapabilityNotAllowed},
 		{"tool not in manifest", "tool", unknown, 403, CodeCapabilityNotAllowed},
 		{"model id as tool", "tool", modelOnly, 403, CodeCapabilityNotAllowed},
-		{"connector unsupported", "connector", modelOnly, 422, CodeKindUnsupported},
+		{"connector not in manifest", "connector", modelOnly, 403, CodeCapabilityNotAllowed},
+		{"all three sets", "connector", ambiguous, 409, CodeCapabilityKindAmbiguous},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
