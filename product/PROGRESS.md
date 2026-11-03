@@ -952,6 +952,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 | 集成 | 真实 PG + 编译二进制 + 真实 HTTP：草稿 round-trip（含小数坐标）、定位错误（bad_pointer/missing_value/bad_config）、pending model + unapproved/non-ready tool 的 `dependency_not_ready`、非 owner/creator 拒绝、草稿无 run input/secret/memory |
 | 门禁 | `go vet` exit 0；`go test ./...` 23 ok/9 no-test/0 FAIL；`gofmt -l` 空；`pytest tests/f04a tests/f02a` **140 passed**（f04a 36 + f02a 104）；`pytest tests/tooling` 21；`sync_spec --check` no drift；`node --check canvas.js` 0；Node 8 模块检查通过 |
 | 边界/not_run | 生产 LangGraph worker 未实现（Go runtime 属 T042/T043）；浏览器 DOM/拖拽/焦点未做自动化；全量 `pytest tests` 由 orchestrator；未 push/未关闭 issue；无迁移、无契约/规格改动 |
+| T042 | F04A | 运行固定 Python 节点并查看结构数据与文件 | passed | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -976,6 +977,29 @@ Python worker adapter/agent loop）。证据：`reports/f06/T041-capability-prox
 | 门禁 | `go vet` exit 0；`go test ./...` exit 0（24 ok/0 FAIL）；`gofmt -l` 空；`pytest tests/f06` 42；`tests/f04a` 36；`tests/tooling` 21；目标 T024 12；`sync_spec --check` no drift |
 | 边界/not_run | 真实厂商 adapter、沙箱 python/agent 节点（T042/T043）、connector（T050）、预算结算（T046）、审批来源（T048）、浏览器 DOM、全量 `pytest tests`/全量 `tests/f00b`（Windows 管道风险，仅目标 T024） |
 | 提交 | 5 个里程碑提交（迁移/服务、HTTP/测试、worker、页面、报告/文档）+ 3 个加固/证据/偏差说明提交（worker 角色 + manifest digest 校验、门禁复跑、已知偏差）；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0024 |
+
+## F04A 固定 Python 节点执行与节点结果（T042，2026-11-03）
+
+T042（GitHub #43）已交付，状态 **`passed`**（范围 = 线性 `start → python → end` 调试运行、
+显式绑定解析、固定预设工具的真实 WSL2/runsc 执行、每个 python 节点的 data/文件/受限日志
+provenance + owner 只读接口 + `/runs` 折叠面板；agent 节点执行明确留给 T043 并
+`agent_node_not_supported` 拒绝）。证据：`reports/f04a/T042-python-node.md`。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | 0026 `platform.run_node_outputs`：run/node/kind/artifact/label + 复合 PK；kind 仅 data/file/log；artifact 行仍是内容权威；无第二内容存储；worker/PUBLIC 无权限 |
+| 计划 | 封存 definition 必须是 1 start + 1 python + 1 end、恰好 2 条链式边；分支/汇合/多 python/其他类型拒绝；agent → `agent_node_not_supported`（T043 缝）；python 必须引用固定预设工具 |
+| 绑定 | `literal`/`input#/...`/`node:<id>#/...` 的 RFC 6901 解析；python `file` 必须解析为本 run linked input 的服务器事实；缺失/类型不符 → 定位 `node_input_invalid`（沙箱不启动） |
+| 执行 | 真实 runsc：start 校验 `input_schema` 并附单一 task_input 事实；python 下载/校验 size+sha → 固定 argv/uid/no-network → 严格 output.json → 节点 schema → admit 文件 → 登记 data/文件/日志；end 映射 `output_schema` → final_output → 成功 proposal/exit |
+| 节点结果 | 非契约 `POST /internal/v1/runs/{id}/node-results`（worker/supervisor mTLS + live attempt + ready/purpose 复核 + 幂等）+ owner-only `GET /api/v1/runs/{id}/node-results`（artifact 事实，无内容）；日志 `purpose=log` 不进 `listRunArtifacts`；原始 output.json 从不成为 artifact |
+| 事件 | 每节点 pending→running→succeeded/failed/skipped 一条 `node.status`（payload 恰好 node_id/state/attempt_no，无正文）；失败/取消不提交成功，后续节点 skipped；attempt_no 由 supervisor DB 派生 |
+| 取消/超时 | 复用 T033/T036 runner 控制；真实取消 e2e：stats failed、end skipped、无 node result、无输出 artifact、无沙箱残留；线性 timeout 与 legacy 共用同一分支（legacy T033 超时已覆盖），报告如实标注未单独跑 |
+| 兼容 | golden `start/python/agent/end` 图在恰有一个预设 python 节点时走原 legacy 路径，T033/T037 行为逐字节不变（真实 e2e 断言 summary/CSV/log/列表一致且不产生 node result）；agent-only 图才拒绝 |
+| 页面 | `/runs` 折叠“节点结果”面板：按节点状态、data pretty JSON、文件下载、日志截断；`describeNodeResults` 等纯函数 Node 执行；“无结果”与“失败”分离；无 localStorage/sessionStorage/object key |
+| 真实栈 | 真实 PG/迁移 0026/编译二进制/mTLS/对象字节/WSL2+runsc `release-20241118.0`；`tests/f06/test_t042_*` 11 用例（6+3+2）全部通过 |
+| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL/9 no-test；`gofmt -l` 空；`pytest tests/f05` 149；`tests/f03` 203；`tests/f06` 53；`tests/tooling` 21；`sync_spec --check` no drift |
+| 边界/not_run | 浏览器 DOM、全量 `pytest tests`（orchestrator）、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、T049 后续 UI |
+| 提交 | 3 个里程碑提交（0026+provenance API、线性执行+事件+集成测试、面板+页面/迁移测试）+ 报告/文档提交；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
 ## 记录模板
 

@@ -155,6 +155,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-downloads", s.handleInternalRunArtifactDownload)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-status", s.handleInternalRunArtifactStatus)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts", s.handleInternalRegisterRunArtifact)
+	// F04A/T042: the per-node data/file/log provenance report (non-contract).
+	// Worker or supervisor capacity; the attempt token is re-proved by the
+	// service, and only artifacts already registered through the routes above
+	// can be named.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-results", s.handleInternalRunNodeResults)
 
 	// F06/T041: the run-scoped controlled-capability protocol. Worker-only: a
 	// supervisor or maintenance certificate is refused, and the attempt token in

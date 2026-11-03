@@ -115,13 +115,15 @@ def test_0020_is_recorded_once_in_the_chain(migrated_database, go_binaries) -> N
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # T035/T036 append 0021/0022; 0020 stays at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 25)], versions
-    assert ledgers[-5]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-4]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-3]["name"] == "0022_run_unknown_operations.sql"
-    assert ledgers[-2]["name"] == "0023_tool_builds_and_review.sql"
-    assert ledgers[-1]["name"] == "0024_run_recovery_evidence.sql"
+    # Later tickets append 0021..0026; 0020 stays at its own position.
+    assert versions == [f"{number:04d}" for number in range(1, 27)], versions
+    assert ledgers[-7]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-6]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-5]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-4]["name"] == "0023_tool_builds_and_review.sql"
+    assert ledgers[-3]["name"] == "0024_run_recovery_evidence.sql"
+    assert ledgers[-2]["name"] == "0025_run_capability_ledger.sql"
+    assert ledgers[-1]["name"] == "0026_run_node_outputs.sql"
     replay = st.migrate_or_fail(go_binaries["admin"], dsn)
     assert "no pending migrations" in replay, replay
 
