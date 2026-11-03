@@ -168,6 +168,9 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// documented non-contract bridge T042/T043 report tool execution through.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capabilities", s.handleInternalCapability)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-results", s.handleInternalCapabilityResult)
+	// F06/T046: maintenance-only reconciliation of a retained missing-usage
+	// budget reservation. Non-contract, like capability-results.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-settlements", s.handleInternalCapabilitySettlement)
 	// F06/T044: the contract streamModelCall SSE. Worker-only, same body and
 	// authorization as invokeCapability; every frame carries operation/generation
 	// identity. The durable run-event SSE is a different endpoint and is untouched.

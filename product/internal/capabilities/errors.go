@@ -61,17 +61,24 @@ const (
 	CodeProviderResponseInvalid = "provider_response_invalid"
 	CodeParamsInvalid           = "validation_failed"
 	CodeInternal                = "internal_error"
+	// F06/T046 budget vocabulary.
+	CodeBudgetExhausted        = "budget_exhausted"
+	CodeBudgetCurrencyMismatch = "budget_currency_mismatch"
+	CodeBudgetPriceInvalid     = "budget_price_invalid"
+	CodeUsageNotReserved       = "usage_not_reserved"
 )
 
 // Error is a capability failure with a stable HTTP status and code. Field is
 // set for one located validation problem and becomes the documented
-// validation_failed details entry; Message must never contain a provider body,
-// URL or credential.
+// validation_failed details entry; Details carries the typed budget facts
+// (remaining amount/currency) the caller needs. Message must never contain a
+// provider body, URL or credential.
 type Error struct {
 	Status  int
 	Code    string
 	Message string
 	Field   string
+	Details map[string]any
 }
 
 func (e *Error) Error() string {

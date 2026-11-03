@@ -1063,6 +1063,26 @@ T045（GitHub #46）已交付，状态 **`passed`**（范围 = 供应商可用�
 | 门禁 | `go vet ./...` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 96 passed（479.53s）；`pytest tests/f02a -q` 104 passed（726.21s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
 | 边界/not_run | 真实厂商 adapter（真实主/备切换 not_run）、浏览器 DOM 驱动、多进程预览 fan-out、T046 预算结算/释放与完整账本、全量 `pytest tests`/f00b/f03/f05 未跑；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0027（0001–0026 未改）；f02a 三个“迁移链尾”断言原本在 base 已红（T041/T042 追加 0025/0026），本票改为连续性断言（仅测试） |
 
+## F06 共享十进制预算预留与实际用量结算（T046，2026-11-04）
+
+T046（GitHub #47）已交付，状态 **`passed`**（范围 = 一次 Run 树的共享十进制预算：
+契约表 `platform.usage_ledger` 为唯一权威，物理调用前按预算根行锁原子预留，成功按价格版本
+结算实际 usage 并释放未用预留，失败/取消释放，缺 usage 保留保守预留待维护对账；重试/备用/
+流式共用父预算，回放不二次预留；预算拒绝是 typed 平台失败且保留已确认 artifact；owner
+账本/`/runs` 页面显示预算投影）。证据：`reports/f06/T046-budget.md`。
+
+| 项 | 内容 |
+|---|---|
+| 账本 | 迁移 0028 建 `platform.usage_ledger`（契约列 + `entry_key` 幂等键 + 非负 `numeric(20,8)`）；加法列 `operation_attempts.settlement_state`（none/reserved/settled/released/usage_missing）。`outstanding=sum(reserve)-sum(release)`、`charged=sum(charge)`；`budget_root_run_id` 递归解析父 run，F04A run 自为根 |
+| 原子预留 | `internal/budget.ReserveTx` 在预算根 run 行 `FOR UPDATE`，同一事务检查 `limit-(charged+outstanding)`，放不下返回 typed `ExhaustedError`（HTTP 429 `budget_exhausted` + remaining/required/currency），不写 attempt、不调 provider；并发调用只能有一个拿到最后一笔预留 |
+| 十进制 | `math/big.Rat` + 非负十进制字符串；预留向上取整、实际费用半进位，`numeric(20,8)` 溢出拒绝而非舍入；价格版本 `price-v1:<profile>:in=<输入价/百万>:out=<输出价/百万>:<currency>`；无 price 配置为零价 stub，异币种价格 422 |
+| 结算/释放 | 每物理 attempt 一对 `entry_key`：失败/取消 release 整笔；成功 release 整笔 + charge 实际费用（price version）；provider 无 usage 时保留预留、attempt `usage_missing`，maintenance-only `POST /internal/v1/runs/{id}/capability-settlements` 对账（worker 不能自报费用，重复对账幂等） |
+| 集成 | `internal/capabilities` 在 `beginModelAttempt` 内原子写 attempt + reserve，`finishModelSuccess` 同事务写 receipt + settle；重试/fallback/流式 generation 全部复用同一父预算根；回放走既有 operation idempotency，不二次预留/收费；预算拒绝保留此前 confirmed artifacts |
+| 页面/接口 | owner `GET /api/v1/runs/{id}/capabilities` 响应增 `budget{budget_limit,reserved_amount,charged_amount,remaining_amount,currency,overrun}`；`/runs` 增 `#budget-status`，`describeRunBudget` 原样显示十进制串并在 overrun 时渲染“已超支：运行不能被呈现为成功”；纯 helper Node 执行 |
+| 真实栈 | 真实 PG（0001–0028）、编译 `cmd/api`、真实 worker/maintenance mTLS、真实 run 行锁并发门（psql 持锁 + `pg_stat_activity` 等待计数，不以 sleep 决定胜负）；`test_t046_budget.py` 7 用例 + `test_t046_pages.py` 3 用例通过 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 25 ok/0 FAIL/9 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 106 passed（523.91s）；`pytest tests/f02a -q` 104 passed（689.15s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
+| 边界/not_run | 真实厂商 adapter（真实 usage/流式 not_run）、浏览器 DOM 驱动、全量 `pytest tests`/f00b/f03/f05、跨 run 的父/子预算真实 e2e（只有 F04A 自根 run 被真实验证，递归解析代码有单元级/迁移级证据）；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0028（0001–0027 未改） |
+
 ## 记录模板
 
 ```text

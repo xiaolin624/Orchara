@@ -128,9 +128,11 @@ func (s *Server) handleInternalCapabilityResult(w http.ResponseWriter, r *http.R
 }
 
 // runCapabilityLedgerResponse is the non-contract owner read shape. The service
-// projection already excludes params and receipt bodies.
+// projection already excludes params and receipt bodies; budget is the
+// F06/T046 decimal projection of the same ledger.
 type runCapabilityLedgerResponse struct {
-	Items []capabilities.LedgerOperation `json:"items"`
+	Items  []capabilities.LedgerOperation `json:"items"`
+	Budget *capabilities.LedgerBudget     `json:"budget"`
 }
 
 func (s *Server) handleRunCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -142,14 +144,68 @@ func (s *Server) handleRunCapabilities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
-	items, err := s.capabilities.Ledger(r.Context(), caller.PrincipalID, r.PathValue("run_id"))
+	runID := r.PathValue("run_id")
+	items, err := s.capabilities.Ledger(r.Context(), caller.PrincipalID, runID)
+	if !s.writeCapabilityError(w, r, err) {
+		return
+	}
+	budgetFacts, err := s.capabilities.BudgetFacts(r.Context(), caller.PrincipalID, runID)
 	if !s.writeCapabilityError(w, r, err) {
 		return
 	}
 	if items == nil {
 		items = []capabilities.LedgerOperation{}
 	}
-	writeJSON(w, http.StatusOK, runCapabilityLedgerResponse{Items: items})
+	writeJSON(w, http.StatusOK, runCapabilityLedgerResponse{Items: items, Budget: budgetFacts})
+}
+
+// internalCapabilitySettlementRequest is the non-contract maintenance body that
+// reconciles a retained missing-usage reservation. The worker cannot invent a
+// cost; only the maintenance capacity settles actual usage here.
+type internalCapabilitySettlementRequest struct {
+	OperationID  string `json:"operation_id"`
+	AttemptNo    int    `json:"attempt_no"`
+	Amount       string `json:"amount"`
+	PriceVersion string `json:"price_version,omitempty"`
+	TokensIn     *int64 `json:"tokens_in,omitempty"`
+	TokensOut    *int64 `json:"tokens_out,omitempty"`
+}
+
+type internalCapabilitySettlementResponse struct {
+	OperationID    string `json:"operation_id"`
+	AttemptNo      int    `json:"attempt_no"`
+	State          string `json:"state"`
+	ChargedAmount  string `json:"charged_amount"`
+	Currency       string `json:"currency"`
+	AlreadySettled bool   `json:"already_settled"`
+}
+
+func (s *Server) handleInternalCapabilitySettlement(w http.ResponseWriter, r *http.Request) {
+	if !requireInternalRole(w, r, InternalRoleMaintenance) {
+		return
+	}
+	var request internalCapabilitySettlementRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	result, err := s.capabilities.ReconcileUsage(r.Context(), InternalRole(r.Context()),
+		r.PathValue("run_id"), capabilities.ReconcileRequest{
+			OperationID:  request.OperationID,
+			AttemptNo:    request.AttemptNo,
+			Amount:       request.Amount,
+			PriceVersion: request.PriceVersion,
+			TokensIn:     request.TokensIn,
+			TokensOut:    request.TokensOut,
+		})
+	if !s.writeCapabilityError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, internalCapabilitySettlementResponse{
+		OperationID: result.OperationID, AttemptNo: result.AttemptNo,
+		State: "settled", ChargedAmount: result.ChargedAmount,
+		Currency: result.Currency, AlreadySettled: result.AlreadySettled,
+	})
 }
 
 // writeCapabilityError maps the capability package's typed errors to the
@@ -162,6 +218,12 @@ func (s *Server) writeCapabilityError(w http.ResponseWriter, r *http.Request, er
 		var details map[string]any
 		if capabilityError.Field != "" {
 			details = map[string]any{"field": capabilityError.Field}
+		}
+		for key, value := range capabilityError.Details {
+			if details == nil {
+				details = map[string]any{}
+			}
+			details[key] = value
 		}
 		writeErrorWithDetails(w, r, capabilityError.Status, capabilityError.Code,
 			capabilityError.Message, details)

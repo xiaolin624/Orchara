@@ -161,7 +161,7 @@ def attempt_rows(dbname: str, operation_id: str) -> list[dict]:
         "SELECT id::text, operation_id::text, attempt_no, state, attempt_token::text, "
         "result_artifact_id::text, error_code, tokens_in, tokens_out, "
         "reserved_amount::text, charged_amount::text, currency, price_version, "
-        "created_at::text, finished_at::text "
+        "settlement_state, created_at::text, finished_at::text "
         "FROM platform.operation_attempts "
         f"WHERE operation_id = {st.quote_literal(operation_id)}::uuid ORDER BY attempt_no",
     )
@@ -235,8 +235,18 @@ def ledger_items(session: f00b.Session, run_id: str) -> list[dict]:
     response = ledger(session, run_id)
     assert response.status == 200, response.text
     body = response.json
-    assert set(body) == {"items"}, body
+    # T046 adds the decimal budget projection beside the operation items.
+    assert set(body) <= {"items", "budget"}, body
+    assert "items" in body, body
     return body["items"]
+
+
+def ledger_budget(session: f00b.Session, run_id: str) -> dict:
+    """F06/T046: the decimal budget projection of the same owner read."""
+    response = ledger(session, run_id)
+    assert response.status == 200, response.text
+    assert "budget" in response.json, response.json
+    return response.json["budget"]
 
 
 def new_uuid() -> str:
