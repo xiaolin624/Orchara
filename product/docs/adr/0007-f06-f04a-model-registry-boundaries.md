@@ -183,3 +183,34 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   params 或回执正文。
 - 真实厂商 adapter 仍未编译：真实 provider 诚实失败，stub 输出处处 `stub=true`；本能力
   投影/账本不得被读成真实模型结果。
+
+## T042 追加（2026-11-03）：线性 python 节点执行与节点结果边界
+
+### D8 —— 线性计划优先，legacy T033 图逐字节保留
+
+- 执行器先解析封存 `definition` 为 `start → python → end` 单链（恰好 3 节点、2 条边）；
+  分支/汇合/多 python/其他节点类型确定性拒绝，agent 节点以 `agent_node_not_supported`
+  拒绝（T043 替换点）。`agent` 的拒绝分支与 `linearPlan` 是 T043 的唯一扩展缝。
+- 兼容规则：封存 golden 图是 `start/python/agent/end`，T033/T037 的真实行为与既有测试要求
+  它继续成功。因此当 manifest 恰有一个预设 python 节点时走原 legacy 单 python 路径（不执行、
+  不校验 agent 节点，不产生 node 事件/节点结果）；只有没有可运行预设 python 节点的 agent 图
+  才拒绝。T043 落地后删除该兼容分支。
+- `node.status` 的 `attempt_no` 由 supervisor 的可信 DB 读身份按 run 内 attempt 序号派生
+  （契约无该列）；worker 自报的值不被接受。事件只提交 `{node_id,state,attempt_no}`，不含正文。
+
+### D9 —— 节点结果只是 provenance；原始输出绝不直接成为已授权 artifact
+
+- 迁移 0026 `platform.run_node_outputs`：`(run_id,node_id,kind∈{data,file,log},artifact_id,
+  label,created_at)`，PK 四列；不含内容、对象 key、token。artifact 行仍是内容权威，
+  `run_artifact_uploads` 仍是 run/attempt/purpose 预约证明，`run_artifacts` 仍是 run 链接。
+  无 ON DELETE 子句：F07 删除 artifact 时必须同删 provenance 行。
+- 线性 python 节点从不上传原始 `output.json`：data 是 JCS(`output.json.data`)，
+  文件是逐个 admit 的 artifact，日志是截断的 stdout/stderr；三者都必须先走
+  create/complete/register（finalize guard 置 ready）之后才允许写 provenance。上报端点
+  用 live attempt + artifact ready + purpose 匹配 kind 复核（log 不能被报成 data）。
+- 两个端点非契约并记录在 T042 报告：`POST /internal/v1/runs/{run_id}/node-results`
+  （worker/supervisor mTLS + attempt token，1–64 行，幂等）与 owner-only
+  `GET /api/v1/runs/{run_id}/node-results`（返回 artifact 事实，不含内容）。日志仍走
+  既有 `GET /artifacts/{id}/content`，且因 `purpose=log` 不出现在 `listRunArtifacts`。
+- `/runs` 节点结果面板只读上述投影，纯函数由 Node 执行；"无结果"与"失败"是两种显示，
+  不互相顶替；页面不存 localStorage/sessionStorage，不显示 object key。
