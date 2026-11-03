@@ -18,3 +18,5 @@ product/probes/agent_min/pip-report.json
 product/tests/pip-report-test.json
 product/experiments/routing_sft/pip-report-train.json
 product/tests/.venv-test/
+# Canvas build dependencies (npm); the built bundle under apps/web/src/assets is committed.
+node_modules/
