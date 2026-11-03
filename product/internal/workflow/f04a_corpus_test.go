@@ -24,8 +24,8 @@ func TestF04ACorpusParity(t *testing.T) {
 	}
 	var payload struct {
 		Cases []struct {
-			Name   string         `json:"name"`
-			Scope  string         `json:"scope"`
+			Name   string `json:"name"`
+			Scope  string `json:"scope"`
 			Expect struct {
 				Verdict  string `json:"verdict"`
 				Problems []struct {

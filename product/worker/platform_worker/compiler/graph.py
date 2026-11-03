@@ -360,7 +360,12 @@ class LinearGraph:
             )
             records.append(record.as_dict())
             if outcome.status == SUCCEEDED:
-                problems = _check_schema_value(node["output_schema"], outcome.output, "")
+                # The end node's output *is* the application output object; it is
+                # checked against the document's output_schema below, not against
+                # the end node's own (usually empty) output_schema.
+                problems = [] if node["type"] == "end" else _check_schema_value(
+                    node["output_schema"], outcome.output, "",
+                )
                 if problems:
                     problem = problems[0]
                     records[-1] = NodeRecord(

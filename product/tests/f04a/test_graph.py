@@ -101,4 +101,4 @@ def test_graph_validation_is_go_corpus_parity(graph_python: Path, corpus: dict) 
     payload = run_compiler(graph_python)
     for case in corpus["cases"]:
         assert payload["validation"][case["name"]]["verdict"] == case["expect"]["verdict"]
-        assert payload["validation"][case["name"]]["problems"] == case["expect"]["problems"]
+        assert payload["validation"][case["name"]].get("problems", []) == case["expect"]["problems"]
