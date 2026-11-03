@@ -117,10 +117,17 @@ type capabilitySpec struct {
 
 // Invoke authorizes and performs one logical capability call.
 //
-// The run/attempt/manifest checks all happen before any provider call, and the
-// operation row is written before dispatch. The returned Result is exactly the
-// contract's CapabilityResult; the HTTP layer adds nothing.
-func (s *Service) Invoke(ctx context.Context, runID string, input Input) (*Result, error) {
+// role is the mTLS internal capacity that presented the attempt token. Only the
+// worker capacity may invoke a run capability (defence in depth: the HTTP layer
+// already refuses a supervisor/maintenance certificate). The run/attempt/manifest
+// checks all happen before any provider call, and the operation row is written
+// before dispatch. The returned Result is exactly the contract's
+// CapabilityResult; the HTTP layer adds nothing.
+func (s *Service) Invoke(ctx context.Context, runID, role string, input Input) (*Result, error) {
+	if strings.TrimSpace(role) != "worker" {
+		return nil, capFailure(403, "forbidden",
+			"only the worker capacity may invoke a run capability")
+	}
 	normalized, invalid := normalizeInput(runID, input)
 	if invalid != nil {
 		return nil, invalid
@@ -265,6 +272,14 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 	manifestBytes, err := s.readSealed(artifactKey, artifactSHA.String)
 	if err != nil {
 		return nil, capFailure(503, CodeManifestUnavailable, "the sealed execution manifest could not be read")
+	}
+	// The brief's rule is explicit: hash the bytes against runs.manifest_sha256.
+	// Checking the artifact row's digest too keeps a mismatched snapshot/artifact
+	// row from being accepted transitively.
+	manifestDigest := sha256.Sum256(manifestBytes)
+	if !strings.EqualFold(hex.EncodeToString(manifestDigest[:]), run.ManifestSHA256) {
+		return nil, capFailure(503, CodeManifestUnavailable,
+			"the sealed manifest bytes do not match the run digest")
 	}
 	var manifest compiler.Manifest
 	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))

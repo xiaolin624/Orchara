@@ -975,7 +975,7 @@ Python worker adapter/agent loop）。证据：`reports/f06/T041-capability-prox
 | 真实栈 | 真实 PG/mTLS/HTTP/对象字节：`tests/f06` 42 passed；真实本地 Python 工具执行 + 2 轮真实端点 loop（transport 调用=2=operation 数=attempt 总数） |
 | 门禁 | `go vet` exit 0；`go test ./...` exit 0（24 ok/0 FAIL）；`gofmt -l` 空；`pytest tests/f06` 42；`tests/f04a` 36；`tests/tooling` 21；目标 T024 12；`sync_spec --check` no drift |
 | 边界/not_run | 真实厂商 adapter、沙箱 python/agent 节点（T042/T043）、connector（T050）、预算结算（T046）、审批来源（T048）、浏览器 DOM、全量 `pytest tests`/全量 `tests/f00b`（Windows 管道风险，仅目标 T024） |
-| 提交 | 迁移/服务、HTTP/测试、worker、页面、报告/文档各一个逻辑提交；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0024 |
+| 提交 | 5 个里程碑提交（迁移/服务、HTTP/测试、worker、页面、报告/文档）+ 1 个 worker 角色参数对齐提交；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0024 |
 
 ## 记录模板
 

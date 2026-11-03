@@ -60,14 +60,15 @@ func (s *Server) handleInternalCapability(w http.ResponseWriter, r *http.Request
 		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
 		return
 	}
-	result, err := s.capabilities.Invoke(r.Context(), r.PathValue("run_id"), capabilities.Input{
-		AttemptToken:      request.AttemptToken,
-		OperationID:       request.OperationID,
-		LogicalKey:        request.LogicalKey,
-		CapabilityVersion: request.CapabilityVersion,
-		CapabilityKind:    request.CapabilityKind,
-		Params:            request.Params,
-	})
+	result, err := s.capabilities.Invoke(r.Context(), r.PathValue("run_id"),
+		InternalRole(r.Context()), capabilities.Input{
+			AttemptToken:      request.AttemptToken,
+			OperationID:       request.OperationID,
+			LogicalKey:        request.LogicalKey,
+			CapabilityVersion: request.CapabilityVersion,
+			CapabilityKind:    request.CapabilityKind,
+			Params:            request.Params,
+		})
 	if !s.writeCapabilityError(w, r, err) {
 		return
 	}

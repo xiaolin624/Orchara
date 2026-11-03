@@ -254,9 +254,10 @@ $ python -m pytest tests/f00b/test_t024_model_calls.py tests/f00b/test_t024_mode
 - owner 账本：`GET /api/v1/runs/{run_id}/capabilities` →
   `{items:[{id,capability_kind,capability_version,state,attempts,error_code|null,
   receipt_artifact_id|null,tool_call_summary:[{id,name}],structured_output_keys,stub}]}`。
-- Go：`capabilities.New(db, store, providers)`；`(*Service).Invoke(ctx, runID, Input) (*Result,
-  *capabilities.Error)`；`ReportResult(ctx, runID, ResultReport)`；`Ledger(ctx, ownerID,
-  runID)`；`(*Error).Status/Code/Message/Field`；`modelproxy.TransientError`/`IsTransient`。
+- Go：`capabilities.New(db, store, providers)`；`(*Service).Invoke(ctx, runID, role, Input)
+  (*Result, *capabilities.Error)`（role 必须是 `worker`，服务内再防一层）；`ReportResult(ctx,
+  runID, ResultReport)`；`Ledger(ctx, ownerID, runID)`；`(*Error).Status/Code/Message/Field`；
+  `modelproxy.TransientError`/`IsTransient`。
 - Python：`platform_worker.agents.PlatformChatModel(transport, run_id=, attempt_token=,
   capability_version=)`，`transport.invoke(run_id, body)`；
   `run_agent(model=,tools=[DeclaredTool(name,capability_version,input_schema)],executor=,
@@ -281,4 +282,4 @@ $ python -m pytest tests/f00b/test_t024_model_calls.py tests/f00b/test_t024_mode
   （Node 只执行纯 helpers）；全量 `pytest tests`/全量 `tests/f00b`（Windows 管道挂起风险，
   本票按建议只跑目标 T024 文件）；真实 SSE/流式增量（T044，本票不实现）。
 - 未 push、未关闭 issue #42；未改 `docs/spec/**`、`contracts/**`、迁移 0001–0024；工作树
-  除本报告/PROGRESS/ADR 提交外干净。
+  干净。提交为 5 个里程碑提交 + 1 个 worker 角色参数对齐（服务层再校验 role=worker）提交。
