@@ -36,6 +36,114 @@ function runArtifactsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/artifacts';
 }
 
+/** The owner-only controlled-capability ledger path for one run id (T041). */
+function runCapabilitiesPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/capabilities';
+}
+
+/** The ledger state vocabulary as the owner-facing label. */
+function capabilityStateText(state) {
+  switch (String(state || '')) {
+    case 'succeeded':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'dispatching':
+      return '执行中';
+    case 'authorized':
+      return '已授权';
+    case 'prepared':
+      return '已准备';
+    case 'awaiting_approval':
+      return '待审批';
+    case 'unknown':
+      return '结果未知';
+    default:
+      return '未知状态';
+  }
+}
+
+/** model/tool/connector as the label the ledger panel shows. */
+function capabilityKindText(kind) {
+  switch (String(kind || '')) {
+    case 'model':
+      return '模型';
+    case 'tool':
+      return '工具';
+    case 'connector':
+      return '连接器';
+    default:
+      return '能力';
+  }
+}
+
+/** A short, non-secret version label (the full id stays in the title attribute). */
+function capabilityVersionLabel(version) {
+  const text = String(version || '');
+  return text.length > 12 ? text.slice(0, 8) + '…' : text;
+}
+
+/** Tool-call ids/names only: the ledger read never returns arguments. */
+function summarizeToolCalls(calls) {
+  const items = Array.isArray(calls) ? calls : [];
+  if (items.length === 0) {
+    return '无工具调用';
+  }
+  return items
+    .map((call) => {
+      const id = String((call && call.id) || '');
+      const name = String((call && call.name) || '');
+      return id + '(' + name + ')';
+    })
+    .join('、');
+}
+
+/**
+ * The owner-facing projection of one capability operation. Only fields the
+ * ledger endpoint returns are read; params and receipt bodies are never here.
+ */
+function describeCapabilityOperation(operation) {
+  const value = operation || {};
+  const attempts = Number(value.attempts || 0);
+  const keys = Array.isArray(value.structured_output_keys)
+    ? value.structured_output_keys.map((key) => String(key))
+    : [];
+  const errorCode = value.error_code ? String(value.error_code) : '';
+  return {
+    id: String(value.id || ''),
+    kindText: capabilityKindText(value.capability_kind),
+    version: String(value.capability_version || ''),
+    versionLabel: capabilityVersionLabel(value.capability_version),
+    state: String(value.state || ''),
+    stateText: capabilityStateText(value.state),
+    attempts,
+    attemptsText: attempts + ' 次',
+    errorCode,
+    errorText: errorCode === '' ? '' : '错误码 ' + errorCode,
+    toolCallsText: summarizeToolCalls(value.tool_call_summary),
+    structuredKeys: keys,
+    structuredText: keys.length === 0 ? '无结构化输出' : keys.join('、'),
+    stub: value.stub === true,
+    stubLabel: value.stub === true ? 'stub（开发桩）' : '真实提供方',
+    hasReceipt: Boolean(value.receipt_artifact_id),
+  };
+}
+
+/** The whole ledger body the panel renders; never echoes another owner's data. */
+function describeCapabilityLedger(body) {
+  const items = Array.isArray(body && body.items) ? body.items : [];
+  const described = items.map(describeCapabilityOperation);
+  return {
+    items: described,
+    count: described.length,
+    empty: described.length === 0,
+    text:
+      described.length === 0
+        ? '还没有受控调用（模型调用或已授权的工具调用会出现这里）。'
+        : '共有 ' + described.length + ' 次受控调用。',
+  };
+}
+
 /** One owner-visible artifact download path. */
 function artifactDownloadPath(artifactID) {
   return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/download';
@@ -1125,6 +1233,67 @@ async function loadRunArtifacts(runId) {
   }
 }
 
+function capabilityStatus(message, kind) {
+  const element = document.getElementById('capability-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+function renderCapabilityRow(operation) {
+  const row = document.createElement('tr');
+  const cells = [
+    operation.kindText,
+    operation.versionLabel,
+    operation.stateText,
+    operation.attemptsText,
+    operation.structuredText,
+    operation.toolCallsText,
+    operation.stubLabel + (operation.errorText ? ' · ' + operation.errorText : ''),
+  ];
+  for (const text of cells) {
+    const cell = document.createElement('td');
+    cell.textContent = text;
+    row.appendChild(cell);
+  }
+  if (operation.version) {
+    row.title = operation.version;
+  }
+  return row;
+}
+
+// T041: the owner-only controlled-capability ledger. It shows identity, state,
+// attempt count, a structured-output key list and tool-call ids/names; it never
+// shows params, arguments or a receipt body.
+async function loadCapabilityLedger(runId) {
+  const rows = document.getElementById('capability-rows');
+  if (!rows) {
+    return;
+  }
+  rows.replaceChildren();
+  capabilityStatus('正在加载受控调用账本…', 'pending');
+  try {
+    const body = await api(runCapabilitiesPath(runId));
+    const ledger = describeCapabilityLedger(body);
+    capabilityStatus(ledger.text, ledger.empty ? '' : 'ok');
+    for (const operation of ledger.items) {
+      rows.appendChild(renderCapabilityRow(operation));
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    capabilityStatus(
+      '受控调用账本不可用 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  }
+}
+
 function cancelDetailStatus(message, kind) {
   const element = document.getElementById('detail-cancel-status');
   if (!element) {
@@ -1248,6 +1417,7 @@ async function pollRunDetail(runId, polls) {
     return pollRunDetail(runId, polls + 1);
   }
   await loadRunArtifacts(runId);
+  await loadCapabilityLedger(runId);
   runsStatus('Run ' + runId + ' 已进入终态 ' + (merged && merged.state ? merged.state : '') + '。', 'ok');
 }
 
@@ -1265,6 +1435,7 @@ async function loadRunDetail(runId) {
     const facts = runRuntimeFacts(result.headers);
     const merged = showRunDetail(result.payload, facts);
     loadRunArtifacts(runId);
+    loadCapabilityLedger(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',

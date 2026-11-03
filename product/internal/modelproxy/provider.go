@@ -2,13 +2,37 @@ package modelproxy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/jcs"
 )
+
+// TransientError is a provider failure the server may retry (bounded by the
+// caller's attempt ceiling). A provider that returns anything else is a
+// deployment/permission/validation fact and must not be retried.
+type TransientError struct {
+	Reason string
+}
+
+func (e *TransientError) Error() string {
+	if e.Reason == "" {
+		return "the model provider failed transiently"
+	}
+	return "the model provider failed transiently: " + e.Reason
+}
+
+// IsTransient reports whether err is a retryable provider failure.
+func IsTransient(err error) bool {
+	var transient *TransientError
+	return errors.As(err, &transient)
+}
 
 // Provider is the seam between the ledger and one model backend. It receives
 // only what the server resolved for this job: the candidate row, its params and
@@ -123,6 +147,13 @@ func (s *stubProvider) Call(_ context.Context, request CallRequest) (ProviderRes
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
 	}
+	// F06/T041 agent branch: a run-scoped capability call carries `messages`
+	// (and `task: "agent"`); the job-scoped validation call carries a fixture.
+	// The agent answer is derived deterministically from the canonical params,
+	// never from a vendor and never from the wall clock, so a test can replay it.
+	if isAgentCall(request.Params) {
+		return stubAgentResponse(request)
+	}
 	fixture := request.Fixture
 	if request.FixtureSHA256 != "" && request.FixtureSHA256 != fixtureSHA256Hex(fixture) {
 		return ProviderResponse{}, fmt.Errorf("%w: fixture hash does not match the bytes", ErrNotConfigured)
@@ -187,4 +218,136 @@ func canonicalJSON(value any) ([]byte, error) {
 		return nil, err
 	}
 	return jcs.CanonicalizeBytes(raw)
+}
+
+// isAgentCall distinguishes a run-scoped agent capability call from the
+// job-scoped validation call: the agent call always carries messages.
+func isAgentCall(params map[string]any) bool {
+	if params == nil {
+		return false
+	}
+	if task, ok := params["task"].(string); ok && task == "agent" {
+		return true
+	}
+	_, hasMessages := params["messages"]
+	return hasMessages
+}
+
+// stubAgentResponse is the deterministic F06 agent stub: same params, same
+// answer; an explicit stub label; the documented stub_tool_calls hint passed
+// through for the capability validator to accept or refuse; stub_transient_failures
+// makes the retry/ledger path testable without a vendor.
+func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
+	if failures, ok := integerParam(request.Params["stub_transient_failures"]); ok &&
+		request.Attempt <= int(failures) {
+		return ProviderResponse{}, &TransientError{
+			Reason: fmt.Sprintf("stub transient failure %d", request.Attempt),
+		}
+	}
+	rawParams, err := json.Marshal(request.Params)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("encoding the stub agent params: %w", err)
+	}
+	canonical, err := jcs.CanonicalizeBytes(rawParams)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent params: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	digest := hex.EncodeToString(sum[:])
+	text := "stub-agent:" + digest[:16]
+	data := map[string]any{
+		"provider":   "stub",
+		"stub":       true,
+		"model_id":   request.Candidate.ModelID,
+		"text":       text,
+		"tool_calls": []any{},
+	}
+	if hint, ok := request.Params["stub_tool_calls"]; ok {
+		data["tool_calls"] = hint
+	}
+	if schema, ok := request.Params["response_schema"].(map[string]any); ok {
+		if structured, ok := stubSchemaValue(schema, digest, 0).(map[string]any); ok {
+			data["structured"] = structured
+		}
+	}
+	tokensIn := int64((len(canonical) + 3) / 4)
+	tokensOut := int64((len(text) + 3) / 4)
+	data["usage"] = map[string]any{
+		"input_tokens":  tokensIn,
+		"output_tokens": tokensOut,
+	}
+	output, err := canonicalJSON(data)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent answer: %w", err)
+	}
+	return ProviderResponse{
+		Data:         data,
+		Output:       output,
+		TokensIn:     tokensIn,
+		TokensOut:    tokensOut,
+		ChargedUnits: (tokensIn + tokensOut) * reservedUnitsPerInputToken,
+	}, nil
+}
+
+// stubSchemaValue builds a deterministic value that satisfies the restricted
+// schema subset the capability validator understands. It only ever fills
+// declared properties, so an additionalProperties:false schema still passes.
+func stubSchemaValue(schema map[string]any, seed string, depth int) any {
+	if depth > 16 || schema == nil {
+		return nil
+	}
+	if enum, ok := schema["enum"].([]any); ok && len(enum) > 0 {
+		return enum[0]
+	}
+	kind, _ := schema["type"].(string)
+	switch kind {
+	case "object":
+		object := map[string]any{}
+		if properties, ok := schema["properties"].(map[string]any); ok {
+			for name, raw := range properties {
+				child, ok := raw.(map[string]any)
+				if !ok {
+					continue
+				}
+				object[name] = stubSchemaValue(child, seed, depth+1)
+			}
+		}
+		return object
+	case "array":
+		item, _ := schema["items"].(map[string]any)
+		value := stubSchemaValue(item, seed, depth+1)
+		if value == nil {
+			return []any{}
+		}
+		return []any{value}
+	case "string":
+		if len(seed) > 16 {
+			seed = seed[:16]
+		}
+		return seed
+	case "number":
+		return float64(1)
+	case "integer":
+		return float64(1)
+	case "boolean":
+		return true
+	default:
+		return nil
+	}
+}
+
+func integerParam(raw any) (int64, bool) {
+	switch value := raw.(type) {
+	case float64:
+		return int64(value), math.Trunc(value) == value
+	case int:
+		return int64(value), true
+	case int64:
+		return value, true
+	case json.Number:
+		integer, err := value.Int64()
+		return integer, err == nil
+	default:
+		return 0, false
+	}
 }

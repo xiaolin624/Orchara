@@ -155,3 +155,31 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   `POST /applications/{id}/validate`，`{node_id,code,pointer,message}` 映射到节点和配置字段
   并可点击跳转，成功时显示 `X-Manifest-SHA256`。
 - 契约/迁移零改动：无新字段、无新执行路径；`/assets/canvas.{js,css}` 只是静态页面资产。
+
+## T041 追加（2026-11-03）：运行域受控能力代理与 worker 适配边界
+
+### D6 —— 一次逻辑 operation，每次物理调用一行 attempt；Go 是唯一重试权威
+
+- `platform.operations` 是逻辑身份（worker 给的 operation id；`UNIQUE(run_id,logical_key)`），
+  `platform.operation_attempts` 是每次真实派发一行；worker 适配器每次 `generate` 只发一次
+  请求，绝不隐藏重试。transient provider 失败最多重试 2 次（每次新 attempt 行）；部署事实
+  （`provider_not_configured`/`adapter_unavailable`）与 schema/权限/校验错误不重试。
+- 授权全部先于 provider：run=running、live attempt、封存 manifest 字节重算 SHA-256、capability
+  version 在 manifest allowlist、kind 双集合歧义拒绝。params 的 RFC 8785 JCS 字节先封存为
+  `capability_params` artifact，其 SHA-256 是回放/冲突/工具 grant 的共同身份。
+- 偏差（已写在迁移 COMMENT）：`operations` 增加 `created_at`/`updated_at`/`last_error_code`；
+  `operation_attempts` 是非契约表（T046 在其上结算）；`attempt_token` 绑定物理 attempt 与
+  run attempt。未创建 approvals/connectors/budget 表。
+
+### D7 —— 工具执行留在 worker；服务端只发 scoped grant 并校验回报
+
+- 工具 operation 在服务端只到 `dispatching`：返回
+  `grant{operation_id,capability_version,capability_kind,risk_class,params_sha256,run_id,
+  attempt_token}`；真实沙箱执行是 T043。
+- 回报走文档化非契约 `POST /internal/v1/runs/{run_id}/capability-results`（worker mTLS）：
+  必须绑定同一 run/attempt 且 operation 处于 dispatching；succeeded 只接受 ready 且 owner 为
+  run owner 的 artifact，或把 worker 上报的小 `data` 服务端封存为 receipt；失败只接受安全
+  小写 code；重复回报幂等。owner 账本只投影状态/尝试数/tool-call id+name/结构化键/stub，不返回
+  params 或回执正文。
+- 真实厂商 adapter 仍未编译：真实 provider 诚实失败，stub 输出处处 `stub=true`；本能力
+  投影/账本不得被读成真实模型结果。
