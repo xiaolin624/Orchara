@@ -114,8 +114,9 @@ NULL 表示未挂起；`runs_recovery_pair_check` 要求两者同时为 NULL/同
 扫描 `run_attempts` 中 `exited_at IS NULL AND revoked_at IS NULL AND
 lease_deadline < now() - grace` 且 Run `state='running'`、未删除、**无 cancel intent** 的
 attempt（最多 100 个/次），逐条在**独立事务**里 `FOR UPDATE OF a, j, r` 复检后：
-`runs.state='recovery_pending'`、`runs.phase='idle'`、`revision+1`、
-`recovery_reason='lease_expired'`、`recovery_since=now()`；job → `held`（清
+先以 `lease_deadline`（最后可证明的活动终点，不是 park 时刻）结算该 attempt 的活跃区间
+（`settleAttemptActiveUntilTx`），再 `runs.state='recovery_pending'`、`runs.phase='idle'`、
+`revision+1`、`recovery_reason='lease_expired'`、`recovery_since=now()`；job → `held`（清
 `current_attempt_token`）；**不释放 allocation**、**不新增 attempt**、**不换 token**；同事务
 `run.status` 事件（`AppendRunStatusTx`）+ `platform.audit_events`（action
 `run.recovery_parked`，actor NULL = 系统动作，metadata 只含 reason/job/unit/lease/grace，
@@ -185,7 +186,9 @@ claim 只选 queued，新 attempt 拿到新 token，旧 token 的迟到 result/e
   T031 的 started=false requeue 路径不写 recovery 列。
 - T032 事件：park 与 recover 的转换都**同事务**投影一条 `run.status`（`recovery_pending` /
   `queued`）。
-- T034 结算：recover 调用同一个 `settleAttemptActiveTx`，不新增第二条结算路径。
+- T034 结算：sweep 在 park 事务用 `settleAttemptActiveUntilTx`（同一 helper 的显式终点变体）
+  按 `lease_deadline` 结算；recover 只在 attempt 仍未结算时调用 `settleAttemptActiveTx`，
+  已结算即 no-op。没有第二条结算路径。
 - T036：离开 `recovery_pending` 的既有转换（finalizer/立即取消/reconciliation）现在清 recovery
   列（同事务）；cancel intent 在 recover 中一律拒绝，取消语义不被恢复复活。
 - T035：requeue 保留 job kind 与 `resume_artifact_id`（真实 resume job 的用例验证 claim 仍返回
@@ -282,3 +285,42 @@ claim 只选 queued，新 attempt 拿到新 token，旧 token 的迟到 result/e
   `RecoveryCode*`（见 §1.3 表）。
 - `platform.run_recovery_evidence` / `runs.recovery_reason|recovery_since`（非契约扩展，
   迁移 0024）。
+
+## 7. 复核修复（2026-11-03）
+
+**发现 1：park 未结算，recover 把整个停机窗口计入 T034 活跃时间。** sweep 只把 Run 置
+`recovery_pending` 而未调用结算器，recover 事务里的 `settleAttemptActiveTx` 以 `now()` 结算，
+于是 `now - started_at`（含 park 之后的全部窗口）被加进 `runs.active_elapsed_ms`。后果是恢复后
+的 Run 可能立刻达到 `max_active_ms` 并在下一次 claim 被判 `deadline_exceeded`，页面累计时钟也会
+跳变。
+
+**修复：**
+- `parkExpiredLease` 在同一事务、同一行锁内调用新增的
+  `settleAttemptActiveUntilTx(ctx, tx, runID, lease_deadline)`：活跃区间只到**最后可证明的活动
+  终点** `lease_deadline`，`active_settled_at=now()` 记录结算时刻；park 本身不再计时。
+- `Recover` 读取 attempt 的 `active_settled_at`，已结算时跳过结算调用（no-op），绝不补记已停机
+  窗口；未结算的旧 attempt（例如迁移前遗留）仍走同一个 helper。
+- sweep 报告/审计中的 `lease_deadline` 文本不变；只新增内部 typed 时间字段用于结算。
+
+**回归测试：**
+`tests/f03/test_t038_recover.py::test_park_settles_active_time_at_the_lease_deadline`
+（真实 PG/真实对象/真实 admin 命令）把 attempt 起点移到 10s 前、lease deadline 设为 5s 前、
+`max_active_ms=7000`：park 后断言 attempt 已结算且 `active_ms`/`runs.active_elapsed_ms` 都在
+`[4000, 7000)`；recover 后累计值不变；下一次 claim 成功（state=running、`error_code` 为空）。
+修复前该用例在“park 后 `active_settled_at IS NULL`”处失败，恢复后 claim 会被
+`deadline_exceeded` 拒绝。
+
+**发现 2：恢复证据的审计链在后续周期丢失。** `resumed_job_id` 原为 UNIQUE，requeue 又复用同一
+job，于是写入器在第二个周期把该列存成 NULL：审计行无法回答“这次恢复重排了哪个 job”。
+
+**修复（新迁移 0024 就地修正，未改 0001–0023 语义）：** 去掉 `resumed_job_id` 的 UNIQUE（保留
+FK），`insertRecoveryEvidenceTx` 每个周期都写 requeue 的 job id；once-per-attempt 仍由
+`UNIQUE(run_id, attempt_token)` 保证。迁移注释/COMMENT 如实改为“每周期一条可读链接”。
+
+**回归测试：**
+- `tests/f03/test_t038_recover.py::test_a_second_recovery_cycle_names_the_same_requeued_job`：
+  同一 Run 连续两轮 claim→过期→sweep→recover，两行证据的 `resumed_job_id` 都等于同一 job，
+  attempt_token 分别是两轮 token；修复前第二行因 UNIQUE/写入器 NULL 失败。
+- `tests/f03/test_t038_migration.py::test_recovery_evidence_identity_and_safe_values_are_enforced`
+  改为断言不同 attempt 可命名同一 job（两行）且同 attempt 仍被 UNIQUE 拒绝；
+  `test_0024_replays_as_a_noop` 断言不再存在 `run_recovery_evidence_resumed_job_id_key`。

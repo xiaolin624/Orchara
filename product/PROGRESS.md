@@ -647,14 +647,38 @@ supervisor 证据、DOM 驱动仍 `not_run`。见报告 §2/§5/§6。
 
 | 项 | 结果 |
 |---|---|
-| 迁移 | `db/migrations/0024_run_recovery_evidence.sql`：唯一新表 `platform.run_recovery_evidence`（run/attempt → runs/run_attempts、闭合证据 jsonb + object CHECK、JCS `evidence_sha256` + 64-hex CHECK、真实 principal `recorded_by`、数据库时钟 `recorded_at`、UNIQUE `resumed_job_id`→jobs、`UNIQUE(run_id,attempt_token)`、run 索引）；`runs.recovery_reason`/`recovery_since` + `runs_recovery_pair_check` + 闭合 `runs_recovery_reason_check`；worker/PUBLIC 零 `platform` 权限；重复 migrate no-op；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
+| 迁移 | `db/migrations/0024_run_recovery_evidence.sql`：唯一新表 `platform.run_recovery_evidence`（run/attempt → runs/run_attempts、闭合证据 jsonb + object CHECK、JCS `evidence_sha256` + 64-hex CHECK、真实 principal `recorded_by`、数据库时钟 `recorded_at`、`resumed_job_id`→jobs（非 UNIQUE，每周期记录 requeued job）、`UNIQUE(run_id,attempt_token)`、run 索引）；`runs.recovery_reason`/`recovery_since` + `runs_recovery_pair_check` + 闭合 `runs_recovery_reason_check`；worker/PUBLIC 零 `platform` 权限；重复 migrate no-op；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift |
 | sweep-leases | `cmd/admin runs sweep-leases [--grace 60s] [--dry-run]`：扫描 `exited_at/revoked_at IS NULL` 且 `lease_deadline < now()-grace` 的 running Run（未删、无 cancel intent、≤100/次），逐条独立事务 `FOR UPDATE OF a,j,r` 复检 → `recovery_pending`/phase idle/revision+1/`recovery_reason=lease_expired`/`recovery_since=now()`、job `held`（清 token）、**不释放 allocation/不新增 attempt/不换 token**、同事务 `run.status` 事件 + `run.recovery_parked` 审计；`--dry-run` 只报 `would_park` 零写入；stdout 单 JSON，exit 0/2/1 |
 | recover | `cmd/admin runs recover --run UUID --evidence FILE [--check-only] [--actor-login LOGIN] [--grace 60s]`：检查 run=recovery_pending、cancel intent、恰好一个可恢复 attempt、证据 `execution_unit_id` 与 attempt 一致、旧执行非存活（已 exited 或 heartbeat 早于 grace）、一个 held/leased job、冻结 manifest（存在/ready/未删/快照 hash/size、`compiler.VerifyManifestBytes`、manifest worker image digest 与快照一致）、input（存在/ready/未删/真实 sealed bytes sha+size）、`pg_stat_activity` 中所有记录的 checkpoint pid+backend_start 均不存在、真实管理员；证据闭合形状（process/sandbox 销毁结果 + observed_at + notes；自由文本拒绝）并记录 JCS SHA-256；`--check-only` 报告 `checks[]` 零写入 |
-| 单次重排 | 一个事务：evidence 行（`recorded_by`=管理员、`resumed_job_id`=job）→ `settleAttemptActiveTx`（T034 唯一结算）→ 旧 attempt `exited_at`/`exit_evidence`/`revoked_at`（COALESCE 保留 supervisor 证据）→ job `ready`（同 kind、`resume_artifact_id` 保留）→ run `queued`/phase idle/revision+1/清 recovery 列（CAS state+revision）→ allocation 恰好释放一次 → 同事务 `run.status` → `run.recovery_recovered` 审计；`UNIQUE(run_id,attempt_token)` + state/revision CAS + `one_live_job_per_run` 让第二次重排不可能；重复命令 `already_recovered`，旧 token 迟到 result 409 `stale_attempt`、exit 409 `attempt_evidence_conflict` |
+| 单次重排 | 一个事务：evidence 行（`recorded_by`=管理员、`resumed_job_id`=job，后续周期同样记录）→ 已结算则 no-op，否则 `settleAttemptActiveTx`（T034 唯一结算；sweep park 已按 `lease_deadline` 结算）→ 旧 attempt `exited_at`/`exit_evidence`/`revoked_at`（COALESCE 保留 supervisor 证据）→ job `ready`（同 kind、`resume_artifact_id` 保留）→ run `queued`/phase idle/revision+1/清 recovery 列（CAS state+revision）→ allocation 恰好释放一次 → 同事务 `run.status` → `run.recovery_recovered` 审计；`UNIQUE(run_id,attempt_token)` + state/revision CAS + `one_live_job_per_run` 让第二次重排不可能；重复命令 `already_recovered`，旧 token 迟到 result 409 `stale_attempt`、exit 409 `attempt_evidence_conflict` |
 | 拒绝码 | `run_not_found`、`not_recovery_pending`、`already_recovered`、`cancel_requested`、`old_execution_still_live`、`database_writes_in_flight`、`artifact_unavailable`、`input_deleted`、`manifest_hash_mismatch`、`manifest_invalid`、`input_hash_mismatch`、`execution_identity_mismatch`、`evidence_required`、`evidence_invalid`、`evidence_unit_mismatch`、`live_attempt_conflict`、`job_unavailable`、`needs_reconciliation`、`actor_not_found`；用法错误 exit 2；均为 stdout JSON `status=refused` 且零写入 |
 | API/UI | `GET /api/v1/runs/{id}` 非契约头 `X-Run-Recovery-Reason`/`-Since`/`-Evidence-At`/`-Evidence-SHA256`（token/证据正文/对象键不出现）；`/runs` 详情显示 recovery_pending、原因、挂起时间、是否有受审计证据（含 sha256）与运维命令，**无伪造恢复按钮**；`mergeRunSnapshot` 终态不回翻；`runLifecycle` 增加 recovery_pending 阶段 |
 | 测试 | `tests/support/t038.py` + `tests/f03/test_t038_*.py` **5 文件 27 用例**（migration 5、sweep 5、recover 7、refusals 6、pages 4）：活旧 worker 不替换（sweep park、claim 204、recover 拒绝、无第二 attempt/token）、真实打开事务阻塞 `database_writes_in_flight` 且提交后成功、缺 manifest/已删 input/篡改 manifest、完整证据→恰一次重排/新 attempt/旧 token 失效/重复命令幂等/审计行/queued 事件、`--check-only` 与 `--dry-run` 零写入、exit-without-result park 可恢复、resume job 保留 kind+resume_artifact 重排、actor-login 记录真实管理员、无 attempt 的 `needs_reconciliation` 文档化拒绝、页面 Node 行为；`tests/f03` **197 passed in 980.65s**；定向回归 149 passed（T029/T031/T032/T034/T035/T036 + 12 个迁移链文件；T027 基线列集按 0024 扩展），`tests/f05/test_t033_pages.py` 3 passed；迁移链 0023→0024 适配 12 个测试；`go test ./...` 22 ok/9 no-test/0 FAIL、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift |
 | 证据 | `reports/f03/T038-recovery.md`（AC 逐条、原始命令/结果、契约缺口、not_run、F04A/F09 接口） |
+
+## F05/F03 批次复核修复（2026-11-03）
+
+对 `feat/f05-f03-run-and-tools` 的 F05/F03 批次做复核，修复 6 个行为缺陷 + 3 项卫生/审计问题；
+未推送、未关闭 issue、未修改 `contracts/**`/`docs/spec/**`；只就地修正新迁移 0024 与 0015 的注释，
+未改 0001–0023 语义，未开始 F04A/F06/F07。修复提交：`fix(f05,f03): address the batch review findings`
+（test 同提交）+ 本 docs 提交（见 `git log`）。
+
+| # | 复核项 | 处置 | 证明 |
+|---|---|---|---|
+| 1 | T038 `sweep-leases` park 未结算，`recover` 把整个停机窗口计入 T034 `active_elapsed_ms`，可致恢复后立即 `deadline_exceeded` 且 UI 时钟跳变 | park 同事务按 `lease_deadline`（最后可证明活动终点）结算；`recover` 对已结算 attempt no-op | `tests/f03/test_t038_recover.py::test_park_settles_active_time_at_the_lease_deadline`（park 后 `active_ms`∈[4000,7000)，recover 后不变，下一次 claim 成功） |
+| 2 | T036 立即取消绕过 live-child guard：有 live 子 Run 时仍提交 `cancelled` | 立即取消分支复用 `hasLiveChildrenTx`：有 live child 时保持 `cancelling`、记录 intent、job `held`、同事务事件 | `tests/f03/test_t036_cancel.py::test_cancel_with_a_live_child_run_stays_cancelling` |
+| 3 | T033 `completeWorkerUpload` 在 scanning/ready 同 hash 重放时仍尝试入队（注定 dedup 失败）；quarantined/deleted 规则不清 | scanning/ready 重放不再调用 EnqueueTx，返回当前 artifact；quarantined→409 `artifact_conflict`、deleted→404 `artifact_not_found`、异 hash→409；job 数不变 | `tests/f05/test_t033_endpoints.py::test_complete_replay_on_scanning_and_ready_never_enqueues_a_job`、`test_complete_on_quarantined_or_deleted_artifact_is_refused` |
+| 4 | T033 沙箱执行器：`SandboxStarted` 在报告前置 true；pre-start `{"ok":false,"error":...}` 被误分类；损坏 base64 静默 nil | 启动标志由解析出的 run 报告证明；新增 `ErrSandboxRefused`（无 cleanup 断言）；kill 场景用 cleanup `pid` 证明启动；base64 错误→`ErrOutputInvalid`；presetexec 映射 `sandbox_unavailable`，evidence 用 proven flag | Go：`internal/sandbox` 3 个新/强化用例、`internal/presetexec::TestPreStartSandboxRefusalKeepsTheProvenFalseFlag`；真实 `tests/f05/test_t033_sandbox_run.py` |
+| 5 | T037 bundle digest 对无标签 payload 排序拼接，角色互换可能同 digest | 改为 `{role,sha256}`（source/lock/sbom）的 JCS 数组 SHA-256；Go 与 Python oracle 同步 | `internal/background::TestContentBundleDigestIsInjectiveAcrossRoles`；真实 `tests/f05/test_t037_build.py`（独立计算比对） |
+| 6 | T025 迁移测试把 FK targets 从有序列表退化为 set，重复 FK 可蒙混 | 保留 set 相等 + 增加 7 项有序 target 列表（计数/序号）断言 | `tests/f02a/test_t025_migration.py::test_tool_versions_match_the_contract_baseline` |
+| 7 | `handlers/tool_run.go`/`toolbuild.go` 的死赋值 `_ = summary/_ = logID/_ = result` | 改为 `if _, err := ...` / 直接丢弃返回值，逻辑不变 | `go test ./...` |
+| 8 | 0015 注释自相矛盾（insert-once vs upsert） | 改为“一 artifact 一当前事实，重试 upsert 覆盖”；表 COMMENT 同步 | migration 0015 文件头/COMMENT |
+| 9 | T038 恢复证据 `resumed_job_id` UNIQUE 迫使后续周期写 NULL，审计链断裂 | 去掉 UNIQUE（保留 FK），每个周期都写 requeued job；`UNIQUE(run_id,attempt_token)` 不变 | `tests/f03/test_t038_recover.py::test_a_second_recovery_cycle_names_the_same_requeued_job`、`tests/f03/test_t038_migration.py` 更新 |
+
+门禁（`E:\Orchara\product`）：`python -m pytest tests/f03 tests/f05 tests/f02a/test_t025_migration.py -q`
+= **353 passed in 1504.09s**；`go test ./...` = 22 ok / 9 no-test / 0 FAIL；`go vet ./...`/`gofmt -l .`
+无输出；`python tools/sync_spec.py --check` = `no drift: spec copy and contract snapshot match the manifest`。
+批次决策边界见 [ADR 0006](docs/adr/0006-f05-f03-execution-boundaries.md)。
 
 ## F00B/F02A 两轴复核修复（2026-11-02）
 

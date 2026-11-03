@@ -145,8 +145,10 @@
   锁 tool 行后要求 state=building、revision=expected、source artifact/hash 未变、源仍 ready、
   SBOM 是本次 completion 的 result 且 ready+job-linked、最新 `build_log` ready+job-linked；
   重读 sealed source/SBOM + canonical lock 并计算：
-  `build_bundle_digest = image_digest = sha256:<hex>`，
-  其中 hex=SHA-256(按字节字典序排序后的 source zip bytes、canonical lock bytes、SBOM bytes 依次拼接)。
+  `build_bundle_digest = image_digest = sha256:<hex>`，其中 hex =
+  SHA-256(RFC 8785 canonical JSON array
+  `[{"role":"source","sha256":...},{"role":"lock","sha256":...},{"role":"sbom","sha256":...}]`)。
+  角色标签使摘要具单射性（两份 payload 互换角色必然改变摘要）。
   **这是内容包摘要，不是 OCI 镜像**（F15A 构建镜像）。CAS 失败/源变更 → `build_source_changed`
   且绝不 ready；失败只记录安全 `build_error_code`，retryable 时保持 building 等下一次 claim；
   过期 lease 耗尽由 sweep 对账为 failed。
@@ -233,14 +235,16 @@ python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot 
 - job `succeeded`；`background_job_artifacts` 恰有 `sbom` 与 `build_log`，均 ready、id 与
   tool 行一致；owner 通过 `/api/v1/artifacts/{id}/content` 读回真实字节。
 - SBOM JSON 含 setup.py/tool/main.py 的真实 sha256/size，`dependencies=[]`。
-- `build_bundle_digest` 与本报告 §1.4 的独立 Python 计算（source + canonical lock + SBOM
-  bytes 排序拼接 SHA-256）逐字节一致；`image_digest` 与之相同且不以 “docker/image” 命名。
+- `build_bundle_digest` 与本报告 §1.4 的独立 Python 计算（source/canonical lock/SBOM 的
+  `{role,sha256}` JCS 数组 SHA-256）逐字节一致；`image_digest` 与之相同且不以 “docker/image”
+  命名。
 
 ## 4. 偏离 / 契约缺口
 
 1. **`image_digest` 语义**：契约 ToolVersion 把 `image_digest` 描述为固定镜像 digest；本票写入
-   的是内容包摘要 `sha256:<hex>`（source+lock+SBOM 排序拼接）。报告/迁移 COMMENT/页面/测试都
-   明确它不是 OCI 镜像；F15A 才构建镜像并应替换/补充该字段（可能需契约修订）。
+   的是内容包摘要 `sha256:<hex>`（source/lock/SBOM 的 `{role,sha256}` JCS 数组）。报告/迁移
+   COMMENT/页面/测试都明确它不是 OCI 镜像；F15A 才构建镜像并应替换/补充该字段（可能需契约
+   修订）。
 2. **迁移 0023 全列非契约**：ToolVersion schema 只有七字段，构建/审核/撤销事实通过非契约
    `GET /tools/{id}/build` 暴露；未来契约修订可把这些字段并入版本读模型。
 3. **`application_id` 列表过滤未实现**：契约允许该 query 参数，但 F02B 之前没有“发布版本→工具”
@@ -285,3 +289,29 @@ python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot 
   versions/hash 纳入 `manifest_sha256`；当前 manifest 文档已含空的
   `connector_version_ids` 键，扩展时需版本化 `tool_manifest_version`。
 - **F02B/F07**：`application_id` 过滤、管理员诊断授权、工具/构建 artifact 的删除与保留策略。
+
+## 7. 复核修复（2026-11-03）
+
+**发现：内容包摘要不具单射性。** `contentBundleDigest` 把 source/锁/SBOM 三份未加标签的字节
+按字典序排序后直接拼接再 SHA-256。两个 payload 互换角色时排序结果可能相同，从而得到同一
+digest；摘要无法证明“哪份字节是源、哪份是锁、哪份是 SBOM”。
+
+**修复：** 摘要改为对如下规范化文档做 RFC 8785 JCS 后 SHA-256：
+
+```json
+[{"role":"source","sha256":"<source sha>"},
+ {"role":"lock","sha256":"<canonical lock sha>"},
+ {"role":"sbom","sha256":"<sbom sha>"}]
+```
+
+role 标签是身份的一部分，角色互换必然改变摘要；`build_bundle_digest`/`image_digest` 的
+`sha256:<hex>` 形状与“内容摘要非 OCI 镜像”的语义不变。Go 与 Python 两侧独立实现同步更新：
+`internal/background/toolbuild.go` 与 `tests/support/t037.py::bundle_digest`（不再排序拼接）。
+
+**回归测试：**
+- `internal/background/toolbuild_test.go::TestContentBundleDigestIsInjectiveAcrossRoles`
+  用手工构造的 canonical `{role,sha256}` 数组独立计算期望值，断言 digest 相等、同输入稳定、
+  **角色互换后不同**、SBOM 变化后不同。
+- `tests/f05/test_t037_build.py::test_real_runsc_build_makes_the_tool_ready_with_a_bundle_digest`
+  用真实 runsc 构建后的 source/现成 lock/SBOM 字节独立计算并逐字节比对数据库 digest
+  （`tests/f05/test_t037_build.py`、`test_t037_build_isolation.py` 6 passed；真实 WSL2/runsc）。

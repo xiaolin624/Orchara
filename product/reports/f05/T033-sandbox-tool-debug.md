@@ -387,8 +387,9 @@ success/orphan/digest-mismatch/timeout/cancel-before-start/cancel-mid-run/lost-l
   `run_artifacts` 链接关系的 writer 仍是 `registerRunArtifact`（relation output/artifact/log），
   input 链接仍属 T027。F07 删除 artifact 时必须同删 provenance。
 - 内部路由（worker 角色，`attempt_token` 在 body）：`createWorkerUpload`/`completeWorkerUpload`/
-  `createWorkerDownload`/`getWorkerArtifactStatus`/`registerRunArtifact`；完成时入队
-  `artifact_finalize`（dedup `run-artifact:<id>:<sha>`）。T036/T037/F04A 可复用。
+  `createWorkerDownload`/`getWorkerArtifactStatus`/`registerRunArtifact`；**首次** completion 入队
+  `artifact_finalize`（dedup `run-artifact:<id>:<sha>`），scanning/ready 的同 hash 重放只返回当前
+  artifact、不再入队。T036/T037/F04A 可复用。
 - 公共读：`GET /api/v1/runs/{run_id}/artifacts`（owner-only，4 字段，cursor；log 排除）；
   Run 详情新增 `X-Run-Execution-Unit`、`X-Run-Cancel-Requested-At`（非契约）。
 - Go 接口：
@@ -428,3 +429,50 @@ success/orphan/digest-mismatch/timeout/cancel-before-start/cancel-mid-run/lost-l
 
 无。`docs/spec/**`/`contracts/**` 未修改，`python tools/sync_spec.py --check` 为
 `no drift: spec copy and contract snapshot match the manifest`。
+
+## 9. 复核修复（2026-11-03）
+
+### 9.1 `completeWorkerUpload` 重放不再尝试入队
+
+**发现：** `scanning`/`ready` 的同 hash 重放仍调用 `background.EnqueueTx`。第一次 completion
+已入队唯一 finalize job；重放时 artifact revision 已前进（ready 为激活后的 revision），这次
+入队只能命中 `ErrDedupConflict` 并被吞掉——一个“注定失败”的入队，且把幂等性寄托在吞错上。
+
+**修复：** `scanning`/`ready` 分支只做同 hash 校验 + 幂等提交，返回当前 artifact 状态（202），
+**完全不调用** EnqueueTx/notify。quarantined 同 hash → 409 `artifact_conflict`（终局裁决不可
+重放）；deleted/tombstone → 404 `artifact_not_found`（已不在 run 可见范围）；异 hash 仍是
+409 `artifact_conflict`。不新增 job。
+
+**回归测试：**
+`tests/f05/test_t033_endpoints.py::test_complete_replay_on_scanning_and_ready_never_enqueues_a_job`
+在真实 mTLS/PG 上分别重放 scanning 与 ready 状态，断言 202 + 当前状态 + `background_jobs` 中
+恰好一个 `artifact_finalize` 且 id 不变；
+`test_complete_on_quarantined_or_deleted_artifact_is_refused` 断言 quarantined=409、
+deleted=404 且 job 数不增。
+
+### 9.2 沙箱结论分类：报告证明启动、pre-start 拒绝、坏 base64
+
+**发现：** `Outcome.SandboxStarted` 在解析 driver 报告前就被置 true；driver 的
+`{"ok":false,"error":...}` pre-start 拒绝文档没有 cleanup 块，却被送进清理断言/错误分类；
+`decodeB64` 静默返回 nil，损坏的 base64 可能被当成“空输出”。
+
+**修复（`internal/sandbox/executor.go`）：**
+- `SandboxStarted` 只在解析出 `mode:"run"` 报告（runsc 已实际启动）后置 true。kill 导致报告
+  缺失时，使用独立 cleanup 入口返回的 `pid`（driver 仅在 runsc 启动后写 pid 文件）作为启动
+  证明；cleanup 同时上报 `pid`（`sandbox_exec.sh` cleanup 文档新增字段）。
+- 没有 `mode` 的 `{"ok":false,"error":...}` 文档解析为新的 typed `ErrSandboxRefused`：立即返回，
+  不做 cleanup/orphan 断言，`SandboxStarted=false`。只有 `mode:"run"` 且 `!ok`/`error` 的
+  post-launch 报告才断言 cleanup 并归为 `ErrOrphan`。
+- 新增 `applyReportStreams`：stdout/stderr/output_json/probe_json/artifact 的 base64 解码错误
+  一律返回 `ErrOutputInvalid`（不再静默 nil）；cleanup 已由 driver 完成，不重复调用。
+- `presetexec` 将 `ErrSandboxRefused` 归入 `sandbox_unavailable`；exit evidence 的
+  `sandbox_started`/`sandbox_cleanup_verified` 使用证明后的 flag（pre-start 拒绝为 false，
+  `started=true` 仍表示已领取 attempt 的确定性失败，避免 T029 重试环）。
+
+**回归测试（Go）：**
+- `internal/sandbox`: `TestExecutorTreatsADriverRefusalAsPreStart`（`ErrSandboxRefused`、
+  `SandboxStarted=false`、不调用 cleanup）、`TestExecutorRejectsCorruptBase64AsOutputInvalid`
+  （`ErrOutputInvalid`、不重复 cleanup）、cancel/timeout 用例断言 cleanup pid 证明 `SandboxStarted=true`。
+- `internal/presetexec`: `TestPreStartSandboxRefusalKeepsTheProvenFalseFlag`
+  （`sandbox_unavailable`、`sandbox_started=false`、cleanup_verified=false）。
+- 真实 runsc 回归：`tests/f05/test_t033_sandbox_run.py`（含 cancel/timeout/crash）通过。

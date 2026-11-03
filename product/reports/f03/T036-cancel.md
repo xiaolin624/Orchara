@@ -322,3 +322,19 @@ no drift: spec copy and contract snapshot match the manifest
 ## 8. 规格变更
 
 无。`docs/spec/**` 与 `contracts/**` 未修改；`python tools/sync_spec.py --check` = no drift。
+
+## 9. 复核修复（2026-11-03）
+
+**发现：立即取消绕过了 live-child guard。** 无 live attempt 的分支（queued/waiting/无执行单元）
+直接调用 `commitImmediateCancelTx` 提交 `cancelled`，即使该 Run 仍有非终态子 Run。这与统一
+finalizer 的优先级（live child 阻塞一切终态）矛盾：父 Run 会在受控子单元仍运行时声称“已停止”。
+
+**修复：** 立即取消分支先调用同一个 `hasLiveChildrenTx`。存在 live child 时不再 cancel/void：
+记录 `cancel_requested_at`、state 转 `cancelling`、revision+1、job `held`（有分配则幂等释放）、
+同一事务投影 `run.status=cancelling`；只有该子 Run 变为终态后，统一的 exit/finalizer 才能提交
+`cancelled`。行为与 finalizer 的 live-child 阻塞一致（报告 §4.8 的“无自动重驱”限制不变）。
+
+**回归测试：** `tests/f03/test_t036_cancel.py::test_cancel_with_a_live_child_run_stays_cancelling`
+用真实 `platform.runs` 子行（`parent_run_id`、state=running）走真实 owner session + CSRF +
+真实 API/PG，断言 202 返回 `cancelling`、`finished_at` 为空、job 为 `held`、子 Run 仍
+`running`、最新 `run.status` 为 `cancelling`。
