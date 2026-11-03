@@ -281,6 +281,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/revoke", s.handleRevokeTool)
 	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}/build", s.handleGetToolBuild)
 
+	// F06/T039: model registration, reads and compatibility validation.
+	mux.HandleFunc("POST /api/v1/models", s.handleRegisterModel)
+	mux.HandleFunc("GET /api/v1/models", s.handleListModels)
+	mux.HandleFunc("GET /api/v1/models/{model_version_id}", s.handleGetModel)
+	mux.HandleFunc("POST /api/v1/models/{model_version_id}/validate", s.handleValidateModel)
+	// Non-contract admin catalog reads: which deployment references exist.
+	mux.HandleFunc("GET /api/v1/admin/model-endpoints", s.handleListModelEndpoints)
+	mux.HandleFunc("GET /api/v1/admin/credential-refs", s.handleListCredentialRefs)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -291,6 +300,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F05/T037: the creator tools page and its admin review queue. Like every
 	// static route, the path is a compile-time constant.
 	mux.HandleFunc("GET /tools", s.staticPage("tools.html"))
+	mux.HandleFunc("GET /models", s.staticPage("models.html"))
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
@@ -304,6 +314,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
+	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
 }
 

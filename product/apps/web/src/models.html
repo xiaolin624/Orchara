@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 模型登记与兼容验证（F06）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 62rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .86rem; margin: .55rem 0 .2rem; }
+    input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
+    textarea { min-height: 7rem; font-family: ui-monospace, monospace; }
+    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    button.secondary { background: transparent; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .6rem 0; }
+    code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .72; }
+    .warn { color: #b91c1c; font-size: .84rem; }
+    .row-actions { margin-top: .35rem; }
+    .report-grid { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; font-size: .86rem; }
+    .report-grid dt { opacity: .7; }
+    .report-grid dd { margin: 0; word-break: break-all; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用</a>
+    <a href="/attachments">附件</a>
+    <a href="/runs">运行</a>
+    <a href="/tools">工具</a>
+    <a href="/models">模型</a>
+    <a href="/admin">管理台</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>模型登记、兼容验证与固定 profile（F06/T039）</h1>
+  <p class="sub">
+    管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化输出兼容用例，查看不可变报告，
+    并且只有 <code>validation_state=passed</code> 且未撤销的版本才能被共享应用引用。
+    pending/running/failed 的版本一律不能进入共享应用。
+  </p>
+  <p class="hint">
+    凭据只使用预登记引用（<code>endpoint_ref</code>/<code>secret_ref</code>），本页不接收、不显示任何密钥文本；
+    服务端为每个登记构建不可变 manifest 并记录 SHA-256。兼容验证由真实后台任务执行：
+    <code>model_validate</code> 读取封存的合成 fixture，调用 stub 供应商，再上传封存报告。
+  </p>
+
+  <section class="card" id="register-card" hidden>
+    <h2>登记模型版本</h2>
+    <form id="register-form">
+      <label for="model-name">name</label>
+      <input id="model-name" name="name" type="text" autocomplete="off" maxlength="200" />
+      <label for="model-provider">provider</label>
+      <select id="model-provider" name="provider">
+        <option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option>
+        <option value="openai">openai</option>
+      </select>
+      <label for="model-id">model_id</label>
+      <input id="model-id" name="model_id" type="text" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" />
+      <label for="model-endpoint">endpoint_ref（预登记目的地）</label>
+      <select id="model-endpoint" name="endpoint_ref"></select>
+      <label for="model-credential">secret_ref（预登记凭据引用）</label>
+      <select id="model-credential" name="secret_ref"></select>
+      <label for="model-destination">data_destination</label>
+      <input id="model-destination" name="data_destination" type="text" readonly />
+      <label for="model-config">config（ModelConfig JSON）</label>
+      <textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea>
+      <button id="register-button" type="submit">登记为 pending</button>
+    </form>
+    <p id="register-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card" id="models-card">
+    <h2>模型版本</h2>
+    <p class="hint">管理员看到全部版本；其他已登录身份只看到 passed 且未撤销的版本。登记本身不依赖任何已有应用报告。</p>
+    <p id="models-status" class="status" role="status" aria-live="polite"></p>
+    <ul id="models-list"></ul>
+  </section>
+
+  <section class="card" id="report-card" hidden>
+    <h2>兼容报告与固定 profile</h2>
+    <p id="report-status" class="status" role="status" aria-live="polite"></p>
+    <dl class="report-grid" id="report-body"></dl>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/models.js"></script>
+  <script>
+    const registerCard = document.getElementById('register-card');
+    const registerForm = document.getElementById('register-form');
+    const registerStatus = document.getElementById('register-status');
+    const modelsStatus = document.getElementById('models-status');
+    const modelsList = document.getElementById('models-list');
+    const reportCard = document.getElementById('report-card');
+    const reportStatus = document.getElementById('report-status');
+    const reportBody = document.getElementById('report-body');
+    const endpointSelect = document.getElementById('model-endpoint');
+    const credentialSelect = document.getElementById('model-credential');
+    const destinationInput = document.getElementById('model-destination');
+
+    let identityState = null;
+    let nextCursor = null;
+    const validateKeys = new Map();
+
+    function setStatus(element, text, kind) {
+      element.textContent = text;
+      element.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function applyEndpointDestination() {
+      const selected = endpointSelect.options[endpointSelect.selectedIndex];
+      destinationInput.value = selected ? (selected.dataset.destination || '') : '';
+    }
+
+    async function loadCatalog() {
+      const [endpoints, credentials] = await Promise.all([
+        api(modelEndpointsPath()),
+        api(credentialRefsPath()),
+      ]);
+      endpointSelect.replaceChildren();
+      for (const endpoint of endpoints.items || []) {
+        const option = document.createElement('option');
+        option.value = String(endpoint.id || '');
+        option.textContent = String(endpoint.id || '') + ' → ' + String(endpoint.data_destination || '');
+        option.dataset.destination = String(endpoint.data_destination || '');
+        endpointSelect.appendChild(option);
+      }
+      credentialSelect.replaceChildren();
+      for (const credential of credentials.items || []) {
+        const option = document.createElement('option');
+        option.value = String(credential.id || '');
+        option.textContent = String(credential.id || '') + ' — ' + String(credential.description || '');
+        credentialSelect.appendChild(option);
+      }
+      applyEndpointDestination();
+    }
+
+    function reportDetail(term, value) {
+      const dt = document.createElement('dt');
+      dt.textContent = term;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      reportBody.append(dt, dd);
+    }
+
+    async function showReport(reportId) {
+      reportCard.hidden = false;
+      reportBody.replaceChildren();
+      setStatus(reportStatus, '正在读取报告 ' + reportId + '…', 'pending');
+      try {
+        const meta = await api(evaluationReportPath(reportId));
+        const document_ = await api(artifactContentPath(meta.result_artifact_id));
+        const view = describeReport(document_);
+        if (!view.ok) {
+          setStatus(reportStatus, view.error, 'bad');
+          return;
+        }
+        reportDetail('状态', view.statusText);
+        reportDetail('报告版本', view.kind || 'model_compatibility');
+        reportDetail('profile（model_profile_version_id）', view.modelProfileVersionId);
+        reportDetail('manifest_sha256', view.manifestSha256 || meta.manifest_sha256);
+        reportDetail('检查', view.checkText);
+        reportDetail('compatible', String(view.compatible));
+        reportDetail('provider / stub', view.provider + ' / ' + (view.stub ? '是' : '否'));
+        reportDetail('call_id', view.callId);
+        reportDetail('fixture artifact', view.fixtureArtifactId);
+        reportDetail('fixture sha256', view.fixtureSha256);
+        reportDetail('报告 artifact', String(meta.result_artifact_id || ''));
+        setStatus(reportStatus, view.statusText, view.compatible ? 'ok' : 'bad');
+      } catch (error) {
+        setStatus(reportStatus, '读取报告失败 ' + describeFailure(error), 'bad');
+      }
+    }
+
+    async function pollModel(modelId) {
+      const deadline = Date.now() + 60000;
+      while (Date.now() < deadline) {
+        const profile = await api(modelPath(modelId));
+        if (profile.validation_state !== 'running' && profile.validation_state !== 'pending') {
+          return profile;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      return null;
+    }
+
+    async function validateModel(modelId) {
+      let key = validateKeys.get(modelId);
+      if (!key) {
+        key = validateKey();
+        validateKeys.set(modelId, key);
+      }
+      setStatus(modelsStatus, '正在排队兼容验证…', 'pending');
+      try {
+        const evaluation = await apiFull(modelValidatePath(modelId), {
+          method: 'POST',
+          csrf: await csrf(),
+          headers: { 'Idempotency-Key': key },
+        });
+        const view = describeValidation(evaluation.payload);
+        setStatus(modelsStatus, '已排队：' + view.id + '（' + view.stateText + '）', 'ok');
+        validateKeys.delete(modelId);
+        const profile = await pollModel(modelId);
+        if (!profile) {
+          setStatus(modelsStatus, '验证仍在运行；稍后刷新列表查看结果。', 'pending');
+          return;
+        }
+        await loadPage(null, true);
+        if (profile.evaluation_report_id) {
+          await showReport(profile.evaluation_report_id);
+        }
+      } catch (error) {
+        validateKeys.delete(modelId);
+        setStatus(modelsStatus, '验证请求失败 ' + describeFailure(error), 'bad');
+      }
+    }
+
+    function renderModel(item) {
+      const view = describeModel(item);
+      const row = document.createElement('li');
+      row.dataset.modelId = view.id;
+      const head = document.createElement('div');
+      head.textContent = view.name + ' · ' + view.modelId + ' · ' + view.stateText;
+      row.appendChild(head);
+      const meta = document.createElement('div');
+      meta.className = 'mono';
+      meta.textContent = 'id ' + view.id + ' · 目的地 ' + view.dataDestination;
+      row.appendChild(meta);
+      if (view.reportId) {
+        const reportLine = document.createElement('div');
+        reportLine.className = 'mono';
+        reportLine.textContent = 'report ' + view.reportId;
+        row.appendChild(reportLine);
+        const reportButton = document.createElement('button');
+        reportButton.type = 'button';
+        reportButton.className = 'secondary';
+        reportButton.textContent = '查看报告与 profile';
+        reportButton.addEventListener('click', () => showReport(view.reportId));
+        row.appendChild(reportButton);
+      }
+      if (view.warning) {
+        const warning = document.createElement('div');
+        warning.className = 'warn';
+        warning.textContent = view.warning;
+        row.appendChild(warning);
+      }
+      if (view.canValidate) {
+        const actions = document.createElement('div');
+        actions.className = 'row-actions';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = '运行兼容验证';
+        button.addEventListener('click', () => validateModel(view.id));
+        actions.appendChild(button);
+        row.appendChild(actions);
+      }
+      return row;
+    }
+
+    async function loadPage(cursor, replace) {
+      setStatus(modelsStatus, '正在读取模型版本…', 'pending');
+      try {
+        const query = new URLSearchParams();
+        query.set('limit', '50');
+        if (cursor) {
+          query.set('cursor', cursor);
+        }
+        const page = await api(modelsPath() + '?' + query.toString());
+        if (replace !== false) {
+          modelsList.replaceChildren();
+        }
+        for (const item of page.items || []) {
+          modelsList.appendChild(renderModel(item));
+        }
+        nextCursor = page.next_cursor || null;
+        setStatus(modelsStatus, '共显示 ' + (page.items || []).length + ' 个版本' + (nextCursor ? '（还有下一页）' : ''), 'ok');
+      } catch (error) {
+        setStatus(modelsStatus, '读取失败 ' + describeFailure(error), 'bad');
+      }
+    }
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const built = buildRegisterBody({
+        name: document.getElementById('model-name').value,
+        provider: document.getElementById('model-provider').value,
+        modelId: document.getElementById('model-id').value,
+        endpointRef: endpointSelect.value,
+        secretRef: credentialSelect.value,
+        dataDestination: destinationInput.value,
+        config: document.getElementById('model-config').value,
+      });
+      if (!built.ok) {
+        setStatus(registerStatus, built.error, 'bad');
+        return;
+      }
+      setStatus(registerStatus, '正在登记…', 'pending');
+      try {
+        const accepted = await api(modelsPath(), {
+          method: 'POST',
+          body: built.body,
+          csrf: await csrf(),
+        });
+        setStatus(registerStatus, '已登记：' + accepted.id + '（' + accepted.state + '）', 'ok');
+        registerForm.reset();
+        applyEndpointDestination();
+        await loadPage(null, true);
+      } catch (error) {
+        setStatus(registerStatus, '登记失败 ' + describeFailure(error), 'bad');
+      }
+    });
+
+    endpointSelect.addEventListener('change', applyEndpointDestination);
+
+    (async () => {
+      try {
+        identityState = await requireLogin();
+        registerCard.hidden = !canRegister(identityState);
+        if (canRegister(identityState)) {
+          await loadCatalog();
+        }
+        await loadPage(null, true);
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setStatus(modelsStatus, '初始化失败 ' + describeFailure(error), 'bad');
+      }
+    })();
+  </script>
+</body>
+</html>

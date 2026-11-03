@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -70,8 +71,14 @@ var ErrNotFound = errors.New("model profile not found")
 var ErrInvalidCursor = errors.New("invalid model list cursor")
 
 // ErrIdempotencyKeyReuse means the same Idempotency-Key was used for a
-// different validate request.
+// different validate request. The API maps it to the contract's
+// `idempotency_conflict` code, exactly like the debug path.
 var ErrIdempotencyKeyReuse = errors.New("idempotency key reused with a different request")
+
+// decimalAmount is a non-negative decimal money string. Binary float parsing is
+// deliberately not used for money: `NaN`, `Inf`, hexadecimal floats and
+// exponent forms are refused by the grammar before they can become a price.
+var decimalAmount = regexp.MustCompile(`^\d{1,18}(\.\d{1,18})?$`)
 
 // ModelPrice is the contract's price object.
 type ModelPrice struct {
@@ -290,8 +297,8 @@ func validateConfig(config *ModelConfig) error {
 		"config.price.input_per_million":  config.Price.InputPerMillion,
 		"config.price.output_per_million": config.Price.OutputPerMillion,
 	} {
-		if _, err := strconv.ParseFloat(value, 64); err != nil {
-			return &ValidationError{Field: field, Message: field + " must be a decimal string"}
+		if !decimalAmount.MatchString(value) {
+			return &ValidationError{Field: field, Message: field + " must be a non-negative decimal string"}
 		}
 	}
 	seen := make(map[string]bool, len(config.FallbackProfileVersionIDs))
@@ -454,11 +461,13 @@ func readProfile(row rowScanner) (*ModelProfile, error) {
 
 // List returns one page of model profiles. Admin sees every row; any other
 // principal sees only passed, non-revoked rows (the set a shared application
-// may select).
+// may select). When applicationID is set the page is the selectable set for
+// that application: passed and non-revoked only, even for an administrator.
 func (s *Service) List(
 	ctx context.Context,
 	callerID string,
 	admin bool,
+	applicationID string,
 	cursor string,
 	limit int,
 ) ([]ModelProfile, *string, error) {
@@ -467,6 +476,12 @@ func (s *Service) List(
 	}
 	args := []any{callerID, admin}
 	visibility := `($2::boolean OR (validation_state = 'passed' AND revoked_at IS NULL))`
+	if applicationID != "" {
+		if !uuid.Valid(applicationID) {
+			return nil, nil, &ValidationError{Field: "application_id", Message: "application_id must be a UUID"}
+		}
+		visibility = `(validation_state = 'passed' AND revoked_at IS NULL)`
+	}
 	if strings.TrimSpace(cursor) != "" {
 		createdAt, id, err := decodeCursor(cursor)
 		if err != nil {

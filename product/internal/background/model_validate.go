@@ -108,18 +108,21 @@ func (c *Controller) guardModelValidateSuccess(
 	}
 
 	var (
-		evaluationID    string
-		evaluationKind  string
-		evaluationOwner string
-		evaluationModel sql.NullString
-		evaluationState string
+		evaluationID      string
+		evaluationKind    string
+		evaluationOwner   string
+		evaluationModel   sql.NullString
+		evaluationDataset sql.NullString
+		evaluationState   string
 	)
 	err = tx.QueryRowContext(ctx, `
-		SELECT id::text, kind, owner_id::text, model_profile_version_id::text, state
+		SELECT id::text, kind, owner_id::text, model_profile_version_id::text,
+		       dataset_artifact_id::text, state
 		  FROM platform.evaluation_jobs
 		 WHERE background_job_id = $1::uuid
 		 FOR UPDATE`, job.ID,
-	).Scan(&evaluationID, &evaluationKind, &evaluationOwner, &evaluationModel, &evaluationState)
+	).Scan(&evaluationID, &evaluationKind, &evaluationOwner, &evaluationModel,
+		&evaluationDataset, &evaluationState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CodeEvaluationMissing, nil
 	}
@@ -127,7 +130,8 @@ func (c *Controller) guardModelValidateSuccess(
 		return "", fmt.Errorf("reading the model evaluation: %w", err)
 	}
 	if evaluationKind != "model" || !evaluationModel.Valid || evaluationModel.String != job.TargetID ||
-		!strings.EqualFold(evaluationOwner, job.OwnerID) {
+		!strings.EqualFold(evaluationOwner, job.OwnerID) ||
+		!evaluationDataset.Valid || evaluationDataset.String != *job.InputArtifactID {
 		return CodeEvaluationBindingMismatch, nil
 	}
 	if evaluationState != "queued" && evaluationState != "running" {
