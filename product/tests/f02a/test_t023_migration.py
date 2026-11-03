@@ -36,13 +36,14 @@ def test_0010_is_recorded_once_and_replaying_migrate_is_a_noop(f02a_stack) -> No
     versions = [row["version"] for row in ledgers]
     # The chain now ends with T036's 0022; 0010 must still be recorded exactly
     # once at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 24)], versions
     assert ledgers[9]["name"] == "0010_application_drafts.sql"
-    assert ledgers[-5]["name"] == "0018_run_events.sql"
-    assert ledgers[-4]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-6]["name"] == "0018_run_events.sql"
+    assert ledgers[-5]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-4]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-3]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-2]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-1]["name"] == "0023_tool_builds_and_review.sql"
 
     replay = st.migrate_or_fail(f02a_stack.binaries["admin"], f02a_stack.dsn)
     assert "no pending migrations" in replay, replay

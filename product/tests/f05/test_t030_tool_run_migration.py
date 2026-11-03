@@ -53,13 +53,14 @@ def test_0017_extends_the_kind_check_and_0018_is_the_chain_tail(migrated_databas
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 24)], versions
     assert ledgers[15]["name"] == "0016_execution_claims_and_quota.sql"
-    assert ledgers[-5]["name"] == "0018_run_events.sql"
-    assert ledgers[-4]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-6]["name"] == "0018_run_events.sql"
+    assert ledgers[-5]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-4]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-3]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-2]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-1]["name"] == "0023_tool_builds_and_review.sql"
 
     definition = kind_check_definition(dbname)
     for kind in ALL_KINDS:

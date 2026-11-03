@@ -26,13 +26,14 @@ def test_0012_is_recorded_once_and_replaying_migrate_is_a_noop(t025_stack) -> No
     )
     versions = [row["version"] for row in ledgers]
     # T036's 0022 is now the chain tail; 0012 must remain at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 24)], versions
     assert ledgers[11]["name"] == "0012_manifest_and_tool_versions.sql"
-    assert ledgers[-5]["name"] == "0018_run_events.sql"
-    assert ledgers[-4]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-6]["name"] == "0018_run_events.sql"
+    assert ledgers[-5]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-4]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-3]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-2]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-1]["name"] == "0023_tool_builds_and_review.sql"
 
     replay = st.migrate_or_fail(t025_stack.binaries["admin"], t025_stack.dsn)
     assert "no pending migrations" in replay, replay
@@ -56,11 +57,21 @@ def test_tool_versions_match_the_contract_baseline(t025_stack) -> None:
         "ORDER BY ordinal_position",
     )
     by_name = {row["column_name"]: row for row in columns}
-    assert set(by_name) == {
+    # The contract baseline columns are still exactly these; T037 adds the
+    # documented build/review extension columns (pinned by its own migration test).
+    contract_columns = {
         "id", "owner_id", "source_artifact_id", "input_schema", "output_schema",
         "dependency_lock", "connector_versions", "image_digest", "risk_class",
         "state", "manifest_sha256", "approved_by", "approved_at", "created_at",
     }
+    assert contract_columns <= set(by_name), sorted(contract_columns - set(by_name))
+    assert set(by_name) == contract_columns | {
+        "revision", "source_sha256", "dependency_lock_sha256",
+        "build_log_artifact_id", "sbom_artifact_id", "build_bundle_digest",
+        "build_started_at", "build_finished_at", "build_error_code",
+        "reviewed_by", "reviewed_at", "review_decision", "review_reason",
+        "revoked_at", "revoked_by", "revoke_reason",
+    }, sorted(set(by_name) - contract_columns)
     for field in ("input_schema", "output_schema", "dependency_lock", "connector_versions"):
         assert by_name[field]["data_type"] == "jsonb", by_name[field]
 
@@ -70,11 +81,13 @@ def test_tool_versions_match_the_contract_baseline(t025_stack) -> None:
         "WHERE conrelid = 'platform.tool_versions'::regclass AND contype = 'f' "
         "ORDER BY target",
     )
-    assert [row["target"] for row in fks] == [
+    # T037 adds build_log/sbom -> artifacts and reviewed_by/revoked_by -> users;
+    # the contract's three reference targets remain the only distinct targets.
+    assert {row["target"] for row in fks} == {
         "platform.artifacts",
         "platform.principals",
         "platform.users",
-    ], fks
+    }, fks
 
     checks = st.sql_rows(
         t025_stack.dbname,
