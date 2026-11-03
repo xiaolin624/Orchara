@@ -155,6 +155,14 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-downloads", s.handleInternalRunArtifactDownload)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-status", s.handleInternalRunArtifactStatus)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts", s.handleInternalRegisterRunArtifact)
+
+	// F06/T041: the run-scoped controlled-capability protocol. Worker-only: a
+	// supervisor or maintenance certificate is refused, and the attempt token in
+	// the body is re-proved against the run in the path. The capabilities route
+	// is the contract invokeCapability; the capability-results route is the
+	// documented non-contract bridge T042/T043 report tool execution through.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capabilities", s.handleInternalCapability)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-results", s.handleInternalCapabilityResult)
 }
 
 type internalClaimRequest struct {

@@ -81,10 +81,12 @@ func (e *Error) Error() string {
 	return e.Code + ": " + e.Message
 }
 
-// AsError extracts a *Error. It is a convenience for the HTTP mapping.
+// AsError extracts a *Error. It is a convenience for the HTTP mapping. A typed
+// nil *Error (a successful call converted to the error interface) is not an
+// error and reports false.
 func AsError(err error) (*Error, bool) {
 	var capabilityError *Error
-	if errors.As(err, &capabilityError) {
+	if errors.As(err, &capabilityError) && capabilityError != nil {
 		return capabilityError, true
 	}
 	return nil, false

@@ -10,6 +10,7 @@ import (
 
 	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
@@ -47,8 +48,10 @@ type Server struct {
 	models       *modelproxy.Service
 	// modelRegistry is the F06/T039 registration and validation service.
 	modelRegistry *modelregistry.Service
-	objects       *objectstore.Store
-	signer        *objectstore.Signer
+	// capabilities is the F06/T041 run-scoped controlled-capability boundary.
+	capabilities *capabilities.Service
+	objects      *objectstore.Store
+	signer       *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -155,6 +158,7 @@ func New(deps Deps) *Server {
 		toolVersions:      toolversions.New(deps.Service.DB),
 		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
 		modelRegistry:     modelRegistry,
+		capabilities:      capabilities.New(deps.Service.DB, deps.Objects, deps.Providers),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -238,6 +242,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
 	// F05/T033: the owner-only run artifact list.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/artifacts", s.handleListRunArtifacts)
+	// F06/T041: the owner-only controlled-capability ledger read. Non-contract
+	// (no public capability invocation exists); the service projection carries no
+	// params or receipt bodies.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/capabilities", s.handleRunCapabilities)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
