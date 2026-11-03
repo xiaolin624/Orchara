@@ -5,6 +5,7 @@ package api
 //	POST /internal/v1/jobs/claim                              claimJob
 //	POST /internal/v1/runs/{run_id}/heartbeat                 heartbeat
 //	POST /internal/v1/runs/{run_id}/result                    submitWorkerResult
+//	POST /internal/v1/runs/{run_id}/waiting-resolution        T035 synthetic bridge
 //	POST /internal/v1/attempts/{attempt_id}/exited            confirmAttemptExit
 //
 // They live on the separate mTLS listener (RegisterInternal) and are never
@@ -26,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"orchara/platform/internal/execution"
 )
@@ -124,6 +126,61 @@ type internalAttemptExitRequest struct {
 	Evidence        json.RawMessage `json:"evidence"`
 }
 
+// internalWaitingResolutionRequest is the documented non-contract T035 bridge
+// body. The shape is closed: an approval carries a reference, a children
+// resolution carries a child_run_id, and nothing else (no Command payload, thread
+// id or user identifier). Unknown fields are refused by decodeJSON.
+type internalWaitingResolutionRequest struct {
+	Kind       string `json:"kind"`
+	Outcome    string `json:"outcome"`
+	Reference  string `json:"reference"`
+	ChildRunID string `json:"child_run_id"`
+}
+
+// internalWaitingResolutionResponse is the bridge's result: the stored safe
+// decision and (once the exit fact is present too) the one resume job.
+type internalWaitingResolutionResponse struct {
+	RunID       string  `json:"run_id"`
+	Kind        string  `json:"kind"`
+	Outcome     string  `json:"outcome"`
+	DecisionAt  string  `json:"decision_at"`
+	ResumeJobID *string `json:"resume_job_id"`
+}
+
+// handleInternalWaitingResolution stores the synthetic approval/child result.
+//
+// F06 (approvals) and F07 (children) own the real sources; until they exist this
+// supervisor-only mTLS endpoint is the documented bridge (recorded in the T035
+// report). It can only advance a Run that is actually waiting for that kind, it
+// stores the first decision once (an identical replay is 200, a different one is
+// 409 decision_conflict) and it never accepts a worker-supplied Command.
+func (s *Server) handleInternalWaitingResolution(w http.ResponseWriter, r *http.Request) {
+	if !requireInternalRole(w, r, InternalRoleSupervisor) {
+		return
+	}
+	var request internalWaitingResolutionRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	outcome, err := s.execution.ResolveWaiting(r.Context(), r.PathValue("run_id"), execution.WaitingResolution{
+		Kind:       request.Kind,
+		Outcome:    request.Outcome,
+		Reference:  request.Reference,
+		ChildRunID: request.ChildRunID,
+	})
+	if !s.writeExecutionError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, internalWaitingResolutionResponse{
+		RunID:       outcome.RunID,
+		Kind:        outcome.Kind,
+		Outcome:     outcome.Outcome,
+		DecisionAt:  outcome.DecisionAt.UTC().Format(time.RFC3339Nano),
+		ResumeJobID: outcome.ResumeJobID,
+	})
+}
+
 func (s *Server) handleInternalAttemptExit(w http.ResponseWriter, r *http.Request) {
 	if !requireInternalRole(w, r, InternalRoleSupervisor) {
 		return
@@ -177,6 +234,18 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 		writeError(w, r, http.StatusConflict, "event_conflict",
 			"this idempotency identity already carries different content")
 		return false
+	case errors.Is(err, execution.ErrDecisionConflict):
+		// F03/T035: the first stored approval/child result is authoritative; a
+		// different resolution for the same wait is never silently replaced.
+		writeError(w, r, http.StatusConflict, execution.CodeDecisionConflict,
+			"a different waiting resolution is already stored")
+		return false
+	case executionWaitingChildFailure(err) != nil:
+		// A synthetic children resolution that names a foreign/live/missing child is
+		// refused before anything is stored: it cannot resume (or fail) the parent.
+		writeErrorWithDetails(w, r, http.StatusConflict, "run_state_conflict",
+			err.Error(), map[string]any{"reason": executionWaitingChildFailure(err).Reason})
+		return false
 	case errors.Is(err, execution.ErrRunTerminal):
 		writeError(w, r, http.StatusConflict, "run_terminal",
 			"the run is already terminal; a late result never revives it")
@@ -229,6 +298,16 @@ func executionOutputArtifactFailure(err error) map[string]any {
 	var artifact *execution.OutputArtifactError
 	if errors.As(err, &artifact) {
 		return map[string]any{"field": "output_artifact_id", "code": artifact.Code}
+	}
+	return nil
+}
+
+// executionWaitingChildFailure locates a refused synthetic children resolution
+// (T035): the referenced Run is missing, not this parent's child, or not terminal.
+func executionWaitingChildFailure(err error) *execution.WaitingChildError {
+	var child *execution.WaitingChildError
+	if errors.As(err, &child) {
+		return child
 	}
 	return nil
 }

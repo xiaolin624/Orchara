@@ -251,5 +251,33 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Run-Deadline-Exceeded", "true")
 		}
 	}
+	// F03/T035: the waiting hand-over. The contract Run schema has no waiting/
+	// resume fields, so the owner-facing detail carries them as non-contract
+	// headers (same precedent as X-Run-* above): which condition is awaited, the
+	// stored safe outcome, when it was decided, whether the supervisor confirmed
+	// the exit, and the one resume job's state. The decision reference and every
+	// token stay private.
+	if waiting, err := s.execution.WaitingFacts(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if waiting != nil {
+		w.Header().Set("X-Run-Waiting-Kind", waiting.Kind)
+		if waiting.Outcome != "" {
+			w.Header().Set("X-Run-Waiting-Outcome", waiting.Outcome)
+		}
+		if waiting.DecisionAt != nil {
+			w.Header().Set("X-Run-Waiting-Decided-At", waiting.DecisionAt.UTC().Format(time.RFC3339Nano))
+		}
+		if waiting.ExitConfirmedAt != nil {
+			w.Header().Set("X-Run-Waiting-Exit-Confirmed-At",
+				waiting.ExitConfirmedAt.UTC().Format(time.RFC3339Nano))
+		}
+		if waiting.ResumeJobID != nil {
+			w.Header().Set("X-Run-Resume-Job-ID", *waiting.ResumeJobID)
+		}
+		if waiting.ResumeJobState != "" {
+			w.Header().Set("X-Run-Resume-Job-State", waiting.ResumeJobState)
+		}
+	}
 	writeJSON(w, http.StatusOK, run)
 }

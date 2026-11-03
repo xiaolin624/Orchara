@@ -56,6 +56,18 @@
     <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
     <code>details.snapshot_url</code> 指向的 Run 快照，而不是伪装完整历史。
   </p>
+  <p class="hint">
+    等待审批/子任务（F03/T035）：worker 在固定 checkpoint 停止后，Run 进入
+    <strong>waiting_approval / waiting_children</strong>（phase=waiting），等待事实保存在
+    <code>platform.run_waitings</code>。等待期间<strong>释放 worker 执行槽</strong>，但
+    <strong>逻辑会话槽与 Run 一直占用到终态</strong>：等待与恢复排队都不是终态。
+    只有“解决结果 + supervisor 退出确认 + checkpoint”齐全后才创建<strong>唯一</strong>恢复任务
+    （<code>jobs.kind=resume</code>，携带封存的 canonical 恢复输入）。等待/决定/退出/恢复事实由非契约
+    响应头 <code>X-Run-Waiting-Kind</code> / <code>X-Run-Waiting-Outcome</code> /
+    <code>X-Run-Waiting-Decided-At</code> / <code>X-Run-Waiting-Exit-Confirmed-At</code> /
+    <code>X-Run-Resume-Job-ID</code> / <code>X-Run-Resume-Job-State</code> 提供；本页不伪造批准、
+    不显示恢复输入内容，也不把 202/200 解释为已恢复。
+  </p>
 
   <section class="card">
     <h2>我的 Run</h2>
@@ -79,6 +91,8 @@
       <dt>领取 / 租约</dt><dd id="detail-lease"></dd>
       <dt>累计活跃 / 上限</dt><dd id="detail-active"></dd>
       <dt>超时原因</dt><dd id="detail-deadline"></dd>
+      <dt>等待条件</dt><dd id="detail-waiting"></dd>
+      <dt>恢复任务</dt><dd id="detail-resume"></dd>
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
     <ul id="detail-timeline" aria-live="polite"></ul>

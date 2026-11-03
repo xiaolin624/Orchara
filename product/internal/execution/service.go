@@ -350,6 +350,11 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// T035: lock order is Run -> attempt/job everywhere, so a concurrent waiting
+	// resolution cannot deadlock with this exit.
+	if err := lockExitRunTx(ctx, tx, normalized.AttemptID); err != nil {
+		return nil, err
+	}
 	facts, err := loadAttemptForExitTx(ctx, tx, normalized.AttemptID, normalized.Evidence)
 	if err != nil {
 		return nil, err
@@ -367,7 +372,15 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	if facts.RevokedAt.Valid || !facts.LeaseLive {
 		return nil, ErrStaleAttempt
 	}
-	if facts.JobState != "leased" || facts.RunState != "running" {
+	_, waitingExit := waitingKindForState(facts.RunState)
+	if waitingExit {
+		// F03/T035: a waiting attempt was held (not requeued), so its exit evidence
+		// is accepted while the job is held. The run keeps its waiting state until
+		// the decision arrives; this call only records the supervisor's fact.
+		if facts.JobState != "held" && facts.JobState != "leased" {
+			return nil, ErrStaleAttempt
+		}
+	} else if facts.JobState != "leased" || facts.RunState != "running" {
 		// Cancel/recovery races are T038's model; this handler refuses rather
 		// than overwrite a state it does not own.
 		return nil, ErrStaleAttempt
@@ -400,6 +413,20 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		return nil, err
 	}
 	switch {
+	case waitingExit:
+		// F03/T035: the supervisor confirmed the waiting attempt exited. Record the
+		// fact and let the one resume transaction decide. Without a stored decision
+		// this is a valid pending state and no event is emitted (the timeline
+		// already carries the waiting transition).
+		if err := clearWaitingJobTokenTx(ctx, tx, facts.JobID); err != nil {
+			return nil, err
+		}
+		if err := confirmWaitingExitTx(ctx, tx, facts.RunID); err != nil {
+			return nil, err
+		}
+		if _, err := s.maybeEnqueueResumeTx(ctx, tx, facts.RunID); err != nil {
+			return nil, err
+		}
 	case deadlineState.Over:
 		// Pre-cancel deadline path (T036 refines cancel priority): the intent is
 		// already recorded and the one finalizer commits failed(deadline_exceeded)
@@ -713,6 +740,25 @@ func (s *Service) SubmitResult(
 	if err != nil {
 		return nil, err
 	}
+	// A Run that already committed the waiting transition only accepts the exact
+	// same proposal as an idempotent replay. T035 owns that transition; a second
+	// different proposal is never allowed to move the goalposts.
+	if run.State == "waiting_approval" || run.State == "waiting_children" {
+		attempt, err := lockAttemptForResultTx(ctx, tx, run.ID, normalized.AttemptToken)
+		if err != nil {
+			return nil, err
+		}
+		if attempt.Superseded {
+			return nil, ErrStaleAttempt
+		}
+		if len(attempt.ReportedResult) > 0 {
+			if sameProposal(attempt.ReportedResult, proposal) {
+				return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
+			}
+			return nil, ErrEventConflict
+		}
+		return nil, ErrRunStateConflict
+	}
 	switch run.State {
 	case "succeeded", "failed", "cancelled":
 		return nil, ErrRunTerminal
@@ -781,6 +827,31 @@ func (s *Service) SubmitResult(
 		ctx, tx, normalized.AttemptToken, proposal, nullableString(normalized.CheckpointID),
 	); err != nil {
 		return nil, err
+	}
+	if normalized.SuggestedState == "waiting_approval" ||
+		normalized.SuggestedState == "waiting_children" {
+		// F03/T035: a waiting proposal is not a completion. The Run moves to
+		// waiting_*, phase waiting (the T034 settlement already ran above and is
+		// repeated idempotently inside), the job is held and the durable waiting
+		// condition records the fixed checkpoint. The attempt may still be live;
+		// only the supervisor's exit creates a resume.
+		if err := s.applyWaitingTransitionTx(ctx, tx, run, attempt, normalized); err != nil {
+			return nil, err
+		}
+		if attempt.ExitedAt.Valid {
+			// Exit-first: the hand-over is already proven, so this same call records
+			// the exit fact and runs the one resume transaction.
+			if err := confirmWaitingExitTx(ctx, tx, run.ID); err != nil {
+				return nil, err
+			}
+			if _, err := s.maybeEnqueueResumeTx(ctx, tx, run.ID); err != nil {
+				return nil, err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing the waiting result transaction: %w", err)
+		}
+		return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 	}
 	if err := setRunFinalizingTx(ctx, tx, run.ID); err != nil {
 		return nil, err

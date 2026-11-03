@@ -286,6 +286,34 @@ func startRunTx(ctx context.Context, tx *sql.Tx, runID string) (int64, error) {
 	return revision, nil
 }
 
+// lockExitRunTx takes the Run row lock before the exit query locks the
+// attempt/job rows.
+//
+// F03/T035: every Run-scoped transition now locks the Run first (SubmitResult,
+// maybeEnqueueResumeTx and the finalizer do). The exit path used to lock
+// attempt->job->run in one statement, which could deadlock against a concurrent
+// waiting resolution (run->waiting->job->attempt). The attempt's run_id is
+// immutable, so reading it and locking the Run first does not change the exit's
+// authority; a missing attempt is still attempt_not_found.
+func lockExitRunTx(ctx context.Context, tx *sql.Tx, attemptID string) error {
+	var runID string
+	err := tx.QueryRowContext(ctx, `
+		SELECT r.id::text
+		  FROM platform.run_attempts AS a
+		  JOIN platform.runs AS r ON r.id = a.run_id
+		 WHERE a.token = $1::uuid
+		 FOR UPDATE OF r`,
+		attemptID,
+	).Scan(&runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAttemptNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("locking the exit run: %w", err)
+	}
+	return nil
+}
+
 // loadArtifactTx reads the sealed object facts of one artifact. It does not
 // decide readiness; the service does, so the refusal message can distinguish an
 // unusable object from a missing one only by the same 503 (never by existence).

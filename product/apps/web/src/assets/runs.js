@@ -94,6 +94,8 @@ function runRuntimeFacts(headers) {
       manifestSHA256: '', startedAt: '', leaseDeadline: '',
       executionUnit: '', cancelRequestedAt: '',
       activeElapsedMS: null, maxActiveMS: null, deadlineExceeded: false,
+      waitingKind: '', waitingOutcome: '', waitingDecisionAt: '',
+      waitingExitConfirmedAt: '', resumeJobID: '', resumeJobState: '',
     };
   }
   return {
@@ -109,6 +111,14 @@ function runRuntimeFacts(headers) {
     activeElapsedMS: headerNumber(headers, 'X-Run-Active-Elapsed-Ms'),
     maxActiveMS: headerNumber(headers, 'X-Run-Max-Active-Ms'),
     deadlineExceeded: String(headers.get('X-Run-Deadline-Exceeded') || '').toLowerCase() === 'true',
+    // T035: the waiting hand-over and the single resume job. The decision
+    // reference is never exposed; only the safe outcome and job state.
+    waitingKind: headers.get('X-Run-Waiting-Kind') || '',
+    waitingOutcome: headers.get('X-Run-Waiting-Outcome') || '',
+    waitingDecisionAt: headers.get('X-Run-Waiting-Decided-At') || '',
+    waitingExitConfirmedAt: headers.get('X-Run-Waiting-Exit-Confirmed-At') || '',
+    resumeJobID: headers.get('X-Run-Resume-Job-ID') || '',
+    resumeJobState: headers.get('X-Run-Resume-Job-State') || '',
   };
 }
 
@@ -177,6 +187,73 @@ function describeActiveClock(run, facts) {
     reasonLine: reasonLine,
     oneClockNote: '同一 Run 的多次尝试显示为同一个累计时钟：新 attempt 从累计值继续，不重置，也不会重新获得完整时限。',
   };
+}
+
+// ---------------------------------------------------------------------------
+// T035: waiting conditions and the single resume (pure helpers, Node-tested)
+// ---------------------------------------------------------------------------
+
+/**
+ * The waiting/resume panel's honest content.
+ *
+ * The contract Run schema has no waiting fields, so the server adds non-contract
+ * detail headers: the awaited kind, the stored safe outcome, the database-clock
+ * decision/exit timestamps and the one resume job's state. The page renders only
+ * those facts:
+ *
+ *   - a decision without the supervisor exit fact is not a resume;
+ *   - an exit without a decision is not a resume either;
+ *   - the resume job id is shown, its sealed payload and every token are not;
+ *   - waiting releases the worker execution slot, never the logical session slot.
+ */
+function describeWaitingResume(run, facts) {
+  const runtime = facts || {};
+  const summary = runSummary(run);
+  const kind = String(runtime.waitingKind || '');
+  const outcome = String(runtime.waitingOutcome || '');
+  const decidedAt = String(runtime.waitingDecisionAt || '');
+  const exitAt = String(runtime.waitingExitConfirmedAt || '');
+  const resumeJobID = String(runtime.resumeJobID || '');
+  const resumeJobState = String(runtime.resumeJobState || '');
+  const isWaiting = summary.state === 'waiting_approval' || summary.state === 'waiting_children';
+  const slotNote = '等待期间释放的是 worker 执行槽；逻辑会话槽与 Run 仍占用到终态' +
+    '（等待与恢复排队都不是终态），所以同一会话不会因为等待而释放。';
+
+  if (kind === '') {
+    return {
+      visible: isWaiting,
+      waitingLine: isWaiting
+        ? '该 Run 处于 ' + summary.state + '，但服务器没有返回等待条件事实（本页不推测原因）。'
+        : '没有等待条件记录（本 Run 未进入 waiting_approval / waiting_children）。',
+      resumeLine: '没有恢复任务。',
+      slotNote: slotNote,
+    };
+  }
+
+  const kindLabel = kind === 'approval' ? 'approval（审批决定）' : 'children（子任务结果）';
+  let waitingLine = '等待条件：' + kindLabel + '；state=' + summary.state +
+    '、phase=' + (summary.phase || 'waiting') + '。';
+  if (outcome !== '') {
+    waitingLine += ' 已保存的解决结果：' + outcome +
+      (decidedAt !== '' ? '（decision_at ' + decidedAt + '）' : '') + '。';
+  } else {
+    waitingLine += ' 解决结果尚未到达：平台只保存等待条件，不伪造批准或子结果。';
+  }
+  waitingLine += exitAt !== ''
+    ? ' supervisor 已确认旧执行单元退出（' + exitAt + '）。'
+    : ' supervisor 尚未确认旧执行单元退出：退出证据与 checkpoint 齐全前不会创建恢复任务。';
+
+  let resumeLine;
+  if (resumeJobID !== '') {
+    resumeLine = '恢复任务 ' + resumeJobID + '，状态 ' + (resumeJobState || '未知') +
+      '。恢复任务只由内部 supervisor 领取；本页不显示 attempt token、恢复 URL 或恢复输入内容。';
+  } else if (outcome !== '' && exitAt !== '') {
+    resumeLine = '决定与退出均已确认，但尚未提交恢复任务（可能被取消意图/权限/预算/截止时间拒绝）；' +
+      '本页不伪造恢复进度。';
+  } else {
+    resumeLine = '尚未创建恢复任务：决定、退出确认与固定 checkpoint 三者齐全后才会创建唯一恢复任务。';
+  }
+  return { visible: true, waitingLine: waitingLine, resumeLine: resumeLine, slotNote: slotNote };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +396,11 @@ function describeRunState(run, facts) {
   if (summary.state === 'needs_reconciliation') {
     return 'Run 等待人工核对（needs_reconciliation）：存在未明的外部副作用，平台不把它显示为成功或失败。';
   }
+  if (summary.state === 'waiting_approval' || summary.state === 'waiting_children') {
+    const awaited = summary.state === 'waiting_approval' ? '审批决定' : '子任务结果';
+    return '等待' + awaited + '（' + summary.state + '，phase=waiting）：worker 已在固定 checkpoint 停止；' +
+      'supervisor 确认旧执行单元退出后释放执行槽，决定/子结果与退出证据齐全前不会创建恢复任务。';
+  }
   if (summary.state === 'running' && summary.phase === 'finalizing') {
     return '结果提议已保存，正在 finalizing：仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；终态提交前这不是成功。';
   }
@@ -338,6 +420,11 @@ function describeRunState(run, facts) {
 /** The three execution stages the page observes, never reordered. */
 function runLifecycle(run) {
   const summary = runSummary(run);
+  if (summary.state === 'waiting_approval' || summary.state === 'waiting_children') {
+    // Waiting is a real stage between executing and the eventual terminal state;
+    // a resume returns the Run to executing/queued.
+    return { stages: ['executing', 'waiting', 'terminal'], current: 'waiting' };
+  }
   let current = 'executing';
   if (summary.phase === 'finalizing') {
     current = 'finalizing';
@@ -710,6 +797,9 @@ function showRunDetail(run, facts) {
   const active = describeActiveClock(run, facts);
   document.getElementById('detail-active').textContent = active.line + ' ' + active.oneClockNote;
   document.getElementById('detail-deadline').textContent = active.reasonLine;
+  const waiting = describeWaitingResume(run, facts);
+  document.getElementById('detail-waiting').textContent = waiting.waitingLine;
+  document.getElementById('detail-resume').textContent = waiting.resumeLine + ' ' + waiting.slotNote;
   renderSandboxPanel(run, facts);
   document.getElementById('run-detail').hidden = false;
 }
