@@ -108,6 +108,12 @@ function describeCapabilityOperation(operation) {
   const keys = Array.isArray(value.structured_output_keys)
     ? value.structured_output_keys.map((key) => String(key))
     : [];
+  const toolCalls = Array.isArray(value.tool_call_summary)
+    ? value.tool_call_summary.map((call) => ({
+        id: String((call && call.id) || ''),
+        name: String((call && call.name) || ''),
+      }))
+    : [];
   const errorCode = value.error_code ? String(value.error_code) : '';
   return {
     id: String(value.id || ''),
@@ -120,6 +126,7 @@ function describeCapabilityOperation(operation) {
     attemptsText: attempts + ' 次',
     errorCode,
     errorText: errorCode === '' ? '' : '错误码 ' + errorCode,
+    toolCalls,
     toolCallsText: summarizeToolCalls(value.tool_call_summary),
     structuredKeys: keys,
     structuredText: keys.length === 0 ? '无结构化输出' : keys.join('、'),
@@ -1276,11 +1283,13 @@ async function loadCapabilityLedger(runId) {
   capabilityStatus('正在加载受控调用账本…', 'pending');
   try {
     const body = await api(runCapabilitiesPath(runId));
+    lastCapabilityLedger = body && typeof body === 'object' ? body : null;
     const ledger = describeCapabilityLedger(body);
     capabilityStatus(ledger.text, ledger.empty ? '' : 'ok');
     for (const operation of ledger.items) {
       rows.appendChild(renderCapabilityRow(operation));
     }
+    renderAgentNodePanel();
   } catch (error) {
     if (error.status === 401) {
       window.location.assign('/login');
@@ -1434,6 +1443,7 @@ async function loadRunDetail(runId) {
       displayedRun = null;
       nodeStatusByID = {};
       lastNodeResults = null;
+      lastCapabilityLedger = null;
     }
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
@@ -1700,6 +1710,203 @@ function nodeResultsStatus(message, kind) {
   element.className = 'status ' + (kind || '');
 }
 
+// ---------------------------------------------------------------------------
+// F04A/T043: the agent node summary.
+//
+// The node-results read has no node-type field and the T041 ledger read has no
+// logical key (adding one would change the frozen T041 projection), so the page
+// links them through two closed conventions the executor documents:
+//   - the agent node's tool log rows are labelled "tool-log-<call id>";
+//   - a failed agent node has a node.status=failed entry but no rows, while the
+//     ledger shows model operations.
+// The summary never shows params or receipt bodies; tool-call ids/names and the
+// per-operation state are already the non-secret ledger projection.
+// ---------------------------------------------------------------------------
+let lastCapabilityLedger = null;
+
+function agentNodeIDOf(nodeBody, ledgerBody, statuses) {
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  const toolLog = items.find(
+    (item) => item && item.kind === 'log' && String(item.label || '').indexOf('tool-log-') === 0,
+  );
+  if (toolLog) {
+    return String(toolLog.node_id || '');
+  }
+  const ledger = describeCapabilityLedger(ledgerBody);
+  const hasModelOperation = ledger.items.some((item) => item.kindText === '模型');
+  if (hasModelOperation) {
+    const known = statuses && typeof statuses === 'object' ? statuses : {};
+    const withRows = new Set(items.map((item) => String((item && item.node_id) || '')));
+    for (const nodeID of Object.keys(known)) {
+      if (known[nodeID] === 'failed' && !withRows.has(nodeID)) {
+        return nodeID;
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Derive the agent panel from the node-results projection, the capability ledger,
+ * the committed node.status map and the Run's state/error code.
+ */
+function describeAgentNode(nodeBody, ledgerBody, statuses, runState, runErrorCode) {
+  const nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  const nodeItems = nodeID === '' ? [] : items.filter((item) => String(item.node_id || '') === nodeID);
+  const data = nodeItems.filter((item) => item.kind === 'data').map(describeNodeResultItem);
+  const files = nodeItems.filter((item) => item.kind === 'file').map(describeNodeResultItem);
+  const logs = nodeItems.filter((item) => item.kind === 'log').map(describeNodeResultItem);
+  const ledger = describeCapabilityLedger(ledgerBody);
+  const models = ledger.items.filter((item) => item.kindText === '模型');
+  const tools = ledger.items.filter((item) => item.kindText === '工具');
+  const toolCalls = [];
+  for (const model of models) {
+    for (const call of model.toolCalls) {
+      toolCalls.push(call);
+    }
+  }
+  const known = statuses && typeof statuses === 'object' ? statuses : {};
+  let status = nodeID === '' ? '' : String(known[nodeID] || '');
+  if (status === '' && nodeItems.length > 0) {
+    status = 'succeeded';
+  }
+  if (status === '' && nodeID !== '' && String(runState || '') === 'failed') {
+    status = 'failed';
+  }
+  const errorCode = String(runErrorCode || '');
+  const present = nodeID !== '';
+  const schemaFailure = present && status === 'failed' && errorCode === 'node_output_invalid';
+  const toolStateText =
+    tools.length === 0
+      ? '还没有工具操作'
+      : tools.map((item) => item.stateText + ' · ' + item.attemptsText).join('；');
+  return {
+    visible: true,
+    present,
+    nodeID,
+    status,
+    statusText: present ? nodeStatusText(status) : '无 Agent 节点',
+    turns: models.length,
+    turnsText: present ? String(models.length) + ' 轮模型调用' : '无模型调用',
+    toolCalls,
+    toolCallsText:
+      toolCalls.length === 0
+        ? '无工具调用'
+        : toolCalls.map((call) => call.id + '(' + call.name + ')').join('、'),
+    toolOperations: tools,
+    toolStateText,
+    stub: models.some((item) => item.stub),
+    dataCount: data.length,
+    fileCount: files.length,
+    logCount: logs.length,
+    data,
+    files,
+    logs,
+    errorCode,
+    schemaFailure,
+    errorText: !present
+      ? ''
+      : schemaFailure
+        ? '节点 ' + nodeID + ' 最终输出未通过 output_schema（node_output_invalid）；定位指针见 supervisor 运行报告。'
+        : errorCode !== ''
+          ? '节点 ' + nodeID + ' 失败：' + errorCode
+          : '',
+    text: !present
+      ? '该 Run 没有 Agent 节点（旧版单 python 路径不产生 Agent 摘要）。'
+      : 'Agent 节点 ' +
+        nodeID +
+        ' · ' +
+        nodeStatusText(status) +
+        ' · ' +
+        models.length +
+        ' 轮模型调用 · ' +
+        (toolCalls.length === 0 ? '无工具调用' : '工具调用 ' + toolCalls.length + ' 次') +
+        (tools.length === 0 ? '' : ' · 工具操作 ' + tools.length + ' 次'),
+  };
+}
+
+function agentNodeStatus(message, kind) {
+  const element = document.getElementById('agent-node-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+function renderAgentNodePanel() {
+  const container = document.getElementById('agent-node-body');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  const described = describeAgentNode(
+    lastNodeResults,
+    lastCapabilityLedger,
+    nodeStatusByID,
+    displayedRun && displayedRun.state,
+    displayedRun && displayedRun.error_code,
+  );
+  agentNodeStatus(described.text, described.present ? 'ok' : '');
+  if (!described.present) {
+    return described;
+  }
+  const summary = document.createElement('dl');
+  summary.className = 'run';
+  const add = (label, value) => {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const definition = document.createElement('dd');
+    definition.textContent = value;
+    summary.append(term, definition);
+  };
+  add('节点 / 状态', described.nodeID + ' · ' + described.statusText);
+  add('模型轮次', described.turnsText + (described.stub ? '（stub 提供方）' : ''));
+  add('工具调用', described.toolCallsText);
+  add('工具操作', described.toolStateText);
+  add('结果', 'data ' + described.dataCount + ' · 文件 ' + described.fileCount + ' · 日志 ' + described.logCount);
+  container.appendChild(summary);
+  if (described.errorText !== '') {
+    const failure = document.createElement('p');
+    failure.className = described.schemaFailure ? 'status bad' : 'status';
+    failure.textContent = described.errorText;
+    container.appendChild(failure);
+  }
+  for (const data of described.data) {
+    const row = document.createElement('div');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '查看 Agent 最终输出';
+    const output = document.createElement('pre');
+    output.className = 'hint';
+    button.addEventListener('click', async () => {
+      try {
+        output.textContent = prettyJSONText(await fetchArtifactText(data.artifactID));
+      } catch (error) {
+        output.textContent =
+          'Agent 输出不可用 [' + (error && error.code ? error.code : 'error') + ']';
+      }
+    });
+    row.append(button, ' ', data.line);
+    container.append(row, output);
+  }
+  if (described.files.length > 0) {
+    const list = document.createElement('ul');
+    for (const file of described.files) {
+      const item = document.createElement('li');
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = '下载';
+      download.addEventListener('click', () => downloadNodeArtifact(file.artifactID));
+      item.append(file.label + ' · ' + file.mediaType + ' · ' + file.sizeText + ' ', download);
+      list.appendChild(item);
+    }
+    container.appendChild(list);
+  }
+  return described;
+}
+
 function recordNodeStatus(event) {
   if (!event || event.type !== 'node.status') {
     return;
@@ -1833,6 +2040,7 @@ function renderNodeResults(body) {
     }
     container.appendChild(section);
   }
+  renderAgentNodePanel();
   return described;
 }
 

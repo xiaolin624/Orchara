@@ -264,6 +264,13 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 	}
 	if hint, ok := request.Params["stub_tool_calls"]; ok {
 		data["tool_calls"] = hint
+	} else if calls := stubAgentAutoToolCalls(request.Params); calls != nil {
+		// T043: a controlled agent whose node declares a tool must be able to
+		// exercise the real grant/sandbox/result path end to end with the dev
+		// stub. Absent an explicit hint, the stub plays a model that calls the
+		// first declared tool on its first turn and answers once a tool result
+		// message exists.
+		data["tool_calls"] = calls
 	}
 	if schema, ok := request.Params["response_schema"].(map[string]any); ok {
 		if structured, ok := stubSchemaValue(schema, digest, 0).(map[string]any); ok {
@@ -287,6 +294,37 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 		TokensOut:    tokensOut,
 		ChargedUnits: (tokensIn + tokensOut) * reservedUnitsPerInputToken,
 	}, nil
+}
+
+// stubAgentAutoToolCalls is the deterministic "model calls the tool first"
+// script: when the call declares tools and the conversation has no tool result
+// yet, emit one call for the first declared tool. The empty argument object is
+// validated by the capability server against the real tool input_schema, so a
+// tool that needs arguments refuses the call exactly like a real model mistake.
+func stubAgentAutoToolCalls(params map[string]any) []any {
+	tools, _ := params["tools"].([]any)
+	if len(tools) == 0 {
+		return nil
+	}
+	if messages, ok := params["messages"].([]any); ok {
+		for _, raw := range messages {
+			message, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if role, _ := message["role"].(string); role == "tool" {
+				return nil
+			}
+		}
+	}
+	first, _ := tools[0].(map[string]any)
+	name, _ := first["name"].(string)
+	if name == "" {
+		return nil
+	}
+	return []any{map[string]any{
+		"id": "stub-call-1", "name": name, "arguments": map[string]any{},
+	}}
 }
 
 // stubSchemaValue builds a deterministic value that satisfies the restricted
