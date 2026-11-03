@@ -72,10 +72,13 @@ def test_runs_js_serves_the_panel_and_artifact_client(t033_stack) -> None:
         "X-Run-Cancel-Requested-At",
     ):
         assert marker in body, f"runs.js is missing {marker!r}"
-    # The panel must never reach for an object key or the unimplemented cancel
-    # endpoint; those are the two dishonest shortcuts the ticket forbids.
+    # T036 implements the cancel endpoint the T033 page deliberately did not call
+    # while it was missing; the asset now owns that real path, and the old "not
+    # implemented / SQL workaround" wording must be gone.
+    assert "function cancelRunPath(" in body, "runs.js does not expose the cancel path"
+    assert "runs/' + encodeURIComponent(String(runId || '')) + '/cancel" in body
+    assert "当前未实现" not in body
     assert "object_key" not in body
-    assert "runs/' + encodeURIComponent(String(runId || '')) + '/cancel" not in body
 
 
 def test_runs_js_panel_logic_executes_under_node(node_binary: str, tmp_path) -> None:

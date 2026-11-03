@@ -192,11 +192,14 @@ def test_tool_rejection_ends_the_run_failed_with_the_tool_code(t033_stack) -> No
 def request_cancel_after_first_heartbeat(dbname: str) -> None:
     """Simulate T036's cancel arriving while the sandbox runs.
 
-    The cancel endpoint belongs to T036, so the test writes ``cancel_requested_at``
-    with SQL. To make the arrival deterministic (and honestly mid-run) the write is
-    triggered by the attempt's first heartbeat: the supervisor's *next* heartbeat,
-    ~50ms later while runsc is booting the container, observes it and kills the
-    unit. No product trigger exists; this is test-owned SQL.
+    The cancel endpoint exists from T036, but this test writes
+    ``cancel_requested_at`` with SQL so the arrival is deterministic (and honestly
+    mid-run): the write is triggered by the attempt's first heartbeat, so the
+    supervisor's *next* heartbeat, ~50ms later while runsc is booting the
+    container, observes it and kills the unit. No product trigger exists; this is
+    test-owned SQL. Since T036 the same exit evidence commits ``cancelled`` (the
+    cancel intent wins over the never-submitted result), so the Run is allowed to
+    be terminal here instead of parked in ``recovery_pending``.
     """
     st.sql(
         dbname,
@@ -232,7 +235,9 @@ def test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan(t033_st
     assert report["sandbox"]["cleanup"]["sandbox_list_matches"] == 0, report
 
     state = t033.run_state_row(t033_stack.dbname, run["id"])
-    assert state["state"] in {"recovery_pending", "running"}, state
+    # F03/T036 supersedes the T033 interim expectation: the same exit evidence now
+    # lets the finalizer commit cancelled instead of parking recovery_pending.
+    assert state["state"] in {"cancelled", "recovery_pending", "running"}, state
     assert state["cancel_requested_at"] is not None, state
     assert state["output_artifact_id"] is None, "a cancelled run must not publish a result"
     attempts = t033.attempts_for_run(t033_stack.dbname, run["id"])

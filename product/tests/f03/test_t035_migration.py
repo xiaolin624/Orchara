@@ -97,9 +97,10 @@ def test_0021_is_recorded_once_at_the_chain_tail(migrated_database, go_binaries)
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 22)], versions
-    assert ledgers[-2]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-1]["name"] == "0021_run_waitings.sql"
+    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
+    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
     replay = st.migrate_or_fail(go_binaries["admin"], dsn)
     assert "no pending migrations" in replay, replay
 
@@ -141,6 +142,9 @@ def test_run_waitings_shape_and_foreign_keys(migrated_database) -> None:
         "exit_confirmed_at",
         "resume_job_id",
         "resume_artifact_id",
+        # T036 adds the durable cancel marker to the same waiting row; the waiting
+        # evidence itself is unchanged.
+        "cancel_requested_at",
         "created_at",
         "updated_at",
     }, columns

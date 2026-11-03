@@ -93,12 +93,13 @@ def test_0014_is_recorded_once_at_its_position(migrated_database) -> None:
     )
     versions = [row["version"] for row in ledgers]
     # T032 appends 0018; 0014 must stay at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 22)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
     assert ledgers[13]["name"] == "0014_execution_snapshots_and_runs.sql"
-    assert ledgers[-4]["name"] == "0018_run_events.sql"
-    assert ledgers[-3]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-2]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-1]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-5]["name"] == "0018_run_events.sql"
+    assert ledgers[-4]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
 
 
 def test_0014_replays_as_a_noop(migrated_database, go_binaries) -> None:

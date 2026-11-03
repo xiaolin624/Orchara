@@ -133,15 +133,16 @@ def test_0016_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # T029 appends 0016; T030/T032/T033 append 0017/0018/0019 and T034 appends
-    # 0020 and T035 appends 0021. Every earlier migration stays at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 22)], versions
+    # T029 appends 0016; T030/T032/T033 append 0017/0018/0019 and T034/T035/T036
+    # append 0020/0021/0022. Every earlier migration stays at its own position.
+    assert versions == [f"{number:04d}" for number in range(1, 23)], versions
     assert ledgers[14]["name"] == "0015_artifact_admissions.sql"
-    assert ledgers[-5]["name"] == "0017_tool_run_kind.sql"
-    assert ledgers[-4]["name"] == "0018_run_events.sql"
-    assert ledgers[-3]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-2]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-1]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-6]["name"] == "0017_tool_run_kind.sql"
+    assert ledgers[-5]["name"] == "0018_run_events.sql"
+    assert ledgers[-4]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-3]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-2]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-1]["name"] == "0022_run_unknown_operations.sql"
 
 
 def test_0016_replays_as_a_noop(migrated_database, go_binaries) -> None:
