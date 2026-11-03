@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 应用编辑器（F02A 草稿）</title>
+  <title>Orchara 应用编辑器（F04A 画布）</title>
+  <link rel="stylesheet" href="/assets/canvas.css" />
   <style>
     :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 76rem; }
     h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
     h2 { font-size: 1rem; margin: 0 0 .75rem; }
     .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
@@ -28,6 +29,8 @@
     button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     .conflict button { margin-right: .5rem; }
     [hidden] { display: none !important; }
+    details { margin-top: .8rem; }
+    summary { cursor: pointer; font-size: .88rem; }
   </style>
 </head>
 <body>
@@ -38,14 +41,15 @@
     <a href="/admin">管理台</a>
   </nav>
 
-  <h1>应用编辑器（F02A 草稿）</h1>
+  <h1>应用编辑器（F04A 线性四节点画布）</h1>
   <p class="sub">
-    草稿来自 <code>GET /api/v1/applications/{id}/draft</code>，响应头
-    <code>ETag</code> 是本页保存时 <code>If-Match</code> 的值。保存成功后刷新页面会重新加载
-    服务器上的草稿；若别人先保存了，服务器返回 <code>412</code>，本页不会覆盖，而是让你
-    <strong>重载服务器版本</strong>或<strong>保留本地副本</strong>。
-    保存需要 <strong>creator</strong> 角色（管理员也需兼任），否则服务器返回
-    <code>403 creator_role_required</code>。
+    画布主编辑器只允许 <code>start → python → agent → end</code> 的单条线性链；布局保存在独立的
+    <code>layout</code> 字段，不进入执行 definition，也不改变发布哈希。草稿来自
+    <code>GET /api/v1/applications/{id}/draft</code>，响应头 <code>ETag</code> 是本页保存时
+    <code>If-Match</code> 的值。保存成功后刷新页面会重新加载服务器上的草稿；若别人先保存了，
+    服务器返回 <code>412</code>，本页不会覆盖，而是让你<strong>重载服务器版本</strong>或
+    <strong>保留本地副本</strong>。保存需要 <strong>creator</strong> 角色（管理员也需兼任），
+    否则服务器返回 <code>403 creator_role_required</code>。
   </p>
 
   <section class="card">
@@ -55,6 +59,17 @@
     <p class="hint">调试入口：<a id="debug-entry" href="/apps">加载草稿后可用</a>
       （F02A 私有调试：冻结当前 revision 为仅自己可见的快照并排队一个 debug Run）</p>
     <p id="editor-status" class="status" role="status" aria-live="polite">正在加载使用说明和草稿…</p>
+  </section>
+
+  <section class="card" aria-label="F04A 画布">
+    <h2>画布配置</h2>
+    <p class="hint">
+      四类节点各一个：开始 / Python / Agent / 结束。只能连成单条线性链；非法连接会被拒绝并说明原因。
+      配置面板按节点类型显示字段、合法变量来源、工具/模型选择器与输出 Schema。校验调用
+      <code>POST /api/v1/applications/{id}/validate</code>，定位错误可点击跳转。
+    </p>
+    <div id="canvas-root"></div>
+    <noscript>画布需要 JavaScript；下方的 JSON 视图仍可通过表单保存。</noscript>
   </section>
 
   <form id="draft-form" method="post">
@@ -81,14 +96,17 @@
 
     <section class="card">
       <h2>definition / layout</h2>
-      <p class="hint">
-        本票用文本域编辑 JSON（画布属 F04A）。非法 DSL 仍可保存，但不能调试或提交
-        （T025/T027 提供校验与调试入口）。layout 只影响视图，不改变执行内容。
-      </p>
-      <label for="draft-definition">definition（JSON 对象）</label>
-      <textarea id="draft-definition" class="definition" name="definition" spellcheck="false"></textarea>
-      <label for="draft-layout">layout（JSON 对象）</label>
-      <textarea id="draft-layout" class="layout" name="layout" spellcheck="false"></textarea>
+      <details id="json-view">
+        <summary>JSON 视图（画布同步的 definition / layout，可折叠）</summary>
+        <p class="hint">
+          画布是主编辑器；文本域与画布双向同源。非法 DSL 仍可保存，但不能调试或提交
+          （校验按钮显示服务端定位错误）。layout 只影响视图，不改变执行内容。
+        </p>
+        <label for="draft-definition">definition（JSON 对象）</label>
+        <textarea id="draft-definition" class="definition" name="definition" spellcheck="false"></textarea>
+        <label for="draft-layout">layout（JSON 对象）</label>
+        <textarea id="draft-layout" class="layout" name="layout" spellcheck="false"></textarea>
+      </details>
       <button id="draft-save" type="submit">保存草稿（If-Match）</button>
     </section>
   </form>
@@ -106,6 +124,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/canvas.js"></script>
   <script src="/assets/editor.js"></script>
 </body>
 </html>

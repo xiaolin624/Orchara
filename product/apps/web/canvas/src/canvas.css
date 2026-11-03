@@ -1,0 +1,290 @@
+/* F04A/T040 canvas layout. Bundled INTO canvas.css by build.mjs. */
+
+.orchara-canvas {
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  background: Canvas;
+}
+
+.canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  background: color-mix(in srgb, Canvas 88%, #64748b 12%);
+}
+
+.palette,
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.canvas-toolbar button {
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 0.4rem;
+  background: Canvas;
+}
+
+.canvas-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.canvas-toolbar button.primary {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.canvas-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+  min-height: 32rem;
+}
+
+.canvas-stage {
+  position: relative;
+  min-height: 32rem;
+  background: color-mix(in srgb, Canvas 94%, #64748b 6%);
+}
+
+.canvas-stage .vue-flow {
+  position: absolute;
+  inset: 0;
+}
+
+.orchara-node {
+  min-width: 8.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border: 2px solid #64748b;
+  background: Canvas;
+}
+
+.orchara-node-start {
+  border-color: #15803d;
+}
+
+.orchara-node-python {
+  border-color: #1d4ed8;
+}
+
+.orchara-node-agent {
+  border-color: #7c3aed;
+}
+
+.orchara-node-end {
+  border-color: #b91c1c;
+}
+
+.orchara-edge {
+  stroke: #64748b;
+  stroke-width: 2;
+}
+
+.config-panel {
+  border-left: 1px solid rgba(128, 128, 128, 0.25);
+  padding: 0.8rem 0.9rem;
+  overflow-y: auto;
+  max-height: 46rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.config-panel h2 {
+  font-size: 0.98rem;
+  margin: 0;
+}
+
+.config-panel h3 {
+  font-size: 0.9rem;
+  margin: 0.8rem 0 0.25rem;
+}
+
+.config-panel h4 {
+  font-size: 0.82rem;
+  margin: 0.5rem 0 0.15rem;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.panel-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-label,
+label.field-label {
+  display: block;
+  font-size: 0.84rem;
+  margin: 0.6rem 0 0.2rem;
+  opacity: 0.85;
+}
+
+.config-panel input[type='text'],
+.config-panel input[type='number'],
+.config-panel textarea,
+.config-panel select {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.35rem 0.45rem;
+  margin: 0.15rem 0;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 0.3rem;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.config-panel textarea {
+  min-height: 5rem;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+.config-panel textarea.schema-json {
+  min-height: 8rem;
+}
+
+.schema-row,
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 6rem) auto auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.mapping-row {
+  grid-template-columns: minmax(4rem, 7rem) minmax(0, 1fr) auto auto;
+}
+
+.schema-row.add {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 0.35rem;
+}
+
+.schema-row input[type='text'],
+.mapping-row select {
+  min-width: 0;
+}
+
+.mapping-name {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+label.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.type-chip {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.2rem;
+}
+
+button.link.danger {
+  color: #b91c1c;
+}
+
+.schema-preview pre {
+  max-height: 10rem;
+  overflow: auto;
+  font-size: 0.72rem;
+  background: color-mix(in srgb, Canvas 90%, #64748b 10%);
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.35rem;
+}
+
+.status {
+  min-height: 1.2rem;
+  font-size: 0.82rem;
+  margin-top: 0.6rem;
+}
+
+.status.ok {
+  color: #15803d;
+}
+
+.status.bad {
+  color: #b91c1c;
+}
+
+.status.pending {
+  color: #a16207;
+}
+
+.errors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.errors.ok {
+  opacity: 0.8;
+}
+
+.error-item {
+  text-align: left;
+  border: 1px solid rgba(185, 28, 28, 0.4);
+  background: color-mix(in srgb, Canvas 92%, #b91c1c 8%);
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.error-text {
+  color: #b91c1c;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .canvas-body {
+    grid-template-columns: 1fr;
+  }
+  .config-panel {
+    border-left: none;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
+  }
+}
