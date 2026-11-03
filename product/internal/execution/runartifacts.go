@@ -158,6 +158,22 @@ type runAttemptScope struct {
 // path. The single statement binds token+run+job and asks the database whether
 // the lease is live; a superseded attempt is simply not the job's current token.
 func (s *RunArtifactStore) resolveScope(ctx context.Context, runID, token string) (*runAttemptScope, error) {
+	return s.resolveScopeWith(ctx, runID, token, false)
+}
+
+// resolveScopeAllowCancelling is the receipt/query variant: completing an upload
+// that was already in flight, asking for a status and minting an input download
+// remain allowed while the Run is cancelling (only new execution-bearing calls
+// are refused). It never allows a terminal Run.
+func (s *RunArtifactStore) resolveScopeAllowCancelling(
+	ctx context.Context, runID, token string,
+) (*runAttemptScope, error) {
+	return s.resolveScopeWith(ctx, runID, token, true)
+}
+
+func (s *RunArtifactStore) resolveScopeWith(
+	ctx context.Context, runID, token string, allowCancelling bool,
+) (*runAttemptScope, error) {
 	if s == nil || s.DB == nil {
 		return nil, fmt.Errorf("run artifact store is not configured")
 	}
@@ -187,15 +203,19 @@ func (s *RunArtifactStore) resolveScope(ctx context.Context, runID, token string
 		return nil, fmt.Errorf("reading the run attempt scope: %w", err)
 	}
 	// Terminal runs never accept uploads/registrations; a non-executing
-	// non-terminal run (waiting/finalizing/cancelling) is T035/T036's state and
-	// is refused explicitly rather than guessed.
+	// non-terminal run (waiting/finalizing) is T035/T036's state and is refused
+	// explicitly rather than guessed. The cancelling state still accepts the
+	// receipt/query calls that were already in flight (T036).
 	if terminalRunState(scope.RunState) {
 		return nil, ErrRunTerminal
 	}
-	if scope.RunState != "running" {
-		return nil, ErrRunStateConflict
+	if scope.RunState == "running" {
+		return &scope, nil
 	}
-	return &scope, nil
+	if allowCancelling && scope.RunState == "cancelling" {
+		return &scope, nil
+	}
+	return nil, ErrRunStateConflict
 }
 
 func terminalRunState(state string) bool {
@@ -294,7 +314,7 @@ func (s *RunArtifactStore) CreateUpload(
 func (s *RunArtifactStore) CompleteUpload(
 	ctx context.Context, runID, token, artifactID, declaredSHA256 string,
 ) (RunArtifactView, error) {
-	scope, err := s.resolveScope(ctx, runID, token)
+	scope, err := s.resolveScopeAllowCancelling(ctx, runID, token)
 	if err != nil {
 		return RunArtifactView{}, err
 	}
@@ -436,7 +456,7 @@ func runFinalizeDedupKey(artifactID, sha string) string {
 func (s *RunArtifactStore) DownloadURL(
 	ctx context.Context, runID, token, artifactID string,
 ) (string, time.Time, error) {
-	scope, err := s.resolveScope(ctx, runID, token)
+	scope, err := s.resolveScopeAllowCancelling(ctx, runID, token)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -492,7 +512,7 @@ func (s *RunArtifactStore) DownloadURL(
 func (s *RunArtifactStore) ArtifactStatus(
 	ctx context.Context, runID, token, artifactID string,
 ) (RunArtifactView, error) {
-	scope, err := s.resolveScope(ctx, runID, token)
+	scope, err := s.resolveScopeAllowCancelling(ctx, runID, token)
 	if err != nil {
 		return RunArtifactView{}, err
 	}

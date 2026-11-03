@@ -46,6 +46,11 @@ function runEventsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/events';
 }
 
+/** The owner-only cancel path for one run id (T036). POST, no body. */
+function cancelRunPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/cancel';
+}
+
 /** The list path, including only the query parameters that were supplied. */
 function listRunsPath(cursor, limit) {
   const query = [];
@@ -289,6 +294,8 @@ function describeSandboxPanel(run, facts) {
     statusLine = '尚未被 supervisor 领取；没有沙箱在运行。';
   } else if (terminal) {
     statusLine = '沙箱执行已结束（Run 已进入终态 ' + summary.state + '）。';
+  } else if (summary.state === 'cancelling') {
+    statusLine = '正在停止：已请求取消，等待执行单元退出；平台不会把停止中的 Run 显示为成功。';
   } else if (summary.phase === 'finalizing') {
     statusLine = '结果提议已保存，仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；这不是成功。';
   } else if (cancelAt !== '') {
@@ -315,10 +322,10 @@ function describeSandboxPanel(run, facts) {
   }
 
   const cancelNote =
-    '取消接口属于 T036（POST /api/v1/runs/{id}/cancel），当前未实现；本页不调用不存在的接口、' +
-    '也不伪造取消结果。运维路径：用 SQL 写入 runs.cancel_requested_at，再运行 ' +
-    'cmd/supervisor exec --once；执行中的沙箱会被杀死且不留下孤儿，Run 由 T036/T038 的仲裁收尾' +
-    '（当前会停在非终态的 recovery_pending，而不是伪装成 cancelled）。';
+    '取消接口 POST /api/v1/runs/{id}/cancel 由 T036 提供（owner-only、幂等；会话需 CSRF，' +
+    'API key 需 application:write）。请求只记录取消意图；执行单元退出后 Run 才提交 cancelled，' +
+    '存在未知外部写时转 needs_reconciliation。恢复与核对的 re-drive 属于 T038：页面不会把 ' +
+    'recovery_pending 或正在停止显示为已停止，也不伪造撤销。';
 
   return {
     visible: summary.id !== '',
@@ -370,6 +377,109 @@ function describeArtifactList(body) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// T036: cancel intent, stopping vs stopped, and terminal stability
+// ---------------------------------------------------------------------------
+
+/** A Run can be cancelled until its terminal state is committed. */
+function canCancelRun(run) {
+  if (!run || typeof run.state !== 'string' || run.state === '') {
+    return false;
+  }
+  return !isRunTerminal(run.state);
+}
+
+/** The button label: cancelling is idempotent, so a second request is allowed. */
+function cancelButtonLabel(run) {
+  return String((run && run.state) || '') === 'cancelling'
+    ? '再次请求取消（幂等）'
+    : '取消 Run';
+}
+
+/**
+ * The cancel panel's honest content. "Accepted" is never "stopped": a cancel
+ * request only records the intent (or immediately cancels a Run with no live
+ * attempt); the terminal state is committed by the Go finalizer after the
+ * supervisor's exit evidence. The terminal reason is the Run state plus its
+ * error_code, never an invented explanation.
+ */
+function describeRunCancel(run, facts) {
+  const summary = runSummary(run);
+  const runtime = facts || {};
+  const cancelAt = String(runtime.cancelRequestedAt || '').trim();
+  const errorCode = String((run && run.error_code) || '');
+  const label = cancelButtonLabel(run);
+  if (summary.state === 'cancelled') {
+    return {
+      visible: true,
+      terminal: true,
+      line: '已停止（cancelled）：平台已确认受控执行单元停止' +
+        (cancelAt ? '（取消请求于 ' + cancelAt + '）' : '') +
+        '；这不表示撤回已经发送的外部写入。',
+      reasonLine: '终态原因：cancelled' + (errorCode ? '（error_code=' + errorCode + '）' : ''),
+      buttonLabel: label,
+    };
+  }
+  if (summary.state === 'succeeded' || summary.state === 'failed') {
+    return {
+      visible: true,
+      terminal: true,
+      line: (summary.state === 'succeeded' ? '已成功结束（succeeded）' : '已失败结束（failed）') +
+        '；终态之后迟到的结果/事件不会改变本页。',
+      reasonLine: '终态原因：' + summary.state +
+        (errorCode ? '（error_code=' + errorCode + '）' : ''),
+      buttonLabel: label,
+    };
+  }
+  if (summary.state === 'cancelling') {
+    return {
+      visible: true,
+      terminal: false,
+      line: '正在停止（cancelling）：取消意图已记录' +
+        (cancelAt ? '（' + cancelAt + '）' : '') +
+        '；等待受控执行单元退出，终态提交前本页不会显示成功。',
+      reasonLine: '取消意图：已记录；终态由 Go finalizer 在执行单元退出后提交。',
+      buttonLabel: label,
+    };
+  }
+  if (summary.state === 'queued') {
+    return {
+      visible: true,
+      terminal: false,
+      line: '尚未被领取（queued）：取消会立即生效（Run 直接 cancelled、job void），不会创建恢复任务。',
+      reasonLine: '取消原因：排队阶段取消不执行任何单元。',
+      buttonLabel: label,
+    };
+  }
+  return {
+    visible: true,
+    terminal: false,
+    line: cancelAt !== ''
+      ? '正在停止：已请求取消（' + cancelAt + '），等待执行单元退出。'
+      : '未请求取消；取消后本页会显示“正在停止”，终态以服务端提交为准。',
+    reasonLine: cancelAt !== '' ? '取消意图：已记录（尚未提交终态）。' : '取消意图：无。',
+    buttonLabel: label,
+  };
+}
+
+/**
+ * Merge one server Run snapshot with what the page already displayed.
+ *
+ * A committed terminal state is final: a late/stale poll response or a late SSE
+ * message must never flip the page back to a non-terminal state (STATE-MACHINES
+ * §2 "再次运行创建新 Run，不能复活终态"). Non-terminal snapshots are replaced
+ * normally so the page keeps observing progress.
+ */
+function mergeRunSnapshot(previous, next) {
+  if (!next || typeof next !== 'object' || typeof next.state !== 'string') {
+    return previous || next;
+  }
+  if (previous && typeof previous.state === 'string' && isRunTerminal(previous.state)) {
+    return previous;
+  }
+  return next;
+}
+
 /**
  * One honest sentence about a run. Terminal states say so; a queued run says it
  * has not been claimed; a running run quotes the lease when the server supplied
@@ -378,14 +488,18 @@ function describeArtifactList(body) {
  *
  * T031 adds the finalizing stage: a worker result is only a proposal, so while
  * phase=finalizing the page says the platform is waiting for supervisor exit
- * evidence and that this is not a success yet. Success is only ever rendered
- * from a committed terminal state.
+ * evidence and that this is not a success yet. T036 adds cancelling: the intent
+ * exists but the Run is not stopped until the finalizer commits it.
  */
 function describeRunState(run, facts) {
   const summary = runSummary(run);
   const runtime = facts || {};
   if (isRunTerminal(summary.state)) {
     return '已进入终态 ' + summary.state + '（终态由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
+  }
+  if (summary.state === 'cancelling') {
+    return '正在停止（cancelling）：取消意图已记录，平台已拒绝新的结果/登记/上传/审批调用，' +
+      '等待执行单元退出后由 finalizer 提交 cancelled（或存在未知外部写时转 needs_reconciliation）。';
   }
   if (summary.state === 'queued') {
     return '尚未被领取（queued）；领取、心跳与退出证据属于 F03 内部 supervisor 协议。';
@@ -424,6 +538,10 @@ function runLifecycle(run) {
     // Waiting is a real stage between executing and the eventual terminal state;
     // a resume returns the Run to executing/queued.
     return { stages: ['executing', 'waiting', 'terminal'], current: 'waiting' };
+  }
+  if (summary.state === 'cancelling') {
+    // The cancel intent is its own stopping stage: still non-terminal.
+    return { stages: ['executing', 'cancelling', 'terminal'], current: 'cancelling' };
   }
   let current = 'executing';
   if (summary.phase === 'finalizing') {
@@ -779,29 +897,51 @@ function renderRunItem(run) {
   document.getElementById('runs-list').appendChild(item);
 }
 
+// T036: the last Run snapshot rendered. A committed terminal state is never
+// replaced by a late/stale non-terminal message (mergeRunSnapshot).
+let displayedRun = null;
+let displayedRunID = '';
+
 function showRunDetail(run, facts) {
-  const summary = runSummary(run);
+  const merged = mergeRunSnapshot(displayedRun, run);
+  if (!merged) {
+    return null;
+  }
+  displayedRun = merged;
+  const summary = runSummary(merged);
   document.getElementById('detail-id').textContent = summary.id;
   document.getElementById('detail-state').textContent = summary.state;
   document.getElementById('detail-phase').textContent = summary.phase || '（未提供）';
   document.getElementById('detail-kind').textContent = summary.kind;
   document.getElementById('detail-revision').textContent = summary.revision;
   document.getElementById('detail-snapshot').textContent = summary.executionSnapshotID;
-  document.getElementById('detail-lifecycle').textContent = lifecycleText(run);
+  document.getElementById('detail-lifecycle').textContent = lifecycleText(merged);
   document.getElementById('detail-manifest').textContent = facts.manifestSHA256 || '（响应头未提供）';
   document.getElementById('detail-lease').textContent =
     summary.state === 'running' && facts.leaseDeadline
       ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
       : '（没有可显示的租约事实）';
-  document.getElementById('detail-note').textContent = describeRunState(run, facts);
-  const active = describeActiveClock(run, facts);
+  document.getElementById('detail-note').textContent = describeRunState(merged, facts);
+  const active = describeActiveClock(merged, facts);
   document.getElementById('detail-active').textContent = active.line + ' ' + active.oneClockNote;
   document.getElementById('detail-deadline').textContent = active.reasonLine;
-  const waiting = describeWaitingResume(run, facts);
+  const waiting = describeWaitingResume(merged, facts);
   document.getElementById('detail-waiting').textContent = waiting.waitingLine;
   document.getElementById('detail-resume').textContent = waiting.resumeLine + ' ' + waiting.slotNote;
-  renderSandboxPanel(run, facts);
+  const cancel = describeRunCancel(merged, facts);
+  const cancelLine = document.getElementById('detail-cancel');
+  if (cancelLine) {
+    cancelLine.textContent = cancel.line + ' ' + cancel.reasonLine;
+  }
+  const cancelButton = document.getElementById('detail-cancel-button');
+  if (cancelButton) {
+    cancelButton.hidden = !canCancelRun(merged);
+    cancelButton.textContent = cancel.buttonLabel;
+    cancelButton.dataset.runId = summary.id;
+  }
+  renderSandboxPanel(merged, facts);
   document.getElementById('run-detail').hidden = false;
+  return merged;
 }
 
 // T033: the sandbox panel and the owner-only artifact list.
@@ -887,6 +1027,57 @@ async function loadRunArtifacts(runId) {
   }
 }
 
+function cancelDetailStatus(message, kind) {
+  const element = document.getElementById('detail-cancel-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+/**
+ * Request cancel for the selected Run.
+ *
+ * The endpoint is owner-only and idempotent. A queued Run comes back cancelled;
+ * a Run with a live unit comes back cancelling (a real "stopping" state), and the
+ * page then reloads the detail (which starts/stops its poll loop) instead of
+ * guessing the outcome. The 202 itself is never rendered as "stopped".
+ */
+async function requestCancel(runId) {
+  const button = document.getElementById('detail-cancel-button');
+  cancelDetailStatus('正在提交取消请求…', 'pending');
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const token = await csrf();
+    const run = await api(cancelRunPath(runId), { method: 'POST', csrf: token });
+    displayedRun = mergeRunSnapshot(displayedRun, run);
+    cancelDetailStatus(
+      run.state === 'cancelled'
+        ? '已停止（cancelled）：任务已进入终态。'
+        : '已接受取消意图（' + run.state + '）：等待执行单元退出，页面会轮询到终态。',
+      'ok',
+    );
+    await loadRunDetail(runId);
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    cancelDetailStatus(
+      '取消失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 // T032: one durable timeline per selected Run. Starting a new selection bumps
 // the generation so the old fetch loop stops instead of appending frames to the
 // wrong list; the list itself is deduped by seq.
@@ -942,30 +1133,46 @@ async function pollRunDetail(runId, polls) {
     return;
   }
   await new Promise((resolve) => setTimeout(resolve, RUN_POLL_INTERVAL_MS));
+  if (displayedRunID !== runId) {
+    // The user selected another Run while this loop was sleeping: the stale poll
+    // must not overwrite the new selection.
+    return;
+  }
   const result = await apiFull(runDetailPath(runId));
+  if (displayedRunID !== runId) {
+    return;
+  }
   const facts = runRuntimeFacts(result.headers);
-  showRunDetail(result.payload, facts);
-  if (shouldPollRun(result.payload)) {
+  const merged = showRunDetail(result.payload, facts);
+  // A committed terminal state is never re-polled even if a stale snapshot says
+  // otherwise: the page stops on the merged (monotonic) state.
+  if (merged && shouldPollRun(merged)) {
     return pollRunDetail(runId, polls + 1);
   }
   await loadRunArtifacts(runId);
-  runsStatus('Run ' + runId + ' 已进入终态 ' + result.payload.state + '。', 'ok');
+  runsStatus('Run ' + runId + ' 已进入终态 ' + (merged && merged.state ? merged.state : '') + '。', 'ok');
 }
 
 async function loadRunDetail(runId) {
   runsStatus('正在加载 Run ' + runId + ' 的详情…', 'pending');
   try {
     await requireLogin();
+    if (displayedRunID !== runId) {
+      // A different Run starts a fresh monotonic snapshot; the old terminal state
+      // must not mask the newly selected Run.
+      displayedRunID = runId;
+      displayedRun = null;
+    }
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
-    showRunDetail(result.payload, facts);
+    const merged = showRunDetail(result.payload, facts);
     loadRunArtifacts(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',
       previewID: 'detail-preview',
     });
-    if (shouldPollRun(result.payload)) {
+    if (merged && shouldPollRun(merged)) {
       runsStatus('已加载 Run ' + runId + '，仍在执行；页面会轮询到终态（不会提前显示成功）。', 'pending');
       await pollRunDetail(runId, 0);
     } else {
@@ -1017,5 +1224,14 @@ if (typeof document !== 'undefined' && document.getElementById && document.getEl
       loadRunsPage(nextCursor);
     }
   });
+  const cancelButton = document.getElementById('detail-cancel-button');
+  if (cancelButton) {
+    cancelButton.addEventListener('click', () => {
+      const runId = cancelButton.dataset.runId || (displayedRun && displayedRun.id) || '';
+      if (runId !== '') {
+        requestCancel(String(runId));
+      }
+    });
+  }
   loadRunsPage(null);
 }

@@ -207,6 +207,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+	// F03/T036: owner-only, idempotent cancel intent. 202 with the contract Run;
+	// "accepted" never means the external effect was undone.
+	mux.HandleFunc("POST /api/v1/runs/{run_id}/cancel", s.handleCancelRun)
 	// F03/T032: the owner-only durable event stream. Last-Event-ID is this Run's
 	// local seq; the handler is SSE, not JSON.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)

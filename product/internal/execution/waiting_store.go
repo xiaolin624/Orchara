@@ -41,6 +41,9 @@ type waitingFactsRow struct {
 	ExitConfirmedAt  sql.NullTime
 	ResumeJobID      sql.NullString
 	ResumeArtifactID sql.NullString
+	// T036: the durable "this wait was cancelled" marker. It is never a decision
+	// and never deletes the waiting evidence; it only makes the resume inert.
+	CancelRequestedAt sql.NullTime
 }
 
 // waitingAttemptRow is the latest attempt of the Run (the one that stopped at the
@@ -86,7 +89,7 @@ func lockWaitingTx(ctx context.Context, tx *sql.Tx, runID string) (*waitingFacts
 	var facts waitingFactsRow
 	err := tx.QueryRowContext(ctx, `
 		SELECT kind, checkpoint_id, decision::text, decision_at, exit_confirmed_at,
-		       resume_job_id::text, resume_artifact_id::text
+		       resume_job_id::text, resume_artifact_id::text, cancel_requested_at
 		  FROM platform.run_waitings
 		 WHERE run_id = $1::uuid
 		 FOR UPDATE`,
@@ -94,6 +97,7 @@ func lockWaitingTx(ctx context.Context, tx *sql.Tx, runID string) (*waitingFacts
 	).Scan(
 		&facts.Kind, &facts.CheckpointID, &facts.Decision, &facts.DecisionAt,
 		&facts.ExitConfirmedAt, &facts.ResumeJobID, &facts.ResumeArtifactID,
+		&facts.CancelRequestedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

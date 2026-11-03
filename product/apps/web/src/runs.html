@@ -68,6 +68,13 @@
     <code>X-Run-Resume-Job-ID</code> / <code>X-Run-Resume-Job-State</code> 提供；本页不伪造批准、
     不显示恢复输入内容，也不把 202/200 解释为已恢复。
   </p>
+  <p class="hint">
+    取消（F03/T036）：owner 可在详情中调用 <code>POST /api/v1/runs/{id}/cancel</code>
+    （幂等；会话带 CSRF，API key 需 <code>application:write</code>）。取消只表示<strong>接受停止意图</strong>：
+    有活动执行单元时 Run 进入 <strong>cancelling（正在停止）</strong>，结果/登记/新上传/审批调用被拒绝，
+    supervisor 退出证据齐全后才提交 <strong>cancelled（已停止）</strong>；存在未知外部写时转
+    <code>needs_reconciliation</code>，不假装取消已撤销远端效果。迟到结果/事件不会把终态翻回。
+  </p>
 
   <section class="card">
     <h2>我的 Run</h2>
@@ -93,8 +100,11 @@
       <dt>超时原因</dt><dd id="detail-deadline"></dd>
       <dt>等待条件</dt><dd id="detail-waiting"></dd>
       <dt>恢复任务</dt><dd id="detail-resume"></dd>
+      <dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
+    <button id="detail-cancel-button" type="button" hidden>取消 Run</button>
+    <p id="detail-cancel-status" class="status" role="status" aria-live="polite"></p>
     <ul id="detail-timeline" aria-live="polite"></ul>
 
     <section id="sandbox-panel" class="card" hidden aria-live="polite">

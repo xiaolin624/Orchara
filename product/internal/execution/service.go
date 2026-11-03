@@ -373,14 +373,22 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		return nil, ErrStaleAttempt
 	}
 	_, waitingExit := waitingKindForState(facts.RunState)
-	if waitingExit {
+	switch {
+	case waitingExit:
 		// F03/T035: a waiting attempt was held (not requeued), so its exit evidence
 		// is accepted while the job is held. The run keeps its waiting state until
 		// the decision arrives; this call only records the supervisor's fact.
 		if facts.JobState != "held" && facts.JobState != "leased" {
 			return nil, ErrStaleAttempt
 		}
-	} else if facts.JobState != "leased" || facts.RunState != "running" {
+	case facts.RunState == "cancelling":
+		// F03/T036: a cancel-requested Run keeps its live attempt while the
+		// supervisor stops it; the exit is exactly what lets the finalizer commit
+		// cancelled (or park for unknown side effects).
+		if facts.JobState != "held" && facts.JobState != "leased" {
+			return nil, ErrStaleAttempt
+		}
+	case facts.JobState != "leased" || facts.RunState != "running":
 		// Cancel/recovery races are T038's model; this handler refuses rather
 		// than overwrite a state it does not own.
 		return nil, ErrStaleAttempt
@@ -412,6 +420,12 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	if err != nil {
 		return nil, err
 	}
+	// T036: the cancel intent is a Run fact read under the lock. The recorded
+	// deadline error_code is the durable "the limit was already observed" fact, so
+	// it keeps priority even if a test/operator later relaxed max_active_ms.
+	cancelIntent := facts.RunCancelRequestedAt.Valid || facts.RunState == "cancelling"
+	deadlineRecorded := facts.RunErrorCode.Valid &&
+		facts.RunErrorCode.String == DeadlineErrorCode
 	switch {
 	case waitingExit:
 		// F03/T035: the supervisor confirmed the waiting attempt exited. Record the
@@ -427,12 +441,11 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		if _, err := s.maybeEnqueueResumeTx(ctx, tx, facts.RunID); err != nil {
 			return nil, err
 		}
-	case deadlineState.Over:
-		// Pre-cancel deadline path (T036 refines cancel priority): the intent is
-		// already recorded and the one finalizer commits failed(deadline_exceeded)
-		// with no output artifact. A guard that blocks the terminal transition
-		// (live children/unknown operations) parks the Run instead of leaving it
-		// "executing" with no unit; T035/T038 own the re-drive.
+	case deadlineState.Over || deadlineRecorded:
+		// T034's pre-cancel deadline path keeps its failed(deadline_exceeded)
+		// outcome and now goes through the same cancel/unknown guard: live children
+		// park the Run (as before), unknown operations park it in
+		// needs_reconciliation instead of faking a failure.
 		finalized, err := s.finalizeRunTx(ctx, tx, finalizeInput{
 			RunID:            facts.RunID,
 			RunOwnerID:       facts.RunOwnerID,
@@ -443,6 +456,7 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 			ReportedResult:   facts.ReportedResult,
 			Exited:           true,
 			DeadlineExceeded: true,
+			NeverStarted:     !evidence.Started,
 		})
 		if err != nil {
 			return nil, err
@@ -455,6 +469,29 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 				return nil, err
 			}
 			if _, err := AppendRunStatusTx(ctx, tx, facts.RunID); err != nil {
+				return nil, err
+			}
+		}
+	case cancelIntent:
+		// T036: cancel wins over an uncommitted result. A never-started unit is
+		// voided (it never ran); a started unit completes. A guard that blocks the
+		// terminal transition leaves the Run in cancelling with the job held.
+		finalized, err := s.finalizeRunTx(ctx, tx, finalizeInput{
+			RunID:          facts.RunID,
+			RunOwnerID:     facts.RunOwnerID,
+			RunState:       facts.RunState,
+			RunRevision:    facts.RunRevision,
+			JobID:          facts.JobID,
+			AttemptToken:   facts.Token,
+			ReportedResult: facts.ReportedResult,
+			Exited:         true,
+			NeverStarted:   !evidence.Started,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !finalized {
+			if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
 				return nil, err
 			}
 		}
@@ -512,23 +549,27 @@ type finalizeInput struct {
 	// already decided (T034). The finalizer re-checks the settled total anyway, so
 	// a caller that forgot the flag cannot make an overdue run succeed.
 	DeadlineExceeded bool
+	// NeverStarted is the started=false exit of a cancel-requested Run: the unit
+	// provably never ran, so the job is void rather than completed.
+	NeverStarted bool
 }
 
 // finalizeRunTx is the one idempotent finalizer for result+exit, in either
 // arrival order. It requires both pieces of evidence; when only one is present
-// it does nothing. When both are present it:
+// it does nothing. When both are present it decides in this fixed priority:
 //
-//   - checks the "no live children / no unknown operations" guard; a blocked
-//     run keeps its evidence, holds the job and stays non-terminal (T035/T036
-//     own the next transition);
-//   - stores a waiting_* proposal and leaves the run running/finalizing (T035
-//     owns waiting and resume);
-//   - commits succeeded/failed exactly once (state, revision+1, finished_at,
-//     output_artifact_id, error_code, phase idle, job completed, token revoked,
-//     allocation released once);
-//   - commits needs_reconciliation as the honest non-terminal outcome when the
-//     proposal says so (or when a previously valid output artifact is no longer
-//     acceptable).
+//  1. **live child Runs** block every terminal transition: the job is held and
+//     the Run keeps its non-terminal state (the caller decides whether a deadline
+//     parks it for recovery, as T034 does);
+//  2. **unresolved unknown operations** take priority over deadline/cancel/result
+//     (EXECUTION §5/§7): the Run commits needs_reconciliation with the stable
+//     unknown_operations reason and never claims success/failure;
+//  3. the **active-time deadline** keeps its failed(deadline_exceeded) outcome,
+//     even when a cancel intent was recorded first;
+//  4. **cancel_requested_at** makes cancelled win over an uncommitted result
+//     proposal (including a waiting proposal); a started=false unit is voided;
+//  5. otherwise the stored proposal decides succeeded/failed/needs_reconciliation
+//     or leaves a waiting_* proposal to T035.
 //
 // The run CAS on state+revision is what makes a racing duplicate a conflict
 // rather than a second terminal write.
@@ -538,9 +579,12 @@ func (s *Service) finalizeRunTx(
 	if !input.Exited {
 		return false, nil
 	}
-	if input.RunState != "running" && input.RunState != "recovery_pending" {
-		// Already terminal/needs_reconciliation/waiting: a repeated finalize is
-		// a no-op, never a second transition.
+	switch input.RunState {
+	case "running", "recovery_pending", "cancelling", "needs_reconciliation":
+		// cancelling: the T036 exit path. needs_reconciliation: resolving the last
+		// unknown re-invokes this same finalizer so a cancelled Run is committed
+		// exactly once. Any other state (terminal/waiting/queued) is a no-op.
+	default:
 		return false, nil
 	}
 	// T034: every finalizer entry has left executing, so the attempt interval is
@@ -555,8 +599,18 @@ func (s *Service) finalizeRunTx(
 	if err != nil {
 		return false, err
 	}
-	deadline := input.DeadlineExceeded || deadlineState.Over
-	if !deadline && len(input.ReportedResult) == 0 {
+	cancelAt, err := runCancelIntentTx(ctx, tx, input.RunID)
+	if err != nil {
+		return false, err
+	}
+	recordedErrorCode, err := runErrorCodeTx(ctx, tx, input.RunID)
+	if err != nil {
+		return false, err
+	}
+	deadline := input.DeadlineExceeded || deadlineState.Over ||
+		(recordedErrorCode.Valid && recordedErrorCode.String == DeadlineErrorCode)
+	cancelIntent := cancelAt.Valid || input.RunState == "cancelling"
+	if !deadline && !cancelIntent && !input.NeverStarted && len(input.ReportedResult) == 0 {
 		return false, nil
 	}
 
@@ -565,28 +619,24 @@ func (s *Service) finalizeRunTx(
 		OutputArtifactID *string `json:"output_artifact_id"`
 		ErrorCode        *string `json:"error_code"`
 	}
-	if !deadline {
+	if !deadline && !input.NeverStarted && len(input.ReportedResult) > 0 {
 		if err := json.Unmarshal(input.ReportedResult, &proposal); err != nil {
 			return false, fmt.Errorf("decoding the stored result proposal: %w", err)
 		}
-		if proposal.SuggestedState == "waiting_approval" || proposal.SuggestedState == "waiting_children" {
-			// Stored, not terminal: T035 turns the waiting proposal into the waiting
-			// state and the single resume job. The execution slot is already free.
-			if err := holdJobTx(ctx, tx, input.JobID); err != nil {
-				return false, err
-			}
-			return false, nil
-		}
 	}
 
-	blocked, err := finalizerBlockedTx(ctx, tx, input.RunID)
+	liveChildren, err := hasLiveChildrenTx(ctx, tx, input.RunID)
 	if err != nil {
 		return false, err
 	}
-	if blocked {
-		// Keep the run finalizing with its evidence; hold the job so no new
-		// attempt is dispatched. T035/T036 own the next transition. An overdue run
-		// whose guard blocks is parked by its caller instead of left executing.
+	unknownOperations, err := hasUnknownOperationsTx(ctx, tx, input.RunID)
+	if err != nil {
+		return false, err
+	}
+	if liveChildren {
+		// A controlled unit (child Run) is still running: keep every piece of
+		// evidence and stop dispatching. A deadline caller parks the Run; a cancel
+		// caller leaves it cancelling.
 		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
 			return false, err
 		}
@@ -594,52 +644,75 @@ func (s *Service) finalizeRunTx(
 	}
 
 	outcome := runOutcome{}
-	if deadline {
-		// Pre-cancel deadline outcome (T036 refines cancel priority): failed with
-		// the stable code, no output artifact, terminal and finished.
+	switch {
+	case unknownOperations:
+		// Unknown external writes are never disguised as success/failure/cancel.
+		code := UnknownOperationsErrorCode
+		outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
+	case deadline:
+		// Pre-cancel deadline outcome: failed with the stable code, no output
+		// artifact, terminal and finished.
 		code := DeadlineErrorCode
 		outcome = runOutcome{State: "failed", ErrorCode: &code, Finished: true}
-	} else {
-		switch proposal.SuggestedState {
-		case "succeeded":
-			if proposal.OutputArtifactID == nil {
-				return false, errors.New("the stored succeeded proposal has no output artifact")
-			}
-			if err := checkOutputArtifactTx(
-				ctx, tx, input.RunID, input.RunOwnerID, *proposal.OutputArtifactID,
-			); err != nil {
-				// The artifact was acceptable when the proposal was stored; if it is
-				// no longer owned/ready/linked the platform cannot honestly claim
-				// success, so the run parks for reconciliation instead.
-				code := "output_artifact_invalid"
-				outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
-				break
-			}
-			outcome = runOutcome{
-				State:            "succeeded",
-				OutputArtifactID: proposal.OutputArtifactID,
-				Finished:         true,
-			}
-		case "failed":
-			if proposal.ErrorCode == nil {
-				return false, errors.New("the stored failed proposal has no error_code")
-			}
-			outcome = runOutcome{
-				State:     "failed",
-				ErrorCode: proposal.ErrorCode,
-				Finished:  true,
-			}
-		case "needs_reconciliation":
-			outcome = runOutcome{
-				State:     "needs_reconciliation",
-				ErrorCode: proposal.ErrorCode,
-			}
-		default:
-			return false, fmt.Errorf("unknown stored result proposal %q", proposal.SuggestedState)
+	case cancelIntent || input.NeverStarted:
+		// T036: cancelled wins over an uncommitted result. The state is the
+		// terminal reason; error_code is cleared so a previous unknown/deadline
+		// marker cannot outlive the confirmed cancel.
+		outcome = runOutcome{State: "cancelled", Finished: true}
+	case len(input.ReportedResult) == 0:
+		return false, nil
+	case proposal.SuggestedState == "waiting_approval" ||
+		proposal.SuggestedState == "waiting_children":
+		// Stored, not terminal: T035 turns the waiting proposal into the waiting
+		// state and the single resume job. The execution slot is already free.
+		if err := holdJobTx(ctx, tx, input.JobID); err != nil {
+			return false, err
 		}
+		return false, nil
+	case proposal.SuggestedState == "succeeded":
+		if proposal.OutputArtifactID == nil {
+			return false, errors.New("the stored succeeded proposal has no output artifact")
+		}
+		if err := checkOutputArtifactTx(
+			ctx, tx, input.RunID, input.RunOwnerID, *proposal.OutputArtifactID,
+		); err != nil {
+			// The artifact was acceptable when the proposal was stored; if it is
+			// no longer owned/ready/linked the platform cannot honestly claim
+			// success, so the run parks for reconciliation instead.
+			code := "output_artifact_invalid"
+			outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
+			break
+		}
+		outcome = runOutcome{
+			State:            "succeeded",
+			OutputArtifactID: proposal.OutputArtifactID,
+			Finished:         true,
+		}
+	case proposal.SuggestedState == "failed":
+		if proposal.ErrorCode == nil {
+			return false, errors.New("the stored failed proposal has no error_code")
+		}
+		outcome = runOutcome{
+			State:     "failed",
+			ErrorCode: proposal.ErrorCode,
+			Finished:  true,
+		}
+	case proposal.SuggestedState == "needs_reconciliation":
+		outcome = runOutcome{
+			State:     "needs_reconciliation",
+			ErrorCode: proposal.ErrorCode,
+		}
+	default:
+		return false, fmt.Errorf("unknown stored result proposal %q", proposal.SuggestedState)
 	}
 
-	if err := completeJobTx(ctx, tx, input.JobID); err != nil {
+	// The job transition: a completed execution is `completed`, a unit that
+	// provably never started (started=false cancel) is `void`.
+	if input.NeverStarted {
+		if err := voidJobForCancelTx(ctx, tx, input.JobID); err != nil {
+			return false, err
+		}
+	} else if err := completeJobTx(ctx, tx, input.JobID); err != nil {
 		return false, err
 	}
 	if err := revokeAttemptTx(ctx, tx, input.AttemptToken); err != nil {
@@ -661,22 +734,6 @@ func (s *Service) finalizeRunTx(
 		return false, err
 	}
 	return true, nil
-}
-
-// finalizerBlockedTx is the exit guard of EXECUTION §3/§8: no live child Runs
-// and no unknown operations. Until T036 adds the unknown-operation table the
-// second half can only be false; the finalizer still calls it so T036 extends
-// one predicate instead of adding a second finalizer path.
-func finalizerBlockedTx(ctx context.Context, tx *sql.Tx, runID string) (bool, error) {
-	liveChildren, err := hasLiveChildrenTx(ctx, tx, runID)
-	if err != nil {
-		return false, err
-	}
-	unknownOperations, err := hasUnknownOperationsTx(ctx, tx, runID)
-	if err != nil {
-		return false, err
-	}
-	return liveChildren || unknownOperations, nil
 }
 
 // LiveLease returns the current attempt's non-secret lease facts for one run, or

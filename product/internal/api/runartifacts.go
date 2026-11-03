@@ -229,7 +229,7 @@ func (s *Server) writeRunArtifactError(w http.ResponseWriter, r *http.Request, e
 		return false
 	case errors.Is(err, execution.ErrRunStateConflict):
 		writeError(w, r, http.StatusConflict, "run_state_conflict",
-			"the run is not executing; waiting/cancelling/reconciliation are owned by later F03 tickets")
+			"new execution-bearing artifact calls are refused while the run is not executing (waiting/finalizing/cancelling/reconciliation); in-flight receipt/query calls remain available")
 		return false
 	case errors.Is(err, execution.ErrRunArtifactNotFound):
 		writeError(w, r, http.StatusNotFound, "artifact_not_found",

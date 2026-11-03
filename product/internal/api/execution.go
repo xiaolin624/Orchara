@@ -181,6 +181,107 @@ func (s *Server) handleInternalWaitingResolution(w http.ResponseWriter, r *http.
 	})
 }
 
+// internalUnknownOperationRequest is the documented non-contract T036 bridge body
+// for recording an unresolved external write. The reason is a safe closed code;
+// no provider body, URL or credential is accepted.
+type internalUnknownOperationRequest struct {
+	AttemptToken string `json:"attempt_token"`
+	OperationID  string `json:"operation_id"`
+	Reason       string `json:"reason"`
+}
+
+// internalUnknownOperationResolveRequest is the resolve bridge body: the attempt
+// token binds the call to the Run (a worker must still be live, a supervisor may
+// resolve after the exit fact).
+type internalUnknownOperationResolveRequest struct {
+	AttemptToken string `json:"attempt_token"`
+}
+
+// internalUnknownOperationResponse is the bridge's answer. It carries the safe
+// reason and the resolved fact, never a provider payload.
+type internalUnknownOperationResponse struct {
+	RunID       string  `json:"run_id"`
+	OperationID string  `json:"operation_id"`
+	Reason      string  `json:"reason"`
+	Resolved    bool    `json:"resolved"`
+	ResolvedAt  *string `json:"resolved_at"`
+	RunState    string  `json:"run_state"`
+}
+
+func unknownOperationResponse(operation *execution.UnknownOperation) internalUnknownOperationResponse {
+	response := internalUnknownOperationResponse{
+		RunID:       operation.RunID,
+		OperationID: operation.OperationID,
+		Reason:      operation.Reason,
+		Resolved:    operation.Resolved,
+		RunState:    operation.RunState,
+	}
+	if operation.ResolvedAt != nil {
+		value := operation.ResolvedAt.UTC().Format(time.RFC3339Nano)
+		response.ResolvedAt = &value
+	}
+	return response
+}
+
+// handleInternalUnknownOperation records one unresolved external write for a Run.
+//
+// F06 owns the real operations/receipts; this supervisor|worker mTLS endpoint is
+// the documented bridge (recorded in the T036 report). It requires the Run's live
+// attempt token, stores a safe reason code once, is idempotent for the same
+// (run, operation_id) and refuses a different reason (409 event_conflict). It
+// never commits a Run transition by itself: the finalizer reads the ledger when
+// result+exit meet.
+func (s *Server) handleInternalUnknownOperation(w http.ResponseWriter, r *http.Request) {
+	if !requireAnyInternalRole(w, r, InternalRoleSupervisor, InternalRoleWorker) {
+		return
+	}
+	var request internalUnknownOperationRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	operation, err := s.execution.RecordUnknownOperation(
+		r.Context(),
+		r.PathValue("run_id"),
+		execution.UnknownOperationRequest{
+			AttemptToken: request.AttemptToken,
+			OperationID:  request.OperationID,
+			Reason:       request.Reason,
+		},
+	)
+	if !s.writeExecutionError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, unknownOperationResponse(operation))
+}
+
+// handleInternalResolveUnknownOperation marks one unknown operation resolved once.
+// A worker must still hold the live lease; a supervisor may act after the exit
+// fact. Resolving the last unknown of a cancel-requested Run re-invokes the one
+// finalizer so the Run can become cancelled exactly once; a terminal Run is never
+// revived (409 run_terminal).
+func (s *Server) handleInternalResolveUnknownOperation(w http.ResponseWriter, r *http.Request) {
+	if !requireAnyInternalRole(w, r, InternalRoleSupervisor, InternalRoleWorker) {
+		return
+	}
+	var request internalUnknownOperationResolveRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	operation, err := s.execution.ResolveUnknownOperation(
+		r.Context(),
+		r.PathValue("run_id"),
+		r.PathValue("operation_id"),
+		request.AttemptToken,
+		InternalRole(r.Context()),
+	)
+	if !s.writeExecutionError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, unknownOperationResponse(operation))
+}
+
 func (s *Server) handleInternalAttemptExit(w http.ResponseWriter, r *http.Request) {
 	if !requireInternalRole(w, r, InternalRoleSupervisor) {
 		return
@@ -222,6 +323,11 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 	case errors.Is(err, execution.ErrRunNotFound):
 		writeError(w, r, http.StatusNotFound, "run_not_found", "that run does not exist")
 		return false
+	case errors.Is(err, execution.ErrUnknownOperationNotFound):
+		// F03/T036: a foreign Run's operation answers exactly like a missing one.
+		writeError(w, r, http.StatusNotFound, "resource_not_found",
+			"that unknown operation does not exist")
+		return false
 	case errors.Is(err, execution.ErrStaleAttempt):
 		writeError(w, r, http.StatusConflict, "stale_attempt",
 			"the attempt token does not own a live lease on this run")
@@ -252,7 +358,7 @@ func (s *Server) writeExecutionError(w http.ResponseWriter, r *http.Request, err
 		return false
 	case errors.Is(err, execution.ErrRunStateConflict):
 		writeError(w, r, http.StatusConflict, "run_state_conflict",
-			"the run is not executing; waiting/cancelling/reconciliation states are owned by later F03 tickets")
+			"the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls")
 		return false
 	case errors.Is(err, execution.ErrIdentityMismatch):
 		writeError(w, r, http.StatusConflict, "execution_identity_mismatch",

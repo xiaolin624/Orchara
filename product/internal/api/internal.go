@@ -133,6 +133,12 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// F03/T035: the synthetic approval/child-result bridge. Supervisor-only mTLS;
 	// F06/F07 replace it with their real sources (documented non-contract bridge).
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/waiting-resolution", s.handleInternalWaitingResolution)
+	// F03/T036: the documented non-contract unknown-operation bridge. F06 owns the
+	// real operations/receipts; this supervisor|worker surface records and resolves
+	// the safe unresolved-guard ledger the finalizer reads.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/unknown-operations", s.handleInternalUnknownOperation)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/unknown-operations/{operation_id}/resolve",
+		s.handleInternalResolveUnknownOperation)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/events", s.handleInternalRunEvents)
 	mux.HandleFunc("POST /internal/v1/attempts/{attempt_id}/exited", s.handleInternalAttemptExit)
 

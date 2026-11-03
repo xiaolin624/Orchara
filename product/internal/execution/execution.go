@@ -35,10 +35,10 @@
 //     token over the internal mTLS listener; they never touch `platform.*`
 //     directly (`orchara_worker` has no schema privileges).
 //
-// F03 boundary: cancel arbitration and the conservative
-// recovery/unknown-operation sweep are T036/T038. This package writes the
-// terminal transition and its durable event, but no cancel decision and no new
-// attempt after an unproven exit.
+// F03 boundary: cancel arbitration and the unknown-operation guard are T036
+// (cancel.go/cancel_store.go, extended by the one finalizer); the conservative
+// recovery/re-drive sweep is T038. This package writes the terminal transition
+// and its durable event, but no new attempt after an unproven exit.
 package execution
 
 import (

@@ -367,6 +367,12 @@ func (s *Service) ResolveWaiting(
 		// A Run that is not waiting has no stored condition to resolve.
 		return nil, ErrRunStateConflict
 	}
+	if run.State == "cancelling" {
+		// F03/T036: while a cancel is being confirmed only heartbeat, exit and
+		// receipt/query calls remain. A waiting resolution must not race a cancel
+		// into a resume; the waiting evidence stays, but it is inert.
+		return nil, ErrRunStateConflict
+	}
 	if waiting.Kind != resolution.Kind {
 		return nil, ErrRunStateConflict
 	}
@@ -485,6 +491,13 @@ func (s *Service) maybeEnqueueResumeTx(
 			ResumeJobID:    waiting.ResumeJobID.String,
 			ExistingResume: true,
 		}, nil
+	}
+	if waiting.CancelRequestedAt.Valid {
+		// F03/T036: the waiting row is marked cancelled only by the cancel
+		// endpoint (never by the T034 deadline intent), so it is the definitive
+		// "this wait can never resume" fact. The finalizer commits cancelled once
+		// the exit fact is present; this transaction must not create a resume.
+		return &resumeOutcome{PendingReason: "cancel_requested"}, nil
 	}
 	if len(waiting.Decision) == 0 || !waiting.DecisionAt.Valid || !waiting.ExitConfirmedAt.Valid ||
 		strings.TrimSpace(waiting.CheckpointID) == "" {

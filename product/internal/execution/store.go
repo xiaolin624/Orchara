@@ -77,6 +77,10 @@ type attemptFacts struct {
 	ImageDigest       string
 	ReportedResult    []byte
 	CheckpointID      sql.NullString
+	// T036: the Run's control facts the exit path needs to arbitrate cancel vs
+	// deadline vs the stored proposal.
+	RunCancelRequestedAt sql.NullTime
+	RunErrorCode         sql.NullString
 	// T034: the database-clock length of this attempt so far and whether its
 	// interval was already settled into runs.active_elapsed_ms.
 	LiveActiveMS   int64
@@ -436,7 +440,8 @@ func loadAttemptForExitTx(
 		       (a.exit_evidence IS NOT NULL AND a.exit_evidence = $2::jsonb) AS evidence_same,
 		       a.reported_result, a.checkpoint_id,
 		       j.state, j.run_id::text, r.state, r.phase, r.revision, r.started_at,
-		       r.owner_id::text, r.manifest_sha256, s.worker_image_digest
+		       r.owner_id::text, r.manifest_sha256, s.worker_image_digest,
+		       r.cancel_requested_at, r.error_code
 		  FROM platform.run_attempts AS a
 		  JOIN platform.jobs AS j ON j.id = a.job_id
 		  JOIN platform.runs AS r ON r.id = a.run_id
@@ -452,6 +457,7 @@ func loadAttemptForExitTx(
 		&facts.JobState, &facts.JobRunID, &facts.RunState, &facts.RunPhase,
 		&facts.RunRevision, &facts.RunStartedAt,
 		&facts.RunOwnerID, &facts.RunManifestSHA256, &facts.ImageDigest,
+		&facts.RunCancelRequestedAt, &facts.RunErrorCode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrAttemptNotFound
@@ -1065,13 +1071,22 @@ func hasLiveChildrenTx(ctx context.Context, tx *sql.Tx, runID string) (bool, err
 }
 
 // hasUnknownOperationsTx is the "no unknown side effects" half of the finalizer
-// guard. EXECUTION §5 requires a Run with unknown external writes to become
-// needs_reconciliation instead of succeeding/failing/cancelling, but the
-// operation table is owned by F03/T036 (`platform.run_unknown_operations` or
-// equivalent). Until T036 creates it there is nothing that can record an
-// unknown operation for this run, so the predicate is false; T036 replaces this
-// body with the real query (the finalizer calls it, it does not grow a second
-// guard).
-func hasUnknownOperationsTx(context.Context, *sql.Tx, string) (bool, error) {
-	return false, nil
+// guard. EXECUTION §5/§7 requires a Run with unresolved external writes to be
+// parked in needs_reconciliation instead of succeeding/failing/cancelling.
+// T036 replaces T031's always-false placeholder with the real ledger query; the
+// finalizer keeps calling this one predicate.
+func hasUnknownOperationsTx(ctx context.Context, tx *sql.Tx, runID string) (bool, error) {
+	var unresolved bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+		    SELECT 1 FROM platform.run_unknown_operations
+		     WHERE run_id = $1::uuid
+		       AND resolved_at IS NULL
+		)`,
+		runID,
+	).Scan(&unresolved)
+	if err != nil {
+		return false, fmt.Errorf("checking unresolved unknown operations: %w", err)
+	}
+	return unresolved, nil
 }
