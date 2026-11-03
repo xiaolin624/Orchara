@@ -375,11 +375,13 @@ func (s *Service) dispatchStream(
 			// availability fault. A compatible fallback gets one generation of
 			// its own; the failed primary generation's text is never appended to
 			// it. A permission/schema answer is terminal and never falls back.
+			// F06/T046: release this generation's reservation first, so the
+			// fallback is gated against the budget that is actually free.
 			if reason, eligible := fallbackReasonFor(streamErr); eligible {
+				if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
+					return nil, capErr
+				}
 				if selection := s.selectFallback(ctx, run, spec, input.Params, reason); selection != nil {
-					if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
-						return nil, capErr
-					}
 					_ = emit(Frame{
 						Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
 						Retryable: true,

@@ -870,15 +870,17 @@ func (s *Service) dispatchModel(
 		}
 	}
 
-	// The primary's availability fault outlived its bounded retries. One
-	// compatible fallback in the configured order, one physical attempt.
+	// The primary's availability fault outlived its bounded retries. Release the
+	// last failed attempt's reservation before selecting a fallback: the
+	// fallback must fit the budget that is actually still free, not one still
+	// held by the attempt that just failed.
+	if capErr := s.resetAttemptForRetry(ctx, operationID, maxPhysicalAttempts, failureCode); capErr != nil {
+		return nil, capErr
+	}
 	selection := s.selectFallback(ctx, run, spec, input.Params, failureReason)
 	if selection != nil {
 		if selection.Reason == "" {
 			selection.Reason = FallbackReasonAvailability
-		}
-		if capErr := s.resetAttemptForRetry(ctx, operationID, maxPhysicalAttempts, failureCode); capErr != nil {
-			return nil, capErr
 		}
 		return s.dispatchFallback(ctx, run, input, spec, operationID,
 			maxPhysicalAttempts+1, selection)

@@ -177,16 +177,16 @@ func (s *Service) ReconcileUsage(ctx context.Context, role, runID string, reques
 	}
 	defer func() { _ = tx.Rollback() }()
 	var operationID, settlementState, currency string
-	var recordedPrice string
+	var recordedPrice, recordedCharge string
 	err = tx.QueryRowContext(ctx, `
 		SELECT o.id::text, a.settlement_state, COALESCE(a.currency, r.currency),
-		       COALESCE(a.price_version, '')
+		       COALESCE(a.price_version, ''), COALESCE(a.charged_amount::text, '')
 		  FROM platform.operations AS o
 		  JOIN platform.operation_attempts AS a ON a.operation_id = o.id
 		  JOIN platform.runs AS r ON r.id = o.run_id
 		 WHERE o.run_id = $1::uuid AND o.id = $2::uuid AND a.attempt_no = $3`,
 		runID, request.OperationID, request.AttemptNo,
-	).Scan(&operationID, &settlementState, &currency, &recordedPrice)
+	).Scan(&operationID, &settlementState, &currency, &recordedPrice, &recordedCharge)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, capFailure(404, CodeOperationNotFound, "that operation attempt does not exist for this run")
 	}
@@ -200,7 +200,7 @@ func (s *Service) ReconcileUsage(ctx context.Context, role, runID string, reques
 	if settlementState == "settled" {
 		return &reconcileResult{
 			OperationID: operationID, AttemptNo: request.AttemptNo,
-			ChargedAmount: request.Amount, Currency: currency, AlreadySettled: true,
+			ChargedAmount: recordedCharge, Currency: currency, AlreadySettled: true,
 		}, nil
 	}
 	priceVersion := request.PriceVersion
