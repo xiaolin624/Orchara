@@ -957,6 +957,26 @@ P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundl
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
 `pytest.fail`（不 skip）。
 
+## F06 受控能力代理（T041，2026-11-03）
+
+T041（GitHub #42）已交付，状态 **`passed`**（范围 = 运行域 Go 能力代理：模型调用全链路 +
+工具调用授权/worker 回报；`invokeCapability` 契约端点 + 非契约 `capability-results`；迁移
+0025 `operations`/`operation_attempts`；owner-only 账本读取 + `/runs` 受控调用账本面板；
+Python worker adapter/agent loop）。证据：`reports/f06/T041-capability-proxy.md`。
+
+| 项 | 结果 |
+|---|---|
+| 授权 | run running + live attempt + 封存 manifest SHA-256/allowlist + kind 歧义拒绝；全部先于 provider |
+| 账本 | 逻辑 operation 一行、物理 attempt 一行；JCS params SHA-256；同 op+params 回放、logical-key 冲突 409 |
+| 模型调用 | profile passed/未撤销；Go 唯一重试权威（transient ≤2 次重试）；tool-call id/name/arguments 与 response_schema 全校验后才封存 receipt |
+| 工具调用 | ready+approved（或 debug 作者拥有）；grant 绑定 run/attempt/params hash；结果端点幂等回报；真实执行 T043 |
+| 账本读取 | owner-only `GET /api/v1/runs/{id}/capabilities`；不含 params/receipt 正文；`/runs` 面板 Node 测试 |
+| 适配器 | `worker/platform_worker/agents`：每次 generate 一次物理调用、无隐藏重试；agent loop 只返回 NodeOutcome |
+| 真实栈 | 真实 PG/mTLS/HTTP/对象字节：`tests/f06` 42 passed；真实本地 Python 工具执行 + 2 轮真实端点 loop（transport 调用=2=operation 数=attempt 总数） |
+| 门禁 | `go vet` exit 0；`go test ./...` exit 0（24 ok/0 FAIL）；`gofmt -l` 空；`pytest tests/f06` 42；`tests/f04a` 36；`tests/tooling` 21；目标 T024 12；`sync_spec --check` no drift |
+| 边界/not_run | 真实厂商 adapter、沙箱 python/agent 节点（T042/T043）、connector（T050）、预算结算（T046）、审批来源（T048）、浏览器 DOM、全量 `pytest tests`/全量 `tests/f00b`（Windows 管道风险，仅目标 T024） |
+| 提交 | 迁移/服务、HTTP/测试、worker、页面、报告/文档各一个逻辑提交；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0024 |
+
 ## 记录模板
 
 ```text
