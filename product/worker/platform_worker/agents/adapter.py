@@ -26,9 +26,10 @@ model object, which is also what an injected LangGraph node needs.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .schema import validate_value
 
@@ -55,6 +56,23 @@ class CapabilityTransport(Protocol):
     """One real capability request. It must not retry on its own."""
 
     def invoke(self, run_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+
+class StreamingCapabilityTransport(Protocol):
+    """One real streaming capability request (F06/T044).
+
+    ``stream`` performs exactly one physical HTTP stream and calls ``on_frame``
+    for each contract SSE frame. It has no retry loop: the Go server owns retries
+    and each of its retries is a separate ledger attempt/generation.
+    """
+
+    def stream(
+        self,
+        run_id: str,
+        body: dict[str, Any],
+        on_frame: Callable[[dict[str, Any]], None],
+    ) -> None:
         ...
 
 
@@ -129,25 +147,14 @@ class PlatformChatModel:
         if len(declared) != len(tools or []):
             raise PlatformValidationError("invalid_tool_call", "tool names must be unique")
 
-        params: dict[str, Any] = {"task": "agent", "messages": messages}
-        if tools:
-            params["tools"] = [
-                {"name": tool.name, "capability_version": tool.capability_version}
-                for tool in tools
-            ]
-        if response_schema is not None:
-            params["response_schema"] = response_schema
-        if max_output_tokens is not None:
-            params["max_output_tokens"] = max_output_tokens
-
-        body = {
-            "attempt_token": self.attempt_token,
-            "operation_id": _uuid(operation_id or str(uuid.uuid4()), "operation_id"),
-            "logical_key": logical_key or f"agent-{uuid.uuid4()}",
-            "capability_version": self.capability_version,
-            "params": params,
-            "capability_kind": self.capability_kind,
-        }
+        body = self._request_body(
+            messages=messages,
+            tools=tools or [],
+            response_schema=response_schema,
+            max_output_tokens=max_output_tokens,
+            logical_key=logical_key,
+            operation_id=operation_id,
+        )
         # The one physical call. Do not wrap this in a retry: the server owns
         # retries and each of its retries is its own ledger attempt.
         try:
@@ -173,6 +180,154 @@ class PlatformChatModel:
                 "provider_response_invalid", "the capability answer has no data object"
             )
         return self._validate_generation(data, declared)
+
+    def _request_body(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[DeclaredTool],
+        response_schema: dict[str, Any] | None,
+        max_output_tokens: int | None,
+        logical_key: str | None,
+        operation_id: str | None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"task": "agent", "messages": messages}
+        if tools:
+            params["tools"] = [
+                {"name": tool.name, "capability_version": tool.capability_version}
+                for tool in tools
+            ]
+        if response_schema is not None:
+            params["response_schema"] = response_schema
+        if max_output_tokens is not None:
+            params["max_output_tokens"] = max_output_tokens
+        return {
+            "attempt_token": self.attempt_token,
+            "operation_id": _uuid(operation_id or str(uuid.uuid4()), "operation_id"),
+            "logical_key": logical_key or f"agent-{uuid.uuid4()}",
+            "capability_version": self.capability_version,
+            "params": params,
+            "capability_kind": self.capability_kind,
+        }
+
+    def stream_generate(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[DeclaredTool] | None = None,
+        response_schema: dict[str, Any] | None = None,
+        max_output_tokens: int | None = None,
+        logical_key: str | None = None,
+        operation_id: str | None = None,
+        on_frame: Callable[[dict[str, Any]], None] | None = None,
+    ) -> Generation:
+        """Stream exactly one physical model call (F06/T044).
+
+        Frames are forwarded to ``on_frame`` for a temporary preview. The returned
+        :class:`Generation` is built **only** from the terminal validated ``final``
+        frame of the current generation: a text/tool draft from an earlier failed
+        generation is discarded when the server starts the next generation, and a
+        tool call is never executed from a streamed fragment.
+        """
+        declared = {tool.name: tool for tool in (tools or [])}
+        if len(declared) != len(tools or []):
+            raise PlatformValidationError("invalid_tool_call", "tool names must be unique")
+        stream_method = getattr(self.transport, "stream", None)
+        if not callable(stream_method):
+            raise PlatformValidationError(
+                "streaming_transport_unavailable",
+                "the capability transport does not implement the streaming protocol",
+            )
+        body = self._request_body(
+            messages=messages,
+            tools=tools or [],
+            response_schema=response_schema,
+            max_output_tokens=max_output_tokens,
+            logical_key=logical_key,
+            operation_id=operation_id,
+        )
+
+        current_generation: str | None = None
+        draft_text = ""
+        had_delta = False
+        terminal_error = None
+        final_frame: dict[str, Any] | None = None
+
+        def handle(frame: dict[str, Any]) -> None:
+            nonlocal current_generation, draft_text, had_delta, terminal_error, final_frame
+            if not isinstance(frame, dict):
+                raise PlatformValidationError(
+                    "provider_response_invalid", "the model stream frame is not an object"
+                )
+            frame_type = frame.get("type")
+            generation = frame.get("generation_id")
+            operation = frame.get("operation_id")
+            if frame_type not in {"delta", "tool_delta", "final", "error"}:
+                raise PlatformValidationError(
+                    "provider_response_invalid", "the model stream frame has no known type"
+                )
+            if not isinstance(generation, str) or not generation:
+                raise PlatformValidationError(
+                    "provider_response_invalid", "every stream frame needs a generation_id"
+                )
+            if not isinstance(operation, str) or not operation:
+                raise PlatformValidationError(
+                    "provider_response_invalid", "every stream frame needs an operation_id"
+                )
+            if generation != current_generation:
+                # A new generation replaces the old draft. The old text is never
+                # appended to the new one, and old tool fragments are forgotten.
+                current_generation = generation
+                draft_text = ""
+                had_delta = False
+                terminal_error = None
+                final_frame = None
+            if on_frame is not None:
+                on_frame(frame)
+            if frame_type == "delta":
+                text = frame.get("text", "")
+                if not isinstance(text, str):
+                    raise PlatformValidationError(
+                        "provider_response_invalid", "a delta frame text must be a string"
+                    )
+                draft_text += text
+                had_delta = True
+            elif frame_type == "error":
+                if not frame.get("retryable"):
+                    error = frame.get("error") or {}
+                    code = error.get("code") if isinstance(error, dict) else None
+                    terminal_error = str(code or "capability_failed")
+                # A retryable error is not terminal: the next generation begins.
+            elif frame_type == "final":
+                final_frame = frame
+
+        try:
+            stream_method(self.run_id, body, handle)
+        except PlatformError:
+            raise
+        except Exception as exc:  # transport failure: never invent a retry
+            raise PlatformCapabilityError(
+                "transport_error", f"the streaming transport failed ({type(exc).__name__})"
+            ) from exc
+
+        if terminal_error is not None:
+            raise PlatformCapabilityError(terminal_error, "the model stream failed")
+        if final_frame is None:
+            raise PlatformCapabilityError(
+                "stream_incomplete", "the model stream ended without a final frame"
+            )
+        data = final_frame.get("data")
+        if not isinstance(data, dict):
+            raise PlatformValidationError(
+                "provider_response_invalid", "the final frame has no data object"
+            )
+        generation = self._validate_generation(data, declared)
+        if had_delta and draft_text != generation.text:
+            raise PlatformValidationError(
+                "provider_response_invalid",
+                "the streamed draft does not match the validated final content",
+            )
+        return generation
 
     def _validate_generation(
         self, data: dict[str, Any], declared: dict[str, DeclaredTool]

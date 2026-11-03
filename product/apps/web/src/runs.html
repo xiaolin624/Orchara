@@ -201,12 +201,14 @@
 
     <p id="detail-note" class="hint"></p>
     <p id="detail-preview" class="hint" data-preview="not_run">
-      临时模型流式 delta 预览未实现（F06 承接）：本页只显示已提交的持久事件，不把临时 delta
-      当成正文，也不伪造预览文本。finalizing 只是阶段，终态以服务端提交为准。
+      临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
+      operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
+      不执行。预览不持久，最终以持久 Run 快照/事件为准。
     </p>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
 </body>
 </html>

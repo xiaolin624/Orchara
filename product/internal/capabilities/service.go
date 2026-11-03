@@ -797,7 +797,7 @@ func (s *Service) dispatchModel(
 	}
 	reserved := estimateReservedUnits(input.Params)
 	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
-		if capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
+		if _, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
 			return nil, capErr
 		}
 		response, callErr := provider.Call(ctx, modelproxy.CallRequest{
@@ -831,11 +831,13 @@ func (s *Service) dispatchModel(
 }
 
 // beginModelAttempt CASes the operation from authorized to dispatching and
-// records the physical attempt row before the provider is touched.
-func (s *Service) beginModelAttempt(ctx context.Context, operationID, attemptToken string, attempt int, reserved string) *Error {
+// records the physical attempt row before the provider is touched. It returns
+// the attempt row id, which the streaming path uses as the frame generation id:
+// every streamed frame is thereby traceable to a persisted physical attempt.
+func (s *Service) beginModelAttempt(ctx context.Context, operationID, attemptToken string, attempt int, reserved string) (string, *Error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return capFailure(500, CodeInternal, "the attempt transaction could not start")
+		return "", capFailure(500, CodeInternal, "the attempt transaction could not start")
 	}
 	defer func() { _ = tx.Rollback() }()
 	var state string
@@ -843,33 +845,34 @@ func (s *Service) beginModelAttempt(ctx context.Context, operationID, attemptTok
 		SELECT state FROM platform.operations WHERE id = $1::uuid FOR UPDATE`, operationID,
 	).Scan(&state)
 	if err != nil {
-		return capFailure(500, CodeInternal, "the operation could not be locked")
+		return "", capFailure(500, CodeInternal, "the operation could not be locked")
 	}
 	if state != "authorized" {
-		return capFailure(409, CodeOperationInProgress, "the operation is not in an authorized state")
+		return "", capFailure(409, CodeOperationInProgress, "the operation is not in an authorized state")
 	}
+	attemptID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO platform.operation_attempts
 			(id, operation_id, attempt_no, state, attempt_token, reserved_amount, currency)
 		VALUES ($1::uuid, $2::uuid, $3, 'dispatching', $4::uuid, $5::numeric, 'USD')`,
-		uuid.NewString(), operationID, attempt, attemptToken, reserved,
+		attemptID, operationID, attempt, attemptToken, reserved,
 	); err != nil {
 		if isUniqueViolation(err) {
-			return capFailure(409, CodeOperationInProgress, "the operation already has that attempt")
+			return "", capFailure(409, CodeOperationInProgress, "the operation already has that attempt")
 		}
-		return capFailure(500, CodeInternal, "the attempt could not be recorded")
+		return "", capFailure(500, CodeInternal, "the attempt could not be recorded")
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
 		   SET state = 'dispatching', dispatched_at = now(), updated_at = now()
 		 WHERE id = $1::uuid AND state = 'authorized'`, operationID,
 	); err != nil {
-		return capFailure(500, CodeInternal, "the operation could not be dispatched")
+		return "", capFailure(500, CodeInternal, "the operation could not be dispatched")
 	}
 	if err := tx.Commit(); err != nil {
-		return capFailure(500, CodeInternal, "the attempt could not be committed")
+		return "", capFailure(500, CodeInternal, "the attempt could not be committed")
 	}
-	return nil
+	return attemptID, nil
 }
 
 func (s *Service) finishModelSuccess(

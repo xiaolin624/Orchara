@@ -13,15 +13,18 @@ from .adapter import (
     PlatformChatModel,
     PlatformError,
     PlatformValidationError,
+    StreamingCapabilityTransport,
     ToolCall,
 )
 from .agent import (
     ExecutedCall,
     ModelAdapter,
     NodeOutcome,
+    StreamingModelAdapter,
     ToolExecutionError,
     ToolExecutor,
     run_agent,
+    stream_agent,
 )
 from .schema import validate_value
 
@@ -36,9 +39,12 @@ __all__ = [
     "PlatformChatModel",
     "PlatformError",
     "PlatformValidationError",
+    "StreamingCapabilityTransport",
+    "StreamingModelAdapter",
     "ToolCall",
     "ToolExecutionError",
     "ToolExecutor",
     "run_agent",
+    "stream_agent",
     "validate_value",
 ]

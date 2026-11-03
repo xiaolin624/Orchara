@@ -391,6 +391,11 @@ function initDebug() {
           previewID: 'run-preview',
         });
       }
+      // T044: the temporary model preview is a separate, non-persistent stream.
+      // It is never rendered as the durable Run outcome.
+      if (typeof beginModelPreview === 'function') {
+        beginModelPreview(summary.id, { panelID: 'run-preview' });
+      }
       // A new attempt gets a new key; the completed one is never reused.
       idempotencyKey = newIdempotencyKey();
       document.getElementById('debug-key').textContent = idempotencyKey;

@@ -1456,6 +1456,11 @@ async function loadRunDetail(runId) {
       statusID: 'detail-timeline-status',
       previewID: 'detail-preview',
     });
+    // T044: the temporary model preview (in-process, non-persistent). It closes
+    // itself on final/error and never replaces the persistent run snapshot.
+    if (typeof beginModelPreview === 'function') {
+      beginModelPreview(runId, { panelID: 'detail-preview' });
+    }
     if (merged && shouldPollRun(merged)) {
       runsStatus('已加载 Run ' + runId + '，仍在执行；页面会轮询到终态（不会提前显示成功）。', 'pending');
       await pollRunDetail(runId, 0);

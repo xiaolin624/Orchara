@@ -73,6 +73,13 @@ var allowedModelParamKeys = map[string]bool{
 	"task":                    true,
 	"stub_tool_calls":         true,
 	"stub_transient_failures": true,
+	// T044 streaming-stub hints. They are labelled stub parameters and are only
+	// meaningful when the registered provider is the dev stub.
+	"stub_stream_chunks":               true,
+	"stub_stream_fail_after":           true,
+	"stub_stream_fail_attempts":        true,
+	"stub_stream_incomplete_tool_call": true,
+	"stub_stream_delay_ms":             true,
 }
 
 // canonicalParams renders the params as RFC 8785 JCS bytes. Those exact bytes
@@ -157,6 +164,40 @@ func validateModelParams(params map[string]any, profile *ModelProfile, tools map
 				fmt.Sprintf("must be an integer between 0 and %d", maxPhysicalAttempts-1))
 		}
 		validated.StubTransientFail = value
+	}
+	if raw, present := params["stub_stream_chunks"]; present {
+		value, ok := jsonInteger(raw)
+		if !ok || value < 1 || value > 64 {
+			return nil, validationFailure("params/stub_stream_chunks",
+				"must be an integer between 1 and 64")
+		}
+	}
+	if raw, present := params["stub_stream_fail_after"]; present {
+		value, ok := jsonInteger(raw)
+		if !ok || value < 0 || value > 64 {
+			return nil, validationFailure("params/stub_stream_fail_after",
+				"must be an integer between 0 and 64")
+		}
+	}
+	if raw, present := params["stub_stream_fail_attempts"]; present {
+		value, ok := jsonInteger(raw)
+		if !ok || value < 0 || value > maxPhysicalAttempts {
+			return nil, validationFailure("params/stub_stream_fail_attempts",
+				fmt.Sprintf("must be an integer between 0 and %d", maxPhysicalAttempts))
+		}
+	}
+	if raw, present := params["stub_stream_incomplete_tool_call"]; present {
+		if _, ok := raw.(bool); !ok {
+			return nil, validationFailure("params/stub_stream_incomplete_tool_call",
+				"must be a boolean")
+		}
+	}
+	if raw, present := params["stub_stream_delay_ms"]; present {
+		value, ok := jsonInteger(raw)
+		if !ok || value < 0 || value > 2000 {
+			return nil, validationFailure("params/stub_stream_delay_ms",
+				"must be an integer between 0 and 2000")
+		}
 	}
 	return validated, nil
 }
