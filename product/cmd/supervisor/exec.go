@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,6 +31,11 @@ import (
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/uuid"
 )
+
+// nodeEventSequence is the diagnostic local_sequence of this process's
+// node.status events. It is monotonic for the process; the server's committed
+// order is the request order, never this number.
+var nodeEventSequence atomic.Int64
 
 const execUsage = `usage: orchara-supervisor exec --once [flags]
 
@@ -214,6 +220,31 @@ func (a dbAccess) RunState(ctx context.Context, runID string) (string, string, e
 	return state, errorCode.String, nil
 }
 
+// AttemptNumber is the dense run-local attempt ordinal of the live attempt. The
+// contract has no attempt_no column (the attempt token is the credential), so the
+// node.status payload's required attempt_no is derived from the trusted database
+// identity instead of trusting a caller value.
+func (a dbAccess) AttemptNumber(ctx context.Context, runID, token string) (int64, error) {
+	var number int64
+	err := a.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		  FROM platform.run_attempts AS earlier
+		  JOIN platform.run_attempts AS current
+		    ON current.run_id = earlier.run_id
+		 WHERE current.token = $2::uuid
+		   AND current.run_id = $1::uuid
+		   AND (earlier.started_at, earlier.token) <= (current.started_at, current.token)`,
+		runID, token,
+	).Scan(&number)
+	if err != nil {
+		return 0, err
+	}
+	if number < 1 {
+		return 0, errors.New("the attempt has no recorded attempt number")
+	}
+	return number, nil
+}
+
 // execClient composes the protocol client with the trusted run-state read.
 type execClient struct {
 	*supClient
@@ -222,4 +253,50 @@ type execClient struct {
 
 func (c execClient) RunState(ctx context.Context, runID string) (string, string, error) {
 	return c.db.RunState(ctx, runID)
+}
+
+// SubmitNodeStatus implements presetexec.Client: one node.status transition over
+// the worker mTLS capacity. The payload is exactly {node_id,state,attempt_no};
+// the attempt number is read from the trusted database identity, never taken
+// from the manifest or the environment.
+func (c execClient) SubmitNodeStatus(
+	ctx context.Context, runID, attemptToken, nodeID, state string,
+) error {
+	attemptNo, err := c.db.AttemptNumber(ctx, runID, attemptToken)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{
+		"attempt_token": attemptToken,
+		"events": []map[string]any{{
+			"event_id":       uuid.NewString(),
+			"local_sequence": nodeEventSequence.Add(1),
+			"type":           "node.status",
+			"payload": map[string]any{
+				"node_id": nodeID, "state": state, "attempt_no": attemptNo,
+			},
+		}},
+	}
+	_, err = c.post(ctx, c.worker, workerRole, runPath(runID, "/events"), body, nil)
+	return err
+}
+
+// RecordNodeResults implements presetexec.Client: the per-node data/file/log
+// provenance report. It carries no content; the server re-proves the live
+// attempt and that every artifact is a ready node_output/log of this run.
+func (c execClient) RecordNodeResults(
+	ctx context.Context, runID, attemptToken string, results []presetexec.NodeResult,
+) error {
+	items := make([]map[string]string, 0, len(results))
+	for _, result := range results {
+		items = append(items, map[string]string{
+			"node_id":     result.NodeID,
+			"kind":        result.Kind,
+			"artifact_id": result.ArtifactID,
+			"label":       result.Label,
+		})
+	}
+	body := map[string]any{"attempt_token": attemptToken, "results": items}
+	_, err := c.post(ctx, c.worker, workerRole, runPath(runID, "/node-results"), body, nil)
+	return err
 }

@@ -43,22 +43,58 @@ type recordedRegistration struct {
 type fakeClient struct {
 	mu sync.Mutex
 
-	lease       *Lease
-	manifest    []byte
-	inputs      []InputArtifact
-	inputBytes  []byte
-	runState    string
-	runError    string
-	cancelAt    int // heartbeat number that reports cancel; 0 = never
-	heartbeats  int
-	uploadSeq   int
-	uploads     []recordedUpload
-	proposals   []recordedProposal
-	exits       []recordedExit
-	registers   []recordedRegistration
-	statuses    map[string]ArtifactView
-	registerErr error
-	statusErr   error
+	lease         *Lease
+	manifest      []byte
+	inputs        []InputArtifact
+	inputBytes    []byte
+	runInput      []byte
+	runInputErr   error
+	runState      string
+	runError      string
+	cancelAt      int // heartbeat number that reports cancel; 0 = never
+	heartbeats    int
+	uploadSeq     int
+	uploads       []recordedUpload
+	proposals     []recordedProposal
+	exits         []recordedExit
+	registers     []recordedRegistration
+	nodeEvents    []recordedNodeEvent
+	nodeResults   []NodeResult
+	statuses      map[string]ArtifactView
+	registerErr   error
+	statusErr     error
+	nodeEventErr  error
+	nodeResultErr error
+}
+
+// recordedNodeEvent is one observed node.status transition.
+type recordedNodeEvent struct {
+	NodeID string
+	State  string
+}
+
+func (f *fakeClient) SubmitNodeStatus(
+	_ context.Context, _ string, _ string, nodeID, state string,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.nodeEventErr != nil {
+		return f.nodeEventErr
+	}
+	f.nodeEvents = append(f.nodeEvents, recordedNodeEvent{NodeID: nodeID, State: state})
+	return nil
+}
+
+func (f *fakeClient) RecordNodeResults(
+	_ context.Context, _ string, _ string, results []NodeResult,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.nodeResultErr != nil {
+		return f.nodeResultErr
+	}
+	f.nodeResults = append(f.nodeResults, results...)
+	return nil
 }
 
 func (f *fakeClient) Claim(context.Context, string, string) (*Lease, error) {
@@ -75,7 +111,10 @@ func (f *fakeClient) Heartbeat(context.Context, string, string, string) (Heartbe
 	return Heartbeat{}, nil
 }
 
-func (f *fakeClient) Fetch(context.Context, string) ([]byte, error) {
+func (f *fakeClient) Fetch(_ context.Context, link string) ([]byte, error) {
+	if f.lease != nil && link == f.lease.InputURL {
+		return f.runInput, f.runInputErr
+	}
 	return f.manifest, nil
 }
 
