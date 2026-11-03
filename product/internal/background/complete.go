@@ -252,27 +252,54 @@ func guardArtifactFinalizeCompletion(
 }
 
 // guardModelValidateCompletion records the compatibility report artifact the
-// handler registered. The handler cannot name an artifact it did not upload:
-// readiness, ownership and job provenance are re-checked in this transaction. A
-// failed compatibility verdict is still a successful job, so only a succeeded
-// result is checked.
+// handler registered and reconciles the model/evaluation business state. The
+// handler cannot name an artifact it did not upload: readiness, ownership, job
+// provenance, the sealed report bindings and the model-call ledger row are all
+// re-checked in this transaction. A failed compatibility verdict is still a
+// successful job, so only a succeeded result is checked; a terminal failure or
+// cancellation fails the evaluation and the model.
 func guardModelValidateCompletion(
 	ctx context.Context,
-	_ *Controller,
+	c *Controller,
 	tx *sql.Tx,
 	job *Job,
 	completion *Completion,
 ) error {
-	if completion.State != StateSucceeded {
-		return nil
-	}
-	if completion.ResultArtifactID == "" {
-		return &ValidationError{
-			Field:   "result_artifact_id",
-			Message: "model_validate success must name the compatibility report artifact",
+	if completion.State == StateSucceeded {
+		if completion.ResultArtifactID == "" {
+			return &ValidationError{
+				Field:   "result_artifact_id",
+				Message: "model_validate success must name the compatibility report artifact",
+			}
+		}
+		if err := verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID); err != nil {
+			return err
+		}
+		failureCode, guardErr := c.guardModelValidateSuccess(ctx, tx, job, completion.ResultArtifactID)
+		switch {
+		case errors.Is(guardErr, errGuardTransient):
+			completion.State = StateFailed
+			completion.ErrorCode = CodeTransientStorageIO
+		case guardErr != nil:
+			return guardErr
+		case failureCode != "":
+			// A report the server cannot trust is a failed job with no report.
+			completion.State = StateFailed
+			completion.ErrorCode = failureCode
+			completion.ResultArtifactID = ""
 		}
 	}
-	return verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID)
+	if completion.State == StateFailed && !retryAllowed(job, completion.ErrorCode) {
+		if err := failModelValidationForJobTx(ctx, tx, job.TargetID, completion.ErrorCode); err != nil {
+			return err
+		}
+	}
+	if completion.State == StateCancelled {
+		if err := cancelModelValidationForJobTx(ctx, tx, job.TargetID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // guardToolRunCompletion is the T030 completion guard. A successful preset tool

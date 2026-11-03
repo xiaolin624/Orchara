@@ -16,6 +16,7 @@ import (
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
+	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 	"orchara/platform/internal/toolruns"
@@ -44,8 +45,10 @@ type Server struct {
 	// toolVersions is the F05/T037 submission/build/review service.
 	toolVersions *toolversions.Service
 	models       *modelproxy.Service
-	objects      *objectstore.Store
-	signer       *objectstore.Signer
+	// modelRegistry is the F06/T039 registration and validation service.
+	modelRegistry *modelregistry.Service
+	objects       *objectstore.Store
+	signer        *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -83,6 +86,9 @@ type Deps struct {
 	Signer  *objectstore.Signer
 	// Providers is the model-proxy provider set built from deployment configuration.
 	Providers *modelproxy.Providers
+	// Catalog is the deployer-registered model endpoint/credential catalog. Nil
+	// means the documented dev-stub default, never an open catalog.
+	Catalog *modelregistry.Catalog
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -124,6 +130,18 @@ func New(deps Deps) *Server {
 	)
 	// local_sequence diagnostics go to the process log, never the API body.
 	executionService.Logger = logger
+	catalogRefs := deps.Catalog
+	if catalogRefs == nil {
+		// The dev-stub default is deterministic and cannot fail; a nil catalog
+		// must never mean "accept anything".
+		catalogRefs, _ = modelregistry.FromEnv(nil)
+	}
+	modelRegistry, err := modelregistry.New(deps.Service.DB, deps.Objects, catalogRefs)
+	if err != nil {
+		// Only reachable for an impossible nil default; keep the registration
+		// surface failing closed instead of panicking at startup.
+		modelRegistry = nil
+	}
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -135,7 +153,8 @@ func New(deps Deps) *Server {
 		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
 		toolRuns:          toolruns.New(deps.Service.DB, notifier),
 		toolVersions:      toolversions.New(deps.Service.DB),
-		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		modelRegistry:     modelRegistry,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,

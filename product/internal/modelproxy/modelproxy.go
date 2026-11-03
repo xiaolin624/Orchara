@@ -110,17 +110,26 @@ type InvokeResult struct {
 	Replayed         bool
 }
 
+// ReferenceCatalog is the deployer-registered reference set the proxy accepts.
+// A registration may name either a legacy deployment reference (`env:`/`file:`)
+// or a catalog id; anything else is refused before a provider can see it.
+type ReferenceCatalog interface {
+	HasEndpoint(id string) bool
+	HasCredential(id string) bool
+}
+
 // Service owns candidate resolution and the model-call ledger. It writes sealed
 // result artifacts but never activates anything else.
 type Service struct {
 	DB        *sql.DB
 	Store     *objectstore.Store
 	Providers *Providers
+	Catalog   ReferenceCatalog
 }
 
 // NewService builds the model proxy.
-func NewService(db *sql.DB, store *objectstore.Store, providers *Providers) *Service {
-	return &Service{DB: db, Store: store, Providers: providers}
+func NewService(db *sql.DB, store *objectstore.Store, providers *Providers, catalog ReferenceCatalog) *Service {
+	return &Service{DB: db, Store: store, Providers: providers, Catalog: catalog}
 }
 
 // Candidate loads and validates one candidate row.
@@ -163,7 +172,7 @@ func (s *Service) Candidate(ctx context.Context, candidateID string) (*Candidate
 		return nil, ErrCandidateUnavailable
 	}
 	candidate.Config = json.RawMessage(configRaw)
-	if err := validateReferences(&candidate); err != nil {
+	if err := validateReferences(&candidate, s.Catalog); err != nil {
 		return nil, err
 	}
 	return &candidate, nil
@@ -171,13 +180,29 @@ func (s *Service) Candidate(ctx context.Context, candidateID string) (*Candidate
 
 // validateReferences enforces IMPLEMENTATION-DETAILS §2: endpoint_ref/secret_ref
 // are deployer-registered references, never a URL or a file path.
-func validateReferences(candidate *Candidate) error {
+//
+// Two reference forms are accepted:
+//   - the T024 deployment form (`env:NAME` for the endpoint, `env:`/`file:` for
+//     the credential), used by the maintenance tests and any deployment that
+//     registers candidates directly;
+//   - an F06 catalog id, which must be present in the deployer-registered
+//     catalog. A slug that is not registered is refused exactly like an
+//     unregistered `env:` name would be.
+func validateReferences(candidate *Candidate, catalog ReferenceCatalog) error {
 	endpoint := strings.TrimSpace(candidate.EndpointRef)
-	if !strings.HasPrefix(endpoint, "env:") || len(endpoint) <= len("env:") {
-		return fmt.Errorf("%w: endpoint_ref must be an env: reference", ErrCandidateUnavailable)
+	legacyEndpoint := strings.HasPrefix(endpoint, "env:") && len(endpoint) > len("env:")
+	catalogEndpoint := catalog != nil && catalog.HasEndpoint(endpoint)
+	if !legacyEndpoint && !catalogEndpoint {
+		return fmt.Errorf("%w: endpoint_ref must be a registered catalog endpoint or an env: reference", ErrCandidateUnavailable)
 	}
-	if _, err := parseReference(candidate.SecretRef); err != nil {
-		return fmt.Errorf("%w: secret_ref is not a valid reference", ErrCandidateUnavailable)
+	secret := strings.TrimSpace(candidate.SecretRef)
+	legacySecret := false
+	if _, err := parseReference(secret); err == nil {
+		legacySecret = true
+	}
+	catalogSecret := catalog != nil && catalog.HasCredential(secret)
+	if !legacySecret && !catalogSecret {
+		return fmt.Errorf("%w: secret_ref is not a registered credential reference", ErrCandidateUnavailable)
 	}
 	return nil
 }

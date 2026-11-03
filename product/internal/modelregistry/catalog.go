@@ -36,6 +36,10 @@ const (
 // ever looking like a URL, a path or a secret.
 var referenceID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
+// envName is the shape of a deployment environment variable name. A credential
+// entry may name one; the admin projection never does.
+var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
 // Endpoint is one deployer-registered model destination. It names a data
 // destination (what leaves the platform and where it lands) and the credential
 // reference used to reach it, never the credential itself.
@@ -47,11 +51,17 @@ type Endpoint struct {
 }
 
 // CredentialRef is a pre-registered credential reference. It deliberately has
-// no value field: the catalog can only say a reference exists and what it is
-// for.
+// no value field: the catalog can only say a reference exists, what it is for,
+// and (optionally) which deployment environment variable holds the value. The
+// value itself is read inside Go by the provider adapter and is never part of
+// any API projection.
 type CredentialRef struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`
+	// Env is an optional deployment environment variable name. It is a
+	// reference name, never a secret value, and the admin projection does not
+	// expose it.
+	Env string `json:"env,omitempty"`
 }
 
 // Catalog is the immutable set of endpoints and credential references.
@@ -130,6 +140,9 @@ func newCatalog(endpoints []Endpoint, credentials []CredentialRef) (*Catalog, er
 		if strings.TrimSpace(credential.Description) == "" || len(credential.Description) > 200 {
 			return nil, fmt.Errorf("credential %q must have a description of 1-200 characters", credential.ID)
 		}
+		if credential.Env != "" && !envName.MatchString(credential.Env) {
+			return nil, fmt.Errorf("credential %q names an invalid deployment environment variable", credential.ID)
+		}
 		if _, exists := catalog.credentials[credential.ID]; exists {
 			return nil, fmt.Errorf("credential %q is registered twice", credential.ID)
 		}
@@ -185,6 +198,28 @@ func (c *Catalog) Credential(id string) (CredentialRef, bool) {
 	}
 	credential, ok := c.credentials[id]
 	return credential, ok
+}
+
+// HasEndpoint reports whether id is a registered endpoint reference.
+func (c *Catalog) HasEndpoint(id string) bool {
+	_, ok := c.Endpoint(id)
+	return ok
+}
+
+// HasCredential reports whether id is a registered credential reference.
+func (c *Catalog) HasCredential(id string) bool {
+	_, ok := c.Credential(id)
+	return ok
+}
+
+// CredentialEnv returns the deployment environment variable a credential
+// reference names, if it names one.
+func (c *Catalog) CredentialEnv(id string) (string, bool) {
+	credential, ok := c.Credential(id)
+	if !ok || credential.Env == "" {
+		return "", false
+	}
+	return credential.Env, true
 }
 
 // Endpoints lists every endpoint, ordered by id.
