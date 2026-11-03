@@ -133,11 +133,11 @@ def test_0016_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
     versions = [row["version"] for row in ledgers]
     # T029 appends 0016; T030 appends 0017 and T032 appends 0018. Every earlier
     # migration stays at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 19)], versions
+    assert versions == [f"{number:04d}" for number in range(1, 20)], versions
     assert ledgers[14]["name"] == "0015_artifact_admissions.sql"
-    assert ledgers[-3]["name"] == "0016_execution_claims_and_quota.sql"
-    assert ledgers[-2]["name"] == "0017_tool_run_kind.sql"
-    assert ledgers[-1]["name"] == "0018_run_events.sql"
+    assert ledgers[-3]["name"] == "0017_tool_run_kind.sql"
+    assert ledgers[-2]["name"] == "0018_run_events.sql"
+    assert ledgers[-1]["name"] == "0019_run_artifact_uploads.sql"
 
 
 def test_0016_replays_as_a_noop(migrated_database, go_binaries) -> None:

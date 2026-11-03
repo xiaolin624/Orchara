@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -18,7 +18,8 @@ def go_binaries(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     out_dir = tmp_path_factory.mktemp("f00b-go-bin")
     return st.build_go_binaries(
         out_dir,
-        {"api": "./cmd/api", "admin": "./cmd/admin", "maintenance": "./cmd/maintenance"},
+        {"api": "./cmd/api", "admin": "./cmd/admin", "maintenance": "./cmd/maintenance",
+         "supervisor": "./cmd/supervisor", "sandboxprobe": "./cmd/sandboxprobe"},
     )
 
 
@@ -389,6 +390,44 @@ def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.
     return stack
 
 
+@pytest.fixture
+def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.T033Stack:
+    """T031's real stack for the T033 tool-debug path.
+
+    Everything the executor needs is real: the internal mTLS listener (claim,
+    heartbeat, result, exit and the five run-scoped artifact routes), the object
+    store with HMAC link signing (the manifest and the CSV move through real
+    signed links), the T025 deployment inputs so ``debugDraft`` freezes the golden
+    manifest, and the compiled supervisor binary. The sandbox itself lives in WSL2
+    and is exercised by the tests, not by this fixture.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn,
+        extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
+    )
+
+    stack = t033.T033Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
 __all__ = [
     "ROLES",
     "fresh_database",
@@ -405,4 +444,5 @@ __all__ = [
     "t029_stack",
     "t030_stack",
     "t032_stack",
+    "t033_stack",
 ]
