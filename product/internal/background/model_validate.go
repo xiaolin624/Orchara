@@ -66,6 +66,25 @@ func decodeModelCompatibilityReport(content []byte, document *ModelCompatibility
 	return nil
 }
 
+// modelValidationEvaluationBound reports whether this model_validate job was
+// created by the F06 flow with a bound evaluation row. A directly enqueued T024
+// job has none, and its completion keeps the original report-only contract.
+func modelValidationEvaluationBound(ctx context.Context, tx *sql.Tx, jobID string) (bool, error) {
+	var one int
+	err := tx.QueryRowContext(ctx, `
+		SELECT 1
+		  FROM platform.evaluation_jobs
+		 WHERE background_job_id = $1::uuid`, jobID,
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("checking the model evaluation binding: %w", err)
+	}
+	return true, nil
+}
+
 // guardModelValidateSuccess accepts a claimed model-compatibility success.
 //
 // It returns a non-empty failure code when the report cannot be accepted (the

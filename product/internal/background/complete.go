@@ -275,6 +275,18 @@ func guardModelValidateCompletion(
 		if err := verifyJobResultArtifact(ctx, tx, job, completion.ResultArtifactID); err != nil {
 			return err
 		}
+		// T024 jobs can be enqueued directly (the maintenance tests and the
+		// admin CLI do so) without a bound model evaluation. Those jobs keep
+		// their original contract: the verified report artifact is the success.
+		// Only a job created by the F06 validate flow has an evaluation row to
+		// reconcile, and only then is the report parsed and bound.
+		bound, err := modelValidationEvaluationBound(ctx, tx, job.ID)
+		if err != nil {
+			return err
+		}
+		if !bound {
+			return nil
+		}
 		failureCode, guardErr := c.guardModelValidateSuccess(ctx, tx, job, completion.ResultArtifactID)
 		switch {
 		case errors.Is(guardErr, errGuardTransient):
@@ -290,13 +302,25 @@ func guardModelValidateCompletion(
 		}
 	}
 	if completion.State == StateFailed && !retryAllowed(job, completion.ErrorCode) {
-		if err := failModelValidationForJobTx(ctx, tx, job.TargetID, completion.ErrorCode); err != nil {
+		bound, err := modelValidationEvaluationBound(ctx, tx, job.ID)
+		if err != nil {
 			return err
+		}
+		if bound {
+			if err := failModelValidationForJobTx(ctx, tx, job.TargetID, completion.ErrorCode); err != nil {
+				return err
+			}
 		}
 	}
 	if completion.State == StateCancelled {
-		if err := cancelModelValidationForJobTx(ctx, tx, job.TargetID); err != nil {
+		bound, err := modelValidationEvaluationBound(ctx, tx, job.ID)
+		if err != nil {
 			return err
+		}
+		if bound {
+			if err := cancelModelValidationForJobTx(ctx, tx, job.TargetID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

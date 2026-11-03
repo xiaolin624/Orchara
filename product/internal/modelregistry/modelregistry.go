@@ -471,11 +471,15 @@ func (s *Service) List(
 	cursor string,
 	limit int,
 ) ([]ModelProfile, *string, error) {
+	// callerID is part of the seam for a future owner-scoped catalog; the
+	// contract's visibility rule is admin-or-passed, so it is not a predicate.
+	_ = callerID
 	if limit < 1 || limit > MaxListLimit {
 		return nil, nil, &ValidationError{Field: "limit", Message: "limit must be between 1 and 100"}
 	}
-	args := []any{callerID, admin}
-	visibility := `($2::boolean OR (validation_state = 'passed' AND revoked_at IS NULL))`
+	args := []any{admin}
+	visArg := 1
+	visibility := fmt.Sprintf(`($%d::boolean OR (validation_state = 'passed' AND revoked_at IS NULL))`, visArg)
 	if applicationID != "" {
 		if !uuid.Valid(applicationID) {
 			return nil, nil, &ValidationError{Field: "application_id", Message: "application_id must be a UUID"}
@@ -488,7 +492,8 @@ func (s *Service) List(
 			return nil, nil, err
 		}
 		args = append(args, createdAt, id)
-		visibility += fmt.Sprintf(` AND (created_at, id) < ($%d::timestamptz, $%d::uuid)`, len(args), len(args))
+		visibility += fmt.Sprintf(` AND (created_at, id) < ($%d::timestamptz, $%d::uuid)`,
+			len(args)-1, len(args))
 	}
 	args = append(args, limit+1)
 	rows, err := s.DB.QueryContext(ctx, `

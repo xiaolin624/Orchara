@@ -138,6 +138,45 @@ def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.
 
 
 @pytest.fixture
+def f06_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+    """T039's stack: the T024 shape (objects, signed links, mTLS) plus the
+    compiler inputs a draft validate needs, so the same server proves both the
+    model registry and the existing dependency-readiness rule.
+
+    The model catalog is the documented dev-stub default; a test that needs a
+    non-default catalog starts a second API over the same database.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    compiler_inputs = t025.api_extra_env(None)
+    server = api_server(
+        dsn,
+        extra_env=t024.api_extra_env(
+            object_dir, certificates, signing_key=signing_key, extra=compiler_inputs
+        ),
+    )
+
+    stack = t024.T024Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+@pytest.fixture
 def f02a_stack(migrated_database, go_binaries, api_server) -> f02a.F02AStack:
     """A migrated + bootstrapped database behind a real API, without mTLS/objects.
 
@@ -436,6 +475,7 @@ __all__ = [
     "api_server",
     "t022_stack",
     "t024_stack",
+    "f06_stack",
     "f02a_stack",
     "t025_stack",
     "t026_stack",
