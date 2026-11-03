@@ -1130,6 +1130,26 @@ ADR 0007 D15。
 | 门禁 | 见 `reports/f06/T048-connectors.md` §6/§9（go vet/test、gofmt、pytest f02a/tooling、f06、sync_spec --check 顺序执行） |
 | 边界/not_run | 真实厂商连接器语义、T050 审批写行与恢复、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #49、未改 docs/spec/contracts、迁移仅新增 0029（0001–0028 未改） |
 
+## F04A 销售模板：另一使用者运行并下载已验证报告（T049，2026-11-04）
+
+T049（GitHub #50）已交付，状态 **`passed`**（范围 = 服务端受控销售模板注册表与非契约实例化桥；
+另一个真实 creator 把模板复制成自己的私有应用，用真实 CSV/XLSX 走既有 debug → supervisor →
+WSL2/runsc 路径得到 250.00/东区 200.00/西区 50.00/3 单，报告只引用已验证统计；summary/CSV/正文
+分离，第三用户隔离；模板实例化**不是** F02B 发布）。证据：`reports/f04a/T049-sales-template.md`、
+ADR 0007 D16。
+
+| 项 | 内容 |
+|---|---|
+| 迁移/注册表 | 新增 `0030_application_templates.sql`（0028 已被 T046 占用，0030 为下一个空位）：`platform.application_templates(id text PK, name, application_id uuid UNIQUE REFERENCES applications, definition jsonb, capability_card jsonb, created_at, updated_at)`；源应用 + revision-1 草稿是服务端种子，不是 application_version/publication_review；契约基线无此表，偏差写入迁移头注释/报告 §7 |
+| Seed CLI | `orchara-admin seed-sales-template --owner-login ADMIN --model-version-id UUID`：只接受真实 T039 流程 passed 的 stub profile（pending/failed/revoked/非 stub 拒绝，绝不写 validation_state）；以真实 `sales_stats.py` SHA-256 作固定工具版本 image_digest，状态 ready/risk read/approved_by+at，幂等；定义解析为实际 tool/model UUID（无 2222… 占位）；重复运行输出相同 `{template_id,application_id,tool_version_id,model_version_id}` |
+| 定义 | 固定四节点 `start → stats(python,sales_stats) → explain(agent) → end`：python 输出 `{total,regions,order_count}`；agent 只绑定 `node:stats#`、输出 `{report,totals}`、max_turns 4、无工具；end 映射 `{summary,report,totals}`。summary.json/summary.csv 是 python 文件 artifact，报告是 explain data + end 输出，互不覆盖 |
+| 实例化 API | 非契约 `POST /api/v1/templates/{template_id}/applications`（creator+CSRF）：一个事务复制定义/卡为新应用 + revision-1 草稿，返回 `{id,revision=1,definition_revision}`；未知/畸形模板 404 `template_not_found`；非 creator 403 `creator_role_required`；未认证 401；不创建 version/review |
+| 金额真值 | dev stub 仅在 response_schema 声明 `report` 且最后一条 user 消息含已验证 summary 时，逐字复制 total/regions/order_count 生成 report 与 totals（不重算不编造）；T043 `{text}` 路径不变。独立测试侧 `decimal.Decimal` 从字面量重算 250/200/50/3，校验 summary.json、summary.csv、report 全部两位小数与订单数，并证明扰动 total→251.00 / report→999.00 会失败 |
+| 页面 | `/apps` 新增「从销售模板创建（F04A/T049）」动作；`app.js` 纯 helper `salesTemplateInstantiateRequest()` 由 Node 执行（路径编码/方法/空体/空 id 拒绝）；`/runs` report 下载路径与 stub 标签结构断言 |
+| 真实栈 | 真实 PG（0001–0030）、真实 T039 register/validate + model_validate/artifact_finalize、真实 `cmd/api`/mTLS/对象字节、真实 supervisor + WSL2/runsc python 与 agent 节点；`test_t049_template.py` 3 用例（seed/实例化边界、CSV+XLSX 已验证报告、重复/负数/空输入拒绝）+ `test_t049_pages.py` 4 用例通过 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 28 ok/0 FAIL/10 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 131 passed + 2 条既有 WSL2/runsc 抖动（T043，单独重跑 2 passed）；`pytest tests/f04a` 36 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | F02B 发布/共享版本（本票明确不做）、真实厂商 adapter、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #50、未改 docs/spec/contracts、迁移仅新增 0030（0001–0029 未改） |
+
 ## 记录模板
 
 ```text
