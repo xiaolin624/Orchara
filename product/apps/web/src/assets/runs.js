@@ -29,6 +29,16 @@ function runDetailPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || ''));
 }
 
+/** The owner-only artifact list path for one run id (T033). */
+function runArtifactsPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/artifacts';
+}
+
+/** One owner-visible artifact download path. */
+function artifactDownloadPath(artifactID) {
+  return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/download';
+}
+
 /** The durable event-stream path for one run id (T032). */
 function runEventsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/events';
@@ -62,12 +72,133 @@ function runSummary(run) {
 /** Read the non-contract headers the run detail carries (never a token). */
 function runRuntimeFacts(headers) {
   if (!headers || typeof headers.get !== 'function') {
-    return { manifestSHA256: '', startedAt: '', leaseDeadline: '' };
+    return {
+      manifestSHA256: '', startedAt: '', leaseDeadline: '',
+      executionUnit: '', cancelRequestedAt: '',
+    };
   }
   return {
     manifestSHA256: headers.get('X-Manifest-SHA256') || '',
     startedAt: headers.get('X-Run-Attempt-Started-At') || '',
     leaseDeadline: headers.get('X-Run-Lease-Deadline') || '',
+    // T033: diagnostic identity of the live execution unit and the recorded
+    // cancel intent (the attempt token itself is never exposed).
+    executionUnit: headers.get('X-Run-Execution-Unit') || '',
+    cancelRequestedAt: headers.get('X-Run-Cancel-Requested-At') || '',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// T033: sandbox tool-debug panel (pure helpers, executed by the Node test)
+// ---------------------------------------------------------------------------
+
+/**
+ * The panel's honest content. The public contract exposes no sandbox-internal
+ * status (runsc list, pid, resources): those facts live in the supervisor's
+ * `exec --once` report and the recorded exit evidence, which are operator
+ * surfaces. The panel therefore renders only what the owner-facing API carries:
+ * the live attempt/unit headers, the Run state/phase/error_code, the cancel
+ * intent and the downloadable artifacts.
+ */
+function describeSandboxPanel(run, facts) {
+  const summary = runSummary(run);
+  const runtime = facts || {};
+  const terminal = isRunTerminal(summary.state);
+  const cancelAt = String(runtime.cancelRequestedAt || '').trim();
+  const unit = String(runtime.executionUnit || '').trim();
+  const attemptStarted = String(runtime.startedAt || '').trim();
+  const lease = String(runtime.leaseDeadline || '').trim();
+
+  let attemptLine = '没有活动执行单元（未领取、已退出或已进入终态）。';
+  if (unit !== '' || attemptStarted !== '' || lease !== '') {
+    attemptLine = '执行单元 ' + (unit || '（服务器未提供）') +
+      '；attempt started_at ' + (attemptStarted || '（服务器未提供）') +
+      '；租约至 ' + (lease || '（服务器未提供）') + '。';
+  }
+
+  let statusLine;
+  if (summary.state === 'queued') {
+    statusLine = '尚未被 supervisor 领取；没有沙箱在运行。';
+  } else if (terminal) {
+    statusLine = '沙箱执行已结束（Run 已进入终态 ' + summary.state + '）。';
+  } else if (summary.phase === 'finalizing') {
+    statusLine = '结果提议已保存，仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；这不是成功。';
+  } else if (cancelAt !== '') {
+    statusLine = '正在停止：已请求取消，等待执行单元退出；平台不会把停止中的 Run 显示为成功。';
+  } else if (summary.state === 'running') {
+    statusLine = '执行中：固定预置工具在只读 rootfs 的 gVisor 沙箱内运行；具体 runsc/pid 状态属于运维报告。';
+  } else {
+    statusLine = '状态 ' + summary.state + '（phase=' + (summary.phase || 'unknown') + '）。';
+  }
+
+  const errorCode = String((run && run.error_code) || '');
+  const exitLine = terminal
+    ? '终态 ' + summary.state + (errorCode ? '（error_code=' + errorCode + '）' : '') +
+      '；资源/退出细节记录在 supervisor 的 exec 报告与退出证据中。'
+    : '尚未提交终态' + (errorCode ? '（error_code=' + errorCode + '）' : '') + '。';
+
+  let stopLabel;
+  if (cancelAt !== '') {
+    stopLabel = terminal
+      ? '已停止（cancel_requested_at ' + cancelAt + '；Run 终态 ' + summary.state + '）。'
+      : '正在停止（cancel_requested_at ' + cancelAt + '；尚未提交终态）。';
+  } else {
+    stopLabel = '未请求取消。';
+  }
+
+  const cancelNote =
+    '取消接口属于 T036（POST /api/v1/runs/{id}/cancel），当前未实现；本页不调用不存在的接口、' +
+    '也不伪造取消结果。运维路径：用 SQL 写入 runs.cancel_requested_at，再运行 ' +
+    'cmd/supervisor exec --once；执行中的沙箱会被杀死且不留下孤儿，Run 由 T036/T038 的仲裁收尾' +
+    '（当前会停在非终态的 recovery_pending，而不是伪装成 cancelled）。';
+
+  return {
+    visible: summary.id !== '',
+    unit: unit,
+    attemptLine: attemptLine,
+    statusLine: statusLine,
+    exitLine: exitLine,
+    stopLabel: stopLabel,
+    cancelNote: cancelNote,
+    artifactNote: '产物来自 GET /api/v1/runs/{id}/artifacts（owner-only，四项 Artifact，日志按 purpose 排除）。',
+  };
+}
+
+/** One artifact line: media type + size + a short id, never an object key. */
+function artifactDisplayName(artifact) {
+  const value = artifact || {};
+  const media = String(value.media_type || 'application/octet-stream');
+  let kind = media;
+  if (media === 'text/csv') {
+    kind = 'CSV';
+  } else if (media === 'application/json') {
+    kind = 'JSON';
+  } else if (media === 'text/plain') {
+    kind = 'TXT';
+  } else if (media.indexOf('spreadsheetml') >= 0) {
+    kind = 'XLSX';
+  }
+  const size = Number(value.size_bytes);
+  const id = String(value.id || '');
+  return kind + ' · ' + (Number.isFinite(size) ? size + ' B' : '大小未知') +
+    ' · ' + id.slice(0, 8);
+}
+
+/** The artifact list's one-line summary plus its ids. */
+function describeArtifactList(body) {
+  const items = body && Array.isArray(body.items) ? body.items : [];
+  if (items.length === 0) {
+    return {
+      count: 0,
+      text: '本 Run 没有已登记的可下载产物（日志不作为数据列出；输入产物在附件页）。',
+      ids: [],
+    };
+  }
+  return {
+    count: items.length,
+    text: '本 Run 有 ' + items.length + ' 个已登记的可下载产物' +
+      (body && body.next_cursor ? '（还有下一页）。' : '。'),
+    ids: items.map((item) => String(item.id || '')),
   };
 }
 
@@ -485,7 +616,91 @@ function showRunDetail(run, facts) {
       ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
       : '（没有可显示的租约事实）';
   document.getElementById('detail-note').textContent = describeRunState(run, facts);
+  renderSandboxPanel(run, facts);
   document.getElementById('run-detail').hidden = false;
+}
+
+// T033: the sandbox panel and the owner-only artifact list.
+function renderSandboxPanel(run, facts) {
+  const panel = document.getElementById('sandbox-panel');
+  if (!panel) {
+    return;
+  }
+  const content = describeSandboxPanel(run, facts || {});
+  panel.hidden = !content.visible;
+  document.getElementById('sandbox-unit').textContent =
+    content.unit || '（没有活动的执行单元）';
+  document.getElementById('sandbox-attempt').textContent = content.attemptLine;
+  document.getElementById('sandbox-status').textContent = content.statusLine;
+  document.getElementById('sandbox-exit').textContent = content.exitLine;
+  document.getElementById('sandbox-stop').textContent = content.stopLabel;
+  document.getElementById('sandbox-cancel-note').textContent = content.cancelNote;
+}
+
+function renderArtifactItem(artifact) {
+  const item = document.createElement('li');
+  const label = document.createElement('span');
+  label.textContent = artifactDisplayName(artifact);
+  const download = document.createElement('button');
+  download.type = 'button';
+  download.textContent = '下载';
+  download.addEventListener('click', () => {
+    downloadArtifact(String(artifact.id || ''));
+  });
+  item.append(label, ' ', download);
+  document.getElementById('sandbox-artifacts').appendChild(item);
+}
+
+function sandboxArtifactsStatus(message, kind) {
+  const element = document.getElementById('sandbox-artifacts-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+async function downloadArtifact(artifactID) {
+  try {
+    const ticket = await api(artifactDownloadPath(artifactID));
+    if (!ticket.url) {
+      throw new Error('下载响应没有 URL');
+    }
+    window.open(ticket.url, '_blank', 'noopener');
+  } catch (error) {
+    sandboxArtifactsStatus(
+      '下载失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  }
+}
+
+async function loadRunArtifacts(runId) {
+  const list = document.getElementById('sandbox-artifacts');
+  if (!list) {
+    return;
+  }
+  list.replaceChildren();
+  sandboxArtifactsStatus('正在加载可下载产物…', 'pending');
+  try {
+    const body = await api(runArtifactsPath(runId));
+    const summary = describeArtifactList(body);
+    sandboxArtifactsStatus(summary.text, summary.count ? 'ok' : '');
+    for (const item of body.items || []) {
+      renderArtifactItem(item);
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    sandboxArtifactsStatus(
+      '产物列表不可用 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  }
 }
 
 // T032: one durable timeline per selected Run. Starting a new selection bumps
@@ -549,6 +764,7 @@ async function pollRunDetail(runId, polls) {
   if (shouldPollRun(result.payload)) {
     return pollRunDetail(runId, polls + 1);
   }
+  await loadRunArtifacts(runId);
   runsStatus('Run ' + runId + ' 已进入终态 ' + result.payload.state + '。', 'ok');
 }
 
@@ -559,6 +775,7 @@ async function loadRunDetail(runId) {
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
     showRunDetail(result.payload, facts);
+    loadRunArtifacts(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',

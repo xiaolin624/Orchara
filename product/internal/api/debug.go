@@ -218,6 +218,20 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 	} else if lease != nil {
 		w.Header().Set("X-Run-Attempt-Started-At", lease.StartedAt.UTC().Format(time.RFC3339Nano))
 		w.Header().Set("X-Run-Lease-Deadline", lease.LeaseDeadline.UTC().Format(time.RFC3339Nano))
+		// F05/T033: the sandbox panel shows which execution unit is running. The
+		// unit id is a diagnostic identity (not a credential); the token stays
+		// secret. Non-contract extension, documented in the T033 report.
+		if lease.ExecutionUnitID != "" {
+			w.Header().Set("X-Run-Execution-Unit", lease.ExecutionUnitID)
+		}
+	}
+	// F05/T033: the cancel intent is visible while its transition belongs to
+	// T036, so the UI can render "stopping" without guessing a terminal state.
+	if cancelAt, err := s.execution.CancelRequestedAt(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if cancelAt != nil {
+		w.Header().Set("X-Run-Cancel-Requested-At", cancelAt.UTC().Format(time.RFC3339Nano))
 	}
 	writeJSON(w, http.StatusOK, run)
 }

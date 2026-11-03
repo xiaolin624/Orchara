@@ -77,6 +77,22 @@
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
     <ul id="detail-timeline" aria-live="polite"></ul>
+
+    <section id="sandbox-panel" class="card" hidden aria-live="polite">
+      <h2>沙箱工具调试（F05/T033）</h2>
+      <dl class="run">
+        <dt>执行单元</dt><dd id="sandbox-unit"></dd>
+        <dt>尝试 / 租约</dt><dd id="sandbox-attempt"></dd>
+        <dt>沙箱状态</dt><dd id="sandbox-status"></dd>
+        <dt>退出状态</dt><dd id="sandbox-exit"></dd>
+        <dt>停止状态</dt><dd id="sandbox-stop"></dd>
+      </dl>
+      <p id="sandbox-cancel-note" class="hint"></p>
+      <h3>可下载产物</h3>
+      <ul id="sandbox-artifacts" aria-live="polite"></ul>
+      <p id="sandbox-artifacts-status" class="hint" role="status" aria-live="polite">正在加载产物…</p>
+    </section>
+
     <p id="detail-note" class="hint"></p>
     <p id="detail-preview" class="hint" data-preview="not_run">
       临时模型流式 delta 预览未实现（F06 承接）：本页只显示已提交的持久事件，不把临时 delta

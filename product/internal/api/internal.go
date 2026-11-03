@@ -132,6 +132,16 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/result", s.handleInternalRunResult)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/events", s.handleInternalRunEvents)
 	mux.HandleFunc("POST /internal/v1/attempts/{attempt_id}/exited", s.handleInternalAttemptExit)
+
+	// F05/T033: run-bound artifact access. The contract says x-internal-role
+	// worker for all five; the supervisor cert is refused 403 (it claims and
+	// certifies exit, it does not move worker artifacts). The attempt token in
+	// the body is re-proved against the run in the path by the service.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-uploads", s.handleInternalRunArtifactUpload)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts/{artifact_id}/complete", s.handleInternalRunArtifactComplete)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-downloads", s.handleInternalRunArtifactDownload)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-status", s.handleInternalRunArtifactStatus)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts", s.handleInternalRegisterRunArtifact)
 }
 
 type internalClaimRequest struct {

@@ -31,6 +31,10 @@ type Server struct {
 	artifacts *background.ArtifactStore
 	// execution owns the F03 claim/heartbeat/attempt-exit primitive.
 	execution *execution.Service
+	// runArtifacts owns F05/T033's run-bound upload/download/status/register:
+	// the supervisor may claim an attempt, but only the live attempt that
+	// reserved an artifact can complete and register it.
+	runArtifacts *execution.RunArtifactStore
 	// userArtifacts is the T028 user-facing artifact service (distinct from the
 	// job-scoped ArtifactStore above: different purposes, different ACL).
 	userArtifacts *artifacts.Service
@@ -124,6 +128,7 @@ func New(deps Deps) *Server {
 		jobs:              background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
 		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		execution:         executionService,
+		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
 		toolRuns:          toolruns.New(deps.Service.DB, notifier),
 		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
@@ -205,6 +210,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T032: the owner-only durable event stream. Last-Event-ID is this Run's
 	// local seq; the handler is SSE, not JSON.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
+	// F05/T033: the owner-only run artifact list.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/artifacts", s.handleListRunArtifacts)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the

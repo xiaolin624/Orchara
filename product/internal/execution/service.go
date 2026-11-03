@@ -542,6 +542,16 @@ func (s *Service) LiveLease(ctx context.Context, runID string) (*LiveLease, erro
 	return liveLease(ctx, s.DB, runID)
 }
 
+// CancelRequestedAt returns the recorded cancel intent (nil when none). The
+// public run detail uses it to distinguish "stopping" from a terminal state
+// without inventing T036's cancel transition.
+func (s *Service) CancelRequestedAt(ctx context.Context, runID string) (*time.Time, error) {
+	if !uuid.Valid(strings.TrimSpace(runID)) {
+		return nil, nil
+	}
+	return runCancelRequestedAt(ctx, s.DB, runID)
+}
+
 // SubmitResult stores one worker result proposal. It is deliberately not a
 // completion: the attempt keeps its credential, the job stays leased, the
 // allocation stays held and the run only moves to phase=finalizing. The unified

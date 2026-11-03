@@ -509,14 +509,15 @@ func holdJobTx(ctx context.Context, tx *sql.Tx, jobID string) error {
 // the owner-facing run detail extension. It never returns the attempt token: the
 // token is a credential and must not be exposed by a public read.
 type LiveLease struct {
-	LeaseDeadline time.Time
-	StartedAt     time.Time
+	LeaseDeadline   time.Time
+	StartedAt       time.Time
+	ExecutionUnitID string
 }
 
 func liveLease(ctx context.Context, db *sql.DB, runID string) (*LiveLease, error) {
 	var lease LiveLease
 	err := db.QueryRowContext(ctx, `
-		SELECT a.lease_deadline, a.started_at
+		SELECT a.lease_deadline, a.started_at, a.execution_unit_id
 		  FROM platform.run_attempts AS a
 		 WHERE a.run_id = $1::uuid
 		   AND a.exited_at IS NULL
@@ -524,7 +525,7 @@ func liveLease(ctx context.Context, db *sql.DB, runID string) (*LiveLease, error
 		 ORDER BY a.started_at DESC
 		 LIMIT 1`,
 		runID,
-	).Scan(&lease.LeaseDeadline, &lease.StartedAt)
+	).Scan(&lease.LeaseDeadline, &lease.StartedAt, &lease.ExecutionUnitID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -532,6 +533,28 @@ func liveLease(ctx context.Context, db *sql.DB, runID string) (*LiveLease, error
 		return nil, fmt.Errorf("reading the live attempt lease: %w", err)
 	}
 	return &lease, nil
+}
+
+// runCancelRequestedAt reads the F03 cancel intent for one run. The endpoint
+// that writes it is T036's; this read exists so the run detail can say
+// "stopping" instead of inventing a terminal state (T033 UI).
+func runCancelRequestedAt(ctx context.Context, db *sql.DB, runID string) (*time.Time, error) {
+	var cancelAt sql.NullTime
+	err := db.QueryRowContext(ctx, `
+		SELECT cancel_requested_at FROM platform.runs WHERE id = $1::uuid`,
+		runID,
+	).Scan(&cancelAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the run cancel intent: %w", err)
+	}
+	if !cancelAt.Valid {
+		return nil, nil
+	}
+	value := cancelAt.Time
+	return &value, nil
 }
 
 // nullableBytes passes a JSONB parameter as NULL when there is no value.

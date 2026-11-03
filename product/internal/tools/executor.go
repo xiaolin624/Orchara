@@ -513,6 +513,14 @@ func parseRejection(path string, limit int64) (Rejection, error) {
 	if err != nil {
 		return Rejection{}, ErrOutputInvalid
 	}
+	return ParseRejectionPayload(payload)
+}
+
+// ParseRejectionPayload validates an in-memory rejection document (exit code 3).
+// It is the same closed-vocabulary check the subprocess executor applies, exposed
+// so the F05/T033 sandbox supervisor (which collects output.json over the
+// sandbox boundary instead of reading a local path) cannot drift.
+func ParseRejectionPayload(payload []byte) (Rejection, error) {
 	var document rejectionDocument
 	if err := strictDecode(payload, &document); err != nil || document.Error == nil {
 		return Rejection{}, ErrOutputInvalid
