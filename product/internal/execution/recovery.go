@@ -993,10 +993,14 @@ func (s *Service) Recover(ctx context.Context, request RecoveryRequest) (*Recove
 		return report, report.refuse("database_drained", refusal.Code, "%s", refusal.Message)
 	}
 
-	// T034: the attempt leaves executing here, so its active interval settles
-	// exactly once into the Run total (the same helper as every other transition).
-	if _, err := settleAttemptActiveTx(ctx, tx, runID); err != nil {
-		return report, err
+	// T034: recovery is a no-op when the attempt was already settled (the lease
+	// sweep now settles at the lease deadline, and T031's exit-without-result
+	// park settles in its finalizer). Only an inherited, still-unsettled attempt
+	// is settled here, with the same one helper as every other transition.
+	if !lockedAttempt.ActiveSettledAt.Valid {
+		if _, err := settleAttemptActiveTx(ctx, tx, runID); err != nil {
+			return report, err
+		}
 	}
 	if err := finalizeRecoveredAttemptTx(
 		ctx, tx, lockedAttempt.Token, canonical,
@@ -1131,6 +1135,15 @@ func (s *Service) parkExpiredLease(
 	}
 	if locked == nil {
 		return false, "the lease or run changed since the scan", nil
+	}
+	// T034: parking leaves executing, so the attempt settles exactly once here.
+	// The provable activity end is the lease deadline, not park time: charging
+	// the parked window would corrupt the Run's accumulated active time, jump
+	// the UI clock and could fail the next claim with deadline_exceeded.
+	if _, err := settleAttemptActiveUntilTx(
+		ctx, tx, locked.RunID, locked.LeaseDeadlineTime,
+	); err != nil {
+		return false, "", err
 	}
 	if err := parkRunForRecoveryTx(ctx, tx, locked.RunID, RecoveryReasonLeaseExpired); err != nil {
 		return false, "", err

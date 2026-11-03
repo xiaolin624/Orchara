@@ -10,11 +10,11 @@
 -- Deliberate deviations from contracts/database.sql, and their owners:
 --   1. `platform.artifact_admissions` is a new table (deviation). One row per
 --      artifact: the media type the uploader declared, the media type/format the
---      server sniffed, the verdict and a safe reason code. It is insert-once
---      evidence, never an activation decision: only the finalize completion
---      guard can set an artifact ready or quarantined. The row is upserted by
---      the artifact_finalize handler so a retried attempt updates the same fact
---      instead of accumulating per-attempt rows.
+--      server sniffed, the verdict and a safe reason code. It is one current
+--      fact per artifact, never an activation decision: only the finalize
+--      completion guard can set an artifact ready or quarantined. The
+--      artifact_finalize handler upserts the same row, so a retried attempt
+--      replaces the stored verdict instead of accumulating per-attempt history.
 --   2. `artifact_id` is the primary key and a real foreign key to
 --      `platform.artifacts(id)`. A physical artifact row is never deleted in this
 --      batch (tombstones are F07's model), so the ON DELETE CASCADE is only a
@@ -74,7 +74,7 @@ END
 $$;
 
 COMMENT ON TABLE platform.artifact_admissions IS
-    'T028 format admission evidence for one uploaded artifact: declared vs sniffed media type, detected format, verdict and a safe reason. Insert-once evidence; only the finalize completion guard may activate or quarantine the artifact.';
+    'T028 format admission evidence for one uploaded artifact: declared vs sniffed media type, detected format, verdict and a safe reason. One current row per artifact, upserted by a retried finalize attempt; only the completion guard may activate or quarantine the artifact.';
 COMMENT ON COLUMN platform.artifact_admissions.sniffed_media_type IS
     'The media type implied by the real bytes (or NULL when the rejection happened before inspection). Never copied from the client declaration.';
 COMMENT ON COLUMN platform.artifact_admissions.detected_format IS

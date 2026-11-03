@@ -320,8 +320,6 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 	result, runErr := e.runner.Run(runCtx, runCommand)
 	cancelRun()
 	<-tickerDone
-	outcome.SandboxStarted = true
-	outcome.Duration = time.Duration(0)
 
 	controlMu.Lock()
 	observedControlErr := controlErr
@@ -330,21 +328,31 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 
 	report, reportErr := parseDriverReport(result.Stdout)
 	if reportErr == nil {
+		// The driver only emits the `mode:"run"` document after it has invoked
+		// runsc, so a parsed run report is the proof of a launch. Nothing before
+		// this point may set the flag.
+		outcome.SandboxStarted = true
 		outcome.Duration = time.Duration(report.DurationMS) * time.Millisecond
 		outcome.ExitCode = report.ExitCode
 		outcome.TimedOut = report.TimedOut
-		outcome.Stdout = decodeB64(report.Stdout)
-		outcome.Stderr = decodeB64(report.Stderr)
-		outcome.OutputJSON = decodeB64Ptr(report.OutputJSON)
-		outcome.ProbeJSON = decodeB64Ptr(report.ProbeJSON)
-		for _, artifact := range report.Artifacts {
-			outcome.Artifacts = append(outcome.Artifacts, Artifact{
-				Name:    artifact.Name,
-				Content: decodeB64(artifact.B64),
-			})
-		}
 		outcome.Cleanup = cleanupOf(report)
 		outcome.CleanupVerified = report.OK && outcome.Cleanup.Clean()
+		decodeErr := applyReportStreams(&outcome, report)
+		if decodeErr != nil {
+			// The bytes the driver reported cannot be trusted, so this is an
+			// invalid output document, never a success with silently nil data.
+			return outcome, decodeErr
+		}
+		if !report.OK || report.Error != "" {
+			// A launched unit whose report does not prove clean cleanup is an
+			// orphan. This is the one place cleanup evidence is asserted.
+			return outcome, fmt.Errorf("%w: %s", ErrOrphan, driverErrorText(report))
+		}
+	}
+	if reportErr != nil && errors.Is(reportErr, ErrSandboxRefused) {
+		// The driver refused before creating a unit (no mode/sandbox/cleanup in
+		// the document). There is nothing to clean up and nothing that started.
+		return outcome, reportErr
 	}
 
 	// Decide whether the unit was stopped by us. A late cancel after the tool
@@ -358,6 +366,10 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 		cleanupFacts, cleanupErr := e.cleanup(ctx, options, sandboxID)
 		outcome.Cleanup = cleanupFacts
 		outcome.CleanupVerified = cleanupFacts.Clean()
+		// The driver was killed before it could print its report. A non-zero pid
+		// from the independent cleanup invocation is the remaining proof that a
+		// process was launched; no pid means the unit never started.
+		outcome.SandboxStarted = cleanupFacts.PID > 0
 		switch {
 		case observedCancel:
 			return outcome, ErrCancelled
@@ -370,13 +382,17 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 		}
 	}
 	if runErr != nil {
-		_, _ = e.cleanup(ctx, options, sandboxID)
+		cleanupFacts, _ := e.cleanup(ctx, options, sandboxID)
+		outcome.Cleanup = cleanupFacts
+		outcome.CleanupVerified = cleanupFacts.Clean()
+		outcome.SandboxStarted = cleanupFacts.PID > 0
 		return outcome, fmt.Errorf("%w: %v", ErrRunnerUnavailable, runErr)
 	}
 	if reportErr != nil {
 		cleanupFacts, _ := e.cleanup(ctx, options, sandboxID)
 		outcome.Cleanup = cleanupFacts
 		outcome.CleanupVerified = cleanupFacts.Clean()
+		outcome.SandboxStarted = cleanupFacts.PID > 0
 		return outcome, reportErr
 	}
 	if report.RootfsDigest != digest {
@@ -431,6 +447,15 @@ func parseDriverReport(stdout []byte) (*driverReport, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: trailing data", ErrDriverReport)
 	}
+	if report.Mode == "" {
+		// The driver's die() path prints exactly `{ok:false,error:...}`: no
+		// mode, sandbox id or cleanup block. That is a refusal before any unit
+		// existed, so it is a typed pre-start outcome, never an orphan.
+		if report.Error != "" || !report.OK {
+			return nil, fmt.Errorf("%w: %s", ErrSandboxRefused, driverErrorText(&report))
+		}
+		return nil, fmt.Errorf("%w: no driver mode", ErrDriverReport)
+	}
 	if report.Mode != "run" {
 		return nil, fmt.Errorf("%w: unexpected mode %q", ErrDriverReport, report.Mode)
 	}
@@ -438,6 +463,59 @@ func parseDriverReport(stdout []byte) (*driverReport, error) {
 		return nil, fmt.Errorf("%w: no sandbox id", ErrDriverReport)
 	}
 	return &report, nil
+}
+
+// driverErrorText is the bounded, operator-safe reason from one driver document.
+func driverErrorText(report *driverReport) string {
+	if text := strings.TrimSpace(report.Error); text != "" {
+		return text
+	}
+	return "the driver report does not prove a clean cleanup"
+}
+
+// applyReportStreams decodes every base64 field of a parsed run report. A corrupt
+// stream is an invalid output document, never a silent nil field.
+func applyReportStreams(outcome *Outcome, report *driverReport) error {
+	var (
+		err     error
+		label   string
+		decoded []byte
+	)
+	for _, field := range []struct {
+		value string
+		label string
+	}{
+		{report.Stdout, "stdout"},
+		{report.Stderr, "stderr"},
+	} {
+		decoded, err = decodeB64(field.value, field.label)
+		if err != nil {
+			return err
+		}
+		if field.label == "stdout" {
+			outcome.Stdout = decoded
+		} else {
+			outcome.Stderr = decoded
+		}
+	}
+	if outcome.OutputJSON, err = decodeB64Ptr(report.OutputJSON, "output_json"); err != nil {
+		return err
+	}
+	if outcome.ProbeJSON, err = decodeB64Ptr(report.ProbeJSON, "probe_json"); err != nil {
+		return err
+	}
+	for _, artifact := range report.Artifacts {
+		label = "artifact " + artifact.Name
+		if outcome.Artifacts == nil {
+			outcome.Artifacts = make([]Artifact, 0, len(report.Artifacts))
+		}
+		content, decodeErr := decodeB64(artifact.B64, label)
+		if decodeErr != nil {
+			return decodeErr
+		}
+		outcome.Artifacts = append(outcome.Artifacts, Artifact{Name: artifact.Name, Content: content})
+	}
+	return nil
 }
 
 // parseCleanupReport decodes the cleanup entry point's JSON document.
@@ -451,10 +529,11 @@ func parseCleanupReport(stdout []byte) (CleanupFacts, error) {
 		Mode      string `json:"mode"`
 		SandboxID string `json:"sandbox_id"`
 		Cleanup   struct {
-			SandboxListMatches int  `json:"sandbox_list_matches"`
-			PIDAlive           bool `json:"pid_alive"`
-			PSMatches          int  `json:"ps_matches"`
-			WorkspaceRemoved   bool `json:"workspace_removed"`
+			SandboxListMatches int   `json:"sandbox_list_matches"`
+			PID                int64 `json:"pid"`
+			PIDAlive           bool  `json:"pid_alive"`
+			PSMatches          int   `json:"ps_matches"`
+			WorkspaceRemoved   bool  `json:"workspace_removed"`
 		} `json:"cleanup"`
 	}
 	if err := json.Unmarshal([]byte(trimmed), &report); err != nil {
@@ -465,6 +544,7 @@ func parseCleanupReport(stdout []byte) (CleanupFacts, error) {
 	}
 	return CleanupFacts{
 		SandboxListMatches: report.Cleanup.SandboxListMatches,
+		PID:                report.Cleanup.PID,
 		PIDAlive:           report.Cleanup.PIDAlive,
 		PSMatches:          report.Cleanup.PSMatches,
 		WorkspaceRemoved:   report.Cleanup.WorkspaceRemoved,
@@ -481,22 +561,22 @@ func cleanupOf(report *driverReport) CleanupFacts {
 	}
 }
 
-func decodeB64(value string) []byte {
+func decodeB64(value, label string) ([]byte, error) {
 	if value == "" {
-		return nil
+		return nil, nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: the driver %s is not valid base64", ErrOutputInvalid, label)
 	}
-	return decoded
+	return decoded, nil
 }
 
-func decodeB64Ptr(value *string) []byte {
+func decodeB64Ptr(value *string, label string) ([]byte, error) {
 	if value == nil {
-		return nil
+		return nil, nil
 	}
-	return decodeB64(*value)
+	return decodeB64(*value, label)
 }
 
 // writeStagedFile writes a staging file with owner-only permissions.

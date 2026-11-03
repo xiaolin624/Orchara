@@ -423,6 +423,7 @@ func (r *runner) execute(ctx context.Context) executionOutcome {
 	case errors.Is(sandboxErr, sandbox.ErrRootfsUnavailable),
 		errors.Is(sandboxErr, sandbox.ErrToolUnavailable),
 		errors.Is(sandboxErr, sandbox.ErrRunnerUnavailable),
+		errors.Is(sandboxErr, sandbox.ErrSandboxRefused),
 		errors.Is(sandboxErr, sandbox.ErrDriverReport),
 		errors.Is(sandboxErr, sandbox.ErrDigestMismatch):
 		return r.failRun(ctx, CodeSandboxUnavailable,

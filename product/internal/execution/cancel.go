@@ -147,6 +147,33 @@ func (s *Service) Cancel(ctx context.Context, callerID, runID string) (*CancelOu
 		// Nothing is running: a queued/held job has no live token and a leased job
 		// without a live attempt cannot be proven stopped, so the latter waits for
 		// the exit/recovery path instead of claiming it.
+		// Priority: a live child Run is a controlled execution unit even when
+		// this Run has no live attempt. It blocks the terminal cancel exactly as
+		// in the finalizer: record the intent, stay cancelling and hold the job.
+		liveChildren, err := hasLiveChildrenTx(ctx, tx, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		if liveChildren {
+			if err := moveRunToCancellingTx(ctx, tx, run); err != nil {
+				return nil, err
+			}
+			if job != nil {
+				if err := holdJobForCancelTx(ctx, tx, job.ID); err != nil {
+					return nil, err
+				}
+				if err := releaseAllocationIfPresentTx(ctx, tx, "job:"+job.ID); err != nil {
+					return nil, err
+				}
+			}
+			if _, err := AppendRunStatusTx(ctx, tx, run.ID); err != nil {
+				return nil, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, fmt.Errorf("committing the blocked cancel transaction: %w", err)
+			}
+			return &CancelOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
+		}
 		unknown, err := hasUnknownOperationsTx(ctx, tx, run.ID)
 		if err != nil {
 			return nil, err

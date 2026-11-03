@@ -107,6 +107,7 @@ type recoveryAttemptFacts struct {
 	LeaseDeadline         string
 	ExitedAt              sql.NullTime
 	RevokedAt             sql.NullTime
+	ActiveSettledAt       sql.NullTime
 	ExitEvidence          []byte
 	CheckpointConnections []byte
 	HeartbeatFresh        bool
@@ -126,7 +127,7 @@ func loadRecoveryAttemptFacts(
 	query := `
 		SELECT a.token::text, a.job_id::text, a.run_id::text, a.execution_unit_id,
 		       a.started_at::text, a.heartbeat_at::text, a.lease_deadline::text,
-		       a.exited_at, a.revoked_at,
+		       a.exited_at, a.revoked_at, a.active_settled_at,
 		       a.exit_evidence, a.checkpoint_connections,
 		       (a.heartbeat_at > now() - make_interval(secs => $2::double precision)) AS heartbeat_fresh,
 		       (a.exited_at IS NULL AND a.revoked_at IS NULL) AS live,
@@ -146,7 +147,7 @@ func loadRecoveryAttemptFacts(
 	err := q.QueryRowContext(ctx, query, runID, grace.Seconds()).Scan(
 		&facts.Token, &facts.JobID, &facts.RunID, &facts.ExecutionUnitID,
 		&facts.StartedAt, &facts.HeartbeatAt, &facts.LeaseDeadline,
-		&facts.ExitedAt, &facts.RevokedAt, &facts.ExitEvidence,
+		&facts.ExitedAt, &facts.RevokedAt, &facts.ActiveSettledAt, &facts.ExitEvidence,
 		&facts.CheckpointConnections, &facts.HeartbeatFresh, &facts.Live,
 		&facts.JobState, &facts.JobKind, &facts.ResumeArtifactID, &facts.LiveJobs,
 	)
@@ -303,10 +304,10 @@ func returnRecoveredRunToQueueTx(
 	return nil
 }
 
-// insertRecoveryEvidenceTx records the audited proof. `resumed_job_id` names the
-// re-armed job on its first recovery cycle; a later legitimate cycle of the same
-// logical job records NULL because the database's UNIQUE(resumed_job_id) already
-// names that job (the once-per-attempt UNIQUE is the invariant that still holds).
+// insertRecoveryEvidenceTx records the audited proof and always names the job it
+// re-armed. Requeue reuses the same logical job on a later cycle, so the column is
+// deliberately non-unique; the once-per-attempt rule stays UNIQUE(run_id,
+// attempt_token), and every cycle keeps a readable link to its requeue.
 func insertRecoveryEvidenceTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -314,35 +315,18 @@ func insertRecoveryEvidenceTx(
 	evidence []byte,
 	evidenceSHA, actorID, jobID string,
 ) (string, time.Time, error) {
-	var prior sql.NullString
-	err := tx.QueryRowContext(ctx, `
-		SELECT resumed_job_id::text
-		  FROM platform.run_recovery_evidence
-		 WHERE resumed_job_id = $1::uuid
-		 LIMIT 1`,
-		jobID,
-	).Scan(&prior)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", time.Time{}, fmt.Errorf("reading the prior recovery evidence: %w", err)
-	}
-	var resumed any
-	resumedJobID := ""
-	if !prior.Valid {
-		resumed = jobID
-		resumedJobID = jobID
-	}
 	var recordedAt time.Time
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO platform.run_recovery_evidence
 		    (id, run_id, attempt_token, evidence, evidence_sha256, recorded_by, recorded_at, resumed_job_id)
 		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5, $6::uuid, now(), $7::uuid)
 		RETURNING recorded_at`,
-		uuid.NewString(), runID, token, evidence, evidenceSHA, actorID, resumed,
+		uuid.NewString(), runID, token, evidence, evidenceSHA, actorID, jobID,
 	).Scan(&recordedAt)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("recording the recovery evidence: %w", err)
 	}
-	return resumedJobID, recordedAt, nil
+	return jobID, recordedAt, nil
 }
 
 // loadRecoveryFacts projects the parked/evidenced state of one Run for the
@@ -411,7 +395,10 @@ type leaseSweepCandidate struct {
 	JobID           string
 	ExecutionUnitID string
 	LeaseDeadline   string
-	HeartbeatAt     string
+	// LeaseDeadlineTime is the typed lease end. The park settles active time at
+	// this last provable activity end, never at park time.
+	LeaseDeadlineTime time.Time
+	HeartbeatAt       string
 }
 
 // loadLeaseSweepCandidates scans running Runs whose live attempt lease expired
@@ -427,7 +414,7 @@ func loadLeaseSweepCandidates(
 ) ([]leaseSweepCandidate, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT a.token::text, a.run_id::text, a.job_id::text, a.execution_unit_id,
-		       a.lease_deadline::text, a.heartbeat_at::text
+		       a.lease_deadline, a.lease_deadline::text, a.heartbeat_at::text
 		  FROM platform.run_attempts AS a
 		  JOIN platform.runs AS r ON r.id = a.run_id
 		  JOIN platform.jobs AS j ON j.id = a.job_id AND j.run_id = a.run_id
@@ -450,7 +437,8 @@ func loadLeaseSweepCandidates(
 		var candidate leaseSweepCandidate
 		if err := rows.Scan(
 			&candidate.Token, &candidate.RunID, &candidate.JobID,
-			&candidate.ExecutionUnitID, &candidate.LeaseDeadline, &candidate.HeartbeatAt,
+			&candidate.ExecutionUnitID, &candidate.LeaseDeadlineTime,
+			&candidate.LeaseDeadline, &candidate.HeartbeatAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning expired execution leases: %w", err)
 		}
@@ -470,7 +458,7 @@ func lockLeaseSweepCandidateTx(
 	var candidate leaseSweepCandidate
 	err := tx.QueryRowContext(ctx, `
 		SELECT a.token::text, a.run_id::text, a.job_id::text, a.execution_unit_id,
-		       a.lease_deadline::text, a.heartbeat_at::text
+		       a.lease_deadline, a.lease_deadline::text, a.heartbeat_at::text
 		  FROM platform.run_attempts AS a
 		  JOIN platform.runs AS r ON r.id = a.run_id
 		  JOIN platform.jobs AS j ON j.id = a.job_id AND j.run_id = a.run_id
@@ -486,7 +474,8 @@ func lockLeaseSweepCandidateTx(
 		token, grace.Seconds(),
 	).Scan(
 		&candidate.Token, &candidate.RunID, &candidate.JobID,
-		&candidate.ExecutionUnitID, &candidate.LeaseDeadline, &candidate.HeartbeatAt,
+		&candidate.ExecutionUnitID, &candidate.LeaseDeadlineTime,
+		&candidate.LeaseDeadline, &candidate.HeartbeatAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

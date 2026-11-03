@@ -103,7 +103,8 @@ func validReport(t *testing.T, digest string) []byte {
 
 func cleanupReport() []byte {
 	return []byte(`{"ok":true,"mode":"cleanup","sandbox_id":"unit-t033-test-1",` +
-		`"cleanup":{"sandbox_list_matches":0,"pid_alive":false,"ps_matches":0,"workspace_removed":true}}`)
+		`"cleanup":{"sandbox_list_matches":0,"pid":4242,"pid_alive":false,` +
+		`"ps_matches":0,"workspace_removed":true}}`)
 }
 
 // fakeRunner records every invocation and answers from a queue of handlers.
@@ -504,6 +505,9 @@ func TestExecutorCancelFromHeartbeatKillsTheUnit(t *testing.T) {
 	if !outcome.Cancelled || !outcome.CleanupVerified {
 		t.Fatalf("cancel outcome = %+v", outcome)
 	}
+	if !outcome.SandboxStarted {
+		t.Fatal("the cleanup pid proves the killed unit had launched")
+	}
 	_ = digest
 }
 
@@ -543,6 +547,69 @@ func TestExecutorLostLeaseStopsTheUnit(t *testing.T) {
 		}}
 	if _, runErr := executor.Run(context.Background(), toolRequest(), control); !errors.Is(runErr, ErrHeartbeat) {
 		t.Fatalf("Run error = %v, want ErrHeartbeat", runErr)
+	}
+}
+
+func TestExecutorTreatsADriverRefusalAsPreStart(t *testing.T) {
+	options, _ := testProfile(t)
+	runner := &fakeRunner{handlers: []func(context.Context, []string) (CommandResult, error){
+		func(context.Context, []string) (CommandResult, error) {
+			// This is the driver's die() shape: no mode, no sandbox id, no
+			// cleanup block. It proves the unit was never launched.
+			return CommandResult{Stdout: []byte(
+				`{"ok":false,"error":"runsc is not installed in the guest"}`)}, nil
+		},
+	}}
+	executor, _ := NewExecutor(options)
+	executor.WithRunner(runner)
+	outcome, runErr := executor.Run(context.Background(), toolRequest(), Control{})
+	if !errors.Is(runErr, ErrSandboxRefused) {
+		t.Fatalf("Run error = %v, want ErrSandboxRefused (outcome %+v)", runErr, outcome)
+	}
+	if errors.Is(runErr, ErrOrphan) {
+		t.Fatalf("a pre-start refusal was misclassified as an orphan: %v", runErr)
+	}
+	if outcome.SandboxStarted {
+		t.Fatalf("SandboxStarted must be derived from the report, outcome = %+v", outcome)
+	}
+	if outcome.CleanupVerified {
+		t.Fatal("a pre-start refusal has no cleanup proof")
+	}
+	if calls := runner.callsSnapshot(); len(calls) != 1 {
+		t.Fatalf("a pre-start refusal must not run the cleanup command: %d calls", len(calls))
+	}
+}
+
+func TestExecutorRejectsCorruptBase64AsOutputInvalid(t *testing.T) {
+	options, digest := testProfile(t)
+	var report map[string]any
+	if err := json.Unmarshal(validReport(t, digest), &report); err != nil {
+		t.Fatal(err)
+	}
+	report["stdout"] = "!!! not base64 !!!"
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{handlers: []func(context.Context, []string) (CommandResult, error){
+		func(context.Context, []string) (CommandResult, error) {
+			return CommandResult{Stdout: payload}, nil
+		},
+	}}
+	executor, _ := NewExecutor(options)
+	executor.WithRunner(runner)
+	outcome, runErr := executor.Run(context.Background(), toolRequest(), Control{})
+	if !errors.Is(runErr, ErrOutputInvalid) {
+		t.Fatalf("Run error = %v, want ErrOutputInvalid (outcome %+v)", runErr, outcome)
+	}
+	if !outcome.SandboxStarted {
+		t.Fatal("the parsed report proves the unit started")
+	}
+	if strings.Contains(string(outcome.Stdout), "not base64") {
+		t.Fatal("corrupt bytes must never be accepted as output")
+	}
+	if calls := runner.callsSnapshot(); len(calls) != 1 {
+		t.Fatalf("the driver cleanup already ran; no second invocation expected: %d", len(calls))
 	}
 }
 

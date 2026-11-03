@@ -84,6 +84,18 @@ def test_tool_versions_match_the_contract_baseline(t025_stack) -> None:
     )
     # T037 adds build_log/sbom -> artifacts and reviewed_by/revoked_by -> users;
     # the contract's three reference targets remain the only distinct targets.
+    # The explicit ordered list pins the count and each ordinal, so dropping one
+    # FK and duplicating another cannot pass the set comparison alone.
+    targets = [row["target"] for row in fks]
+    assert targets == [
+        "platform.artifacts",
+        "platform.artifacts",
+        "platform.artifacts",
+        "platform.principals",
+        "platform.users",
+        "platform.users",
+        "platform.users",
+    ], targets
     assert {row["target"] for row in fks} == {
         "platform.artifacts",
         "platform.principals",

@@ -15,20 +15,18 @@ package background
 //     row with a safe code. A retryable failure leaves the row building for the
 //     next attempt. A stale/revoked row is never overwritten.
 //
-// `image_digest` is the bundle digest: sha256:<hex> over the sorted source zip
-// bytes, canonical dependency-lock bytes and SBOM bytes. It identifies a content
-// bundle, **not** an OCI image; F15A builds images.
+// `image_digest` is the bundle digest: sha256:<hex> over the RFC 8785 canonical
+// array of {role, sha256} entries for the source zip, canonical dependency lock
+// and SBOM. It identifies a content bundle, **not** an OCI image; F15A builds
+// images. The role labels keep the digest injective (a swap is a different hash).
 
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"orchara/platform/internal/jcs"
@@ -175,7 +173,7 @@ func guardToolBuildCompletion(
 // to a failed tool row, so the owner (and an administrator) can diagnose the
 // failure from the build-facts read. It never overwrites a recorded log.
 func recordBuildLogArtifactTx(ctx context.Context, tx *sql.Tx, job *Job) error {
-	result, err := tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		UPDATE platform.tool_versions
 		   SET build_log_artifact_id = (
 		       SELECT a.id
@@ -195,7 +193,6 @@ func recordBuildLogArtifactTx(ctx context.Context, tx *sql.Tx, job *Job) error {
 	if err != nil {
 		return fmt.Errorf("recording the failed tool build log: %w", err)
 	}
-	_ = result
 	return nil
 }
 
@@ -432,21 +429,24 @@ func readSealedCapped(store *objectstore.Store, key string, max int64) ([]byte, 
 	return content, nil
 }
 
-// contentBundleDigest is the documented bundle identity: SHA-256 over the
-// lexicographically sorted source, canonical lock and SBOM bytes. It is a
+// contentBundleDigest is the documented bundle identity: SHA-256 over the RFC
+// 8785 canonical array of {role, sha256} entries for the source, the canonical
+// dependency lock and the SBOM. The role labels make the digest injective: a
+// role swap of two payloads is a different bundle, never the same hash. It is a
 // content bundle digest, not an OCI image digest.
 func contentBundleDigest(source, canonicalLock, sbom []byte) string {
-	parts := [][]byte{
-		append([]byte(nil), source...),
-		append([]byte(nil), canonicalLock...),
-		append([]byte(nil), sbom...),
+	entries := []any{
+		map[string]any{"role": "source", "sha256": sha256Hex(source)},
+		map[string]any{"role": "lock", "sha256": sha256Hex(canonicalLock)},
+		map[string]any{"role": "sbom", "sha256": sha256Hex(sbom)},
 	}
-	sort.Slice(parts, func(i, j int) bool { return bytes.Compare(parts[i], parts[j]) < 0 })
-	hash := sha256.New()
-	for _, part := range parts {
-		_, _ = hash.Write(part)
+	canonical, err := jcs.Canonicalize(entries)
+	if err != nil {
+		// The document is built only from hex strings and fixed role labels, so
+		// canonicalisation cannot fail; refuse rather than invent a digest.
+		return ""
 	}
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
+	return "sha256:" + jcs.SHA256Hex([]byte(canonical))
 }
 
 func pointerText(value *string) string {

@@ -36,6 +36,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // DeadlineErrorCode is the stable Run error_code for an active-time deadline and
@@ -93,17 +94,38 @@ func projectedActiveMS(settledMS int64, phase string, liveMS int64, hasLive bool
 // repeated call). Callers must already hold the Run and attempt row locks in the
 // transaction that performs the transition out of executing.
 func settleAttemptActiveTx(ctx context.Context, tx *sql.Tx, runID string) (int64, error) {
+	return settleAttemptActiveEndingTx(ctx, tx, runID, nil)
+}
+
+// settleAttemptActiveUntilTx settles a still-unsettled attempt as of an explicit
+// provable activity end instead of the wall clock. The lease sweep uses it to
+// settle at `lease_deadline` (the last moment the platform could prove the unit
+// was executing); charging the parked window would corrupt T034's accumulated
+// active time and could fail the next claim with deadline_exceeded.
+func settleAttemptActiveUntilTx(
+	ctx context.Context, tx *sql.Tx, runID string, until time.Time,
+) (int64, error) {
+	if until.IsZero() {
+		return settleAttemptActiveTx(ctx, tx, runID)
+	}
+	value := until.UTC()
+	return settleAttemptActiveEndingTx(ctx, tx, runID, &value)
+}
+
+func settleAttemptActiveEndingTx(
+	ctx context.Context, tx *sql.Tx, runID string, until *time.Time,
+) (int64, error) {
 	rows, err := tx.QueryContext(ctx, `
 		UPDATE platform.run_attempts
 		   SET active_ms = GREATEST(
 		           0,
-		           floor(extract(epoch FROM (now() - started_at)) * 1000)::bigint
+		           floor(extract(epoch FROM (COALESCE($2::timestamptz, now()) - started_at)) * 1000)::bigint
 		       ),
 		       active_settled_at = now()
 		 WHERE run_id = $1::uuid
 		   AND active_settled_at IS NULL
 		RETURNING active_ms`,
-		runID,
+		runID, until,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("settling the attempt active time: %w", err)

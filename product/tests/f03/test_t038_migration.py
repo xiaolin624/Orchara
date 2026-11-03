@@ -3,9 +3,10 @@ recovery columns on Runs.
 
 Every assertion reads a database migrated by the real ``cmd/admin migrate``
 binary. The checks mirror what the recover transaction depends on: one evidence
-row per (Run, attempt), at most one evidence row naming a re-armed job, a real
-principal as the author, a canonical SHA-256, and the paired reason/since columns.
-The worker role keeps zero ``platform`` privileges, and replaying 0024 is a no-op.
+row per (Run, attempt), a non-unique ``resumed_job_id`` link so every recovery
+cycle names the job it re-armed, a real principal as the author, a canonical
+SHA-256, and the paired reason/since columns. The worker role keeps zero
+``platform`` privileges, and replaying 0024 is a no-op.
 """
 
 from __future__ import annotations
@@ -173,12 +174,14 @@ def test_0024_replays_as_a_noop(migrated_database, go_binaries) -> None:
         )
     }
     for name in (
-        "run_recovery_evidence_resumed_job_id_key",
         "run_recovery_evidence_run_attempt_key",
         "run_recovery_evidence_evidence_object",
         "run_recovery_evidence_sha256_format",
     ):
         assert name in constraints, constraints
+    # The requeued job is a link, not a uniqueness rule: a later recovery cycle
+    # re-arms the same job and must still be able to name it.
+    assert "run_recovery_evidence_resumed_job_id_key" not in constraints, constraints
     # The Run columns exist and are paired.
     run_constraints = {
         row["conname"]
@@ -272,20 +275,22 @@ def test_recovery_evidence_identity_and_safe_values_are_enforced(migrated_databa
         f"{st.quote_literal('d' * 64)}, {st.quote_literal(owner)}::uuid)",
         fragment="duplicate key",
     )
-    # A second evidence row cannot name the same re-armed job.
+    # A later recovery cycle (new attempt) may and must name the same re-armed
+    # job: the audit link is retained, only per-attempt uniqueness is enforced.
     other_run = seed_run(dbname, owner, snapshot)
     other_job = seed_job(dbname, other_run)
     other_token = seed_attempt(dbname, other_job, other_run)
-    assert_rejected(
-        dbname,
-        "INSERT INTO platform.run_recovery_evidence "
-        "(id, run_id, attempt_token, evidence, evidence_sha256, recorded_by, resumed_job_id) VALUES ("
-        f"{st.quote_literal(t029.new_uuid())}::uuid, {st.quote_literal(other_run)}::uuid, "
-        f"{st.quote_literal(other_token)}::uuid, {st.quote_literal(evidence_payload())}::jsonb, "
-        f"{st.quote_literal('d' * 64)}, {st.quote_literal(owner)}::uuid, "
-        f"{st.quote_literal(job_id)}::uuid)",
-        fragment="duplicate key",
+    second = insert_evidence(
+        dbname, run_id=other_run, token=other_token, actor=owner, resumed_job_id=job_id
     )
+    assert second
+    named = st.sql_rows(
+        dbname,
+        "SELECT attempt_token::text AS attempt_token FROM platform.run_recovery_evidence "
+        f"WHERE resumed_job_id = {st.quote_literal(job_id)}::uuid ORDER BY attempt_token",
+    )
+    assert len(named) == 2, named
+    assert {row["attempt_token"] for row in named} == {token, other_token}, named
     # A real principal is required (FK) and the hash is a lowercase SHA-256.
     assert_rejected(
         dbname,

@@ -578,6 +578,36 @@ func TestOrphanFailsTheRunAndKeepsTheCleanupEvidence(t *testing.T) {
 	}
 }
 
+func TestPreStartSandboxRefusalKeepsTheProvenFalseFlag(t *testing.T) {
+	lease, manifest, _ := successLease(t, PresetToolID, 1)
+	input := inputArtifact()
+	client := &fakeClient{lease: lease, manifest: manifest, inputs: []InputArtifact{input},
+		inputBytes: []byte(salesCSV), runState: "failed"}
+	// The executor proved no unit launched: SandboxStarted is false and the
+	// typed refusal maps to sandbox_unavailable without inventing cleanup facts.
+	box := &fakeSandbox{
+		outcome: sandbox.Outcome{SandboxStarted: false},
+		err:     sandbox.ErrSandboxRefused,
+	}
+	report := Run(context.Background(), baseDeps(t, client, &fakeInputs{inputs: client.inputs}, box))
+	if report.Outcome != "failed" || report.ErrorCode != CodeSandboxUnavailable {
+		t.Fatalf("report = %+v", report)
+	}
+	if len(client.exits) != 1 {
+		t.Fatalf("exits = %+v", client.exits)
+	}
+	evidence := client.exits[0].Evidence
+	if evidence["sandbox_started"] != false {
+		t.Fatalf("sandbox_started must use the proven flag: %+v", evidence)
+	}
+	if evidence["started"] != true {
+		t.Fatalf("the attempt still certifies its exit: %+v", evidence)
+	}
+	if evidence["sandbox_cleanup_verified"] != false {
+		t.Fatalf("a pre-start refusal must not claim cleanup was verified: %+v", evidence)
+	}
+}
+
 func TestSandboxUnavailableIsAFailedRun(t *testing.T) {
 	lease, manifest, _ := successLease(t, PresetToolID, 1)
 	input := inputArtifact()

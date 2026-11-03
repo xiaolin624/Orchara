@@ -188,6 +188,108 @@ def test_upload_complete_status_register_round_trip(t033_stack) -> None:
     assert bad_media.json["error"]["details"]["field"] == "media_type"
 
 
+def _create_and_put(client, lease: dict, content: bytes) -> tuple[str, str]:
+    created = client.create_upload(
+        lease["run_id"],
+        {"attempt_token": lease["attempt_token"], "media_type": "application/json",
+         "size_bytes": len(content), "purpose": "final_output"},
+    )
+    assert created.status == 201, created.text
+    ticket = created.json
+    put = t033.put_link(ticket["upload_url"], content)
+    assert put.status in (200, 204), put.status
+    return ticket["artifact_id"], hashlib.sha256(content).hexdigest()
+
+
+def test_complete_replay_on_scanning_and_ready_never_enqueues_a_job(t033_stack) -> None:
+    _owner, lease, _artifact = t033.claimed_with_sales_csv(t033_stack)
+    client = t033.artifact_client(t033_stack, "worker")
+    dbname = t033_stack.dbname
+    content = b'{"total":"250.00","regions":{"east":"200.00"},"order_count":3}\n'
+    artifact_id, sha = _create_and_put(client, lease, content)
+
+    first = client.complete(
+        lease["run_id"], artifact_id,
+        {"attempt_token": lease["attempt_token"], "sha256": sha},
+    )
+    assert first.status == 202, first.text
+    assert first.json["state"] == "scanning", first.text
+    jobs = t028.artifact_jobs(dbname, artifact_id)
+    assert len(jobs) == 1, jobs
+
+    # A replay while scanning is the same intention: 202 with the current state
+    # and exactly the one finalize job, no duplicate (the old code re-enqueued a
+    # job whose expected revision could never match again).
+    replay = client.complete(
+        lease["run_id"], artifact_id,
+        {"attempt_token": lease["attempt_token"], "sha256": sha},
+    )
+    assert replay.status == 202, replay.text
+    assert replay.json["state"] == "scanning", replay.text
+    assert replay.json["id"] == artifact_id, replay.text
+    assert [job["id"] for job in t028.artifact_jobs(dbname, artifact_id)] == [jobs[0]["id"]]
+
+    t028.finalize_once(t033_stack)
+    ready = t033.wait_scoped_status(
+        client, lease["run_id"], lease["attempt_token"], artifact_id, {"ready"}
+    )
+    assert ready["state"] == "ready", ready
+
+    # The same-hash replay after activation returns the current (ready) artifact
+    # and still does not enqueue a second finalize job.
+    replay_ready = client.complete(
+        lease["run_id"], artifact_id,
+        {"attempt_token": lease["attempt_token"], "sha256": sha},
+    )
+    assert replay_ready.status == 202, replay_ready.text
+    assert replay_ready.json["state"] == "ready", replay_ready.text
+    assert [job["id"] for job in t028.artifact_jobs(dbname, artifact_id)] == [jobs[0]["id"]]
+
+
+def test_complete_on_quarantined_or_deleted_artifact_is_refused(t033_stack) -> None:
+    _owner, lease, _artifact = t033.claimed_with_sales_csv(t033_stack)
+    client = t033.artifact_client(t033_stack, "worker")
+    dbname = t033_stack.dbname
+    content = b'{"total":"250.00"}\n'
+
+    quarantined_id, sha = _create_and_put(client, lease, content)
+    assert client.complete(
+        lease["run_id"], quarantined_id,
+        {"attempt_token": lease["attempt_token"], "sha256": sha},
+    ).status == 202
+    jobs = t028.artifact_jobs(dbname, quarantined_id)
+    assert len(jobs) == 1, jobs
+    st.sql(
+        dbname,
+        "UPDATE platform.artifacts SET state = 'quarantined', revision = revision + 1 "
+        f"WHERE id = {st.quote_literal(quarantined_id)}::uuid",
+    )
+    quarantined = client.complete(
+        lease["run_id"], quarantined_id,
+        {"attempt_token": lease["attempt_token"], "sha256": sha},
+    )
+    assert quarantined.status == 409, quarantined.text
+    assert quarantined.json["error"]["code"] == "artifact_conflict", quarantined.text
+    assert len(t028.artifact_jobs(dbname, quarantined_id)) == 1
+
+    deleted_id, deleted_sha = _create_and_put(client, lease, content)
+    assert client.complete(
+        lease["run_id"], deleted_id,
+        {"attempt_token": lease["attempt_token"], "sha256": deleted_sha},
+    ).status == 202
+    st.sql(
+        dbname,
+        "UPDATE platform.artifacts SET state = 'deleted', deleted_at = now(), "
+        f"revision = revision + 1 WHERE id = {st.quote_literal(deleted_id)}::uuid",
+    )
+    deleted = client.complete(
+        lease["run_id"], deleted_id,
+        {"attempt_token": lease["attempt_token"], "sha256": deleted_sha},
+    )
+    assert deleted.status == 404, deleted.text
+    assert deleted.json["error"]["code"] == "artifact_not_found", deleted.text
+
+
 def test_old_and_superseded_attempts_cannot_upload_or_register(t033_stack) -> None:
     owner, lease, _artifact = t033.claimed_with_sales_csv(t033_stack)
     client = t033.artifact_client(t033_stack, "worker")

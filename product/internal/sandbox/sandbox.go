@@ -100,6 +100,10 @@ var (
 	ErrRunnerUnavailable = errors.New("the sandbox driver is unavailable")
 	// ErrDriverReport: the driver's JSON document is absent/invalid.
 	ErrDriverReport = errors.New("the sandbox driver reported an unusable result")
+	// ErrSandboxRefused: the driver answered with its pre-start refusal document
+	// (`{"ok":false,"error":...}`) and proved no execution unit was launched. No
+	// orphan/cleanup assertion applies because nothing was created.
+	ErrSandboxRefused = errors.New("the sandbox driver refused before launching a unit")
 	// ErrTimeout: the sandbox exceeded its wall-clock limit and was killed.
 	ErrTimeout = errors.New("the sandbox exceeded its per-run timeout")
 	// ErrCancelled: the heartbeat reported cancel_requested; the unit was killed.

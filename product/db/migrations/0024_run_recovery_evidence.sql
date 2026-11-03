@@ -27,12 +27,12 @@
 --     evidence (resolved from `--actor-login` or the bootstrap admin). Never a
 --     system NULL: an audited recovery always names a person.
 --   * `recorded_at`     — database clock of the recording.
---   * `resumed_job_id` -> jobs, UNIQUE — the one job this evidence re-armed. The
---     UNIQUE constraint is the design's "a repeated recovery cannot produce a
---     second requeue" backstop: the same job id can be named by at most one
---     evidence row. (A later, legitimate recovery *cycle* of the same logical job
---     is a new attempt and is protected by `run_recovery_evidence_run_attempt_key`
---     below; see the comment on that constraint.)
+--   * `resumed_job_id` -> jobs — the job this evidence re-armed. It is
+--     deliberately NOT unique: a legitimate later recovery cycle re-arms the
+--     same logical job, and every cycle must name the job it requeued so the
+--     audit trail stays readable. The "cannot requeue twice" backstop is
+--     `run_recovery_evidence_run_attempt_key` (one row per attempt); a repeated
+--     command for the same attempt cannot record a second row or requeue.
 --
 -- `platform.runs.recovery_reason` / `recovery_since` — the parked reason and the
 -- database-clock park time. NULL means "not parked". They are deliberately
@@ -54,13 +54,10 @@
 --   3. `run_recovery_evidence_run_attempt_key UNIQUE (run_id, attempt_token)` is
 --      the once-per-attempt invariant. It is what makes a repeated command for
 --      the same attempt impossible in the database even if the Run state check
---      were bypassed. A later recovery cycle has a new attempt token and must be
---      able to record its own evidence; a literal UNIQUE(resumed_job_id) alone
---      would make that second honest cycle impossible because the same job is
---      re-armed. The Go writer therefore stores `resumed_job_id` only for the
---      first cycle of a job and leaves it NULL for a later cycle (NULLs do not
---      collide); the UNIQUE(resumed_job_id) backstop still prevents two evidence
---      rows from naming the same requeue.
+--      were bypassed. A later recovery cycle has a new attempt token and records
+--      its own evidence, naming the same re-armed job: `resumed_job_id` is a
+--      plain FK with no UNIQUE constraint. Uniqueness would make that second
+--      honest cycle impossible (or force NULL, losing the audit link).
 --   4. No `runs.recovery_operator` column: `recorded_by` on the evidence row is
 --      the actor, and `platform.audit_events` records every recording. A second
 --      column would duplicate the audit trail.
@@ -85,7 +82,7 @@ CREATE TABLE IF NOT EXISTS platform.run_recovery_evidence (
     evidence_sha256 text NOT NULL,
     recorded_by    uuid NOT NULL REFERENCES platform.principals (id),
     recorded_at    timestamptz NOT NULL DEFAULT now(),
-    resumed_job_id uuid UNIQUE REFERENCES platform.jobs (id),
+    resumed_job_id uuid REFERENCES platform.jobs (id),
     CONSTRAINT run_recovery_evidence_evidence_object
         CHECK (jsonb_typeof(evidence) = 'object'),
     CONSTRAINT run_recovery_evidence_sha256_format
@@ -155,7 +152,7 @@ COMMENT ON COLUMN platform.run_recovery_evidence.evidence_sha256 IS
 COMMENT ON COLUMN platform.run_recovery_evidence.recorded_by IS
     'F03/T038 the real administrator who supplied the proof (--actor-login or the bootstrap admin). Never a system NULL: an audited recovery names a person.';
 COMMENT ON COLUMN platform.run_recovery_evidence.resumed_job_id IS
-    'F03/T038 the one job this evidence re-armed (UNIQUE). A second requeue naming the same job is refused by the database. A later recovery cycle records its evidence with this NULL (new attempt) and is protected by run_recovery_evidence_run_attempt_key.';
+    'F03/T038 the job this evidence re-armed. Not unique: a later recovery cycle re-arms the same logical job and also names it, so every cycle keeps the audit link. The once-per-attempt rule is run_recovery_evidence_run_attempt_key.';
 COMMENT ON CONSTRAINT run_recovery_evidence_run_attempt_key ON platform.run_recovery_evidence IS
     'One evidence row per (Run, attempt): a repeated recover command for the same attempt cannot record or requeue twice. A later cycle has a new attempt token.';
 COMMENT ON COLUMN platform.runs.recovery_reason IS

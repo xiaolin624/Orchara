@@ -99,8 +99,7 @@ func ToolRun(ctx context.Context, work background.HandlerWork) background.Outcom
 		return toolRunFailure(ctx, work, mediaType, inputSHA, int64(len(input)), result, runErr)
 	}
 
-	summary, err := validateSalesSummary(result.Data)
-	if err != nil {
+	if _, err := validateSalesSummary(result.Data); err != nil {
 		return toolOutputFailure(ctx, work, mediaType, inputSHA, int64(len(input)), result,
 			background.CodeToolOutputInvalid, "工具返回的 data 不符合销售统计 Schema。")
 	}
@@ -128,8 +127,6 @@ func ToolRun(ctx context.Context, work background.HandlerWork) background.Outcom
 		return toolOutputFailure(ctx, work, mediaType, inputSHA, int64(len(input)), result,
 			background.CodeToolOutputInvalid, "summary.json 与 output.json.data 不一致。")
 	}
-	_ = summary
-
 	summaryID, outcome, ok := uploadToolArtifact(
 		ctx, work, "summary.json", toolPurposeSummary, "application/json", summaryArtifact.Content,
 	)
@@ -141,13 +138,11 @@ func ToolRun(ctx context.Context, work background.HandlerWork) background.Outcom
 	); !ok {
 		return outcome
 	}
-	logID, outcome, ok := uploadToolArtifact(
+	if _, outcome, ok := uploadToolArtifact(
 		ctx, work, "log", toolPurposeLog, "text/plain", result.Log,
-	)
-	if !ok {
+	); !ok {
 		return outcome
 	}
-	_ = logID
 	if outcome, ready := waitForToolArtifacts(ctx, work, []string{summaryID}); !ready {
 		return outcome
 	}

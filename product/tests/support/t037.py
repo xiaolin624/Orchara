@@ -394,11 +394,20 @@ def canonical_json_bytes(value) -> bytes:
 def bundle_digest(source: bytes, dependency_lock: dict, sbom: bytes) -> str:
     """The documented content bundle digest, computed independently of Go.
 
-    SHA-256 over the lexicographically sorted source/lock/SBOM bytes. It is a
-    content bundle identity, not an OCI image digest.
+    SHA-256 over the RFC 8785 canonical JSON array of ``{role, sha256}`` entries
+    for source, canonical lock and SBOM. The role labels make the identity
+    injective: swapping two payloads changes the digest. It is a content bundle
+    identity, not an OCI image digest.
     """
-    parts = sorted([source, canonical_json_bytes(dependency_lock), sbom])
-    return "sha256:" + hashlib.sha256(b"".join(parts)).hexdigest()
+    entries = [
+        {"role": "source", "sha256": hashlib.sha256(source).hexdigest()},
+        {
+            "role": "lock",
+            "sha256": hashlib.sha256(canonical_json_bytes(dependency_lock)).hexdigest(),
+        },
+        {"role": "sbom", "sha256": hashlib.sha256(sbom).hexdigest()},
+    ]
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(entries)).hexdigest()
 
 
 def download_artifact_bytes(session: Session, artifact_id: str) -> bytes:

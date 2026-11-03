@@ -119,9 +119,9 @@ cleanup() {
 }
 
 emit_cleanup_only() {
-  python3 - "$SANDBOX_ID" "$CLEANUP_LIST" "$CLEANUP_PID_ALIVE" "$CLEANUP_PS" "$CLEANUP_WORKSPACE" <<'PY'
+  python3 - "$SANDBOX_ID" "$CLEANUP_LIST" "$CLEANUP_PID" "$CLEANUP_PID_ALIVE" "$CLEANUP_PS" "$CLEANUP_WORKSPACE" <<'PY'
 import json, sys
-sandbox_id, list_matches, pid_alive, ps_matches, workspace_removed = sys.argv[1:]
+sandbox_id, list_matches, pid, pid_alive, ps_matches, workspace_removed = sys.argv[1:]
 clean = int(list_matches) == 0 and pid_alive == "false" and int(ps_matches) == 0 and workspace_removed == "true"
 print(json.dumps({
     "ok": clean,
@@ -129,6 +129,9 @@ print(json.dumps({
     "sandbox_id": sandbox_id,
     "cleanup": {
         "sandbox_list_matches": int(list_matches),
+        # A non-zero pid is the proof that a process was actually launched: the
+        # pid file is written by runsc only after it starts the sandbox.
+        "pid": int(pid) if pid.isdigit() else 0,
         "pid_alive": pid_alive == "true",
         "ps_matches": int(ps_matches),
         "workspace_removed": workspace_removed == "true",

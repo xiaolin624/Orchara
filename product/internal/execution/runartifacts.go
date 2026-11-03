@@ -359,7 +359,9 @@ func (s *RunArtifactStore) CompleteUpload(
 		return RunArtifactView{}, fmt.Errorf("reading the run artifact: %w", err)
 	}
 	if deleted.Valid || state == "deleted" {
-		return RunArtifactView{}, &runArtifactConflictError{reason: "the artifact is deleted"}
+		// A deleted artifact is no longer in this run's visible scope; answer
+		// exactly like a missing one so completion cannot probe tombstones.
+		return RunArtifactView{}, ErrRunArtifactNotFound
 	}
 	view := RunArtifactView{ID: artifactID, State: state, MediaType: mediaType, SizeBytes: sizeBytes.Int64}
 
@@ -403,7 +405,7 @@ func (s *RunArtifactStore) CompleteUpload(
 		view.State = "scanning"
 		return view, nil
 
-	case "scanning", "ready", "quarantined":
+	case "scanning", "ready":
 		recorded := ""
 		if expected.Valid {
 			recorded = strings.ToLower(strings.TrimSpace(expected.String))
@@ -411,25 +413,28 @@ func (s *RunArtifactStore) CompleteUpload(
 		if recorded != sha {
 			return RunArtifactView{}, &runArtifactConflictError{reason: "a different sha256 was already recorded"}
 		}
-		finalize, _, enqueueErr := background.EnqueueTx(ctx, tx, background.EnqueueParams{
-			Kind:             background.KindArtifactFinalize,
-			TargetID:         artifactID,
-			OwnerID:          scope.OwnerID,
-			DedupKey:         runFinalizeDedupKey(artifactID, sha),
-			ExpectedRevision: &revision,
-			ExpectedSHA256:   sha,
-			InputArtifactID:  artifactID,
-		})
-		if enqueueErr != nil && !errors.Is(enqueueErr, background.ErrDedupConflict) {
-			return RunArtifactView{}, enqueueErr
-		}
+		// The completion already happened: the first call enqueued exactly one
+		// finalize job and it is still the authority (ready means it ran). A
+		// replay must not attempt another enqueue at all — its expected revision
+		// would name a past state and could only produce a doomed job/conflict.
 		if commitErr := tx.Commit(); commitErr != nil {
 			return RunArtifactView{}, fmt.Errorf("committing the idempotent run completion: %w", commitErr)
 		}
-		if finalize != nil && s.Notifier != nil {
-			s.Notifier.Notify(ctx, finalize)
-		}
 		return view, nil
+
+	case "quarantined":
+		recorded := ""
+		if expected.Valid {
+			recorded = strings.ToLower(strings.TrimSpace(expected.String))
+		}
+		if recorded != sha {
+			return RunArtifactView{}, &runArtifactConflictError{reason: "a different sha256 was already recorded"}
+		}
+		// Quarantine is a final admission verdict, not an idempotent replay:
+		// completing it again is a conflict (same rule as T028's user uploads).
+		return RunArtifactView{}, &runArtifactConflictError{
+			reason: "the artifact is quarantined and cannot be completed again",
+		}
 
 	default:
 		return RunArtifactView{}, &runArtifactConflictError{reason: "the artifact is not in an uploadable state"}

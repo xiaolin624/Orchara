@@ -492,6 +492,46 @@ def test_cancel_with_a_terminal_child_run_is_not_blocked(t029_stack) -> None:
     assert row["finished_at"] is not None, row
 
 
+def test_cancel_with_a_live_child_run_stays_cancelling(t029_stack) -> None:
+    """The immediate-cancel path must honour the finalizer's live-child guard.
+
+    A queued/waiting Run has no live attempt, but a live child Run is still a
+    controlled execution unit. Cancelling it immediately would claim "stopped"
+    while that unit runs, so the Run stays cancelling with the intent recorded
+    and its job held; only the finalizer may commit cancelled once the child is
+    terminal.
+    """
+    owner = t036.golden_owner(t029_stack)
+    run = t036.queued_run(t029_stack, owner)
+    job = t036.jobs_for_run(t029_stack.dbname, run["id"])[0]
+    assert job["state"] == "ready", job
+    child_id = t036.seed_child_run(
+        t029_stack,
+        parent_run_id=run["id"],
+        owner_id=owner.creator.principal_id,
+        state="running",
+    )
+
+    response = t036.cancel_run(owner.creator, run["id"])
+    assert response.status == 202, response.text
+    t036.assert_run_shape(response.json)
+    assert response.json["state"] == t036.STATE_CANCELLING, response.text
+    assert response.json["revision"] == 2, response.json
+    headers = t036.cancel_headers(response)
+    assert headers["cancel_requested_at"] is not None, response.text
+
+    row = t036.run_cancel_row(t029_stack.dbname, run["id"])
+    assert row["state"] == t036.STATE_CANCELLING, row
+    assert row["finished_at"] is None, row
+    assert row["cancel_requested_at"] is not None, row
+    assert t036.job_row(t029_stack.dbname, job["id"])["state"] == "held", job
+    child = t036.run_cancel_row(t029_stack.dbname, child_id)
+    assert child["state"] == "running", child
+    assert t036.latest_run_status(t029_stack.dbname, run["id"]) == {
+        "state": t036.STATE_CANCELLING
+    }
+
+
 def test_cancelling_a_never_started_unit_cancels_and_voids_the_job(t029_stack) -> None:
     owner = t036.golden_owner(t029_stack)
     lease = t036.claim_lease(t029_stack, owner, execution_unit_id="unit-never-started")

@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from support import f00b, t035, t038
+from support import f00b, t034, t035, t038
 from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
@@ -140,6 +140,112 @@ def test_full_evidence_records_one_requeue_and_a_new_attempt(t029_stack, tmp_pat
     assert late_exit.json["error"]["code"] == "attempt_evidence_conflict", late_exit.text
     assert t038.run_state_row(dbname, run_id)["state"] == "running"
     assert t038.attempt_row(dbname, new_lease["attempt_token"])["exited_at"] is None
+
+
+def test_park_settles_active_time_at_the_lease_deadline(t029_stack, tmp_path) -> None:
+    """T034 active time must not include the parked (not executing) window.
+
+    The sweep parks at the last provable activity end (``lease_deadline``) and
+    settles the attempt in the same transaction. If recover settled at park time
+    instead, the whole parked window would be added to the Run total, the next
+    claim could fail immediately with ``deadline_exceeded`` and the UI clock
+    would jump.
+    """
+    owner = t038.golden_owner(t029_stack)
+    lease = t038.claim_lease(t029_stack, owner, execution_unit_id="unit-active-park")
+    dbname = t029_stack.dbname
+    run_id = lease["run_id"]
+    token = lease["attempt_token"]
+
+    # Deterministic timeline: the attempt started 10s ago, but the lease (the
+    # last provable activity) ended 5s ago. The limit (7s) is above the provable
+    # 5s and below the old, corrupted 10s settlement.
+    t034.shift_attempt_started_at_seconds(dbname, token, 10)
+    t034.set_run_max_active_ms(dbname, run_id, 7_000)
+    t038.set_lease_expired_seconds_ago(dbname, token, 5)
+    t038.age_attempt_heartbeat(dbname, token, 120)
+
+    _completed, sweep = t038.sweep(t029_stack, "--grace", "1s")
+    assert sweep["parked"] == 1, sweep
+
+    settled = t034.attempt_active_row(dbname, token)
+    assert settled["active_settled_at"] is not None, settled
+    assert 4_000 <= settled["active_ms"] < 7_000, settled
+    parked_run = t034.run_active_row(dbname, run_id)
+    assert parked_run["state"] == t038.STATE_RECOVERY, parked_run
+    assert 4_000 <= parked_run["active_elapsed_ms"] < 7_000, parked_run
+
+    report = t038.recover_ok(
+        t029_stack,
+        run_id,
+        evidence=t038.recovery_evidence("unit-active-park"),
+        directory=tmp_path,
+        extra=["--grace", "60s"],
+    )
+    assert report["status"] == "recovered", report
+
+    # Recover is a no-op on an already-settled attempt: the parked window is not
+    # added a second time.
+    recovered = t034.run_active_row(dbname, run_id)
+    assert recovered["state"] == "queued", recovered
+    assert 4_000 <= recovered["active_elapsed_ms"] < 7_000, recovered
+    assert t034.attempt_active_row(dbname, token)["active_ms"] < 7_000
+
+    # The next claim must not be failed by the deadline: the recovered total is
+    # under the frozen limit.
+    new_lease = t038.claim_next(t029_stack, execution_unit_id="unit-active-park-2")
+    assert new_lease["run_id"] == run_id, new_lease
+    assert new_lease["attempt_token"] != token, new_lease
+    running = t034.run_active_row(dbname, run_id)
+    assert running["state"] == "running", running
+    assert running["error_code"] is None, running
+    assert running["active_elapsed_ms"] < 7_000, running
+
+
+def test_a_second_recovery_cycle_names_the_same_requeued_job(t029_stack, tmp_path) -> None:
+    """Every cycle records the job it requeued, including a later cycle.
+
+    Requeue reuses the same job id, so the evidence column must not be unique;
+    the once-per-attempt rule is ``UNIQUE(run_id, attempt_token)``. The old
+    writer stored NULL for later cycles, which made the audit link unreadable.
+    """
+    _owner, lease, _park = t038.parked_run(
+        t029_stack, execution_unit_id="unit-cycle-one"
+    )
+    dbname = t029_stack.dbname
+    run_id = lease["run_id"]
+    job_id = lease["job_id"]
+
+    first = t038.recover_ok(
+        t029_stack,
+        run_id,
+        evidence=t038.recovery_evidence("unit-cycle-one"),
+        directory=tmp_path,
+    )
+    assert first["resumed_job_id"] == job_id, first
+
+    second_lease = t038.claim_next(t029_stack, execution_unit_id="unit-cycle-two")
+    assert second_lease["job_id"] == job_id, second_lease
+    t038.expire_lease(dbname, second_lease["attempt_token"])
+    _completed, sweep = t038.sweep(t029_stack, "--grace", "1s")
+    assert sweep["parked"] == 1, sweep
+    assert t038.run_state_row(dbname, run_id)["state"] == t038.STATE_RECOVERY
+
+    second = t038.recover_ok(
+        t029_stack,
+        run_id,
+        evidence=t038.recovery_evidence("unit-cycle-two"),
+        directory=tmp_path,
+        extra=["--grace", "60s"],
+    )
+    assert second["status"] == "recovered", second
+    assert second["resumed_job_id"] == job_id, second
+
+    rows = t038.recovery_evidence_rows(dbname, run_id)
+    assert len(rows) == 2, rows
+    assert [row["resumed_job_id"] for row in rows] == [job_id, job_id], rows
+    assert rows[0]["attempt_token"] == lease["attempt_token"], rows
+    assert rows[1]["attempt_token"] == second_lease["attempt_token"], rows
 
 
 def test_check_only_writes_nothing(t029_stack, tmp_path) -> None:
