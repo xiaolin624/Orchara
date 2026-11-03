@@ -307,3 +307,36 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   `stub-rate-limited*`、`stub-adapter-down*`、`stub-permission-denied*`、
   `stub-schema-error*`），因为故障属于服务端解析出的候选而不是 worker params；真实厂商
   adapter 仍未编译，真实 provider 仍以 `adapter_unavailable` 诚实失败。
+
+## T046 追加（2026-11-04）：十进制账本是预算权威，预留按预算根串行
+
+### D13 —— `usage_ledger` 是唯一权威；预留/释放/结算都是幂等行，绝不使用 float
+
+- 迁移 0028 建契约表 `platform.usage_ledger`（`id/run_id/budget_root_run_id/operation_id/
+  entry_key UNIQUE/kind∈{reserve,release,charge}/amount numeric(20,8)≥0/currency/tokens_in/out/
+  price_version/created_at`）。`budget_root_run_id` 由服务端沿 `runs.parent_run_id` 递归解析；
+  F04A debug run 是自己的根。子 run 的每次物理尝试都记在父预算根上。
+- 账本算术固定为：`outstanding = sum(reserve) - sum(release)`，`charged = sum(charge)`，
+  `consumed = charged + outstanding`。`Reserve` 在**预算根 run 行**上 `SELECT ... FOR UPDATE`，
+  同一事务内检查 `budget_limit - consumed`，放不下即返回 typed `budget_exhausted`（HTTP 429，
+  details 带 `remaining_amount/required_amount/currency`），不写 attempt、不调 provider。
+  并发的最后一个预留因此只可能被一个请求拿到。
+- 金额全程 `math/big.Rat` + 非负十进制字符串：预留按 8 位小数向上取整（保守），实际费用按
+  半进位；`numeric(20,8)` 边界外拒绝而不是静默舍入。价格版本是
+  `price-v1:<profile_id>:in=<每百万输入价>:out=<每百万输出价>:<currency>`；profile 未配置
+  `price` 时是零价 dev stub（预留/费用为 0，纯调用不耗尽预算），配置了异币种价格则 422。
+- 每次物理尝试（重试、fallback、流式 generation）各有一对
+  `entry_key="<operation>#<attempt>:reserve|release|charge"`：失败/取消释放整笔预留；成功
+  释放整笔预留并写入实际 charge（release 抵消 hold，charge 才是花费）；provider 没有 usage
+  对象时保持保守预留、attempt 记 `usage_missing`，由 maintenance-only
+  `POST /internal/v1/runs/{id}/capability-settlements` 后续对账（worker 不能自报费用）。
+  attempt/operation 重放复用既有 operation idempotency，不会二次预留或二次收费。
+- `operation_attempts` 仍是每 attempt 投影：新增 `settlement_state`
+  （`none|reserved|settled|released|usage_missing`）与 `price_version`，`reserved_amount/
+  charged_amount/tokens` 与账本行同事务写入；owner 账本响应增加 `budget` 投影
+  （limit/reserved/charged/remaining/currency/overrun），超支时 `overrun=true` 且页面明确
+  渲染“已超支：运行不能被呈现为成功”。预算拒绝保留此前已确认的 artifact/operation，
+  不删除任何已 sealed 字节。
+- 权限边界与 0007–0027 相同：`platform` 对 `orchara_worker`/PUBLIC 无权限，唯一写者是 API
+  进程；T047/T050 应复用 `internal/budget.Ledger` 的 `Reserve/Settle/Release/Totals`
+  与 `AttemptKey`，不得另起一套金额记录。
