@@ -405,4 +405,34 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   只影响声明连接器的工具。真实厂商连接器语义不在本批编译范围，策略+schema 是部署契约
   （报告 §8 `not_run`）。
 
+## T049 追加（2026-11-04）：模板是服务端源草稿，实例化是私有调试桥，不是 F02B 发布
+
+### D16 — 模板注册表只保存源草稿；实例化复制为调用者私有应用；发布仍归 F02B
+
+- 新增 `platform.application_templates`（迁移 0030；0028 已被 T046 使用，0030 是下一个空位）：
+  `id text PK`（固定 `sales`）、`name`、`application_id uuid`（唯一）、`definition`/
+  `capability_card` jsonb、时间戳。它指向服务端控制的源应用及其 revision-1 草稿，**不是**
+  `application_versions`/`publication_reviews`/`version_dependencies` 的任何行。
+- `orchara-admin seed-sales-template --owner-login ADMIN --model-version-id UUID` 只接受
+  真实 T039 流程已经 passed 的 stub 模型（pending/failed/revoked/非 stub 一律拒绝，命令从不写
+  `validation_state`）；以真实 `sales_stats.py` 字节的 SHA-256 作为固定预设工具版本的
+  `image_digest` 并幂等确保该行；固定工具 id 已存在且 ready 时复用。重复运行输出相同的
+  `{template_id, application_id, tool_version_id, model_version_id}`，模板行与工具行各一条。
+- 固定定义是四节点 `start → stats(python, preset) → explain(agent) → end`：python 输出
+  `{total,regions,order_count}`；agent 输入只绑定 `node:stats#`，输出 `{report,totals}`；end
+  映射 `{summary, report, totals}`。`summary.json`/`summary.csv` 是 python 节点的文件 artifact，
+  报告是 explain 的 data artifact 与 end 输出，三者互不覆盖。
+- **金额真值仍在 Python。** dev stub 只在 `response_schema` 声明了 `report` 且最后一条 user
+  消息携带已验证 summary 时，按排序后的 region 逐字复制 total/regions/order_count 生成 report
+  与 totals；不重算、不编造。schema 没有 `report` 的 T043 `{text}` 路径不受影响。
+- 非契约 `POST /api/v1/templates/{template_id}/applications`：认证 creator + CSRF；模板是
+  服务端种子，任何 creator 可实例化（未知/畸形 id 同为 404 `template_not_found`），非 creator
+  403 `creator_role_required`；一个事务内创建调用者拥有的应用与 revision-1 草稿，返回
+  `{id, revision, definition_revision}`，不创建 version/review，也不调用发布。
+- 实例化后的路径完全是既有的 validate → debug-run → supervisor/runsc → owner-only
+  node-results/artifact 下载；第三用户对 run/node-results/artifact 全部 404。**F02B 若要把模板
+  变成共享版本，必须新增自己的发布事实与审核门，不得复用本表冒充已发布版本。**
+- 迁移 0030 只新增该表（0001–0029 未改）；`contracts/**` 与 `docs/spec/**` 未改，
+  `sync_spec --check` 无漂移。
+
 
