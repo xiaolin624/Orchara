@@ -270,7 +270,15 @@ def test_needs_reconciliation_is_committed_but_stays_non_terminal(t029_stack) ->
     assert t029.run_state_row(t029_stack.dbname, lease["run_id"]) == run
 
 
-def test_waiting_proposal_is_stored_and_stays_running_for_t035(t029_stack) -> None:
+def test_waiting_proposal_hands_the_run_to_t035_waiting(t029_stack) -> None:
+    """T031's waiting proposal is stored; T035 owns the waiting state itself.
+
+    T031 deliberately left the Run running/finalizing as an interim shape. T035
+    supersedes that (the ticket's waiting transition): the accepted waiting
+    proposal commits waiting_approval/phase waiting, a durable run_waitings row and
+    a held job, and the supervisor's exit only records the exit fact. The resume
+    belongs to T035 and is exercised in tests/f03/test_t035_*.py.
+    """
     _owner, lease, _artifact = t031.claimed_with_output(
         t029_stack, execution_unit_id="unit-waiting"
     )
@@ -281,18 +289,24 @@ def test_waiting_proposal_is_stored_and_stays_running_for_t035(t029_stack) -> No
         lease, suggested_state="waiting_approval", checkpoint_id="ckpt-waiting-1"
     )
     assert worker.submit_result(lease["run_id"], body=proposal).status == 200
+    waiting_run = t029.run_state_row(t029_stack.dbname, lease["run_id"])
+    assert waiting_run["state"] == "waiting_approval", waiting_run
+    assert waiting_run["phase"] == "waiting", waiting_run
+    assert waiting_run["finished_at"] is None, waiting_run
+    assert waiting_run["revision"] == 3, "claim 2 -> waiting 3"
+
     response = supervisor.confirm_exit(
         lease["attempt_token"],
         execution_unit_id="unit-waiting",
         evidence=t029.exit_evidence(lease, started=True),
     )
     assert response.status == 200, response.text
-
     run = t029.run_state_row(t029_stack.dbname, lease["run_id"])
-    assert run["state"] == "running", "waiting/resume is T035's transition"
-    assert run["phase"] == "finalizing", run
+    # Exit alone is not a decision: the Run stays waiting and non-terminal.
+    assert run["state"] == "waiting_approval", run
+    assert run["phase"] == "waiting", run
     assert run["finished_at"] is None, run
-    assert run["revision"] == 2, "no state transition happened"
+    assert run["revision"] == 3, run
     assert t029.job_row(t029_stack.dbname, lease["job_id"])["state"] == "held"
     assert t029.attempt_row(t029_stack.dbname, lease["attempt_token"])["checkpoint_id"] == (
         "ckpt-waiting-1"

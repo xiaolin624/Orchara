@@ -25,12 +25,13 @@ def test_0012_is_recorded_once_and_replaying_migrate_is_a_noop(t025_stack) -> No
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    # T034's 0020 is now the chain tail; 0012 must remain at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 21)], versions
+    # T035's 0021 is now the chain tail; 0012 must remain at its own position.
+    assert versions == [f"{number:04d}" for number in range(1, 22)], versions
     assert ledgers[11]["name"] == "0012_manifest_and_tool_versions.sql"
-    assert ledgers[-3]["name"] == "0018_run_events.sql"
-    assert ledgers[-2]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-1]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-4]["name"] == "0018_run_events.sql"
+    assert ledgers[-3]["name"] == "0019_run_artifact_uploads.sql"
+    assert ledgers[-2]["name"] == "0020_active_time_and_deadline.sql"
+    assert ledgers[-1]["name"] == "0021_run_waitings.sql"
 
     replay = st.migrate_or_fail(t025_stack.binaries["admin"], t025_stack.dsn)
     assert "no pending migrations" in replay, replay
