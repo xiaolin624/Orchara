@@ -1000,7 +1000,9 @@ func updateRunOutcomeTx(
 		       revision = revision + 1,
 		       finished_at = CASE WHEN $3 THEN now() ELSE NULL END,
 		       output_artifact_id = $4::uuid,
-		       error_code = $5
+		       error_code = $5,
+		       recovery_reason = NULL,
+		       recovery_since = NULL
 		 WHERE id = $1::uuid
 		   AND state = $6
 		   AND revision = $7
@@ -1027,14 +1029,24 @@ func updateRunOutcomeTx(
 // parked in recovery_pending (non-terminal), the job is held and the slot is
 // already released. T038 owns proving the old unit drained before any new
 // attempt; T031 never requeues on exit alone.
-func parkRunForRecoveryTx(ctx context.Context, tx *sql.Tx, runID string) error {
+//
+// `reason` is the closed parked-reason code (0016 baseline had no such column;
+// 0024 adds it): T031's exit-without-result path records `exit_without_result`,
+// the lease-expiry sweep records `lease_expired`. recovery_since is the database
+// clock of the park; the pair is what the owner-facing X-Run-Recovery-* headers
+// read.
+func parkRunForRecoveryTx(
+	ctx context.Context, tx *sql.Tx, runID, reason string,
+) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE platform.runs
 		   SET state = 'recovery_pending',
 		       phase = 'idle',
-		       revision = revision + 1
+		       revision = revision + 1,
+		       recovery_reason = $2,
+		       recovery_since = now()
 		 WHERE id = $1::uuid AND state = 'running' AND deleted_at IS NULL`,
-		runID,
+		runID, reason,
 	)
 	if err != nil {
 		return fmt.Errorf("parking the run for recovery: %w", err)

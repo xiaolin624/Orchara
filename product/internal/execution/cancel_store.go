@@ -189,7 +189,9 @@ func commitImmediateCancelTx(
 		       finished_at = now(),
 		       output_artifact_id = NULL,
 		       error_code = NULL,
-		       cancel_requested_at = COALESCE(cancel_requested_at, now())
+		       cancel_requested_at = COALESCE(cancel_requested_at, now()),
+		       recovery_reason = NULL,
+		       recovery_since = NULL
 		 WHERE id = $1::uuid
 		   AND state = $2
 		   AND revision = $3
@@ -251,7 +253,9 @@ func (s *Service) commitCancelReconciliationTx(
 		       finished_at = NULL,
 		       output_artifact_id = NULL,
 		       error_code = $4,
-		       cancel_requested_at = COALESCE(cancel_requested_at, now())
+		       cancel_requested_at = COALESCE(cancel_requested_at, now()),
+		       recovery_reason = NULL,
+		       recovery_since = NULL
 		 WHERE id = $1::uuid
 		   AND state = $2
 		   AND revision = $3

@@ -76,6 +76,20 @@
     supervisor 退出证据齐全后才提交 <strong>cancelled（已停止）</strong>；存在未知外部写时转
     <code>needs_reconciliation</code>，不假装取消已撤销远端效果。迟到结果/事件不会把终态翻回。
   </p>
+  <p class="hint">
+    保守恢复（F03/T038）：租约超期的 Run 只会被<strong>挂起</strong>在
+    <strong>recovery_pending</strong>（<code>recovery_reason=lease_expired</code>），supervisor
+    已确认退出但没有结果的 Run 挂起为 <code>exit_without_result</code>。挂起期间 job 保持
+    <strong>held</strong>、执行槽仍占用、旧 attempt token 不被替换；<strong>不会自动接管，也不会创建第二个
+    执行者</strong>（claim 只选 queued Run）。只有运维在证明旧执行单元/沙箱已销毁、checkpoint 数据库连接
+    已排空、冻结 manifest 与输入仍可用之后，用
+    <code>orchara-admin runs sweep-leases --grace 60s [--dry-run]</code>（只挂起）与
+    <code>orchara-admin runs recover --run &lt;id&gt; --evidence &lt;file&gt; [--check-only]</code>
+    重新排队；本页只显示原因、挂起时间与是否已有受审计证据，<strong>不提供伪造的“恢复”按钮</strong>。
+    恢复事实由非契约响应头 <code>X-Run-Recovery-Reason</code> /
+    <code>X-Run-Recovery-Since</code> / <code>X-Run-Recovery-Evidence-At</code> /
+    <code>X-Run-Recovery-Evidence-SHA256</code> 提供；终态不会因恢复证据而改变。
+  </p>
 
   <section class="card">
     <h2>我的 Run</h2>
@@ -101,6 +115,7 @@
       <dt>超时原因</dt><dd id="detail-deadline"></dd>
       <dt>等待条件</dt><dd id="detail-waiting"></dd>
       <dt>恢复任务</dt><dd id="detail-resume"></dd>
+      <dt>恢复（recovery_pending）</dt><dd id="detail-recovery"></dd>
       <dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>

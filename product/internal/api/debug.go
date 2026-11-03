@@ -279,5 +279,27 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Run-Resume-Job-State", waiting.ResumeJobState)
 		}
 	}
+	// F03/T038: conservative recovery. A parked Run shows why and since when; a
+	// Run that was recovered still shows whether audited operator evidence exists
+	// (and the hash of that exact document). The attempt token and the evidence
+	// document itself are never exposed. The contract Run schema has no recovery
+	// fields, so these are non-contract headers (same precedent as X-Run-* above).
+	if recovery, err := s.execution.RecoveryFacts(r.Context(), run.ID); err != nil {
+		s.internalError(w, r, err)
+		return
+	} else if recovery != nil {
+		if recovery.Reason != "" {
+			w.Header().Set("X-Run-Recovery-Reason", recovery.Reason)
+		}
+		if recovery.Since != nil {
+			w.Header().Set("X-Run-Recovery-Since", recovery.Since.UTC().Format(time.RFC3339Nano))
+		}
+		if recovery.EvidenceAt != nil {
+			w.Header().Set("X-Run-Recovery-Evidence-At", recovery.EvidenceAt.UTC().Format(time.RFC3339Nano))
+		}
+		if recovery.EvidenceSHA256 != "" {
+			w.Header().Set("X-Run-Recovery-Evidence-SHA256", recovery.EvidenceSHA256)
+		}
+	}
 	writeJSON(w, http.StatusOK, run)
 }

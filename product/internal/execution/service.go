@@ -462,7 +462,7 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 			return nil, err
 		}
 		if !finalized {
-			if err := parkRunForRecoveryTx(ctx, tx, facts.RunID); err != nil {
+			if err := parkRunForRecoveryTx(ctx, tx, facts.RunID, RecoveryReasonExitWithoutResult); err != nil {
 				return nil, err
 			}
 			if err := holdJobTx(ctx, tx, facts.JobID); err != nil {
@@ -518,7 +518,7 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 		}
 	default:
 		// Exit with no result: park for recovery, hold the job, never requeue.
-		if err := parkRunForRecoveryTx(ctx, tx, facts.RunID); err != nil {
+		if err := parkRunForRecoveryTx(ctx, tx, facts.RunID, RecoveryReasonExitWithoutResult); err != nil {
 			return nil, err
 		}
 		if err := holdJobTx(ctx, tx, facts.JobID); err != nil {

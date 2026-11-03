@@ -101,6 +101,8 @@ function runRuntimeFacts(headers) {
       activeElapsedMS: null, maxActiveMS: null, deadlineExceeded: false,
       waitingKind: '', waitingOutcome: '', waitingDecisionAt: '',
       waitingExitConfirmedAt: '', resumeJobID: '', resumeJobState: '',
+      recoveryReason: '', recoverySince: '',
+      recoveryEvidenceAt: '', recoveryEvidenceSHA256: '',
     };
   }
   return {
@@ -124,6 +126,12 @@ function runRuntimeFacts(headers) {
     waitingExitConfirmedAt: headers.get('X-Run-Waiting-Exit-Confirmed-At') || '',
     resumeJobID: headers.get('X-Run-Resume-Job-ID') || '',
     resumeJobState: headers.get('X-Run-Resume-Job-State') || '',
+    // T038: why the Run is parked, since when, and whether the audited operator
+    // evidence exists (its hash, never the document or the token).
+    recoveryReason: headers.get('X-Run-Recovery-Reason') || '',
+    recoverySince: headers.get('X-Run-Recovery-Since') || '',
+    recoveryEvidenceAt: headers.get('X-Run-Recovery-Evidence-At') || '',
+    recoveryEvidenceSHA256: headers.get('X-Run-Recovery-Evidence-SHA256') || '',
   };
 }
 
@@ -462,6 +470,77 @@ function describeRunCancel(run, facts) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// T038: conservative recovery (parked, never taken over automatically)
+// ---------------------------------------------------------------------------
+
+/**
+ * The recovery panel's honest content.
+ *
+ * T038 parks a Run whose live attempt lease expired beyond the grace window in
+ * `recovery_pending` (reason `lease_expired`), and T031 parks an exit without a
+ * result (`exit_without_result`). Neither is retried automatically: claim selects
+ * only `queued` Runs, the job stays `held`, the execution slot stays allocated and
+ * no attempt token is ever swapped. A parked Run only leaves this state through
+ * the operator command after audited evidence is recorded, so the page shows the
+ * reason, since when, whether evidence exists, and the operator command — it
+ * never renders a "resume" button.
+ */
+function describeRunRecovery(run, facts) {
+  const summary = runSummary(run);
+  const runtime = facts || {};
+  const reason = String(runtime.recoveryReason || '').trim();
+  const since = String(runtime.recoverySince || '').trim();
+  const evidenceAt = String(runtime.recoveryEvidenceAt || '').trim();
+  const evidenceSHA = String(runtime.recoveryEvidenceSHA256 || '').trim();
+  const parked = summary.state === 'recovery_pending';
+  const evidenceLine = evidenceAt !== ''
+    ? '已记录受审计恢复证据（recorded_at ' + evidenceAt +
+      (evidenceSHA ? '，sha256 ' + evidenceSHA : '') + '）。'
+    : '尚无受审计恢复证据：旧执行单元、沙箱销毁与数据库在途写的证明尚未提交。';
+  const commands = '运维命令：orchara-admin runs sweep-leases --grace 60s [--dry-run]（只挂起）；' +
+    'orchara-admin runs recover --run ' + (summary.id || '<run-id>') +
+    ' --evidence <file> [--check-only]（证据齐全后由单个事务重新排队）。';
+  const noTakeover = '平台不会自动换 token、不会自动重排，也不会创建第二个执行者：' +
+    'claim 只选 queued Run，recovery_pending 必须先由受审计证据转回 queued。';
+
+  if (isRunTerminal(summary.state)) {
+    // A terminal Run never flips: recovery evidence is history here, not a way
+    // back into execution.
+    return {
+      visible: reason !== '' || evidenceAt !== '',
+      line: '终态 ' + summary.state + ' 不会被恢复改变（终态不复活）。' + evidenceLine,
+      commandLine: '终态 Run 不接受恢复命令。',
+    };
+  }
+  if (!parked) {
+    return {
+      visible: evidenceAt !== '',
+      line: evidenceAt !== ''
+        ? '恢复已完成：' + evidenceLine + ' Run 已重新排队，旧 attempt 已 finalize、旧 token 已失效。'
+        : '',
+      commandLine: evidenceAt !== '' ? '' : commands,
+    };
+  }
+  let reasonLabel;
+  if (reason === 'lease_expired') {
+    reasonLabel = 'lease_expired（租约超期；执行宿主可能失联，旧单元是否仍在运行未知）';
+  } else if (reason === 'exit_without_result') {
+    reasonLabel = 'exit_without_result（supervisor 已确认退出，但没有可提交的结果）';
+  } else {
+    reasonLabel = reason !== ''
+      ? reason
+      : '服务器未返回恢复原因（本页不推测）';
+  }
+  return {
+    visible: true,
+    line: 'Run 挂起在 recovery_pending：原因 ' + reasonLabel +
+      (since !== '' ? '，挂起于 ' + since : '') +
+      '。job 保持 held、执行槽仍占用、旧 attempt token 未被替换。' + evidenceLine,
+    commandLine: commands + ' ' + noTakeover,
+  };
+}
+
 /**
  * Merge one server Run snapshot with what the page already displayed.
  *
@@ -505,7 +584,12 @@ function describeRunState(run, facts) {
     return '尚未被领取（queued）；领取、心跳与退出证据属于 F03 内部 supervisor 协议。';
   }
   if (summary.state === 'recovery_pending') {
-    return '已确认执行单元退出但没有结果，Run 挂起在 recovery_pending；在恢复证据齐全前不会重新执行，也不会显示成功。';
+    const reason = String(runtime.recoveryReason || '').trim();
+    const since = String(runtime.recoverySince || '').trim();
+    return '挂起在 recovery_pending' +
+      (reason !== '' ? '（原因 ' + reason + (since !== '' ? '，挂起于 ' + since : '') + '）' : '') +
+      '：旧执行单元未证明退出前不会重新执行，也不会自动换 token 接管；' +
+      '只有运维提交受审计证据后才会重新排队。';
   }
   if (summary.state === 'needs_reconciliation') {
     return 'Run 等待人工核对（needs_reconciliation）：存在未明的外部副作用，平台不把它显示为成功或失败。';
@@ -542,6 +626,11 @@ function runLifecycle(run) {
   if (summary.state === 'cancelling') {
     // The cancel intent is its own stopping stage: still non-terminal.
     return { stages: ['executing', 'cancelling', 'terminal'], current: 'cancelling' };
+  }
+  if (summary.state === 'recovery_pending') {
+    // Parked awaiting audited evidence: not executing, not terminal. A successful
+    // recovery returns the Run to queued (a new attempt), never to "success".
+    return { stages: ['executing', 'recovery_pending', 'terminal'], current: 'recovery_pending' };
   }
   let current = 'executing';
   if (summary.phase === 'finalizing') {
@@ -932,6 +1021,15 @@ function showRunDetail(run, facts) {
   const cancelLine = document.getElementById('detail-cancel');
   if (cancelLine) {
     cancelLine.textContent = cancel.line + ' ' + cancel.reasonLine;
+  }
+  // T038: the parked reason/since/evidence and the operator command. There is
+  // deliberately no resume button: only the audited command can re-queue.
+  const recovery = describeRunRecovery(merged, facts);
+  const recoveryLine = document.getElementById('detail-recovery');
+  if (recoveryLine) {
+    recoveryLine.textContent = recovery.visible
+      ? recovery.line + ' ' + recovery.commandLine
+      : '没有恢复事实（本 Run 未挂起，也没有受审计恢复证据）。';
   }
   const cancelButton = document.getElementById('detail-cancel-button');
   if (cancelButton) {
