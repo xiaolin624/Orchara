@@ -30,6 +30,7 @@ type ModelProfile struct {
 	EndpointRef     string
 	SecretRef       string
 	Config          map[string]any
+	ConfigJSON      json.RawMessage
 	ValidationState string
 	Revoked         bool
 }

@@ -96,6 +96,10 @@ type dependencyRef struct {
 	id      string
 	pointer string
 	nodeID  string
+	// source is the primary profile version id when this ref is a declared
+	// fallback of that profile (T045). It never changes the pointer: the
+	// fallback list lives on the profile row, not in the draft document.
+	source string
 }
 
 // ValidateExecution compiles one draft and seals the manifest bytes.
@@ -233,6 +237,26 @@ func (r *Reader) checkDependencies(
 	if err != nil {
 		return nil, nil, err
 	}
+	// T045: every primary profile's declared fallback profiles join the same
+	// closure and are frozen into the manifest beside the primary. The list is
+	// stored on the profile row (ModelConfig.fallback_profile_version_ids), not
+	// in the draft document, so the expansion needs the loaded rows; each
+	// expanded ref keeps the primary's document pointer and names its source.
+	fallbackRefs := fallbackModelRefs(refs, models)
+	if len(fallbackRefs) > 0 {
+		fallbackIDs := make([]string, 0, len(fallbackRefs))
+		for _, ref := range fallbackRefs {
+			fallbackIDs = append(fallbackIDs, ref.id)
+		}
+		fallbacks, err := r.loadModelDependencies(ctx, fallbackIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		for id, row := range fallbacks {
+			models[id] = row
+		}
+		refs = append(refs, fallbackRefs...)
+	}
 	tools, err := r.loadToolDependencies(ctx, toolIDs)
 	if err != nil {
 		return nil, nil, err
@@ -261,11 +285,16 @@ func (r *Reader) checkDependencies(
 		}
 		emitted[key] = true
 		if !uuid.Valid(ref.id) {
+			message := "the referenced id is not a UUID; fixed versions, never latest or a name, are required"
+			if ref.source != "" {
+				message = "the declared fallback profile version " + ref.id + " of " + ref.source +
+					" is not a UUID; fixed versions are required"
+			}
 			located = append(located, ExecutableError{
 				NodeID:  ref.nodeID,
 				Code:    CodeDependencyInvalidID,
 				Pointer: ref.pointer,
-				Message: "the referenced id is not a UUID; fixed versions, never latest or a name, are required",
+				Message: message,
 			})
 			continue
 		}
@@ -273,6 +302,9 @@ func (r *Reader) checkDependencies(
 		case dependencyModel:
 			row, present := models[id]
 			if code, message := modelReadinessProblem(row, present); code != "" {
+				if ref.source != "" {
+					message = "fallback profile version " + id + " declared by " + ref.source + ": " + message
+				}
 				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
 				continue
 			}
@@ -392,6 +424,10 @@ func collectDependencyRefs(document map[string]any) []dependencyRef {
 type modelDependency struct {
 	validationState string
 	revoked         bool
+	// fallbackIDs is the profile's declared ModelConfig.fallback_profile_version_ids.
+	// They join the frozen closure exactly like the primary (T045), so a run can
+	// never dispatch to a profile its manifest did not freeze.
+	fallbackIDs []string
 }
 
 type toolDependency struct {
@@ -471,7 +507,7 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 		return rows, nil
 	}
 	result, err := r.DB.QueryContext(ctx, `
-		SELECT id::text, validation_state, revoked_at IS NOT NULL
+		SELECT id::text, validation_state, revoked_at IS NOT NULL, config
 		  FROM platform.model_profile_versions
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
@@ -481,18 +517,84 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 	for result.Next() {
 		var (
 			id, state string
+			config    []byte
 			row       modelDependency
 		)
-		if err := result.Scan(&id, &state, &row.revoked); err != nil {
+		if err := result.Scan(&id, &state, &row.revoked, &config); err != nil {
 			return nil, fmt.Errorf("reading model profile versions: %w", err)
 		}
 		row.validationState = state
+		row.fallbackIDs = modelFallbackIDs(config)
 		rows[id] = row
 	}
 	if err := result.Err(); err != nil {
 		return nil, fmt.Errorf("reading model profile versions: %w", err)
 	}
 	return rows, nil
+}
+
+// modelFallbackIDs reads the declared fallback list of one stored profile
+// config. Invalid entries are kept verbatim so readiness can report
+// dependency_invalid_id at the primary's pointer instead of silently dropping
+// a misconfigured fallback.
+func modelFallbackIDs(config []byte) []string {
+	if len(config) == 0 {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(config, &decoded); err != nil {
+		return nil
+	}
+	raw, present := decoded["fallback_profile_version_ids"]
+	if !present {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(string)
+		if !ok {
+			continue
+		}
+		ids = append(ids, strings.TrimSpace(value))
+	}
+	return ids
+}
+
+// fallbackModelRefs expands the closure with the fallback profile versions a
+// primary profile declares. The pointer stays the primary's declaration (that
+// is the document field that selected the profile) and source names the
+// primary, so a located error is honest about where the reference came from.
+func fallbackModelRefs(refs []dependencyRef, models map[string]modelDependency) []dependencyRef {
+	expanded := make([]dependencyRef, 0, len(refs))
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if ref.kind != dependencyModel || !uuid.Valid(ref.id) {
+			continue
+		}
+		row, present := models[normalizeDependencyID(ref.id)]
+		if !present {
+			continue
+		}
+		for _, fallbackID := range row.fallbackIDs {
+			key := normalizeDependencyID(fallbackID)
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			expanded = append(expanded, dependencyRef{
+				kind:    dependencyModel,
+				id:      fallbackID,
+				pointer: ref.pointer,
+				nodeID:  ref.nodeID,
+				source:  normalizeDependencyID(ref.id),
+			})
+		}
+	}
+	return expanded
 }
 
 func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[string]toolDependency, error) {
