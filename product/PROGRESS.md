@@ -1023,6 +1023,27 @@ Go 受控 agent 循环（T041 模型轮次 + 固定预设工具真实 WSL2/runsc
 | 门禁 | 见 `reports/f04a/T043-agent-node.md` §6/§9 |
 | 边界/not_run | 真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈 executor guard（未知/重复工具调用由 T041 服务端先拒）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue |
 
+## F06 流式代次、半流失败与残缺工具调用（T044，2026-11-04）
+
+T044（GitHub #45）已交付，状态 **`passed`**（范围 = 受控临时模型流：provider 流式 seam、
+`streamModelCall` 契约 SSE、operation/generation 账本语义、半流失败新代次且不拼接、残缺
+tool-call 丢弃不执行、owner-only 临时预览 + `/debug`/`/runs` 面板、Python worker 流式适配；
+持久 Run SSE 与 run_events 不变；真实厂商 adapter 仍未编译）。证据：
+`reports/f06/T044-streaming.md`。
+
+| 项 | 内容 |
+|---|---|
+| Provider seam | `StreamProvider.Stream(ctx, CallRequest, emit func(Chunk) error)`；dev stub 从 canonical params 确定性切块（`stub_stream_chunks` 默认 3）、`stub_stream_fail_after`/`stub_stream_fail_attempts` 产生 typed transient、`stub_stream_incomplete_tool_call` 产生残缺片段；真实 candidate `adapter_unavailable`，不伪造 |
+| 代次/账本 | 每次物理流 = 一行 `operation_attempts`，其行 id 即 `generation_id`；帧恒带 operation/generation；transient + 还有尝试 → 新 generation 从头流，旧文本/工具片段不拼接；final 仅取成功代次完整内容 + 完整缓冲 tool-call，按 T041 校验后只封一份 receipt、只结算一次 attempt |
+| 残缺工具 | 按 index 缓冲 fragments；id/name 缺失或 arguments 非完整 JSON object 的调用被丢弃、永不进入 final/执行；完整调用仍走 T041 id/name/schema 校验 |
+| 契约协议 | `POST /internal/v1/runs/{id}/model-stream`（`streamModelCall`，worker mTLS）SSE：`delta`/`tool_delta`/`final`/`error`；授权错误在首帧前仍为 JSON；首帧后错误以 error 帧收尾；delta 绝不写入 `platform.run_events` |
+| owner 预览 | `GET /api/v1/runs/{id}/model-preview`（session/API key + `application:read` + getRun 404 规则）；进程内 ring buffer（256 帧/60s TTL/单进程）、新 generation 清空旧缓冲、final/非重试 error 关闭、终态无缓冲 404；不持久 |
+| 页面 | 新共享 `assets/stream-preview.js`（`previewPath`/`parsePreviewEvent`/`applyPreviewFrame`/`describePreview`/`beginModelPreview`）；`/debug`、`/runs` 预览面板显示 generation、流式文本、工具片段“待定、未执行”，新代次整块丢弃旧草稿，final/error 关闭并指向持久 Run；纯 helper Node 执行 |
+| Worker | `PlatformChatModel.stream_generate` + `StreamingCapabilityTransport.stream` + `stream_agent`：每 generate 一条物理流、无隐藏重试；新 generation 重置草稿；只有 final 经 T041 同规则校验后的 tool calls 进入 agent loop 执行 |
+| 真实栈 | 真实 PG（0001–0026）、编译二进制、真实 worker mTLS、对象字节、公网 owner SSE、真实 TLS socket RST 断开；`tests/f06/test_t044_*` 21 用例（10 流式 + 4 页面 + 7 Python worker）通过；断连时用不可取消清理上下文落 `stream_cancelled`，绝无成功 receipt |
+| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l` 空；`pytest tests/f04a` 36；`pytest tests/tooling` 21；`sync_spec --check` no drift；`pytest tests/f06` __F06_COUNT__ |
+| 边界/not_run | 真实厂商流式 adapter、浏览器 DOM 驱动、多进程预览 fan-out、全量 `pytest tests`/`tests/f00b`、T045/T046 预算与切换；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026、未新增迁移 |
+
 ## 记录模板
 
 ```text

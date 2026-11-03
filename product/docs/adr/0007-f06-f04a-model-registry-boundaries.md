@@ -236,3 +236,36 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
 - `/runs` Agent 面板只读既有 node-results 与 T041 账本投影；不用逻辑键扩展 T041 账本投影
   （会破坏 T041 冻结的 owner 读取形状），而以 executor 文档化的 `tool-log-<call id>` label 与
   failed-node 状态关联。`node_output_invalid` 的 JSON Pointer 只在 supervisor 报告，不在 owner API。
+
+## T044 追加（2026-11-04）：流式代次是临时投影，不是第二结果源
+
+### D11 — 每帧绑定 operation/generation；final 只从成功代次的完整校验内容构建
+
+- provider seam 增可选
+  `StreamProvider.Stream(ctx, CallRequest, emit func(Chunk) error) (ProviderResponse, error)`；
+  dev stub 从 canonical params 确定性切块（`stub_stream_chunks` 默认 3），
+  `stub_stream_fail_after` 在 N 块后以 `TransientError` 失败。真实厂商 adapter 仍未编译：
+  `StreamingFor` 对 real candidate 返回 `adapter_unavailable`，绝不伪造流。
+- capability seam 增 `(*Service).Stream(ctx, runID, role, Input, emit func(Frame) error)`；复用
+  T041 同一授权/operation/JCS params/idempotency 规则（tool/connector 流在写账本前 422
+  `capability_kind_unsupported`）。每次物理流尝试是一行 `operation_attempts`，其行 id 即帧的
+  `generation_id`；帧 `type` 为 `delta|tool_delta|final|error`，恒带 operation/generation。
+- 半流失败：attempt failed、operation failed；仅 typed transient 且还有尝试时新开 generation
+  从头流。旧代次文本/工具片段绝不拼接；final 的
+  `{text,structured?,tool_calls,usage,model_profile_version_id,stub}` 只取成功代次的 provider
+  完整内容 + 已缓冲完整的 tool-call，并按 T041 校验后封一份 receipt、结算一次 attempt。
+  客户端断开用不可取消的清理上下文把 attempt 记为 failed（`stream_cancelled`），绝不提交成功。
+- 工具调用按 index 缓冲 fragments；只有 id/name 非空且 arguments 片段是完整 JSON 对象的调用
+  进入 final；残缺/畸形调用被丢弃、永不执行。完整调用仍逐项按 T041 校验
+  id/name/arguments/schema。
+- 契约 `POST /internal/v1/runs/{id}/model-stream`（`streamModelCall`，worker mTLS）写 SSE；
+  持久 Run SSE 不变，delta 永不写入 `platform.run_events`。owner 预览
+  `GET /api/v1/runs/{id}/model-preview` 仅进程内 ring buffer（60s TTL、单进程限制），
+  新 generation 清空旧缓冲，final/非重试 error 后关闭；非 owner 与非 getRun 可见性同为 404。
+  预览不是历史，持久快照/事件仍是权威；重试型 error 不关闭预览，下一 generation 替换草稿。
+- 页面 `/debug`、`/runs` 增加临时预览面板（`stream-preview.js`，纯 helper Node 测试；
+  浏览器 DOM 驱动仍未运行），工具片段只显示“待定、未执行”，final/error 后指向持久 Run。
+- worker Python adapter 增 `PlatformChatModel.stream_generate` 与 `stream_agent`：每次 generate
+  一条物理流、无隐藏重试；转发全部帧给预览，新 generation 重置草稿；只有 final 经
+  `_validate_generation` 的 tool calls 才进入 agent loop 执行。Go agent loop 仍使用非流式
+  `invokeCapability`（T043 保持不变），流式路径服务于预览/协议边界。

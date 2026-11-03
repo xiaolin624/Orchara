@@ -301,6 +301,40 @@ def test_owner_preview_streams_live_frames_and_closes_on_final(f06_stack) -> Non
     assert t044.finals(preview_frames)[0]["data"] == t044.finals(model_frames)[0]["data"]
 
 
+def test_replaying_a_failed_stream_is_an_error_frame_not_a_fake_final(f06_stack) -> None:
+    _, run, lease = t041.claimed_run(f06_stack)
+    operation_id = t041.new_uuid()
+    worker = t041.worker_client(f06_stack)
+    body = {
+        "attempt_token": lease["attempt_token"],
+        "operation_id": operation_id,
+        "logical_key": "exhausted-1",
+        "capability_version": t041.GOLDEN_MODEL_ID,
+        "params": t041.model_params(
+            stub_stream_chunks=2,
+            stub_stream_fail_after=0,
+            stub_stream_fail_attempts=3,
+        ),
+        "capability_kind": "model",
+    }
+    first = t044.stream(worker, lease, operation_id=operation_id, body=body)
+    assert first.status == 200, first.text
+    first_frames = t044.parse_sse(first.text)
+    assert first_frames[-1]["type"] == "error", first_frames
+    assert first_frames[-1].get("retryable") is not True
+    assert t041.operation_row(f06_stack.dbname, run["id"], operation_id)["state"] == "failed"
+
+    # Same operation/logical key/params: the idempotent replay must keep failing
+    # honestly instead of inventing a final or a second physical attempt.
+    replay = t044.stream(worker, lease, operation_id=operation_id, body=body)
+    assert replay.status == 200, replay.text
+    replay_frames = t044.parse_sse(replay.text)
+    assert [frame["type"] for frame in replay_frames] == ["error"], replay_frames
+    assert replay_frames[0]["error"]["code"] == "provider_transient", replay_frames
+    assert t044.finals(replay_frames) == []
+    assert t041.attempt_count(f06_stack.dbname, operation_id) == 3
+
+
 def test_preview_for_a_terminal_run_without_a_stream_is_not_retained(f06_stack) -> None:
     owner, run, _lease = t041.claimed_run(f06_stack)
     st.sql(

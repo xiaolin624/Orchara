@@ -227,6 +227,19 @@ func (s *Service) Stream(
 	}
 	if prepared.replay != nil {
 		generationID := s.replayedGenerationID(ctx, prepared.operationID)
+		if prepared.replay.State != "succeeded" {
+			// Replaying a failed operation must not be presented as a successful
+			// final. The recorded safe error code is the honest terminal frame.
+			code := CodeInternal
+			if recorded, ok := prepared.replay.Data["error_code"].(string); ok && recorded != "" {
+				code = recorded
+			}
+			_ = emit(Frame{
+				Type: FrameError, OperationID: prepared.operationID, GenerationID: generationID,
+				Error: &StreamError{Code: code, Message: "the recorded model stream operation did not succeed"},
+			})
+			return prepared.replay, nil
+		}
 		if err := emit(finalFrame(prepared.replay, generationID)); err != nil {
 			return nil, capFailure(503, CodeStreamCancelled, "the replay stream consumer stopped")
 		}
