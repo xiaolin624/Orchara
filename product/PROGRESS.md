@@ -1043,6 +1043,25 @@ tool-call 丢弃不执行、owner-only 临时预览 + `/debug`/`/runs` 面板、
 | 真实栈 | 真实 PG（0001–0026）、编译二进制、真实 worker mTLS、对象字节、公网 owner SSE、真实 TLS socket RST 断开；`tests/f06/test_t044_*` 21 用例（10 流式 + 4 页面 + 7 Python worker）通过；断连时用不可取消清理上下文落 `stream_cancelled`，绝无成功 receipt |
 | 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l` 空；`pytest tests/f04a` 36；`pytest tests/tooling` 21；`sync_spec --check` no drift；`pytest tests/f06` 83 passed + 1 个与本票无关的 T043 sandbox/lease 计时 flake（该文件隔离重跑 6 passed；T044 三文件 22 passed） |
 | 边界/not_run | 真实厂商流式 adapter、浏览器 DOM 驱动、多进程预览 fan-out、全量 `pytest tests`/`tests/f00b`、T045/T046 预算与切换；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026、未新增迁移 |
+T045（GitHub #46）已交付，状态 **`passed`**（范围 = 供应商可用性故障后的兼容备用：
+备用清单进入冻结依赖闭包、kind/protocol/context/tools/schema/budget/manifest/已通过
+门禁的 Go 判定、主重试仍 Go-only 有界、失败后第一个兼容备用只花一次物理尝试、
+权限/语法/schema/工具参数/策略错误绝不重试或切换、operation/receipt/owner 账本/页面
+展示切换原因与全部尝试费用；流式路径同一门禁且新代次作答；真实厂商 adapter 仍未编译）。
+证据：`reports/f06/T045-fallback.md`；实现提交 `592fb69`、`d552282`，测试提交
+`3e874c4`，f02a 门禁修复 `3e45eb1`。
+
+| 项 | 内容 |
+|---|---|
+| 备用闭包 | 唯一来源是主 profile 行的 `ModelConfig.fallback_profile_version_ids`；`checkDependencies` 加载主行后把每个备用作为同一 `dependencyModel` 加入闭包（pointer 保留主声明，message 标出备用 id/来源），同一 `modelReadinessProblem` 要求存在/passed/未 revoke；`execution_manifest.model_profile_versions` 冻结主+备用，运行后改配置不能引入未冻结 profile |
+| 兼容判定 | 纯 Go：同 `kind`/`protocol` 且为 `generation`/`chat_compatible`；备用 `context_window` ≥ 输入估计（canonical messages 每 4 字节 1 token）+ 请求 `max_output_tokens`；备用 `max_output_tokens` ≥ 请求值；显式 `tools:false` 不接带工具调用、显式 `structured_output:false` 不接带 `response_schema`（契约无此字段，缺省允许，只有显式 false 拒绝）；必须 passed/未 revoke/provider 可派发/在 manifest/保守预留放得进 `runs.budget_limit`（T046 接管完整账本）；仅“已配置”绝不启用 |
+| 派发 | 主 transient 仍最多 3 次物理尝试（T041 不变）；第 3 次失败且属 `availability`/`rate_limited`/`adapter_unavailable` 时按配置顺序取第一个全门禁通过的备用，记 1 次物理尝试（attempt_no=4）；无兼容备用则返回主 typed failure。权限/授权/语法/schema/工具参数/策略错误 1 次尝试即终止，不重试不切换 |
+| 账本/回执 | 迁移 0027 增 `platform.operations.fallback_profile_version_id`（FK）+ `fallback_reason`（closed：availability/rate_limited/adapter_unavailable；二元组同现同空）；`capability_version` 仍是 worker 请求的主版本；receipt 增 `fallback{primary_profile_version_id,profile_version_id,reason}`；owner 账本投影增 fallback 字段与 `tokens_in/tokens_out/charged_amount`（所有物理尝试求和），仍不含 params/回执正文 |
+| 页面 | `/runs` 账本：物理尝试列显示合计费用/令牌，来源列显示“已切换到 <profile>，原因：<closed reason>”；`describeCapabilityOperation` 暴露 `fallback`/`fallbackText`/`costText`/`attemptsDetailText`，`capabilityFallbackReasonText` 映射稳定码；纯 helper 由 Node 执行，DOM 驱动 not_run |
+| 流式 | `dispatchStreamFallback`：主 3 代次失败后兼容备用在**新 generation**作答；主代次文本/工具片段绝不与备用拼接，final/receipt 只来自备用成功代次；权限/schema 流失败仍终止 |
+| 真实栈 | 真实 PG（0001–0027）、编译 `cmd/api`、真实 worker mTLS、对象字节、公网 owner HTTP/SSE；`test_t045_fallback.py` 9 用例（兼容切换+4 次尝试+费用、rate_limited、协议不兼容、权限单次、未冻结 manifest、未 passed 编译拒绝、预算耗尽、工具不兼容、流式新代次）+ `test_t045_pages.py` 3 用例通过；`test_t041_capabilities.py` 账本键集随投影扩展更新 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 96 passed（479.53s）；`pytest tests/f02a -q` 104 passed（726.21s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
+| 边界/not_run | 真实厂商 adapter（真实主/备切换 not_run）、浏览器 DOM 驱动、多进程预览 fan-out、T046 预算结算/释放与完整账本、全量 `pytest tests`/f00b/f03/f05 未跑；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0027（0001–0026 未改）；f02a 三个“迁移链尾”断言原本在 base 已红（T041/T042 追加 0025/0026），本票改为连续性断言（仅测试） |
 
 ## 记录模板
 

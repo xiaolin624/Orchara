@@ -364,6 +364,25 @@ func (s *Service) dispatchStream(
 				})
 				continue
 			}
+			// T045: the primary's bounded retries are exhausted by an
+			// availability fault. A compatible fallback gets one generation of
+			// its own; the failed primary generation's text is never appended to
+			// it. A permission/schema answer is terminal and never falls back.
+			if reason, eligible := fallbackReasonFor(streamErr); eligible {
+				if selection := s.selectFallback(ctx, run, spec, input.Params, reason); selection != nil {
+					if capErr := s.resetAttemptForRetry(ctx, operationID, code); capErr != nil {
+						return nil, capErr
+					}
+					_ = emit(Frame{
+						Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
+						Retryable: true,
+						Error: &StreamError{Code: code,
+							Message: "the primary model profile is unavailable; a compatible fallback will answer"},
+					})
+					return s.dispatchStreamFallback(ctx, run, input, spec, operationID,
+						maxPhysicalAttempts+1, selection, emit)
+				}
+			}
 			_ = s.failAttemptAndOperation(ctx, operationID, attempt, code)
 			_ = emit(Frame{
 				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
@@ -393,7 +412,7 @@ func (s *Service) dispatchStream(
 		}
 		data["tool_calls"] = generation.completeToolCalls()
 		response.Data = data
-		result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response)
+		result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil)
 		if sealErr != nil {
 			code := CodeInternal
 			message := "the streamed model answer could not be sealed"
@@ -414,4 +433,114 @@ func (s *Service) dispatchStream(
 		return result, nil
 	}
 	return nil, capFailure(503, CodeProviderTransient, "the model provider exhausted its attempts")
+}
+
+// dispatchStreamFallback spends the operation's single fallback attempt on the
+// streaming path, in a generation of its own. The primary generation's text is
+// never concatenated with the fallback's: each frame names its generation and
+// the final frame carries the receipt of the fallback answer only.
+func (s *Service) dispatchStreamFallback(
+	ctx context.Context,
+	run *runContext,
+	input Input,
+	spec *capabilitySpec,
+	operationID string,
+	attempt int,
+	selection *fallbackSelection,
+	emit func(Frame) error,
+) (*Result, error) {
+	profile := selection.Profile
+	candidate := &modelproxy.Candidate{
+		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
+		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+		ValidationState: profile.ValidationState,
+	}
+	provider, err := s.Providers.StreamingFor(candidate)
+	if err != nil {
+		_ = s.failOperation(ctx, operationID, providerErrorCode(err))
+		_ = emit(Frame{
+			Type: FrameError, OperationID: operationID,
+			Error: &StreamError{Code: providerErrorCode(err),
+				Message: "no provider can dispatch the compatible fallback"},
+		})
+		return nil, providerFailure(err)
+	}
+	attemptID, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt,
+		estimateReservedUnits(input.Params))
+	if capErr != nil {
+		return nil, capErr
+	}
+	generation := newStreamGeneration(operationID, attemptID)
+	var consumerStopped error
+	response, streamErr := provider.Stream(ctx, modelproxy.CallRequest{
+		Candidate: candidate,
+		Params:    input.Params,
+		Attempt:   attempt,
+	}, func(chunk modelproxy.Chunk) error {
+		frame := generation.frameForChunk(chunk)
+		if err := emit(frame); err != nil {
+			consumerStopped = err
+			return err
+		}
+		return nil
+	})
+	if streamErr != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if consumerStopped != nil || ctx.Err() != nil {
+			_ = s.failAttemptAndOperation(cleanupCtx, operationID, attempt, CodeStreamCancelled)
+			_ = emit(Frame{
+				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
+				Error: &StreamError{Code: CodeStreamCancelled,
+					Message: "the fallback model stream was stopped before it completed"},
+			})
+			return nil, capFailure(503, CodeStreamCancelled,
+				"the fallback model stream was stopped before it completed")
+		}
+		code := providerErrorCode(streamErr)
+		if modelproxy.IsTransient(streamErr) {
+			code = CodeProviderTransient
+		}
+		_ = s.failAttemptAndOperation(cleanupCtx, operationID, attempt, code)
+		_ = emit(Frame{
+			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
+			Error: &StreamError{Code: code, Message: "the fallback model provider stream did not complete"},
+		})
+		return nil, capFailure(503, code, "the fallback model provider stream did not complete")
+	}
+	finalText, _ := response.Data["text"].(string)
+	if generation.textValue() != finalText {
+		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeProviderResponseInvalid)
+		_ = emit(Frame{
+			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
+			Error: &StreamError{Code: CodeProviderResponseInvalid,
+				Message: "the streamed fallback content does not match the final provider content"},
+		})
+		return nil, capFailure(422, CodeProviderResponseInvalid,
+			"the streamed fallback content does not match the final provider content")
+	}
+	data := make(map[string]any, len(response.Data))
+	for key, value := range response.Data {
+		data[key] = value
+	}
+	data["tool_calls"] = generation.completeToolCalls()
+	response.Data = data
+	fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
+	result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact)
+	if sealErr != nil {
+		code := CodeInternal
+		message := "the streamed fallback answer could not be sealed"
+		if typed, ok := AsError(sealErr); ok {
+			code, message = typed.Code, typed.Message
+		}
+		_ = emit(Frame{
+			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
+			Error: &StreamError{Code: code, Message: message},
+		})
+		return nil, sealErr
+	}
+	if err := emit(finalFrame(result, generation.generationID)); err != nil {
+		return result, nil
+	}
+	return result, nil
 }

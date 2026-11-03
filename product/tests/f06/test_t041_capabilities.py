@@ -96,11 +96,22 @@ def test_model_call_is_stub_labeled_and_ledgered(f06_stack) -> None:
         "attempts",
         "error_code",
         "receipt_artifact_id",
+        # T045 adds the fallback facts and the summed attempt cost/tokens to
+        # the same projection; a non-fallback call carries no fallback keys.
+        "tokens_in",
+        "tokens_out",
+        "charged_amount",
         "tool_call_summary",
         "structured_output_keys",
         "stub",
     }, entry
     assert entry["attempts"] == 1
+    assert "fallback_profile_version_id" not in entry
+    assert "fallback_reason" not in entry
+    assert entry["tokens_in"] > 0 and entry["tokens_out"] > 0
+    from decimal import Decimal
+
+    assert Decimal(entry["charged_amount"]) == Decimal(attempts[0]["charged_amount"])
     assert entry["stub"] is True
     assert entry["structured_output_keys"] == ["answer"]
     assert entry["receipt_artifact_id"] == body["receipt_artifact_id"]

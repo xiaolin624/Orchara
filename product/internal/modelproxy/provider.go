@@ -238,6 +238,14 @@ func isAgentCall(params map[string]any) bool {
 // through for the capability validator to accept or refuse; stub_transient_failures
 // makes the retry/ledger path testable without a vendor.
 func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
+	// T045: the model-id convention makes an availability fault reproducible
+	// without a vendor. A primary registered with this model id always answers
+	// with the same typed failure, so the bounded retry and compatible-fallback
+	// path is exercised end to end; a compatible fallback registered under a
+	// normal stub model id then succeeds.
+	if fault := stubModelFault(request.Candidate.ModelID); fault != nil {
+		return ProviderResponse{}, fault
+	}
 	if failures, ok := integerParam(request.Params["stub_transient_failures"]); ok &&
 		request.Attempt <= int(failures) {
 		return ProviderResponse{}, &TransientError{
@@ -294,6 +302,35 @@ func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
 		TokensOut:    tokensOut,
 		ChargedUnits: (tokensIn + tokensOut) * reservedUnitsPerInputToken,
 	}, nil
+}
+
+// stubModelFault maps a registered stub model id to a deterministic failure.
+// T045 uses this (instead of a params hint) so the primary and the fallback of
+// one call can answer differently: the fault belongs to the candidate the
+// server resolved, not to worker-supplied params. A normal model id (for
+// example "stub-model") is unaffected.
+//
+//   - stub-unavailable*      bounded-transient availability fault
+//   - stub-rate-limited*     bounded-transient rate-limit fault
+//   - stub-adapter-down*     deployment availability fault (no adapter)
+//   - stub-permission-denied* terminal provider refusal (never retried/fallen back)
+//   - stub-schema-error*     terminal schema refusal (never retried/fallen back)
+func stubModelFault(modelID string) error {
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	switch {
+	case strings.HasPrefix(normalized, "stub-adapter-down"):
+		return ErrAdapterUnavailable
+	case strings.HasPrefix(normalized, "stub-rate-limited"):
+		return &TransientError{Reason: "rate limited (429) by the stub provider"}
+	case strings.HasPrefix(normalized, "stub-unavailable"):
+		return &TransientError{Reason: "the stub provider is unavailable"}
+	case strings.HasPrefix(normalized, "stub-permission-denied"):
+		return fmt.Errorf("the stub provider refused the call: permission denied")
+	case strings.HasPrefix(normalized, "stub-schema-error"):
+		return fmt.Errorf("the stub provider rejected the response schema")
+	default:
+		return nil
+	}
 }
 
 // stubAgentAutoToolCalls is the deterministic "model calls the tool first"

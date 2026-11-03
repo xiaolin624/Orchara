@@ -351,31 +351,9 @@ func (s *Service) resolveCapability(ctx context.Context, run *runContext, input 
 }
 
 func (s *Service) resolveModel(ctx context.Context, run *runContext, input Input) (*capabilitySpec, *Error) {
-	profile := &ModelProfile{}
-	var configRaw []byte
-	var revoked sql.NullTime
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT id::text, provider, model_id, endpoint_ref, secret_ref, config,
-		       validation_state, revoked_at
-		  FROM platform.model_profile_versions
-		 WHERE id = $1::uuid`, input.CapabilityVersion,
-	).Scan(
-		&profile.ID, &profile.Provider, &profile.ModelID, &profile.EndpointRef,
-		&profile.SecretRef, &configRaw, &profile.ValidationState, &revoked,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, capFailure(422, CodeModelUnavailable, "that model profile version does not exist")
-	}
-	if err != nil {
-		return nil, capFailure(500, CodeInternal, "the model profile could not be read")
-	}
-	if revoked.Valid || profile.ValidationState != "passed" {
-		return nil, capFailure(422, CodeModelUnavailable,
-			"the model profile version is not passed and unrevoked")
-	}
-	profile.Revoked = revoked.Valid
-	if err := json.Unmarshal(configRaw, &profile.Config); err != nil {
-		return nil, capFailure(422, CodeModelUnavailable, "the model profile config is not usable")
+	profile, capErr := s.loadModelProfile(ctx, input.CapabilityVersion)
+	if capErr != nil {
+		return nil, capErr
 	}
 	// Provider deployment facts are checked before any operation row exists: an
 	// unconfigured provider must not leave a ledger row a reader could mistake
@@ -386,7 +364,7 @@ func (s *Service) resolveModel(ctx context.Context, run *runContext, input Input
 	candidate := &modelproxy.Candidate{
 		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
 		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
-		Config: configRaw, ValidationState: profile.ValidationState,
+		Config: profile.ConfigJSON, ValidationState: profile.ValidationState,
 	}
 	provider, err := s.Providers.For(candidate)
 	if err != nil {
@@ -407,6 +385,40 @@ func (s *Service) resolveModel(ctx context.Context, run *runContext, input Input
 	return &capabilitySpec{
 		Kind: "model", RiskClass: "pure", Profile: profile, Tools: tools, Model: modelParams,
 	}, nil
+}
+
+// loadModelProfile reads one model profile version and refuses a profile that is
+// absent, revoked or not passed. The T045 fallback gate reuses it so a fallback
+// is held to exactly the readiness rule the primary passed.
+func (s *Service) loadModelProfile(ctx context.Context, profileVersionID string) (*ModelProfile, *Error) {
+	profile := &ModelProfile{}
+	var configRaw []byte
+	var revoked sql.NullTime
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id::text, provider, model_id, endpoint_ref, secret_ref, config,
+		       validation_state, revoked_at
+		  FROM platform.model_profile_versions
+		 WHERE id = $1::uuid`, profileVersionID,
+	).Scan(
+		&profile.ID, &profile.Provider, &profile.ModelID, &profile.EndpointRef,
+		&profile.SecretRef, &configRaw, &profile.ValidationState, &revoked,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, capFailure(422, CodeModelUnavailable, "that model profile version does not exist")
+	}
+	if err != nil {
+		return nil, capFailure(500, CodeInternal, "the model profile could not be read")
+	}
+	if revoked.Valid || profile.ValidationState != "passed" {
+		return nil, capFailure(422, CodeModelUnavailable,
+			"the model profile version is not passed and unrevoked")
+	}
+	profile.Revoked = revoked.Valid
+	profile.ConfigJSON = configRaw
+	if err := json.Unmarshal(configRaw, &profile.Config); err != nil {
+		return nil, capFailure(422, CodeModelUnavailable, "the model profile config is not usable")
+	}
+	return profile, nil
 }
 
 // loadManifestTools loads every tool artifact of the manifest and keeps only the
@@ -776,6 +788,12 @@ func (s *Service) sealTx(
 // dispatchModel performs one operation's physical provider calls. The server is
 // the only retry authority: at most two retries for transient failures, never a
 // retry for a schema/permission/validation answer.
+//
+// F06/T045: after the primary's bounded retries are exhausted by an availability
+// fault, the first *compatible* declared fallback gets exactly one physical
+// attempt of its own. A permission/authorisation/syntax/schema/tool-argument
+// answer never reaches the fallback path. When no fallback is compatible the
+// primary's typed failure is returned unchanged.
 func (s *Service) dispatchModel(
 	ctx context.Context,
 	run *runContext,
@@ -796,6 +814,8 @@ func (s *Service) dispatchModel(
 		return nil, providerFailure(err)
 	}
 	reserved := estimateReservedUnits(input.Params)
+	failureCode := CodeProviderTransient
+	failureReason := ""
 	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
 		if _, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
 			return nil, capErr
@@ -806,14 +826,24 @@ func (s *Service) dispatchModel(
 			Attempt:   attempt,
 		})
 		if callErr == nil {
-			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response)
+			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil)
 		}
 		transient := modelproxy.IsTransient(callErr)
 		code := CodeProviderTransient
 		if !transient {
 			code = providerErrorCode(callErr)
 		}
-		if transient && attempt < maxPhysicalAttempts {
+		reason, fallbackEligible := fallbackReasonFor(callErr)
+		if !fallbackEligible {
+			// Permission, authorisation, syntax, schema-validation, tool
+			// argument and policy failures are terminal: no retry, no fallback.
+			if capErr := s.failAttemptAndOperation(ctx, operationID, attempt, code); capErr != nil {
+				return nil, capErr
+			}
+			return nil, capFailure(503, code, "the model provider call did not complete")
+		}
+		failureCode, failureReason = code, reason
+		if attempt < maxPhysicalAttempts {
 			if capErr := s.resetAttemptForRetry(ctx, operationID, code); capErr != nil {
 				return nil, capErr
 			}
@@ -822,12 +852,174 @@ func (s *Service) dispatchModel(
 			}
 			continue
 		}
-		if capErr := s.failOperation(ctx, operationID, code); capErr != nil {
+	}
+
+	// The primary's availability fault outlived its bounded retries. One
+	// compatible fallback in the configured order, one physical attempt.
+	selection := s.selectFallback(ctx, run, spec, input.Params, failureReason)
+	if selection != nil {
+		if selection.Reason == "" {
+			selection.Reason = FallbackReasonAvailability
+		}
+		if capErr := s.resetAttemptForRetry(ctx, operationID, failureCode); capErr != nil {
 			return nil, capErr
 		}
-		return nil, capFailure(503, code, "the model provider call did not complete")
+		return s.dispatchFallback(ctx, run, input, spec, operationID,
+			maxPhysicalAttempts+1, reserved, selection)
 	}
-	return nil, capFailure(503, CodeProviderTransient, "the model provider exhausted its attempts")
+	if capErr := s.failOperation(ctx, operationID, failureCode); capErr != nil {
+		return nil, capErr
+	}
+	return nil, capFailure(503, failureCode,
+		"the model provider exhausted its attempts")
+}
+
+// fallbackSelection is one compatible fallback chosen before dispatch.
+type fallbackSelection struct {
+	Profile *ModelProfile
+	Reason  string
+}
+
+// dispatchFallback spends the operation's single fallback attempt. A failed
+// fallback attempt is recorded like any other physical attempt; the returned
+// error names the fallback's own code, never a fabricated success.
+func (s *Service) dispatchFallback(
+	ctx context.Context,
+	run *runContext,
+	input Input,
+	spec *capabilitySpec,
+	operationID string,
+	attempt int,
+	reserved string,
+	selection *fallbackSelection,
+) (*Result, error) {
+	profile := selection.Profile
+	candidate := &modelproxy.Candidate{
+		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
+		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+		ValidationState: profile.ValidationState,
+	}
+	provider, err := s.Providers.For(candidate)
+	if err != nil {
+		if capErr := s.failOperation(ctx, operationID, providerErrorCode(err)); capErr != nil {
+			return nil, capErr
+		}
+		return nil, providerFailure(err)
+	}
+	if err := provider.Available(candidate); err != nil {
+		if capErr := s.failOperation(ctx, operationID, providerErrorCode(err)); capErr != nil {
+			return nil, capErr
+		}
+		return nil, providerFailure(err)
+	}
+	if _, capErr := s.beginModelAttempt(ctx, operationID, input.AttemptToken, attempt, reserved); capErr != nil {
+		return nil, capErr
+	}
+	response, callErr := provider.Call(ctx, modelproxy.CallRequest{
+		Candidate: candidate,
+		Params:    input.Params,
+		Attempt:   attempt,
+	})
+	if callErr == nil {
+		fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
+		return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact)
+	}
+	code := providerErrorCode(callErr)
+	if modelproxy.IsTransient(callErr) {
+		code = CodeProviderTransient
+	}
+	if capErr := s.failAttemptAndOperation(ctx, operationID, attempt, code); capErr != nil {
+		return nil, capErr
+	}
+	return nil, capFailure(503, code,
+		"the fallback model provider call did not complete")
+}
+
+// selectFallback applies the T045 gates in order: the declared list of the
+// primary profile, manifest membership, passed/unrevoked, a dispatchable
+// provider, compatibility (kind/protocol/context/tools/schema) and the run
+// budget. The first profile that passes every gate is returned; anything that
+// fails one is skipped, never silently used.
+func (s *Service) selectFallback(
+	ctx context.Context,
+	run *runContext,
+	spec *capabilitySpec,
+	params map[string]any,
+	reason string,
+) *fallbackSelection {
+	if spec == nil || spec.Profile == nil || spec.Model == nil || s.Providers == nil || run.Manifest == nil {
+		return nil
+	}
+	ids := fallbackProfileIDs(spec.Profile)
+	if len(ids) == 0 {
+		return nil
+	}
+	reserved := estimateReservedUnits(params)
+	budgetChecked := false
+	budgetAllowed := false
+	for _, id := range ids {
+		if !containsString(run.Manifest.ModelProfileVersions, id) {
+			// Not frozen into this run's manifest: never used, even if the
+			// profile row exists and is passed.
+			continue
+		}
+		profile, capErr := s.loadModelProfile(ctx, id)
+		if capErr != nil {
+			continue
+		}
+		candidate := &modelproxy.Candidate{
+			ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
+			EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+			ValidationState: profile.ValidationState,
+		}
+		provider, err := s.Providers.For(candidate)
+		if err != nil {
+			continue
+		}
+		if err := provider.Available(candidate); err != nil {
+			continue
+		}
+		if checkFallbackCompatibility(spec.Profile, profile, spec.Model) != "" {
+			continue
+		}
+		if !budgetChecked {
+			budgetChecked = true
+			budgetAllowed = s.budgetAllowsFallback(ctx, run.ID, reserved)
+		}
+		if !budgetAllowed {
+			// The conservative reservation of this fallback does not fit the
+			// remaining run budget: no fallback beyond budget.
+			return nil
+		}
+		return &fallbackSelection{Profile: profile, Reason: reason}
+	}
+	return nil
+}
+
+// budgetAllowsFallback asks PostgreSQL whether the conservative fallback
+// reservation still fits the run's remaining budget. T046 owns the full budget
+// ledger; T045 only refuses a fallback that cannot be paid for. A read error
+// refuses the fallback (fail closed) instead of failing the primary result.
+func (s *Service) budgetAllowsFallback(ctx context.Context, runID, reserved string) bool {
+	var fits bool
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT r.budget_limit
+		       - COALESCE((SELECT sum(a.reserved_amount)
+		                     FROM platform.operation_attempts AS a
+		                     JOIN platform.operations AS o ON o.id = a.operation_id
+		                    WHERE o.run_id = r.id AND a.state = 'dispatching'), 0)
+		       - COALESCE((SELECT sum(a.charged_amount)
+		                     FROM platform.operation_attempts AS a
+		                     JOIN platform.operations AS o ON o.id = a.operation_id
+		                    WHERE o.run_id = r.id AND a.charged_amount IS NOT NULL), 0)
+		       >= $2::numeric
+		  FROM platform.runs AS r
+		 WHERE r.id = $1::uuid`, runID, reserved,
+	).Scan(&fits)
+	if err != nil {
+		return false
+	}
+	return fits
 }
 
 // beginModelAttempt CASes the operation from authorized to dispatching and
@@ -883,6 +1075,7 @@ func (s *Service) finishModelSuccess(
 	operationID string,
 	attempt int,
 	response modelproxy.ProviderResponse,
+	fallback *fallbackFact,
 ) (*Result, error) {
 	projection, problems := validateProviderResponse(response.Data, spec.Model)
 	if len(problems) > 0 {
@@ -899,6 +1092,15 @@ func (s *Service) finishModelSuccess(
 		"tool_calls":               projection.ToolCalls,
 		"model_profile_version_id": spec.Profile.ID,
 		"stub":                     projection.Stub,
+	}
+	if fallback != nil {
+		// The receipt records the switch, not only the answer: a run that used a
+		// fallback must never look like a seamless primary success.
+		payload["fallback"] = map[string]any{
+			"primary_profile_version_id": spec.Profile.ID,
+			"profile_version_id":         fallback.ProfileVersionID,
+			"reason":                     fallback.Reason,
+		}
 	}
 	if projection.Structured != nil {
 		payload["structured"] = projection.Structured
@@ -939,10 +1141,24 @@ func (s *Service) finishModelSuccess(
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
 		   SET state = 'succeeded', receipt_artifact_id = $2::uuid,
+		       fallback_profile_version_id = NULL, fallback_reason = NULL,
 		       last_error_code = NULL, updated_at = now()
 		 WHERE id = $1::uuid AND state = 'dispatching'`, operationID, receiptArtifactID,
 	); err != nil {
 		return nil, capFailure(500, CodeInternal, "the operation could not be succeeded")
+	}
+	if fallback != nil {
+		// The operation keeps the primary capability_version the worker named
+		// and records which profile actually answered, and why it switched.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operations
+			   SET fallback_profile_version_id = $2::uuid, fallback_reason = $3,
+			       last_error_code = NULL, updated_at = now()
+			 WHERE id = $1::uuid AND state = 'succeeded'`,
+			operationID, fallback.ProfileVersionID, fallback.Reason,
+		); err != nil {
+			return nil, capFailure(500, CodeInternal, "the fallback fact could not be recorded")
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, capFailure(500, CodeInternal, "the result could not be committed")
@@ -1219,18 +1435,25 @@ func (s *Service) verifyResultArtifactTx(ctx context.Context, tx *sql.Tx, run *r
 
 // LedgerOperation is the owner-facing projection. It deliberately carries no
 // params and no receipt body: only identity, state, attempt count and a derived
-// tool-call/structured summary.
+// tool-call/structured summary. T045 adds the fallback facts and the summed
+// cost/tokens of every physical attempt, so a switched call is visibly not a
+// seamless primary success.
 type LedgerOperation struct {
-	ID                string           `json:"id"`
-	CapabilityKind    string           `json:"capability_kind"`
-	CapabilityVersion string           `json:"capability_version"`
-	State             string           `json:"state"`
-	Attempts          int              `json:"attempts"`
-	ErrorCode         *string          `json:"error_code"`
-	ReceiptArtifactID *string          `json:"receipt_artifact_id"`
-	ToolCallSummary   []LedgerToolCall `json:"tool_call_summary"`
-	StructuredKeys    []string         `json:"structured_output_keys"`
-	Stub              bool             `json:"stub"`
+	ID                       string           `json:"id"`
+	CapabilityKind           string           `json:"capability_kind"`
+	CapabilityVersion        string           `json:"capability_version"`
+	State                    string           `json:"state"`
+	Attempts                 int              `json:"attempts"`
+	ErrorCode                *string          `json:"error_code"`
+	ReceiptArtifactID        *string          `json:"receipt_artifact_id"`
+	FallbackProfileVersionID *string          `json:"fallback_profile_version_id,omitempty"`
+	FallbackReason           *string          `json:"fallback_reason,omitempty"`
+	TokensIn                 int64            `json:"tokens_in"`
+	TokensOut                int64            `json:"tokens_out"`
+	ChargedAmount            string           `json:"charged_amount"`
+	ToolCallSummary          []LedgerToolCall `json:"tool_call_summary"`
+	StructuredKeys           []string         `json:"structured_output_keys"`
+	Stub                     bool             `json:"stub"`
 }
 
 // LedgerToolCall names a tool call without its arguments.
@@ -1262,8 +1485,15 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT o.id::text, o.capability_kind, o.capability_version, o.state,
 		       o.last_error_code, o.receipt_artifact_id::text,
+		       o.fallback_profile_version_id::text, o.fallback_reason,
 		       (SELECT count(*) FROM platform.operation_attempts AS a
 		         WHERE a.operation_id = o.id),
+		       COALESCE((SELECT sum(a.tokens_in) FROM platform.operation_attempts AS a
+		                  WHERE a.operation_id = o.id), 0),
+		       COALESCE((SELECT sum(a.tokens_out) FROM platform.operation_attempts AS a
+		                  WHERE a.operation_id = o.id), 0),
+		       COALESCE((SELECT sum(a.charged_amount) FROM platform.operation_attempts AS a
+		                  WHERE a.operation_id = o.id), 0)::text,
 		       a.object_key, a.sha256, a.state, a.deleted_at
 		  FROM platform.operations AS o
 		  LEFT JOIN platform.artifacts AS a ON a.id = o.receipt_artifact_id
@@ -1280,13 +1510,16 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 			entry         LedgerOperation
 			errorCode     sql.NullString
 			receiptID     sql.NullString
+			fallbackID    sql.NullString
+			fallbackWhy   sql.NullString
 			objectKey     sql.NullString
 			digest        sql.NullString
 			artifactState sql.NullString
 			deleted       sql.NullTime
 		)
 		if err := rows.Scan(&entry.ID, &entry.CapabilityKind, &entry.CapabilityVersion,
-			&entry.State, &errorCode, &receiptID, &entry.Attempts,
+			&entry.State, &errorCode, &receiptID, &fallbackID, &fallbackWhy,
+			&entry.Attempts, &entry.TokensIn, &entry.TokensOut, &entry.ChargedAmount,
 			&objectKey, &digest, &artifactState, &deleted); err != nil {
 			return nil, capFailure(500, CodeInternal, "the capability ledger could not be read")
 		}
@@ -1299,6 +1532,14 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 		if receiptID.Valid {
 			value := receiptID.String
 			entry.ReceiptArtifactID = &value
+		}
+		if fallbackID.Valid {
+			value := fallbackID.String
+			entry.FallbackProfileVersionID = &value
+		}
+		if fallbackWhy.Valid {
+			value := fallbackWhy.String
+			entry.FallbackReason = &value
 		}
 		if objectKey.Valid && artifactState.Valid && artifactState.String == "ready" && !deleted.Valid {
 			content, err := s.readSealed(objectKey.String, digest.String)

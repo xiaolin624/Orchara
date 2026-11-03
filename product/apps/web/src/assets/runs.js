@@ -115,6 +115,27 @@ function describeCapabilityOperation(operation) {
       }))
     : [];
   const errorCode = value.error_code ? String(value.error_code) : '';
+  // T045: a call that switched profiles must not look like a seamless primary
+  // success. The ledger projection carries the fallback profile and the closed
+  // reason code; the cost/tokens are the sum over every physical attempt.
+  const fallbackProfileVersionID = value.fallback_profile_version_id
+    ? String(value.fallback_profile_version_id)
+    : '';
+  const fallbackReason = value.fallback_reason ? String(value.fallback_reason) : '';
+  const fallbackReasonText = capabilityFallbackReasonText(fallbackReason);
+  const chargedAmount =
+    value.charged_amount === undefined || value.charged_amount === null
+      ? ''
+      : String(value.charged_amount);
+  const tokensIn = Number(value.tokens_in || 0);
+  const tokensOut = Number(value.tokens_out || 0);
+  const costText =
+    chargedAmount === '' ? '' : '费用 ' + chargedAmount + '，令牌 ' + tokensIn + '/' + tokensOut;
+  const fallbackText =
+    fallbackProfileVersionID === ''
+      ? ''
+      : '已切换到 ' + capabilityVersionLabel(fallbackProfileVersionID) +
+        '，原因：' + fallbackReasonText;
   return {
     id: String(value.id || ''),
     kindText: capabilityKindText(value.capability_kind),
@@ -124,6 +145,7 @@ function describeCapabilityOperation(operation) {
     stateText: capabilityStateText(value.state),
     attempts,
     attemptsText: attempts + ' 次',
+    attemptsDetailText: attempts + ' 次' + (costText === '' ? '' : ' · ' + costText),
     errorCode,
     errorText: errorCode === '' ? '' : '错误码 ' + errorCode,
     toolCalls,
@@ -133,7 +155,35 @@ function describeCapabilityOperation(operation) {
     stub: value.stub === true,
     stubLabel: value.stub === true ? 'stub（开发桩）' : '真实提供方',
     hasReceipt: Boolean(value.receipt_artifact_id),
+    fallbackProfileVersionID,
+    fallbackReason,
+    fallbackReasonText,
+    fallbackText,
+    fallback: {
+      profileVersionID: fallbackProfileVersionID,
+      reason: fallbackReason,
+      reasonText: fallbackReasonText,
+      text: fallbackText,
+    },
+    costText,
+    tokensIn,
+    tokensOut,
+    chargedAmount,
   };
+}
+
+/** T045's closed fallback reason vocabulary as the owner-facing label. */
+function capabilityFallbackReasonText(reason) {
+  switch (String(reason || '')) {
+    case 'availability':
+      return '可用性故障';
+    case 'rate_limited':
+      return '限流';
+    case 'adapter_unavailable':
+      return '适配器不可用';
+    default:
+      return String(reason || '');
+  }
 }
 
 /** The whole ledger body the panel renders; never echoes another owner's data. */
@@ -1255,10 +1305,12 @@ function renderCapabilityRow(operation) {
     operation.kindText,
     operation.versionLabel,
     operation.stateText,
-    operation.attemptsText,
+    operation.attemptsDetailText || operation.attemptsText,
     operation.structuredText,
     operation.toolCallsText,
-    operation.stubLabel + (operation.errorText ? ' · ' + operation.errorText : ''),
+    operation.stubLabel +
+      (operation.fallbackText ? ' · ' + operation.fallbackText : '') +
+      (operation.errorText ? ' · ' + operation.errorText : ''),
   ];
   for (const text of cells) {
     const cell = document.createElement('td');
