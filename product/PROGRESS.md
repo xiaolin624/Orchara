@@ -86,6 +86,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T038 | F03 | 恢复待证据并在核对后安全重驱 | passed | `reports/f03/T038-recovery.md`、`db/migrations/0024_run_recovery_evidence.sql`（唯一新表 `platform.run_recovery_evidence`：run/attempt、闭合证据 jsonb + JCS sha256、真实 principal `recorded_by`、`recorded_at`、UNIQUE `resumed_job_id`、`UNIQUE(run_id,attempt_token)`、run 索引；`runs.recovery_reason/recovery_since` + 配对/闭合 CHECK；worker/PUBLIC 零权限；重复 migrate no-op）、`internal/execution/recovery.go`（证据闭合形状 + JCS SHA-256、`SweepExpiredLeases` 只 park、`Recover` 全检查 + 单事务重排、`RecoveryFacts`、拒绝码）、`internal/execution/recovery_store.go`（sweep/recover/actor/evidence SQL + 行锁复检）、`internal/execution/{store,service,cancel_store}.go`（T031 park 写 `exit_without_result`；离开 recovery_pending 时清列）、`cmd/admin/runs.go` + `cmd/admin/main.go`（`runs sweep-leases [--grace] [--dry-run]` / `runs recover --run --evidence [--check-only] [--actor-login] [--grace]`，stdout 单 JSON，exit 0/1/2，绝不打印 token/DSN）、`internal/api/debug.go`（非契约 `X-Run-Recovery-Reason/Since/Evidence-At/Evidence-SHA256`）、`apps/web/src/{runs.html,assets/runs.js}`（恢复原因/挂起时间/证据/运维命令，无恢复按钮，终态不回翻，`runLifecycle` 增加 recovery_pending）、`tests/support/t038.py`、`tests/f03/test_t038_{migration,sweep,recover,recovery_refusals,pages}.py`（5 文件 27 用例：migration 5、sweep 5、recover 7、refusals 6、pages 4；真实 PG + 编译 admin/API + 真实 mTLS + 真实对象字节 + 真实打开中的 psql 事务/pg_stat_activity + Node）；迁移链 0023→0024 适配 12 个迁移测试；`tests/f03` **197 passed**；`go test ./...` 22 ok/9 no-test/0 FAIL、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；not_run：常驻租约巡检、cancelling/waiting_* 失联恢复、真实 F04A supervisor 证据、浏览器 DOM、25 分钟多套件门禁（orchestrator），见报告 §5 |
 
 | T039 | F06 | 管理员登记模型并查看兼容验证后才共享 | passed | `reports/f06/T039-model-registry.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`、`internal/modelregistry/{catalog,modelregistry,validate}.go`（deployer catalog 严格解析/fail closed、JCS manifest + sha256、单事务 manifest artifact + pending model、`FOR UPDATE` 验证编排、确定性 fixture 封存、Idempotency-Key 收据/回放）、`internal/api/{models.go,server.go}`（`registerModel`/`listModels`/`getModel`/`validateModel` + admin `model-endpoints`/`credential-refs` + `/models` 页面）、`internal/background/{model_validate.go,complete.go,evaluation.go}`（报告严格绑定 candidate/fixture/`platform_model_calls` 账本、`evaluation_reports` + model passed/failed 同事务；T024 直接入队 job 保持 report-only 语义）、`internal/modelproxy/{modelproxy.go}`（catalog id 与 `env:` 引用双形态）、`apps/web/src/{models.html,assets/models.js}`（登记/列表/验证/报告，Node 执行）、`tests/support/{t039.py,fixtures.py}`、`tests/f06/`（15 用例：注册/可见性/幂等/可重试失败/失败用例/终端失败/依赖就绪/页面）；真实 PG + 编译二进制 + 真实 HTTP/mTLS + 对象字节 + maintenance 双进程 + Node；`go test ./...` 23 ok/0 FAIL/9 no-test、`go vet` exit 0、`gofmt -l` 空、`sync_spec --check` no drift；not_run：真实厂商 provider adapter（本构建 real 失败为 `provider_not_configured`，已断言）、浏览器 DOM、全量 `pytest tests`（orchestrator）；无迁移（0011/0013 已够用） |
+| T040 | F04A | 在画布配置线性流程并看到服务端校验反馈 | passed | `reports/f04a/T040-canvas-and-linear-compile.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T040 追加 D4/D5）、`worker/platform_worker/compiler/{validate,graph,stub,jcs,__init__}.py`（F04A 线性子集防御性校验 + 真实 LangGraph `StateGraph` + 确定性 stub adapter；共享语料 22 例 = 16 shared + 6 f04a_only）、`internal/workflow/f04a_corpus_test.go`（Go 权威对共享语料断言同 `(verdict, code, pointer)`）、`tests/f04a/corpus/linear_f04a.json`、`apps/web/canvas/`（Vue 3.5.44 + Vue Flow 1.48.2 真实应用；`build.mjs` esbuild 0.28.2；纯模块 `lib/{dsl,sources,errors,export}.js`）、`apps/web/src/assets/canvas.{js,css}`（提交的静态产物，测试/运行不需要 npm）、`apps/web/src/{editor.html,assets/editor.js}`（画布主编辑、四类节点配置面板、工具/模型选择器、合法变量来源、错误点击跳转、`X-Manifest-SHA256`、折叠 JSON 视图；保留 ETag/412/428/调试入口）、`internal/api/server.go`（`GET /assets/canvas.{js,css}`）、`tests/f04a/`（36 用例：validate 17、graph 7、assets 5、integration 7；Node 8 模块检查；真实 PG + 编译二进制 + 真实 HTTP + P01 langgraph 1.2.4）、`go vet` exit 0、`go test ./...` 23 ok/9 no-test/0 FAIL、`gofmt -l` 空、`pytest tests/f04a tests/f02a` **140 passed**、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、生产 LangGraph worker（Go runtime 属 T042/T043）、全量 `pytest tests`（orchestrator）；无迁移/契约改动 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -934,6 +935,27 @@ no drift: spec copy and contract snapshot match the manifest
 objectstore 2（attempt key 向量、Move）、background 4（守卫移动/拒绝/stale/另一尝试）、handlers 4
 （写尝试 key、hash/size 失败只删自己的、staging 缺失）。文档提交后 `git status --short` 为空；
 未推送、未关闭 issue。
+
+## F04A 线性四节点编译器与 Vue Flow 画布（1/1：T040）
+
+T040（GitHub #41）已交付，状态 **`passed`**（范围 = Python 防御性线性编译器 +
+LangGraph stub-adapter 图证明 + 真实 Vue Flow 画布；生产 Run 运行时仍是 Go，真实
+python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-and-linear-compile.md`。
+
+| 项 | 结果 |
+|---|---|
+| Python 校验 | `worker/platform_worker/compiler/validate.py` 只覆盖 `start → python → agent → end`；与 Go 共享语料 16 例逐例对账 `verdict/code/pointer`（`internal/workflow/f04a_corpus_test.go` + `tests/f04a/test_validate.py`）；另 6 例 F04A 额外拒绝（`unsupported_node_type`、`linear_order`、`not_linear_chain`、`unsupported_port`、`unsupported_subapp`、`bad_output_mapping`） |
+| LangGraph | `graph.py` 的 `LinearGraph` 先校验再建 `StateGraph`；只按声明边执行；`NodeContext`/`NodeOutcome`（succeeded/failed/waiting/needs_reconciliation）为唯一归一化缝；`stub.py` 确定性回显应用输入→python→agent→end；失败/等待短路；真实 P01 env（langgraph 1.2.4）执行 |
+| 画布 | `apps/web/canvas/` 真实 Vue 3 + Vue Flow；palette 只有四类节点；单链连线拒绝有原因；python 只列 ready+approved 工具、agent 只列 passed 模型；合法变量只列 `input#` + 上游 output；错误映射到节点/字段并可点击跳转；成功显示 `X-Manifest-SHA256`；导出只含 `{definition,layout}` 并拒绝敏感字段 |
+| Bundle | `npm ci && npm run build` → 提交的 `apps/web/src/assets/canvas.{js,css}`；`node_modules/` 忽略；测试/运行不需要 npm；服务端新增 `/assets/canvas.{js,css}` 静态路由 |
+| T023 行为 | 保存仍走 `PUT /draft` + `If-Match`；412/428/重载/下载本地副本/`#debug-entry` 不变；ETag/CSRF 不进 URL/存储 |
+| 集成 | 真实 PG + 编译二进制 + 真实 HTTP：草稿 round-trip（含小数坐标）、定位错误（bad_pointer/missing_value/bad_config）、pending model + unapproved/non-ready tool 的 `dependency_not_ready`、非 owner/creator 拒绝、草稿无 run input/secret/memory |
+| 门禁 | `go vet` exit 0；`go test ./...` 23 ok/9 no-test/0 FAIL；`gofmt -l` 空；`pytest tests/f04a tests/f02a` **140 passed**（f04a 36 + f02a 104）；`pytest tests/tooling` 21；`sync_spec --check` no drift；`node --check canvas.js` 0；Node 8 模块检查通过 |
+| 边界/not_run | 生产 LangGraph worker 未实现（Go runtime 属 T042/T043）；浏览器 DOM/拖拽/焦点未做自动化；全量 `pytest tests` 由 orchestrator；未 push/未关闭 issue；无迁移、无契约/规格改动 |
+
+P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
+venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
+`pytest.fail`（不 skip）。
 
 ## 记录模板
 
