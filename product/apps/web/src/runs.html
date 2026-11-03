@@ -138,6 +138,22 @@
       <p id="sandbox-artifacts-status" class="hint" role="status" aria-live="polite">正在加载产物…</p>
     </section>
 
+    <details id="node-results-panel" class="card">
+      <summary>节点结果（F04A/T042：data / 文件 / 日志）</summary>
+      <p
+        id="node-results-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载节点结果…</p>
+      <div id="node-results-nodes"></div>
+      <p class="hint">
+        每个节点分别列出结构化 data、可下载文件与受限日志；日志不是数据，也不会出现在可下载产物列表里。
+        已进入终态却没有结果的节点显示“无结果”，执行失败的节点显示“失败”，两者不会混为一谈；
+        原始 output.json 不会成为可下载产物，只有服务端校验并登记后的 data/文件/日志才会出现在这里。
+      </p>
+    </details>
+
     <details id="capability-panel" class="card">
       <summary>受控调用账本（F06/T041）</summary>
       <p

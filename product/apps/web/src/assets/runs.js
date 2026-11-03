@@ -1377,6 +1377,7 @@ function beginRunTimeline(runId, elements) {
       if (isCancelled() || !list) {
         return;
       }
+      recordNodeStatus(event);
       // One line per committed event; describeRunEvent never renders payload
       // content, and the seq dedupe above already suppressed replays.
       const item = document.createElement('li');
@@ -1418,6 +1419,7 @@ async function pollRunDetail(runId, polls) {
   }
   await loadRunArtifacts(runId);
   await loadCapabilityLedger(runId);
+  await loadNodeResults(runId);
   runsStatus('Run ' + runId + ' 已进入终态 ' + (merged && merged.state ? merged.state : '') + '。', 'ok');
 }
 
@@ -1430,12 +1432,15 @@ async function loadRunDetail(runId) {
       // must not mask the newly selected Run.
       displayedRunID = runId;
       displayedRun = null;
+      nodeStatusByID = {};
+      lastNodeResults = null;
     }
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
     const merged = showRunDetail(result.payload, facts);
     loadRunArtifacts(runId);
     loadCapabilityLedger(runId);
+    loadNodeResults(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',
@@ -1481,6 +1486,375 @@ async function loadRunsPage(cursor) {
       return;
     }
     runsStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// F04A/T042: the per-node result panel (data / files / capped logs).
+//
+// The panel reads the owner-only non-contract node-results projection and then
+// the existing artifact content route; it never invents a result. A node with no
+// rows after the Run reached a terminal state is shown as "no result", and a
+// failed node is shown as "failed" — the two are not conflated. Logs are capped
+// in the page as well as on the server, and never rendered as data.
+// ---------------------------------------------------------------------------
+let nodeStatusByID = {};
+let lastNodeResults = null;
+
+function runNodeResultsPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/node-results';
+}
+
+function artifactContentPath(artifactID) {
+  return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/content';
+}
+
+function nodeResultKindText(kind) {
+  if (kind === 'data') {
+    return 'data';
+  }
+  if (kind === 'file') {
+    return '文件';
+  }
+  if (kind === 'log') {
+    return '日志';
+  }
+  return String(kind || '未知');
+}
+
+function nodeStatusText(state) {
+  switch (String(state || '')) {
+    case 'pending':
+      return '等待';
+    case 'running':
+      return '运行中';
+    case 'succeeded':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'skipped':
+      return '已跳过';
+    case 'no_result':
+      return '无结果';
+    default:
+      return '未知';
+  }
+}
+
+function formatBytes(count) {
+  const size = Number(count);
+  if (!Number.isFinite(size) || size < 0) {
+    return '0 B';
+  }
+  if (size < 1024) {
+    return String(Math.floor(size)) + ' B';
+  }
+  return (size / 1024).toFixed(1) + ' KiB';
+}
+
+/** Cap one log view exactly like the server caps the artifact. */
+function capLogText(text, limit) {
+  const source = typeof text === 'string' ? text : '';
+  const cap = Number.isSafeInteger(limit) && limit > 0 ? limit : 4096;
+  if (source.length <= cap) {
+    return { text: source, truncated: false, notice: '' };
+  }
+  return {
+    text: source.slice(0, cap),
+    truncated: true,
+    notice:
+      '日志已截断：只显示前 ' +
+      cap +
+      ' 个字符（共 ' +
+      source.length +
+      ' 个字符，完整内容以服务端上限为准）。',
+  };
+}
+
+function prettyJSONText(raw) {
+  const source = typeof raw === 'string' ? raw : '';
+  try {
+    return JSON.stringify(JSON.parse(source), null, 2);
+  } catch (error) {
+    return source;
+  }
+}
+
+function describeNodeResultItem(item) {
+  const entry = item && typeof item === 'object' ? item : {};
+  const artifactID = String(entry.artifact_id || '');
+  const label = String(entry.label || '');
+  const mediaType = String(entry.media_type || '');
+  const sizeBytes = Number(entry.size_bytes) || 0;
+  return {
+    artifactID: artifactID,
+    kind: String(entry.kind || ''),
+    kindText: nodeResultKindText(entry.kind),
+    label: label,
+    mediaType: mediaType,
+    sizeBytes: sizeBytes,
+    sizeText: formatBytes(sizeBytes),
+    sha256: String(entry.sha256 || ''),
+    line:
+      nodeResultKindText(entry.kind) +
+      ' · ' +
+      label +
+      ' · ' +
+      (mediaType || '未知类型') +
+      ' · ' +
+      formatBytes(sizeBytes),
+    downloadPath: artifactDownloadPath(artifactID),
+    contentPath: artifactContentPath(artifactID),
+  };
+}
+
+/**
+ * Group the node-results projection by node and derive an honest status.
+ *
+ * `statuses` is the map filled from committed node.status events; when it has no
+ * entry, a node with rows is a success (the rows only exist after the server
+ * registered them), a failed/cancelled Run's silent node is failed, and a
+ * succeeded Run's silent node is "no result" rather than invented output.
+ */
+function describeNodeResults(body, statuses, runState) {
+  const items = body && Array.isArray(body.items) ? body.items : [];
+  const known = statuses && typeof statuses === 'object' ? statuses : {};
+  const groups = [];
+  const byNode = new Map();
+  for (const item of items) {
+    const nodeID = String((item && item.node_id) || '');
+    if (!byNode.has(nodeID)) {
+      const group = { nodeID: nodeID, data: [], files: [], logs: [], count: 0 };
+      byNode.set(nodeID, group);
+      groups.push(group);
+    }
+    const group = byNode.get(nodeID);
+    const described = describeNodeResultItem(item);
+    group.count += 1;
+    if (described.kind === 'data') {
+      group.data.push(described);
+    } else if (described.kind === 'file') {
+      group.files.push(described);
+    } else if (described.kind === 'log') {
+      group.logs.push(described);
+    }
+  }
+  // Nodes observed only through node.status events still appear, so a failed
+  // node (no rows, by definition) is visible as "failed" instead of vanishing.
+  for (const nodeID of Object.keys(known)) {
+    if (!byNode.has(nodeID)) {
+      const group = { nodeID: nodeID, data: [], files: [], logs: [], count: 0 };
+      byNode.set(nodeID, group);
+      groups.push(group);
+    }
+  }
+  const state = String(runState || '');
+  let dataCount = 0;
+  let fileCount = 0;
+  let logCount = 0;
+  for (const group of groups) {
+    let status = String(known[group.nodeID] || '');
+    if (status === '') {
+      if (group.count > 0) {
+        status = 'succeeded';
+      } else if (state === 'failed' || state === 'cancelled') {
+        status = 'failed';
+      } else if (state === 'succeeded') {
+        status = 'no_result';
+      }
+    }
+    group.status = status;
+    group.statusText = nodeStatusText(status);
+    group.resultText = group.count > 0 ? '有结果' : '无结果';
+    dataCount += group.data.length;
+    fileCount += group.files.length;
+    logCount += group.logs.length;
+  }
+  const empty = groups.length === 0;
+  return {
+    visible: true,
+    empty: empty,
+    nodeCount: groups.length,
+    dataCount: dataCount,
+    fileCount: fileCount,
+    logCount: logCount,
+    nodes: groups,
+    text: empty
+      ? '该 Run 还没有节点结果（旧版单 python 执行路径不产生节点结果）。'
+      : groups.length +
+        ' 个节点 · data ' +
+        dataCount +
+        ' · 文件 ' +
+        fileCount +
+        ' · 日志 ' +
+        logCount,
+  };
+}
+
+function nodeResultsStatus(message, kind) {
+  const element = document.getElementById('node-results-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+function recordNodeStatus(event) {
+  if (!event || event.type !== 'node.status') {
+    return;
+  }
+  const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+  const nodeID = String(payload.node_id || '');
+  if (nodeID === '') {
+    return;
+  }
+  nodeStatusByID[nodeID] = String(payload.state || '');
+  if (lastNodeResults) {
+    renderNodeResults(lastNodeResults);
+  }
+}
+
+async function fetchArtifactText(artifactID) {
+  const response = await fetch(artifactContentPath(artifactID), {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch (parseError) {
+      payload = null;
+    }
+    const detail = (payload && payload.error) || {};
+    const failure = new Error(detail.message || 'HTTP ' + response.status);
+    failure.code = detail.code || 'http_' + response.status;
+    failure.status = response.status;
+    throw failure;
+  }
+  return text;
+}
+
+async function downloadNodeArtifact(artifactID) {
+  try {
+    const ticket = await api(artifactDownloadPath(artifactID));
+    if (!ticket.url) {
+      throw new Error('下载响应没有 URL');
+    }
+    window.open(ticket.url, '_blank', 'noopener');
+  } catch (error) {
+    nodeResultsStatus(
+      '下载失败 [' +
+        (error && error.code ? error.code : 'error') +
+        '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  }
+}
+
+function renderNodeResults(body) {
+  lastNodeResults = body && typeof body === 'object' ? body : null;
+  const container = document.getElementById('node-results-nodes');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  const described = describeNodeResults(
+    lastNodeResults,
+    nodeStatusByID,
+    displayedRun && displayedRun.state,
+  );
+  nodeResultsStatus(described.text, described.empty ? '' : 'ok');
+  for (const group of described.nodes) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent =
+      group.nodeID + ' · ' + group.statusText + (group.count > 0 ? '' : ' · 无结果');
+    section.appendChild(heading);
+
+    for (const data of group.data) {
+      const row = document.createElement('div');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '查看 data';
+      const output = document.createElement('pre');
+      output.className = 'hint';
+      button.addEventListener('click', async () => {
+        try {
+          output.textContent = prettyJSONText(await fetchArtifactText(data.artifactID));
+        } catch (error) {
+          output.textContent =
+            'data 不可用 [' + (error && error.code ? error.code : 'error') + ']';
+        }
+      });
+      row.append(button, ' ', data.line);
+      section.append(row, output);
+    }
+
+    if (group.files.length > 0) {
+      const list = document.createElement('ul');
+      for (const file of group.files) {
+        const item = document.createElement('li');
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.textContent = '下载';
+        download.addEventListener('click', () => downloadNodeArtifact(file.artifactID));
+        item.append(file.label + ' · ' + file.mediaType + ' · ' + file.sizeText + ' ', download);
+        list.appendChild(item);
+      }
+      section.appendChild(list);
+    }
+
+    for (const log of group.logs) {
+      const row = document.createElement('div');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '查看日志（受限）';
+      const notice = document.createElement('p');
+      notice.className = 'hint';
+      const output = document.createElement('pre');
+      output.className = 'hint';
+      button.addEventListener('click', async () => {
+        try {
+          const capped = capLogText(await fetchArtifactText(log.artifactID), 4096);
+          output.textContent = capped.text;
+          notice.textContent = capped.notice;
+        } catch (error) {
+          output.textContent =
+            '日志不可用 [' + (error && error.code ? error.code : 'error') + ']';
+        }
+      });
+      row.append(button, ' ', log.line);
+      section.append(row, notice, output);
+    }
+    container.appendChild(section);
+  }
+  return described;
+}
+
+async function loadNodeResults(runId) {
+  try {
+    const body = await api(runNodeResultsPath(runId));
+    if (displayedRunID !== runId) {
+      return;
+    }
+    renderNodeResults(body);
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    nodeResultsStatus(
+      '节点结果不可用 [' +
+        (error && error.code ? error.code : 'error') +
+        '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
   }
 }
 
