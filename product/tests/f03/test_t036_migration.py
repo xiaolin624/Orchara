@@ -82,10 +82,11 @@ def test_0022_is_recorded_once_at_the_chain_tail(migrated_database, go_binaries)
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 24)], versions
-    assert ledgers[-3]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-2]["name"] == "0022_run_unknown_operations.sql"
-    assert ledgers[-1]["name"] == "0023_tool_builds_and_review.sql"
+    assert versions == [f"{number:04d}" for number in range(1, 25)], versions
+    assert ledgers[-4]["name"] == "0021_run_waitings.sql"
+    assert ledgers[-3]["name"] == "0022_run_unknown_operations.sql"
+    assert ledgers[-2]["name"] == "0023_tool_builds_and_review.sql"
+    assert ledgers[-1]["name"] == "0024_run_recovery_evidence.sql"
     replay = st.migrate_or_fail(go_binaries["admin"], dsn)
     assert "no pending migrations" in replay, replay
 

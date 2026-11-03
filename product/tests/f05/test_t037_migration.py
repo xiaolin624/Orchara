@@ -82,8 +82,9 @@ def test_0023_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 24)], versions
-    assert ledgers[-1]["name"] == "0023_tool_builds_and_review.sql"
+    assert versions == [f"{number:04d}" for number in range(1, 25)], versions
+    assert ledgers[-2]["name"] == "0023_tool_builds_and_review.sql"
+    assert ledgers[-1]["name"] == "0024_run_recovery_evidence.sql"
 
 
 def test_0023_replays_as_a_noop(migrated_database, go_binaries) -> None:
