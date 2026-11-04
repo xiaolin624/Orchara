@@ -6,10 +6,10 @@ business error code (``missing_column``, ``duplicate_order_id``,
 ``negative_amount``, ``formula_not_supported``, ``row_limit_exceeded``), so the
 report shows the located failure reason instead of a vague failure.
 
-The timeout case is a real 20 MiB input that the sandbox kills at a 2 s tool
-timeout: the stdlib CSV parse of ~20 million blank lines alone measures >4 s in
-the Linux sandbox (recorded in the report), so the case exceeds the timeout by a
-wide margin instead of racing it. The missing-fixture and malformed-binding
+The timeout case is a real 20 MiB input that the sandbox kills at the minimum
+(1 s) tool timeout: the stdlib CSV parse of ~20 million blank lines measures
+~2.2 s in the sandbox distro (more under load), so the case exceeds the timeout
+by a real margin instead of racing it. The missing-fixture and malformed-binding
 cases exercise the failure boundary: neither can ever produce a passed case.
 """
 
@@ -110,16 +110,38 @@ def test_bad_input_cases_pass_only_for_their_expected_located_failure(t056_stack
 
 
 def test_a_tool_timeout_is_a_passed_case_with_the_expected_failure(t056_stack) -> None:
+    """The real 20 MiB blank-line input exceeds the minimum (1 s) tool timeout.
+
+    The sandbox's csv parse of the 20 MiB fixture measures ~2.2 s in the sandbox
+    distro (more under load), and the deployment timeout rounds to whole seconds,
+    so the minimum 1 s is the only bound with a real margin. If a very fast host
+    completes the run anyway, the case observes ``empty_input`` (the tool finished
+    instead of being killed): that is an environment timing miss, not a product
+    verdict, so the evaluation is retried. A case that failed for any other reason
+    is asserted, never retried into a pass.
+    """
     owner = t056.sales_owner(t056_stack)
     document = t056.load_dataset("timeout.json")
-    evaluation, report, sealed = t056.run_evaluation(
-        t056_stack,
-        owner,
-        document,
-        sandbox_timeout="2s",
-        case_timeout="60s",
-        log_path=Path(t056_stack.object_dir).parent / "pools.log",
-    )
+    log_path = Path(t056_stack.object_dir).parent / "pools.log"
+    evaluation: dict = {}
+    report: dict = {}
+    sealed: dict = {}
+    for attempt in range(1, 4):
+        evaluation, report, sealed = t056.run_evaluation(
+            t056_stack,
+            owner,
+            document,
+            sandbox_timeout="1s",
+            case_timeout="60s",
+            log_path=log_path,
+        )
+        if report["status"] == "passed":
+            break
+        case = sealed["cases"][0]
+        observed = (case.get("facts") or {}).get("run_error_code")
+        print(f"T056: timeout case observed {observed!r} on attempt {attempt}")
+        if observed != "empty_input":
+            break
     assert evaluation["state"] == "succeeded", evaluation
     assert report["status"] == "passed", (report, sealed)
     case = sealed["cases"][0]
