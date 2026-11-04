@@ -35,7 +35,7 @@ def test_the_knowledge_page_offers_csv_and_xlsx_uploads(t059_stack) -> None:
         'accept=".txt,.md,.csv,.xlsx',
         ".csv",
         ".xlsx",
-        "上传 txt/md/csv/xlsx 并封存",
+        "上传 txt/md/csv/xlsx",
         "行范围",
         "工作表",
         "公式",
@@ -93,8 +93,11 @@ assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('book.XLSX')
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('notes.txt')),
   JSON.stringify({ ok: true, mediaType: 'text/plain' }));
-assert.strictEqual(context.mediaTypeForKnowledgeFile('report.pdf').ok, false);
-assert.ok(context.mediaTypeForKnowledgeFile('report.pdf').error.includes('csv'));
+// PDF was refused when T059 landed; T060 admitted it for purpose=knowledge.
+assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('report.pdf')),
+  JSON.stringify({ ok: true, mediaType: 'application/pdf' }));
+assert.strictEqual(context.mediaTypeForKnowledgeFile('report.doc').ok, false);
+assert.ok(context.mediaTypeForKnowledgeFile('report.doc').error.includes('pdf'));
 assert.ok(context.mediaTypeForKnowledgeFile('no-extension').error.includes('xlsx'));
 
 // Row ranges are rendered from the citation, with header semantics and the
