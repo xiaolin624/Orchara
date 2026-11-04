@@ -79,6 +79,7 @@ def test_a_failed_hard_check_wins_over_the_quality_slot(t052_stack, tmp_path: Pa
 def test_a_published_version_target_is_blocked_and_never_passed(t052_stack, tmp_path: Path) -> None:
     owner = t052.minimal_owner(t052_stack)
     evaluation_id = _submit(
+        t052_stack,
             owner,
         [
             t052.evaluation_case(
@@ -109,6 +110,7 @@ def test_the_collector_refuses_an_application_withdrawn_after_submit(
 ) -> None:
     owner = t052.minimal_owner(t052_stack)
     evaluation_id = _submit(
+        t052_stack,
             owner,
         [
             t052.evaluation_case(
@@ -145,6 +147,7 @@ def test_a_forged_passed_report_is_refused_and_records_no_report(t052_stack) -> 
     """
     owner = t052.minimal_owner(t052_stack)
     evaluation_id = _submit(
+        t052_stack,
             owner,
         [
             t052.evaluation_case(
