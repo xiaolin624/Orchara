@@ -67,9 +67,10 @@ def constraint_definitions(dbname: str, table: str) -> str:
 
 def test_migration_0033_is_the_next_link_of_the_chain(migrated_database, go_binaries) -> None:
     dsn, dbname = migrated_database
+    # The chain invariant is continuity from 0001 (asserted by migration_chain),
+    # never a pinned tail: later tickets (0034 already) append migrations.
     chain = st.migration_chain(dbname)
     assert chain[VERSION] == NAME, chain
-    assert len(chain) == int(VERSION), chain
 
     # Repeating migrate on the same database is a no-op, not a second apply.
     completed = st.run_admin(go_binaries["admin"], ["migrate"], dsn=dsn)
