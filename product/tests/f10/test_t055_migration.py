@@ -1,4 +1,4 @@
-"""T055 acceptance: migration 0033 creates the knowledge tables with their seams.
+"""T055 acceptance: migration 0034 creates the knowledge tables with their seams.
 
 The ticket's deviation is explicit: pgvector is not available in this cluster, so
 the embedding is a 384-dimension ``double precision[]`` with a CHECK, and the
@@ -65,7 +65,7 @@ def foreign_key_columns(dbname: str, table: str) -> set[str]:
     return {row["column_name"] for row in rows}
 
 
-def test_the_migration_chain_keeps_0033_and_the_three_tables(migrated_database) -> None:
+def test_the_migration_chain_keeps_0034_and_the_three_tables(migrated_database) -> None:
     _dsn, dbname = migrated_database
     names = st.migration_chain(dbname)
     assert names["0034"] == "0034_knowledge.sql"
