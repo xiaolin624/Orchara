@@ -389,7 +389,19 @@ func (e *Egress) maxRequestBytes() int64 {
 // splits any inline query. It refuses everything that could name another host or
 // escape the namespace: absolute URLs, "//host", backslashes, fragments, dot
 // segments (including percent-encoded ones) and control characters.
+//
+// The prefix is a path *segment* namespace, not a string prefix: `/v1` admits
+// `/v1` and `/v1/...`, but never `/v10/...` or `/v1beta/...`. Without that
+// boundary a policy registered for one API path would silently authorize a
+// sibling path it never declared.
 func resolveInvocationPath(prefix, raw string) (string, url.Values, error) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", nil, errors.New("the policy has no registered path prefix")
+	}
+	for len(prefix) > 1 && strings.HasSuffix(prefix, "/") {
+		prefix = strings.TrimSuffix(prefix, "/")
+	}
 	path := strings.TrimSpace(raw)
 	if path == "" {
 		return "", nil, errors.New("path is required")
@@ -411,7 +423,7 @@ func resolveInvocationPath(prefix, raw string) (string, url.Values, error) {
 	if strings.Contains(decoded, "//") {
 		return "", nil, errors.New("path may not contain //")
 	}
-	if !strings.HasPrefix(decoded, prefix) {
+	if !pathWithinPrefix(decoded, prefix) {
 		return "", nil, errors.New("path is outside the registered path prefix")
 	}
 	if len(decoded) > len(prefix)+4096 {
@@ -441,6 +453,17 @@ func resolveInvocationPath(prefix, raw string) (string, url.Values, error) {
 		query = parsed
 	}
 	return pathPart, query, nil
+}
+
+// pathWithinPrefix enforces the segment boundary. The registered `/v1`
+// namespace owns `/v1` itself and `/v1/<child>`, never a sibling whose text
+// merely starts with the same characters (`/v10`, `/v1beta`). A root prefix
+// owns the whole single-slash namespace (the `//` forms were refused already).
+func pathWithinPrefix(path, prefix string) bool {
+	if prefix == "/" {
+		return strings.HasPrefix(path, "/")
+	}
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
 // encodeBody marshals a JSON body under the request byte cap. A GET/DELETE body

@@ -66,14 +66,10 @@ def constraints_of(dbname: str, table: str) -> dict[str, str]:
 
 def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
     _dsn, dbname = migrated_database
-    versions = st.sql(
-        dbname,
-        "SELECT string_agg(version, ',' ORDER BY version) FROM platform.schema_migrations",
-    )
-    # T041/T042 append 0025/0026; 0015 must stay at its own position.
-    assert versions.split(",")[-1] == "0026", versions
-    assert len(versions.split(",")) == 26, versions
-    assert "0015" in versions.split(","), versions
+    # 0015 keeps its own position; later tickets append more rows. The chain is
+    # contiguous from 0001 with one row per version, never a pinned tail.
+    names = st.migration_chain(dbname)
+    assert names["0015"] == "0015_artifact_admissions.sql"
 
     # The one table this ticket adds is present with exactly the columns the
     # upload admission path writes. A table name that does not exist is the

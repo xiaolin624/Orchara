@@ -1,6 +1,6 @@
 -- F06/T045: the compatible-fallback fact on a capability operation.
 --
--- IMPLEMENTATION-DETAILS 搂2/搂10 and the T045 brief: a model call whose primary
+-- IMPLEMENTATION-DETAILS §2/§10 and the T045 brief: a model call whose primary
 -- profile keeps failing with an *availability* fault may be served by the first
 -- compatible profile in `ModelConfig.fallback_profile_version_ids`. The ledger
 -- must then say so: a switched call may never look like a seamless primary
@@ -29,21 +29,39 @@
 --     0025.
 --   * Additive only: no existing column changes type or meaning, no row rewrite.
 --   * `orchara_worker`/PUBLIC get no `platform` privileges, exactly like
---     0007鈥?026.
+--     0007–0026.
 
 ALTER TABLE platform.operations
     ADD COLUMN IF NOT EXISTS fallback_profile_version_id uuid
         REFERENCES platform.model_profile_versions (id),
     ADD COLUMN IF NOT EXISTS fallback_reason text;
 
-ALTER TABLE platform.operations
-    ADD CONSTRAINT operations_fallback_reason_check
-        CHECK (fallback_reason IS NULL
-               OR fallback_reason IN ('availability', 'rate_limited', 'adapter_unavailable'));
+-- Guarded constraints: ADD CONSTRAINT has no IF NOT EXISTS, so each is added
+-- only when absent. The DO block keeps the whole migration replayable.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+          WHERE conname = 'operations_fallback_reason_check'
+            AND conrelid = 'platform.operations'::regclass
+    ) THEN
+        ALTER TABLE platform.operations
+            ADD CONSTRAINT operations_fallback_reason_check
+            CHECK (fallback_reason IS NULL
+                   OR fallback_reason IN ('availability', 'rate_limited', 'adapter_unavailable'));
+    END IF;
 
-ALTER TABLE platform.operations
-    ADD CONSTRAINT operations_fallback_pair_check
-        CHECK ((fallback_profile_version_id IS NULL) = (fallback_reason IS NULL));
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+          WHERE conname = 'operations_fallback_pair_check'
+            AND conrelid = 'platform.operations'::regclass
+    ) THEN
+        ALTER TABLE platform.operations
+            ADD CONSTRAINT operations_fallback_pair_check
+            CHECK ((fallback_profile_version_id IS NULL) = (fallback_reason IS NULL));
+    END IF;
+END
+$$;
 
 COMMENT ON COLUMN platform.operations.fallback_profile_version_id IS
     'T045: the model profile version that actually served this operation after '

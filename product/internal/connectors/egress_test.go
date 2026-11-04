@@ -81,6 +81,41 @@ func TestEgressCallsTheLocalServerAndSendsTheSecretOnlyInItsHeader(t *testing.T)
 	}
 }
 
+// A registered prefix is a path *segment* namespace, not a string prefix. The
+// sibling paths `/v10/...` and `/v1beta/...` must be refused as validation
+// errors before any socket is opened, while `/v1/...` still reaches the server.
+func TestEgressRefusesSiblingPathsOutsideThePrefixBeforeDialing(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	policy := newLocalPolicy(t, server.URL, "GET", "/v1")
+	response, err := testEgress().Execute(context.Background(), policy, Call{Path: "/v1/items"})
+	if err != nil {
+		t.Fatalf("in-namespace path was refused: %v", err)
+	}
+	if response.Status != 200 {
+		t.Fatalf("status=%d", response.Status)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("in-namespace call did not reach the server: calls=%d", calls.Load())
+	}
+
+	for _, path := range []string{"/v10/items", "/v1beta/items", "/v1beta", "/v1/../admin"} {
+		_, err := testEgress().Execute(context.Background(), policy, Call{Path: path})
+		if err == nil || code(err) != CodeRequestInvalid {
+			t.Fatalf("path %q was not refused as a validation problem: %v", path, err)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("a refused path was dialed: calls=%d", calls.Load())
+	}
+}
+
 // Without allow_private the loopback server must never be dialed: the refusal
 // happens before the socket is opened, so the handler counter stays zero.
 func TestEgressRefusesLoopbackBeforeDialingWhenPrivateIsNotAllowed(t *testing.T) {

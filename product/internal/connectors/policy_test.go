@@ -84,6 +84,7 @@ func TestValidatePolicyRejectsUnsafePathPrefixesAndMethodsAndSchemas(t *testing.
 // relative path under path_prefix, never an absolute URL or a dot-segment trick.
 func TestResolveInvocationPathEnforcesThePrefixAndRefusesSmuggledTargets(t *testing.T) {
 	good := map[string]string{
+		"/v1":          "/v1",
 		"/v1/items":    "/v1/items",
 		"/v1/items/42": "/v1/items/42",
 		"/v1/a%20b":    "/v1/a%20b",
@@ -102,11 +103,23 @@ func TestResolveInvocationPathEnforcesThePrefixAndRefusesSmuggledTargets(t *test
 		"/v2/items", "/v1/../admin", "/v1/%2e%2e/admin", "/v1//admin",
 		"//evil.test/v1", "http://evil.test/v1", "/v1\\admin",
 		"/v1/items#frag", "/v1/items\nHost: evil", "",
+		// A path prefix is a segment namespace: /v1 must not authorize a sibling
+		// whose text merely starts with /v1.
+		"/v10/items", "/v1beta/items", "/v1beta",
 	}
 	for _, input := range bad {
 		if _, _, err := resolveInvocationPath("/v1", input); err == nil {
 			t.Errorf("path %q was accepted", input)
 		}
+	}
+	// A policy row is stored normalized, but the resolver trims a trailing slash
+	// itself so a hand-built policy cannot turn the namespace check into a string
+	// prefix.
+	if _, _, err := resolveInvocationPath("/v1/", "/v1/items"); err != nil {
+		t.Errorf("a trailing-slash prefix refused an in-namespace path: %v", err)
+	}
+	if _, _, err := resolveInvocationPath("/v1/", "/v10/items"); err == nil {
+		t.Error("a trailing-slash prefix accepted a sibling path")
 	}
 }
 

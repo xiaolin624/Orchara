@@ -121,7 +121,9 @@ func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approva
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("committing the expired approval: %w", err)
 		}
-		_ = s.resolveWaiting(ctx, approval, "expired")
+		if err := s.resolveWaiting(ctx, approval, "expired"); err != nil {
+			return nil, fmt.Errorf("resolving the expired waiting run: %w", err)
+		}
 		return nil, failure(409, CodeExpired, "that approval has expired; it cannot authorise the operation")
 	}
 
@@ -248,10 +250,17 @@ func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approva
 	approval.State = newState
 	decidedAt := time.Now().UTC()
 	approval.DecidedAt = &decidedAt
+	outcome := "approved"
 	if decision == "reject" {
-		_ = s.resolveWaiting(ctx, approval, "rejected")
-	} else {
-		_ = s.resolveWaiting(ctx, approval, "approved")
+		outcome = "rejected"
+	}
+	// Only the documented "nothing to resume yet/already decided" conflicts are
+	// absorbed by resolveWaiting. Any other failure leaves a decided approval
+	// with no resume, so it must not be reported as a successful decision: the
+	// decision is already durable and a retry of the same decision retries this
+	// waiting resolution, but the caller sees the failure now.
+	if err := s.resolveWaiting(ctx, approval, outcome); err != nil {
+		return nil, fmt.Errorf("resuming the decided run: %w", err)
 	}
 	return approval, nil
 }
@@ -285,14 +294,19 @@ func (s *Service) replayDecisionTx(
 	if decision == "reject" {
 		outcome = "rejected"
 	}
-	_ = s.resolveWaiting(ctx, approval, outcome)
+	if err := s.resolveWaiting(ctx, approval, outcome); err != nil {
+		return nil, fmt.Errorf("resuming the replayed decision: %w", err)
+	}
 	return approval, nil
 }
 
 // resolveWaiting hands the decision to the single resume transaction. A Run that
 // has not yet stored its waiting result (the worker is still exiting) is not an
 // error: SubmitResult adopts the durable approval decision when the result lands,
-// so either order converges to one decision and at most one resume.
+// so either order converges to one decision and at most one resume. The two
+// documented conflicts are likewise benign. Every other failure is returned:
+// the decision row is already durable, so the caller must surface it and let a
+// same-decision retry drive the waiting resolution again.
 func (s *Service) resolveWaiting(ctx context.Context, approval *Approval, outcome string) error {
 	if s.Execution == nil {
 		return failure(503, "execution_unavailable", "no resume authority is configured")

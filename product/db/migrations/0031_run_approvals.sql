@@ -63,3 +63,18 @@ CREATE INDEX IF NOT EXISTS approvals_pending
 
 CREATE INDEX IF NOT EXISTS approvals_run
     ON platform.approvals (run_id);
+
+-- Privileges: the same boundary as every other platform table (0025/0026/0028/
+-- 0029/0030). The runtime worker never reads approvals; only the API path with
+-- the approval scope reaches them.
+REVOKE ALL ON SCHEMA platform FROM PUBLIC;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'orchara_worker') THEN
+        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA platform FROM orchara_worker';
+        EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA platform FROM orchara_worker';
+        EXECUTE 'REVOKE USAGE ON SCHEMA platform FROM orchara_worker';
+    END IF;
+END
+$$;

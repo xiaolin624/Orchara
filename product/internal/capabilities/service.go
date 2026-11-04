@@ -838,11 +838,15 @@ func (s *Service) replayTx(
 		// F06/T051: a lost-receipt write is neither success nor failure. A
 		// duplicate invoke of the same operation id/logical key returns the
 		// recorded unknown state and never makes a second physical request.
+		// The replay carries the same limitation disclosure as the first
+		// dispatch and the owner ledger: the provider cannot be asked whether
+		// the write landed.
 		data := map[string]any{
 			"error_code":              "operation_unknown",
 			"requires_reconciliation": true,
 			"reconciliation_status":   "pending",
 			"dispatch_state":          "unknown",
+			"limitation":              ReconciliationLimitationNoIdempotency,
 		}
 		if op.LastErrorCode.Valid {
 			data["dispatch_error_code"] = op.LastErrorCode.String

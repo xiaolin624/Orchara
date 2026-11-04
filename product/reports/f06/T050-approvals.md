@@ -171,26 +171,22 @@ reject；expire；换参数/错 hash；并发相反决定 + 同决定重放；�
 - 迁移链：0001–0030 未改，新增 0031；`contracts/**`、`docs/spec/**` 未改，
   `python tools/sync_spec.py --check` → `no drift`。
 
-## 6. 门禁（原始输出尾部）
+## 6. 门禁（本轮 review-fix 原始输出尾部）
+
+本轮按 review brief 串行重跑；全量 `pytest tests` 不在此处运行（由 orchestrator 统一跑一次）。
 
 ```text
 $ E:\orchara-toolchains\go\bin\go.exe vet ./...
 (no output)                                    exit=0
 
 $ E:\orchara-toolchains\go\bin\go.exe test ./...
-<见 §6.1 完整尾部>                             exit=0
+<见 §6.1>                                      exit=0
 
 $ E:\orchara-toolchains\go\bin\gofmt.exe -l internal cmd tools
 (no output)
 
-$ python -m pytest tests/f06 -q
+$ python -m pytest tests/f03/test_t035_*.py tests/f06/test_t050_approval.py -q
 <见 §6.2>
-
-$ python -m pytest tests/f03/... -q
-17 passed（T035 waiting/resume/pages）+ 7 passed（T035 migration）+ T036 cancel/unknown
-
-$ python -m pytest tests/tooling -q
-21 passed in 5.99s
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
@@ -199,14 +195,23 @@ no drift: spec copy and contract snapshot match the manifest
 ### 6.1 `go test ./...` 尾部
 
 ```text
-<占位：由收尾命令原始输出替换>
+...
+ok  	orchara/platform/internal/toolversions	1.150s
+ok  	orchara/platform/internal/uuid	0.646s
+ok  	orchara/platform/internal/workflow	1.099s
+(exit 0; 0 FAIL)
 ```
 
-### 6.2 `pytest tests/f06 -q`
+### 6.2 `pytest tests/f03/test_t035_*.py tests/f06/test_t050_approval.py -q`
 
 ```text
-<占位：由收尾命令原始输出替换>
+.........................................                                [100%]
+41 passed in 199.97s (0:03:19)
 ```
+
+全量 `tests/f06` 本轮未重跑。最近一次全量通过记录来自 T051 收尾
+（`reports/f06/T051-unknown-operations.md` §6）：`164 passed in 582.73s (0:09:42)`；
+该记录早于本次新增的 T044/T048/T050/T051 回归用例，仅作归属引用，不冒充本轮输出。
 
 ## 7. stub / real 分报
 

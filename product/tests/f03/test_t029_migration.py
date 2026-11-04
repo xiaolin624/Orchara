@@ -128,25 +128,10 @@ def insert_attempt(dbname: str, *, job_id: str, run_id: str, exited: bool = Fals
 # ---------------------------------------------------------------------------
 def test_0016_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
     _dsn, dbname = migrated_database
-    ledgers = st.sql_rows(
-        dbname,
-        "SELECT version, name FROM platform.schema_migrations ORDER BY version",
-    )
-    versions = [row["version"] for row in ledgers]
-    # T029 appends 0016; later tickets append 0017..0026. Every earlier migration
-    # stays at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 27)], versions
-    assert ledgers[14]["name"] == "0015_artifact_admissions.sql"
-    assert ledgers[-10]["name"] == "0017_tool_run_kind.sql"
-    assert ledgers[-9]["name"] == "0018_run_events.sql"
-    assert ledgers[-8]["name"] == "0019_run_artifact_uploads.sql"
-    assert ledgers[-7]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-6]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-5]["name"] == "0022_run_unknown_operations.sql"
-    assert ledgers[-4]["name"] == "0023_tool_builds_and_review.sql"
-    assert ledgers[-3]["name"] == "0024_run_recovery_evidence.sql"
-    assert ledgers[-2]["name"] == "0025_run_capability_ledger.sql"
-    assert ledgers[-1]["name"] == "0026_run_node_outputs.sql"
+    # T029 appends 0016; later tickets append more rows. The invariant is a
+    # contiguous chain from 0001 with one row per version, never a pinned tail.
+    names = st.migration_chain(dbname)
+    assert names["0016"] == "0016_execution_claims_and_quota.sql"
 
 
 def test_0016_replays_as_a_noop(migrated_database, go_binaries) -> None:

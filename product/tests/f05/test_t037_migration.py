@@ -77,17 +77,10 @@ def constraint_definitions(dbname: str, table: str) -> str:
 # ---------------------------------------------------------------------------
 def test_0023_is_recorded_once_at_the_chain_tail(migrated_database) -> None:
     _dsn, dbname = migrated_database
-    ledgers = st.sql_rows(
-        dbname,
-        "SELECT version, name FROM platform.schema_migrations ORDER BY version",
-    )
-    versions = [row["version"] for row in ledgers]
-    # T041/T042 append 0025/0026; the earlier migrations keep their positions.
-    assert versions == [f"{number:04d}" for number in range(1, 27)], versions
-    assert ledgers[-4]["name"] == "0023_tool_builds_and_review.sql"
-    assert ledgers[-3]["name"] == "0024_run_recovery_evidence.sql"
-    assert ledgers[-2]["name"] == "0025_run_capability_ledger.sql"
-    assert ledgers[-1]["name"] == "0026_run_node_outputs.sql"
+    # 0023 keeps its own position; later tickets append more rows. The chain is
+    # contiguous from 0001 with one row per version, never a pinned tail.
+    names = st.migration_chain(dbname)
+    assert names["0023"] == "0023_tool_builds_and_review.sql"
 
 
 def test_0023_replays_as_a_noop(migrated_database, go_binaries) -> None:
