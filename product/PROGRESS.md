@@ -972,6 +972,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 | T043 | F04A | 运行受控 Agent 节点并校验最终输出 | passed | `reports/f04a/T043-agent-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T043 追加 D10）、`internal/presetexec/{plan.go,agent.go,linear.go,presetexec.go}`（3/4 节点线性计划、agent 配置校验、确定性 operation UUIDv5、模型轮次 + 固定预设工具真实沙箱 + capability-results 回报、最终输出节点 schema 二次校验、agent data/file/log 行与 node.status、heartbeat 取消/lease deadline、legacy `input#` 形状选择）、`internal/presetexec/{Facts,ModelFact,ToolFact}` + `cmd/supervisor/{client.go,exec.go}`（`InvokeCapability`/`ReportCapabilityResult` worker mTLS、只读 model/tool Facts）、`internal/modelproxy/provider.go`（dev stub 声明工具时确定性首轮工具调用，仍 `stub=true`）、`apps/web/src/{runs.html,assets/runs.js}`（Agent 面板：最终输出/轮次/工具调用 id+name/每次工具操作状态；`describeAgentNode` Node 执行）、`tests/support/t043.py`、`tests/f06/{test_t043_agent_node.py,test_t043_pages.py}`（6+3 用例，真实 PG/mTLS/对象字节/WSL2+runsc）；`go vet` exit 0、`go test ./...` 全绿、`gofmt -l` 空、`tests/f06` 62 passed、`tests/f05`、`tests/f04a` 36、`tests/tooling` 21、`sync_spec --check` no drift；not_run：真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈下 executor 的未知/重复工具调用 guard（服务端先拒绝，仅 Go 单测）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026 | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
 | T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0009-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
+| T058 | F09 | 用户修订或删除记忆后立即停止旧内容召回 | passed | `reports/f09/T058-memory-revision-and-delete.md`、`docs/adr/0009-f09-memory.md`（§11）、`db/migrations/0035_memory_revision_and_deletion.sql`（合并后编号，基线 0034；契约 `deletion_jobs` 最小切片 + F07 债务）、`internal/memory/{service,memories}.go`（Get/Update/Delete + 428/412 + CAS + 同事务 epoch）、`internal/api/{memory.go,server.go}`（GET/PATCH/DELETE，202 `DeletionAccepted`）、`apps/web/src/{memories.html,assets/memories.js}`（冲突恢复/删除状态，Node 执行）、`tests/f09/`（新增 22：迁移 4 + 记忆 15 + 页面 3；T054 25 保持绿）、`tests/support/t058.py`；真实 PG 16.4 / 编译二进制 / 真实 HTTP+CSRF / 真实 sealed 字节 / Node；`pytest tests/f09` **47 passed ×3**（308.18s / 330.67s / 480.97s）、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿、f01 边界 2 passed、tooling 21 passed、f10 20 passed；not_run：物理清理/delete_content/lease-retry（F07）、`memory_embeddings`（T063）、运行时召回（T063）、检索缓存（T067）、浏览器 DOM、全量 `pytest tests`；合并提交 `7190b2b` |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -1239,6 +1240,24 @@ T054（GitHub #55）已交付，状态 **`passed`**（范围 = `createMemory` / 
 | 真实栈 | 真实 PG 16.4、编译 `cmd/api`、真实 mTLS worker 证书 + run live attempt、真实 supervisor claim、真实对象字节（删字节→503 失败闭合，恢复→同一行可读）、真实 cookie+CSRF 决定；`tests/f09` 25 用例 |
 | 门禁 | 见报告 §4（`pytest tests/f09` 25 passed；`go vet`/`go test`/`gofmt -l`/`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed） |
 | 边界/not_run | 浏览器 DOM；后台过期清扫进程（惰性迁移 + 决定复检已生效）；记忆编辑/删除/ETag（T058）、运行时召回（T063）、Mem0（T067）；记忆共享/授权；真实 worker 自动抽取生产者（本票用真实 supervisor claim + 真实 worker mTLS 调用真实内部端点）；全量 `pytest tests`；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F09 个人长期记忆：修订/删除立即停止旧召回（T058，2026-11-04）
+
+T058（GitHub #59）已交付，状态 **`passed`**（范围 = `getMemory` 强 ETag、
+`updateMemory` 必填 `If-Match`（428/412、新 revision/新正文 artifact/同事务 epoch）、
+`deleteMemory` 202 `DeletionAccepted` + tombstone + `deletion_jobs`，以及 `/memories`
+页面的冲突恢复与删除状态）。证据：`reports/f09/T058-memory-revision-and-delete.md`、
+ADR 0009 §11。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0035_memory_revision_and_deletion.sql`（合并后编号；基线分支为 0034，T055 先占 0034）：契约 `platform.deletion_jobs` 最小切片（pending + remaining_scopes + `UNIQUE(resource_type,resource_id,deletion_revision)`）；`memories` 不加列（ETag = 既有 `revision`，tombstone = 既有 `deleted_at`）；F07 债务写在头部；重复 migrate no-op；worker/PUBLIC 零权限 |
+| 强 ETag | 复用草稿 PUT 的 `catalog.FormatETag/ParseETag` 与 `precondition_required/precondition_failed` 词表；弱/乱码/列表/多值一律 412（带 `details.current_etag`/`current_revision`），不做宽松解析 |
+| 更新 | 行锁 + CAS（`WHERE revision=$claimed`），新 sealed `memory_body` artifact，`revision+1`，同事务 bump `memory:<owner>:<app>` epoch；旧 ETag 重试 412；并发同 ETag 恰一胜者 |
+| 删除 | 202 `DeletionAccepted{id(deletion_job),state,resource_id}`；同一事务 tombstone + revision+1 + job + epoch 后才提交；重复/并发删除同 job、不再 bump；GET/列表/召回形查询立即拒绝旧内容 |
+| 页面 | 编辑先取强 ETag；412 显示“版本冲突”并用 `details.current_etag` 显式重试；删除显示 job 真实状态 + “旧内容已停止召回” + “物理副本清理由删除治理异步执行”；全部 `textContent`，Node 执行纯函数 |
+| 边界 | 物理清理 / `delete_content` / job 生命周期 = F07；`memory_embeddings`（无 pgvector）= T063；检索缓存 = T067；owner-only 与服务账号 403 不变 |
+| 门禁 | `pytest tests/f09` **47 passed ×3**（308.18s / 330.67s / 480.97s）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed；`tests/f10` 20 passed；合并提交 `7190b2b` |
 
 ## F15A 候选 S3 兼容探针（T053，2026-11-04）
 

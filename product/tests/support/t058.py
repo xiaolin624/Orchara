@@ -1,4 +1,4 @@
-﻿"""F09/T058 real-stack helpers: memory detail, strong-ETag revision and deletion.
+"""F09/T058 real-stack helpers: memory detail, strong-ETag revision and deletion.
 
 The stack is T054's (real PostgreSQL migrated through the T058 migration, the
 compiled ``cmd/api``, the real internal mTLS listener, the real filesystem object
