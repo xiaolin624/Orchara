@@ -24,6 +24,7 @@ const KNOWLEDGE_MEDIA_TYPES = Object.freeze({
   '.md': 'text/markdown',
   '.csv': 'text/csv',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pdf': 'application/pdf',
 });
 
 const DEFAULT_TOP_K = 8;
@@ -41,7 +42,7 @@ const KNOWLEDGE_STATE_TEXT = Object.freeze({
 
 const KNOWLEDGE_FAILURE_TEXT = Object.freeze({
   ingest_empty_content: '解析结果为空：文档没有非空白正文，不能标记为可检索',
-  ingest_unsupported_media_type: '该格式暂不支持解析（本切片支持 txt/md/csv/xlsx）',
+  ingest_unsupported_media_type: '该格式暂不支持解析（本切片支持 txt/md/csv/xlsx/pdf）',
   ingest_invalid_encoding: '内容不是合法的 UTF-8 文本',
   ingest_invalid_csv: 'CSV 格式无法解析（引号/换行不完整），已定位到出错行',
   ingest_invalid_xlsx: 'XLSX 结构无效（压缩包/工作簿/共享字符串/工作表），无法解析',
@@ -55,6 +56,9 @@ const KNOWLEDGE_FAILURE_TEXT = Object.freeze({
   ingest_cell_limit_exceeded: '单元格数量超过上限',
   ingest_column_limit_exceeded: '列数超过上限',
   ingest_row_too_large: '单行内容超过上限（行不会被拆成多个片段）',
+  pdf_no_text_layer: 'PDF 没有可用文字层（或文字量低于门槛）：首版不做 OCR，不会当作解析成功',
+  pdf_invalid: 'PDF 结构无法读取（交叉引用/对象/页面损坏）',
+  pdf_encrypted: 'PDF 已加密：首版不解密，需先导出无密码版本',
   ingest_source_unavailable: '源文件尚未就绪或已被删除',
   ingest_source_changed: '源文件版本已变化，本次摄取结果未激活',
   ingest_too_many_chunks: '片段数量超过本切片上限',
@@ -105,12 +109,12 @@ function mediaTypeForKnowledgeFile(fileName) {
   const name = String(fileName || '');
   const dot = name.lastIndexOf('.');
   if (dot < 0) {
-    return { ok: false, error: '文件需要 .txt / .md / .csv / .xlsx 扩展名' };
+    return { ok: false, error: '文件需要 .txt / .md / .csv / .xlsx / .pdf 扩展名' };
   }
   const extension = name.slice(dot).toLowerCase();
   const mediaType = KNOWLEDGE_MEDIA_TYPES[extension];
   if (!mediaType) {
-    return { ok: false, error: '本切片支持 .txt / .md / .csv / .xlsx 知识资料' };
+    return { ok: false, error: '本切片支持 .txt / .md / .csv / .xlsx / .pdf 知识资料' };
   }
   return { ok: true, mediaType: mediaType };
 }
@@ -197,6 +201,36 @@ function formatRowRange(citation) {
   return text;
 }
 
+/**
+ * The page attribution of a PDF citation (T060). Page numbers are 1-based; the
+ * page-bounded chunker always cites exactly one page. A document whose text layer
+ * is partial repeats the pages that had no text (`pages_without_text`), which the
+ * page shows as empty pages instead of implying full coverage.
+ */
+function formatPageRange(citation) {
+  const pdf = citation && citation.pdf;
+  if (!pdf) {
+    return '';
+  }
+  const start = Number(pdf.page_start);
+  const end = Number(pdf.page_end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end < start) {
+    return '';
+  }
+  let text = start === end ? '第 ' + start + ' 页' : '第 ' + start + '–' + end + ' 页';
+  const pageCount = Number(pdf.page_count);
+  if (Number.isFinite(pageCount) && pageCount > 0) {
+    text += '（共 ' + pageCount + ' 页）';
+  }
+  const empty = Array.isArray(pdf.pages_without_text)
+    ? pdf.pages_without_text.map(Number).filter((page) => Number.isFinite(page) && page > 0)
+    : [];
+  if (empty.length > 0) {
+    text += ' · 空白页 ' + empty.join('、');
+  }
+  return text;
+}
+
 function describeFailureDetail(detail) {
   const value = detail || null;
   if (!value) {
@@ -277,14 +311,23 @@ function describeChunk(item) {
   const rowEnd = Number(citation.row_end);
   const rowRangeOk = !(Number.isFinite(rowStart) && rowStart > 0) ||
     (Number.isFinite(rowEnd) && rowEnd >= rowStart);
+  const pdf = citation.pdf && typeof citation.pdf === 'object' ? citation.pdf : null;
+  const pdfStart = pdf ? Number(pdf.page_start) : 0;
+  const pdfEnd = pdf ? Number(pdf.page_end) : 0;
+  const pdfRangeOk = !pdf ||
+    (Number.isFinite(pdfStart) && pdfStart > 0 && Number.isFinite(pdfEnd) &&
+      pdfEnd >= pdfStart && Number(pdf.page_char_end) > Number(pdf.page_char_start));
   const citationOk =
     String(citation.document_id || '') === documentID &&
     Number(citation.document_revision) === revision &&
     Number(citation.chunk_no) === chunkNo &&
     Number((citation.span || {}).start_char) === Number(span.start_char) &&
     Number((citation.span || {}).end_char) === Number(span.end_char) &&
-    rowRangeOk;
+    rowRangeOk &&
+    pdfRangeOk;
   const rowRangeText = citationOk ? formatRowRange(citation) : '';
+  const pageRangeText = citationOk ? formatPageRange(citation) : '';
+  const rangeText = [rowRangeText, pageRangeText].filter(Boolean).join(' · ');
   return {
     chunkId: String(value.chunk_id || ''),
     documentId: documentID,
@@ -295,10 +338,11 @@ function describeChunk(item) {
     text: String(value.text || ''),
     spanText: formatSpan(span),
     rowRangeText: rowRangeText,
+    pageRangeText: pageRangeText,
     citationOk: citationOk,
     citationText: citationOk
       ? '引用：文档 ' + documentID + ' · 版本 ' + revision + ' · 第 ' + chunkNo + ' 片段 · '
-        + formatSpan(span) + (rowRangeText ? ' · ' + rowRangeText : '')
+        + formatSpan(span) + (rangeText ? ' · ' + rangeText : '')
       : '引用不一致：不展示为该片段的来源',
   };
 }

@@ -41,9 +41,16 @@ const (
 	FormatJSON    Format = "json"
 	FormatXLSX    Format = "xlsx"
 	FormatZip     Format = "zip"
+	FormatPDF     Format = "pdf"
 	FormatBinary  Format = "binary"
 	FormatUnknown Format = "unknown"
 )
+
+// PDFMediaType is the F10/T060 knowledge-source declaration. It is admitted
+// only for purpose=knowledge: a PDF is a knowledge document for the text-layer
+// parser, not a general task input, tool bundle or evaluation dataset, so the
+// same declaration elsewhere stays refused.
+const PDFMediaType = "application/pdf"
 
 // XLSXMediaType is the one spreadsheet media type the first version admits.
 // Legacy .xls (application/vnd.ms-excel) is deliberately absent: SECURITY §4
@@ -131,10 +138,11 @@ func SupportedUploadMediaType(raw string) (Format, bool) {
 	return format, ok
 }
 
-// SupportedUploadMediaTypeForPurpose is SupportedUploadMediaType plus the one
-// purpose-scoped allowance: application/zip for tool_source. The purpose is
-// already closed by NormalizeUploadInput; a caller that passes an arbitrary
-// string gets the default (restricted) allowlist.
+// SupportedUploadMediaTypeForPurpose is SupportedUploadMediaType plus the
+// purpose-scoped allowances: application/zip for tool_source and
+// application/pdf for knowledge. The purpose is already closed by
+// NormalizeUploadInput; a caller that passes an arbitrary string gets the
+// default (restricted) allowlist.
 func SupportedUploadMediaTypeForPurpose(purpose, raw string) (Format, bool) {
 	mediaType := strings.ToLower(strings.TrimSpace(raw))
 	switch {
@@ -142,6 +150,8 @@ func SupportedUploadMediaTypeForPurpose(purpose, raw string) (Format, bool) {
 		return FormatZip, true
 	case strings.TrimSpace(purpose) == "knowledge" && mediaType == MarkdownMediaType:
 		return FormatText, true
+	case strings.TrimSpace(purpose) == "knowledge" && mediaType == PDFMediaType:
+		return FormatPDF, true
 	}
 	return SupportedUploadMediaType(mediaType)
 }
@@ -185,6 +195,8 @@ func sniffedMediaTypeFor(format Format) string {
 		return XLSXMediaType
 	case FormatZip:
 		return ZipMediaType
+	case FormatPDF:
+		return PDFMediaType
 	default:
 		return "application/octet-stream"
 	}
@@ -257,6 +269,16 @@ func InspectUploadForPurpose(declaredMediaType, purpose string, content []byte) 
 		return inspectXLSX(declared, content)
 	case FormatZip:
 		return inspectToolSourceZip(declared, content)
+	case FormatPDF:
+		// The declared type promises a PDF; the bytes must actually start with
+		// the PDF header. Admission does not attempt a text extraction: that is
+		// the knowledge parser's job (and a scanned PDF is admitted, then
+		// refused by the parser as pdf_no_text_layer instead of being claimed
+		// as OCR success).
+		if sniffedFormat != FormatPDF {
+			return rejected(declared, sniffed, sniffedFormat, ReasonContentTypeMismatch)
+		}
+		return accepted(declared, FormatPDF)
 	default:
 		return rejected(declared, sniffed, sniffedFormat, ReasonUnsupportedMediaType)
 	}
@@ -268,6 +290,9 @@ func InspectUploadForPurpose(declaredMediaType, purpose string, content []byte) 
 func sniffContent(content []byte) (string, Format) {
 	if isZip(content) {
 		return "application/zip", FormatZip
+	}
+	if isPDF(content) {
+		return PDFMediaType, FormatPDF
 	}
 	if !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0 {
 		return "application/octet-stream", FormatBinary
@@ -289,6 +314,14 @@ func isZip(content []byte) bool {
 	return bytes.HasPrefix(content, []byte{'P', 'K', 0x03, 0x04}) ||
 		bytes.HasPrefix(content, []byte{'P', 'K', 0x05, 0x06}) ||
 		bytes.HasPrefix(content, []byte{'P', 'K', 0x07, 0x08})
+}
+
+// isPDF is the T060 magic-byte sniff: a PDF file starts with "%PDF-" at offset
+// zero. The specification tolerates a header later in the first KiB for damaged
+// files; the admission gate is exact on purpose, so a file that merely contains
+// the marker is a mismatch rather than a guessed PDF.
+func isPDF(content []byte) bool {
+	return bytes.HasPrefix(content, []byte("%PDF-"))
 }
 
 func validCSV(content []byte) bool {

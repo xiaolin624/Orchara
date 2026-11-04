@@ -26,7 +26,8 @@ import (
 )
 
 // Media types the F10/T055 slice accepts as source documents. F10/T059 adds the
-// tabular family: `text/csv` and the OOXML spreadsheet media type.
+// tabular family (`text/csv` and the OOXML spreadsheet media type). F10/T060 adds
+// `application/pdf` for plain-text PDFs (no OCR promise).
 const (
 	MediaTypeText     = "text/plain"
 	MediaTypeMarkdown = "text/markdown"
@@ -49,7 +50,7 @@ const ChunkerVersion = "orchara-paragraph-overlap-chunker/1"
 // the document_ingest handler.
 var (
 	// ErrUnsupportedMediaType means no parser is registered for the source
-	// artifact's declared media type (CSV/XLSX/PDF until their tickets land).
+	// artifact's declared media type.
 	ErrUnsupportedMediaType = errors.New("no parser is registered for this media type")
 	// ErrInvalidEncoding means the bytes are not valid UTF-8 text.
 	ErrInvalidEncoding = errors.New("the document is not valid UTF-8 text")
@@ -82,6 +83,9 @@ type Parsed struct {
 	// Table is set by a tabular parser; it carries the row ranges the row-batch
 	// chunker turns into citations. Nil for plain text.
 	Table *Table
+	// PDF is set by the PDF parser; it carries the page map (rune offsets per
+	// page) and the pages that had no text layer. Nil for every other family.
+	PDF *PDF
 }
 
 // Parser is the seam later formats extend. Parse must be deterministic and must
@@ -99,6 +103,7 @@ var parserRegistry = map[string]Parser{
 	MediaTypeMarkdown: markdownParser{},
 	MediaTypeCSV:      csvParser{},
 	MediaTypeXLSX:     xlsxParser{},
+	MediaTypePDF:      pdfParser{},
 }
 
 // ParserFor returns the registered parser for a declared media type.
@@ -109,7 +114,7 @@ func ParserFor(mediaType string) (Parser, bool) {
 
 // SupportedMediaTypes lists the registered parser media types (stable order).
 func SupportedMediaTypes() []string {
-	return []string{MediaTypeText, MediaTypeMarkdown, MediaTypeCSV, MediaTypeXLSX}
+	return []string{MediaTypeText, MediaTypeMarkdown, MediaTypeCSV, MediaTypeXLSX, MediaTypePDF}
 }
 
 type textParser struct{}

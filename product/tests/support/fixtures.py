@@ -487,6 +487,7 @@ __all__ = [
     "t033_stack",
     "t055_stack",
     "t059_stack",
+    "t060_stack",
 ]
 
 
@@ -533,4 +534,10 @@ def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.
 @pytest.fixture
 def t059_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
     """The same real stack for the F10/T059 tabular ingestion path."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)
+
+
+@pytest.fixture
+def t060_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The same real stack for the F10/T060 plain-text PDF ingestion path."""
     return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)

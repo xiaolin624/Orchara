@@ -120,12 +120,15 @@ assert.strictEqual(
 );
 assert.strictEqual(context.knowledgeCitationPath('c 1'), '/api/v1/knowledge-citations/c%201');
 
-// Media type comes from the extension, and only txt/md are accepted.
+// Media type comes from the extension: txt/md since T055, plus the later
+// families (csv/xlsx/pdf) that extended the same page.
 assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('notes.txt')),
   JSON.stringify({ ok: true, mediaType: 'text/plain' }));
 assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('READ.MD')),
   JSON.stringify({ ok: true, mediaType: 'text/markdown' }));
-assert.strictEqual(context.mediaTypeForKnowledgeFile('report.pdf').ok, false);
+assert.strictEqual(JSON.stringify(context.mediaTypeForKnowledgeFile('report.pdf')),
+  JSON.stringify({ ok: true, mediaType: 'application/pdf' }));
+assert.strictEqual(context.mediaTypeForKnowledgeFile('report.doc').ok, false);
 assert.strictEqual(context.mediaTypeForKnowledgeFile('no-extension').ok, false);
 
 // Request bodies are exactly the contract/non-contract shapes.

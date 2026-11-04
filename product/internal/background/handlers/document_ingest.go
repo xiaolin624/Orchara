@@ -173,6 +173,19 @@ func DocumentIngest(ctx context.Context, work background.HandlerWork) background
 			citation.Columns = chunk.Table.Columns
 			citation.ColumnsOmitted = chunk.Table.ColumnsOmitted
 		}
+		if chunk.PDF != nil && parsed.PDF != nil {
+			// PDF chunks carry the page range and the page-local rune offsets;
+			// the empty pages are repeated so a partial text layer is recorded
+			// on every chunk rather than silently claimed as full coverage.
+			citation.PDF = &knowledge.CitationPDF{
+				PageStart:        chunk.PDF.PageStart,
+				PageEnd:          chunk.PDF.PageEnd,
+				PageCharStart:    chunk.PDF.PageCharStart,
+				PageCharEnd:      chunk.PDF.PageCharEnd,
+				PageCount:        parsed.PDF.PageCount,
+				PagesWithoutText: parsed.PDF.EmptyPages,
+			}
+		}
 		rows = append(rows, knowledge.ChunkRow{
 			ID:             uuid.NewString(),
 			DocumentID:     binding.DocumentID,
