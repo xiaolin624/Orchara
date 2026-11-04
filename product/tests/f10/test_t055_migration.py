@@ -68,7 +68,7 @@ def foreign_key_columns(dbname: str, table: str) -> set[str]:
 def test_the_migration_chain_keeps_0033_and_the_three_tables(migrated_database) -> None:
     _dsn, dbname = migrated_database
     names = st.migration_chain(dbname)
-    assert names["0033"] == "0033_knowledge.sql"
+    assert names["0034"] == "0034_knowledge.sql"
     # Contiguity: one version per number, no gap, up to the last applied one.
     for offset, version in enumerate(sorted(names)):
         assert version == f"{offset + 1:04d}", (version, names)

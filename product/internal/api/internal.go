@@ -182,6 +182,12 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// authorization as invokeCapability; every frame carries operation/generation
 	// identity. The durable run-event SSE is a different endpoint and is untouched.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/model-stream", s.handleInternalModelStream)
+	// F09/T054: the contract proposeMemoryCandidate. Worker-only (a supervisor or
+	// maintenance certificate is refused), and the attempt token in the body is
+	// re-proved against the run in the path. The application scope is derived from
+	// the run's frozen snapshot, never from the worker.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/memory-candidates",
+		s.handleInternalProposeMemoryCandidate)
 }
 
 type internalClaimRequest struct {

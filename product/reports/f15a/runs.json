@@ -1,0 +1,386 @@
+{
+  "probe": "f15a-s3-compat",
+  "ticket": "T053/F15A",
+  "generated_at": "2026-11-04T09:08:47+00:00",
+  "python": "3.12.2",
+  "platform": "win32",
+  "note": "fixture runs are discrimination evidence, not candidate acceptance; candidate-absent is the real environment result (blocked, exit 2); local-fs-analogue is not S3 evidence",
+  "runs": [
+    {
+      "name": "fixture-compliant",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-compliant.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 0,
+      "status": "passed",
+      "report": "fixture-compliant.json",
+      "report_sha256": "8ab90126500f8f6574a9cc07565e0fe86a8e210f992a5b4c4b78fb0b2c58ee54",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-compliant.json"
+      ]
+    },
+    {
+      "name": "fixture-violating-all",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violating-all.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violating-all.json",
+      "report_sha256": "b949ff66d4a74585c38656f36ae001d72900e951c931d81585af0beca0d7185e",
+      "verdicts": {
+        "anonymous_read_denied": "failed",
+        "anonymous_put_denied": "failed",
+        "anonymous_list_denied": "failed",
+        "out_of_range_key_denied": "failed",
+        "sealed_put_denied": "failed",
+        "staging_overwrite_preserves_sealed": "failed",
+        "short_lived_signature_expiry": "failed",
+        "proxy_download_boundary": "failed",
+        "delete_semantics": "failed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [failed] proxy_download_boundary: failed checks: head_reports_content_length, head_content_length_is_exact, proxy_refuses_an_oversized_object, range_request_returns_206_and_exact_bytes, unsatisfiable_range_returns_416",
+        "  [failed] delete_semantics: failed checks: deleted_object_is_404, repeated_delete_is_idempotent",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violating-all.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-anonymous_read_denied",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_read_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-anonymous_read_denied.json",
+      "report_sha256": "84cadce92382e6c7a3093cf309c795a44df0484b361a35c192bd78acf45e3e64",
+      "verdicts": {
+        "anonymous_read_denied": "failed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-anonymous_read_denied.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-anonymous_put_denied",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_put_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-anonymous_put_denied.json",
+      "report_sha256": "03d2227c78999b1e680171db8007669ae91bd42c2073bd7d3c0ad63541fc569e",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "failed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-anonymous_put_denied.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-anonymous_list_denied",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_list_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-anonymous_list_denied.json",
+      "report_sha256": "bd89fc52f1261acf6a4a285534b3d2ad4b5a9d1ebcf88a8404fc1795ac2ab491",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "failed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-anonymous_list_denied.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-out_of_range_key_denied",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-out_of_range_key_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-out_of_range_key_denied.json",
+      "report_sha256": "fafebcf22229973693fe11448dc5cb0584b4bd46f8c6e3e1eeec44f132dd6418",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "failed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-out_of_range_key_denied.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-sealed_put_denied",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-sealed_put_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-sealed_put_denied.json",
+      "report_sha256": "ffbdf2b8df29b52e125536c3dac301e9412611a8b2dfeba4041bd393c951c38a",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "failed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-sealed_put_denied.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-staging_overwrite_preserves_sealed",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-staging_overwrite_preserves_sealed.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-staging_overwrite_preserves_sealed.json",
+      "report_sha256": "bc11c56e542dfde0a89463eaf0f1f17506fb653f46ce9cbc2510330c2c20cef4",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "failed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-staging_overwrite_preserves_sealed.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-short_lived_signature_expiry",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-short_lived_signature_expiry.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-short_lived_signature_expiry.json",
+      "report_sha256": "dc3ac4042c60771e6b58d412a860fc2c3c8e5ecafabb279104f6d1dca09d8c63",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "failed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-short_lived_signature_expiry.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-proxy_download_boundary",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-proxy_download_boundary.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-proxy_download_boundary.json",
+      "report_sha256": "91e74d9b5efae8a3e31b503cffc26eedb927349e65140929095739f076e56ae3",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "failed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [failed] proxy_download_boundary: failed checks: head_reports_content_length, head_content_length_is_exact, proxy_refuses_an_oversized_object, range_request_returns_206_and_exact_bytes, unsatisfiable_range_returns_416",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-proxy_download_boundary.json"
+      ]
+    },
+    {
+      "name": "fixture-violation-delete_semantics",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-delete_semantics.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 1,
+      "status": "failed",
+      "report": "fixture-violation-delete_semantics.json",
+      "report_sha256": "54eff17d00897def6b7f4833554806a3bb9c587a0960b639ab47e4c8339cfe9d",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "failed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [failed] delete_semantics: failed checks: deleted_object_is_404, repeated_delete_is_idempotent",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-violation-delete_semantics.json"
+      ]
+    },
+    {
+      "name": "fixture-transient-retry",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-transient-retry.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
+      "exit_code": 0,
+      "status": "passed",
+      "report": "fixture-transient-retry.json",
+      "report_sha256": "5776dd8deaa953475fcd59b97f98e01fc983a75048780a9dae2a9975dac3dc8f",
+      "verdicts": {
+        "anonymous_read_denied": "passed",
+        "anonymous_put_denied": "passed",
+        "anonymous_list_denied": "passed",
+        "out_of_range_key_denied": "passed",
+        "sealed_put_denied": "passed",
+        "staging_overwrite_preserves_sealed": "passed",
+        "short_lived_signature_expiry": "passed",
+        "proxy_download_boundary": "passed",
+        "delete_semantics": "passed",
+        "versions_immutable": "not_run"
+      },
+      "stdout_tail": [
+        "  [passed] proxy_download_boundary: all checks held",
+        "  [passed] delete_semantics: all checks held",
+        "  [not_run] versions_immutable: bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+        "report: reports\\f15a\\fixture-transient-retry.json"
+      ]
+    },
+    {
+      "name": "candidate-absent",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-absent.json --short-ttl 5 --timeout 10 --retries 2 --profile candidate",
+      "exit_code": 2,
+      "status": "blocked",
+      "report": "candidate-absent.json",
+      "report_sha256": "587fd6da2202ac88cf01420c75f04bf4b7a2e21ebbcb58ec66158c733051ff5e",
+      "verdicts": {},
+      "stdout_tail": [
+        "status: blocked (exit 2)",
+        "blocked: endpoint_unreachable: cannot reach http://127.0.0.1:9000: ConnectionRefusedError: [WinError 10061] ����Ŀ�����������ܾ����޷����ӡ�",
+        "assertions: 0 passed, 0 failed, 0 blocked, 0 not_run",
+        "report: reports\\f15a\\candidate-absent.json"
+      ]
+    },
+    {
+      "name": "candidate-not-configured",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-not-configured.json --short-ttl 5 --timeout 10 --retries 2 --profile candidate",
+      "exit_code": 2,
+      "status": "blocked",
+      "report": "candidate-not-configured.json",
+      "report_sha256": "fc84ec9619a7359d7abff311364d7b7a02e541fa18cb7ce5a1f572f6ee1a1ebd",
+      "verdicts": {},
+      "stdout_tail": [
+        "status: blocked (exit 2)",
+        "blocked: config_missing: missing required object-store configuration: endpoint, bucket, access_key, secret_key",
+        "assertions: 0 passed, 0 failed, 0 blocked, 0 not_run",
+        "report: reports\\f15a\\candidate-not-configured.json"
+      ]
+    },
+    {
+      "name": "local-fs-analogue",
+      "command": "go build -o <tmp>/localfs_probe ./probes/f15a_objectstore/localfs_probe && <tmp>/localfs_probe -root <tmp>/local-fs-store -out reports/f15a/local-fs-analogue.json",
+      "exit_code": 0,
+      "status": "passed",
+      "report": "local-fs-analogue.json",
+      "report_sha256": "895b5a3d60d191bdde8782cb20e5760f07a25d0ab6f092f1d094e0dbadb7688f",
+      "verdicts": {
+        "key_typing_and_traversal_refused": "passed",
+        "staging_sealed_separation": "passed",
+        "sealed_write_boundary": "passed",
+        "signed_link_boundaries": "passed",
+        "delete_idempotent_and_sibling_safe": "passed",
+        "size_cap_enforced": "passed",
+        "anonymous_network_boundary": "not_run",
+        "object_versioning": "not_run"
+      },
+      "environment": {
+        "arch": "amd64",
+        "go": "go1.27.3",
+        "os": "windows"
+      },
+      "store": {
+        "implementation": "internal/objectstore (local filesystem, HMAC links)",
+        "max_object_bytes": 20971520,
+        "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-puabge6j\\local-fs-store"
+      },
+      "stdout_tail": [
+        "  [passed] size_cap_enforced: all checks held",
+        "  [not_run] anonymous_network_boundary: the local filesystem store has no HTTP surface; this stays blocked on a candidate S3 endpoint",
+        "  [not_run] object_versioning: the local filesystem store has no object versioning",
+        "report: reports\\f15a\\local-fs-analogue.json"
+      ]
+    }
+  ]
+}

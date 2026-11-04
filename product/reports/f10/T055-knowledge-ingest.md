@@ -6,7 +6,7 @@
 - 状态：**`passed`**（本票范围 = `createKnowledgeBase` / `listKnowledgeBases` /
   `getKnowledgeBase` / `ingestDocument` / `listKnowledgeDocuments` /
   `getKnowledgeDocument`，txt/md 的真实受控摄取、`document_ingest` 后台 kind 的
-  handler + 完成守卫，以及 ADR 0008 记录的非契约检索/引用/诊断面 +
+  handler + 完成守卫，以及 ADR 0010 记录的非契约检索/引用/诊断面 +
   `/knowledge` 页面 + 真实栈测试）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实
   HTTP/mTLS + 真实封存对象字节 + 真实 maintenance 双池进程 + Node 执行页面逻辑；
   无 mock、无跳过。
@@ -17,7 +17,7 @@
   检索缓存（#68/T067）、删除治理（F07/T058）不在本票。
 - 契约偏差：`embedding double precision[]` 固定 384 维（pgvector 不可安装），
   `text/markdown` 仅对 `purpose=knowledge` 准入，检索/引用/诊断是非契约路径；
-  均记录在 ADR 0008，`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift。
+  均记录在 ADR 0010，`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift。
 
 ## 0. 工作记录（简短）
 
@@ -29,7 +29,7 @@
    `0015`/`0017` 迁移写法、`tests/support/{stack,fixtures,t026,t028}.py`、
    `tests/f06/test_t039_pages.py` 的 Node 页面执行方式。
 2. TDD 垂直切片（每片先红后绿）：
-   - 迁移 0033 + 约束（链连续、384 CHECK、worker 零授权）→ 真实 migrate；
+   - 迁移 0034 + 约束（链连续、384 CHECK、worker 零授权）→ 真实 migrate；
    - `internal/embedding`（确定性/维度/真实路径 fail closed）与
      `internal/knowledge`（txt/md 解析、BOM、空/非法 UTF-8、确定性分块、span 回切）
      → Go 单测；
@@ -40,12 +40,12 @@
    - 空解析/非法 UTF-8 永不 ready、失败可诊断、可重试失败→重试成功、租约丢失→恢复；
    - `/knowledge` 页面结构 + Node 执行 `knowledge.js`（路径/请求体/引用一致性/
      失败码/空结果）。
-3. 跑门禁（§3），写本报告/PROGRESS/ADR 0008；按 feat/test/docs 提交；未推送、未关 issue、
-   未改 `docs/spec/**`/`contracts/**`、只新增迁移 0033（0001–0032 未改）。
+3. 跑门禁（§3），写本报告/PROGRESS/ADR 0010；按 feat/test/docs 提交；未推送、未关 issue、
+   未改 `docs/spec/**`/`contracts/**`、只新增迁移 0034（0001–0033 未改）。
 
 ## 1. 交付内容
 
-### 1.1 迁移 `0033_knowledge.sql`
+### 1.1 迁移 `0034_knowledge.sql`
 
 - `platform.knowledge_bases`：契约列 + `created_at`；owner-only 索引。
 - `platform.knowledge_documents`：契约列 + 本票 seam：
@@ -103,7 +103,7 @@
 - failed 文档再次 `ingestDocument` 同一 artifact = `revision+1` + 新 job（可重试）；
   ready/indexing 的重复请求幂等返回原文档，不产生第二个 job。
 
-### 1.4 非契约检索/引用/诊断面（ADR 0008）
+### 1.4 非契约检索/引用/诊断面（ADR 0010）
 
 - `POST /api/v1/knowledge-bases/{id}/retrieval-queries`
   （body `{query 1..2000, top_k 1..50 默认 8}`）→ `{items, next_cursor, retrieval}`；
@@ -187,7 +187,7 @@ $ python -m pytest tests/f00b -q
 
 ## 4. 真实栈、输入与版本
 
-- 真实 PG 16.4（每次用例新建临时库，跑真实 `cmd/admin migrate` 0001→0033；
+- 真实 PG 16.4（每次用例新建临时库，跑真实 `cmd/admin migrate` 0001→0034；
   迁移链连续，重跑 migrate no-op）；真实 `cmd/api` 二进制；
   真实 HMAC 签名对象链接与文件系统 `staged/`、`sealed/` 字节；
   真实 internal mTLS（maintenance 客户端证书）；真实 `cmd/maintenance` 进程
@@ -198,7 +198,7 @@ $ python -m pytest tests/f00b -q
   经 finalize 守卫复核。
 - 版本：`local-hash-v1`（384 维）、`orchara-text-parser/1`、
   `orchara-markdown-parser/1`、`orchara-paragraph-overlap-chunker/1`；
-  `document_ingest` handler/守卫、迁移 0033。
+  `document_ingest` handler/守卫、迁移 0034。
 - 原始结果：pytest 输出见 §3；maintenance 真实进程日志由 `tests/support/t055.py`
   写入 pytest 临时目录（`maintenance-t055-*.log`），本报告不复述日志正文。
 
@@ -228,20 +228,20 @@ $ python -m pytest tests/f00b -q
 - 后台：`document_ingest` 已在 `AllKinds`/`KnownKind`/CHECK；handler 注册在
   `internal/background/handlers.Registry`；完成守卫在
   `internal/background.completionGuards`；retry 表在 `job.go`；job-scoped binding
-  为 `POST /internal/v1/background/jobs/{job_id}/document-ingest`（ADR 0008）。
+  为 `POST /internal/v1/background/jobs/{job_id}/document-ingest`（ADR 0010）。
 - 检索：`knowledge.Service.Query` 的 SQL 谓词是 T064 的起点；`acl_epoch` 当前为
   KB revision；T067 缓存键至少含 principal/acl_epoch/embedding revision/query/top_k。
 
 ## 7. 与契约的偏差（均已记录，未改契约）
 
 1. `embedding double precision[]` + 384 维 CHECK（pgvector 不可安装；T064/T067 拥有
-   ANN/规模）——`0033` 头注释 + ADR 0008 §1。
+   ANN/规模）——`0034` 头注释 + ADR 0010 §1。
 2. `knowledge_documents.active_revision/chunker_version/embedding_model_revision/
    error_code/updated_at`、`knowledge_chunks.embedding_dimension/created_at` 为
-   additive 列（T061/守卫需要）——`0033` 头注释。
+   additive 列（T061/守卫需要）——`0034` 头注释。
 3. `text/markdown` 仅对 `purpose=knowledge` 准入（T028 的准入表 purpose-scoped 扩展）
-   ——`internal/artifacts/admission.go` 注释 + ADR 0008 §6。
+   ——`internal/artifacts/admission.go` 注释 + ADR 0010 §6。
 4. 非契约路径 `retrieval-queries`/`knowledge-citations`/`diagnostics`
-   （契约无检索操作）——ADR 0008 §3，沿用 ADR 0005 先例；`sync_spec` no drift。
+   （契约无检索操作）——ADR 0010 §3，沿用 ADR 0005 先例；`sync_spec` no drift。
 5. 契约 `ingestDocument` 无 `Idempotency-Key`：用资源状态 + `background_jobs`
-   `UNIQUE(kind,dedup_key)` 去重——ADR 0008 §5。
+   `UNIQUE(kind,dedup_key)` 去重——ADR 0010 §5。

@@ -11,7 +11,7 @@ package knowledge
 //     of `ready`/`failed`, `active_revision` and `error_code`.
 //   - Retrieval filters ACL, current readability and current document revision
 //     **in SQL**, then ranks only the surviving candidate set in this process
-//     (ADR 0008). It never ranks first and filters afterwards. The contract has
+//     (ADR 0010). It never ranks first and filters afterwards. The contract has
 //     no query endpoint; the query/chunk-citation routes are the documented
 //     non-contract surface this ticket's acceptance needs.
 
@@ -447,7 +447,7 @@ func (s *Service) CreateDocument(
 
 // documentDedupKey names one ingestion intention: this source artifact revision
 // producing this document revision. The contract has no Idempotency-Key, so the
-// queue's UNIQUE(kind, dedup_key) is the durable dedupe (ADR 0008).
+// queue's UNIQUE(kind, dedup_key) is the durable dedupe (ADR 0010).
 func documentDedupKey(sourceArtifactID string, artifactRevision int64, documentID string, revision int64) string {
 	return fmt.Sprintf("knowledge-doc:%s:%d:%s:%d",
 		sourceArtifactID, artifactRevision, documentID, revision)
@@ -831,7 +831,7 @@ func trimFloat(value string) string {
 }
 
 // ---------------------------------------------------------------------------
-// retrieval (non-contract surface documented in ADR 0008)
+// retrieval (non-contract surface documented in ADR 0010)
 // ---------------------------------------------------------------------------
 
 // QueryResult is the non-contract retrieval answer. ACLEpoch is the knowledge

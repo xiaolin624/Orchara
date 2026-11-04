@@ -157,6 +157,8 @@ func run(logger *log.Logger) error {
 		RunEventRetention:         cfg.RunEventRetention,
 		RunEventPollInterval:      cfg.RunEventPollInterval,
 		RunEventHeartbeatInterval: cfg.RunEventHeartbeatInterval,
+		// F09/T054: how long a memory candidate waits for the human decision.
+		MemoryCandidateTTL: cfg.MemoryCandidateTTL,
 	})
 	apiServer.Register(mux)
 

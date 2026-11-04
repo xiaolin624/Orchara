@@ -1,0 +1,55 @@
+{
+  "probe": "f15a-s3-compat",
+  "probe_version": "1.0.0",
+  "ticket": "T053/F15A",
+  "scope": "candidate-s3",
+  "run_id": "509d8db6f1b68d83",
+  "started_at": "2026-11-04T09:08:38.003+00:00",
+  "environment": {
+    "python": "3.12.2",
+    "python_implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "probe_version": "1.0.0"
+  },
+  "config": {
+    "endpoint_configured": false,
+    "note": "invalid or missing configuration is never written to evidence verbatim"
+  },
+  "assertions": [],
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0,
+    "not_run": 0
+  },
+  "client_stats": {
+    "requests": 0,
+    "retries": 0
+  },
+  "cleanup": {
+    "attempted": 0,
+    "deleted": 0,
+    "failed": []
+  },
+  "limits": [
+    "a passing run is a compatibility observation, not a licence, backup/restore or capacity review",
+    "TLS, proxy and signature behaviour is only what the configured endpoint actually did",
+    "IAM policy is asserted only for the two configured credentials; other roles are untested",
+    "object versioning is asserted only when the candidate exposes it (otherwise not_run)",
+    "backup/restore, cross-region replication and server-side encryption are not exercised"
+  ],
+  "status": "blocked",
+  "exit_code": 2,
+  "finished_at": "2026-11-04T09:08:38.003+00:00",
+  "duration_ms": 0,
+  "blocked_reason": {
+    "code": "config_missing",
+    "message": "missing required object-store configuration: endpoint, bucket, access_key, secret_key",
+    "missing": [
+      "endpoint",
+      "bucket",
+      "access_key",
+      "secret_key"
+    ]
+  }
+}

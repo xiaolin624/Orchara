@@ -2,7 +2,7 @@
  * F10/T055 knowledge page helpers.
  *
  * The page is a real client of the contract paths plus the documented
- * non-contract retrieval surface (ADR 0008):
+ * non-contract retrieval surface (ADR 0010):
  *
  *   POST /api/v1/knowledge-bases                              -> 201 {id,state}
  *   GET  /api/v1/knowledge-bases                              -> {items,next_cursor}

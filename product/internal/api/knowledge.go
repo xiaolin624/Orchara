@@ -11,7 +11,7 @@ package api
 //	GET  /api/v1/knowledge-bases/{id}/documents               -> 200 {items,next_cursor}
 //	GET  /api/v1/knowledge-documents/{document_id}            -> 200 KnowledgeDocument
 //
-// Documented non-contract surface (ADR 0008, precedent ADR 0005):
+// Documented non-contract surface (ADR 0010, precedent ADR 0005):
 //
 //	POST /api/v1/knowledge-bases/{id}/retrieval-queries        -> 200 ranked chunks
 //	GET  /api/v1/knowledge-citations/{chunk_id}               -> 200 one chunk + citation
