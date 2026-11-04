@@ -18,6 +18,11 @@ passed）** 与 **F03（T029、T031、T032、T034、T035、T036、T038 passed）
 4051.57s（67m31s）**，`go vet ./...`/`go test ./...`/`gofmt -l`/`sync_spec --check` 全绿；两轴
 复核的 10 个迁移链测试、stream manifest 绕过、connector 前缀边界、unknown replay 披露、approval
 等待错误吞掉、T042 cancel 测试与迁移约定均已修复（`t/review-fixes`，merge `b9147a8`）。
+第二轮独立复核（2026-11-04，HEAD `c6618d3`，merge `t/review2-fixes`）又确认并修复 5 个 P1：
+connector 重复 query 参数绕过 schema、登记的 minimum/maximum/minLength/maxLength 运行时不执行、
+外部写成功但回执保存失败被记为 failed、批准过期后仍可执行、输出校验失败释放真实模型费用；
+每项都有回归测试（f06 共 173 个：全量跑 172 passed + 1 个既有 WSL sandbox 瞬时 flake，隔离复跑
+通过；T036 21 passed、tooling 21 passed、go test/vet、gofmt、sync_spec 全绿）。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
