@@ -190,6 +190,38 @@ T067-COMPARISON {"documents": 8, "chunks": 24, "queries": ["华北地区十月�
 > 相同；top_k=5→20 的复检成本约 0.09 ms/项。另一轮单独实测为 5.249/10.672 vs
 > 25.883/43.478（host 负载不同），结论一致：**缓存有收益，保留**。
 
+### 合并（BRIEF §7.6）
+
+```text
+$ git merge --no-ff integration/f13a-f15a-f09-f10
+合并提交 e225967（父 26dfd63 = 本票 docs 切片；父 c7d7e21 = 集成 tip/T062）
+冲突：product/PROGRESS.md（两侧都新增票行/段落 → 双方保留：T062 + T067；无内容丢失）
+重编号：ADR 0014 已被集成侧 T062 占用 → 本票 ADR 重编号为
+        0015-f10-retrieval-cache.md（报告/PROGRESS 引用同步）
+迁移：0037 未被集成占用（集成 tip 无 0037），链 0001..0037 连续
+```
+
+merge 后复跑目标门禁：
+
+```text
+$ python -m pytest tests/f10 -q          # merge e225967 之后
+.........................................................                [100%]
+57 passed in 762.66s (0:12:42)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 7.51s
+
+$ go build ./... ; go vet ./... ; gofmt -l .
+(exit 0；gofmt clean)
+
+$ go test ./...
+(全部 ok / no test files，无 FAIL；exit 0)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
 ## 4. 真实栈、输入与版本
 
 - 真实 PostgreSQL 16.4：每个用例新建临时库，跑真实 `cmd/admin migrate`（0001→0037，
