@@ -193,7 +193,10 @@ def test_the_upgrade_backfills_a_ready_document_into_an_active_index(
     partial.mkdir()
     migrations_dir = st.PRODUCT_ROOT / "db" / "migrations"
     for path in sorted(migrations_dir.glob("*.sql")):
-        if "index_revisions" in path.name:
+        # Build a genuinely pre-T061 database. Skipping only T061's own file would
+        # leave a gap once a later migration (T065's 0040) exists, and
+        # migration_chain() asserts the applied chain is contiguous.
+        if path.name >= "0039":
             continue
         shutil.copy(path, partial / path.name)
     completed = st.run_admin(
