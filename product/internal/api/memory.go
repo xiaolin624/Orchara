@@ -4,9 +4,15 @@ package api
 //
 //	POST /api/v1/memories                              createMemory
 //	GET  /api/v1/memories                              listMemories
+//	GET  /api/v1/memories/{memory_id}                  getMemory      (strong ETag)
 //	GET  /api/v1/memory-candidates                     listMemoryCandidates
 //	POST /api/v1/memory-candidates/{id}/decision       decideMemoryCandidate
 //	POST /internal/v1/runs/{run_id}/memory-candidates  proposeMemoryCandidate
+//
+// F09/T058 adds the revisioned read/write surface: the strong ETag on the detail
+// read is the revision token a PATCH must echo, and update/delete raise the
+// revision and the memory-scope cache epoch in the same transaction so the old
+// content stops being recallable before any asynchronous cleanup.
 //
 // Every public handler refuses a service credential with 403
 // `personal_scope_forbidden` before any store code runs (the F01/T020 boundary:
@@ -156,6 +162,26 @@ func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
 		views = append(views, viewOfMemory(entry))
 	}
 	writeJSON(w, http.StatusOK, memoryListEnvelope[memoryView]{Items: views, NextCursor: next})
+}
+
+// handleGetMemory returns one memory plus the strong ETag a later PATCH must
+// echo. The ETag is the revision as a quoted opaque token (catalog.FormatETag),
+// the same validator the draft editor uses, and Cache-Control: no-store comes
+// from writeJSON so a stale revision can never be served from a cache.
+func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.requireHumanMemory(w, r, caller) {
+		return
+	}
+	entry, err := s.memory.Get(r.Context(), caller.PrincipalID, r.PathValue("memory_id"))
+	if !s.writeMemoryError(w, r, err) {
+		return
+	}
+	w.Header().Set("ETag", catalog.FormatETag(entry.Revision))
+	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
 }
 
 // handleListMemoryCandidates returns the owner's candidates. A pending candidate

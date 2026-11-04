@@ -61,3 +61,13 @@ def t054_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024St
     )
     f00b.wait_for_internal(stack)
     return stack
+
+
+@pytest.fixture
+def t058_stack(t054_stack) -> t024.T024Stack:
+    """T058's stack is T054's: the same store, the same real primitives.
+
+    T058 extends ``internal/memory`` and the same migration chain, so a second
+    stack definition would only duplicate the deployment inputs and drift.
+    """
+    return t054_stack

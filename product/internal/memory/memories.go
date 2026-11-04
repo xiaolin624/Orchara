@@ -104,6 +104,56 @@ func (s *Service) Create(ctx context.Context, ownerID string, input CreateInput)
 	return memory, nil
 }
 
+// Get returns one active memory owned by ownerID.
+//
+// A foreign id, an unknown id, a malformed id and a deleted memory all answer the
+// same 404: the endpoint is addressed by id, so any distinguishable answer would
+// let a caller enumerate another owner's memory ids. An administrator is not
+// exempt (the owner filter is part of the row query, not a post-check).
+func (s *Service) Get(ctx context.Context, ownerID, memoryID string) (*Memory, error) {
+	if !uuid.Valid(strings.TrimSpace(ownerID)) {
+		return nil, failure(401, "unauthenticated", "an authenticated human is required")
+	}
+	target := strings.TrimSpace(memoryID)
+	if !uuid.Valid(target) {
+		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
+	}
+	var (
+		memory    Memory
+		candidate sql.NullString
+		objectKey string
+		sha       sql.NullString
+	)
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT m.id::text, m.owner_id::text, m.application_id::text,
+		       m.body_artifact_id::text, m.candidate_id::text, m.revision,
+		       m.confirmed_at, m.confirmed_by::text, a.object_key, a.sha256
+		  FROM platform.memories AS m
+		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
+		 WHERE m.id = $1::uuid
+		   AND m.owner_id = $2::uuid
+		   AND m.deleted_at IS NULL`, target, ownerID).Scan(
+		&memory.ID, &memory.OwnerID, &memory.ApplicationID,
+		&memory.BodyArtifactID, &candidate, &memory.Revision,
+		&memory.ConfirmedAt, &memory.ConfirmedBy, &objectKey, &sha,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the memory: %w", err)
+	}
+	if candidate.Valid {
+		memory.CandidateID = candidate.String
+	}
+	text, err := s.readBody(objectKey, sha.String)
+	if err != nil {
+		return nil, err
+	}
+	memory.Text = text
+	return &memory, nil
+}
+
 // List returns the owner's active memories, newest first.
 func (s *Service) List(
 	ctx context.Context, ownerID string, limit int, cursor, applicationID string,

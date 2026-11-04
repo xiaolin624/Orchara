@@ -236,8 +236,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/api-keys/{key_id}", s.handleRevokeAPIKey)
 	// F09/T054: the real personal-memory read/write model. A service credential
 	// is refused with 403 personal_scope_forbidden on every one of them.
+	// F09/T058 adds the revisioned detail/update/delete surface; the detail read
+	// is the only strong-ETag read on a memory.
 	mux.HandleFunc("POST /api/v1/memories", s.handleCreateMemory)
 	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
+	mux.HandleFunc("GET /api/v1/memories/{memory_id}", s.handleGetMemory)
 	mux.HandleFunc("GET /api/v1/memory-candidates", s.handleListMemoryCandidates)
 	mux.HandleFunc("POST /api/v1/memory-candidates/{candidate_id}/decision",
 		s.handleDecideMemoryCandidate)
