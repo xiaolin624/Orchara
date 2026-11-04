@@ -21,7 +21,7 @@
 --      staged-chunk counter (no synthetic percentage). Only the
 --      `document_ingest` completion guard writes `ready`/`failed`; this table is
 --      the rebuild/progress read model the non-contract diagnostics surface
---      exposes (ADR 0017). The contract has no index/reindex operation, so no
+--      exposes (ADR 0018). The contract has no index/reindex operation, so no
 --      contract file changes.
 --   2. `knowledge_documents.active_index_id` + `active_embedding_model_revision`
 --      are the activation pointer (the T055 `active_revision` stays as the source

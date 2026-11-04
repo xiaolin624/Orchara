@@ -198,7 +198,7 @@ func enqueueIndexBuildTx(
 	return job, nil
 }
 
-// ReindexDocument is the non-contract rebuild entry (ADR 0017).
+// ReindexDocument is the non-contract rebuild entry (ADR 0018).
 //
 // It creates a new index version and one background job. With a new
 // `source_artifact_id` the source revision is bumped and the previous active

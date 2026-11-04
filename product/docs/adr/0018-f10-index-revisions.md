@@ -1,10 +1,10 @@
-# ADR 0017：F10 版本化知识索引、激活事务与非契约重建/进度面
+# ADR 0018：F10 版本化知识索引、激活事务与非契约重建/进度面
 
 - 状态：已接受
 - 日期：2026-11-04
-- 编号：合并 `integration/f13a-f15a-f09-f10` 后 T067 占用 ADR 0015、
-  T060 占用 ADR 0016，本 ADR 让号为 **0017**（本票分支在集成前曾临时占用 0016，
-  合并后统一为 0017）。
+- 编号：合并 `integration/f13a-f15a-f09-f10` 时 T056 已占用 ADR 0017
+  （evaluation case results），本票 ADR 让号为 **0018**（分支上曾临时写作 0017，
+  合并后统一为 0018）。
 - 相关：F10 / T061（GitHub #62，规划 ID F10.03）；分支 `t/t061-index-revisions`；
   报告 `product/reports/f10/T061-index-revisions.md`；
   迁移 `product/db/migrations/0039_index_revisions.sql`；
@@ -29,7 +29,7 @@ T055 的切片只有一条文档状态权威和一个 `active_revision` 指针�
 
 ### 1. 三类 revision 分离，激活指针独立
 
-新增 `platform.knowledge_index_versions`（非契约 addditive 表）：
+新增 `platform.knowledge_index_versions`（非契约 additive 表）：
 `(document_id, version, document_revision, embedding_model_revision,
 embedding_dimension, state, chunk_count, parser_version, chunker_version,
 error_code, activated_at, superseded_at, created_at, updated_at)`。

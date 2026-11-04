@@ -434,7 +434,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/knowledge-bases/{knowledge_base_id}/documents", s.handleListKnowledgeDocuments)
 	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}", s.handleGetKnowledgeDocument)
 	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}/diagnostics", s.handleKnowledgeDocumentDiagnostics)
-	// F10/T061: the non-contract rebuild entry (ADR 0017). It creates a new
+	// F10/T061: the non-contract rebuild entry (ADR 0018). It creates a new
 	// index version and one document_ingest job; only the completion guard can
 	// move the activation pointer.
 	mux.HandleFunc("POST /api/v1/knowledge-documents/{document_id}/reindex", s.handleReindexKnowledgeDocument)

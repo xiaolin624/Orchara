@@ -3,7 +3,9 @@
 - 任务：F10 / GitHub Issue #62（票 `T061`，规划 ID F10.03），分支
   `t/t061-index-revisions`（worktree `E:\orchara-worktrees\t061`）；开工时自
   integration tip `9841f19` 切出并立即合入集成最新 tip（含 T060 的迁移/ADR 重编号），
-  merge commit **`275776c`**；收尾再合入 `integration/f13a-f15a-f09-f10`（见 §3）。
+  merge commit **`275776c`**；收尾再合入 `integration/f13a-f15a-f09-f10` tip
+  `b65fe80`（含 T056/T063/T066），merge commit **`9d78ed8`**：T056 已占用 ADR 0017，
+  本票 ADR 让号为 **0018**；迁移 `0039` 与集成链 `0001..0038` 无冲突。
 - 状态：**`passed`**（本票范围 = 独立 document/index/chunk revision 的存储层、
   **非契约重建入口** `POST /api/v1/knowledge-documents/{id}/reindex`、带真实进度的
   诊断读、**唯一激活事务**（`FOR UPDATE` 重读源行/索引行，要求源 revision 未变、
@@ -19,11 +21,11 @@
   （与既有页面票同一边界）；历史索引/失败暂存 chunk 的物理清理 **not_run**（F07/后续
   运维）；ANN/pgvector/规模基准继承 T064/T067 **not_run**；全量 `pytest tests`
   （≈67 分钟）按 BRIEF §3 不在本票运行，由 orchestrator 合并后执行。
-- 契约偏差：契约没有重建/索引版本操作，新增非契约 `reindex` 入口、诊断 addditive
-  `active_index/active_embedding_model_revision/indexes[]`、检索/回答 addditive
+- 契约偏差：契约没有重建/索引版本操作，新增非契约 `reindex` 入口、诊断 additive
+  `active_index/active_embedding_model_revision/indexes[]`、检索/回答 additive
   `retrieval.index`；迁移 `0039_index_revisions.sql` 也是非契约 additive 表/列（唯一破坏性
   语句是旧 chunk 唯一约束被新的 `(index_version_id, chunk_no)` 身份取代）。
-  全部记录在 **ADR 0017**；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check`
+  全部记录在 **ADR 0018**；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check`
   保持 no drift。
 
 ## 0. 工作记录（简短）
@@ -50,7 +52,7 @@
      真正完成 → 守卫拒绝 `stale_revision`/`source_deleted`，`activated_at` 保持 NULL；
    - 页面结构 + Node 执行 `describeIndexes`/`describeRetrieval`/`reindexDocumentPath`；
    - 既有测试预期的必要更新（见 §7）并两次连跑 `tests/f10`。
-3. 跑门禁（§3），写本报告/`PROGRESS.md`/ADR 0017；按 feat/test/docs 提交；合并
+3. 跑门禁（§3），写本报告/`PROGRESS.md`/ADR 0018；按 feat/test/docs 提交；合并
    integration 后复跑；未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`。
 
 ## 1. 交付内容
@@ -168,11 +170,68 @@ active 标记、重建按钮）；`reindexDocumentPath`/`buildReindexBody`；检
 
 ## 3. 门禁命令与原始输出
 
-环境：Windows PowerShell；Go（`E:\orchara-toolchains\go\bin`）、Python 3.12.2、
-Node v24.13.0、PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py status`）；
+环境：Windows PowerShell；Go 1.27.3、Python 3.12.2、Node v24.13.0、
+PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py status`）；
 `product/.env.local` 提供本地口令，报告不含任何凭据。
 
-<!-- GATES -->
+合并前（本票 docs commit `59a2411` 的树，83 = F10 既有 70 + T061 新增 13）：
+
+```text
+$ python -m pytest tests/f10 -q          # 第 1 次
+83 passed in 929.90s (0:15:29)
+
+$ python -m pytest tests/f10 -q          # 第 2 次（紧接第 1 次，BRIEF §6.1）
+83 passed in 639.77s (0:10:39)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 5.83s
+
+$ go build ./...
+(exit 0, no output)
+
+$ go vet ./...
+(exit 0, no output)
+
+$ go test ./...
+（全部包 ok / no test files，无 FAIL；exit 0）
+
+$ gofmt -l .
+(empty)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+### 合并（BRIEF §7.6）
+
+```text
+$ git merge --no-ff integration/f13a-f15a-f09-f10
+merge commit 9d78ed8（父 59a2411 = 本票 docs commit；父 b65fe80 = 集成 tip）
+冲突：无（集成侧 T056/T063/T066 与 F10 文件无文本冲突；PROGRESS 自动合并、双方保留）
+重编号：ADR 0017 已被集成侧 T056 占用 → 本票 ADR 由 0017 让号为 0018
+        （报告/PROGRESS/迁移头/代码注释同步）；迁移 0039 未被占用，链 0001..0039 连续
+```
+
+合并 `9d78ed8` 之后复跑目标门禁（最终树）：
+
+```text
+$ python -m pytest tests/f10 -q
+83 passed in 455.01s (0:07:35)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 4.85s
+
+$ go build ./... ; go vet ./... ; gofmt -l .
+(exit 0；gofmt 空)
+
+$ go test ./...
+（全部包 ok / no test files，无 FAIL；exit 0）
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
 
 ## 4. 真实栈、输入与版本
 
@@ -222,7 +281,7 @@ Node v24.13.0、PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py st
   `background.CodeStaleRevision`/`CodeEmbeddingModelChanged`；
   `background.DocumentIngestBinding.IndexVersionID/EmbeddingModelRevision/EmbeddingDimension`；
   `embedding.StubModelRevisionV2`。
-- HTTP：非契约 `POST /api/v1/knowledge-documents/{id}/reindex`（ADR 0017）；诊断 additive
+- HTTP：非契约 `POST /api/v1/knowledge-documents/{id}/reindex`（ADR 0018）；诊断 additive
   `active_index/active_embedding_model_revision/indexes[]`；检索/回答 additive
   `retrieval.index`；错误码 `index_build_in_progress`（409）与 `stale_revision`（内部 409）。
 - 守卫契约：只有 `guardDocumentIngestCompletion` 能移动 `active_index_id`；新后台 kind/
@@ -233,10 +292,12 @@ Node v24.13.0、PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py st
 ## 7. 与既有票/契约的关系（如实）
 
 1. **无契约改动**：`contracts/**`、`docs/spec/**` 未改；`sync_spec --check` no drift。
-   非契约面（reindex、诊断/检索 additive 元数据）记录在 ADR 0017，沿用 ADR 0005/0007/0010
+   非契约面（reindex、诊断/检索 additive 元数据）记录在 ADR 0018，沿用 ADR 0005/0007/0010
    先例。
 2. **合并集成分支**：开工时集成的 T060 已把 PDF 迁移/ADR 重编号为 0038/0016，本票迁移为
-   `0039_index_revisions.sql`、ADR 为 0017；收尾再次合入 integration（如有新 tip）见 §3。
+   `0039_index_revisions.sql`；收尾合入 integration tip `b65fe80`（T056/T063/T066，
+   merge `9d78ed8`）后 T056 占用 ADR 0017，本票 ADR 让号为 **0018**；合并后目标门禁
+   复跑见 §3 末尾。
 3. **既有测试的预期更新（3 处，diff 可见，非放宽）**：
    - `tests/f10/test_t055_migration.py`：旧 chunk 唯一约束 `knowledge_chunks_unique_no`
      按新身份被替换，断言改为 `knowledge_chunks_index_version_no` + 旧约束不存在；
@@ -253,7 +314,7 @@ Node v24.13.0、PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py st
 
 ## 8. 参考
 
-- ADR：`product/docs/adr/0017-f10-index-revisions.md`（本票）；`0010`/`0013`/`0015`/`0016`
+- ADR：`product/docs/adr/0018-f10-index-revisions.md`（本票）；`0010`/`0013`/`0015`/`0016`
   （F10 基础/表格/缓存/PDF）。
 - 基础：`product/reports/f10/T055-knowledge-ingest.md`、
   `T059-tabular-ingest.md`、`T060-pdf-ingest.md`、`T067-retrieval-cache.md`。
