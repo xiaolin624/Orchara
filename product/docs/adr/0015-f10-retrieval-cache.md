@@ -52,6 +52,10 @@ T055 交付了"SQL 先做 ACL/当前版本过滤，再对有界候选集排序"�
 - TTL 默认 15 分钟（`RetrievalCacheDefaultTTL`），单条目正文上限 256 KiB
   （`top_k<=50`、每 chunk 由 chunker 限制在 1200 rune，故有余量）。过期行在 miss 路径按
   principal 懒清理；没有新增后台驱逐 kind。
+- **稳定来源规则**：只有 `state='ready'`、`active_revision = revision`、chunk 当前
+  revision、body artifact ready 且 `sha256` 非空的 chunk 才可能进入缓存结果；未就绪/失败/
+  部分结果根本不缓存，TTL 15 分钟也限制任何条目的最长寿命。因此"没有稳定版本的来源"
+  不会按长期缓存处理。
 - **为什么不用 Redis**：本机无可安装/可用的 Redis；缓存可重建，PG 既是权威也是存储，
   少一个一致性边界。报告记录该决定。
 

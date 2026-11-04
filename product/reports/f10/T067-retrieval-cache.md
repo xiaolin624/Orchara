@@ -72,6 +72,9 @@
   一致；不折叠内部空白。
 - `shouldStoreRetrievalCache`：空结果、部分结果（有候选正文读不出）、超过 256 KiB 的条目
   一律不缓存——这正是"缺目标来源"和暂时不可读不被 TTL 掩盖的机制。
+- 稳定来源规则：只有 `state='ready'`、`active_revision = revision`、chunk 当前 revision、
+  body artifact ready 且 `sha256` 非空的 chunk 才可能进入缓存结果；未就绪/失败/部分结果
+  不缓存，TTL 15 分钟限制任何条目的最长寿命（ADR 0015 D1）。
 
 ### 1.3 命中复检、丢弃与存储（`internal/knowledge/cache_store.go` + `Service.Query`）
 
