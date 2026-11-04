@@ -3,9 +3,9 @@
 // It owns four things:
 //
 //   - **parser seam**: a closed registry from an admitted source media type to a
-//     deterministic parser (`text/plain` -> txt, `text/markdown` -> md). CSV/XLSX
-//     (T059 #60) and PDF (T060 #61) register their parsers here later; this
-//     ticket deliberately registers none of them.
+//     deterministic parser (`text/plain` -> txt, `text/markdown` -> md,
+//     `text/csv` and the OOXML spreadsheet type -> the tabular family). PDF
+//     (T060 #61) registers its parser here later.
 //   - **chunker**: deterministic paragraph/overlap chunking with a SourceSpan
 //     (character offsets and a 1-based inclusive line range).
 //   - **service**: owner-scoped knowledge bases/documents, the document-ingest
@@ -25,16 +25,21 @@ import (
 	"unicode/utf8"
 )
 
-// Media types the F10/T055 slice accepts as source documents.
+// Media types the F10/T055 slice accepts as source documents. F10/T059 adds the
+// tabular family: `text/csv` and the OOXML spreadsheet media type.
 const (
 	MediaTypeText     = "text/plain"
 	MediaTypeMarkdown = "text/markdown"
+	MediaTypeCSV      = "text/csv"
+	MediaTypeXLSX     = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 // Parser versions recorded on the document and in every citation.
 const (
 	ParserVersionText     = "orchara-text-parser/1"
 	ParserVersionMarkdown = "orchara-markdown-parser/1"
+	ParserVersionCSV      = "orchara-csv-parser/1"
+	ParserVersionXLSX     = "orchara-xlsx-parser/1"
 )
 
 // ChunkerVersion is the deterministic chunker revision recorded in citations.
@@ -69,6 +74,14 @@ type Parsed struct {
 	ParserVersion string
 	// Normalization records the only transformation applied to the bytes.
 	Normalization string
+	// TextRender names what Text is when it is not simply the source bytes:
+	// empty for txt/md (source text), TextRenderSourceUTF8 for CSV,
+	// TextRenderSheetCSV for an XLSX worksheet rendering. It is recorded in the
+	// citation so a reader knows what a character span indexes.
+	TextRender string
+	// Table is set by a tabular parser; it carries the row ranges the row-batch
+	// chunker turns into citations. Nil for plain text.
+	Table *Table
 }
 
 // Parser is the seam later formats extend. Parse must be deterministic and must
@@ -84,6 +97,8 @@ type Parser interface {
 var parserRegistry = map[string]Parser{
 	MediaTypeText:     textParser{},
 	MediaTypeMarkdown: markdownParser{},
+	MediaTypeCSV:      csvParser{},
+	MediaTypeXLSX:     xlsxParser{},
 }
 
 // ParserFor returns the registered parser for a declared media type.
@@ -94,7 +109,7 @@ func ParserFor(mediaType string) (Parser, bool) {
 
 // SupportedMediaTypes lists the registered parser media types (stable order).
 func SupportedMediaTypes() []string {
-	return []string{MediaTypeText, MediaTypeMarkdown}
+	return []string{MediaTypeText, MediaTypeMarkdown, MediaTypeCSV, MediaTypeXLSX}
 }
 
 type textParser struct{}

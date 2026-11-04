@@ -75,16 +75,24 @@ func DocumentIngest(ctx context.Context, work background.HandlerWork) background
 	case errors.Is(err, knowledge.ErrUnsupportedMediaType):
 		return background.Failed(background.CodeIngestUnsupportedMediaType)
 	case err != nil:
+		// A content refusal carries its own stable code (for example a formula
+		// cell or an archive cap); a *ParseError is the parser seam's whole
+		// vocabulary for "this document is not ingestable".
+		var parseErr *knowledge.ParseError
+		if errors.As(err, &parseErr) {
+			return background.Failed(parseErr.FailureCode)
+		}
 		return background.Failed(background.CodeTransientInternal)
 	}
 
-	chunks := knowledge.ChunkText(parsed.Text)
+	chunks := knowledge.ChunkParsed(parsed)
 	if len(chunks) == 0 {
 		return background.Failed(background.CodeIngestEmptyContent)
 	}
 	if len(chunks) > knowledge.MaxChunksPerDocument {
 		return background.Failed(background.CodeIngestTooManyChunks)
 	}
+	chunkerVersion := knowledge.ChunkerVersionFor(parsed)
 	runes := []rune(parsed.Text)
 	for _, chunk := range chunks {
 		// The chunker's invariant is the citation's foundation: a span that does
@@ -137,28 +145,43 @@ func DocumentIngest(ctx context.Context, work background.HandlerWork) background
 			return documentIngestScopeOutcome(err, background.CodeTransientStorageIO)
 		}
 		artifactIDs = append(artifactIDs, ticket.ArtifactID)
+		citation := knowledge.Citation{
+			DocumentID:             binding.DocumentID,
+			DocumentRevision:       binding.DocumentRevision,
+			ChunkNo:                chunk.No,
+			Span:                   chunk.Span,
+			OffsetUnit:             "rune",
+			SourceArtifactID:       binding.SourceArtifactID,
+			SourceSHA256:           binding.SourceSHA256,
+			SourceMediaType:        binding.SourceMediaType,
+			TextNormalization:      parsed.Normalization,
+			TextRender:             parsed.TextRender,
+			ParserVersion:          binding.ParserVersion,
+			ChunkerVersion:         chunkerVersion,
+			EmbeddingModelRevision: work.Embedder.ModelRevision(),
+		}
+		if chunk.Table != nil {
+			// Tabular chunks carry the row range in the citation: the span says
+			// where in the parsed text, the row range says which source rows. For
+			// CSV both index the sealed source; for XLSX the sheet name plus row
+			// numbers locate the same rows in the sealed workbook.
+			citation.SheetName = chunk.Table.SheetName
+			citation.HeaderRow = chunk.Table.HeaderRow
+			citation.RowStart = chunk.Table.RowStart
+			citation.RowEnd = chunk.Table.RowEnd
+			citation.RowCount = chunk.Table.RowCount
+			citation.Columns = chunk.Table.Columns
+			citation.ColumnsOmitted = chunk.Table.ColumnsOmitted
+		}
 		rows = append(rows, knowledge.ChunkRow{
 			ID:             uuid.NewString(),
 			DocumentID:     binding.DocumentID,
 			Revision:       binding.DocumentRevision,
 			No:             chunk.No,
 			BodyArtifactID: ticket.ArtifactID,
-			Citation: knowledge.Citation{
-				DocumentID:             binding.DocumentID,
-				DocumentRevision:       binding.DocumentRevision,
-				ChunkNo:                chunk.No,
-				Span:                   chunk.Span,
-				OffsetUnit:             "rune",
-				SourceArtifactID:       binding.SourceArtifactID,
-				SourceSHA256:           binding.SourceSHA256,
-				SourceMediaType:        binding.SourceMediaType,
-				TextNormalization:      parsed.Normalization,
-				ParserVersion:          binding.ParserVersion,
-				ChunkerVersion:         knowledge.ChunkerVersion,
-				EmbeddingModelRevision: work.Embedder.ModelRevision(),
-			},
-			ModelRevision: work.Embedder.ModelRevision(),
-			Embedding:     vectors[index],
+			Citation:       citation,
+			ModelRevision:  work.Embedder.ModelRevision(),
+			Embedding:      vectors[index],
 		})
 	}
 

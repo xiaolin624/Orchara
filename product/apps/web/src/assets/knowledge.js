@@ -22,6 +22,8 @@
 const KNOWLEDGE_MEDIA_TYPES = Object.freeze({
   '.txt': 'text/plain',
   '.md': 'text/markdown',
+  '.csv': 'text/csv',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 });
 
 const DEFAULT_TOP_K = 8;
@@ -39,8 +41,20 @@ const KNOWLEDGE_STATE_TEXT = Object.freeze({
 
 const KNOWLEDGE_FAILURE_TEXT = Object.freeze({
   ingest_empty_content: '解析结果为空：文档没有非空白正文，不能标记为可检索',
-  ingest_unsupported_media_type: '该格式暂不支持解析（本切片仅支持 txt/md）',
+  ingest_unsupported_media_type: '该格式暂不支持解析（本切片支持 txt/md/csv/xlsx）',
   ingest_invalid_encoding: '内容不是合法的 UTF-8 文本',
+  ingest_invalid_csv: 'CSV 格式无法解析（引号/换行不完整），已定位到出错行',
+  ingest_invalid_xlsx: 'XLSX 结构无效（压缩包/工作簿/共享字符串/工作表），无法解析',
+  ingest_formula_not_supported: '单元格含公式：首版不执行公式，也不会把缓存值当作内容',
+  ingest_archive_limit_exceeded: 'XLSX 压缩包超过条目数/解压总量/压缩比上限',
+  ingest_archive_path_traversal: 'XLSX 压缩包含路径穿越条目',
+  ingest_macro_present: 'XLSX 含宏（vbaProject.bin / macrosheet），首版拒绝',
+  ingest_dtd_not_supported: 'XLSX/XML 含 DTD 或实体声明，首版拒绝',
+  ingest_worksheet_limit_exceeded: 'XLSX 工作表数量超过上限',
+  ingest_row_limit_exceeded: '数据行数超过上限',
+  ingest_cell_limit_exceeded: '单元格数量超过上限',
+  ingest_column_limit_exceeded: '列数超过上限',
+  ingest_row_too_large: '单行内容超过上限（行不会被拆成多个片段）',
   ingest_source_unavailable: '源文件尚未就绪或已被删除',
   ingest_source_changed: '源文件版本已变化，本次摄取结果未激活',
   ingest_too_many_chunks: '片段数量超过本切片上限',
@@ -91,12 +105,12 @@ function mediaTypeForKnowledgeFile(fileName) {
   const name = String(fileName || '');
   const dot = name.lastIndexOf('.');
   if (dot < 0) {
-    return { ok: false, error: '文件需要 .txt 或 .md 扩展名' };
+    return { ok: false, error: '文件需要 .txt / .md / .csv / .xlsx 扩展名' };
   }
   const extension = name.slice(dot).toLowerCase();
   const mediaType = KNOWLEDGE_MEDIA_TYPES[extension];
   if (!mediaType) {
-    return { ok: false, error: '本切片只支持 .txt / .md 知识资料' };
+    return { ok: false, error: '本切片支持 .txt / .md / .csv / .xlsx 知识资料' };
   }
   return { ok: true, mediaType: mediaType };
 }
@@ -156,6 +170,63 @@ function formatSpan(span) {
   return '字符 ' + start + '–' + end + ' / 行 ' + startLine + '–' + endLine;
 }
 
+/**
+ * The row range of a tabular citation (T059). CSV row numbers are logical record
+ * numbers (header = row 1); XLSX row numbers are the worksheet's own rows, so a
+ * range can have gaps and row_count may be smaller than end-start+1.
+ */
+function formatRowRange(citation) {
+  const value = citation || {};
+  const start = Number(value.row_start);
+  const end = Number(value.row_end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end < start) {
+    return '';
+  }
+  let text = '表格行 ' + start + '–' + end;
+  const headerRow = Number(value.header_row);
+  if (Number.isFinite(headerRow) && headerRow > 0) {
+    text += '（表头行 ' + headerRow + '）';
+  }
+  if (value.sheet_name) {
+    text = '工作表 ' + String(value.sheet_name) + ' · ' + text;
+  }
+  const rowCount = Number(value.row_count);
+  if (Number.isFinite(rowCount) && rowCount > 0 && rowCount !== end - start + 1) {
+    text += ' · 共 ' + rowCount + ' 行';
+  }
+  return text;
+}
+
+function describeFailureDetail(detail) {
+  const value = detail || null;
+  if (!value) {
+    return '';
+  }
+  const parts = [];
+  if (value.sheet) {
+    parts.push('工作表 ' + String(value.sheet));
+  }
+  if (Number(value.row) > 0) {
+    parts.push('行 ' + Number(value.row));
+  }
+  if (value.column) {
+    parts.push('列 ' + String(value.column));
+  }
+  if (value.cell) {
+    parts.push('单元格 ' + String(value.cell));
+  }
+  if (value.part) {
+    parts.push('位置 ' + String(value.part));
+  }
+  if (value.limit) {
+    parts.push('上限 ' + String(value.limit));
+  }
+  if (Number(value.value) > 0) {
+    parts.push('实测值 ' + Number(value.value));
+  }
+  return parts.join(' · ');
+}
+
 function documentStateText(state) {
   const key = String(state || '');
   return KNOWLEDGE_STATE_TEXT[key] || key || '未知状态';
@@ -202,12 +273,18 @@ function describeChunk(item) {
   const chunkNo = Number(value.chunk_no);
   const revision = Number(value.document_revision);
   const documentID = String(value.document_id || '');
+  const rowStart = Number(citation.row_start);
+  const rowEnd = Number(citation.row_end);
+  const rowRangeOk = !(Number.isFinite(rowStart) && rowStart > 0) ||
+    (Number.isFinite(rowEnd) && rowEnd >= rowStart);
   const citationOk =
     String(citation.document_id || '') === documentID &&
     Number(citation.document_revision) === revision &&
     Number(citation.chunk_no) === chunkNo &&
     Number((citation.span || {}).start_char) === Number(span.start_char) &&
-    Number((citation.span || {}).end_char) === Number(span.end_char);
+    Number((citation.span || {}).end_char) === Number(span.end_char) &&
+    rowRangeOk;
+  const rowRangeText = citationOk ? formatRowRange(citation) : '';
   return {
     chunkId: String(value.chunk_id || ''),
     documentId: documentID,
@@ -217,9 +294,11 @@ function describeChunk(item) {
     score: Number(value.score || 0),
     text: String(value.text || ''),
     spanText: formatSpan(span),
+    rowRangeText: rowRangeText,
     citationOk: citationOk,
     citationText: citationOk
-      ? '引用：文档 ' + documentID + ' · 版本 ' + revision + ' · 第 ' + chunkNo + ' 片段 · ' + formatSpan(span)
+      ? '引用：文档 ' + documentID + ' · 版本 ' + revision + ' · 第 ' + chunkNo + ' 片段 · '
+        + formatSpan(span) + (rowRangeText ? ' · ' + rowRangeText : '')
       : '引用不一致：不展示为该片段的来源',
   };
 }
@@ -236,6 +315,8 @@ function describeDiagnostics(diagnostics) {
       : Number(value.active_revision),
     errorCode: value.error_code ? String(value.error_code) : '',
     errorText: failureText(value.error_code),
+    detail: value.detail || null,
+    detailText: describeFailureDetail(value.detail),
     chunkCount: Number(value.chunk_count || 0),
     parserVersion: value.parser_version ? String(value.parser_version) : '',
     chunkerVersion: value.chunker_version ? String(value.chunker_version) : '',
@@ -273,6 +354,9 @@ function describeIngestion(document, diagnostics) {
   if (diag.errorCode) {
     lines.push('失败码：' + diag.errorCode);
     lines.push('说明：' + diag.errorText);
+  }
+  if (diag.detailText) {
+    lines.push('失败位置：' + diag.detailText);
   }
   lines.push('已写入片段：' + diag.chunkCount);
   if (diag.parserVersion) {
