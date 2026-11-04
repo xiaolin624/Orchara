@@ -3,9 +3,11 @@
 - 任务：F10 / GitHub Issue #60（票 `T059`，规划 ID F10.02），分支
   `t/t059-tabular-ingest`（worktree `E:\orchara-worktrees\t059`，基线 integration tip
   `9f58fc2`）；父门禁 #53–#68 集成批次。
-- 合并：`integration/f13a-f15a-f09-f10`（tip `f1a5257`，含 T064 的 grounded answer）已合入
-  分支，merge commit **`e48229b`**；唯一冲突是 `PROGRESS.md`（双方保留），T064 的 ADR 0012
-  占号后本票 ADR 让号为 **0013**；合并后目标门禁复跑见 §3。
+- 合并：`integration/f13a-f15a-f09-f10` 已两次合入本分支并复跑门禁：先合入 tip
+  `f1a5257`（含 T064 grounded answer，merge `e48229b`），随后 integration 又前进到
+  `9f8f63e`（含 T058/F09 memory revision），再次合入得最终 merge commit **`79af135`**；
+  冲突只有 `PROGRESS.md`（双方保留），T064 的 ADR 0012 占号后本票 ADR 让号为
+  **0013**；合并后目标门禁复跑见 §3。
 - 状态：**`passed`**（本票范围 = 在 T055 摄取链上扩展 **CSV/XLSX 一种输入族**：
   解析器注册、行批次分块与 citation 行范围、公式/DTD/宏/压缩比/行列单元格上限的
   failed 文档与只读派生诊断位置、`/knowledge` 页面 CSV/XLSX 上传与行范围/位置展示。
@@ -186,16 +188,17 @@ $ python -m pytest tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finali
 > T024 artifact/T022 finalize 两个文件；`tests/f00b` 整包与 `tests/f05` 整包未在合并前
 > 整跑（合并后由集成门禁负责），故不写成"全绿"。
 
-合并 `integration/f13a-f15a-f09-f10`（tip `f1a5257`，含 T064）之后复跑：
+合并 `integration/f13a-f15a-f09-f10` 之后复跑（最终 tip `9f8f63e`，含 T058；
+merge commit `79af135`；迁移链到 0036）：
 
 ```text
-$ python -m pytest tests/f10 -q          # merge e48229b 之后（T055 20 + T064 13 + T059 8）
+$ python -m pytest tests/f10 -q          # merge 79af135 之后（T055 20 + T064 13 + T059 8）
 .........................................                                [100%]
-41 passed in 220.94s (0:03:40)
+41 passed in 269.94s (0:04:29)
 
 $ python -m pytest tests/tooling -q
 .....................                                                    [100%]
-21 passed in 6.71s
+21 passed in 5.81s
 
 $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
 (exit 0；33 个包 ok / 0 FAIL；gofmt clean)
@@ -209,7 +212,9 @@ no drift: spec copy and contract snapshot match the manifest
 > PROGRESS 引用同步更新。代码文件（`internal/knowledge/service.go` 的 ACL 硬化 +
 > 本票 citation 字段/诊断 detail、`internal/api/knowledge.go` 的 answer 端点 + detail
 > 视图、`knowledge.js/html` 的问答区 + 表格区）自动合并后，在 §3 的 41 passed 中一起
-> 被真实栈用例覆盖。
+> 被真实栈用例覆盖；第二次合入的 T058（F09 memory，迁移 0036）不触碰 F10 文件，
+> 迁移链连续性由 `tests/f10/test_t055_migration.py` 在 41 passed 中覆盖。
+> 中间复跑（merge `e48229b`）同样是 41 passed（220.94s）；两次结果一致。
 
 ## 4. 真实栈、输入与版本
 

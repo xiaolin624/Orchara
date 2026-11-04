@@ -1,4 +1,4 @@
-# 产品实现进度（权威）
+﻿# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -1321,7 +1321,7 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 安全/失败 | `<f>` 公式→`ingest_formula_not_supported`（sheet/row/column/cell，缓存值不使用）；DTD/实体→`ingest_dtd_not_supported`；宏→`ingest_macro_present`；路径穿越/条目 512/解压 64 MiB/压缩比 100（总量+单条目）复用 `internal/artifacts` 常量；工作表 64/数据行 10 000/列 64/单元格 640 064/单行 64 KiB；坏 CSV/坏 zip→具体码；全部 failed、business、0 chunk、检索空 |
 | 诊断 | `GET /knowledge-documents/{id}/diagnostics` 新增只读派生 `detail`：仅 failed + 解析拒绝码 + 记录 parser revision 未变 + 源 artifact 可读时，用同解析器重放同封存字节；源删/换版→null。不新增表/列/写路径，完成守卫仍是唯一状态写者（ADR 0013 §5） |
 | 真实栈 | `tests/f10/` 合并前 28 用例（T055 20 + T059 8），合并 T064 后 41 用例：CSV/XLSX 真实上传（`purpose=knowledge` 准入已存在）→ready→检索→citation 独立真值（封存字节 sha256、rune 切片、独立 Python zip+XML 行值）；10 类内容拒绝；公式重试仍失败→新 artifact 恢复 ready；csv+xlsx+txt 同 ACL/引用/撤销；页面结构 + Node 执行 `formatRowRange`/`describeFailureDetail`；夹具 2 541 B/3 297 B 已提交 + 确定性生成器 |
-| 门禁 | 合并前 `pytest tests/f10 -q` **28 passed**（289.16s / 286.58s 两次连跑）；合并 integration（T064）得 merge commit `e48229b` 后 `pytest tests/f10 -q` **41 passed**（220.94s，含 T064 13 用例）、`tests/tooling` 21 passed；`tests/tooling + f05 t028 quarantine/upload_flow` 37 passed、`f00b t024 artifacts/t022 finalize` 22 passed（合并前树）；`go build ./...`/`go vet ./...` exit 0；`go test ./...` 33 ok/0 FAIL；`gofmt -l .` 空；`sync_spec --check` no drift |
+| 门禁 | 合并前 `pytest tests/f10 -q` **28 passed**（289.16s / 286.58s 两次连跑）；两次合入 integration（含 T064、T058；最终 merge commit `79af135`）后 `pytest tests/f10 -q` **41 passed**（220.94s / 269.94s，含 T064 13 用例）、`tests/tooling` 21 passed；`tests/tooling + f05 t028 quarantine/upload_flow` 37 passed、`f00b t024 artifacts/t022 finalize` 22 passed（合并前树）；`go build ./...`/`go vet ./...` exit 0；`go test ./...` 33 ok/0 FAIL；`gofmt -l .` 空；`sync_spec --check` no drift |
 | 边界/not_run | 真实 embedding provider（继承 T055 blocked）；浏览器 DOM（not_run）；PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索规模/缓存（T064/T067）；XLSX 只读第一个工作表；全量 `pytest tests`、f05/f00b 整包 not_run（orchestrator）；未 push/未关 issue、未改 docs/spec/contracts、无迁移 |
 
 ## F10/T064 回答只引用本次检索且当前可读的资料（2026-11-04）
