@@ -100,8 +100,18 @@ def test_a_published_version_target_is_blocked_and_never_passed(t052_stack, tmp_
     assert case["status"] == "blocked" and case["verdict"] == "blocked", case
     assert case["reason_code"] == "unsupported_target", case
     assert "published_version" in case["detail"], case
-    # No run was created for a target this build cannot execute.
-    assert t052.case_run_rows(t052_stack.dbname, evaluation_id) == []
+    # No run was created for a target this build cannot execute. F13A/T065's
+    # progress bridge still records the runner's decision on the case row (that
+    # is what makes a runless case visible to the live progress read), so the
+    # baseline is deliberately migrated: one row, no run, blocked verdict.
+    case_runs = t052.case_run_rows(t052_stack.dbname, evaluation_id)
+    assert len(case_runs) == 1, case_runs
+    assert case_runs[0]["case_id"] == "published-target", case_runs[0]
+    assert case_runs[0]["ordinal"] == 0, case_runs[0]
+    assert case_runs[0]["run_id"] is None, case_runs[0]
+    assert case_runs[0]["state"] == "blocked", case_runs[0]
+    assert case_runs[0]["verdict"] == "blocked", case_runs[0]
+    assert case_runs[0]["reason_code"] == "unsupported_target", case_runs[0]
     assert "published_version targets are not executable" in " ".join(document["limits"])
 
 

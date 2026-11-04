@@ -223,9 +223,12 @@ def report_count(dbname: str) -> int:
 
 
 def case_run_rows(dbname: str, evaluation_id: str) -> list[dict]:
+    # `verdict` is F13A/T065's additive column: the runner's per-case decision,
+    # independent of the observed run state. T052's tests keep reading the same
+    # fields and may now also assert the decision on a runless case.
     return st.sql_rows(
         dbname,
-        "SELECT case_id, ordinal, run_id::text AS run_id, state, reason_code "
+        "SELECT case_id, ordinal, run_id::text AS run_id, state, reason_code, verdict "
         "FROM platform.evaluation_case_runs "
         f"WHERE evaluation_id = {st.quote_literal(evaluation_id)}::uuid ORDER BY ordinal",
     )

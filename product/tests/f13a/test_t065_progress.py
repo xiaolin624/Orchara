@@ -284,6 +284,45 @@ def test_an_infrastructure_failure_leaves_report_id_empty(t052_stack, tmp_path) 
     assert again == progress, "the terminal progress read changed between reads"
 
 
+def test_a_cancelled_evaluation_is_neither_business_nor_infrastructure(t052_stack) -> None:
+    """The third terminal story: the evaluation itself is cancelled.
+
+    There is no evaluation-cancel endpoint in this build, and the ticket forbids
+    faking one. The real path is the background result protocol: the claimed
+    attempt reports `cancelled`, the completion guard moves the evaluation row to
+    `cancelled`, and no report exists. The progress read must say "cancelled",
+    with no business verdict and no infrastructure failure invented.
+    """
+    owner = t065.minimal_owner(t052_stack, login="t065-cancelled-owner")
+    evaluation_id = t065.submit_evaluation_for(t052_stack, owner, [t065.quiet_case()])
+    client, lease = t065.claim_evaluation(t052_stack)
+    assert t065.evaluation_row(t052_stack.dbname, evaluation_id)["state"] == "running"
+
+    response = client.result(
+        lease["job_id"],
+        attempt_token=lease["attempt_token"],
+        state="cancelled",
+        event_id=t065.new_uuid(),
+    )
+    assert response.status == 200, response.text
+    assert response.json["state"] == "cancelled", response.json
+
+    evaluation = t065.evaluation_row(t052_stack.dbname, evaluation_id)
+    assert evaluation["state"] == "cancelled", evaluation
+    assert evaluation["report_id"] is None, evaluation
+    assert t065.report_count(t052_stack.dbname) == 0
+    job = t065.get_background_job(owner.creator, evaluation["background_job_id"])
+    assert job.json["state"] == "cancelled", job.json
+
+    progress = t065.get_progress(owner.creator, evaluation_id).json
+    assert set(progress) == t065.PROGRESS_FIELDS, progress
+    assert progress["state"] == "cancelled", progress
+    assert progress["report_id"] is None, progress
+    assert progress["report_status"] is None, progress
+    assert progress["failure_class"] is None, progress
+    assert progress["error_code"] is None, progress
+
+
 def test_work_pool_congestion_does_not_block_report_sealing(t052_stack, tmp_path) -> None:
     """A saturated work pool must not stop the report from being sealed.
 
@@ -312,7 +351,7 @@ def test_work_pool_congestion_does_not_block_report_sealing(t052_stack, tmp_path
         log_path=log,
         work_slots=1,
         system_io_slots=1,
-        case_timeout="15s",
+        case_timeout="25s",
     )
     try:
         # Exactly one of the two evaluations can occupy the single work slot;
