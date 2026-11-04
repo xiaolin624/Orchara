@@ -12,6 +12,12 @@
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
 T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030、T033、T037
 passed）** 与 **F03（T029、T031、T032、T034、T035、T036、T038 passed）**；其余票保持 open。
+**F06（T039–T051）与 F04A（T040、T042、T043、T049）已按 #40→#52 顺序交付，全部 13 个 issue
+关闭**；证据见各票报告、ADR 0007 与下方票表。批次最终门禁（2026-11-04，分支
+`feat/f06-f04a-models-and-workflow`，HEAD `b9147a8`）：`pytest tests -q` **1323 passed in
+4051.57s（67m31s）**，`go vet ./...`/`go test ./...`/`gofmt -l`/`sync_spec --check` 全绿；两轴
+复核的 10 个迁移链测试、stream manifest 绕过、connector 前缀边界、unknown replay 披露、approval
+等待错误吞掉、T042 cancel 测试与迁移约定均已修复（`t/review-fixes`，merge `b9147a8`）。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
