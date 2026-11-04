@@ -126,6 +126,16 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// dependency lock, manifest identity). Non-contract internal extension; the
 	// handler never reads the tool row itself.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/tool-build", s.handleInternalToolBuild)
+	// F13A/T052: the evaluation runner's run bridge. Maintenance-capacity and
+	// job-scoped; it creates the per-case run as the evaluation's owner and
+	// reads the independent truth (run state, sealed output, real operation
+	// ledger, citations). Non-contract; see internal/api/evaluation_runs.go and
+	// ADR 0006.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs", s.handleInternalEvaluationRun)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs/{run_id}/facts",
+		s.handleInternalEvaluationRunFacts)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs/{run_id}/interactions",
+		s.handleInternalEvaluationRunInteraction)
 
 	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
 	// capacities; heartbeat may be served by either the supervisor or the worker

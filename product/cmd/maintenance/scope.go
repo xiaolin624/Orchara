@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/evaluation"
 )
 
 // jobScope is the maintenance process's implementation of the handler seam.
@@ -123,10 +124,16 @@ func (s *jobScope) Evaluation(
 		return background.EvaluationBinding{}, err
 	}
 	return background.EvaluationBinding{
-		EvaluationID:      binding.EvaluationID,
-		Kind:              binding.Kind,
-		DatasetArtifactID: binding.DatasetArtifactID,
-		ManifestSHA256:    binding.ManifestSHA256,
+		EvaluationID:       binding.EvaluationID,
+		Kind:               binding.Kind,
+		DatasetArtifactID:  binding.DatasetArtifactID,
+		ManifestSHA256:     binding.ManifestSHA256,
+		SnapshotID:         binding.SnapshotID,
+		ApplicationID:      binding.ApplicationID,
+		DraftRevision:      binding.DraftRevision,
+		CompilerVersion:    binding.CompilerVersion,
+		WorkerImageDigest:  binding.WorkerImageDigest,
+		StateSchemaVersion: binding.StateSchemaVersion,
 	}, nil
 }
 
@@ -146,6 +153,80 @@ func (s *jobScope) ToolBuild(
 		DependencyLock:   binding.DependencyLock,
 		ManifestSHA256:   binding.ManifestSHA256,
 	}, nil
+}
+
+// EvaluationRun creates (or returns) the platform run for one evaluation case
+// as the evaluation's owner (F13A/T052). The handler supplies the canonical case
+// input; the server seals it, creates the run and its start job, and re-proves
+// the owner's current access.
+func (s *jobScope) EvaluationRun(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	input []byte,
+) (background.EvaluationRunRef, error) {
+	var raw json.RawMessage
+	if err := json.Unmarshal(input, &raw); err != nil {
+		return background.EvaluationRunRef{}, errors.New("the case input is not valid JSON")
+	}
+	ref, err := s.client.evaluationRun(ctx, jobID, attemptToken, caseID, raw)
+	if err != nil {
+		return background.EvaluationRunRef{}, err
+	}
+	return background.EvaluationRunRef{RunID: ref.RunID, Created: ref.Created}, nil
+}
+
+// EvaluationRunFacts reads the independent truth of one case run.
+func (s *jobScope) EvaluationRunFacts(
+	ctx context.Context,
+	jobID, attemptToken, runID string,
+) (background.EvaluationRunFacts, error) {
+	payload, err := s.client.evaluationRunFacts(ctx, jobID, attemptToken, runID)
+	if err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	facts := background.EvaluationRunFacts{
+		RunID:              payload.RunID,
+		State:              payload.State,
+		ErrorCode:          payload.ErrorCode,
+		OutputArtifactID:   payload.OutputArtifactID,
+		OutputSHA256:       payload.OutputSHA256,
+		Output:             payload.Output,
+		OutputCollected:    payload.OutputCollected,
+		Effects:            payload.EffectCounts,
+		EffectsCollected:   payload.EffectsCollected,
+		Citations:          payload.Citations,
+		CitationsCollected: payload.CitationsCollected,
+		Provenance:         payload.Provenance,
+	}
+	if facts.StartedAt, err = parseOptionalTime(payload.StartedAt); err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	if facts.FinishedAt, err = parseOptionalTime(payload.FinishedAt); err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	return facts, nil
+}
+
+// EvaluationRunInteraction performs one predefined interaction on a case run as
+// the evaluation's owner.
+func (s *jobScope) EvaluationRunInteraction(
+	ctx context.Context,
+	jobID, attemptToken, runID, interaction string,
+) error {
+	return s.client.evaluationRunInteraction(ctx, jobID, attemptToken, runID, interaction)
+}
+
+// parseOptionalTime decodes an RFC 3339 timestamp the server omitted (empty) or
+// sent.
+func parseOptionalTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil, errors.New("the evaluation run facts carry an invalid timestamp")
+	}
+	return &parsed, nil
 }
 
 // FetchURL reads one signed GET link, capped at maxBytes.
@@ -255,10 +336,16 @@ type modelCallPayload struct {
 
 // evaluationBindingPayload is the non-contract internal evaluation read (T026).
 type evaluationBindingPayload struct {
-	EvaluationID      string `json:"evaluation_id"`
-	Kind              string `json:"kind"`
-	DatasetArtifactID string `json:"dataset_artifact_id"`
-	ManifestSHA256    string `json:"manifest_sha256"`
+	EvaluationID       string `json:"evaluation_id"`
+	Kind               string `json:"kind"`
+	DatasetArtifactID  string `json:"dataset_artifact_id"`
+	ManifestSHA256     string `json:"manifest_sha256"`
+	SnapshotID         string `json:"snapshot_id"`
+	ApplicationID      string `json:"application_id"`
+	DraftRevision      int64  `json:"draft_revision"`
+	CompilerVersion    string `json:"compiler_version"`
+	WorkerImageDigest  string `json:"worker_image_digest"`
+	StateSchemaVersion string `json:"state_schema_version"`
 }
 
 // toolBuildBindingPayload is the non-contract internal tool-build binding (T037).
@@ -415,4 +502,102 @@ func (c *internalClient) evaluationBinding(
 		return evaluationBindingPayload{}, fmt.Errorf("evaluation binding returned unexpected status %d", status)
 	}
 	return response, nil
+}
+
+// evaluationRunPayload is the T052 bridge's create answer.
+type evaluationRunPayload struct {
+	RunID   string `json:"run_id"`
+	Created bool   `json:"created"`
+}
+
+// evaluationRunFactsPayload is the T052 bridge's independent-truth answer.
+type evaluationRunFactsPayload struct {
+	RunID              string                   `json:"run_id"`
+	State              string                   `json:"state"`
+	ErrorCode          string                   `json:"error_code"`
+	OutputArtifactID   *string                  `json:"output_artifact_id"`
+	OutputSHA256       string                   `json:"output_sha256"`
+	Output             json.RawMessage          `json:"output"`
+	OutputCollected    bool                     `json:"output_collected"`
+	EffectCounts       map[string]int64         `json:"effect_counts"`
+	EffectsCollected   bool                     `json:"effects_collected"`
+	Citations          []string                 `json:"citations"`
+	CitationsCollected bool                     `json:"citations_collected"`
+	Provenance         evaluation.RunProvenance `json:"provenance"`
+	StartedAt          string                   `json:"started_at"`
+	FinishedAt         string                   `json:"finished_at"`
+}
+
+// evaluationRun creates (or returns) one case's platform run.
+func (c *internalClient) evaluationRun(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	input json.RawMessage,
+) (evaluationRunPayload, error) {
+	body := map[string]any{
+		"attempt_token": attemptToken,
+		"case_id":       caseID,
+		"input":         input,
+	}
+	var response evaluationRunPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs",
+		body,
+		&response,
+	)
+	if err != nil {
+		return evaluationRunPayload{}, err
+	}
+	if status != http.StatusOK {
+		return evaluationRunPayload{}, fmt.Errorf("evaluation-runs returned unexpected status %d", status)
+	}
+	if response.RunID == "" {
+		return evaluationRunPayload{}, errors.New("evaluation-runs returned no run id")
+	}
+	return response, nil
+}
+
+// evaluationRunFacts reads one case run's independent truth.
+func (c *internalClient) evaluationRunFacts(
+	ctx context.Context,
+	jobID, attemptToken, runID string,
+) (evaluationRunFactsPayload, error) {
+	var response evaluationRunFactsPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs/"+
+			url.PathEscape(runID)+"/facts",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return evaluationRunFactsPayload{}, err
+	}
+	if status != http.StatusOK {
+		return evaluationRunFactsPayload{}, fmt.Errorf("evaluation-run facts returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// evaluationRunInteraction performs one predefined interaction on a case run.
+func (c *internalClient) evaluationRunInteraction(
+	ctx context.Context,
+	jobID, attemptToken, runID, interaction string,
+) error {
+	body := map[string]string{"attempt_token": attemptToken, "interaction": interaction}
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs/"+
+			url.PathEscape(runID)+"/interactions",
+		body,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("evaluation-run interaction returned unexpected status %d", status)
+	}
+	return nil
 }

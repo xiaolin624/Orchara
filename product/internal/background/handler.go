@@ -64,6 +64,9 @@ type HandlerSettings struct {
 	// ReportWaitTimeout bounds how long a handler waits for its own report
 	// artifact to be finalized by the system_io pool.
 	ReportWaitTimeout time.Duration
+	// EvaluationCaseTimeout bounds how long one evaluation case's run may take to
+	// reach a rest state. A timeout is recorded as not_run, never passed.
+	EvaluationCaseTimeout time.Duration
 	// ToolBuildTimeout bounds one sandboxed tool build (T037). A zero value means
 	// the handler's documented default.
 	ToolBuildTimeout time.Duration

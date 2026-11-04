@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"orchara/platform/internal/evaluation"
 )
 
 // JobScope is how a compiled handler reaches job-scoped platform data.
@@ -34,6 +36,20 @@ type JobScope interface {
 	// declare. The server resolves all of them; the handler supplies only its
 	// lease proof.
 	Evaluation(ctx context.Context, jobID, attemptToken string) (EvaluationBinding, error)
+	// EvaluationRun creates (or returns) the platform run that executes one
+	// evaluation case, as the evaluation's owner, from the evaluation's frozen
+	// snapshot. The handler supplies the case input bytes; the server seals them,
+	// creates the run and its start job, and re-proves the owner's access. It is
+	// the F13A/T052 bridge (ADR 0006).
+	EvaluationRun(ctx context.Context, jobID, attemptToken, caseID string, input []byte) (EvaluationRunRef, error)
+	// EvaluationRunFacts reads the independent truth of one evaluation case run:
+	// its state, its sealed output artifact, the real operation ledger counts and
+	// the citation sources that output declares. It is a platform read, never the
+	// model's trace.
+	EvaluationRunFacts(ctx context.Context, jobID, attemptToken, runID string) (EvaluationRunFacts, error)
+	// EvaluationRunInteraction performs one predefined interaction on the case
+	// run as the evaluation's owner (this build performs cancel only).
+	EvaluationRunInteraction(ctx context.Context, jobID, attemptToken, runID, interaction string) error
 	// ToolBuild returns the job-scoped build binding (T037): the admitted source
 	// artifact/hash and the canonical dependency lock. The handler never reads
 	// the tool row itself.
@@ -92,4 +108,31 @@ type ModelCallResult struct {
 	State            string
 	ResultArtifactID *string
 	Data             map[string]any
+}
+
+// EvaluationRunRef is one evaluation case's platform run, as the bridge
+// answers it (F13A/T052).
+type EvaluationRunRef struct {
+	RunID   string
+	Created bool
+}
+
+// EvaluationRunFacts is the independent truth of one case run. Each *Collected
+// flag separates "the platform said none" from "the fact could not be read":
+// the checker treats an uncollected fact as a failure, never as zero.
+type EvaluationRunFacts struct {
+	RunID              string
+	State              string
+	ErrorCode          string
+	OutputArtifactID   *string
+	OutputSHA256       string
+	Output             json.RawMessage
+	OutputCollected    bool
+	Effects            map[string]int64
+	EffectsCollected   bool
+	Citations          []string
+	CitationsCollected bool
+	Provenance         evaluation.RunProvenance
+	StartedAt          *time.Time
+	FinishedAt         *time.Time
 }
