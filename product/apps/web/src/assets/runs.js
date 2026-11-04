@@ -143,6 +143,23 @@ function describeCapabilityOperation(operation) {
     : '';
   const fallbackReason = value.fallback_reason ? String(value.fallback_reason) : '';
   const fallbackReasonText = capabilityFallbackReasonText(fallbackReason);
+  // F06/T051: an unknown external write is never shown as a failure. The ledger
+  // carries the reconcile facts; the page only renders them and posts the
+  // owner's evidence-backed conclusion.
+  const reconciliationLimitation = value.reconciliation_limitation
+    ? String(value.reconciliation_limitation)
+    : '';
+  const reconciliationConclusion = value.reconciliation_conclusion
+    ? String(value.reconciliation_conclusion)
+    : '';
+  const reconciliationEvidenceID = value.reconciliation_evidence_id
+    ? String(value.reconciliation_evidence_id)
+    : '';
+  const requiresReconciliation = String(value.state || '') === 'unknown';
+  const reconciled = reconciliationEvidenceID !== '' || reconciliationConclusion !== '';
+  const providerIdempotencyKey = value.provider_idempotency_key
+    ? String(value.provider_idempotency_key)
+    : '';
   const chargedAmount =
     value.charged_amount === undefined || value.charged_amount === null
       ? ''
@@ -174,6 +191,16 @@ function describeCapabilityOperation(operation) {
     riskClass,
     riskText,
     isConnector: String(value.capability_kind || '') === 'connector',
+    // F06/T051 reconciliation projection.
+    requiresReconciliation,
+    reconciliationLimitation,
+    reconciliationLimitationText: reconciliationLimitationText(reconciliationLimitation),
+    reconciliationConclusion,
+    reconciliationConclusionText: reconciliationConclusionText(reconciliationConclusion),
+    reconciliationEvidenceID,
+    reconciled,
+    providerIdempotencyKey,
+    writeCountText: '真实写次数 ' + attempts + '（核对不增加）',
     toolCalls,
     toolCallsText: summarizeToolCalls(value.tool_call_summary),
     structuredKeys: keys,
@@ -224,6 +251,157 @@ function describeCapabilityLedger(body) {
       described.length === 0
         ? '还没有受控调用（模型调用或已授权的工具调用会出现这里）。'
         : '共有 ' + described.length + ' 次受控调用。',
+  };
+}
+
+/** F06/T051: the owner reconcile path for one unknown operation. */
+function reconcileOperationPath(operationId) {
+  return '/api/v1/operations/' + encodeURIComponent(String(operationId || '')) + '/reconcile';
+}
+
+/** The recorded connector limitation as an explicit owner-facing disclosure. */
+function reconciliationLimitationText(limitation) {
+  switch (String(limitation || '')) {
+    case 'no_idempotency_or_query_support':
+      return '该连接器没有供应商幂等键或查询回执能力：平台无法向供应商确认结果，只能由授权证据核对结案，且不会自动补发。';
+    default:
+      return String(limitation || '');
+  }
+}
+
+/** The reconciliation conclusion as the owner-facing label. */
+function reconciliationConclusionText(conclusion) {
+  switch (String(conclusion || '')) {
+    case 'confirmed_success':
+      return '已确认写入成功';
+    case 'confirmed_not_sent':
+      return '已确认未发送';
+    case 'confirmed_failure':
+      return '已确认写入失败';
+    default:
+      return String(conclusion || '');
+  }
+}
+
+/**
+ * F06/T051: one unknown operation's reconcile state and the exact disclosure the
+ * panel shows. Only ledger fields are read; the evidence body is never here.
+ */
+function describeReconciliation(operation) {
+  const value = operation || {};
+  const state = String(value.state || '');
+  const requires = state === 'unknown';
+  const conclusion = value.reconciliation_conclusion
+    ? String(value.reconciliation_conclusion)
+    : '';
+  const evidence = value.reconciliation_evidence_id
+    ? String(value.reconciliation_evidence_id)
+    : '';
+  const limitation = value.reconciliation_limitation
+    ? String(value.reconciliation_limitation)
+    : '';
+  const attempts = Number(value.attempts || 0);
+  if (requires) {
+    return {
+      required: true,
+      canSubmit: true,
+      settled: false,
+      operationId: String(value.id || ''),
+      state,
+      statusText: '结果未知：写入可能已发生，必须由 owner/审批人提交证据核对；平台不会自动补发。',
+      limitation,
+      limitationText: reconciliationLimitationText(limitation),
+      providerIdempotencyKey: '',
+      attempts,
+      writeCountText: '真实写次数 ' + attempts,
+      conclusion: '',
+      conclusionText: '',
+      evidenceArtifactID: '',
+    };
+  }
+  return {
+    required: false,
+    canSubmit: false,
+    settled: evidence !== '' || conclusion !== '',
+    operationId: String(value.id || ''),
+    state,
+    statusText:
+      evidence === '' && conclusion === ''
+        ? '已结算：该操作不需要核对。'
+        : '已核对：' + reconciliationConclusionText(conclusion) + '（证据 ' +
+          (evidence === '' ? '—' : evidence) + '）。',
+    limitation,
+    limitationText: reconciliationLimitationText(limitation),
+    providerIdempotencyKey: value.provider_idempotency_key
+      ? String(value.provider_idempotency_key)
+      : '',
+    attempts,
+    writeCountText: '真实写次数 ' + attempts,
+    conclusion,
+    conclusionText: reconciliationConclusionText(conclusion),
+    evidenceArtifactID: evidence,
+  };
+}
+
+/**
+ * F06/T051: the exact POST the reconcile form submits. The Idempotency-Key is a
+ * real client key: the same conclusion/evidence retried with the same key is the
+ * server's idempotent replay, never a second settlement.
+ */
+function describeReconcileRequest(operationId, conclusion, evidenceArtifactID, idempotencyKey) {
+  return {
+    path: reconcileOperationPath(operationId),
+    method: 'POST',
+    headers: { 'Idempotency-Key': String(idempotencyKey || '') },
+    body: {
+      conclusion: String(conclusion || ''),
+      evidence_artifact_id: String(evidenceArtifactID || ''),
+    },
+  };
+}
+
+/**
+ * F06/T051: the post-reconcile proof shown to the owner. The physical attempt
+ * count must not have increased: reconciliation means "settle the unknown write",
+ * never "send it again".
+ */
+function describeReconcileOutcome(before, after) {
+  const beforeCount = Number((before && before.attempts) || 0);
+  const afterCount = Number((after && after.attempts) || 0);
+  const unchanged = beforeCount === afterCount;
+  const state = String((after && after.state) || '');
+  const conclusionText = reconciliationConclusionText(
+    (after && after.reconciliation_conclusion) || ''
+  );
+  return {
+    beforeCount,
+    afterCount,
+    unchanged,
+    state,
+    text: unchanged
+      ? '核对完成：' + (conclusionText || state) + '；真实写次数仍为 ' + afterCount + '（未增加）。'
+      : '核对完成，但真实写次数从 ' + beforeCount + ' 变成 ' + afterCount + '（异常，请调查）。',
+  };
+}
+
+/** F06/T051: the unknown-operation summary line the panel shows. */
+function describeUnknownWrites(body) {
+  const items = Array.isArray(body && body.items) ? body.items : [];
+  const unknown = items.filter((item) => String((item && item.state) || '') === 'unknown');
+  const limitations = new Set(
+    unknown
+      .map((item) => String((item && item.reconciliation_limitation) || ''))
+      .filter((value) => value !== '')
+  );
+  return {
+    count: unknown.length,
+    operationIds: unknown.map((item) => String((item && item.id) || '')),
+    limitations: Array.from(limitations),
+    empty: unknown.length === 0,
+    text:
+      unknown.length === 0
+        ? '没有结果未知的外部写。'
+        : '有 ' + unknown.length + ' 个外部写结果未知，等待授权核对；核对不会重发，也不会增加真实写次数。',
   };
 }
 
@@ -1391,7 +1569,14 @@ function renderCapabilityRow(operation) {
     '风险 ' + operation.riskText + ' · ' +
       operation.stubLabel +
       (operation.fallbackText ? ' · ' + operation.fallbackText : '') +
-      (operation.errorText ? ' · ' + operation.errorText : ''),
+      (operation.errorText ? ' · ' + operation.errorText : '') +
+      (operation.requiresReconciliation ? ' · 结果未知（待核对）' : '') +
+      (operation.reconciled && operation.reconciliationConclusionText
+        ? ' · ' + operation.reconciliationConclusionText
+        : '') +
+      (operation.reconciliationLimitationText
+        ? ' · ' + operation.reconciliationLimitationText
+        : ''),
   ];
   for (const text of cells) {
     const cell = document.createElement('td');
@@ -1402,6 +1587,141 @@ function renderCapabilityRow(operation) {
     row.title = operation.version;
   }
   return row;
+}
+
+// F06/T051: one unknown operation's reconcile form. The conclusion and the
+// evidence artifact are explicit user choices; the page never guesses them and
+// never retries the write itself.
+function renderReconcileRow(operation) {
+  const row = document.createElement('tr');
+  row.className = 'reconcile-row';
+  const cell = document.createElement('td');
+  cell.colSpan = 8;
+
+  const title = document.createElement('strong');
+  title.textContent = '核对外部写（' + operation.id + '）：';
+  cell.appendChild(title);
+
+  const hint = document.createElement('span');
+  hint.textContent = operation.reconciliationLimitationText
+    ? operation.reconciliationLimitationText + ' '
+    : '';
+  cell.appendChild(hint);
+
+  const conclusion = document.createElement('select');
+  conclusion.id = 'reconcile-conclusion-' + operation.id;
+  for (const option of [
+    ['confirmed_success', '已确认写入成功'],
+    ['confirmed_not_sent', '已确认未发送'],
+    ['confirmed_failure', '已确认写入失败'],
+  ]) {
+    const item = document.createElement('option');
+    item.value = option[0];
+    item.textContent = option[1];
+    conclusion.appendChild(item);
+  }
+  cell.appendChild(conclusion);
+
+  const evidence = document.createElement('input');
+  evidence.id = 'reconcile-evidence-' + operation.id;
+  evidence.type = 'text';
+  evidence.placeholder = '证据 artifact id';
+  evidence.size = 40;
+  cell.appendChild(evidence);
+
+  const button = document.createElement('button');
+  button.id = 'reconcile-button-' + operation.id;
+  button.type = 'button';
+  button.textContent = '提交核对证据';
+  button.addEventListener('click', () => {
+    submitReconciliation(operation.id);
+  });
+  cell.appendChild(button);
+
+  const status = document.createElement('span');
+  status.id = 'reconcile-status-' + operation.id;
+  status.className = 'status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  cell.appendChild(status);
+
+  row.appendChild(cell);
+  return row;
+}
+
+// F06/T051: submit the owner's evidence-backed conclusion. The Idempotency-Key
+// makes a retried click a replay, not a second settlement; the outcome line
+// proves the physical write count did not increase.
+async function submitReconciliation(operationId) {
+  const select = document.getElementById('reconcile-conclusion-' + operationId);
+  const evidence = document.getElementById('reconcile-evidence-' + operationId);
+  const button = document.getElementById('reconcile-button-' + operationId);
+  const status = document.getElementById('reconcile-status-' + operationId);
+  const beforeBody = lastCapabilityLedger;
+  const beforeItem =
+    beforeBody && Array.isArray(beforeBody.items)
+      ? beforeBody.items.find((item) => String(item && item.id) === String(operationId))
+      : null;
+  const idempotencyKey =
+    'reconcile-' + String(operationId) + '-' + String(Number(Date.now()) || 0);
+  const request = describeReconcileRequest(
+    operationId,
+    select ? select.value : '',
+    evidence ? evidence.value.trim() : '',
+    idempotencyKey
+  );
+  if (!request.body.evidence_artifact_id) {
+    if (status) {
+      status.textContent = '请先填写证据 artifact id。';
+      status.className = 'status bad';
+    }
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  if (status) {
+    status.textContent = '正在提交核对…';
+    status.className = 'status pending';
+  }
+  try {
+    const token = await csrf();
+    await api(request.path, {
+      method: request.method,
+      body: request.body,
+      csrf: token,
+      headers: request.headers,
+    });
+    await loadCapabilityLedger(lastCapabilityRunID);
+    const afterBody = lastCapabilityLedger;
+    const afterItem =
+      afterBody && Array.isArray(afterBody.items)
+        ? afterBody.items.find((item) => String(item && item.id) === String(operationId))
+        : null;
+    const outcome = describeReconcileOutcome(
+      describeCapabilityOperation(beforeItem || {}),
+      describeCapabilityOperation(afterItem || {})
+    );
+    if (status) {
+      status.textContent = outcome.text;
+      status.className = 'status ' + (outcome.unchanged ? 'ok' : 'bad');
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    if (status) {
+      status.textContent =
+        '核对失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误');
+      status.className = 'status bad';
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
 }
 
 // T041: the owner-only controlled-capability ledger. It shows identity, state,
@@ -1417,12 +1737,20 @@ async function loadCapabilityLedger(runId) {
   try {
     const body = await api(runCapabilitiesPath(runId));
     lastCapabilityLedger = body && typeof body === 'object' ? body : null;
+    lastCapabilityRunID = String(runId || '');
     const ledger = describeCapabilityLedger(body);
-    capabilityStatus(ledger.text, ledger.empty ? '' : 'ok');
+    const unknown = describeUnknownWrites(body);
+    capabilityStatus(
+      ledger.text + (unknown.empty ? '' : ' ' + unknown.text),
+      unknown.empty ? (ledger.empty ? '' : 'ok') : 'bad'
+    );
     const budget = describeRunBudget(body);
     budgetStatus(budget.text, budget.overrun ? 'bad' : budget.known ? 'ok' : '');
     for (const operation of ledger.items) {
       rows.appendChild(renderCapabilityRow(operation));
+      if (operation.requiresReconciliation) {
+        rows.appendChild(renderReconcileRow(operation));
+      }
     }
     renderAgentNodePanel();
   } catch (error) {
@@ -1863,6 +2191,9 @@ function nodeResultsStatus(message, kind) {
 // per-operation state are already the non-secret ledger projection.
 // ---------------------------------------------------------------------------
 let lastCapabilityLedger = null;
+// F06/T051: the run the reconcile form belongs to. A reconcile reloads this
+// ledger so the owner sees the settled state and the unchanged write count.
+let lastCapabilityRunID = '';
 
 function agentNodeIDOf(nodeBody, ledgerBody, statuses) {
   const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
