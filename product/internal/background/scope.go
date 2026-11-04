@@ -42,7 +42,7 @@ type JobScope interface {
 	// creates the run and its start job, and re-proves the owner's access. A
 	// non-nil taskInput asks the server to bind the owner's own fixture to the
 	// run as its task_input artifact (F13A/T056). It is the F13A/T052 bridge
-	// (ADR 0011, extended by ADR 0015).
+	// (ADR 0011, extended by ADR 0017).
 	EvaluationRun(ctx context.Context, jobID, attemptToken, caseID string, input []byte, taskInput *evaluation.TaskInputBinding) (EvaluationRunRef, error)
 	// EvaluationRunFacts reads the independent truth of one evaluation case run:
 	// its state, its sealed output artifact, the real operation ledger counts and

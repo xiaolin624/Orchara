@@ -4,7 +4,7 @@ package api
 //
 //	GET /api/v1/evaluation-reports/{report_id}/cases
 //
-// It is a documented non-contract extension (ADR 0015): the contract's Report has
+// It is a documented non-contract extension (ADR 0017): the contract's Report has
 // no per-case detail, and the sealed report document is the product's immutable
 // per-case evidence. The read is owner-or-admin, an API key needs
 // application:read, and every non-owner gets 404 — the same answer as a missing
