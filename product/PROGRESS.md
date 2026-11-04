@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -1413,7 +1413,7 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 解析 | `orchara-pdf-parser/1`（`internal/knowledge/pdf.go`，新依赖 `rsc.io/pdf v0.1.1` BSD-3）：`Tj/TJ/'/" + Td/TD/T*/Tm/TL` 文本矩阵重建；基线下移 1.7×字号 = 段落空行、同行 ¼ em 间隙 = 空格；WinAnsi/MacRoman/pdfDoc/ToUnicode 解码；Form XObject 深度 4。`Parsed.Text` = 页文本拼接（`\n\n`，`text_render=pdf_pages/1`），`Parsed.PDF` 记录逐页 rune span 与 `EmptyPages`。损坏/panic → `pdf_invalid`，`/Encrypt`/密码失败 → `pdf_encrypted`（不解密） |
 | 分块/citation | `orchara-pdf-page-paragraph-chunker/1`：复用 T055 段落打包（≤1200 rune、超长 1200/200 重叠）但**逐页**运行，块不跨页；citation additive `pdf{page_start,page_end,page_char_start,page_char_end,page_count,pages_without_text}`（嵌套对象，因 `page_char_start=0` 平铺 `omitempty` 会丢）；chunk body 仍是封存 artifact，完成守卫未改 |
 | 无文字层 | `MinPDFTextRunes=32` 非空白 rune；低于门槛 → `pdf_no_text_layer`（detail `part/limit/value`）failed、0 chunk、检索空、重试仍失败；图片-only 页在部分文字层文档中不产生 chunk 并进入 `pages_without_text`。**不做 OCR**，扫描件不冒充成功 |
-| 对照 | `probes/f10_pdf_compare/`：Go 基线走真实 `ParserFor`/`ChunkParsed`；Docling 2.146.0 Native+HierarchicalChunker 在隔离 venv 真跑（pip exit 0/306.5 s；模型 505 MB；峰值 RSS 1.89 GB）；PyMuPDF/pypdf/pdfminer 标注为 available substitute（非 Docling）。冻结 5 夹具上 coverage/page-exact/attribution 均不优于基线（pdfminer 布局页 0.5417/0-of-1），替代方案还会把短文本扫描页当可检索 → 四候选全部**淘汰**，保留基线（ADR 0016 §6） |
+| 对照 | `probes/f10_pdf_compare/`：Go 基线走真实 `ParserFor`/`ChunkParsed`；Docling 2.146.0 Native+HierarchicalChunker 在隔离 venv 真跑（pip exit 0/306.5 s；模型 505 MB；峰值 RSS 1.89 GB）；PyMuPDF/pypdf/pdfminer 标注为 available substitute（非 Docling）。票面分块候选 LlamaIndex `SentenceSplitter` 不在 probe 依赖内、未运行，替代候选改用本 probe 手写的 `sentence-packer/1`（comparison JSON 标注 substitute；基线仍是注册 Go parser/chunker）；Docling 候选本身真实运行，但 “Docling Native/SentenceSplitter” 组合未原样测量。冻结 5 夹具上 coverage/page-exact/attribution 均不优于基线（pdfminer 布局页 0.5417/0-of-1），替代方案还会把短文本扫描页当可检索 → 四候选全部**淘汰**，保留基线（ADR 0016 §6） |
 | 真实栈 | `tests/f10/` 新增 13 用例：plain 3 页 ready + 页码/页内偏移/全局 span 独立真值（committed reference 切片）、partial 空页 [2] 如实记录、scanned/短文本 `pdf_no_text_layer` + 重试仍 failed + 新 artifact 恢复、invalid/encrypted 失败码、PDF 与 txt 同 ACL/撤销/404、准入 422/quarantine、迁移词表、页面结构 + Node 执行 `formatPageRange`；另现场重跑 comparison 断言测量属性 |
 | 门禁 | `pytest tests/f10 -q` 见 §3 两次连跑（54 用例）+ `tests/tooling`；`go build ./...`/`go vet ./...`/`go test ./...` 全绿；`gofmt -l .` 空；`sync_spec --check` no drift；对照 JSON/原始 pip 日志已提交 |
 | 边界/not_run | OCR 明确不做；Type0/CID 精确宽度/复杂排版 not_run（已知边界）；真实 embedding provider 继承 T055 blocked；浏览器 DOM not_run；版本重建（T061）、删除治理（F07/T058）、检索规模/缓存（T064/T067）；全量 `pytest tests` orchestrator；未 push/未关 issue、未改 docs/spec/contracts |
@@ -1443,6 +1443,44 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 真实栈 | `tests/f10/test_t067_{migration,cache,rag_classes,comparison}.py` 共 16 用例 + Go 单测（键/开关/策略/wrong-answer）：真实 PG 16.4（迁移链 0001→0037、重复 migrate no-op、worker 零权限）、编译 `cmd/api`、真实 HTTP、真实封存字节、真实 `document_ingest` maintenance、第二/第三真实 API 进程（cache off / dev-stub 故障）；真实活缓存行注入、文档 tombstone、KB revision bump、复制 revision 2 chunk 行 |
 | 门禁 | `pytest tests/f10 -q` 57 passed ×3（688.47s / 721.45s 背靠背；merge `e225967` 后 762.66s）；`tests/tooling` 21 passed；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 干净；合并仅 PROGRESS 冲突（T062 + T067 双方保留），ADR 0014 被 T062 占用 → 本票重编号 0015 |
 | 边界/not_run | Redis 不采用（ADR 0015 D1）；异步驱逐/物理清理（F07 优化，正确性不依赖）；真实 embedding provider（继承 T055 blocked）；ANN/规模（not_run）；浏览器 DOM（无页面改动，not_run）；全量 `pytest tests`（orchestrator）；未 push/未关 issue、未改 docs/spec/contracts |
+
+## 批次完成记录：#53–#68 / T052–T067（2026-11-04）
+
+本批 16 票（T052–T067，GitHub #53–#68）全部合入 `integration/f13a-f15a-f09-f10`；
+批次完成时 tip 为 **`4537ef2`**（`f1112ed` 上的 T061 迁移链测试修正）；其后的评审修复
+提交（`6e481a4` 至 `18ec66b`）只修评审项，不改变合并顺序与票面结论。按 first-parent
+合并顺序（按票）：T053 → T057 → T054 → T055 → T052 → T064 → T058 → T059 → T062 →
+T067 → T060 → T063 → T056 → T066 → T061 → T065；T053 有过一次载荷修正二次合入，
+其余为合并重编号/门禁修正提交（最终 ADR/迁移编号以 `docs/adr/` 与 `db/migrations/` 为准）。
+各票的例外结论保持原样：T053 候选 S3 验收 **blocked**（本机无候选端点），T066 是
+**`do_not_adopt`** 实验票。
+
+**状态闭合（覆盖本文件更早的行文，不改写各票行）**：
+
+- **#53/T052 的 `partial` 边界由 T056 闭合**：T052 当时的未闭合项是“案例输入不能引用
+  调用方 CSV”；T056 按内容 sha256 把调用方 fixture 绑定为 run 的 `task_input` 后，真实
+  succeeded 销售案例（CSV/XLSX）逐例 `passed` 并进入密封报告
+  （`tests/f13a/test_t056_sales.py::test_a_succeeded_csv_sales_case_yields_a_passed_report`）。
+  T052 行的 `partial` 是历史记录。
+- **取消案例不再是 `passed`**：T062 把“完成”收紧为 `CompletedRunState`（仅 succeeded/
+  failed），cancelled → `failed/run_cancelled`（`internal/evaluation/collect.go`；
+  `tests/f13a/test_t062_runner.py::test_a_cancelled_case_never_passes`）。T052 行/报告里
+  “预定 cancel 使报告 `passed`”的文字同样是 G1 修复前的历史，当前以 T062 为准。
+
+**非契约面（不要当成契约）**：以下表面是票面 AC 所需、经 ADR 记录的非契约增量；
+`contracts/**` 与 `docs/spec/**` 本批未改，`python tools/sync_spec.py --check` no drift：
+
+| 非契约面 | 为什么需要 | ADR |
+|---|---|---|
+| `GET /api/v1/evaluation-reports/{id}/cases` | T056 的逐例期望/实际/证据读取；契约只有提交与整体报告 | 0017 |
+| `GET /api/v1/evaluations/{id}/progress` | T065 的异步进展读取（且不从 state 换算百分比） | 0019 |
+| 检索/引用/回答的 additive 字段（`retrieval.*`、`generation.*`、citation 的 `pdf` 等） | T055/T060/T064 要可追溯引用与有依据回答；契约的检索/引用形状不承载这些证据 | 0010/0012/0016 |
+| `retrieval.index`（活动索引版本） | T061 证明“哪套索引/模型服务了本次结果”，不改变契约响应形状 | 0018 |
+| `retrieval.cache`（命中/未命中元数据） | T067 做 cache on/off 对照，并证明命中仍逐项复检 | 0015 |
+| `ORCHARA_KNOWLEDGE_ANSWER_FAULTS`（`wrong-answer` 等） | #68/T067 的“四类 RAG 失败分别定位”需要确定性复现路径；仅 stub profile 生效、只能造成拒绝/错误答案标签，不是生产配置面 | 0012/0015 |
+
+其余非契约面（T062 管理员归属读、F09 记忆端点、T060 的 `application/pdf` 准入与解析器
+revision）分别见各票行、报告与 ADR 0014/0009/0016。
 
 ## 记录模板
 

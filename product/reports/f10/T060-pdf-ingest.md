@@ -340,6 +340,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 | 上传准入（purpose-scoped pdf） | **real executed** | Go 单测 + 真实 HTTP（task_input 422、假 PDF quarantined content_type_mismatch、真 PDF accepted） |
 | Docling 候选 | **real executed（measured）** | 隔离 venv 安装 exit 0、真实转换 5 夹具、原始 pip 日志提交；转换质量与资源数字见 §5/§6 |
 | PyMuPDF/pypdf/pdfminer 候选 | **real executed（available substitute，非 Docling）** | 同一冻结夹具、同一 sentence chunker；数字见 §6 |
+| LlamaIndex `SentenceSplitter`（票面分块候选） | **not_run / labelled substitute** | 票面命名 “Docling Native/SentenceSplitter”；本 probe 未安装 llama-index（不在探针依赖要求内），替代候选改用本 probe 手写的 `sentence-packer/1`（comparison JSON 逐候选标注 “this probe, written for T060”；基线仍是注册的 Go parser/chunker）。Docling 候选本身（Native + `HierarchicalChunker`）真实安装/运行，但其 chunker 不是 LlamaIndex `SentenceSplitter`，故 “Docling Native/SentenceSplitter” 组合未原样测量 |
 | 真实 embedding provider | **blocked** | 继承 T055：无凭据/构建无 adapter；handler/HTTP fail closed，从不回退本地向量 |
 | OCR | **not_run / 明确不做** | 平台无 OCR 组件，票面不扩展 OCR 承诺；扫描件固定 `pdf_no_text_layer` |
 | Type0/CID 精确宽度与复杂排版 | **not_run / 已知边界** | 普通文本 PDF 子集；编码仍经 ToUnicode，但宽度为近似；复杂多栏/旋转文本不承诺 |
