@@ -1,0 +1,64 @@
+{
+  "probe": "f15a-s3-compat",
+  "probe_version": "1.0.0",
+  "ticket": "T053/F15A",
+  "scope": "candidate-s3",
+  "run_id": "9d03a6a8a48411a9",
+  "started_at": "2026-11-04T08:16:27.716+00:00",
+  "environment": {
+    "python": "3.12.2",
+    "python_implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "probe_version": "1.0.0"
+  },
+  "config": {
+    "endpoint": "http://127.0.0.1:9000",
+    "endpoint_host": "127.0.0.1:9000",
+    "scheme": "http",
+    "bucket": "probe-bucket",
+    "region": "us-east-1",
+    "tenant_prefix": "orchara-probe",
+    "addressing_style": "path",
+    "short_ttl_seconds": 1,
+    "expiry_skew_seconds": 0.0,
+    "timeout_seconds": 10.0,
+    "retries": 2,
+    "ca_file_configured": false,
+    "credentials_present": {
+      "runtime": true,
+      "provisioning": true
+    },
+    "profile": "candidate"
+  },
+  "assertions": [],
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0,
+    "not_run": 0
+  },
+  "client_stats": {
+    "requests": 3,
+    "retries": 2
+  },
+  "cleanup": {
+    "attempted": 0,
+    "deleted": 0,
+    "failed": []
+  },
+  "limits": [
+    "a passing run is a compatibility observation, not a licence, backup/restore or capacity review",
+    "TLS, proxy and signature behaviour is only what the configured endpoint actually did",
+    "IAM policy is asserted only for the two configured credentials; other roles are untested",
+    "object versioning is asserted only when the candidate exposes it (otherwise not_run)",
+    "backup/restore, cross-region replication and server-side encryption are not exercised"
+  ],
+  "status": "blocked",
+  "exit_code": 2,
+  "finished_at": "2026-11-04T08:16:34.378+00:00",
+  "duration_ms": 6655,
+  "blocked_reason": {
+    "code": "endpoint_unreachable",
+    "message": "cannot reach http://127.0.0.1:9000: ConnectionRefusedError: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"
+  }
+}
