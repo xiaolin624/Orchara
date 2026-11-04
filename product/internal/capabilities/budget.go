@@ -142,6 +142,27 @@ func settleFailureUsage(projection *providerProjection) (tokensIn, tokensOut int
 	return projection.TokensIn, projection.TokensOut, true
 }
 
+// usageProjection recovers the provider-reported usage from a completed answer
+// whose later checks (for example the streaming assembly check) refused it. The
+// provider answered and its tokens are real consumption, so the post-provider
+// failure path must settle the charge instead of releasing the reservation.
+func usageProjection(data map[string]any) *providerProjection {
+	if data == nil {
+		return nil
+	}
+	raw, present := data["usage"]
+	if !present {
+		return nil
+	}
+	parsed, problems := parseUsage(raw)
+	if len(problems) > 0 || parsed == nil {
+		return nil
+	}
+	return &providerProjection{
+		Usage: parsed, TokensIn: parsed.InputTokens, TokensOut: parsed.OutputTokens,
+	}
+}
+
 // ReconcileRequest is the maintenance-owned settlement of a retained
 // missing-usage reservation.
 type ReconcileRequest struct {

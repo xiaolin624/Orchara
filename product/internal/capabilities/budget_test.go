@@ -44,3 +44,35 @@ func TestSettleFailureUsageRequiresAParsedProviderUsage(t *testing.T) {
 		})
 	}
 }
+
+// A completed streamed answer that a later assembly check refuses still carries
+// the provider's usage object. Recovering it makes that failure settle exactly
+// like every other post-provider failure.
+func TestUsageProjectionRecoversTheReportedUsage(t *testing.T) {
+	if projection := usageProjection(nil); projection != nil {
+		t.Fatalf("nil data produced %+v", projection)
+	}
+	if projection := usageProjection(map[string]any{"text": "answer"}); projection != nil {
+		t.Fatalf("missing usage produced %+v", projection)
+	}
+	if projection := usageProjection(map[string]any{
+		"usage": map[string]any{"input_tokens": "twelve", "output_tokens": 1},
+	}); projection != nil {
+		t.Fatalf("invalid usage produced %+v", projection)
+	}
+
+	projection := usageProjection(map[string]any{
+		"usage": map[string]any{"input_tokens": 12, "output_tokens": 34},
+	})
+	if projection == nil || projection.Usage == nil {
+		t.Fatal("a valid usage object was not recovered")
+	}
+	if projection.TokensIn != 12 || projection.TokensOut != 34 {
+		t.Fatalf("tokens=(%d,%d), want (12,34)", projection.TokensIn, projection.TokensOut)
+	}
+	if tokensIn, tokensOut, settle := settleFailureUsage(projection); !settle ||
+		tokensIn != 12 || tokensOut != 34 {
+		t.Fatalf("recovered usage did not settle: settle=%v tokens=(%d,%d)",
+			settle, tokensIn, tokensOut)
+	}
+}
