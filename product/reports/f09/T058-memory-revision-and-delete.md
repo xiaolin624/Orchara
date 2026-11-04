@@ -2,7 +2,8 @@
 
 - 任务：F09 / GitHub Issue #59（票 `T058`，规划 ID F09.02/F09.03）；分支
   `t/t058-memory-revision`（worktree `E:\orchara-worktrees\t058`）；父门禁 #53–#68
-  集成批次（`integration/f13a-f15a-f09-f10`）；基线 `10c8637`，合并提交 `7190b2b`。
+  集成批次（`integration/f13a-f15a-f09-f10`）；基线 `10c8637`；合并提交 `7190b2b`
+  （T055 tip）与 `895a67f`（T052 tip，本票迁移重编号为 0036）。
 - 状态：**`passed`**（范围 = `getMemory`（强 ETag）+ `updateMemory`（必填 `If-Match`，
   428/412、新 revision/新正文 artifact/同事务 epoch）+ `deleteMemory`
   （202 `DeletionAccepted` + tombstone + `deletion_jobs` + epoch）+ `/memories`
@@ -22,7 +23,7 @@
    以及 `internal/catalog/draft.go` + `internal/api/drafts.go` 的强 ETag/If-Match/412/428
    先例、`internal/api/apikeys.go`/`authz.go` 的个人数据与服务账号边界。
 2. TDD 垂直切片（每片先红后绿，红阶段原始失败原因记录在下方）：
-   - 迁移 0035（合并后编号）：`deletion_jobs` 契约列/键/权限/链连续/重复 migrate →
+   - 迁移（最终 0036，合并后编号）：`deletion_jobs` 契约列/键/权限/链连续/重复 migrate →
      4 用例（红：`relation "platform.deletion_jobs" does not exist`）；
    - `GET /api/v1/memories/{id}`：强 ETag、owner-only、他人/管理员/未知/畸形 404、
      服务账号 403 → 4 用例（红：`404 page not found`，无路由）；
@@ -33,17 +34,19 @@
      重复删除同 job、并发删除一次 bump、跨应用 epoch 隔离、404/403 → 5 用例
      （红：`404 page not found`）；
    - 页面：HTML 结构 + Node 执行冲突恢复/删除状态纯函数 → 3 用例（红：缺少标记与 helper）。
-3. 跑门禁（§4），写 ADR 0009 §11、本报告与 PROGRESS；按 feat/test/docs 提交；合并
-   `integration/f13a-f15a-f09-f10`（T055 已占 0034 → 本票迁移重编号为 0035），
-   解决 `tests/f09/test_t054_migration.py` 冲突（两侧都移除“0033 是链尾”的钉死断言，
-   保留集成侧注释并补 T058 的 0035）；未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`。
+3. 跑门禁（§4），写 ADR 0009 §11、本报告与 PROGRESS；按 feat/docs 提交；两次合并
+   `integration/f13a-f15a-f09-f10`：先 T055 tip（0034 被占 → 0035）、再 T052 tip
+   （0035 被占 → 0036），最后一次为干净 auto-merge；第一次合并解决
+   `tests/f09/test_t054_migration.py` 冲突（两侧都移除“0033 是链尾”的钉死断言，保留
+   集成侧注释并补 T058 的新编号）；未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`。
 
 ## 1. 交付内容
 
-### 1.1 迁移 0035：（合并后编号）契约 `deletion_jobs` 最小切片
+### 1.1 迁移 0036（最终编号）契约 `deletion_jobs` 最小切片
 
-`db/migrations/0035_memory_revision_and_deletion.sql`（基线分支上曾为 `0034`，T055 先占
-`0034_knowledge.sql`，按 BRIEF §5 由本票在合并时重编号）：
+`db/migrations/0036_memory_revision_and_deletion.sql`（基线分支上曾为 `0034`；合并时
+T055 先占 `0034_knowledge.sql`、T052 再占 `0035_evaluation_runner.sql`，按 BRIEF §5
+由本票在合并时重编号为 0036）：
 
 - 新增契约表 `platform.deletion_jobs`：`id/owner_id→principals/resource_type/resource_id/
   deletion_revision/state(pending|running|completed|failed)/remaining_scopes(jsonb array)/
@@ -53,7 +56,7 @@
 - 头部逐条写明偏离（本迁移无契约偏离）与 **F07 债务**：只写 `pending`、不注册
   `delete_content` handler、不物理删除对象/artifact 行；`remaining_scopes` 形状
   （`object`/`artifact`/`embedding`/`memory_row`）在此固定；
-- 重复 `admin migrate` no-op；`0001..0035` 连续无缺口；`orchara_worker`/PUBLIC 零
+- 重复 `admin migrate` no-op；`0001..0036` 连续无缺口；`orchara_worker`/PUBLIC 零
   `platform` 权限。
 
 ### 1.2 `internal/memory`（在 T054 的存储上扩展，不新建第二套）
@@ -127,7 +130,7 @@ deletionResultText/memoryDeletedText` 由 Node 执行断言。
 `python tools/pg_dev.py status` → `running: true, server_version: 16.4`）。
 
 ```text
-$ python -m pytest tests/f09 -q          # 第 1 轮
+$ python -m pytest tests/f09 -q          # 第 1 轮（首个合并后树）
 47 passed in 308.18s (0:05:08)
 
 $ python -m pytest tests/f09 -q          # 第 2 轮（背靠背，BRIEF §6.1）
@@ -135,6 +138,12 @@ $ python -m pytest tests/f09 -q          # 第 2 轮（背靠背，BRIEF §6.1�
 
 $ python -m pytest tests/f09 -q          # 第 3 轮（最终树，主机同时有其他作业）
 47 passed in 480.97s (0:08:00)
+
+$ python -m pytest tests/f09 -q          # 最终树（0036）+ T052 合并后，第 1 轮
+47 passed in 499.18s (0:08:19)
+
+$ python -m pytest tests/f09 -q          # 最终树（0036）+ T052 合并后，第 2 轮
+47 passed in 337.02s (0:05:37)
 
 $ go build ./...
 (no output, exit 0)
@@ -164,25 +173,31 @@ $ python -m pytest tests/f10 -q          # 合并进来的邻接套件
 套内细分：`tests/f09` 47 = T054 25 + T058 22（`test_t058_migration.py` 4、
 `test_t058_memory.py` 15、`test_t058_pages.py` 3）。测试无 sleep 竞态：并发用例用线程
 barrier 后由 PG 行锁/CAS 判定结果；时间断言只比较“是否前进/是否为空”，不依赖亚秒窗口。
+两次最终树运行分别 499.18s / 337.02s 均全绿（主机负载不同，只影响耗时）。
 
 ### 合并（BRIEF §7.6）
 
 ```text
-$ git merge integration/f13a-f15a-f09-f10
-合并提交 7190b2b（父 a856d2b = 本票页面切片；父 13eadb7 = 集成 tip）
+$ git merge integration/f13a-f15a-f09-f10       # 第一次
+合并提交 7190b2b（父 a856d2b = 本票页面切片；父 13eadb7 = 集成 tip/T055）
 冲突：product/tests/f09/test_t054_migration.py（两侧都删“0033 是链尾”的钉死断言 →
-      保留集成侧注释并补 T058 的 0035；无内容丢失）
-重编号：0034_memory_revision_and_deletion.sql → 0035_…（T055 已用 0034_knowledge.sql；
-      链 0001..0035 连续，重复 migrate no-op）
-合并后：pytest tests/f09 47 passed ×2、go build/vet/test、gofmt、sync_spec 全绿
+      保留集成侧注释并补 T058 的新编号；无内容丢失）
+重编号：0034_memory_revision_and_deletion.sql → 0035_…（T055 已用 0034_knowledge.sql）
+
+$ git merge integration/f13a-f15a-f09-f10       # 第二次（T052 tip 9f58fc2）
+合并提交 895a67f，无冲突（auto-merge）
+重编号：0035_memory_revision_and_deletion.sql → 0036_…（T052 已用 0035_evaluation_runner.sql；
+      链 0001..0036 连续，重复 migrate no-op）
+合并后：pytest tests/f09 47 passed ×2（499.18s / 337.02s）、go build/vet/test、gofmt、
+      sync_spec 全绿
 ```
 
 ## 5. 输入与版本
 
 | 输入 | 版本 / SHA-256（前 16 位） |
 |---|---|
-| 基线 | `feat/f06-f04a-models-and-workflow` @ `7d0f442`；集成 tip `13eadb7` |
-| `db/migrations/0035_memory_revision_and_deletion.sql` | `B2F48FFD81CCA663…` |
+| 基线 | `feat/f06-f04a-models-and-workflow` @ `7d0f442`；合并时集成 tip `13eadb7`（T055）/`9f58fc2`（T052） |
+| `db/migrations/0036_memory_revision_and_deletion.sql` | `B2F48FFD81CCA663…` |
 | `internal/memory/service.go` / `internal/memory/memories.go` | `5963B79E3EBFAA1E…` / `7C0DF7E8789C6DAF…` |
 | `internal/api/memory.go` / `internal/api/server.go` | `69C7D975B5E99B58…` / `90F745FD8D180F7E…` |
 | `apps/web/src/memories.html` / `assets/memories.js` | `7DDAB73278759B31…` / `591C6EA10EA0270C…` |

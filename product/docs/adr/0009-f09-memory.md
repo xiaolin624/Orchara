@@ -184,14 +184,14 @@ T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
 5. **`deletion_jobs` 是最小切片，债务明确：** T058 只写 `pending`，**不注册**
    `delete_content` handler，没有 lease/retry/completion，也不物理删除对象/artifact 行；
    完整删除治理属 F07。`remaining_scopes` 形状（`object` / `artifact` / `embedding` /
-   `memory_row` 的 JSON 对象数组）写在 0035 迁移头与这里。更新残留的旧 `memory_body`
+   `memory_row` 的 JSON 对象数组）写在 0036 迁移头与这里。更新残留的旧 `memory_body`
    artifact 没有 job：F07/T063 的清扫判据是“`purpose='memory_body'` 且不被任何
    `memories.body_artifact_id` 引用”，不需要新列。
-6. **数据模型：** 迁移 `0035_memory_revision_and_deletion.sql`（合并后编号；基线分支上
-   曾为 0034，T055 先占了 0034）只新增契约 `deletion_jobs`（`owner_id → principals`、
-   四态 CHECK、`remaining_scopes` 为 array、`UNIQUE(resource_type, resource_id,
-   deletion_revision)`）；`platform.memories` 一个列也不加，重复 migrate no-op，
-   worker/PUBLIC 零 `platform` 权限。
+6. **数据模型：** 迁移 `0036_memory_revision_and_deletion.sql`（最终编号；基线分支上曾为
+   0034，合并时 T055 先占 0034、T052 再占 0035，故重编号为 0036）只新增契约
+   `deletion_jobs`（`owner_id → principals`、四态 CHECK、`remaining_scopes` 为 array、
+   `UNIQUE(resource_type, resource_id, deletion_revision)`）；`platform.memories` 一个列
+   也不加，重复 migrate no-op，worker/PUBLIC 零 `platform` 权限。
 7. **召回/检索缓存 seam：** 权威失效事实是 `memories.revision` + `deleted_at` +
    `policy_epochs(memory:owner:app)`。T063/T067 的 embedding/缓存条目必须把
    `memory_revision` 放进键并同时校验 `deleted_at IS NULL` 且
@@ -210,7 +210,7 @@ T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
 ## 影响
 
 - `contracts/**`、`docs/spec/**`、`tools/sync_spec.py --check` 不受影响；
-- 迁移 0033（T054）新增两张契约表 + 列级偏离（头部注释逐条列出）；迁移 0035（T058）新增
+- 迁移 0033（T054）新增两张契约表 + 列级偏离（头部注释逐条列出）；迁移 0036（T058）新增
   契约 `deletion_jobs` 最小切片；重复 migrate no-op，`orchara_worker`/PUBLIC 零
   `platform` 权限；
 - 新包 `internal/memory`（候选/记忆存储与服务）、`internal/api/memory.go`（T054 五个 +
@@ -226,7 +226,7 @@ T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
 - 后台过期清扫进程：`not_run`（惰性迁移 + 决定复检已真实生效）；
 - 运行时召回（T063）、Mem0 对照与检索缓存（T067）：本票不实现，只预留 §11.7 seam；
 - 物理副本清理与删除作业的 claim/retry/completion（F07）：T058 只写 `pending` job，
-  不注册 `delete_content` handler，不删除对象/artifact 行；债务记录在迁移 0035 头、
+  不注册 `delete_content` handler，不删除对象/artifact 行；债务记录在迁移 0036 头、
   §11.5 与报告 §6；
 - `memory_embeddings`（无 pgvector，T063 拥有）：本票只保证 revision/epoch 失效事实；
 - 记忆共享/授权：不实现，债务记录在报告 §6。
