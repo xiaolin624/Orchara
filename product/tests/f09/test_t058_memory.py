@@ -347,3 +347,168 @@ def test_a_service_credential_is_refused_on_the_write_paths(t058_stack) -> None:
     row = t058.row_of_memory(t058_stack.dbname, created["id"])
     assert row is not None and row["revision"] == 1
     assert t058.text_of_memory(t058_stack, row) == TEXT
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/memories/{memory_id}: tombstone + epoch before any cleanup
+# ---------------------------------------------------------------------------
+def test_delete_answers_a_deletion_job_and_stops_old_recall_immediately(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    before = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert before is not None
+    epoch_before = t058.epoch_of(
+        t058_stack.dbname, owner.creator.principal_id, owner.application_id
+    )
+
+    response = t058.delete(owner.creator, created["id"])
+    assert response.status == 202, response.text
+    job = response.json
+    assert set(job) == t058.DELETION_FIELDS, job
+    assert job["resource_id"] == created["id"]
+    assert job["state"] == "pending"
+    job_id = job["id"]
+    assert uuid.UUID(job_id)
+    assert job_id != created["id"]
+
+    # The authoritative tables moved synchronously, before any cleanup: the
+    # tombstone, the revision and the memory-scope cache epoch are all facts of
+    # the same transaction that answered the request.
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None
+    assert row["revision"] == 2, row
+    assert row["deleted_at"] is not None, row
+    epoch_after = t058.epoch_of(
+        t058_stack.dbname, owner.creator.principal_id, owner.application_id
+    )
+    assert epoch_after > epoch_before, (epoch_before, epoch_after)
+
+    jobs = t058.deletion_jobs(t058_stack.dbname, resource_id=created["id"])
+    assert len(jobs) == 1, jobs
+    stored = jobs[0]
+    assert stored["id"] == job_id
+    assert stored["owner_id"] == owner.creator.principal_id
+    assert stored["resource_type"] == "memory"
+    assert stored["deletion_revision"] == 2
+    assert stored["state"] == "pending"
+    assert stored["completed_at"] is None
+    scopes = t058.deletion_scopes(stored)
+    artifact = t058.artifact_of(t058_stack.dbname, before["body_artifact_id"])
+    kinds = {scope["kind"] for scope in scopes}
+    assert kinds == {"object", "artifact", "embedding", "memory_row"}, scopes
+    object_scope = next(scope for scope in scopes if scope["kind"] == "object")
+    assert object_scope["object_key"] == artifact["object_key"], scopes
+    assert object_scope["sha256"] == artifact["sha256"], scopes
+    embedding_scope = next(scope for scope in scopes if scope["kind"] == "embedding")
+    assert embedding_scope["memory_revision"] == 1, scopes
+
+    # The next read refuses the old content: detail 404, list empty. A stale ETag
+    # is not a 412 on a tombstone: the memory does not exist any more.
+    st.assert_error(t058.detail(owner.creator, created["id"]), 404, t058.RESOURCE_NOT_FOUND)
+    assert t058.list_memories(owner.creator).json["items"] == []
+    stale = t058.update(owner.creator, created["id"], text=REVISED,
+                        if_match=t058.expected_etag(1))
+    st.assert_error(stale, 404, t058.RESOURCE_NOT_FOUND)
+
+    # A recall-shaped read of the authoritative row finds nothing current: an
+    # embedding/cache entry keyed to revision 1 can never be served as current.
+    current = st.sql_rows(
+        t058_stack.dbname,
+        "SELECT revision FROM platform.memories "
+        f"WHERE id = '{created['id']}'::uuid AND deleted_at IS NULL AND revision = 1",
+    )
+    assert current == []
+
+    # The bytes are still on disk: T058 is honest about not doing F07's physical
+    # purge, and the job it returned says pending.
+    assert t054.artifact_bytes(t058_stack, artifact) == TEXT.encode("utf-8")
+
+    # A repeated delete is idempotent: the same job, one row, no second bump.
+    again = t058.delete(owner.creator, created["id"])
+    assert again.status == 202, again.text
+    assert again.json == job, (again.json, job)
+    assert len(t058.deletion_jobs(t058_stack.dbname, resource_id=created["id"])) == 1
+    assert t058.row_of_memory(t058_stack.dbname, created["id"])["revision"] == 2
+    assert (
+        t058.epoch_of(t058_stack.dbname, owner.creator.principal_id, owner.application_id)
+        == epoch_after
+    )
+
+
+def test_delete_only_touches_the_owner_and_the_one_application_scope(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    other_application = t058.new_application(owner.creator)
+    doomed = owned_memory(t058_stack, owner)
+    kept = owned_memory(t058_stack, owner, text="The user works in Beijing.",
+                        application_id=other_application)
+    kept_epoch = t058.epoch_of(
+        t058_stack.dbname, owner.creator.principal_id, other_application
+    )
+
+    # A foreign human, the administrator and a service credential all write
+    # nothing: 404 / 404 / 403 and no job row.
+    other = t058.other_owner(t058_stack)
+    st.assert_error(t058.delete(other.creator, doomed["id"]), 404, t058.RESOURCE_NOT_FOUND)
+    st.assert_error(t058.delete(owner.admin, doomed["id"]), 404, t058.RESOURCE_NOT_FOUND)
+    service = t058.service_client(t058_stack)
+    st.assert_error(
+        service.request("DELETE", t058.memory_path(doomed["id"])),
+        403, t058.PERSONAL_SCOPE_FORBIDDEN,
+    )
+    assert t058.deletion_jobs(t058_stack.dbname) == []
+
+    # Deleting one memory bumps only its own (owner, application) epoch. The
+    # memory in the other application and its epoch are untouched.
+    accepted = t058.delete(owner.creator, doomed["id"])
+    assert accepted.status == 202, accepted.text
+    assert (
+        t058.epoch_of(t058_stack.dbname, owner.creator.principal_id, other_application)
+        == kept_epoch
+    )
+    kept_row = t058.row_of_memory(t058_stack.dbname, kept["id"])
+    assert kept_row is not None and kept_row["revision"] == 1
+    assert kept_row["deleted_at"] is None
+    assert t058.detail(owner.creator, kept["id"]).status == 200
+    assert t058.deletion_jobs(t058_stack.dbname, resource_id=kept["id"]) == []
+
+    # An unknown or malformed memory id is the same located 404.
+    for memory_id in (str(uuid.uuid4()), "not-a-uuid"):
+        st.assert_error(t058.delete(owner.creator, memory_id), 404, t058.RESOURCE_NOT_FOUND)
+
+
+def test_a_concurrent_delete_returns_one_job_and_bumps_the_revision_once(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    responses: dict[int, object] = {}
+    barrier = threading.Barrier(2)
+
+    def remove(index: int) -> None:
+        barrier.wait(timeout=30)
+        responses[index] = t058.delete(owner.creator, created["id"])
+
+    threads = [threading.Thread(target=remove, args=(index,)) for index in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+
+    assert [response.status for response in responses.values()] == [202, 202]
+    jobs = {response.json["id"] for response in responses.values()}
+    assert len(jobs) == 1, jobs
+    assert len(t058.deletion_jobs(t058_stack.dbname, resource_id=created["id"])) == 1
+    # Exactly one tombstone bump: two concurrent deletes are not revision 3.
+    assert t058.row_of_memory(t058_stack.dbname, created["id"])["revision"] == 2
+
+
+def test_a_service_credential_is_refused_on_delete(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    service = t058.service_client(t058_stack)
+
+    st.assert_error(
+        service.request("DELETE", t058.memory_path(created["id"])),
+        403, t058.PERSONAL_SCOPE_FORBIDDEN,
+    )
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1 and row["deleted_at"] is None
+    assert t058.deletion_jobs(t058_stack.dbname) == []
