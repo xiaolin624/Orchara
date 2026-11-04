@@ -16,8 +16,10 @@ import (
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
+	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/knowledge"
 	"orchara/platform/internal/memory"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/modelregistry"
@@ -44,6 +46,9 @@ type Server struct {
 	// userArtifacts is the T028 user-facing artifact service (distinct from the
 	// job-scoped ArtifactStore above: different purposes, different ACL).
 	userArtifacts *artifacts.Service
+	// knowledge is the F10/T055 owner-scoped knowledge base/document/retrieval
+	// service. It never activates a document; the background completion guard does.
+	knowledge *knowledge.Service
 	// toolRuns is the T030 preset-tool run service (non-contract bridge).
 	toolRuns *toolruns.Service
 	// toolVersions is the F05/T037 submission/build/review service.
@@ -109,6 +114,11 @@ type Deps struct {
 	// Catalog is the deployer-registered model endpoint/credential catalog. Nil
 	// means the documented dev-stub default, never an open catalog.
 	Catalog *modelregistry.Catalog
+	// Embedder is the F10 embedding seam. Nil means the process reads
+	// ORCHARA_EMBEDDING_PROVIDER/ORCHARA_EMBEDDING_MODEL (empty = the
+	// deterministic local embedder recorded as local-hash-v1). A configured real
+	// provider without an adapter fails closed, never as a silent stub.
+	Embedder *embedding.Service
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -174,6 +184,10 @@ func New(deps Deps) *Server {
 	capabilityService.Reconciler = executionService
 	approvalService := approvals.New(deps.Service.DB, deps.Objects, executionService)
 	capabilityService.Approvals = approvalService
+	embedder := deps.Embedder
+	if embedder == nil {
+		embedder = embedding.FromEnv()
+	}
 	return &Server{
 		service:       deps.Service,
 		policy:        authorizer,
@@ -183,6 +197,7 @@ func New(deps Deps) *Server {
 		execution:     executionService,
 		runArtifacts:  execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		knowledge:     knowledge.New(deps.Service.DB, deps.Objects, embedder),
 		toolRuns:      toolruns.New(deps.Service.DB, notifier),
 		toolVersions:  toolversions.New(deps.Service.DB),
 		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
@@ -371,6 +386,18 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// automatic resend exists on this path.
 	mux.HandleFunc("POST /api/v1/operations/{operation_id}/reconcile", s.handleReconcileOperation)
 
+	// F10/T055: knowledge bases, ingestion and the non-contract retrieval and
+	// citation reads (ADR 0010). Every route is owner-only; ACL misses are 404.
+	mux.HandleFunc("POST /api/v1/knowledge-bases", s.handleCreateKnowledgeBase)
+	mux.HandleFunc("GET /api/v1/knowledge-bases", s.handleListKnowledgeBases)
+	mux.HandleFunc("GET /api/v1/knowledge-bases/{knowledge_base_id}", s.handleGetKnowledgeBase)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/documents", s.handleIngestDocument)
+	mux.HandleFunc("GET /api/v1/knowledge-bases/{knowledge_base_id}/documents", s.handleListKnowledgeDocuments)
+	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}", s.handleGetKnowledgeDocument)
+	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}/diagnostics", s.handleKnowledgeDocumentDiagnostics)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/retrieval-queries", s.handleKnowledgeRetrievalQuery)
+	mux.HandleFunc("GET /api/v1/knowledge-citations/{chunk_id}", s.handleGetKnowledgeCitation)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -397,6 +424,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
+	mux.HandleFunc("GET /knowledge", s.staticPage("knowledge.html"))
+	mux.HandleFunc("GET /assets/knowledge.js", s.staticPage(filepath.Join("assets", "knowledge.js")))
 	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
 	// F09/T054: the personal-memory candidate page and its logic.

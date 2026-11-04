@@ -226,6 +226,21 @@ def test_a_matching_etag_writes_a_new_body_and_bumps_revision_and_epoch(t058_sta
     assert t058.etag_of(detail) == t058.expected_etag(2)
     assert t058.list_memories(owner.creator).json["items"][0]["text"] == REVISED
 
+    # A recall-shaped read of the authoritative row finds no current row at the
+    # old revision: an embedding or cache entry keyed to revision 1 can never be
+    # served as current after the update.
+    old_revision_is_current = st.sql_rows(
+        t058_stack.dbname,
+        "SELECT revision FROM platform.memories "
+        f"WHERE id = '{created['id']}'::uuid AND deleted_at IS NULL AND revision = 1",
+    )
+    assert old_revision_is_current == []
+    assert st.sql_rows(
+        t058_stack.dbname,
+        "SELECT revision FROM platform.memories "
+        f"WHERE id = '{created['id']}'::uuid AND deleted_at IS NULL AND revision = 2",
+    ) == [{"revision": 2}]
+
     # A retry holding the old ETag must not overwrite the new revision.
     stale = t058.update(owner.creator, created["id"], text="late write",
                         if_match=t058.expected_etag(1))

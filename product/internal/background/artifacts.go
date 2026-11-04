@@ -101,6 +101,9 @@ var artifactProducerKinds = map[Kind]bool{
 	// T037: the sandboxed build uploads its capped log and SBOM through the same
 	// job-scoped flow; the completion guard re-checks both.
 	KindToolBuild: true,
+	// T055: document_ingest uploads one sealed body artifact per chunk through
+	// the same flow; the document completion guard re-checks every one of them.
+	KindDocumentIngest: true,
 }
 
 // uploadPurposes is the contract's createBackgroundUpload purpose enum plus the
@@ -119,6 +122,9 @@ var uploadPurposes = map[string]bool{
 	// `build_log` is a capped log, never protocol output.
 	"sbom":      true,
 	"build_log": true,
+	// T055 chunk body: the exact text of one chunk, cited by the chunk row.
+	// Retrieval reads it only through the guarded citation path.
+	"knowledge_chunk": true,
 }
 
 // CreateUpload reserves one artifact for a job. It writes the artifact row and

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033, t055
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -486,3 +486,38 @@ __all__ = [
     "t032_stack",
     "t033_stack",
 ]
+
+
+@pytest.fixture
+def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """A T028-shaped stack for the F10 knowledge ingestion/retrieval path.
+
+    It needs real PostgreSQL (already migrated), the compiled API with the real
+    object store and signed links, the internal mTLS listener (the ingestion
+    binding/claim assertions use it) and the compiled maintenance process that
+    runs the real document_ingest and artifact_finalize handlers.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t055.T055Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack

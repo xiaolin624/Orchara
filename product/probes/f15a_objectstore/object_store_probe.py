@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--short-ttl",
         type=int,
         dest="short_ttl",
-        help="presigned URL TTL for the expiry assertion, seconds (default 2)",
+        help="presigned URL TTL for the expiry assertion, seconds (default 5, minimum 5)",
     )
     parser.add_argument(
         "--expiry-skew",

@@ -138,7 +138,7 @@ def test_missing_provisioning_credentials_blocks_sealed_assertions(tmp_path: Pat
         env.pop("F15A_S3_PROVISION_ACCESS_KEY")
         env.pop("F15A_S3_PROVISION_SECRET_KEY")
         completed = subprocess.run(
-            [sys.executable, str(PROBE), "--out", str(report_path), "--short-ttl", "1"],
+            [sys.executable, str(PROBE), "--out", str(report_path), "--short-ttl", "5"],
             cwd=str(PROBE.parents[2]),
             env=env,
             capture_output=True,

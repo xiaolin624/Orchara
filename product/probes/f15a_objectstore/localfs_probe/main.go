@@ -354,18 +354,49 @@ func sealedWriteBoundary(store *objectstore.Store) assertion {
 }
 
 func signedLinkBoundaries() assertion {
-	key := make([]byte, objectstore.MinSigningKeyBytes)
-	if _, err := rand.Read(key); err != nil {
+	const (
+		linkTTL      = 5 * time.Second
+		expiryMargin = 1 * time.Second // strictly past the TTL: no boundary race
+	)
+	// NewSigner applies strings.TrimSpace. A key built from raw random bytes can
+	// begin/end with a whitespace byte (~4-6% of runs) and then trim below
+	// MinSigningKeyBytes, failing the probe for a probe-input reason. Encode the
+	// randomness as hex so trimming is a no-op and every run takes the same
+	// configured-and-valid path; the trim behaviour itself is asserted below.
+	rawKey := make([]byte, 32)
+	if _, err := rand.Read(rawKey); err != nil {
 		return failedAssertion("signed_link_boundaries", "generate signing key", err)
 	}
-	signer, err := objectstore.NewSigner(string(key), time.Second)
+	signingKey := hex.EncodeToString(rawKey)
+	if strings.TrimSpace(signingKey) != signingKey || len(signingKey) < objectstore.MinSigningKeyBytes {
+		return failedAssertion(
+			"signed_link_boundaries",
+			"generated signing key is not trim-stable",
+			fmt.Errorf("key has %d bytes after TrimSpace", len(strings.TrimSpace(signingKey))),
+		)
+	}
+	signer, err := objectstore.NewSigner(signingKey, linkTTL)
 	if err != nil {
 		return failedAssertion("signed_link_boundaries", "new signer", err)
 	}
+	// Deterministic trim regression: a padded but long-enough key is accepted
+	// after TrimSpace, while a key whose effective length falls below the
+	// minimum is a clean configuration refusal (not a crash, not a spurious
+	// pass). This is the property the random-key bug violated.
+	paddedSigner, paddedErr := objectstore.NewSigner(" \n\t"+signingKey+" \t\n", linkTTL)
+	var paddedSignErr error
+	if paddedErr == nil && paddedSigner != nil {
+		_, _, paddedSignErr = paddedSigner.Sign(
+			objectstore.OpPut, "staging/"+strings.Repeat("a", 64), uuid.NewString(), 1,
+		)
+	}
+	trimmedShortKey := " " + strings.Repeat("k", objectstore.MinSigningKeyBytes-1)
+	_, trimmedShortErr := objectstore.NewSigner(trimmedShortKey, linkTTL)
 	artifactID := uuid.NewString()
 	staging, _ := objectstore.StagingKey()
 	sealed, _ := objectstore.SealedKey()
 
+	signedAt := time.Now()
 	putToken, _, putErr := signer.Sign(objectstore.OpPut, staging, artifactID, 100)
 	_, putClaimsErr := signer.Verify(putToken, objectstore.OpPut)
 	_, wrongOpErr := signer.Verify(putToken, objectstore.OpGet)
@@ -374,7 +405,8 @@ func signedLinkBoundaries() assertion {
 	getToken, _, getErr := signer.Sign(objectstore.OpGet, sealed, artifactID, 100)
 	_, getClaimsErr := signer.Verify(getToken, objectstore.OpGet)
 	_, _, oversizedErr := signer.Sign(objectstore.OpGet, sealed, artifactID, objectstore.MaxObjectBytes+1)
-	time.Sleep(1200 * time.Millisecond)
+	acceptedWithin := time.Since(signedAt)
+	time.Sleep(linkTTL + expiryMargin)
 	_, expiredErr := signer.Verify(putToken, objectstore.OpPut)
 
 	_, shortKeyErr := objectstore.NewSigner("too-short", time.Second)
@@ -383,14 +415,25 @@ func signedLinkBoundaries() assertion {
 	_, nilVerifyErr := (*objectstore.Signer)(nil).Verify("anything", objectstore.OpPut)
 
 	checks := []check{
+		{"generated_signing_key_is_trim_stable", strings.TrimSpace(signingKey) == signingKey, map[string]any{
+			"key_chars": len(signingKey),
+		}},
+		{"whitespace_padded_key_is_accepted_after_trim", paddedErr == nil && paddedSigner != nil && paddedSignErr == nil, map[string]any{
+			"padded_key_error": fmt.Sprint(paddedErr),
+		}},
+		{"whitespace_trimmed_below_minimum_refused", trimmedShortErr != nil, map[string]any{
+			"effective_bytes": objectstore.MinSigningKeyBytes - 1,
+		}},
 		{"put_link_minted_for_staging", putErr == nil && putToken != "", nil},
-		{"put_link_verifies", putClaimsErr == nil, nil},
+		{"put_link_verifies_inside_ttl", putClaimsErr == nil && acceptedWithin < linkTTL, map[string]any{
+			"verified_after_ms": acceptedWithin.Milliseconds(), "ttl_ms": linkTTL.Milliseconds(),
+		}},
 		{"put_link_cannot_be_used_as_get", errors.Is(wrongOpErr, objectstore.ErrLinkInvalid), nil},
 		{"sealed_put_link_cannot_be_minted", errors.Is(sealedPutErr, objectstore.ErrLinkInvalid), nil},
 		{"staging_get_link_cannot_be_minted", errors.Is(stagingGetErr, objectstore.ErrLinkInvalid), nil},
 		{"get_link_minted_and_verified", getErr == nil && getClaimsErr == nil, nil},
 		{"max_bytes_cannot_exceed_cap", errors.Is(oversizedErr, objectstore.ErrLinkInvalid), nil},
-		{"link_expires_after_ttl", errors.Is(expiredErr, objectstore.ErrLinkInvalid), nil},
+		{"link_expires_past_ttl_plus_margin", errors.Is(expiredErr, objectstore.ErrLinkInvalid), nil},
 		{"short_signing_key_refused", shortKeyErr != nil && unconfigured == nil && nilErr == nil, nil},
 		{"unconfigured_signer_fails_closed", errors.Is(unconfiguredSignErr, objectstore.ErrSignerNotConfigured), nil},
 		{"nil_signer_fails_closed", errors.Is(nilVerifyErr, objectstore.ErrSignerNotConfigured), nil},
@@ -399,7 +442,13 @@ func signedLinkBoundaries() assertion {
 		"signed_link_boundaries",
 		"HMAC links expire, bind one operation and one key, and fail closed when unconfigured",
 		checks,
-		map[string]any{"ttl_seconds": 1, "signing_key_bytes": len(key)},
+		map[string]any{
+			"ttl_seconds":           linkTTL.Seconds(),
+			"expiry_margin_seconds": expiryMargin.Seconds(),
+			"verified_after_ms":     acceptedWithin.Milliseconds(),
+			"signing_key_bytes":     len(signingKey),
+			"signing_key_encoding":  "hex",
+		},
 	)
 }
 

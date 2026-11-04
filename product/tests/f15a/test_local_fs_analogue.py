@@ -83,6 +83,17 @@ def test_local_fs_probe_runs_against_the_real_store(tmp_path: Path) -> None:
     )
     assert evidence["key_typing_and_traversal_refused"]["evidence"]["valid_key_shape"]
 
+    # Regression for the random-key/TrimSpace defect: a raw-bytes key could trim
+    # below MinSigningKeyBytes (~4-6% of runs) and fail the probe for a probe
+    # input reason. The probe now generates hex and asserts the trim rule itself.
+    signed_checks = {
+        item["name"]: item for item in evidence["signed_link_boundaries"]["checks"]
+    }
+    assert signed_checks["generated_signing_key_is_trim_stable"]["ok"] is True
+    assert signed_checks["whitespace_padded_key_is_accepted_after_trim"]["ok"] is True
+    assert signed_checks["whitespace_trimmed_below_minimum_refused"]["ok"] is True
+    assert evidence["signed_link_boundaries"]["evidence"]["signing_key_encoding"] == "hex"
+
 
 def test_local_fs_probe_fails_closed_on_an_unusable_root(tmp_path: Path) -> None:
     binary = _build(tmp_path)

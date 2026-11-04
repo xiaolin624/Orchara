@@ -56,10 +56,14 @@ probe-generated key names only.
 | `delete_semantics` | runtime cannot delete sealed; provisioner delete yields 404, is idempotent, and spares a sibling key | delete resurrects or over-deletes |
 | `versions_immutable` | if the candidate offers versioning, old sealed bytes stay addressable; otherwise `not_run` | versioning enabled but broken |
 
-`--short-ttl` controls the expiry test (default 2 s, minimum 1); `--expiry-skew`
+`--short-ttl` controls the expiry test (default 5 s, minimum 5); `--expiry-skew`
 documents a candidate's clock grace and is added to the wait. The default is
 `0` (strict) because a signing implementation that accepts expired URLs is a
-security property, not a tolerance.
+security property, not a tolerance. The 5 s floor is deliberate: SigV4
+`X-Amz-Date` has whole-second resolution, so a 1 s TTL leaves a 0–1 s window in
+which a loaded host can lose the accept-before-expiry check. The probe computes
+the URL's absolute `expires_at` and sleeps past it (plus the documented skew)
+instead of racing a fixed second.
 
 ## Deployment preconditions the probe checks but cannot create
 
@@ -104,6 +108,13 @@ records what *can* be proven here: key typing/traversal refusal, staging↔seale
 separation, the sealed write boundary, link TTL/op/max-bytes binding, idempotent
 delete and the 20 MiB cap. It is labelled `not_s3_evidence: true` and cannot
 prove anonymous access, IAM, versioning, backup or TLS.
+
+Two determinism rules are visible in the report and asserted by `tests/f15a`:
+the HMAC link TTL is 5 s with a 1 s expiry margin (no timer race), and the signing
+key is hex-encoded because `NewSigner` applies `TrimSpace` — a raw random key could
+trim below the 32-byte minimum and fail the probe for a probe-input reason. The
+probe also asserts the trim rule itself (padded long key accepted, trimmed-short
+key refused) so that regression is covered deterministically.
 
 ## Evidence
 
