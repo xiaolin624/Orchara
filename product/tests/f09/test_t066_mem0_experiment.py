@@ -280,6 +280,30 @@ def test_the_withheld_mem0_run_is_recorded_as_blocked_without_fake_numbers(tmp_p
 
 
 # ---------------------------------------------------------------------------
+# the committed result of the executed run
+# ---------------------------------------------------------------------------
+def test_the_committed_evidence_is_a_stub_mem0_run_that_does_not_adopt():
+    path = EXPERIMENT / "evidence" / "t066-both.json"
+    assert path.exists(), "the executed experiment result is part of the deliverable"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert records.validate(record) == []
+    assert record["experiment_status"] == "executed"
+    assert record["systems"]["pg"]["status"] == "run"
+    assert record["systems"]["pg"]["evidence_level"] == "real"
+    assert record["systems"]["mem0"]["status"] == "run"
+    assert record["systems"]["mem0"]["evidence_level"] == "stub"
+    assert record["decision"]["decision"] == "do_not_adopt"
+    assert record["decision"]["remaining_gates"] == ["F11"]
+    residual = record["systems"]["mem0"]["cleanup"]["residual_body_copies"]
+    assert any("history" in item for item in residual), residual
+    # The committed record must not contain a memory body (only ids/hashes/metrics).
+    text = path.read_text(encoding="utf-8")
+    for memory in fixture.build().memories:
+        assert memory.text not in text
+    assert fixture.build().candidate.text not in text
+
+
+# ---------------------------------------------------------------------------
 # the real PostgreSQL baseline: measurements and copy-cleanup enumeration
 # ---------------------------------------------------------------------------
 def test_the_pg_baseline_measures_recall_latency_storage_and_deletion_cleanup(
