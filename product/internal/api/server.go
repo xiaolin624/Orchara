@@ -159,6 +159,10 @@ func New(deps Deps) *Server {
 	}
 	capabilityService := capabilities.New(deps.Service.DB, deps.Objects, deps.Providers)
 	capabilityService.Connectors = deps.Connectors
+	// F06/T051: the T036 bridge is the one writer of the unknown ledger row, and
+	// the reconcile transaction re-drives the same finalizer through it.
+	capabilityService.Unknowns = executionService
+	capabilityService.Reconciler = executionService
 	approvalService := approvals.New(deps.Service.DB, deps.Objects, executionService)
 	capabilityService.Approvals = approvalService
 	return &Server{
@@ -338,6 +342,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/approvals", s.handleListApprovals)
 	mux.HandleFunc("GET /api/v1/approvals/{approval_id}", s.handleGetApproval)
 	mux.HandleFunc("POST /api/v1/approvals/{approval_id}/decision", s.handleDecideApproval)
+	// F06/T051: the owner/approver evidence reconciliation for one unknown
+	// external write. The operation id is the binding; no second operation or
+	// automatic resend exists on this path.
+	mux.HandleFunc("POST /api/v1/operations/{operation_id}/reconcile", s.handleReconcileOperation)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

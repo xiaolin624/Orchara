@@ -1173,6 +1173,33 @@ T050（GitHub #51）已交付，状态 **`passed`**（范围 = 服务端从 Run/
 | 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 151 passed；`pytest tests/f03` 目标集全绿；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
 | 边界/not_run | 自动过期 sweeper、`approval.required` 持久事件、真实浏览器 DOM、service-account 审批人真实栈路径、agent→connector 写策略消费、真实厂商连接器、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #51、未改 docs/spec/contracts、迁移仅新增 0031（0001–0030 未改） |
 
+## F06 写后丢响应暂停核对与真实写次数不增加（T051，2026-11-04）
+
+T051（GitHub #52）已交付，状态 **`passed`**（范围 = 写风险连接器派发前持久化
+`authorized → dispatching` 意图，只有 CAS 赢家发送；超时/连接丢失/发送后 5xx/无法验证的 2xx
+一律把 operation 置 `unknown`（从不 failed/succeeded），同事务写 T036
+`run_unknown_operations`，attempt 退出后 Run 停在 `needs_reconciliation`；重复
+invoke/resume 只回放已记录状态、零出站；owner 或该 operation 审批人用经校验且绑定 operation
+的证据 artifact 调 `reconcileOperation`，`confirmed_success` 置 succeeded（原回执优先，否则
+证据作为回执），`confirmed_not_sent`/`confirmed_failure` 置 failed；无供应商幂等键/查询回执
+能力时披露限制且绝不自动补发；同一事务经唯一 T031 finalizer 让 Run 离开核对；同
+(conclusion,evidence,Idempotency-Key) 幂等、不同结论 409；真实写次数全程为 1）。证据：
+`reports/f06/T051-unknown-operations.md`、ADR 0007 D18。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0032_operation_reconciliation.sql`：`platform.operations` 可空审计列 `reconciliation_conclusion`（closed CHECK）、`reconciliation_key`（≤200）、`reconciliation_limitation`（closed CHECK）；契约列语义不变，无新表/触发器；0001–0031 未改 |
+| unknown 派发 | `capabilities.dispatchConnector` 在 `Connectors.Execute` 返回 timeout/transport/5xx-after-send/response-invalid 且策略为 write 时调 `markConnectorUnknown`：同一事务（`execution.RecordUnknownOperationTx` 锁 Run+校验 live attempt+写 unknown 行，再写 operation `unknown`）提交；返回契约 `CapabilityResult{state:"unknown"}`；物理 attempt 保持 `dispatching`；失败路径不改写为 failed/succeeded |
+| CAS 单发送者 | `beginConnectorAttempt` 仍以 `authorized → dispatching` CAS（operation 行锁 + UNIQUE attempt）为唯一发送门；重复 invoke 见 `dispatching` 409 `operation_in_progress`、见 `unknown` 200 回放；同逻辑键换参数 409 `operation_conflict` |
+| 限制披露 | 派发前持久化 `reconciliation_limitation=no_idempotency_or_query_support`（connector 策略当前无供应商幂等键/查询回执能力）；dispatch `data.limitation`、owner 账本与 `/runs` 页面三处披露；无任何自动重发 |
+| 核对服务 | 新增 `internal/capabilities/reconciliation.go`：`ReconcileOperation`（Run→operation 锁序；owner 或 `platform.approvals.approver_id`；证据 artifact ready/未删/owner 或 run 链接 + JSON 绑定 operation_id 或 logical_key+params_sha256；`Idempotency-Key` 必需；同元组幂等回放、不同元组 409）与 `internal/execution/reconcile.go`：`ReconcileUnknownOperationTx`（解析唯一 unknown 行后重入 `finalizeRunTx`：取消意图优先、成功提案→succeeded、失败结论→合成 failed 提案、仍有未知/子 Run 保持停泊） |
+| 结论语义 | `confirmed_success`：operation succeeded，原回执优先否则证据 artifact 作回执；`confirmed_not_sent`：failed + `operation_not_sent`，因策略无显式安全重试支持不做第二次派发、不建第二个 operation id；`confirmed_failure`：failed + 派发时安全码；三者都只结算原 operation |
+| HTTP/页面 | 契约 `POST /api/v1/operations/{operation_id}/reconcile`（cookie+CSRF 或 API key `application:write`；返回 `Accepted{id,state}`；缺 `Idempotency-Key` 422）；owner 账本新增 `requires_reconciliation`/`reconciled_by`/`reconciliation_evidence_id`/`reconciliation_conclusion`/`reconciliation_limitation`/`provider_idempotency_key`（空值省略，旧投影不变）；`/runs` 显示「结果未知（待核对）」、限制披露与逐操作核对表单，核对后显示「真实写次数仍为 N（未增加）」 |
+| 真实栈 | 真实 PG（0001–0032）、编译 `cmd/api`、真实 mTLS、对象字节、真实 T050 审批→resume、真实 loopback 端点（收到真实写后关闭连接不回响应）+ 真实 egress guard；`test_t051_unknown.py` 9 用例（丢回执 unknown/run 停泊/重复不补发/换参 409、5xx→unknown、confirmed_success+证据+Run succeeded+幂等重放+冲突 409、confirmed_not_sent 无第二次 operation/写、confirmed_failure、非 owner 403、证据缺失/绑定错误/已删除/他人证据 422、缺 Idempotency-Key/坏结论 422、无幂等/查询能力披露且不自动重发）+ `test_t051_pages.py` 3 用例通过；端点请求数=physical attempt 数=1 |
+| 回归 | `tests/f03` T036 unknown/cancel 21 passed（T036 bridge 行为未改）；`go test ./...` 全 ok；`pytest tests/f06` 164 passed（含 T039–T051）；`tests/tooling` 21 passed |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 164 passed（582.73s）；`pytest tests/f03` 目标集 21 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | 真实厂商连接器（无幂等键/查询回执 API，故不做同 operation 安全重试分支）、owner 以外的独立审批人核对（T050 审批人恒为 owner）、`needs_reconciliation → queued` requeue（T038 recover 仍是唯一 requeue 权威）、真实浏览器 DOM、自动重试/sweeper、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #52、未改 docs/spec/contracts、迁移仅新增 0032（0001–0031 未改） |
+
 ## 记录模板
 
 ```text

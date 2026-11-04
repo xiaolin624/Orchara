@@ -213,16 +213,39 @@ func (s *Service) Cancel(ctx context.Context, callerID, runID string) (*CancelOu
 func (s *Service) RecordUnknownOperation(
 	ctx context.Context, runID string, request UnknownOperationRequest,
 ) (*UnknownOperation, error) {
-	normalized, err := validateUnknownOperationRequest(runID, request)
-	if err != nil {
-		return nil, err
-	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting the unknown-operation transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	stored, err := s.RecordUnknownOperationTx(
+		ctx, tx, runID, request.AttemptToken, request.OperationID, request.Reason,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing the unknown-operation transaction: %w", err)
+	}
+	return stored, nil
+}
 
+// RecordUnknownOperationTx is the same record bridge inside a caller-owned
+// transaction. F06/T051 needs it because the connector dispatcher must commit the
+// operation's `unknown` state and the run's unknown ledger row atomically: an
+// operation marked unknown without a ledger row would let the finalizer claim a
+// failure for a write that may have happened, and a ledger row without the
+// operation state would leave the single CAS sender replaying `dispatching`
+// forever.
+func (s *Service) RecordUnknownOperationTx(
+	ctx context.Context, tx *sql.Tx, runID, attemptToken, operationID, reason string,
+) (*UnknownOperation, error) {
+	normalized, err := validateUnknownOperationRequest(runID, UnknownOperationRequest{
+		AttemptToken: attemptToken, OperationID: operationID, Reason: reason,
+	})
+	if err != nil {
+		return nil, err
+	}
 	run, err := lockCancelRunTx(ctx, tx, strings.TrimSpace(runID))
 	if err != nil {
 		return nil, err
@@ -244,9 +267,6 @@ func (s *Service) RecordUnknownOperation(
 	}
 	if stored.Reason != normalized.Reason {
 		return nil, ErrEventConflict
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("committing the unknown-operation transaction: %w", err)
 	}
 	stored.RunState = run.State
 	return stored, nil

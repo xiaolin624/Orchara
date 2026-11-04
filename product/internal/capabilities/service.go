@@ -16,6 +16,7 @@ import (
 	"orchara/platform/internal/budget"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/connectors"
+	"orchara/platform/internal/execution"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
@@ -62,9 +63,36 @@ type Service struct {
 	// Approvals is the F06/T050 approval writer. Nil fails closed: a write-risk
 	// connector operation can never be parked without its server-built proposal.
 	Approvals *approvals.Service
+	// Unknowns is the F03/T036 unknown-operation bridge writer. F06/T051 uses it
+	// to commit the operation's `unknown` state and the run's unresolved-write row
+	// in one transaction. Nil fails closed: a connector write with an ambiguous
+	// outcome is still marked unknown (so it can never be resent) but cannot park
+	// the Run.
+	Unknowns UnknownOperationBridge
+	// Reconciler is the F03/T036/T051 run-side bridge: it resolves the unknown
+	// ledger row and re-drives the one finalizer inside the caller's transaction.
+	// Nil fails closed: an unknown write cannot be settled.
+	Reconciler ReconciliationBridge
 	// ToolExecutor is reserved for T042/T043; nil means worker execution (the
 	// only path in this batch).
 	ToolExecutor ToolExecutor
+}
+
+// UnknownOperationBridge is the T036 recorder seam. internal/execution implements
+// it; the connector dispatcher calls the Tx form so both facts commit atomically.
+type UnknownOperationBridge interface {
+	RecordUnknownOperationTx(
+		ctx context.Context, tx *sql.Tx, runID, attemptToken, operationID, reason string,
+	) (*execution.UnknownOperation, error)
+}
+
+// ReconciliationBridge is the T051 run-side settlement seam. internal/execution
+// implements it; the reconcile transaction resolves the unknown row and lets the
+// one finalizer decide the Run outcome.
+type ReconciliationBridge interface {
+	ReconcileUnknownOperationTx(
+		ctx context.Context, tx *sql.Tx, input execution.ReconcileResolution,
+	) (string, error)
 }
 
 // New builds the capability service. Store/Providers may be nil in a process
@@ -642,10 +670,10 @@ func (s *Service) prepareOperation(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO platform.operations
 			(id, run_id, logical_key, capability_version, capability_kind, risk_class,
-			 params_sha256, params_artifact_id, state)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::uuid, 'prepared')`,
+			 params_sha256, params_artifact_id, state, reconciliation_limitation)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::uuid, 'prepared', $9)`,
 		operationID, run.ID, input.LogicalKey, input.CapabilityVersion, spec.Kind,
-		riskClass, digest, paramsArtifactID,
+		riskClass, digest, paramsArtifactID, connectorReconciliationLimitation(spec),
 	); err != nil {
 		if isUniqueViolation(err) {
 			return nil, capFailure(409, CodeOperationConflict,
@@ -803,6 +831,21 @@ func (s *Service) replayTx(
 		data := map[string]any{}
 		if op.LastErrorCode.Valid {
 			data["error_code"] = op.LastErrorCode.String
+		}
+		result.Data = data
+		return result, nil
+	case "unknown":
+		// F06/T051: a lost-receipt write is neither success nor failure. A
+		// duplicate invoke of the same operation id/logical key returns the
+		// recorded unknown state and never makes a second physical request.
+		data := map[string]any{
+			"error_code":              "operation_unknown",
+			"requires_reconciliation": true,
+			"reconciliation_status":   "pending",
+			"dispatch_state":          "unknown",
+		}
+		if op.LastErrorCode.Valid {
+			data["dispatch_error_code"] = op.LastErrorCode.String
 		}
 		result.Data = data
 		return result, nil
@@ -1667,15 +1710,25 @@ func (s *Service) verifyResultArtifactTx(ctx context.Context, tx *sql.Tx, run *r
 // cost/tokens of every physical attempt, so a switched call is visibly not a
 // seamless primary success.
 type LedgerOperation struct {
-	ID                       string           `json:"id"`
-	CapabilityKind           string           `json:"capability_kind"`
-	RiskClass                string           `json:"risk_class"`
-	ConnectorTarget          *string          `json:"connector_target,omitempty"`
-	CapabilityVersion        string           `json:"capability_version"`
-	State                    string           `json:"state"`
-	Attempts                 int              `json:"attempts"`
-	ErrorCode                *string          `json:"error_code"`
-	ReceiptArtifactID        *string          `json:"receipt_artifact_id"`
+	ID                string  `json:"id"`
+	CapabilityKind    string  `json:"capability_kind"`
+	RiskClass         string  `json:"risk_class"`
+	ConnectorTarget   *string `json:"connector_target,omitempty"`
+	CapabilityVersion string  `json:"capability_version"`
+	State             string  `json:"state"`
+	Attempts          int     `json:"attempts"`
+	ErrorCode         *string `json:"error_code"`
+	ReceiptArtifactID *string `json:"receipt_artifact_id"`
+	// F06/T051 unknown-write reconciliation projection. RequiresReconciliation
+	// is true only while the operation is `unknown`; the limitation is the
+	// provider-capability fact recorded before dispatch (null when the provider
+	// can be queried / carries an idempotency key).
+	RequiresReconciliation   bool             `json:"requires_reconciliation,omitempty"`
+	ReconciledBy             *string          `json:"reconciled_by,omitempty"`
+	ReconciliationEvidenceID *string          `json:"reconciliation_evidence_id,omitempty"`
+	ReconciliationConclusion *string          `json:"reconciliation_conclusion,omitempty"`
+	ReconciliationLimitation *string          `json:"reconciliation_limitation,omitempty"`
+	ProviderIdempotencyKey   *string          `json:"provider_idempotency_key,omitempty"`
 	FallbackProfileVersionID *string          `json:"fallback_profile_version_id,omitempty"`
 	FallbackReason           *string          `json:"fallback_reason,omitempty"`
 	TokensIn                 int64            `json:"tokens_in"`
@@ -1717,6 +1770,9 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 		       o.risk_class, cp.origin, cp.method, cp.path_prefix,
 		       o.last_error_code, o.receipt_artifact_id::text,
 		       o.fallback_profile_version_id::text, o.fallback_reason,
+		       o.reconciled_by::text, o.reconciliation_evidence_id::text,
+		       o.reconciliation_conclusion, o.reconciliation_limitation,
+		       o.provider_idempotency_key,
 		       (SELECT count(*) FROM platform.operation_attempts AS a
 		         WHERE a.operation_id = o.id),
 		       COALESCE((SELECT sum(a.tokens_in) FROM platform.operation_attempts AS a
@@ -1745,6 +1801,11 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 			receiptID     sql.NullString
 			fallbackID    sql.NullString
 			fallbackWhy   sql.NullString
+			reconciledBy  sql.NullString
+			evidenceID    sql.NullString
+			conclusion    sql.NullString
+			limitation    sql.NullString
+			providerKey   sql.NullString
 			origin        sql.NullString
 			method        sql.NullString
 			pathPrefix    sql.NullString
@@ -1755,9 +1816,31 @@ func (s *Service) Ledger(ctx context.Context, ownerID, runID string) ([]LedgerOp
 		)
 		if err := rows.Scan(&entry.ID, &entry.CapabilityKind, &entry.CapabilityVersion,
 			&entry.State, &entry.RiskClass, &origin, &method, &pathPrefix, &errorCode, &receiptID, &fallbackID, &fallbackWhy,
+			&reconciledBy, &evidenceID, &conclusion, &limitation, &providerKey,
 			&entry.Attempts, &entry.TokensIn, &entry.TokensOut, &entry.ChargedAmount,
 			&objectKey, &digest, &artifactState, &deleted); err != nil {
 			return nil, capFailure(500, CodeInternal, "the capability ledger could not be read")
+		}
+		entry.RequiresReconciliation = entry.State == "unknown"
+		if reconciledBy.Valid {
+			value := reconciledBy.String
+			entry.ReconciledBy = &value
+		}
+		if evidenceID.Valid {
+			value := evidenceID.String
+			entry.ReconciliationEvidenceID = &value
+		}
+		if conclusion.Valid {
+			value := conclusion.String
+			entry.ReconciliationConclusion = &value
+		}
+		if limitation.Valid {
+			value := limitation.String
+			entry.ReconciliationLimitation = &value
+		}
+		if providerKey.Valid {
+			value := providerKey.String
+			entry.ProviderIdempotencyKey = &value
 		}
 		entry.ToolCallSummary = []LedgerToolCall{}
 		entry.StructuredKeys = []string{}
