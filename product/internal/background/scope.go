@@ -38,6 +38,10 @@ type JobScope interface {
 	// artifact/hash and the canonical dependency lock. The handler never reads
 	// the tool row itself.
 	ToolBuild(ctx context.Context, jobID, attemptToken string) (ToolBuildBinding, error)
+	// DocumentIngest returns the job-scoped ingestion binding (T055): the
+	// document/revision and the exact source artifact/hash/media type to parse.
+	// The handler never reads the document row itself.
+	DocumentIngest(ctx context.Context, jobID, attemptToken string) (DocumentIngestBinding, error)
 	// FetchURL reads a signed GET link into memory, capped at maxBytes.
 	FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, error)
 	// PutURL writes body to a signed PUT link.
@@ -64,6 +68,17 @@ type ArtifactView struct {
 	State     string
 	MediaType string
 	SizeBytes int64
+}
+
+// DocumentIngestBinding is the T055 job-scoped ingestion binding.
+type DocumentIngestBinding struct {
+	DocumentID       string
+	KnowledgeBaseID  string
+	DocumentRevision int64
+	SourceArtifactID string
+	SourceSHA256     string
+	SourceMediaType  string
+	ParserVersion    string
 }
 
 // ToolBuildBinding is the T037 job-scoped tool build binding. DependencyLock is

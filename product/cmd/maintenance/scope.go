@@ -148,6 +148,26 @@ func (s *jobScope) ToolBuild(
 	}, nil
 }
 
+// DocumentIngest resolves the job-scoped ingestion binding (T055).
+func (s *jobScope) DocumentIngest(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (background.DocumentIngestBinding, error) {
+	binding, err := s.client.documentIngestBinding(ctx, jobID, attemptToken)
+	if err != nil {
+		return background.DocumentIngestBinding{}, err
+	}
+	return background.DocumentIngestBinding{
+		DocumentID:       binding.DocumentID,
+		KnowledgeBaseID:  binding.KnowledgeBaseID,
+		DocumentRevision: binding.DocumentRevision,
+		SourceArtifactID: binding.SourceArtifactID,
+		SourceSHA256:     binding.SourceSHA256,
+		SourceMediaType:  binding.SourceMediaType,
+		ParserVersion:    binding.ParserVersion,
+	}, nil
+}
+
 // FetchURL reads one signed GET link, capped at maxBytes.
 func (s *jobScope) FetchURL(ctx context.Context, link string, maxBytes int64) ([]byte, error) {
 	if err := validateSignedURL(link); err != nil {
@@ -259,6 +279,18 @@ type evaluationBindingPayload struct {
 	Kind              string `json:"kind"`
 	DatasetArtifactID string `json:"dataset_artifact_id"`
 	ManifestSHA256    string `json:"manifest_sha256"`
+}
+
+// documentIngestBindingPayload is the non-contract internal document-ingest
+// binding (T055).
+type documentIngestBindingPayload struct {
+	DocumentID       string `json:"document_id"`
+	KnowledgeBaseID  string `json:"knowledge_base_id"`
+	DocumentRevision int64  `json:"document_revision"`
+	SourceArtifactID string `json:"source_artifact_id"`
+	SourceSHA256     string `json:"source_sha256"`
+	SourceMediaType  string `json:"source_media_type"`
+	ParserVersion    string `json:"parser_version"`
 }
 
 // toolBuildBindingPayload is the non-contract internal tool-build binding (T037).
@@ -391,6 +423,27 @@ func (c *internalClient) toolBuildBinding(
 	}
 	if status != http.StatusOK {
 		return toolBuildBindingPayload{}, fmt.Errorf("tool-build binding returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// documentIngestBinding is the T055 job-scoped ingestion read.
+func (c *internalClient) documentIngestBinding(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (documentIngestBindingPayload, error) {
+	var response documentIngestBindingPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/document-ingest",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return documentIngestBindingPayload{}, err
+	}
+	if status != http.StatusOK {
+		return documentIngestBindingPayload{}, fmt.Errorf("document-ingest binding returned unexpected status %d", status)
 	}
 	return response, nil
 }

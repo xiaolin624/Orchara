@@ -24,6 +24,7 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/background/handlers"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
@@ -736,8 +737,9 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 				ReportWaitTimeout:      r.options.reportWaitTimeout,
 				ToolBuildTimeout:       r.options.toolBuildTimeout,
 			},
-			Tools:   r.tools,
-			Sandbox: r.sandbox,
+			Embedder: embedding.FromEnv(),
+			Tools:    r.tools,
+			Sandbox:  r.sandbox,
 		})
 	}
 	cancel()
