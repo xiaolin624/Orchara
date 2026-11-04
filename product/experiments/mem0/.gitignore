@@ -1,0 +1,6 @@
+# Isolated T066 experiment state: never committed.
+.venv/
+.target/
+work/
+pip-report.json
+__pycache__/
