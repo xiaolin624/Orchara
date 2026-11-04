@@ -3,6 +3,9 @@
 - 任务：F10 / GitHub Issue #60（票 `T059`，规划 ID F10.02），分支
   `t/t059-tabular-ingest`（worktree `E:\orchara-worktrees\t059`，基线 integration tip
   `9f58fc2`）；父门禁 #53–#68 集成批次。
+- 合并：`integration/f13a-f15a-f09-f10`（tip `f1a5257`，含 T064 的 grounded answer）已合入
+  分支，merge commit **`e48229b`**；唯一冲突是 `PROGRESS.md`（双方保留），T064 的 ADR 0012
+  占号后本票 ADR 让号为 **0013**；合并后目标门禁复跑见 §3。
 - 状态：**`passed`**（本票范围 = 在 T055 摄取链上扩展 **CSV/XLSX 一种输入族**：
   解析器注册、行批次分块与 citation 行范围、公式/DTD/宏/压缩比/行列单元格上限的
   failed 文档与只读派生诊断位置、`/knowledge` 页面 CSV/XLSX 上传与行范围/位置展示。
@@ -14,7 +17,7 @@
   XLSX 只读**第一个工作表**，多工作表选择留待后续票；全量 `pytest tests` 按 BRIEF §3
   不在本票运行（≈67 分钟，orchestrator 负责）。
 - 契约偏差：**无新增/修改契约**。`citation` 是 jsonb，本票只加 additive 字段；诊断
-  `detail` 是 T055 已登记的非契约读的扩展，见 **ADR 0012**；`docs/spec/**`、
+  `detail` 是 T055 已登记的非契约读的扩展，见 **ADR 0013**；`docs/spec/**`、
   `contracts/**` 未改，`sync_spec --check` no drift。
 - 迁移：**无**（0034 已提供全部存储；本票不新增表/列）。
 
@@ -35,8 +38,9 @@
    - 诊断读：`detail` 只读派生（同 parser revision + 同封存字节重放）→ HTTP 用例；
    - 真实栈：CSV/XLSX 上传→封存→摄取→ready→检索→citation 独立真值；失败矩阵；
      ACL/引用协议一致性；重试/恢复边界；页面结构 + Node 执行 helper。
-3. 跑门禁（§3），两次连跑 f10；写本报告/`PROGRESS.md`/ADR 0012；按 feat/test/docs
-   提交；合并 `integration/f13a-f15a-f09-f10` 后复跑目标门禁（§3 末尾）；未 push、
+3. 跑门禁（§3），两次连跑 f10；写本报告/`PROGRESS.md`/ADR 0013；按 feat/test/docs
+   提交；合并 `integration/f13a-f15a-f09-f10`（T064）并把冲突的 PROGRESS 与 ADR 让号
+   （0013）处理完，得到 merge commit `e48229b` 后复跑目标门禁（§3 末尾）；未 push、
    未关 issue、未改 `docs/spec/**`/`contracts/**`、无迁移。
 
 ## 1. 交付内容
@@ -83,14 +87,14 @@
   `text_render = "sheet_csv/1"`；行号是**工作表自身行号**（`r`，1-based），允许空洞，
   `row_count` 为片段实际数据行数。`sheet_name` 进入 citation；第二个 sheet 不摄取。
 
-### 1.4 citation 行范围（唯一溯源文档的 additive 扩展，ADR 0012 §4）
+### 1.4 citation 行范围（唯一溯源文档的 additive 扩展，ADR 0013 §4）
 
 `knowledge_chunks.citation` 新增（`omitempty`，txt/md 不变）：
 `row_start`、`row_end`、`row_count`、`header_row`、`sheet_name`、`columns`、
 `columns_omitted`、`text_render`。handler 从 `chunk.Table` 写入；完成守卫的既有
 citation 一致性检查不变。
 
-### 1.5 失败位置：只读派生，不新增状态权威/写路径/迁移（ADR 0012 §5）
+### 1.5 失败位置：只读派生，不新增状态权威/写路径/迁移（ADR 0013 §5）
 
 - `GET /api/v1/knowledge-documents/{id}/diagnostics` 新增 `detail`
   （`{sheet,row,column,cell,part,limit,value}`，可空）。
@@ -182,6 +186,31 @@ $ python -m pytest tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finali
 > T024 artifact/T022 finalize 两个文件；`tests/f00b` 整包与 `tests/f05` 整包未在合并前
 > 整跑（合并后由集成门禁负责），故不写成"全绿"。
 
+合并 `integration/f13a-f15a-f09-f10`（tip `f1a5257`，含 T064）之后复跑：
+
+```text
+$ python -m pytest tests/f10 -q          # merge e48229b 之后（T055 20 + T064 13 + T059 8）
+.........................................                                [100%]
+41 passed in 220.94s (0:03:40)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 6.71s
+
+$ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
+(exit 0；33 个包 ok / 0 FAIL；gofmt clean)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+> 合并说明：唯一冲突是 `PROGRESS.md`（T059 行/节与 T064 行/节并存）。T064 已占用
+> ADR 0012（grounded answers），本票 ADR 让号为 `0013-f10-tabular-ingest.md`，报告/
+> PROGRESS 引用同步更新。代码文件（`internal/knowledge/service.go` 的 ACL 硬化 +
+> 本票 citation 字段/诊断 detail、`internal/api/knowledge.go` 的 answer 端点 + detail
+> 视图、`knowledge.js/html` 的问答区 + 表格区）自动合并后，在 §3 的 41 passed 中一起
+> 被真实栈用例覆盖。
+
 ## 4. 真实栈、输入与版本
 
 - 真实 PG 16.4（每个 fixture 新建临时库，真实 `cmd/admin migrate` 0001→当前链；
@@ -224,7 +253,7 @@ $ python -m pytest tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finali
 - 行范围/citation：`Citation` 的 tabular 字段已固定；XLSX 的 `text_render = "sheet_csv/1"`
   与 `parser_version` 绑定，换渲染规则 = 新 parser revision。
 - 失败位置：`GET /knowledge-documents/{id}/diagnostics` 的 `detail` 是只读派生；
-  T061/T064 若要持久化历史失败位置，应作为新的数据模型决定并更新 ADR。
+  T061 若要持久化历史失败位置，应作为新的数据模型决定并更新 ADR。
 - 上限常量：`internal/knowledge/table.go`（`MaxTableRows/Columns/Cells/Worksheets/RowChars`）
   与 `internal/artifacts` 的 archive 常量是唯一来源；T064 若要放宽必须同改码/测试/ADR。
 - 页面：`knowledge.js` 的 `formatRowRange`/`describeFailureDetail` 可被后续格式复用；
@@ -233,9 +262,9 @@ $ python -m pytest tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finali
 ## 7. 与契约/既有票据的关系（如实）
 
 1. **无迁移、无契约改动**：`contracts/**`、`docs/spec/**` 未改；`sync_spec --check` no drift。
-2. `citation` 新增字段是 jsonb additive 扩展（ADR 0012 §4）；txt/md 的既有 citation 不变
+2. `citation` 新增字段是 jsonb additive 扩展（ADR 0013 §4）；txt/md 的既有 citation 不变
    （omitempty），T055 的 20 个用例 + 本票 8 个新用例全绿。
-3. 诊断 `detail` 是 T055 非契约读的扩展（ADR 0012 §5），不是新端点/新状态表。
+3. 诊断 `detail` 是 T055 非契约读的扩展（ADR 0013 §5），不是新端点/新状态表。
 4. **T055 用例的一处预期更新**：`test_ingest_requires_a_ready_owner_artifact_and_a_registered_parser`
    原断言“CSV 未注册 → 422”，T059 注册后该断言被本票取代：CSV 现在 202 进入
    scanning，未注册格式改用 PDF（T060）证明仍是 422。这是本票唯一改动的既有断言，
@@ -246,6 +275,6 @@ $ python -m pytest tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finali
 
 ## 8. 参考
 
-- ADR：`product/docs/adr/0012-f10-tabular-ingest.md`（本票）；`0010-f10-knowledge.md`
+- ADR：`product/docs/adr/0013-f10-tabular-ingest.md`（本票）；`0010-f10-knowledge.md`
   §6 扩展点 + 后续更新指针；`0005`/`0007` 非契约先例。
 - 基础：`product/reports/f10/T055-knowledge-ingest.md`。

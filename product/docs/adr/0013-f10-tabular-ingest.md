@@ -1,7 +1,9 @@
-# ADR 0012：F10 表格输入族的解析、行范围与只读诊断边界
+# ADR 0013：F10 表格输入族的解析、行范围与只读诊断边界
 
 - 状态：已接受
 - 日期：2026-11-04
+- 编号：合并 `integration/f13a-f15a-f09-f10`（T064）后让号；T064 的 grounded-answer
+  ADR 占用 0012，本 ADR 为 0013。
 - 相关：F10 / T059（GitHub #60，规划 ID F10.02）；
   分支 `t/t059-tabular-ingest`；报告 `product/reports/f10/T059-tabular-ingest.md`；
   基础：T055（#56）的解析器缝、chunker、citation jsonb、完成守卫、非契约检索/诊断面
