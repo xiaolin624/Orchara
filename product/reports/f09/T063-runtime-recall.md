@@ -2,7 +2,8 @@
 
 - 任务：F09 / GitHub Issue #64（票 `T063`，规划 ID F09.03），分支
   `t/t063-runtime-recall`（worktree `E:\orchara-worktrees\t063`）；父门禁 #53–#68
-  集成批次（`integration/f13a-f15a-f09-f10`，基线 `ddaeb46`）；合并提交 `<<MERGE>>`。
+  集成批次（`integration/f13a-f15a-f09-f10`，基线 `ddaeb46`）；合并提交 `0c8a995`
+  （父 `a36c81d` = 本票 docs 提交；父 `eb30e1e` = 集成 tip/T067 检索缓存）。
 - 状态：**`passed`**（本票范围 = 真实 PostgreSQL 的 `MemorySource` + 确定性预算取舍 +
   唯一生产接点的真实 run 证明 + 按条来源/截断 trace + 失败关闭与恢复断言 +
   propose 身份核实）。真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP/mTLS +
@@ -161,23 +162,33 @@ $ gofmt -l .
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest   (exit 0)
 
-$ python -m pytest tests/f09 -q          # 合并前最终树（本轮首个整跑，环境抖动）
+$ python -m pytest tests/f09 -q          # 本票树（合并前）首个整跑，环境抖动
 1 failed, 50 passed in 622.54s (0:10:22)
-  # 失败：test_over_budget_recall_... 的 python 节点 sandbox_failed
+  # 失败：test_over_budget_recall_... 的沙箱 sandbox_failed
   # （"heartbeat: context canceled"），记忆断言之前；见 §6 环境噪声
 
-$ python -m pytest tests/f09 -q          # 背靠背第 1 轮（绿）
+$ python -m pytest tests/f09 -q          # 本票树 背靠背第 1 轮（绿）
 51 passed in 671.02s (0:11:11)
 
-$ python -m pytest tests/f09 -q          # 背靠背第 2 轮（绿）
+$ python -m pytest tests/f09 -q          # 本票树 背靠背第 2 轮（绿）
 51 passed in 700.60s (0:11:40)
 
-$ python -m pytest tests/f10 -q          # 共享文件可能被触碰的邻接套件
-41 passed in 577.24s (0:09:37)
+$ python -m pytest tests/f09 -q          # 合并后最终树（0c8a995）第 1 轮
+51 passed in 511.80s (0:08:31)
 
-$ python -m pytest tests/f06/test_t047_context.py -q   # 行为更新后的邻接回归
-2 passed in 83.04s
-  # 首次合并运行该文件 1 个用例遇同类 sandbox_failed，单独复跑通过
+$ python -m pytest tests/f09 -q          # 合并后最终树 第 2 轮（环境抖动）
+1 failed, 50 passed in 569.44s (0:09:29)
+  # 失败：test_missing_memory_bytes_... 的沙箱 sandbox_failed；单独复跑通过
+
+$ python -m pytest tests/f09 -q          # 合并后最终树 第 3 轮（背靠背绿）
+51 passed in 643.37s (0:10:43)
+
+$ python -m pytest tests/f10 -q          # 共享文件可能被触碰的邻接套件（合并后）
+57 passed in 679.35s (0:11:19)
+
+$ python -m pytest tests/f06/test_t047_context.py -q   # 行为更新后的邻接回归（合并后）
+2 passed in 48.14s
+  # 合并前该文件首次运行 1 个用例遇同类 sandbox_failed，单独复跑通过
 
 $ python -m pytest tests/tooling -q
 21 passed in 7.25s
@@ -187,19 +198,36 @@ $ python -m pytest tests/tooling -q
 T063 的 4 个用例含 4 次真实 agent run（其中恢复用例 2 次）与 1 次真实 claim/propose。
 确定性说明（BRIEF §6.1）：记忆选择只依赖存储的 `confirmed_at`/`id` 与预算算术，
 不依赖墙钟窗口；over-budget 断言的 token 阈值有 >100 token 余量，不押边界；测试无
-sleep；唯一观察到的时长波动来自共享 WSL/runsc 沙箱的负载抖动（见下）。
+sleep；合并后同一棵树上得到两轮绿色整跑（511.80s / 643.37s），中间一轮的
+1 个 `sandbox_failed` 是本批共享 WSL2/runsc 沙箱的负载抖动（§6），不是记忆断言失败。
 
 ### 合并（BRIEF §7.6）
 
 ```text
-<<MERGE-TEXT>>
+$ git merge integration/f13a-f15a-f09-f10
+合并提交 0c8a995（父 a36c81d = 本票 docs 提交；父 eb30e1e = 集成 tip/T067 检索缓存）
+自动合并，无冲突；本票文件与 T067 的 knowledge/检索缓存文件不重叠
+
+# 合并后的最终树
+$ python -m pytest tests/f09 -q
+51 passed in 511.80s (0:08:31)
+$ python -m pytest tests/f09 -q
+1 failed, 50 passed in 569.44s (0:09:29)   # sandbox_failed 抖动，见 §6
+$ python -m pytest tests/f09 -q
+51 passed in 643.37s (0:10:43)
+$ python -m pytest tests/f10 -q
+57 passed in 679.35s (0:11:19)
+$ python -m pytest tests/f06/test_t047_context.py -q
+2 passed in 48.14s
+$ go build ./... ; go vet ./... ; gofmt -l . ; go test ./... ; python tools/sync_spec.py --check
+全部 exit 0；gofmt 空；“no drift: spec copy and contract snapshot match the manifest”
 ```
 
 ## 5. 输入与版本
 
 | 输入 | 版本 / SHA-256（前 16 位） |
 |---|---|
-| 基线 / 集成 tip | `ddaeb46` |
+| 基线 / 集成 tip | `ddaeb46`；合并时集成 tip `eb30e1e`（T067 检索缓存） |
 | `internal/context/context.go` | `AECD1B00A4890AFA…` |
 | `internal/context/build_test.go` | `2201E0364D5DFD90…` |
 | `internal/memory/recall.go` | `6C3CD88575AADF73…` |
@@ -207,7 +235,7 @@ sleep；唯一观察到的时长波动来自共享 WSL/runsc 沙箱的负载抖�
 | `internal/presetexec/agent.go` / `presetexec.go` | `494A9E46AF9DCD63…` / `0F72EFE95F02315B…` |
 | `cmd/supervisor/exec.go` | `68C2D21FC41E3EC7…` |
 | `internal/config/supervisorexec.go` | `4D14887A08068C20…` |
-| `tests/f09/test_t063_recall.py` / `tests/support/t063.py` | `D8D31094961E5E08…` / `93407A900BB06B12…` |
+| `tests/f09/test_t063_recall.py` / `tests/support/t063.py` | `D8D31094961E5E08…` / `36337CABC791D5D9…` |
 | `tests/f06/test_t047_context.py` | `1EA7F6FA5A104527…` |
 | `docs/adr/0009-f09-memory.md`（§12 增补） | `04E921C5FB0613A5…` |
 | 迁移 | **none**（本票不新增迁移；0033/0036 未改） |
@@ -230,16 +258,16 @@ sleep；唯一观察到的时长波动来自共享 WSL/runsc 沙箱的负载抖�
 
 **观察到的环境噪声（如实记录，非本票断言）**：本票开发期间主机同时运行多个
 implementer 的套件（orchestrator 曾为释放 CPU 终止过一个 pytest 进程）。在此负载下出现
-三次 `sandbox_failed`（`"heartbeat: context canceled"` / lease lost）：一次在 T063 的
-include 用例、一次在 T063 的 over-budget 用例、一次在既有 F06 的
-`test_t047_context.py`（本票只改其中一个断言）；三次都发生在 WSL2/runsc 沙箱内、
-记忆断言之前，对应用例单独复跑均通过。这是本批已知的共享沙箱 lease 抖动：
+四次 `sandbox_failed`（`"heartbeat: context canceled"` / lease lost）：三次在 T063
+（include、over-budget、missing-bytes 三个不同用例各一次），一次在既有 F06 的
+`test_t047_context.py`（本票只改其中一个断言）；四次都发生在 WSL2/runsc 沙箱内、
+记忆断言之前，对应用例单独复跑或下一轮整跑均通过。这是本批已知的共享沙箱 lease 抖动：
 `reports/f04a/T043-agent-node.md`（`sandbox_failed` heartbeat context canceled，单独复跑
 通过）与 `reports/f06/T048-connectors.md` §4.4（"依赖 WSL2/runsc 的用例在两次全量运行中
 分别出现一次 `sandbox_failed`（lease lost），两者单独重跑均通过，判定为沙箱环境抖动"）
-记录了同类现象。本票未修改沙箱/心跳路径，也没有依赖亚秒/墙钟窗口的断言；最终树两轮
-完整套件与失败用例复跑结果见 §4。若 CI 在无并发负载的主机上仍复现，应按 F05 沙箱缺陷
-另行处理，而不是隐藏在本票的通过结论里。
+记录了同类现象。本票未修改沙箱/心跳路径，也没有依赖亚秒/墙钟窗口的断言；同一合并树的
+两轮绿色整跑（511.80s / 643.37s）与失败用例复跑结果见 §4。若 CI 在无并发负载的主机上
+仍复现，应按 F05 沙箱缺陷另行处理，而不是隐藏在本票的通过结论里。
 
 ## 7. 下一票接口
 
