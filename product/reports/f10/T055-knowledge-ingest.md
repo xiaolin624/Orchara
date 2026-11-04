@@ -185,6 +185,31 @@ $ python -m pytest tests/f00b -q
 > `text/markdown` 在 `purpose=knowledge` 下的准入和一条错误文案），按环境/时序抖动
 > 记录，不冒充本票回归失败或通过。
 
+合并 `integration/f13a-f15a-f09-f10`（merge commit `231a3b8`）后复跑目标门禁：
+integration 已先占 `0033_memory_candidates.sql`，故本票迁移让号为
+`0034_knowledge.sql`、ADR 让号为 0010（F15A=0008、F09=0009）；`PROGRESS.md` 与
+`internal/api/server.go` 冲突按双方保留解决（F09 memory + F10 knowledge 路由/服务并存）。
+
+```text
+$ python -m pytest tests/f10 -q          # merge 231a3b8 之后
+....................                                                     [100%]
+20 passed in 127.49s (0:02:07)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 5.28s
+
+$ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
+(exit 0；gofmt clean)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+> f00b 135 passed 是合并前在 `t/t055-knowledge-ingest` 上的结果；合并后 Go 单测覆盖
+> background 包，但未再次整跑 `tests/f00b`（整跑 ≈16 分钟），由 orchestrator 的
+> 集成门禁负责。
+
 ## 4. 真实栈、输入与版本
 
 - 真实 PG 16.4（每次用例新建临时库，跑真实 `cmd/admin migrate` 0001→0034；
