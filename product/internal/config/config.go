@@ -84,6 +84,11 @@ const (
 	EnvRunEventRetention         = "ORCHARA_RUN_EVENT_RETENTION"
 	EnvRunEventPollInterval      = "ORCHARA_RUN_EVENT_POLL_INTERVAL"
 	EnvRunEventHeartbeatInterval = "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL"
+	// F09/T054 memory-candidate lifetime. A proposed personal fact waits for the
+	// human decision for this long (default 7 days); expiry is always judged by
+	// the server against the stored expires_at, so the value is a deployment
+	// knob, never a per-request one.
+	EnvMemoryCandidateTTL = "ORCHARA_MEMORY_CANDIDATE_TTL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -186,6 +191,14 @@ const (
 	maxRunEventRetention = 365 * 24 * time.Hour
 	maxRunEventPoll      = 5 * time.Minute
 	maxRunEventHeartbeat = time.Hour
+
+	// F09/T054: how long a proposed personal-memory candidate waits for the human
+	// decision. Seven days is long enough for a weekly user and short enough that
+	// an ignored proposal does not sit forever; the bounds keep a typo from making
+	// every candidate stillborn or effectively eternal.
+	DefaultMemoryCandidateTTL = 7 * 24 * time.Hour
+	minMemoryCandidateTTL     = time.Minute
+	maxMemoryCandidateTTL     = 365 * 24 * time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -251,6 +264,8 @@ type Config struct {
 	RunEventRetention         time.Duration
 	RunEventPollInterval      time.Duration
 	RunEventHeartbeatInterval time.Duration
+	// MemoryCandidateTTL is the F09/T054 candidate lifetime (7 days by default).
+	MemoryCandidateTTL time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -479,6 +494,18 @@ func Load(lookup Lookup) (*Config, error) {
 	cfg.RunEventRetention = retention
 	cfg.RunEventPollInterval = eventPoll
 	cfg.RunEventHeartbeatInterval = eventHeartbeat
+	// F09/T054: the personal-memory candidate lifetime. A candidate is a proposal
+	// awaiting a human, so only a sane positive window is accepted; a zero/negative
+	// value would make every candidate stillborn.
+	memoryTTL, err := parseDuration(lookup, EnvMemoryCandidateTTL, DefaultMemoryCandidateTTL)
+	if err != nil {
+		return nil, err
+	}
+	if memoryTTL < minMemoryCandidateTTL || memoryTTL > maxMemoryCandidateTTL {
+		return nil, invalid(EnvMemoryCandidateTTL,
+			fmt.Sprintf("must be between %s and %s", minMemoryCandidateTTL, maxMemoryCandidateTTL))
+	}
+	cfg.MemoryCandidateTTL = memoryTTL
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.

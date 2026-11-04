@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/identity"
 )
 
@@ -32,13 +31,6 @@ type createAPIKeyRequest struct {
 type apiKeyResponse struct {
 	ID     string `json:"id"`
 	Secret string `json:"secret"`
-}
-
-// memoryListResponse is the contract's memory list envelope. F01 has no memory
-// store yet (F09 owns it), so a human caller gets an honest empty result.
-type memoryListResponse struct {
-	Items      []any   `json:"items"`
-	NextCursor *string `json:"next_cursor"`
 }
 
 // handleCreateServiceAccount creates a service principal owned by a named human.
@@ -139,37 +131,7 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleListMemories is the F01 honesty boundary for personal memory.
-//
-// F09 owns the memory store. Until then a human caller gets an authorized,
-// empty list (items [], next_cursor null) rather than fabricated data or a 501.
-// A service credential is refused before the limit is even parsed and before any
-// storage could be touched: personal long-term memory belongs to humans only
-// (IMPLEMENTATION-DETAILS §1). The check covers both a service principal with a
-// session credential and any API-key credential.
-func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
-	caller, ok := s.authorize(w, r, "")
-	if !ok {
-		return
-	}
-	if caller.Kind == "service" || caller.Method == identity.AuthMethodAPIKey {
-		writeError(w, r, http.StatusForbidden, "personal_scope_forbidden",
-			"personal memory belongs to human users; a service account cannot read it")
-		return
-	}
-	query := r.URL.Query()
-	// A present-but-blank limit is a malformed value, not an omitted one.
-	if query.Has("limit") && strings.TrimSpace(query.Get("limit")) == "" {
-		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
-			"limit must be an integer between 1 and 100", map[string]any{"field": "limit"})
-		return
-	}
-	if _, err := catalog.ParseLimit(query.Get("limit")); err != nil {
-		// Only limit is meaningful in F01; cursor and application_id are
-		// accepted by the contract but ignored until F09 defines the store.
-		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
-			"limit must be an integer between 1 and 100", map[string]any{"field": "limit"})
-		return
-	}
-	writeJSON(w, http.StatusOK, memoryListResponse{Items: []any{}, NextCursor: nil})
-}
+// handleListMemories was the F01 honesty boundary for personal memory: an
+// authorized, empty list while F09's store did not exist. F09/T054 replaced it
+// with the real read model in internal/api/memory.go, which keeps the same
+// service-credential refusal and returns the owner's confirmed memories.

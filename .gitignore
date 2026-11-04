@@ -11,6 +11,10 @@ tools/.deps/
 # Local development secret (read by product/tools/pg_dev.py; never commit)
 product/.env.local
 
+# F15A dev bring-up state: compiled binaries, object bytes, dev-only certs, logs
+product/.devstack/
+product/.devstack-*/
+
 # Generated pip resolution dump; the lock file is the artefact of record
 product/probes/agent_min/pip-report.json
 
