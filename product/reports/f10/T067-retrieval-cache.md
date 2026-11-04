@@ -9,7 +9,7 @@
   缓存关/开对照实验；真实 PostgreSQL 16.4 + 真实编译二进制 + 真实 HTTP + 真实封存对象字节 +
   真实 maintenance 摄取 + 第二个真实 API 进程；无 mock、无跳过）。
 - 边界（如实）：本机**没有 Redis**，缓存放在 PostgreSQL（可重建派生状态，PG 即权威与存储；
-  ADR 0014 D1）；缓存是**非契约**面（契约本来就没有检索操作，ADR 0010/0012 先例），
+  ADR 0015 D1）；缓存是**非契约**面（契约本来就没有检索操作，ADR 0010/0012 先例），
   `contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift；物理驱逐/清理缓存行
   不是正确性前提（旧键不可达 + 命中复检 + TTL 懒清理），F07 删除治理未来可按资源清理；
   ANN/pgvector/规模性能仍 not_run（T064 边界延续）；浏览器 DOM 驱动 not_run（与既有页面票同
@@ -57,7 +57,7 @@
   `(principal_id, knowledge_base_id, expires_at)` 与 `(expires_at)` 索引。
 - 头注释逐条写明：为什么没有 Redis（本机不可用、缓存可重建、PG 既是权威也是存储）、
   键的组成与"旧授权键不命中"的机制、`canonical_query` 明文与 TTL 懒清理、无后台驱逐
-  kind、以及**契约无缓存表**的偏离与归属（ADR 0014；未来契约有检索操作时以契约替换）。
+  kind、以及**契约无缓存表**的偏离与归属（ADR 0015；未来契约有检索操作时以契约替换）。
 - 重复 `admin migrate` no-op；`0001..0037` 链连续；`orchara_worker`/PUBLIC 对 `platform`
   零权限（迁移显式 REVOKE）。
 
@@ -88,7 +88,7 @@
 - 缓存只存检索结果，不存回答：`Service.Answer` 每次仍执行生成 + 引用集合校验 + 逐引用
   `GetChunk` 复检（ADR 0012 D3）。
 
-### 1.4 非契约可观察面（ADR 0014 D6）
+### 1.4 非契约可观察面（ADR 0015 D6）
 
 - `POST /api/v1/knowledge-bases/{id}/retrieval-queries` 与 `/answer` 的 `retrieval` 增加
   additive `cache`：`{enabled, hit, discarded, discard_reason?, key_prefix,
@@ -97,7 +97,7 @@
 - `cmd/api` 用 `knowledge.CacheOptionsFromEnv` 装配 `knowledge.Service.Cache`；
   `api.Deps` 新增可选 `*knowledge.CacheOptions`（nil = `knowledge.New` 的默认）。
 
-### 1.5 RAG 四类失败仍分别定位（ADR 0014 D4）
+### 1.5 RAG 四类失败仍分别定位（ADR 0015 D4）
 
 - 缺目标来源 → 检索阶段空结果 → `no_results`；空/部分结果不缓存。
 - 错答案 → 新增 dev-stub 故障 `wrong-answer`（ADR 0012 D2 约定）：保留真实引用、只把答案
@@ -216,7 +216,7 @@ T067-COMPARISON {"documents": 8, "chunks": 24, "queries": ["华北地区十月�
 | 删除/撤权隔离与"驱逐丢失" | **real executed** | 真实文档 tombstone + 真实活缓存行注入 + 真实请求；citation/检索/回答三路径 |
 | 四类 RAG 失败定位 | **real executed（其中生成器是 stub）** | `wrong-answer`/`foreign-chunk` 是 ADR 0012 D2 的 dev-stub 部署故障；失败路径本身真实 |
 | 真实 embedding provider | **blocked** | 本环境无凭据、构建无 adapter（T055 同一事实）；缓存键使用 `local-hash-v1` revision，换模型即换键 |
-| Redis 缓存 | **not_run / 不采用** | 本机无 Redis；ADR 0014 D1 记录用 PG 的决定（可重建、少一个一致性边界） |
+| Redis 缓存 | **not_run / 不采用** | 本机无 Redis；ADR 0015 D1 记录用 PG 的决定（可重建、少一个一致性边界） |
 | 后台异步驱逐/清理 job | **not_run / 不要求** | 正确性不依赖驱逐（旧键不可达 + 复检 + TTL 懒清理）；F07 可做资源清理优化 |
 | 物理删除缓存行 / 删除治理 `delete_content` | **not_run / 后续 F07** | 本票不实现删除 job；只在测试里写 F07 形状 tombstone 证明立即不可读 |
 | ANN/pgvector/规模基准 | **not_run / 后续规模票** | 缓存不改变候选上限与精确排序；T055/T064 同一边界 |
@@ -240,16 +240,16 @@ T067-COMPARISON {"documents": 8, "chunks": 24, "queries": ["华北地区十月�
   `knowledge_documents.revision`/`active_revision`（本票摘要已包含）；未来共享/ACL 变更必须
   bump `knowledge_bases.revision` 或引入独立 `acl_epoch`（列已分离）。
 - 生成器故障约定：`ORCHARA_KNOWLEDGE_ANSWER_FAULTS` 新增 `wrong-answer`（ADR 0012 D2 /
-  ADR 0014 D4），仍只在 dev-stub/capacity-stub 生效、只能造成误标或拒绝。
+  ADR 0015 D4），仍只在 dev-stub/capacity-stub 生效、只能造成误标或拒绝。
 
 ## 7. 偏差与边界（均已记录）
 
-1. 缓存表是**非契约**的 additive 表（契约无检索操作/缓存表）——ADR 0014，沿用
+1. 缓存表是**非契约**的 additive 表（契约无检索操作/缓存表）——ADR 0015，沿用
    ADR 0005/0010/0012 先例；`contracts/**`/`docs/spec/**` 未改，`sync_spec --check` no drift。
-2. 本机无 Redis，缓存放 PostgreSQL——ADR 0014 D1（可重建、PG 即权威）。
+2. 本机无 Redis，缓存放 PostgreSQL——ADR 0015 D1（可重建、PG 即权威）。
 3. `acl_epoch` 在本切片取 `knowledge_bases.revision`（T055/ADR 0010 已记录的替身），与
-   `kb_revision` 分成两列；未来共享/ACL 变更必须 bump 它（ADR 0014 D1/D7）。
-4. 新增 dev-stub 故障 `wrong-answer` 仅用于阶段定位，不改变生产行为——ADR 0014 D4；
+   `kb_revision` 分成两列；未来共享/ACL 变更必须 bump 它（ADR 0015 D1/D7）。
+4. 新增 dev-stub 故障 `wrong-answer` 仅用于阶段定位，不改变生产行为——ADR 0015 D4；
    ADR 0012 仍管回答面与引用校验。
-5. 不新增后台驱逐 kind；过期行按 principal 懒清理——ADR 0014 D1/D7。
+5. 不新增后台驱逐 kind；过期行按 principal 懒清理——ADR 0015 D1/D7。
 6. `T055` 的既有 retrieval 精确断言更新为 additive `cache` 元数据——语义不变，见 §1.4。
