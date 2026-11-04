@@ -7,7 +7,7 @@ Everything here drives the real platform:
   handler in ``work``, ``artifact_finalize`` in ``system_io``);
 * the real ``cmd/supervisor exec --once`` executor where a case's run must
   actually execute;
-* the non-contract progress read (ADR 0017) and the sealed report bytes on disk.
+* the non-contract progress read (ADR 0018) and the sealed report bytes on disk.
 
 Nothing here mocks the pools, the guard or the progress bridge. The helpers only
 add the T065 vocabulary on top of the T052/T062 harness.
@@ -56,7 +56,7 @@ new_uuid = f00b.new_uuid
 admin_session = f00b.admin_session
 parse_json_lines = f00b.parse_json_lines
 
-# The progress projection ADR 0017 pins. A changed field set is a contract
+# The progress projection ADR 0018 pins. A changed field set is a contract
 # decision, not an implementation detail, so the tests assert it exactly.
 PROGRESS_FIELDS = {
     "evaluation_id",

@@ -1,4 +1,4 @@
-﻿# ADR 0018 — The asynchronous evaluation progress read
+# ADR 0018 — The asynchronous evaluation progress read
 
 - Status: Accepted (F13A/T065, issue #66)
 - Date: 2026-11-04
@@ -168,4 +168,7 @@ boundary every page ticket records (no browser DOM is driven).
   carries the runner's decision independently of the observed run state.
 - Migration numbering: the file was `0038` on the ticket branch and became
   `0039` in the integration merge when T060/F10 took `0038`; the migration
-  protocol says the merger renumbers rather than reusing a version.
+  protocol says the merger renumbers rather than reusing a version. The ADR
+  itself was `0016` on the ticket branch, became `0017` when T060 took `0016`
+  and is `0018` after T056's evaluation-case-results ADR took `0017` in the
+  second integration merge.

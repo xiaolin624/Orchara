@@ -3,21 +3,23 @@
 - 任务：F13A / GitHub Issue #66（票 `T065`，规划 ID F13A.05），分支
   `t/t065-async-progress`（worktree `E:\orchara-worktrees\t065`）；基线
   `feat/f06-f04a-models-and-workflow` @ `7d0f442`；已合并
-  `integration/f13a-f15a-f09-f10`（合并提交
-  `df555c5deea85b598dbbe089b4e3f683e0233727`，合并前 integration tip `ab8a800`，
-  即 T060 之后）。
+  `integration/f13a-f15a-f09-f10` **两次**（第一次 `df555c5` @ `ab8a800`；
+  第二次合并提交 `cf82da2e3bd10ad9d8df36bfb786abbcfd2167c9` @ `f2bc876`，
+  即 T056 与 T060 之后）。
 - 状态：**`passed`**（范围 = 非契约进展读 + 由 runner 逐例持久化的计数 + 业务/设施
   失败分类 + 真实双池拥塞验证 + 可刷新评测页。真实 PostgreSQL 16.4、真实编译二进制、
   真实 HTTP/mTLS、真实封存对象字节、真实 `cmd/maintenance run` 双池（work=1 /
   system_io=1）；页面纯逻辑由真实 Node 执行。无 mock、无跳过、无静态通过。）
-- 边界（如实）：T056（#57）的逐例用户读取/逐例页面未合并到本分支，本票页面只交付
-  **进展与报告**，不重复 T056 的逐例表。本构建没有评测级取消端点，本票**不伪造**它；
-  cancelled 分类由真实内部 result 协议（claim 后报告 `cancelled`）驱动。真实
-  supervisor/沙箱不在本票路径（案例由真实 cancel、无执行器超时、目标拒绝决定）。
-  sales/tool 案例的真实 `succeeded` 终态仍受 #57 的 `task_input` 绑定边界限制。
+- 边界（如实）：T056（#57）的逐例读取/逐例页面已随第二次 integration 合并进入本分支，
+  并作为邻接套件在本分支 `tests/f13a` 中执行；本票页面（`/evaluations/{id}`）只交付
+  **进展、失败分类与不可变报告**，不重复 T056 的逐例表。本构建没有评测级取消端点，
+  本票**不伪造**它；cancelled 分类由真实内部 result 协议（claim 后报告 `cancelled`）
+  驱动。真实 supervisor/沙箱不在本票用例的判定路径（案例由真实 cancel、无执行器超时、
+  目标拒绝决定）；T056 的 sales 用例会使用真实执行器，其证据属 T056。
 - 合并重编号：迁移原 `0038_evaluation_progress.sql`、ADR 原 `0016`；integration 的
-  T060/F10 已占 `0038_pdf_admission.sql` 与 `0016-f10-pdf-ingest.md`，故合并结果中
-  本票为 **`0039_evaluation_progress.sql`** 与 **`docs/adr/0017-evaluation-progress.md`**。
+  T060/F10 先占 `0038_pdf_admission.sql` 与 `0016-f10-pdf-ingest.md`（→ 0039/0017），
+  随后 T056 占 `0017-evaluation-case-results.md`，故最终为
+  **`0039_evaluation_progress.sql`** 与 **`docs/adr/0018-evaluation-progress.md`**。
   本报告与 PROGRESS 使用最终编号；迁移文件头记录重编号。
 
 ## 0. 工作记录（简短）
@@ -91,7 +93,7 @@ repeat migrate no-op；权限边界与 0007–0038 相同（`PUBLIC`/`orchara_wo
   单测 `TestCollectReportsEveryCaseDecisionWithItsOrdinal` 断言每例上报的
   case_id/ordinal/verdict/reason。
 
-### 1.3 进展读（非契约，ADR 0017）
+### 1.3 进展读（非契约，ADR 0018）
 
 `GET /api/v1/evaluations/{evaluation_id}/progress`：
 
@@ -114,7 +116,7 @@ repeat migrate no-op；权限边界与 0007–0038 相同（`PUBLIC`/`orchara_wo
 这是“是否存在报告”的轴，**不是** `background_jobs.failure_class`（重试分类）：
 确定性的平台拒绝（如 `source_deleted`）与瞬时故障（`transient_storage_io`）都
 没有报告，从创作者视角都是“任务失败、没有判定”。job 自己的分类仍在 job 契约读上
-可见；ADR 0017 明确记录两者语义不同，不混用。
+可见；ADR 0018 明确记录两者语义不同，不混用。
 
 ### 1.4 完成守卫写入终态计数
 
@@ -159,28 +161,32 @@ repeat migrate no-op；权限边界与 0007–0038 相同（`PUBLIC`/`orchara_wo
 
 环境（本次实际执行）：Windows PowerShell；PostgreSQL 16.4 用户态集群
 `127.0.0.1:55432`（`python tools/pg_dev.py status` = running）；Go
-`go1.27.3 windows/amd64`；Python 3.12.2；Node `v24.13.0`。本票不依赖
-supervisor/沙箱（案例决策来自真实 cancel / 无执行器超时 / 目标拒绝），故未启动
-`cmd/supervisor`。
+`go1.27.3 windows/amd64`；Python 3.12.2；Node `v24.13.0`。T065 自身的用例不依赖
+supervisor/沙箱（案例决策来自真实 cancel / 无执行器超时 / 目标拒绝）；第二次合并后
+`tests/f13a` 还包含 T056 的 sales 用例（由 T056 驱动真实执行器，证据属 T056）。
 
 ```text
-$ python -m pytest tests/f13a -q            # 合并结果，第一次
-.................................                                        [100%]
-33 passed in 526.04s (0:08:46)
+$ python -m pytest tests/f13a -q            # 最终合并结果（T056/T060 之后），第一次
+.................................................                        [100%]
+50 passed in 464.08s (0:07:44)
 
 $ python -m pytest tests/f13a -q            # 背靠背第二次，无代码改动
-.................................                                        [100%]
-33 passed in 682.46s (0:11:22)
+.................................................                        [100%]
+50 passed in 389.82s (0:06:29)
+
+# 第二次合并（T056）之前、第一次合并（T060）结果上同一套件也曾两次全绿：
+# 33 passed in 526.04s / 33 passed in 682.46s。
+# 最终树在仅 gofmt 空白调整后，重跑 T065 自身文件：8 passed in 73.90s。
 
 $ python -m pytest tests/tooling -q
 .....................                                                    [100%]
-21 passed in 8.16s
+21 passed in 4.82s
 
 $ python -m pytest tests/f00b/test_t026_binding.py tests/f00b/test_t026_failures.py \
     tests/f00b/test_t026_pool.py tests/f00b/test_t026_authz.py \
     tests/f00b/test_t026_migration.py -q
 ...........................                                              [100%]
-27 passed in 387.59s (0:06:27)
+27 passed in 141.62s (0:02:21)
 
 $ go build ./...        -> exit 0, no output
 $ go vet ./...          -> exit 0, no output
@@ -193,19 +199,21 @@ no drift: spec copy and contract snapshot match the manifest
 
 两次连跑没有 flaky；本票唯一的长等待是拥塞用例里 25s 的**有界案例等待**（无执行器时
 run 保持 queued 的负向控制，不是与真实完成竞速），其余等待都是对数据库条件的轮询
-（`wait_until`/`wait_for_evaluation`），不依赖 <5s 窗口。
+（`wait_until`/`wait_for_evaluation`），不依赖 <5s 窗口。上面的两次全量连跑在
+`gofmt` 仅空白变化之前；该变化没有行为差异，之后重跑 T065 全部 8 个用例与
+`go build`/`go vet`/tooling/T026 邻接回归再次全绿。
 
-### 3.1 本次交付关键文件的 sha256（本地实际文件）
+### 3.1 本次交付关键文件的 sha256（最终树上实际文件）
 
 ```text
 db/migrations/0039_evaluation_progress.sql   b7661ee7b865c32a31fab44c556faf64df7748d4a815c701b63e60280d134371
-apps/web/src/evaluations.html                190193712546fd8ec092b290730669776607a552294d2ced6499cc5f3c5b3377
-apps/web/src/assets/evaluations.js           8b45f9a8ac1abfb9272410fd684904b29ee000b51f87460dcd573b3e3bc14779
+apps/web/src/evaluations.html                bf8427eeed18e05f9eadb9de2b7785a89518da2d49bee74639dfe928a21d9d20
+apps/web/src/assets/evaluations.js           95886ba734b312d4b548e49caf762c5291906ab9eebeef8dd846dce81049f72f
 internal/execution/evaluation_progress.go    f22e7f149da3ea6d153b7b5f8ca7313fcb7d14eee034f7fda977a085c7157247
-internal/background/evaluation_progress.go   81d27e57d30c119ca97ad2093a298f9319700d9a5493a4404a951ecce7f0f78b
-internal/api/evaluation_progress.go          d46983e2237a3f1830ca91eeb1c811190154cdf61db534c0a4b59bdc153c3e0b
+internal/background/evaluation_progress.go   a7040995653c612abe1b98300e24cb747d4fcdad57a0611c8c822572ce2a049a
+internal/api/evaluation_progress.go          7354d5d5fd8de446d3747e2a28f6b1f233f18a4d7ac5b35493a051e835003718
 internal/background/evaluation.go            b53fc6673088a38f141a520e35b33c9a6c6df659b2b71283be2c1cb53a05667d
-internal/evaluation/collect.go               57650699ba37a524ad870c8550f69c87e61d7991ed34232bb90f8789d52463a0
+internal/evaluation/collect.go               526a03d4580e18289d5a4b41b9975420dc0494487a5f6a9ff0de27cbff39c974
 ```
 
 封存对象（报告 artifact）的 sha256 不在此表：它由每次真实评测动态生成，测试在用例内
@@ -216,13 +224,15 @@ internal/evaluation/collect.go               57650699ba37a524ad870c8550f69c87e61
 
 - **浏览器 DOM**：`not_run`（与 F01/T023/T029/F10 页面票同一边界：页面纯逻辑由
   Node 执行；真实浏览器/截图未运行）。
-- **T056 逐例用户读取与逐例表**：`not_run`（分支未合并；本票页面只显示进展与报告，
-  不重复实现 #57 端点）。
+- **T056 逐例读取与逐例表**：由 T056 自己的用例覆盖（已随第二次 integration 合并进入
+  本分支，在本分支 `tests/f13a` 中执行）；T065 的页面不重复实现逐例表，也不负责
+  T056 端点的验收。
 - **评测级取消端点**：不存在于本构建，故**不实现也不伪造**；cancelled 分类由真实
   内部 result 协议证明。`evaluation_jobs.cancel_requested_at` 列仍由 T062 归属面
   显示，其转移不在本票。
-- **真实 supervisor / runsc 沙箱**：不在本票路径（`not_run`）；sales/tool 案例的真实
-  `succeeded` 终态仍 blocked 于 #57（`task_input` 绑定）。
+- **真实 supervisor / runsc 沙箱（本票判定路径）**：不在 T065 的用例路径（`not_run`）；
+  T056 的 sales 用例会驱动真实执行器，其证据与边界属 T056。sales/tool 案例的真实
+  `succeeded` 终态在其合并结果中由 T056 交付。
 - **真实模型/judge**：不适用（评测不调用模型；T052 已记录 quality 仅信息性）。
 - **全量 `pytest tests`**：`not_run`（BRIEF §3 明确禁止；约 67 分钟）。已跑目标套件
   两遍 + tooling + T026 邻接回归 + 全量 Go 门禁。
@@ -232,7 +242,7 @@ internal/evaluation/collect.go               57650699ba37a524ad870c8550f69c87e61
 
 1. **非契约面**：`GET /evaluations/{id}/progress`、job-scoped
    `evaluation-progress` 桥、`evaluation_case_runs.verdict` 与
-   `evaluation_jobs.progress_failed` 都是文档化扩展（ADR 0017 + 迁移头 + 本报告），
+   `evaluation_jobs.progress_failed` 都是文档化扩展（ADR 0018 + 迁移头 + 本报告），
    公开契约未改，`sync_spec --check` 干净。
 2. **两级 failure_class**：进展读的 `failure_class` 是“是否产出报告”的评测级分类；
    `background_jobs.failure_class` 是重试分类。两者可能不同（如 `source_deleted`：
@@ -243,13 +253,14 @@ internal/evaluation/collect.go               57650699ba37a524ad870c8550f69c87e61
    读从不编造判定。
 4. **终态 `progress_failed` 以报告为准**：重试尝试期间 live 计数可能更高，报告被接受
    时守卫写报告自己的 failed 案例数（终态真值）。
-5. **重编号**：迁移 0038→0039、ADR 0016→0017（integration 已被 T060 占用）。若后续
-   merger 再重编号，只需同步本报告/PROGRESS/迁移头与 `test_t065_migration.py` 的
-   **名字**断言（该测试不钉版本号）。
-6. **T052 基线有意迁移**：`tests/f13a/test_t052_negatives.py` 的 published_version
-   用例原断言 blocked 案例**没有任何 case 行**；T065 的进度桥现在把“无 run 的
-   runner 判定”记为该行（`run_id=NULL`、`state=blocked`、`verdict=blocked`），否则
-   进展读无法看到它。该用例改为断言这一新事实（一行、无 run、verdict/reason 正确），
+5. **重编号**：迁移 0038→0039、ADR 0016→0017→0018（integration 先被 T060 占
+   `0038`/`0016`，再被 T056 占 ADR `0017`）。若后续 merger 再重编号，只需同步本
+   报告/PROGRESS/迁移头与 `test_t065_migration.py` 的**名字**断言（该测试不钉版本号）。
+6. **T052/T056 基线有意迁移**：`tests/f13a/test_t052_negatives.py` 的 published_version
+   用例与 `test_t056_bad_inputs.py` 的 missing-fixture 用例原断言 blocked 案例
+   **没有任何 case 行**；T065 的进度桥现在把“无 run 的 runner 判定”记为该行
+   （`run_id=NULL`、`state=blocked`、`verdict=blocked`、`reason_code` 保留），否则
+   进展读无法看到它。两个用例改为断言这一新事实（一行、无 run、verdict/reason 正确），
    并保留“报告 not_run 永不 passed”。不是放宽断言，而是把存储语义写实。
 7. **withdrawn application 的 blocked 案例不落行**：进度桥每次重证 owner ACL；应用在
    提交后被归档时上报被拒（collector 视为 live 进展不可用），该 case 行不存在；终态
@@ -268,4 +279,4 @@ internal/evaluation/collect.go               57650699ba37a524ad870c8550f69c87e61
   `guardEvaluationSuccess` 一处）。
 - **cancelled 分类**：若将来加入评测级取消端点，应复用
   `cancelEvaluationTx`（现有语义）而非在进展读里推断。
-- **迁移**：`0039_evaluation_progress.sql`；ADR `0017`。
+- **迁移**：`0039_evaluation_progress.sql`；ADR `0018`。

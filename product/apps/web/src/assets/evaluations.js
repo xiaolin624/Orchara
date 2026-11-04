@@ -3,7 +3,7 @@
  *
  * The page is a real client of two read paths:
  *
- *   GET /api/v1/evaluations/{id}/progress    -> non-contract progress (ADR 0017)
+ *   GET /api/v1/evaluations/{id}/progress    -> non-contract progress (ADR 0018)
  *   GET /api/v1/evaluation-reports/{id}      -> contract Report (four fields)
  *
  * Everything below is pure so the Node page test executes it. The rules the
