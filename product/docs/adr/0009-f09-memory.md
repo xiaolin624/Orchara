@@ -1,13 +1,16 @@
 # ADR 0009：F09/T054 个人长期记忆的候选/确认边界
 
-- 状态：已接受
-- 日期：2026-11-04
-- 相关：F09 / T054（GitHub #55，规划 ID F09.01）；分支 `t/t054-memory-candidates`；
-  报告 `product/reports/f09/T054-memory-candidates.md`；后续：
-  T058（#59，GET/PATCH/DELETE memories + ETag/revision + cache epoch + 冲突）、
-  T063（#64，运行时召回与上下文预算）、T067（#67，Mem0 对照）；
-  F10/T055（知识库）另有自己的 ADR，本文件不覆盖。
-- 契约：`contracts/openapi.json`（5 个 operation）、`contracts/database.sql:297-316`；
+- 状态：已接受（T054 主体；T058 增补见 §11）
+- 日期：2026-11-04（T058 增补：2026-11-04）
+- 相关：F09 / T054（GitHub #55，规划 ID F09.01）与 F09 / T058（GitHub #59，
+  修订/删除停止旧内容召回）；分支 `t/t054-memory-candidates` / `t/t058-memory-revision`；
+  报告 `product/reports/f09/T054-memory-candidates.md`、
+  `product/reports/f09/T058-memory-revision-and-delete.md`；后续：
+  T063（#64，运行时召回与上下文预算）、T067（#67，Mem0 对照与检索缓存）；
+  F07（删除治理，物理副本清理）与 F10/T055（知识库，ADR 0010）另有自己的
+  ADR/债务，本文件不覆盖。
+- 契约：`contracts/openapi.json`（T054 五个 + T058 三个 operation）、
+  `contracts/database.sql:297-316`（表）与 `:356-362`（deletion_jobs）；
   `docs/spec/**` 与 `contracts/**` 未修改，`tools/sync_spec.py --check` 保持 no drift。
 
 ## 背景
@@ -151,20 +154,79 @@ T067 的 Mem0 映射都以它为版本。没有任何读路径把它当作权限
 不可召回）”这一来源类别 + 应用范围；真实 `source_run_id` 是存储事实，供 T058/T063 使用。
 没有为此新增非契约端点。页面全部 `textContent`，不保留凭据或正文。
 
+### 11. T058 增补：强 ETag 修订、删除墓碑与失效时序
+
+T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
+`getMemory`/`updateMemory`/`deleteMemory`，不引入第二个记忆存储，也不改契约
+（`deletion_jobs` 是契约表，见 §11.6）。
+
+1. **强 ETag = revision。** 复用 `catalog.FormatETag/ParseETag`（草稿 PUT 的同一套强校验器）
+   与 `precondition_required`/`precondition_failed` 词表，ETag 形如 `"2"`。契约只要求
+   “detail 读取带 ETag、PATCH 必须带 If-Match”；弱校验 `W/"1"`、列表、`*`、未加引号数字
+   与多值头一律按“陈旧/乱码”处理（412），不做宽松解析，因为宽松解析会让“乱码”与“陈旧”
+   无法区分。
+2. **写序固定：** 404（owner-only，含已删除/他人/管理员/未知/畸形 id）→ 428（缺失
+   If-Match）→ 412（陈旧/乱码，`details.current_etag` + `current_revision`）→ 422
+   （body `{text, confirmed:true}`，`additionalProperties:false` 由共享 decoder 拒绝）→
+   行锁 + CAS 写入。越权者学不到存在性，陈旧写者拿到可恢复的事实，body 校验不会掩盖
+   前置条件。
+3. **更新 = 新正文 artifact + revision+1 + 同事务 epoch。** 旧 artifact 不物理删除（F07），
+   `memories.body_artifact_id` 只指当前修订；因此旧修订的正文/embedding 都不可能被读成
+   “当前”。并发同 ETag 恰一胜者（`FOR UPDATE` + `WHERE revision = $claimed`），
+   失败者得到带新 ETag 的 412，绝不 last-writer-wins。
+4. **删除 = 同步失效 + 异步清理。** 在回答 202 的同一事务里：`deleted_at=now()`、
+   `revision+1`、写 `deletion_jobs`（`pending` + `remaining_scopes`）、bump
+   `memory:<owner>:<application>` epoch，然后才提交并答 202。此后 GET/PATCH 为 404、
+   列表不再包含；T063 将来按 `(memory_id, memory_revision)` 建的 embedding 条目因
+   revision 前进而永不“当前”。**tombstone 是幂等键**：重复/并发 DELETE 返回同一 job，
+   不再 bump revision/epoch；`UNIQUE(resource_type, resource_id, deletion_revision)`
+   是结构兜底。
+5. **`deletion_jobs` 是最小切片，债务明确：** T058 只写 `pending`，**不注册**
+   `delete_content` handler，没有 lease/retry/completion，也不物理删除对象/artifact 行；
+   完整删除治理属 F07。`remaining_scopes` 形状（`object` / `artifact` / `embedding` /
+   `memory_row` 的 JSON 对象数组）写在 0036 迁移头与这里。更新残留的旧 `memory_body`
+   artifact 没有 job：F07/T063 的清扫判据是“`purpose='memory_body'` 且不被任何
+   `memories.body_artifact_id` 引用”，不需要新列。
+6. **数据模型：** 迁移 `0036_memory_revision_and_deletion.sql`（最终编号；基线分支上曾为
+   0034，合并时 T055 先占 0034、T052 再占 0035，故重编号为 0036）只新增契约
+   `deletion_jobs`（`owner_id → principals`、四态 CHECK、`remaining_scopes` 为 array、
+   `UNIQUE(resource_type, resource_id, deletion_revision)`）；`platform.memories` 一个列
+   也不加，重复 migrate no-op，worker/PUBLIC 零 `platform` 权限。
+7. **召回/检索缓存 seam：** 权威失效事实是 `memories.revision` + `deleted_at` +
+   `policy_epochs(memory:owner:app)`。T063/T067 的 embedding/缓存条目必须把
+   `memory_revision` 放进键并同时校验 `deleted_at IS NULL` 且
+   `memory_revision = memories.revision`（或把 epoch 放进缓存键），否则不得服务；
+   本票不创建 `memory_embeddings`（本集群无 pgvector，T063 拥有）。
+8. **页面：** 编辑先 `GET /memories/{id}` 取 ETag，保存带 `If-Match` 与精确 body；412
+   显示“版本冲突”并采用 `details.current_etag`，只有用户显式点“用最新版本重试”才再次写入
+   （不再静默覆盖，也不丢用户输入）；删除显示 deletion job 的真实状态，明确“旧内容已停止
+   召回”和“物理副本清理由删除治理异步执行”，不声称副本已删除。全部 `textContent`，
+   纯函数由 Node 执行。
+9. **服务账号边界不变：** PATCH/DELETE 与 T054 的五个端点一样，在任何存储访问前
+   403 `personal_scope_forbidden`；`owner_id` 仍引用 `platform.users`。
+10. **共享与管理员可见性不变：** 仍是 owner-only，管理员对他人记忆是 404（§9 的债务
+    继续有效，T058 不扩展 `policy.ResourceTypes`）。
+
 ## 影响
 
 - `contracts/**`、`docs/spec/**`、`tools/sync_spec.py --check` 不受影响；
-- 迁移 0033 只新增两张契约表 + 列级偏离（头部注释逐条列出），重复 migrate no-op，
-  `orchara_worker`/PUBLIC 零 `platform` 权限；
-- 新包 `internal/memory`（候选/记忆存储与服务）、`internal/api/memory.go`（5 个 handler）、
-  页面 `apps/web/src/memories.{html,js}`；
+- 迁移 0033（T054）新增两张契约表 + 列级偏离（头部注释逐条列出）；迁移 0036（T058）新增
+  契约 `deletion_jobs` 最小切片；重复 migrate no-op，`orchara_worker`/PUBLIC 零
+  `platform` 权限；
+- 新包 `internal/memory`（候选/记忆存储与服务）、`internal/api/memory.go`（T054 五个 +
+  T058 三个 handler）、页面 `apps/web/src/memories.{html,js}`；
 - F01 的“诚实空列表”被真实读模型替换：`GET /api/v1/memories` 现在校验
-  `cursor`/`application_id`，`tests/f01/test_t020_personal_boundary.py` 同步更新为真实边界。
+  `cursor`/`application_id`，`tests/f01/test_t020_personal_boundary.py` 同步更新为真实边界；
+- T058 后 `GET /memories/{id}`、`PATCH`、`DELETE` 是正式入口；`/memories` 页面可展示
+  ETag 冲突与删除状态。
 
 ## 未做（如实）
 
 - 浏览器 DOM 驱动：`not_run`（页面纯函数由 Node 执行）；
 - 后台过期清扫进程：`not_run`（惰性迁移 + 决定复检已真实生效）；
-- 记忆编辑/删除/ETag（T058）、运行时召回（T063）、Mem0 对照（T067）：本票不实现，
-  只预留上列 seam；
+- 运行时召回（T063）、Mem0 对照与检索缓存（T067）：本票不实现，只预留 §11.7 seam；
+- 物理副本清理与删除作业的 claim/retry/completion（F07）：T058 只写 `pending` job，
+  不注册 `delete_content` handler，不删除对象/artifact 行；债务记录在迁移 0036 头、
+  §11.5 与报告 §6；
+- `memory_embeddings`（无 pgvector，T063 拥有）：本票只保证 revision/epoch 失效事实；
 - 记忆共享/授权：不实现，债务记录在报告 §6。
