@@ -1,0 +1,3 @@
+# `go build ./probes/f15a_objectstore/localfs_probe` without -o writes a binary
+# into the working directory; it is a build artifact, never evidence.
+*.exe
