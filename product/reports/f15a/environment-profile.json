@@ -1,0 +1,92 @@
+{
+  "ticket": "T053/F15A",
+  "recorded_at": "2026-11-04T16:15:00+08:00",
+  "host": {
+    "os": "Windows 11 (10.0.26200)",
+    "arch": "amd64",
+    "workspace": "E:\\orchara-worktrees\\t053\\product",
+    "branch": "t/t053-s3-probe"
+  },
+  "toolchain": {
+    "python": {
+      "command": "python --version",
+      "output": "Python 3.12.2"
+    },
+    "go": {
+      "command": "E:\\orchara-toolchains\\go\\bin\\go.exe version",
+      "output": "go version go1.27.3 windows/amd64"
+    },
+    "node": {
+      "command": "node --version",
+      "output": "v24.13.0"
+    },
+    "pytest": {
+      "command": "python -m pytest --version",
+      "output": "pytest 9.0.3"
+    },
+    "postgresql": {
+      "command": "python tools/pg_dev.py status",
+      "output": {
+        "running": true,
+        "port": 55432,
+        "server_version": "16.4",
+        "note": "user-space cluster; not used by this ticket's probe"
+      }
+    }
+  },
+  "candidate_object_store": {
+    "conclusion": "no candidate S3 endpoint exists on this machine; candidate-S3 acceptance is blocked",
+    "commands": [
+      {
+        "command": "Get-Command docker, docker-compose, redis-server, minio, aws",
+        "output": "docker => not found; docker-compose => not found; redis-server => not found; minio => not found; aws => not found"
+      },
+      {
+        "command": "Get-Command mc",
+        "output": "E:\\VC98\\bin\\MC.EXE",
+        "file_version_info": {
+          "FileDescription": "Windows NT Message Compiler",
+          "ProductName": "Microsoft(R) Windows NT(R) Operating System",
+          "FileVersion": "5.00.1641.1"
+        },
+        "note": "not the MinIO client (mc); the exploration note calling it Midnight Commander is also wrong on this machine"
+      },
+      {
+        "command": "Test-NetConnection 127.0.0.1 -Port 9000/9001/6379/5432/55432",
+        "output": "9000 closed; 9001 closed; 6379 closed; 5432 open (unrelated Windows service, credentials unknown); 55432 open (project user-space PostgreSQL 16.4)"
+      },
+      {
+        "command": "python -m pytest tests/f15a -q",
+        "output": "36 passed"
+      }
+    ],
+    "environment_variables_seen": "no F15A_S3_* or ORCHARA_OBJECT_* variables were set (empty enumeration)"
+  },
+  "isolation_host": {
+    "runsc": {
+      "command": "wsl.exe -d Ubuntu-24.04 -e /usr/local/bin/runsc --version",
+      "output": "runsc version release-20241118.0; spec: 1.1.0-rc.1"
+    },
+    "note": "runsc IS installed; the honest blocker for isolation acceptance is that WSL is not an accepted Linux isolation host (ADR 0002). This ticket does not use runsc."
+  },
+  "probe": {
+    "name": "f15a-s3-compat",
+    "version": "1.0.0",
+    "scope": "candidate-s3",
+    "fixture_server_version": "f15a-fixture/1.0",
+    "local_fs_analogue_version": "1.0.0",
+    "aws_sigv4_vectors": [
+      "get-vanilla",
+      "get-vanilla-query-order-key-case",
+      "post-vanilla",
+      "post-x-www-form-urlencoded",
+      "S3 API reference presigned GET example"
+    ]
+  },
+  "limits": [
+    "no candidate S3 is available; candidate acceptance stays blocked",
+    "a local fixture proves probe discrimination, not vendor compatibility",
+    "the local-filesystem analogue proves platform-store boundaries, not S3/IAM behaviour",
+    "no Docker/Compose, Redis, MinIO or AWS CLI on this machine"
+  ]
+}
