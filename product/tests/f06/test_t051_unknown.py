@@ -436,4 +436,11 @@ def test_no_idempotency_query_support_is_disclosed_and_never_auto_retried(
     # No automatic resend exists: a duplicate invoke is a recorded-state replay.
     duplicate = t051.invoke_capability(t051_stack, prepared["lease"], prepared)
     assert duplicate.status == 200 and duplicate.json["state"] == t051.STATE_UNKNOWN
+    # The duplicate's replay data carries the same limitation disclosure as the
+    # first dispatch and the owner ledger; an unknown write never pretends it
+    # could be queried or safely retried.
+    replay_data = duplicate.json.get("data") or {}
+    assert replay_data.get("limitation") == t051.LIMITATION_NO_IDEMPOTENCY, replay_data
+    assert replay_data.get("requires_reconciliation") is True, replay_data
+    assert replay_data.get("dispatch_state") == "unknown", replay_data
     assert t051.connector_request_count(write_server) == 1, write_server.records
