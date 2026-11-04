@@ -207,8 +207,41 @@ def warm_cache(
 
 
 # ---------------------------------------------------------------------------
-# the real cache-disabled API process (comparison run)
+# extra real API processes (comparison run / documented dev-stub faults)
 # ---------------------------------------------------------------------------
+@contextmanager
+def server_with_env(
+    api_server_factory,
+    stack,
+    directory: Path,
+    *,
+    cache: str | None = None,
+    faults: str | None = None,
+):
+    """Start one extra real API process over the same database and object store.
+
+    ``cache``/``faults`` are the exact deployment values of
+    ``ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE`` / ``ORCHARA_KNOWLEDGE_ANSWER_FAULTS``.
+    Every process is real: this is a deployment difference, not a mock.
+    """
+    extra: dict[str, str] = {}
+    if cache is not None:
+        extra[CACHE_ENV] = cache
+    if faults is not None:
+        extra[t064.ANSWER_FAULTS_ENV] = faults
+    server, _certificates = t024.start_second_api(
+        api_server_factory,
+        stack,
+        directory,
+        signing_key=stack.signing_key,
+        extra=extra,
+    )
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
 @contextmanager
 def cache_disabled_server(api_server_factory, stack, directory: Path):
     """Start one extra real API process with ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE=off.
@@ -216,14 +249,5 @@ def cache_disabled_server(api_server_factory, stack, directory: Path):
     Same database and object store as the primary server; only the deployment
     switch differs, so a cache-on/cache-off comparison is two real processes.
     """
-    server, _certificates = t024.start_second_api(
-        api_server_factory,
-        stack,
-        directory,
-        signing_key=stack.signing_key,
-        extra={CACHE_ENV: "off"},
-    )
-    try:
+    with server_with_env(api_server_factory, stack, directory, cache="off") as server:
         yield server
-    finally:
-        server.stop()
