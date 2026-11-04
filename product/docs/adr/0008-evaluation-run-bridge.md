@@ -81,7 +81,7 @@ proof, a case id and the case's canonical input):
   clean.
 - The completion guard remains the only writer of a report row. The bridge
   writes runs and case rows, never a report.
-- `evaluation_case_runs` (migration 0033) is the durable link between a case and
+- `evaluation_case_runs` (migration 0034) is the durable link between a case and
   its platform run, which is also what T056 (per-case UI), T062 (ownership /
   cancellation integrity) and T065 (progress) need.
 - **Contract debt to record**: `evaluateDraft` is authorized with

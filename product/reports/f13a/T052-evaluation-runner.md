@@ -2,10 +2,11 @@
 
 - 任务：F13A / GitHub Issue #53（票 `T052`，规划 ID F13A.01/F13A.02），分支
   `t/t052-eval-runner`（worktree `E:\orchara-worktrees\t052`）；基线
-  `feat/f06-f04a-models-and-workflow` @ `7d0f442`。
+  `feat/f06-f04a-models-and-workflow` @ `7d0f442`；已合并
+  `integration/f13a-f15a-f09-f10`（合并提交 `ec786570b9afa25a12dfc042a101ff6b7a10a5ce`）。
 - 状态：**`partial`**（本票范围 = `evaluateDraft` 提交 + 严格数据集校验 + 真实
   PlatformTaskRunner + 五类独立 checker + 逐例结果/绑定/证据的密封报告 + 完成守卫扩展 +
-  迁移 0033 + ADR 0008。真实 PostgreSQL 16.4、真实编译二进制、真实 HTTP/mTLS、真实封存对象
+  迁移 0034 + ADR 0008。真实 PostgreSQL 16.4、真实编译二进制、真实 HTTP/mTLS、真实封存对象
   字节、真实 `cmd/maintenance run` 双池、真实 `cmd/supervisor exec --once` 执行器。无 mock、
   无跳过。）
 - 判定为 `partial` 的唯一原因：**sales/tool 案例无法在本切片内以 `succeeded` 终态跑通** ——
@@ -152,7 +153,13 @@ ACL：桥每次调用都重查「应用仍属评测 owner 且未归档、快照 
 - 无第二条报告写入路径：伪造的 passed 报告在 `tests/f13a/test_t052_negatives.py`
   中被真实拒绝（`report_invalid`、无 report 行、evaluation failed）。
 
-### 1.7 迁移 `0033_evaluation_runner.sql`
+### 1.7 迁移 `0034_evaluation_runner.sql`
+
+**合并期重编号**：本票分支上最初是 `0033_evaluation_runner.sql`；合并
+`integration/f13a-f15a-f09-f10` 时该分支已带 T054/F09 的 `0033_memory_candidates.sql`
+（迁移号全局唯一；BRIEF §5 允许，最终由 orchestrator 的 merge 决定编号），因此本票迁移在
+合并结果中重编号为 `0034_evaluation_runner.sql`，并同步更新报告/PROGRESS/T026 基线注释。
+合并提交 `ec786570b9afa25a12dfc042a101ff6b7a10a5ce`。
 
 - 新表 `platform.evaluation_case_runs(evaluation_id, case_id, ordinal, run_id UNIQUE, state,
   reason_code, created_at, updated_at, PK(evaluation_id,case_id))`：案例→真实 run 的持久链接。
@@ -160,6 +167,11 @@ ACL：桥每次调用都重查「应用仍属评测 owner 且未归档、快照 
   `progress_total`、`progress_done`（含 `progress_done <= progress_total` 约束）。
 - 权限边界与 0007–0032 相同：`PUBLIC` 无权限，`orchara_worker` 无 schema USAGE/表权限。
 - 重复 `migrate` 是 no-op（`IF NOT EXISTS`/`DROP CONSTRAINT IF EXISTS`），链连续。
+- 覆盖方式：本票没有单独的 `test_t052_migration.py`；迁移由**现有通用门禁**覆盖并在合并结果上
+  通过 —— `tests/f00b/test_t022_migration.py::test_re_running_the_chain_is_a_no_op`（整链二次
+  migrate 无变化）、`...test_the_privilege_wall...`（`orchara_worker` 在 `platform` 上
+  `role_table_grants` 为空，覆盖新表）、以及 `tests/f13a` 的所有用例（缺表即失败）；
+  `test_t026_migration.py` 断言四个新增列确实存在。
 
 **给 T056 / T062 / T065 的接缝**（无需重设计）：
 
@@ -214,19 +226,26 @@ test_t052_submit.py ....... 9 passed
 test_t052_runner.py ...     3 passed
 test_t052_negatives.py .... 4 passed
 16 passed
+
+# 合并 integration/f13a-f15a-f09-f10 后（合并结果上重跑）
+16 passed in 142.43s
 ```
 
 ### 3.2 `python -m pytest tests/f00b -q`（T026 守卫回归）
 
 ```text
-1 failed, 150 passed in 1375.57s   # the single failure was T026's own column-baseline snapshot
-7 passed in 42.56s                # tests/f00b/test_t026_migration.py after the deliberate migration below
+# 合并前（本票分支）：唯一失败是 T026 自己的列基线快照
+1 failed, 150 passed in 1375.57s
+# 有意迁移该基线断言后
+7 passed in 42.56s                # tests/f00b/test_t026_migration.py
+# 合并 integration/f13a-f15a-f09-f10 后（合并结果上重跑）
+135 passed in 888.64s
 ```
 
 唯一的失败是 `test_t026_migration.py::test_the_two_tables_match_the_contract_baseline`：它把
-`evaluation_jobs` 的列集合钉死为 T026 时的 12 列。0033 刻意新增 4 个加法列
+`evaluation_jobs` 的列集合钉死为 T026 时的 12 列。0034 刻意新增 4 个加法列
 （`application_id`/`cancel_requested_at`/`progress_total`/`progress_done`），因此**有意迁移**
-该基线断言（在 `EVALUATION_COLUMNS` 中补上四列并注明 0033 与它们的归属票 T062/T065），
+该基线断言（在 `EVALUATION_COLUMNS` 中补上四列并注明 0034 与它们的归属票 T062/T065），
 而不是删除或放宽它；契约列本身未变、未删除任何原有断言。
 
 ### 3.3 Go 门禁

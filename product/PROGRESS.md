@@ -1200,15 +1200,15 @@ T052（GitHub #53）已交付，状态 **`partial`**（范围 = 契约 `evaluate
 checker（`json_equals`/`decimal_equals`/`run_state`/`effect_count`/`citation_sources`，
 `expected=0` 对真实空账本成立）+ 密封报告内的逐例结果/逐断言证据/采集事实/时间/冻结
 provenance + 完成守卫扩展（唯一报告写入者：真实 runner 的 passed 案例必须有 ≥1 条已通过断言、
-状态按案例重算、provenance 与快照行比对）+ 迁移 0033（`evaluation_case_runs` +
+状态按案例重算、provenance 与快照行比对）+ 迁移 0034（`evaluation_case_runs` +
 `application_id`/`cancel_requested_at`/`progress_total`/`progress_done`）+ ADR 0008）。
 
 | 项 | 内容 |
 |---|---|
 | 判定 | **`partial`**：唯一未闭合项是 sales/tool 案例的 `succeeded` 终态——案例输入不能引用调用方 CSV（需绑定为 run 的 `task_input`，属 #57/T056）；真实 executor 对无工具节点链返回 `tool_unsupported_graph`，本票用真实失败证明它**不会**被当成成功。已证明的正面路径是真实终态：预定 `cancel` 交互使 run 真实 `cancelled`、真实账本 0 次效果、报告 `passed` |
-| 交付 | `internal/evaluation/`（解析/checker/报告/采集循环）、`internal/catalog/evaluations.go`、`internal/api/{evaluation_submit,evaluation_runs,evaluations,internal,server}.go`、`internal/execution/evaluation_runs.go`、`internal/background/{evaluation,scope,handler}.go`、`internal/background/handlers/application_evaluate.go`、`cmd/maintenance/{run,scope}.go`、`internal/config/config.go`、`db/migrations/0033_evaluation_runner.sql`、`docs/adr/0008-evaluation-run-bridge.md`、`tests/support/t052.py`、`tests/f13a/`（3 文件 16 用例）、`reports/f13a/T052-evaluation-runner.md` |
-| 门禁 | `pytest tests/f13a` **16 passed**；`pytest tests/f00b` **151 passed**（唯一适配：`test_t026_migration.py` 的列基线按 0033 的四个加法列**有意迁移**并注明归属）；`go build/vet/test ./...` 全绿；`gofmt -l .` 空；`sync_spec --check` no drift |
-| 边界/not_run | 真实 judge 分数（无 adapter，quality 仅信息性）、`published_version` 执行（blocked/unsupported_target，F02B #69/F07）、F06 审批型交互、逐例 HTTP 读取（T056）、进度展示（T065）、带 citations 的 RAG 端到端样本（T064）；未 push、未关 issue #53、未改 `docs/spec/**`/`contracts/**`、迁移仅新增 0033 |
+| 交付 | `internal/evaluation/`（解析/checker/报告/采集循环）、`internal/catalog/evaluations.go`、`internal/api/{evaluation_submit,evaluation_runs,evaluations,internal,server}.go`、`internal/execution/evaluation_runs.go`、`internal/background/{evaluation,scope,handler}.go`、`internal/background/handlers/application_evaluate.go`、`cmd/maintenance/{run,scope}.go`、`internal/config/config.go`、`db/migrations/0034_evaluation_runner.sql`、`docs/adr/0008-evaluation-run-bridge.md`、`tests/support/t052.py`、`tests/f13a/`（3 文件 16 用例）、`reports/f13a/T052-evaluation-runner.md` |
+| 门禁 | `pytest tests/f13a` **16 passed**；`pytest tests/f00b` **151 passed**（唯一适配：`test_t026_migration.py` 的列基线按 0034 的四个加法列**有意迁移**并注明归属）；`go build/vet/test ./...` 全绿；`gofmt -l .` 空；`sync_spec --check` no drift |
+| 边界/not_run | 真实 judge 分数（无 adapter，quality 仅信息性）、`published_version` 执行（blocked/unsupported_target，F02B #69/F07）、F06 审批型交互、逐例 HTTP 读取（T056）、进度展示（T065）、带 citations 的 RAG 端到端样本（T064）；未 push、未关 issue #53、未改 `docs/spec/**`/`contracts/**`、迁移仅新增 0034 |
 
 ## F06 写后丢响应暂停核对与真实写次数不增加（T051，2026-11-04）
 
