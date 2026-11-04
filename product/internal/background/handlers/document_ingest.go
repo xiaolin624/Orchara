@@ -48,6 +48,13 @@ func DocumentIngest(ctx context.Context, work background.HandlerWork) background
 	if err != nil {
 		return documentIngestBindingOutcome(err)
 	}
+	// The job was created for one embedding model revision. A deployment that
+	// changed its model between enqueue and execution must not write vectors of
+	// the new model into the old index version (that would mix vector spaces).
+	if work.Embedder.ModelRevision() != binding.EmbeddingModelRevision ||
+		(work.Embedder.Dimensions() > 0 && work.Embedder.Dimensions() != binding.EmbeddingDimension) {
+		return background.Failed(background.CodeEmbeddingModelChanged)
+	}
 	link, err := work.Scope.Download(ctx, work.Job.ID, work.AttemptToken, binding.SourceArtifactID)
 	if err != nil {
 		return documentIngestScopeOutcome(err, background.CodeIngestSourceUnavailable)
@@ -190,6 +197,7 @@ func DocumentIngest(ctx context.Context, work background.HandlerWork) background
 			ID:             uuid.NewString(),
 			DocumentID:     binding.DocumentID,
 			Revision:       binding.DocumentRevision,
+			IndexVersionID: binding.IndexVersionID,
 			No:             chunk.No,
 			BodyArtifactID: ticket.ArtifactID,
 			Citation:       citation,
@@ -265,6 +273,8 @@ func documentIngestBindingOutcome(err error) background.Outcome {
 		switch coded.ErrorCode() {
 		case background.CodeStaleAttempt:
 			return background.Failed(background.CodeStaleAttempt)
+		case background.CodeStaleRevision:
+			return background.Failed(background.CodeStaleRevision)
 		case "resource_not_found":
 			return background.Failed(background.CodeSourceDeleted)
 		case "precondition_failed":

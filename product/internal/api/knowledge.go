@@ -122,10 +122,25 @@ func retrievalCacheViewOf(cache knowledge.RetrievalCacheInfo) retrievalCacheView
 	}
 }
 
+type retrievalIndexView struct {
+	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	ActiveIndexes          int    `json:"active_indexes"`
+	ExcludedIndexes        int    `json:"excluded_indexes"`
+}
+
+func retrievalIndexViewOf(info knowledge.RetrievalIndexInfo) retrievalIndexView {
+	return retrievalIndexView{
+		EmbeddingModelRevision: info.EmbeddingModelRevision,
+		ActiveIndexes:          info.ActiveIndexes,
+		ExcludedIndexes:        info.ExcludedIndexes,
+	}
+}
+
 type retrievalMetadata struct {
 	EmbeddingModelRevision string             `json:"embedding_model_revision"`
 	TopK                   int                `json:"top_k"`
 	ACLEpoch               int64              `json:"acl_epoch"`
+	Index                  retrievalIndexView `json:"index"`
 	Cache                  retrievalCacheView `json:"cache"`
 }
 
@@ -168,6 +183,7 @@ type answerRetrievalView struct {
 	TopK                   int                `json:"top_k"`
 	ACLEpoch               int64              `json:"acl_epoch"`
 	ChunkIDs               []string           `json:"chunk_ids"`
+	Index                  retrievalIndexView `json:"index"`
 	Cache                  retrievalCacheView `json:"cache"`
 }
 
@@ -208,23 +224,79 @@ func answerResponseOf(result knowledge.AnswerResult) answerResponse {
 			TopK:                   result.Retrieval.TopK,
 			ACLEpoch:               result.Retrieval.ACLEpoch,
 			ChunkIDs:               result.Retrieval.ChunkIDs,
+			Index:                  retrievalIndexViewOf(result.Retrieval.Index),
 			Cache:                  retrievalCacheViewOf(result.Retrieval.Cache),
 		},
 	}
 }
 
 type diagnosticsView struct {
-	DocumentID             string                    `json:"document_id"`
+	DocumentID                   string                    `json:"document_id"`
+	State                        string                    `json:"state"`
+	Revision                     int64                     `json:"revision"`
+	ActiveRevision               *int64                    `json:"active_revision"`
+	ActiveIndexID                *string                   `json:"active_index_id"`
+	ActiveIndex                  *diagnosticsIndexView     `json:"active_index"`
+	Indexes                      []diagnosticsIndexView    `json:"indexes"`
+	ActiveEmbeddingModelRevision *string                   `json:"active_embedding_model_revision"`
+	ParserVersion                *string                   `json:"parser_version"`
+	ChunkerVersion               *string                   `json:"chunker_version"`
+	EmbeddingModelRevision       *string                   `json:"embedding_model_revision"`
+	ErrorCode                    *string                   `json:"error_code"`
+	Detail                       *diagnosticsDetail        `json:"detail"`
+	ChunkCount                   int                       `json:"chunk_count"`
+	BackgroundJob                *diagnosticsBackgroundJob `json:"background_job"`
+}
+
+// diagnosticsIndexView is one index build for the page: version, embedding model
+// revision, honest progress (state + chunk count + job attempts), failure reason
+// and whether it is the active version. No synthetic percentage.
+type diagnosticsIndexView struct {
+	ID                     string                    `json:"id"`
+	Version                int64                     `json:"version"`
+	DocumentRevision       int64                     `json:"document_revision"`
+	EmbeddingModelRevision string                    `json:"embedding_model_revision"`
+	EmbeddingDimension     int                       `json:"embedding_dimension"`
 	State                  string                    `json:"state"`
-	Revision               int64                     `json:"revision"`
-	ActiveRevision         *int64                    `json:"active_revision"`
-	ParserVersion          *string                   `json:"parser_version"`
-	ChunkerVersion         *string                   `json:"chunker_version"`
-	EmbeddingModelRevision *string                   `json:"embedding_model_revision"`
-	ErrorCode              *string                   `json:"error_code"`
-	Detail                 *diagnosticsDetail        `json:"detail"`
+	Stage                  string                    `json:"stage"`
 	ChunkCount             int                       `json:"chunk_count"`
+	ErrorCode              *string                   `json:"error_code"`
+	Active                 bool                      `json:"active"`
+	ActivatedAt            *string                   `json:"activated_at"`
+	SupersededAt           *string                   `json:"superseded_at"`
 	BackgroundJob          *diagnosticsBackgroundJob `json:"background_job"`
+}
+
+func diagnosticsIndexViewOf(version knowledge.IndexVersion) diagnosticsIndexView {
+	view := diagnosticsIndexView{
+		ID:                     version.ID,
+		Version:                version.Version,
+		DocumentRevision:       version.DocumentRevision,
+		EmbeddingModelRevision: version.EmbeddingModelRevision,
+		EmbeddingDimension:     version.EmbeddingDimension,
+		State:                  version.State,
+		Stage:                  version.Stage(),
+		ChunkCount:             version.ChunkCount,
+		ErrorCode:              version.ErrorCode,
+		Active:                 version.Active,
+	}
+	if version.ActivatedAt != nil {
+		value := version.ActivatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+		view.ActivatedAt = &value
+	}
+	if version.SupersededAt != nil {
+		value := version.SupersededAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+		view.SupersededAt = &value
+	}
+	if version.BackgroundJob != nil {
+		view.BackgroundJob = &diagnosticsBackgroundJob{
+			ID:           version.BackgroundJob.ID,
+			State:        version.BackgroundJob.State,
+			ErrorCode:    version.BackgroundJob.ErrorCode,
+			AttemptCount: version.BackgroundJob.AttemptCount,
+		}
+	}
+	return view
 }
 
 // diagnosticsDetail is the re-derived, safe location of a content refusal. It
@@ -291,6 +363,12 @@ func (s *Server) writeKnowledgeFailure(w http.ResponseWriter, r *http.Request, e
 	case errors.Is(err, knowledge.ErrArtifactNotReady):
 		writeError(w, r, http.StatusConflict, "precondition_failed",
 			"the source artifact is not ready; wait for its upload to finish")
+	case errors.Is(err, knowledge.ErrIndexBuildInProgress):
+		writeError(w, r, http.StatusConflict, "index_build_in_progress",
+			"an index build is already running for this document; wait for it to finish")
+	case errors.Is(err, knowledge.ErrStaleRevision):
+		writeError(w, r, http.StatusConflict, "stale_revision",
+			"the index build no longer matches the document revision")
 	case errors.Is(err, knowledge.ErrUnsupportedInput):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			"this source format is not supported yet; this slice ingests text/plain, "+
@@ -425,6 +503,51 @@ func (s *Server) handleIngestDocument(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, acceptedView{ID: document.ID, State: document.State})
 }
 
+// reindexAcceptedView is the non-contract answer of the T061 rebuild entry. It
+// names the created index version and the job, never bytes or object keys.
+type reindexAcceptedView struct {
+	DocumentID             string `json:"document_id"`
+	State                  string `json:"state"`
+	Revision               int64  `json:"revision"`
+	IndexVersionID         string `json:"index_version_id"`
+	IndexVersion           int64  `json:"index_version"`
+	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	JobID                  string `json:"job_id"`
+}
+
+func (s *Server) handleReindexKnowledgeDocument(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.knowledgeScope(w, r, caller, identity.ScopeApplicationWrite) {
+		return
+	}
+	var request struct {
+		SourceArtifactID *string `json:"source_artifact_id"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	result, err := s.knowledge.ReindexDocument(
+		r.Context(), caller.PrincipalID, r.PathValue("document_id"), request.SourceArtifactID,
+	)
+	if err != nil {
+		s.writeKnowledgeFailure(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, reindexAcceptedView{
+		DocumentID:             result.DocumentID,
+		State:                  result.State,
+		Revision:               result.Revision,
+		IndexVersionID:         result.IndexVersionID,
+		IndexVersion:           result.IndexVersion,
+		EmbeddingModelRevision: result.EmbeddingModelRevision,
+		JobID:                  result.JobID,
+	})
+}
+
 func (s *Server) handleListKnowledgeDocuments(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
 	if !ok {
@@ -489,15 +612,25 @@ func (s *Server) handleKnowledgeDocumentDiagnostics(w http.ResponseWriter, r *ht
 		return
 	}
 	view := diagnosticsView{
-		DocumentID:             diagnostics.DocumentID,
-		State:                  diagnostics.State,
-		Revision:               diagnostics.Revision,
-		ActiveRevision:         diagnostics.ActiveRevision,
-		ParserVersion:          diagnostics.ParserVersion,
-		ChunkerVersion:         diagnostics.ChunkerVersion,
-		EmbeddingModelRevision: diagnostics.EmbeddingModelRevision,
-		ErrorCode:              diagnostics.ErrorCode,
-		ChunkCount:             diagnostics.ChunkCount,
+		DocumentID:                   diagnostics.DocumentID,
+		State:                        diagnostics.State,
+		Revision:                     diagnostics.Revision,
+		ActiveRevision:               diagnostics.ActiveRevision,
+		ActiveIndexID:                diagnostics.ActiveIndexID,
+		ActiveEmbeddingModelRevision: diagnostics.ActiveEmbeddingModelRevision,
+		ParserVersion:                diagnostics.ParserVersion,
+		ChunkerVersion:               diagnostics.ChunkerVersion,
+		EmbeddingModelRevision:       diagnostics.EmbeddingModelRevision,
+		ErrorCode:                    diagnostics.ErrorCode,
+		ChunkCount:                   diagnostics.ChunkCount,
+		Indexes:                      make([]diagnosticsIndexView, 0, len(diagnostics.Indexes)),
+	}
+	if diagnostics.ActiveIndex != nil {
+		active := diagnosticsIndexViewOf(*diagnostics.ActiveIndex)
+		view.ActiveIndex = &active
+	}
+	for _, version := range diagnostics.Indexes {
+		view.Indexes = append(view.Indexes, diagnosticsIndexViewOf(version))
 	}
 	if detail := diagnostics.Detail; detail != nil {
 		view.Detail = &diagnosticsDetail{
@@ -550,6 +683,7 @@ func (s *Server) handleKnowledgeRetrievalQuery(w http.ResponseWriter, r *http.Re
 			EmbeddingModelRevision: result.EmbeddingModelRevision,
 			TopK:                   result.TopK,
 			ACLEpoch:               result.ACLEpoch,
+			Index:                  retrievalIndexViewOf(result.Index),
 			Cache:                  retrievalCacheViewOf(result.Cache),
 		},
 	})
@@ -670,6 +804,9 @@ func (s *Server) handleInternalDocumentIngestBinding(w http.ResponseWriter, r *h
 		case errors.Is(err, knowledge.ErrArtifactNotReady):
 			writeError(w, r, http.StatusConflict, "precondition_failed",
 				"the bound source artifact is not ready")
+		case errors.Is(err, knowledge.ErrStaleRevision):
+			writeError(w, r, http.StatusConflict, "stale_revision",
+				"the job index version no longer matches the document")
 		case errors.Is(err, knowledge.ErrUnsupportedInput):
 			writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
 				"no parser is registered for the bound source media type",

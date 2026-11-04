@@ -96,15 +96,19 @@ type ArtifactView struct {
 	SizeBytes int64
 }
 
-// DocumentIngestBinding is the T055 job-scoped ingestion binding.
+// DocumentIngestBinding is the T055/T061 job-scoped ingestion binding.
 type DocumentIngestBinding struct {
-	DocumentID       string
-	KnowledgeBaseID  string
-	DocumentRevision int64
-	SourceArtifactID string
-	SourceSHA256     string
-	SourceMediaType  string
-	ParserVersion    string
+	DocumentID             string
+	KnowledgeBaseID        string
+	DocumentRevision       int64
+	IndexVersionID         string
+	IndexVersion           int64
+	EmbeddingModelRevision string
+	EmbeddingDimension     int
+	SourceArtifactID       string
+	SourceSHA256           string
+	SourceMediaType        string
+	ParserVersion          string
 }
 
 // ToolBuildBinding is the T037 job-scoped tool build binding. DependencyLock is

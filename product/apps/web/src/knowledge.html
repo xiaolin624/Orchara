@@ -111,6 +111,24 @@
       </dl>
       <p id="document-diagnostics" class="status" role="status" aria-live="polite"></p>
     </div>
+    <div id="index-panel" hidden aria-live="polite">
+      <h3>索引版本、进度与激活切换</h3>
+      <dl class="facts">
+        <dt>当前激活索引</dt><dd id="index-active"></dd>
+      </dl>
+      <pre id="index-progress" class="meta"></pre>
+      <ul id="index-versions" class="bases"></ul>
+      <form id="reindex-form" method="post">
+        <p class="hint">
+          重建会创建<strong>新的索引版本</strong>并排队后台任务；构建期间旧的活动索引仍然可读。
+          只有服务器在激活事务里重新核对源版本、索引版本与删除标记后，激活指针才会切换；
+          旧任务晚到只会得到 <code>stale_revision</code>/<code>source_deleted</code>，不会覆盖新版本，
+          也不会复活已删除文档。失败的重建保留旧活动索引，可再次提交。
+        </p>
+        <button id="reindex-submit" type="submit">重建当前资料的索引</button>
+        <p id="reindex-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </div>
   </section>
 
   <section class="card">
@@ -276,6 +294,16 @@
           lines.push('后台任务：' + view.jobState + ' · 尝试 ' + view.jobAttempts + ' 次');
         }
         el('document-diagnostics').textContent = lines.join('\n');
+        const indexes = describeIndexes(diagnostics);
+        el('index-panel').hidden = false;
+        el('index-active').textContent = indexes.activeText;
+        el('index-progress').textContent = indexes.text;
+        clear(el('index-versions'));
+        indexes.items.forEach((item) => {
+          const row = document.createElement('li');
+          row.textContent = item.line;
+          el('index-versions').appendChild(row);
+        });
         return view;
       }
 
@@ -440,13 +468,46 @@
         }
       });
 
+      el('reindex-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('reindex-status');
+        if (!currentDocument) {
+          setStatus(status, '请先摄取一个文档', 'bad');
+          return;
+        }
+        const built = buildReindexBody('');
+        try {
+          setStatus(status, '创建新的索引版本…', 'pending');
+          const accepted = await api(reindexDocumentPath(currentDocument), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          setStatus(status,
+            '已排队索引 v' + String(accepted.index_version)
+            + ' · embedding=' + String(accepted.embedding_model_revision),
+            'pending');
+          const result = await pollDocument(currentDocument);
+          if (result.document.searchable) {
+            setStatus(status, '重建完成：新索引已激活', 'ok');
+          } else {
+            setStatus(status, '重建未激活：' + result.document.stateText
+              + (result.diagnostics && result.diagnostics.errorCode
+                ? ' · ' + result.diagnostics.errorCode
+                : ''), 'bad');
+          }
+        } catch (error) {
+          setStatus(status, '重建失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
       function renderResults(payload) {
         const view = describeRetrieval(payload);
         clear(el('results'));
         el('retrieval-meta').textContent = view.empty
           ? ''
-          : 'embedding=' + view.embeddingModelRevision + ' · top_k=' + view.topK
-            + ' · acl_epoch=' + view.aclEpoch;
+          : 'embedding=' + view.embeddingModelRevision + ' · ' + view.indexText
+            + ' · top_k=' + view.topK + ' · acl_epoch=' + view.aclEpoch;
         if (view.empty) {
           const empty = document.createElement('p');
           empty.className = 'hint';

@@ -22,8 +22,12 @@ type EnqueueParams struct {
 	OwnerID          string
 	DedupKey         string
 	ExpectedRevision *int64
-	ExpectedSHA256   string
-	InputArtifactID  string
+	// ExpectedIndexVersionID binds a document_ingest job to one knowledge index
+	// version (T061). It is stored with the job and re-read by the completion
+	// guard; a stale job must never activate a newer index.
+	ExpectedIndexVersionID string
+	ExpectedSHA256         string
+	InputArtifactID        string
 	// AvailableAt delays the first claim (zero means now). Tests and retrying
 	// producers use it; the admin CLI does not expose it yet.
 	AvailableAt *time.Time
@@ -67,6 +71,10 @@ func EnqueueTx(ctx context.Context, tx *sql.Tx, params EnqueueParams) (*Job, boo
 	if normalized.ExpectedRevision != nil {
 		expectedRevision = *normalized.ExpectedRevision
 	}
+	var expectedIndexVersion any
+	if normalized.ExpectedIndexVersionID != "" {
+		expectedIndexVersion = normalized.ExpectedIndexVersionID
+	}
 	var expectedSHA any
 	if normalized.ExpectedSHA256 != "" {
 		expectedSHA = normalized.ExpectedSHA256
@@ -79,18 +87,18 @@ func EnqueueTx(ctx context.Context, tx *sql.Tx, params EnqueueParams) (*Job, boo
 	var args []any
 	args = append(args,
 		uuid.NewString(), string(normalized.Kind), normalized.TargetID, normalized.OwnerID,
-		expectedRevision, expectedSHA, normalized.DedupKey, inputArtifact,
+		expectedRevision, expectedIndexVersion, expectedSHA, normalized.DedupKey, inputArtifact,
 	)
 	if normalized.AvailableAt != nil {
-		availableAt = "$9"
+		availableAt = "$10"
 		args = append(args, normalized.AvailableAt.UTC())
 	}
 
 	created, err := scanJob(tx.QueryRowContext(ctx, `
 		INSERT INTO platform.background_jobs
-			(id, kind, target_id, owner_id, expected_revision, expected_sha256, dedup_key,
-			 input_artifact_id, state, available_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ready', `+availableAt+`)
+			(id, kind, target_id, owner_id, expected_revision, expected_index_version_id,
+			 expected_sha256, dedup_key, input_artifact_id, state, available_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ready', `+availableAt+`)
 		ON CONFLICT (kind, dedup_key) DO NOTHING
 		RETURNING `+selectJobColumns, args...))
 	if err == nil {
@@ -189,20 +197,27 @@ func validateEnqueue(params EnqueueParams) (EnqueueParams, error) {
 			return EnqueueParams{}, err
 		}
 	}
+	expectedIndexVersion := strings.TrimSpace(params.ExpectedIndexVersionID)
+	if expectedIndexVersion != "" {
+		if _, err := validateUUID("expected_index_version_id", expectedIndexVersion); err != nil {
+			return EnqueueParams{}, err
+		}
+	}
 	var availableAt *time.Time
 	if params.AvailableAt != nil {
 		value := params.AvailableAt.UTC()
 		availableAt = &value
 	}
 	return EnqueueParams{
-		Kind:             params.Kind,
-		TargetID:         targetID,
-		OwnerID:          ownerID,
-		DedupKey:         dedupKey,
-		ExpectedRevision: params.ExpectedRevision,
-		ExpectedSHA256:   sha,
-		InputArtifactID:  inputArtifact,
-		AvailableAt:      availableAt,
+		Kind:                   params.Kind,
+		TargetID:               targetID,
+		OwnerID:                ownerID,
+		DedupKey:               dedupKey,
+		ExpectedRevision:       params.ExpectedRevision,
+		ExpectedIndexVersionID: expectedIndexVersion,
+		ExpectedSHA256:         sha,
+		InputArtifactID:        inputArtifact,
+		AvailableAt:            availableAt,
 	}, nil
 }
 
@@ -228,6 +243,13 @@ func dedupDifference(existing *Job, params EnqueueParams) string {
 	}
 	if existingSHA != params.ExpectedSHA256 {
 		return "expected_sha256 differs"
+	}
+	existingIndex := ""
+	if existing.ExpectedIndexVersionID != nil {
+		existingIndex = *existing.ExpectedIndexVersionID
+	}
+	if existingIndex != params.ExpectedIndexVersionID {
+		return "expected_index_version_id differs"
 	}
 	existingInput := ""
 	if existing.InputArtifactID != nil {

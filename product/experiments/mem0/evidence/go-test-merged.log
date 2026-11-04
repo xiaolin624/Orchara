@@ -1,0 +1,45 @@
+?   	orchara/platform/cmd/admin	[no test files]
+?   	orchara/platform/cmd/api	[no test files]
+?   	orchara/platform/cmd/maintenance	[no test files]
+?   	orchara/platform/cmd/sandboxprobe	[no test files]
+?   	orchara/platform/cmd/supervisor	[no test files]
+?   	orchara/platform/cmd/worker	[no test files]
+?   	orchara/platform/db	[no test files]
+?   	orchara/platform/experiments/mem0/pgdriver	[no test files]
+ok  	orchara/platform/internal/api	2.433s
+?   	orchara/platform/internal/approvals	[no test files]
+ok  	orchara/platform/internal/artifacts	(cached)
+?   	orchara/platform/internal/audit	[no test files]
+ok  	orchara/platform/internal/background	1.521s
+ok  	orchara/platform/internal/background/handlers	1.980s
+ok  	orchara/platform/internal/budget	(cached)
+ok  	orchara/platform/internal/capabilities	(cached)
+ok  	orchara/platform/internal/catalog	(cached)
+ok  	orchara/platform/internal/compiler	(cached)
+ok  	orchara/platform/internal/config	(cached)
+ok  	orchara/platform/internal/connectors	(cached)
+ok  	orchara/platform/internal/context	(cached)
+ok  	orchara/platform/internal/db	(cached)
+ok  	orchara/platform/internal/embedding	(cached)
+ok  	orchara/platform/internal/evaluation	1.997s
+ok  	orchara/platform/internal/execution	2.303s
+ok  	orchara/platform/internal/health	(cached)
+ok  	orchara/platform/internal/identity	(cached)
+ok  	orchara/platform/internal/jcs	(cached)
+ok  	orchara/platform/internal/jsonschema	(cached)
+ok  	orchara/platform/internal/knowledge	4.446s
+ok  	orchara/platform/internal/memory	(cached)
+ok  	orchara/platform/internal/modelproxy	(cached)
+ok  	orchara/platform/internal/modelregistry	(cached)
+ok  	orchara/platform/internal/objectstore	(cached)
+ok  	orchara/platform/internal/policy	(cached)
+ok  	orchara/platform/internal/presetexec	(cached)
+ok  	orchara/platform/internal/sandbox	(cached)
+ok  	orchara/platform/internal/supervisor	(cached)
+ok  	orchara/platform/internal/templates	(cached)
+?   	orchara/platform/internal/toolruns	[no test files]
+ok  	orchara/platform/internal/tools	(cached)
+ok  	orchara/platform/internal/toolversions	(cached)
+ok  	orchara/platform/internal/uuid	(cached)
+ok  	orchara/platform/internal/workflow	(cached)
+?   	orchara/platform/probes/f15a_objectstore/localfs_probe	[no test files]

@@ -44,6 +44,13 @@ const (
 	// StubModelRevision is the recorded model revision of the deterministic local
 	// embedder. A real provider gets its own revision; the two are never mixed.
 	StubModelRevision = "local-hash-v1"
+	// StubModelRevisionV2 is the second documented deterministic dev-stub
+	// revision (T061). It exists so a *real deployment configuration change* —
+	// start the API/maintenance with ORCHARA_EMBEDDING_MODEL=local-hash-v2 — can
+	// produce a genuinely different vector space without a model provider. It is
+	// still a labelled dev-stub, not a semantic model; a real provider keeps its
+	// own revision and never falls back to either stub.
+	StubModelRevisionV2 = "local-hash-v2"
 	// Dimensions is the one fixed vector dimension of the local embedder. The
 	// migration pins the same 384 in a CHECK, so the constant and the database
 	// cannot disagree silently. Changing it is a new model revision and a
@@ -71,16 +78,31 @@ type Service struct {
 
 // New builds the service from deployment configuration.
 //
-// Empty or `stub` selects the deterministic stub. Every other non-empty value is
-// a real provider and fails closed: no adapter and no credential exist in this
-// environment, and pretending otherwise would record fake vectors under a real
-// model revision.
+// Empty or `stub` selects a deterministic stub. The model may name a compiled
+// stub revision (`local-hash-v1`, the default, or `local-hash-v2`); an unknown
+// stub revision is refused (fail closed) rather than silently recording one
+// revision while producing another model's vectors. Every other provider value
+// is a real provider and fails closed: no adapter and no credential exist in
+// this environment, and pretending otherwise would record fake vectors under a
+// real model revision.
 func New(provider, modelModel string) *Service {
 	normalized := strings.ToLower(strings.TrimSpace(provider))
 	if normalized == "" || normalized == stubProvider {
+		revision := strings.TrimSpace(modelModel)
+		if revision == "" {
+			revision = StubModelRevision
+		}
+		if revision != StubModelRevision && revision != StubModelRevisionV2 {
+			return &Service{
+				provider:      stubProvider,
+				modelRevision: revision,
+				dimensions:    0,
+				stub:          false,
+			}
+		}
 		return &Service{
 			provider:      stubProvider,
-			modelRevision: StubModelRevision,
+			modelRevision: revision,
 			dimensions:    StubDimensions,
 			stub:          true,
 		}
@@ -144,7 +166,7 @@ func (s *Service) Embed(ctx context.Context, texts []string) ([][]float64, error
 	}
 	vectors := make([][]float64, len(texts))
 	for index, text := range texts {
-		vectors[index] = StubVector(text, s.dimensions)
+		vectors[index] = stubVector(text, s.dimensions, s.modelRevision)
 	}
 	return vectors, nil
 }
@@ -158,16 +180,30 @@ func (s *Service) EmbedOne(ctx context.Context, text string) ([]float64, error) 
 	return vectors[0], nil
 }
 
-// StubVector is the deterministic vector function. It is exported for the
-// cross-process stability test and for the T059/T060 parser tests that need to
-// compare chunk bodies without a provider.
+// StubVector is the deterministic vector function of the default stub revision
+// (`local-hash-v1`). It is exported for the cross-process stability test and for
+// the T059/T060 parser tests that need to compare chunk bodies without a
+// provider.
 func StubVector(text string, dimensions int) []float64 {
+	return stubVector(text, dimensions, StubModelRevision)
+}
+
+// stubVector is the deterministic vector function of one compiled stub
+// revision. The two revisions read different SHA-256 bytes for the bucket and
+// sign, so they are distinct vector spaces over the same fixed dimension; this is
+// how T061 exercises a real embedding-model switch without a provider. Changing
+// either algorithm is a new stub revision, never a silent edit of this one.
+func stubVector(text string, dimensions int, revision string) []float64 {
+	indexOffset, signOffset := 0, 4
+	if revision == StubModelRevisionV2 {
+		indexOffset, signOffset = 8, 12
+	}
 	vector := make([]float64, dimensions)
 	for _, token := range tokens(text) {
 		sum := sha256.Sum256([]byte(token))
-		index := int(binary.BigEndian.Uint32(sum[:4]) % uint32(dimensions))
+		index := int(binary.BigEndian.Uint32(sum[indexOffset:indexOffset+4]) % uint32(dimensions))
 		weight := 1.0
-		if sum[4]&1 == 1 {
+		if sum[signOffset]&1 == 1 {
 			weight = -1
 		}
 		vector[index] += weight

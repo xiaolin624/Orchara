@@ -1,0 +1,6 @@
+record: experiments\mem0\evidence\t066-both.json sha256=2acb230ce18114543aa168eeb9b69bceda971cbe700ca50667abd1467ad9cd3d
+  pg: run (real) hit@1=1.0 hit@k=1.0 p50=0.540733ms p95=9.081743ms clean=False residual=1
+  mem0: run (stub) hit@1=1.0 hit@k=1.0 p50=6.1191ms p95=8.615ms clean=False residual=6
+decision: do_not_adopt
+  - deletion still leaves body copies in Mem0's own stores: file:history.db, file:mem0-debug.log, file:qdrant/collection/t066_memories/storage.sqlite, log:mem0-debug.log, sqlite:history.new_memory, sqlite:history.old_memory; a memory store that cannot show a clean copy purge is disqualified
+  - Mem0 also shows no measurable benefit: recall is not better and p95 is not at least 20% lower than the deterministic PostgreSQL baseline

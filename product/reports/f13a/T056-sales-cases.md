@@ -2,7 +2,8 @@
 
 - 任务：F13A / GitHub Issue #57（票 `T056`），分支 `t/t056-sales-cases`
   （worktree `E:\orchara-worktrees\t056`）；基线 `integration/f13a-f15a-f09-f10`
-  @ `f1a5257`；合并提交 `667a1ea`（合并后 ADR 重编号为 0017）。
+  @ `f1a5257`；合并提交 `2dc2622`（先合入 `667a1ea`，随后 integration 前进，
+  再合入最新 tip；ADR 因 integration 已占 0015/0016 而最终重编号为 0017）。
 - 状态：**`passed`**（本票范围 = 案例按内容绑定调用方 CSV/XLSX 为 run 的
   `task_input`、真实销售工具 succeeded 案例、坏输入/超时案例的定位期望、
   非契约逐例读取 + ADR 0017、逐例页面、独立 Decimal 真值与守卫）。
@@ -158,6 +159,7 @@ WSL Ubuntu-24.04 + `runsc release-20241118.0`，python-rootfs digest
 `sha256:03c3f647…12ff5`。
 
 ```text
+# ---- 第一次合并 integration（667a1ea，包含 T062 #63）--------------------
 $ python -m pytest tests/f13a -q          # 合并后第 1 次（超时界修正前）
 ..........................................                               [100%]
 42 passed in 944.70s (0:15:44)
@@ -181,6 +183,18 @@ $ python -m pytest tests/f10 -q
 .........................................                                [100%]
 41 passed in 437.07s (0:07:17)
 
+# ---- 第二次合并 integration 最新 tip（2dc2622，T060/T063/T067 等）------
+$ python -m pytest tests/f13a -q          # 合并后第 1 次
+...............................F..........                               [100%]
+1 failed, 41 passed in 1452.37s (0:24:12)
+# 唯一失败：test_a_succeeded_xlsx_sales_case_yields_the_same_decimal_totals
+#   合并后的主机抖动窗口持续 ≥5 分钟：同一 XLSX 案例连续 4 次 attempt 都
+#   not_run/run_timeout（每次 attempt 心跳开始后数秒即停、无 exit、run 停在
+#   running），不是业务失败；加大重试次数并在失败之间加入 20 s 冷却后：
+$ python -m pytest tests/f13a -q          # 最终合并树（2dc2622 + cooldown fix）
+..........................................                               [100%]
+42 passed in 978.95s (0:16:18)
+
 $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
 build exit=0 ; vet exit=0 ; go test ./... exit=0（33 个包 ok，0 FAIL）;
 gofmt -l（空输出）
@@ -198,13 +212,16 @@ no drift: spec copy and contract snapshot match the manifest
   心跳、未提交 exit，平台按既有语义不提交结果；当前构建的 run 恢复是 F03/T038 的
   运维命令 `cmd/admin runs sweep-leases|recover`，不是自动恢复）。平台如实把该案例
   记为 `not_run/run_timeout`（绝不 passed）。`tests/support/t056.py` 只在**没有
-  任何断言被判定为业务失败**时重试整个评测（同一密封数据集、新提交）：
+  任何断言被判定为业务失败**时重试整个评测（同一密封数据集、新提交，最多 6 次、
+  失败之间 20 s 冷却、单案例等待 75 s）：
   非 passed 的案例必须全部是 `not_run/run_timeout`，或失败事实里的 run error code
   属于平台基础设施码且不是数据集期望的错误码；任何业务错误立即返回并按断言失败，
   重试不可能把 stall 变成 pass。测试部署把执行槽容量从 2 调到 32
   （`seed_evaluation_capacity`，测试自有 SQL），避免一个环境孤立 attempt 拖死后续
   案例；T056 e2e 的 API 使用 300 s 执行租约（T052 默认 30 s），使一次短暂 API
-  抖动不再让 supervisor 放弃 attempt。
+  抖动不再让 supervisor 放弃 attempt。合并后的第一次复跑就遇到一个持续 ≥5 分钟的
+  主机抖动窗口（同一 XLSX 案例连续 4 次 attempt 都无法完成），这正是重试需要
+  冷却窗口的原因；报告的 §3 原始输出记录了这一轮与随后的绿色轮次。
 - 超时案例确定性：20 MiB 输入（合法表头 + 空行填充）在沙箱发行版内仅 CSV 解析
   实测 **2.18 s**（并发负载下曾测得 4.34 s）；部署超时按整秒计且最小值 1 s，
   因此测试用 `ORCHARA_SANDBOX_TIMEOUT=1s`，沙箱内实际耗时 >1 s（含启动）。若极快

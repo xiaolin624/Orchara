@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import subprocess
 
-from support import f00b, t055, t064, t067
+from support import f00b, t055, t061, t064, t067
 from support import stack as st
 from support.fixtures import api_server, t055_stack  # noqa: F401 - pytest fixtures
 
@@ -280,25 +280,12 @@ def test_a_document_revision_change_does_not_hit_the_old_revision(t055_stack) ->
     old_revisions = {int(item["document_revision"]) for item in warm.json["items"]}
     assert old_revisions == {1}
 
-    # Simulate the T061 activation switch: stage revision 2 chunks (real rows, real
-    # sealed bodies) and move the current/active pointer in the authoritative row.
-    st.sql(
-        stack.dbname,
-        "INSERT INTO platform.knowledge_chunks "
-        "(id, document_id, document_revision, chunk_no, body_artifact_id, citation, "
-        " embedding_model_revision, embedding, embedding_dimension) "
-        "SELECT gen_random_uuid(), document_id, 2, chunk_no, body_artifact_id, "
-        "       citation || jsonb_build_object('document_revision', 2), "
-        "       embedding_model_revision, embedding, embedding_dimension "
-        "FROM platform.knowledge_chunks "
-        f"WHERE document_id = {st.quote_literal(document_id)}::uuid "
-        "AND document_revision = 1",
-    )
-    st.sql(
-        stack.dbname,
-        "UPDATE platform.knowledge_documents "
-        "SET revision = 2, active_revision = 2 "
-        f"WHERE id = {st.quote_literal(document_id)}::uuid",
+    # Simulate the T061 activation switch: stage revision 2 chunks in their own
+    # index version (real rows, real sealed bodies) and move the activation
+    # pointer in the authoritative row. This is exactly the state the T061 guard
+    # writes; the cache must not return the old revision.
+    t061.activate_staged_index_version(
+        stack.dbname, document_id, document_revision=2
     )
     assert t067.cache_row_by_key(stack.dbname, old_row["cache_key"]) is not None
 

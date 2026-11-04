@@ -84,6 +84,54 @@ func TestRealProviderPathFailsClosed(t *testing.T) {
 	}
 }
 
+func TestLocalHashV2IsADistinctDeterministicStubRevision(t *testing.T) {
+	first := New("stub", StubModelRevisionV2)
+	if !first.IsStub() {
+		t.Fatal("provider=stub with local-hash-v2 must select a deterministic stub")
+	}
+	if first.ModelRevision() != StubModelRevisionV2 {
+		t.Fatalf("revision = %q, want %q", first.ModelRevision(), StubModelRevisionV2)
+	}
+	if first.Dimensions() != StubDimensions {
+		t.Fatalf("dimensions = %d, want %d (the dimension stays fixed)", first.Dimensions(), StubDimensions)
+	}
+	vectors, err := first.Embed(context.Background(), []string{"alpha beta gamma", "alpha beta gamma"})
+	if err != nil {
+		t.Fatalf("stub v2 Embed: %v", err)
+	}
+	if len(vectors) != 2 || len(vectors[0]) != StubDimensions {
+		t.Fatalf("vectors = %d x %d", len(vectors), len(vectors[0]))
+	}
+	for index := range vectors[0] {
+		if vectors[0][index] != vectors[1][index] {
+			t.Fatalf("v2 vector is not deterministic at %d", index)
+		}
+	}
+	var norm float64
+	for _, value := range vectors[0] {
+		norm += value * value
+	}
+	if math.Abs(math.Sqrt(norm)-1) > 1e-9 {
+		t.Fatalf("v2 norm = %v, want 1", math.Sqrt(norm))
+	}
+	// A model switch must produce a genuinely different vector space for the
+	// same text; otherwise the separate index revisions would be cosmetic.
+	old := StubVector("alpha beta gamma", StubDimensions)
+	if score := Cosine(old, vectors[0]); score >= 0.99 {
+		t.Fatalf("v2 cosine against v1 = %v, want a distinct vector space", score)
+	}
+}
+
+func TestUnknownStubModelRevisionFailsClosed(t *testing.T) {
+	service := New("stub", "local-hash-v3")
+	if service.IsStub() {
+		t.Fatal("an unknown deterministic revision must not silently use v1")
+	}
+	if _, err := service.Embed(context.Background(), []string{"hello"}); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("Embed error = %v, want ErrNotConfigured", err)
+	}
+}
+
 func TestFromEnvSelectsExplicitProvider(t *testing.T) {
 	t.Setenv(ProviderEnv, "stub")
 	if !FromEnv().IsStub() {

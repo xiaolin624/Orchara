@@ -401,19 +401,21 @@ def run_evaluation(
     document: dict,
     *,
     sandbox_timeout: str = "60s",
-    case_timeout: str = "90s",
+    case_timeout: str = "75s",
     log_path: Path,
-    attempts: int = 4,
+    attempts: int = 6,
+    stall_cooldown_s: float = 20.0,
 ) -> tuple[dict, dict, list[dict]]:
     """Submit, run the pools and the executor, and return (evaluation, report, document).
 
     The environment (one laptop, a shared WSL2/runsc sandbox, several concurrent
-    suites) can abandon a sandbox attempt between heartbeats. The product then
-    correctly records the case as ``not_run/run_timeout`` and never passes it.
-    That is an environment stall, not a case verdict, so the whole evaluation is
-    retried with the same sealed dataset and fixtures (a new submission). A real
-    business result is returned immediately and asserted by the caller; a stall
-    can never turn into a pass.
+    suites) can abandon sandbox attempts between heartbeats for several minutes at
+    a time. The product then correctly records the case as
+    ``not_run/run_timeout`` and never passes it. That is an environment stall, not
+    a case verdict, so the whole evaluation is retried with the same sealed
+    dataset and fixtures (a new submission) after a short cooldown that lets the
+    host recover. A real business result is returned immediately and asserted by
+    the caller; a stall can never turn into a pass.
     """
     upload_dataset_fixtures(stack, owner.creator, document)
     dataset_artifact_id = upload_dataset(stack, owner.creator, dataset_bytes(document))
@@ -459,8 +461,10 @@ def run_evaluation(
             )
             print(
                 f"T056: environment stall on attempt {attempt}: {stall}; "
-                f"evidence={evidence}; retrying"
+                f"evidence={evidence}; retrying after {stall_cooldown_s}s"
             )
+            if attempt < attempts:
+                time.sleep(stall_cooldown_s)
         print(f"T056: still environment-stalled after {attempts} attempts: {stalls}")
         return evaluation, report, sealed
     finally:
