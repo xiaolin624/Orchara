@@ -345,6 +345,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
 
+	// F13A/T062: the administrator-only, non-contract attribution read. It
+	// exposes the account, cancellation outcome and the snapshot/manifest/
+	// dataset/compiler/worker identity behind a report, and never a sealed object
+	// key, a report body or another user's content (ADR 0014). Non-admins get 403
+	// before any lookup.
+	mux.HandleFunc("GET /api/v1/admin/evaluations/{evaluation_id}/attribution",
+		s.handleGetEvaluationAttribution)
+
 	// F13A/T052: the contract's evaluateDraft. The creator names a frozen draft
 	// revision and an uploaded, sealed evaluation dataset; the platform freezes
 	// the execution snapshot, queues the trusted runner and returns the queued

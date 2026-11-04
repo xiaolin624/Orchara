@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -105,6 +105,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T055 | F10 | 上传文本资料后检索到可追溯片段 | passed | `reports/f10/T055-knowledge-ingest.md`、`db/migrations/0034_knowledge.sql`、`internal/knowledge/`、`internal/embedding/`、`internal/background/handlers/document_ingest.go`、`internal/background/document_ingest.go`（完成守卫）、`internal/api/knowledge.go`、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/t055.py`、`tests/f10/`（20 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；pgvector 不可安装 → `double precision[]`/384 维（T064/T067），本地 `local-hash-v1` embedding（真实 provider blocked），非契约检索/引用/诊断面见 ADR 0010 |
 | T059 | F10 | 摄取 CSV/XLSX 并保留行范围和安全错误 | passed | `reports/f10/T059-tabular-ingest.md`、`docs/adr/0013-f10-tabular-ingest.md`、`internal/knowledge/{table.go,parse_csv.go,parse_xlsx.go}`（`orchara-csv-parser/1`、`orchara-xlsx-parser/1`、`orchara-table-row-batch-chunker/1`；citation additive `row_start/row_end/row_count/header_row/sheet_name/columns/columns_omitted/text_render`；公式/DTD/宏/压缩比/工作表/行/列/单元格/单行上限 → 具体 failed 码；行不拆分）、`internal/knowledge/{parse.go,chunk.go,service.go}`（注册表/Parsed.Table/诊断 `detail` 只读派生）、`internal/background/handlers/document_ingest.go`、`internal/api/knowledge.go`、`internal/artifacts/admission.go`（仅导出 `SafeArchivePath`，准入无改动）、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/{t059.py,fixtures.py}`、`tests/fixtures/f10/`（提交夹具 + 确定性生成器）、`tests/f10/`（28 passed ×2 合并前；合并后 41 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；无迁移、无契约改动、`sync_spec` no drift；真实 provider 继承 T055 blocked |
 | T064 | F10 | 回答只引用本次检索且当前可读的资料 | passed | `reports/f10/T064-grounded-citations.md`、`docs/adr/0012-f10-grounded-answers.md`、`internal/knowledge/answer.go`（`Answer` + 带标签抽取式 stub `extractive-stub/1` + `validateAnswerDraft` + 引用返回前 `GetChunk` 复检 + dev-stub 故障约定）、`internal/knowledge/service.go`（检索/引用 SQL 硬化 `a.owner_id = kb.owner_id`）、`internal/api/knowledge.go`（非契约 `POST /knowledge-bases/{id}/answer`：200 answered/no_results、422 answer_without_citation/citation_not_found、409 citation_unreadable）、`internal/api/server.go`、`cmd/api/main.go`（`Answerer` 装配）、`apps/web/src/{knowledge.html,assets/knowledge.js}`（问答视图 + 引用点击重校验 + 撤销后显示不可用）、`tests/support/t064.py`、`tests/f10/{test_t064_answer.py,test_t064_pages.py}`（外加 Go 单测）；真实 PG 16.4 + 编译二进制 + 真实 HTTP + 真实封存字节 + 真实 maintenance 摄取 + 第二个真实 API 进程（故障约定）；真实模型生成 blocked（无凭据/adapter，生成=stub），无迁移、未改契约/规格 |
+| T062 | F13A | 阻止越权、取消和错制品报告通过验收 | passed | `reports/f13a/T062-report-integrity.md`、`docs/adr/0014-evaluation-attribution-admin-read.md`、`internal/evaluation/collect.go`（cancelled/unfinished run 永不 passed：`ReasonRunCancelled`/`ReasonRunUnfinished` + `CompletedRunState`/`TerminalRunState`）、`internal/background/evaluation.go`（`guardReportCaseRunsTx`：passed 案例必须由本评测的、owner 一致、snapshot/manifest 一致且已完成的真实 run 支撑；application 报告必须是真实 runner 评估器）、`internal/background/evaluation_attribution.go` + `internal/api/evaluation_attribution.go` + `internal/api/server.go`（非契约、admin-only `GET /api/v1/admin/evaluations/{id}/attribution`：owner/login、evaluation/job id、逐例 run 状态含 cancelled、snapshot/manifest/dataset hash、compiler/worker、terminal/completed；无 object key/report body/用户内容）、`internal/evaluation/collect_test.go`、`tests/support/t062.py`、`tests/f13a/{test_t062_runner.py,test_t062_guard.py,test_t062_authz.py}`、`tests/f13a/test_t052_runner.py`（取消案例按 #63 收紧为 failed/run_cancelled）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存字节 + 真实 maintenance 双池 + 真实 supervisor 执行器；无迁移、未改契约/规格 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -1213,6 +1214,22 @@ provenance + 完成守卫扩展（唯一报告写入者：真实 runner 的 pass
 | 交付 | `internal/evaluation/`（解析/checker/报告/采集循环）、`internal/catalog/evaluations.go`、`internal/api/{evaluation_submit,evaluation_runs,evaluations,internal,server}.go`、`internal/execution/evaluation_runs.go`、`internal/background/{evaluation,scope,handler}.go`、`internal/background/handlers/application_evaluate.go`、`cmd/maintenance/{run,scope}.go`、`internal/config/config.go`、`db/migrations/0035_evaluation_runner.sql`、`docs/adr/0011-evaluation-run-bridge.md`、`tests/support/t052.py`、`tests/f13a/`（3 文件 16 用例）、`reports/f13a/T052-evaluation-runner.md` |
 | 门禁 | `pytest tests/f13a` **16 passed**；`pytest tests/f00b` **151 passed**（唯一适配：`test_t026_migration.py` 的列基线按 0035 的四个加法列**有意迁移**并注明归属）；`go build/vet/test ./...` 全绿；`gofmt -l .` 空；`sync_spec --check` no drift |
 | 边界/not_run | 真实 judge 分数（无 adapter，quality 仅信息性）、`published_version` 执行（blocked/unsupported_target，F02B #69/F07）、F06 审批型交互、逐例 HTTP 读取（T056）、进度展示（T065）、带 citations 的 RAG 端到端样本（T064）；未 push、未关 issue #53、未改 `docs/spec/**`/`contracts/**`、迁移仅新增 0035 |
+
+## F13A 阻止越权、取消和错制品报告通过验收（T062，2026-11-04）
+
+T062（GitHub #63）已交付，状态 **`passed`**。目标是把 T052 的完成守卫从外部证明到
+“伪造 / 借用 / 取消 / 未完成”四类报告都不能通过验收，并给管理员一份可核对的归属证据。
+合并 integration 的提交为 `e92d8bac69cd39924d8da212c6e27df7e5c264e4`（合并前 tip `ddaeb46`；
+本票 ADR 因 integration 已占用 0013 而重编号为 **0014**）。
+
+| 项 | 内容 |
+|---|---|
+| 漏洞 G1（真实 runner） | T052 的取消案例在断言恰好为真时被判 `passed`（`run_state=cancelled` + 空账本 `effect_count=0` 两条断言都通过，checker-only 判决）。T062 在 `internal/evaluation/collect.go` 加入唯一完成态谓词 `CompletedRunState`（仅 succeeded/failed）：cancelled → `failed/run_cancelled`；`recovery_pending`/`needs_reconciliation` → `failed/run_unfinished`；断言结果仍作为证据保留。T052 的该用例按 #63 收紧 |
+| 漏洞 G2（完成守卫） | 守卫此前只校验文档内部一致性 + manifest/dataset/provenance，**不读** `evaluation_case_runs`/`runs`：一份伪造 passed 报告（带自洽断言证据、provenance 全对）在 run 仍 `queued` 或已 `cancelled` 时会被接受。新增 `guardReportCaseRunsTx`：application 评测的报告必须声明真实 runner 评估器；每个带 `facts.run_id` 的案例必须命中本评测的 case run，run owner == 评测 owner、run snapshot == 评测 snapshot、run manifest == 绑定 manifest；`passed` 案例还要求 run 已完成（succeeded/failed）且报告记录的 run_state 与数据库一致。违背 → `report_binding_mismatch`、job failed、无 `evaluation_reports` 行 |
+| 管理面 | 非契约、admin-only `GET /api/v1/admin/evaluations/{evaluation_id}/attribution`（ADR 0014）：owner principal+login、evaluation/job id、逐例 `run_state`（含 `cancelled`）与 `terminal`/`completed`、snapshot/manifest/dataset hash、compiler version、worker image digest、report 行；非 admin 在查询前 403，未知/畸形 id 404；响应不含 object key、report body、案例输入或 dataset 内容 |
+| 对抗证据 | `tests/f13a/test_t062_guard.py`（未完成/取消 run 的伪造 passed 拒绝、4 类错误绑定逐一拒绝且无 report 行、借用他评测 artifact/文档拒绝）、`test_t062_runner.py`（取消案例 failed/run_cancelled、未完成案例 not_run/run_timeout、真实失败终态案例的合法 passed 被守卫接受）、`test_t062_authz.py`（A/B 读写隔离与提交拒绝、作废 attempt token 在重试产生新 attempt 后提交伪造 passed → 409 `stale_attempt` 且状态不变、管理员归属面 + 非 admin 403/401 + 无泄漏断言）；`internal/evaluation/collect_test.go` 单测覆盖三类判决 |
+| 门禁 | 合并结果上 `pytest tests/f13a` **25 passed × 2 连跑**（503.19s / 382.58s）；`pytest tests/f10` **41 passed**（468.92s，合并后）；`pytest tests/f00b/test_t026_{binding,failures,pool,authz}.py` **20 passed**（258.54s，合并前守卫回归）；`pytest tests/tooling` **21 passed**；`go build/vet/test ./...` 全绿；`gofmt -l .` 空；`sync_spec --check` no drift |
+| 边界/not_run | 逐例 **用户** HTTP 读取属 T056（本分支无该端点；T062 只交付 admin 归属面，非 admin 对其 403）；评测级取消转移不在 #63 票面（`cancel_requested_at` 列已在 0035 就位并出现在归属读数，case 级真实取消是本票路径）；sales/tool 案例的真实 `succeeded` 终态仍受 #57 的 `task_input` 绑定边界限制（本票用真实 `failed` 终态 + 期望失败的断言证明合法 `passed` 可被接受）；未 push、未关 issue #63、未改 `docs/spec/**`/`contracts/**`、无迁移 |
 
 ## F06 写后丢响应暂停核对与真实写次数不增加（T051，2026-11-04）
 
