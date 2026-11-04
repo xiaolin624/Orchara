@@ -339,6 +339,60 @@ def test_approve_before_the_waiting_result_lands_still_converges_to_one_resume(
     assert len(local_server.records) == 1, local_server.records
 
 
+def test_waiting_resolution_failure_is_surfaced_and_the_same_decision_recovers(
+    t050_stack, local_server
+) -> None:
+    """T050 regression: a decision never reports success while the resume failed.
+
+    ``execution.ResolveWaiting`` has two documented benign conflicts (nothing to
+    resume yet / already decided). Every other error means the approved or
+    rejected decision has no resume behind it. The test induces one
+    deterministically through the database invariant the resume transaction
+    enforces: the exit fact exists but no attempt has exited.
+    """
+    owner = t041.owner(t050_stack)
+    prepared = prepare_write(t050_stack, local_server, owner)
+    approval = prepared["approval"]
+    run_id = prepared["run"]["id"]
+    park(t050_stack, prepared["lease"], prepared["operation_id"])
+
+    st.sql(
+        t050_stack.dbname,
+        "UPDATE platform.run_waitings SET exit_confirmed_at = now() "
+        f"WHERE run_id = {st.quote_literal(run_id)}::uuid",
+    )
+    failed = t050.decide(
+        owner.creator, approval["id"], params_sha256=approval["params_sha256"]
+    )
+    assert failed.status == 500, failed.text
+    assert failed.json["error"]["code"] == "internal_error", failed.text
+    # The decision row committed before the resume attempt, so it is durable and
+    # truthful; the failure (no resume) is what must be surfaced.
+    assert t050.approval_row(t050_stack.dbname, approval["id"])["state"] == "approved"
+    assert t035.resume_jobs(t050_stack.dbname, run_id) == []
+    waiting = t035.waiting_row(t050_stack.dbname, run_id)
+    assert waiting["decision"] is None, waiting
+    assert waiting["resume_job_id"] is None, waiting
+
+    # The same decision is still an idempotent retry: after the real exit fact it
+    # drives the waiting resolution and creates exactly one resume.
+    st.sql(
+        t050_stack.dbname,
+        "UPDATE platform.run_waitings SET exit_confirmed_at = NULL "
+        f"WHERE run_id = {st.quote_literal(run_id)}::uuid",
+    )
+    confirm_exit(t050_stack, prepared["lease"])
+    recovered = t050.decide(
+        owner.creator,
+        approval["id"],
+        params_sha256=approval["params_sha256"],
+        idempotency_key="retry-after-resume-failure",
+    )
+    assert recovered.status == 200, recovered.text
+    assert recovered.json["state"] == "approved", recovered.json
+    assert len(t035.resume_jobs(t050_stack.dbname, run_id)) == 1
+
+
 def test_a_stale_earlier_approval_cannot_authorise_a_later_wait(
     t050_stack, local_server
 ) -> None:
