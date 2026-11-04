@@ -1,0 +1,575 @@
+{
+  "schema": "orchara.f15a.dev-smoke/1",
+  "ticket": "T057",
+  "issue": 58,
+  "feature": "F15A",
+  "status": "passed",
+  "command": "D:\\Python\\python.exe deploy/dev/bringup.py smoke --fresh --database orchara_dev --out reports\\f15a\\dev-smoke-run.json",
+  "started_at": "2026-11-04T08:43:53.184628+00:00",
+  "steps": [
+    {
+      "name": "environment",
+      "status": "passed",
+      "at": "2026-11-04T08:43:53.726581+00:00",
+      "profile": "dev-stub",
+      "stub_results": true,
+      "service_version": "0.0.1-skeleton",
+      "checks": {
+        "database": {
+          "status": "ok"
+        }
+      },
+      "pages": {
+        "/": {
+          "status": 200,
+          "sha256": "73b7673e1ad1005bd4c348337b5cd33696fcf9f7e90bb639e413fba4151b772d",
+          "bytes": 5420
+        },
+        "/login": {
+          "status": 200,
+          "sha256": "173a8fed192ef747aab4555e6f3c4f31b129ce8a9c9f7d2da8f6b7b347191136",
+          "bytes": 3984
+        },
+        "/apps": {
+          "status": 200,
+          "sha256": "a8d92d824d9c48968d19edf70c7d09582159affd02a41aa3eee1b665e11fe331",
+          "bytes": 8759
+        },
+        "/attachments": {
+          "status": 200,
+          "sha256": "6c6bca2818c695de46302b0266156dfcd121d2262a65eb432c694a66709e729a",
+          "bytes": 7523
+        },
+        "/runs": {
+          "status": 200,
+          "sha256": "e9a1048774dca2b1757d4e659e6b5619418debf98bf8e2cdaab1b493ca712d95",
+          "bytes": 13557
+        },
+        "/models": {
+          "status": 200,
+          "sha256": "52f636057e9bb6bd3d2a56663a50597546439be304c39bd20c33ffab2745b9cd",
+          "bytes": 15214
+        }
+      },
+      "stub_visible_in": [
+        "GET /api/status (profile=dev-stub, stub_results=true)",
+        "GET / (status page renders the profile and stub flag from /api/status)",
+        "the sealed model compatibility report (provider=stub, stub=true) rendered by /models"
+      ]
+    },
+    {
+      "name": "identity",
+      "status": "passed",
+      "at": "2026-11-04T08:43:55.565824+00:00",
+      "admin_principal": "c6422569-cee2-49e6-844b-8c3fa7c85d9d",
+      "creator_login": "f15a-creator-8e8a11c9",
+      "creator_principal": "ff18f421-316a-436a-840e-e1d2bb5c8b53",
+      "foreign_login": "f15a-foreign-0271d0e5"
+    },
+    {
+      "name": "sales",
+      "status": "passed",
+      "at": "2026-11-04T08:43:57.436313+00:00",
+      "tool_run_id": "e00dd9fe-c6a2-44aa-818e-b181b71540fa",
+      "state": "succeeded",
+      "error_code": null,
+      "artifact_sha256": {
+        "summary.json": "84751af4c9cd7057707d57c93055593f7cebc0f1c634c81f3f9a9c9a58d83987",
+        "summary.csv": "bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65"
+      },
+      "independent_truth": {
+        "total": "250.00",
+        "regions": {
+          "东区": "200.00",
+          "西区": "50.00"
+        },
+        "order_count": 3
+      },
+      "summary": {
+        "total": "250.00",
+        "regions": {
+          "东区": "200.00",
+          "西区": "50.00"
+        },
+        "order_count": 3
+      },
+      "summary_csv": {
+        "东区": "200.00",
+        "西区": "50.00"
+      }
+    },
+    {
+      "name": "failure",
+      "status": "passed",
+      "at": "2026-11-04T08:44:01.294765+00:00",
+      "cases": [
+        {
+          "case": "missing_column",
+          "tool_run_id": "8499f0b3-08db-4f47-8bfd-380670dd668a",
+          "state": "failed",
+          "error_code": "missing_column"
+        },
+        {
+          "case": "duplicate_order_id",
+          "tool_run_id": "d05b1150-7cbe-499d-ac6e-b07d74b763dc",
+          "state": "failed",
+          "error_code": "duplicate_order_id"
+        }
+      ],
+      "diagnostics_ready_wait_ms": {
+        "missing_column": 211,
+        "duplicate_order_id": 1205
+      },
+      "explainable": [
+        {
+          "error_code": "missing_column",
+          "message": "缺少必需列: date"
+        },
+        {
+          "error_code": "duplicate_order_id",
+          "message": "第 3 行 order_id 重复。"
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "status": "passed",
+      "at": "2026-11-04T08:44:01.932998+00:00",
+      "application_id": "6c2aa244-286b-4b99-89e8-dfed6521d39e",
+      "run_id": "22097a46-f587-494b-93ba-a70af2c9ba1e",
+      "state": "cancelled",
+      "phase": "idle",
+      "cancel_requested_at": "2026-11-04T08:44:01.818176Z",
+      "anonymous_read": "401 unauthenticated",
+      "foreign_cancel": "404 resource_not_found",
+      "claim_after_cancel": {
+        "status": 204,
+        "meaning": "no claimable run after the cancel"
+      }
+    },
+    {
+      "name": "model_profile",
+      "status": "passed",
+      "at": "2026-11-04T08:44:02.447935+00:00",
+      "model_profile_version_id": "a02b72fc-5205-4672-a3cc-e3e96268c377",
+      "evaluation_job_id": "dca10cf8-8aca-4b54-b273-11491e600188",
+      "state": "succeeded",
+      "report_id": "b0c3e33a-a0d5-4cb3-b9d5-30358b09e9d2",
+      "report_status": "passed",
+      "provider": "stub",
+      "stub": true,
+      "data_destination": "local-stub",
+      "non_admin_registration": "403 forbidden"
+    },
+    {
+      "name": "page_logic",
+      "status": "passed",
+      "at": "2026-11-04T08:44:02.764223+00:00",
+      "node": "D:\\develop\\nodejs\\node.EXE",
+      "assets": [
+        "assets/app.js",
+        "assets/attachments.js",
+        "assets/runs.js",
+        "assets/models.js"
+      ],
+      "checks": [
+        "summaryRows matches the independent Decimal truth",
+        "summaryTotals matches the independent Decimal truth",
+        "toolDownloadLinks points at the real artifact content paths",
+        "diagnosticsFields renders the real rejection as safe text",
+        "shouldPollToolArtifact waits for the real scanning/ready/quarantined states",
+        "describeRunCancel says 已停止 for the real cancelled Run",
+        "mergeRunSnapshot never flips a terminal cancelled Run back",
+        "describeReport shows provider=stub and stub=true"
+      ],
+      "stdout": "f15a page logic ok"
+    }
+  ],
+  "artifacts": {
+    "sales": {
+      "input_sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+      "tool_run_id": "e00dd9fe-c6a2-44aa-818e-b181b71540fa",
+      "summary_artifact_id": "308c1839-efe9-422b-9b1a-0e9d2dfce70d",
+      "summary_sha256": "84751af4c9cd7057707d57c93055593f7cebc0f1c634c81f3f9a9c9a58d83987",
+      "summary_bytes": 110,
+      "csv_artifact_id": "58621697-4844-4af6-9492-8f57dc8b7f48",
+      "csv_sha256": "bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65",
+      "csv_bytes": 40
+    },
+    "failure": [
+      {
+        "case": "missing_column",
+        "tool_run_id": "8499f0b3-08db-4f47-8bfd-380670dd668a",
+        "state": "failed",
+        "error_code": "missing_column",
+        "diagnostics_ready_wait_ms": 211,
+        "diagnostics_sha256": "cacddefc1c94f0faf4c656b937b2caf2852839f14d45444fabaa8c70b7ad96af",
+        "diagnostics": {
+          "diagnostics_version": 1,
+          "error_code": "missing_column",
+          "fix": "请使用表头 order_id,date,region,amount（共四列，按此顺序）。",
+          "input": {
+            "artifact_id": "37669fd7-834a-4113-8615-af54d8cb3199",
+            "media_type": "text/csv",
+            "sha256": "aad8c74502f95603b8db524bbdc805052140e9c66d135705b91187082d6df0b3",
+            "size_bytes": 38
+          },
+          "location": {
+            "column": "date",
+            "row": 1
+          },
+          "log_artifact_id": "33979452-61fc-4459-a634-69ec37d6d341",
+          "message": "缺少必需列: date",
+          "retryable": false,
+          "status": "rejected",
+          "tool": "sales_stats"
+        }
+      },
+      {
+        "case": "duplicate_order_id",
+        "tool_run_id": "d05b1150-7cbe-499d-ac6e-b07d74b763dc",
+        "state": "failed",
+        "error_code": "duplicate_order_id",
+        "diagnostics_ready_wait_ms": 1205,
+        "diagnostics_sha256": "7b7d0d2551d90bd1cd56b0ccca1d86575aef098a9b5382822ed50a38f0ed61db",
+        "diagnostics": {
+          "diagnostics_version": 1,
+          "error_code": "duplicate_order_id",
+          "fix": "每个 order_id 只能出现一次，请合并或删除重复订单。",
+          "input": {
+            "artifact_id": "7911a283-d481-4811-be94-c9ad698b1c50",
+            "media_type": "text/csv",
+            "sha256": "d117c773a9cbfecd30edd3a99e4778397ac8669237719f6731e16a82c278042b",
+            "size_bytes": 80
+          },
+          "location": {
+            "column": "order_id",
+            "row": 3
+          },
+          "log_artifact_id": "5652541e-1ad5-4def-8607-03b5350b49d5",
+          "message": "第 3 行 order_id 重复。",
+          "retryable": false,
+          "status": "rejected",
+          "tool": "sales_stats"
+        }
+      }
+    ],
+    "cancel": {
+      "application_id": "6c2aa244-286b-4b99-89e8-dfed6521d39e",
+      "run_id": "22097a46-f587-494b-93ba-a70af2c9ba1e",
+      "state": "cancelled",
+      "cancel_requested_at": "2026-11-04T08:44:01.818176Z",
+      "claim_after_cancel": {
+        "status": 204,
+        "meaning": "no claimable run after the cancel"
+      }
+    },
+    "model_profile": {
+      "model_profile_version_id": "a02b72fc-5205-4672-a3cc-e3e96268c377",
+      "evaluation_job_id": "dca10cf8-8aca-4b54-b273-11491e600188",
+      "report_id": "b0c3e33a-a0d5-4cb3-b9d5-30358b09e9d2",
+      "report_artifact_id": "4410501a-b7d6-42e2-9c96-c38d97fe08b7",
+      "sealed_report_sha256": "b862ce4e5b5fe7544e54efb949111079722dc3e0ef839cbce60169654e187f8d",
+      "sealed_report_bytes": 486,
+      "provider": "stub",
+      "stub": true
+    }
+  },
+  "defects": [
+    {
+      "id": "failure_diagnostics_artifact_race",
+      "status": "fixed",
+      "where": "apps/web/src/assets/attachments.js",
+      "detail": "The tool_run failure path publishes diagnostics best effort and reports the failure immediately, so the diagnostics artifact can still be scanning when the run is already terminal. The page fetched the artifact content at that instant and showed a 409 instead of the explanation. The page now polls the real artifact state (bounded) before rendering diagnostics; the smoke performs the same wait and records the measured delay."
+    }
+  ],
+  "blocked": [
+    {
+      "id": "container_runtime",
+      "owner": "F15A/F15B deployment",
+      "reason": "no Docker/Compose on the reference host; this bring-up is a process + PostgreSQL deployment, not a container deployment"
+    },
+    {
+      "id": "linux_isolation",
+      "owner": "F13B",
+      "reason": "WSL Ubuntu-24.04 has runsc, but WSL is not an accepted isolation host (ADR 0002 / BOOTSTRAP.md:71); the formal arbitrary-script sandbox was not exercised and the preset tool ran through its Python subprocess path"
+    },
+    {
+      "id": "model_credentials",
+      "owner": "deployment",
+      "reason": "no approved model provider endpoint/credential exists; only the stub provider under the dev-stub profile is usable"
+    },
+    {
+      "id": "s3_object_store",
+      "owner": "F15A/#54",
+      "reason": "no S3/MinIO endpoint; the local filesystem store is the real object store here and is not an S3-compatibility claim"
+    },
+    {
+      "id": "redis_wakeup",
+      "owner": "F00B/F15B",
+      "reason": "no Redis on the host; the platform polls PostgreSQL and no Redis adapter was run"
+    }
+  ],
+  "not_run": [
+    {
+      "id": "supervisor_sandbox_exec",
+      "reason": "cmd/supervisor exec --once needs an accepted Linux isolation host (blocked: linux_isolation); this smoke needs no debug tool execution"
+    },
+    {
+      "id": "cmd_worker",
+      "reason": "cmd/worker is a liveness-only skeleton that claims no work in this build; the real async loop started by the bring-up is cmd/maintenance run"
+    },
+    {
+      "id": "evaluation_ui",
+      "reason": "no evaluation page exists in this build"
+    },
+    {
+      "id": "browser_dom",
+      "reason": "the real page assets were executed under Node with real API data; a DOM-driving browser was not run"
+    }
+  ],
+  "versions": {
+    "python": "3.12.2",
+    "go": "go version go1.27.3 windows/amd64",
+    "node": "v24.13.0",
+    "postgres": "16.4",
+    "os": "Windows-11-10.0.26200-SP0"
+  },
+  "profile": {
+    "name": "dev-stub",
+    "explicit": true,
+    "stub_results": true,
+    "stub_visible_in_product_output": [
+      "/api/status: profile=dev-stub, stub_results=true",
+      "/ (status page): renders the profile and stub flag",
+      "model compatibility report: provider=stub, stub=true"
+    ]
+  },
+  "environment": {
+    "profile": "dev-stub",
+    "stub_results": true,
+    "database": {
+      "engine": "PostgreSQL",
+      "server_version": "16.4",
+      "host": "127.0.0.1",
+      "port": 55432,
+      "name": "orchara_dev"
+    },
+    "public_base_url": "http://127.0.0.1:54202",
+    "internal_url": "https://127.0.0.1:54203",
+    "object_store": {
+      "kind": "local-filesystem",
+      "root": "E:\\orchara-worktrees\\t057\\product\\.devstack\\objects"
+    },
+    "admin_login": "admin",
+    "bootstrapped_now": true,
+    "worker_image_digest": {
+      "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "deployer-placeholder",
+      "image_built": false
+    },
+    "runtime_lock": {
+      "path": "E:\\orchara-worktrees\\t057\\product\\probes\\agent_min\\requirements.lock.txt",
+      "sha256": "a451afed0a24f4dc73e2fb98d5b8592d311deb226a98d70371c7003d568a801d"
+    },
+    "binaries": {
+      "api": "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-api.exe",
+      "admin": "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-admin.exe",
+      "maintenance": "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-maintenance.exe",
+      "supervisor": "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-supervisor.exe"
+    },
+    "logs": {
+      "api": "E:\\orchara-worktrees\\t057\\product\\.devstack\\logs\\api.log",
+      "maintenance": "E:\\orchara-worktrees\\t057\\product\\.devstack\\logs\\maintenance.log"
+    },
+    "host": {
+      "os": "Windows-11-10.0.26200-SP0",
+      "python": "3.12.2"
+    },
+    "commands": [
+      {
+        "step": "drop_database",
+        "argv": [
+          "E:\\orchara-toolchains\\pgsql\\bin\\psql.exe",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          "55432",
+          "-U",
+          "orchara_owner",
+          "-d",
+          "postgres",
+          "-c",
+          "DROP DATABASE IF EXISTS \"orchara_dev\" WITH (FORCE)"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "the PostgreSQL password comes from the git-ignored product/.env.local (never printed)"
+      },
+      {
+        "step": "create_database",
+        "argv": [
+          "E:\\orchara-toolchains\\pgsql\\bin\\psql.exe",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          "55432",
+          "-U",
+          "orchara_owner",
+          "-d",
+          "postgres",
+          "-c",
+          "CREATE DATABASE \"orchara_dev\""
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": ""
+      },
+      {
+        "step": "build",
+        "argv": [
+          "E:\\orchara-toolchains\\go\\bin\\go.exe",
+          "build",
+          "-o",
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-api.exe",
+          "./cmd/api"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "real compiled api binary"
+      },
+      {
+        "step": "build",
+        "argv": [
+          "E:\\orchara-toolchains\\go\\bin\\go.exe",
+          "build",
+          "-o",
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-admin.exe",
+          "./cmd/admin"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "real compiled admin binary"
+      },
+      {
+        "step": "build",
+        "argv": [
+          "E:\\orchara-toolchains\\go\\bin\\go.exe",
+          "build",
+          "-o",
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-maintenance.exe",
+          "./cmd/maintenance"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "real compiled maintenance binary"
+      },
+      {
+        "step": "build",
+        "argv": [
+          "E:\\orchara-toolchains\\go\\bin\\go.exe",
+          "build",
+          "-o",
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-supervisor.exe",
+          "./cmd/supervisor"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "real compiled supervisor binary"
+      },
+      {
+        "step": "dev_certificates",
+        "argv": [
+          "D:\\Python\\python.exe",
+          "deploy/dev/dev_pki.py",
+          "--dir",
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {},
+        "note": "dev-only internal mTLS material; reused"
+      },
+      {
+        "step": "migrate",
+        "argv": [
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-admin.exe",
+          "migrate"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {
+          "ORCHARA_PROFILE": "dev-stub",
+          "ORCHARA_DB_DSN": "<redacted>"
+        },
+        "note": "apply the numbered SQL chain"
+      },
+      {
+        "step": "bootstrap",
+        "argv": [
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-admin.exe",
+          "bootstrap",
+          "--login",
+          "admin",
+          "--display-name",
+          "Platform Admin"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {
+          "ORCHARA_PROFILE": "dev-stub",
+          "ORCHARA_DB_DSN": "<redacted>"
+        },
+        "note": "password on hidden stdin (never argv/logs)"
+      },
+      {
+        "step": "api",
+        "argv": [
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-api.exe"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {
+          "ORCHARA_PROFILE": "dev-stub",
+          "ORCHARA_DB_DSN": "<redacted>",
+          "ORCHARA_HTTP_ADDR": "127.0.0.1:54202",
+          "ORCHARA_PUBLIC_URL": "http://127.0.0.1:54202",
+          "ORCHARA_WEB_DIR": "E:\\orchara-worktrees\\t057\\product\\apps\\web\\src",
+          "ORCHARA_OBJECT_DIR": "E:\\orchara-worktrees\\t057\\product\\.devstack\\objects",
+          "ORCHARA_OBJECT_SIGNING_KEY": "<redacted>",
+          "ORCHARA_INTERNAL_ADDR": "127.0.0.1:54203",
+          "ORCHARA_INTERNAL_SERVER_CERT": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\server.pem",
+          "ORCHARA_INTERNAL_SERVER_KEY": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\server-key.pem",
+          "ORCHARA_INTERNAL_CLIENT_CA": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\ca.pem",
+          "ORCHARA_WORKER_IMAGE_DIGEST": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "ORCHARA_RUNTIME_LOCK_PATH": "E:\\orchara-worktrees\\t057\\product\\probes\\agent_min\\requirements.lock.txt",
+          "ORCHARA_PYTHON": "D:\\Python\\python.exe",
+          "ORCHARA_PRODUCT_ROOT": "E:\\orchara-worktrees\\t057\\product"
+        },
+        "note": "serves the real Web pages and the internal mTLS listener"
+      },
+      {
+        "step": "maintenance",
+        "argv": [
+          "E:\\orchara-worktrees\\t057\\product\\.devstack\\bin\\orchara-maintenance.exe",
+          "run",
+          "--poll-interval",
+          "200ms",
+          "--worker-id",
+          "dev-maintenance"
+        ],
+        "cwd": "E:\\orchara-worktrees\\t057\\product",
+        "env": {
+          "ORCHARA_PROFILE": "dev-stub",
+          "ORCHARA_MAINTENANCE_DSN": "<redacted>",
+          "ORCHARA_INTERNAL_URL": "https://127.0.0.1:54203",
+          "ORCHARA_INTERNAL_CLIENT_CERT": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\client-maintenance.pem",
+          "ORCHARA_INTERNAL_CLIENT_KEY": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\client-maintenance-key.pem",
+          "ORCHARA_INTERNAL_CA": "E:\\orchara-worktrees\\t057\\product\\.devstack\\certs\\ca.pem",
+          "ORCHARA_OBJECT_DIR": "E:\\orchara-worktrees\\t057\\product\\.devstack\\objects",
+          "ORCHARA_PYTHON": "D:\\Python\\python.exe",
+          "ORCHARA_PRODUCT_ROOT": "E:\\orchara-worktrees\\t057\\product"
+        },
+        "note": "real background pools (artifact_finalize system_io + tool_run/model_validate work)"
+      }
+    ],
+    "started_at": "2026-11-04T08:43:15.223233+00:00"
+  },
+  "finished_at": "2026-11-04T08:44:03.403374+00:00"
+}
