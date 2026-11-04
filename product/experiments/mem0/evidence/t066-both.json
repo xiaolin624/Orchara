@@ -8,18 +8,18 @@
     {
       "cmd": "go build -o E:\\orchara-worktrees\\t066\\product\\experiments\\mem0\\.target\\bin\\orchara-admin.exe ./cmd/admin",
       "exit": 0,
-      "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+      "sha256": "4dcd195123edd5bffb4aac19e1795683037d066c7ea5c869e3eca5da68154c55"
     },
     {
       "cmd": "go build -o E:\\orchara-worktrees\\t066\\product\\experiments\\mem0\\.target\\bin\\t066-pgdriver.exe ./experiments/mem0/pgdriver",
       "exit": 0,
-      "sha256": "c7683d3f9cdef48db8f15b3e616e82c5a64a634b29098a8b11207e0902b0b678"
+      "sha256": "aa3d89ac399f38e34374ea66d903867b7f5ee5ed948b8b31ce5300a53a624cfa"
     },
     {
       "cmd": "cmd/admin migrate (ORCHARA_DB_DSN=<isolated throwaway>)",
       "exit": 0,
-      "output_tail": "0009_background_jobs.sql\norchara-admin 2026/11/04 12:19:11 applied 0010_application_drafts.sql\norchara-admin 2026/11/04 12:19:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:19:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:19:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:19:12 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:19:12 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:19:12 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:19:12 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:19:12 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:19:12 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:19:12 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:19:12 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:19:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:19:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:19:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:19:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:19:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:19:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:19:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:19:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:19:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:19:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:19:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:19:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:19:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:19:12 36 migration(s) applied",
-      "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+      "output_tail": "cation_drafts.sql\norchara-admin 2026/11/04 12:36:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:36:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:36:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:36:11 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:36:11 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:36:11 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:36:11 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:36:11 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:36:11 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:36:11 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:36:11 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:36:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:36:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:36:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:36:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:36:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:36:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:36:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:36:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:36:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:36:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:36:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:36:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:36:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:36:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:36:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:36:12 applied 0037_knowledge_retrieval_cache.sql\norchara-admin 2026/11/04 12:36:12 37 migration(s) applied",
+      "sha256": "4dcd195123edd5bffb4aac19e1795683037d066c7ea5c869e3eca5da68154c55"
     },
     {
       "cmd": "pgdriver create (real internal/memory.Service.Create)",
@@ -51,7 +51,7 @@
       "venv_bytes": 162928132
     },
     "pg": {
-      "database_bytes": 11612643,
+      "database_bytes": 11940323,
       "new_runtime_dependency": false,
       "note": "the baseline uses the existing PostgreSQL instance and the existing Go service"
     }
@@ -62,11 +62,11 @@
       "latency_gain_threshold_ratio": 0.8,
       "mem0_hit_at_1": 1.0,
       "mem0_hit_at_3": 1.0,
-      "mem0_p95_ms": 11.1067,
-      "p95_ratio": 6.651590837361307,
+      "mem0_p95_ms": 8.615,
+      "p95_ratio": 0.9486064514267801,
       "pg_hit_at_1": 1.0,
       "pg_hit_at_3": 1.0,
-      "pg_p95_ms": 1.669781,
+      "pg_p95_ms": 9.081743,
       "recall_gain": false
     },
     "decision": "do_not_adopt",
@@ -98,7 +98,7 @@
   },
   "environment": {
     "cpu_count": 12,
-    "generated_at": "2026-11-04T12:19:43+00:00",
+    "generated_at": "2026-11-04T12:36:40+00:00",
     "isolation": "throwaway PostgreSQL database + experiment temp directory; the product database and product runtime dependencies are never used",
     "machine": "AMD64",
     "mem0ai": "recorded per system",
@@ -241,7 +241,7 @@
     "sha256": "59f439dead24aee865bc2fadd5822e1f1214df27f1992ef2070672f58a55138b",
     "users": 2
   },
-  "generated_at": "2026-11-04T12:19:43+00:00",
+  "generated_at": "2026-11-04T12:36:40+00:00",
   "inputs": {
     "embedder": {
       "algorithm": "signed sha256 hashing of lower-cased tokens, L2-normalised",
@@ -408,7 +408,7 @@
         },
         {
           "cmd": "Memory.from_config(provider=openai embedder -> local 127.0.0.1 embeddings)",
-          "construction_ms": 3352.963,
+          "construction_ms": 3690.935,
           "exit": 0
         },
         {
@@ -440,7 +440,7 @@
         "delete_response": {
           "message": "Memory deleted successfully!"
         },
-        "id": "92f412cf-ec78-4125-a4e8-6a62331c2e66",
+        "id": "1606ceae-8c6d-40c9-addd-0dcd7716c6a3",
         "key": "mem-bob-preferred-airport",
         "search_after_delete_ids": [],
         "text_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce"
@@ -453,22 +453,22 @@
       },
       "evidence_level": "stub",
       "id_map": {
-        "mem-alice-daily-standup": "b92ca17e-f324-4d77-a698-8251583a7caa",
-        "mem-alice-expense-manager": "b2efc3b7-066d-4687-8ce6-474e36b194ea",
-        "mem-alice-flight-seat": "2f7b5090-b56f-4711-a53b-8e6466e2f5f3",
-        "mem-alice-hotel-kitchen": "5114bbc0-4351-4e3b-b586-3dd3d3fdd761",
-        "mem-alice-lufthansa-loyalty": "55925e2c-a935-47ea-90c7-5398048377d2",
-        "mem-alice-vacation-train": "5564a641-7b7a-4261-aa8b-8fa71d6c69b0",
-        "mem-bob-dinner-category": "ce2c35fd-a59e-4c0e-ad7b-21f592caceff",
-        "mem-bob-preferred-airport": "92f412cf-ec78-4125-a4e8-6a62331c2e66",
-        "mem-bob-report-format": "f72d671c-1966-4429-8e8a-688d9c699c3e"
+        "mem-alice-daily-standup": "68f2251e-2496-4c6f-bac6-6e941808428b",
+        "mem-alice-expense-manager": "40ddca83-230d-4100-8df7-7829ea281ea9",
+        "mem-alice-flight-seat": "d66e747b-9a62-48a9-8ed1-ba82fdefe852",
+        "mem-alice-hotel-kitchen": "84b1eb7b-422e-4085-b87c-23dac98002f8",
+        "mem-alice-lufthansa-loyalty": "eae4c8bf-99e6-4121-a290-3cac15132edc",
+        "mem-alice-vacation-train": "f9728f15-622e-43ab-88cc-6df49c818419",
+        "mem-bob-dinner-category": "d46a464e-0d0f-4c26-b4a0-6c4ba9df38f7",
+        "mem-bob-preferred-airport": "1606ceae-8c6d-40c9-addd-0dcd7716c6a3",
+        "mem-bob-report-format": "62fbcb5c-0069-4d03-8b45-763ac41258d3"
       },
       "latency": {
         "iterations_per_query": 21,
         "measurement": "Memory.search() including its embedding call to the local 127.0.0.1 endpoint",
         "note": "latency is host-dependent; recall, storage and cleanup are deterministic",
-        "p50_ms": 5.7088,
-        "p95_ms": 11.1067,
+        "p50_ms": 6.1191,
+        "p95_ms": 8.615,
         "runs": 252
       },
       "limitations": [
@@ -639,20 +639,20 @@
         "body_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
         "cache_epoch": {
           "revision": 4,
-          "scope": "memory:f4502609-ae5f-4cc8-a7df-95dc6bb6e770:c00919fb-6f32-4c00-9d27-d69cd0493bc1"
+          "scope": "memory:62982278-0286-498e-a31d-1caecfb3f578:664eb21d-e5e9-46b1-8f1c-9c59c7204942"
         },
         "candidate": {
-          "artifact_id": "2b6d8654-2f17-4778-b55c-570e1060fe8a",
-          "id": "3e0b1084-ddda-40a5-9969-a530990a6aa4",
+          "artifact_id": "a4b5c919-6eb1-4ca2-ab12-e03bb1fcf201",
+          "id": "bef9bf0c-d63c-4a36-94a4-45430f17125c",
           "key": "cand-alice-window-seat",
-          "object_key": "sealed/15849690e3aade6c65f193440c634fe1ba287c01f69aed20ae23e7c440ea1a9d",
+          "object_key": "sealed/25c759969e26d565be8bd179cf75e57907c263396cf34bd848f7fa2f6ab9024e",
           "seeded_by": "experiment fixture builder (not the T054 worker propose path)",
           "state": "pending"
         },
         "cleanup_owner": "F07 deletion governance performs the physical purge; T058 already stopped recall synchronously",
         "current_artifact": {
-          "id": "0d855652-501f-428a-8d3c-452e752b8c20",
-          "object_key": "sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1",
+          "id": "6c240688-269f-4f47-810f-f419e44ae8d2",
+          "object_key": "sealed/8ab9344e0e0a1c500ed219cedfe05cff57fdfe0f9af5bd226cd9c6f13f625ad5",
           "sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
           "size_bytes": 37,
           "state": "ready"
@@ -660,7 +660,7 @@
         "deleted_memory": "mem-bob-preferred-airport",
         "deletion_job": {
           "deletion_revision": 2,
-          "id": "e745332b-55e6-48ff-90a6-2096635d0a42",
+          "id": "ce79a7af-ae44-4bfe-b0bd-327115d46f12",
           "remaining_scopes": [
             "artifact",
             "embedding",
@@ -676,10 +676,10 @@
           }
         ],
         "logical": {
-          "columns_scanned": 201,
+          "columns_scanned": 207,
           "hits": [],
           "needle_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
-          "tables_scanned": 55
+          "tables_scanned": 56
         },
         "logs": {
           "hits": [],
@@ -689,27 +689,27 @@
         "object_files": [
           {
             "contains_body": true,
-            "path": "sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1",
+            "path": "sealed/8ab9344e0e0a1c500ed219cedfe05cff57fdfe0f9af5bd226cd9c6f13f625ad5",
             "sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
             "size_bytes": 37
           }
         ],
         "residual_body_copies": [
-          "object:sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1"
+          "object:sealed/8ab9344e0e0a1c500ed219cedfe05cff57fdfe0f9af5bd226cd9c6f13f625ad5"
         ],
         "revision_leftovers": {
           "body_sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
           "logical": {
-            "columns_scanned": 201,
+            "columns_scanned": 207,
             "hits": [],
             "needle_sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
-            "tables_scanned": 55
+            "tables_scanned": 56
           },
           "note": "the superseded revision artifact is retained by design; F07 owns the purge",
           "object_files": [
             {
               "contains_body": true,
-              "path": "sealed/88d8f4e0380cbdb8c228329be993b7786d462db84b5b46b27359dd1cb18e15e4",
+              "path": "sealed/9207126af2cdb7f5fccbad2633d0bde571e97d1f7d7f5d38816364932f1b5323",
               "sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
               "size_bytes": 59
             }
@@ -717,9 +717,9 @@
         },
         "stores_clean": false,
         "tombstone": {
-          "confirmed_at": "2026-11-04 20:19:14.029822+08",
-          "deleted_at": "2026-11-04 20:19:14.281172+08",
-          "id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+          "confirmed_at": "2026-11-04 20:36:15.611399+08",
+          "deleted_at": "2026-11-04 20:36:15.892382+08",
+          "id": "f403478c-c1e7-4850-a17b-0e5d34cc973e",
           "revision": 2
         }
       },
@@ -727,8 +727,8 @@
         {
           "cmd": "cmd/admin migrate (ORCHARA_DB_DSN=<isolated throwaway>)",
           "exit": 0,
-          "output_tail": "0009_background_jobs.sql\norchara-admin 2026/11/04 12:19:11 applied 0010_application_drafts.sql\norchara-admin 2026/11/04 12:19:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:19:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:19:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:19:12 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:19:12 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:19:12 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:19:12 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:19:12 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:19:12 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:19:12 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:19:12 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:19:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:19:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:19:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:19:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:19:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:19:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:19:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:19:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:19:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:19:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:19:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:19:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:19:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:19:12 36 migration(s) applied",
-          "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+          "output_tail": "cation_drafts.sql\norchara-admin 2026/11/04 12:36:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:36:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:36:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:36:11 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:36:11 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:36:11 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:36:11 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:36:11 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:36:11 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:36:11 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:36:11 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:36:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:36:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:36:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:36:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:36:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:36:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:36:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:36:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:36:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:36:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:36:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:36:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:36:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:36:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:36:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:36:12 applied 0037_knowledge_retrieval_cache.sql\norchara-admin 2026/11/04 12:36:12 37 migration(s) applied",
+          "sha256": "4dcd195123edd5bffb4aac19e1795683037d066c7ea5c869e3eca5da68154c55"
         },
         {
           "cmd": "pgdriver create (real internal/memory.Service.Create)",
@@ -755,41 +755,41 @@
         "created_by_experiment": true,
         "dropped_after": true,
         "isolated": true,
-        "name": "orchara_t066_mem0_c257236fdc2b"
+        "name": "orchara_t066_mem0_83d6962cf405"
       },
       "deleted": {
         "delete_response": {
-          "id": "e745332b-55e6-48ff-90a6-2096635d0a42",
+          "id": "ce79a7af-ae44-4bfe-b0bd-327115d46f12",
           "ok": true,
-          "resource_id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+          "resource_id": "f403478c-c1e7-4850-a17b-0e5d34cc973e",
           "state": "pending"
         },
-        "id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+        "id": "f403478c-c1e7-4850-a17b-0e5d34cc973e",
         "key": "mem-bob-preferred-airport",
         "text_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce"
       },
       "evidence_level": "real",
       "id_map": {
-        "mem-alice-daily-standup": "02328223-b066-45d8-b6de-c3978a75c3d5",
-        "mem-alice-expense-manager": "fe34d7d9-11ba-41da-81a8-9222e924d9f1",
-        "mem-alice-flight-seat": "bc5aff4a-876e-44e3-b41f-928f7b967bc1",
-        "mem-alice-hotel-kitchen": "b69c0782-617d-455c-a7c6-c93396ac015d",
-        "mem-alice-lufthansa-loyalty": "e5757729-a904-4bb8-954e-92c10f0babfa",
-        "mem-alice-vacation-train": "b744692a-50d3-43f9-9a67-d760598fc4c2",
-        "mem-bob-dinner-category": "5df1a912-e1fa-4877-bbfb-5e1f06a3f6ef",
-        "mem-bob-preferred-airport": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
-        "mem-bob-report-format": "ae14f948-dde1-44ce-a156-30c5c4787b5a"
+        "mem-alice-daily-standup": "55e1193f-b143-47f7-afda-27309a917568",
+        "mem-alice-expense-manager": "e87875e2-8523-48ef-83bd-7750ca24532f",
+        "mem-alice-flight-seat": "b4152393-d4b9-4487-af3e-639776f0ae31",
+        "mem-alice-hotel-kitchen": "0842880d-6230-49e9-9b73-257e5206b8c5",
+        "mem-alice-lufthansa-loyalty": "b2153995-c9fe-44dc-bb2f-801f3fd8ed54",
+        "mem-alice-vacation-train": "c9547a4e-31fd-4fde-8d90-ef166a5f0beb",
+        "mem-bob-dinner-category": "718396ea-de55-4c15-9e4c-22bbe93041b6",
+        "mem-bob-preferred-airport": "f403478c-c1e7-4850-a17b-0e5d34cc973e",
+        "mem-bob-report-format": "a6460d0e-2c9b-4b83-b85c-ed626c4e507b"
       },
       "latency": {
-        "embed_p50_ms": 0.03571,
-        "embed_p95_ms": 0.058086,
+        "embed_p50_ms": 0.024967,
+        "embed_p95_ms": 0.035576,
         "iterations_per_query": 21,
         "measurement": "end-to-end: Python query embedding + one real SQL recall round trip",
         "note": "latency is host-dependent; recall, storage and cleanup are deterministic",
-        "p50_ms": 0.559881,
-        "p95_ms": 1.669781,
-        "query_p50_ms": 0.523,
-        "query_p95_ms": 1.6332,
+        "p50_ms": 0.540733,
+        "p95_ms": 9.081743,
+        "query_p50_ms": 0.5127,
+        "query_p95_ms": 9.0602,
         "runs": 252
       },
       "limitations": [
@@ -963,9 +963,9 @@
       },
       "status": "run",
       "storage": {
-        "database_bytes": 11612643,
-        "database_bytes_after_migrate": 11366883,
-        "database_bytes_delta": 245760,
+        "database_bytes": 11940323,
+        "database_bytes_after_migrate": 11702755,
+        "database_bytes_delta": 237568,
         "fixture_bodies": 9,
         "memory_body_bytes": 541,
         "note": "t066.memory_vectors is the experiment-owned recall index stand-in, not a platform table",
@@ -989,8 +989,8 @@
         }
       },
       "versions": {
-        "admin_binary_sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c",
-        "pgdriver_binary_sha256": "c7683d3f9cdef48db8f15b3e616e82c5a64a634b29098a8b11207e0902b0b678",
+        "admin_binary_sha256": "4dcd195123edd5bffb4aac19e1795683037d066c7ea5c869e3eca5da68154c55",
+        "pgdriver_binary_sha256": "aa3d89ac399f38e34374ea66d903867b7f5ee5ed948b8b31ce5300a53a624cfa",
         "postgres": "16.4",
         "python": "3.12.2"
       }

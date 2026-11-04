@@ -39,8 +39,8 @@
    真实缺陷（信息模式 `table_type` 查询、Windows 命令行过长导致 psql 失败），以及一个
    **决策读取嵌套指标**的回归（记录里的 recall/latency 是嵌套字段，早期规则读顶层会得 0；
    已加 `test_the_verdict_reads_the_nested_metrics_of_a_real_result_record`）。
-5. 执行 `both` 得到 `evidence/t066-both.json`（256-bit SHA-256 见 §9），据此写决策/报告/
-   PROGRESS，按 feat/test/docs 提交，最后合并集成分支并复跑门禁。
+5. 合并集成分支后在**合并后的最终树**重跑 `both`（37 个迁移）与 T066 套件两次，写决策/报告/
+   PROGRESS，按 feat/test/docs 提交；未 push、未关 issue。
 
 ## 1. 交付内容
 
@@ -98,19 +98,25 @@
 | 反例 forbidden hit（4 反例） | 0 | 0 |
 | 已删记忆再召回 | 否 | 否 |
 | pending 候选被召回 | 否 | 否 |
-| p50 / p95（252 次） | **0.560 ms / 1.670 ms** | **5.709 ms / 11.107 ms**（p95 ≈ 6.65× PG） |
-| 存储 | 库 11.6 MB（migrate 基线 11.4 MB，fixture delta ≈ 240 KiB）；正文 artifact 541 B；对象文件 582 B / 11 个 | `history.db` 20,480 B；Qdrant 29,311 B；工作目录 86,531 B；**venv 162.9 MB / 10,076 文件** |
+| p50 / p95（252 次） | **0.541 ms / 9.082 ms**（合并树复跑；安静首轮为 0.560 / 1.670 ms） | **6.119 ms / 8.615 ms**（合并树复跑；安静首轮为 5.709 / 11.107 ms） |
+| 存储 | 库 11.94 MB（migrate 基线 11.70 MB，fixture delta ≈ 232 KiB）；正文 artifact 541 B；对象文件 582 B / 11 个 | `history.db` 20,480 B；Qdrant 29,311 B；工作目录 86,531 B；**venv 162.9 MB / 10,076 文件** |
 | 依赖成本 | 无新增（复用现有 PG + Go 服务） | **35 个 Python 发行包**，Mem0 成为新运行时依赖 |
 | 删除后正文副本 | **1 个 sealed 对象文件**（T058 同步停止召回；`deletion_jobs` 为 `pending`，F07 负责物理清理；tombstone revision=2、epoch 前移、job scopes=`artifact/embedding/memory_row/object`） | **6 处**：SQLite `history.new_memory` + `history.old_memory`、`history.db` 文件、`qdrant/.../storage.sqlite` 文件、DEBUG 日志 1 行；默认 WARNING 日志 0 行 |
 | 修订旧正文 | 旧 `memory_body` artifact 字节保留（F07 债务，1 个对象） | SQLite history 保留旧/新正文 + 磁盘文件（未清理） |
 
 **平台基线说明（重要）**：本分支的 PG 基线是 T054/T058 的存储与删除语义，运行时召回属
-T063（不在本分支基线）。T063 的语义是“按 owner+application 列出全部当前记忆，由上下文预算
-截断”，**不做 query 排序**；对这个小 fixture，全部 3 个 scope 的当前记忆都能进预算
-（4/2/2 条，约 60/21/27 tokens），因此 T063 语义下期望记忆按构造必在注入集合内——这不是
-query 级召回率。上表的 query 级数字是实验补充的“最便宜可信 PG 语义基线”：同一确定性
-embedder + `t066.memory_vectors`（实验私有表，**不是**平台迁移）+ T058 的
+T063（不在本分支基线；合并的集成 tip 也未包含 T063）。T063 的语义是“按 owner+application
+列出全部当前记忆，由上下文预算截断”，**不做 query 排序**；对这个小 fixture，全部 3 个 scope
+的当前记忆都能进预算（4/2/2 条，约 60/21/27 tokens），因此 T063 语义下期望记忆按构造必在
+注入集合内——这不是 query 级召回率。上表的 query 级数字是实验补充的“最便宜可信 PG 语义
+基线”：同一确定性 embedder + `t066.memory_vectors`（实验私有表，**不是**平台迁移）+ T058 的
 owner/application/deleted/revision 守卫。该限制已写入结果 JSON，未伪装成产品能力。
+
+**延迟口径与两次运行（如实）**：延迟与主机负载相关（BRIEF §6.1：本机同时跑多个套件）。
+首轮安静窗口：PG p50/p95 = 0.560 / 1.670 ms，Mem0 = 5.709 / 11.107 ms（Mem0 p95 ≈ 6.65×
+PG）；合并树（37 个迁移）复跑时主机有并发负载：PG = 0.541 / 9.082 ms、Mem0 = 6.119 /
+8.615 ms（p95 比 0.95，Mem0 仅低 5%，未达 20% 收益阈值）。两轮的召回、存储与副本枚举一致；
+**没有任何一轮显示 Mem0 达到 ≥20% 延迟收益**，决策不依赖延迟单项。
 
 ## 3. 决策（ADR 风格）：**do_not_adopt — 保留 PostgreSQL**
 
@@ -121,7 +127,9 @@ owner/application/deleted/revision 守卫。该限制已写入结果 JSON，未�
    `history.db`、Qdrant 本地 `storage.sqlite` 的磁盘字节中；DEBUG 日志也会含正文
    （默认 WARNING 不含）。Mem0 没有平台可用的清理 job/API，无法证明“删除即清理”。
 2. **没有收益**：在共享确定性 embedder 下，Mem0 召回与 PG 基线相同（hit@1/hit@3 均 1.0），
-   但 p95 慢 6.65×（11.1 ms vs 1.67 ms），并新增 35 个发行包 / 163 MB venv 与第二套存储。
+   延迟也没有达到 20% 收益阈值：安静首轮 Mem0 p95 11.107 ms vs PG 1.670 ms（慢 6.65×），
+   合并树复跑（主机并发负载）8.615 ms vs 9.082 ms（仅低 5%）；同时新增 35 个发行包 /
+   163 MB venv 与第二套存储。
 3. **PG 的残留是“已登记、可治理”的**：T058 的删除在同一事务里写 tombstone + revision+1 +
    `deletion_jobs(pending, remaining_scopes)` + epoch，旧内容**立即不可召回**，物理清理明确
    归 F07；本实验逐列枚举证明正文只在 1 个 sealed 对象里（数据库无正文列），没有第三份副本。
@@ -166,49 +174,58 @@ $ experiments/mem0/.venv/Scripts/python -m pip install --dry-run --ignore-instal
       --require-hashes -r experiments/mem0/requirements.lock.txt
   ... Would install SQLAlchemy-2.1.8 ... mem0ai-2.2.1 ... urllib3-2.8.0     (exit 0)
 
-# 3) 对照实验（真实 PG + stub Mem0，12 query × 21 次）
+# 3) 对照实验（真实 PG + stub Mem0，12 query × 21 次；合并树复跑）
 $ $env:MEM0_TELEMETRY="false"; experiments/mem0/.venv/Scripts/python \
       experiments/mem0/run_experiment.py both --out experiments/mem0/evidence/t066-both.json \
       --work-dir experiments/mem0/work/both
-record: experiments/mem0/evidence/t066-both.json sha256=6db5843b9ea83adc158bf7a480171129b63967328fc8175f2d283f885d3cc1ce
-  pg: run (real) hit@1=1.0 hit@k=1.0 p50=0.559881ms p95=1.669781ms clean=False residual=1
-  mem0: run (stub) hit@1=1.0 hit@k=1.0 p50=5.7088ms p95=11.1067ms clean=False residual=6
+record: experiments/mem0/evidence/t066-both.json sha256=2acb230ce18114543aa168eeb9b69bceda971cbe700ca50667abd1467ad9cd3d
+  pg: run (real) hit@1=1.0 hit@k=1.0 p50=0.540733ms p95=9.081743ms clean=False residual=1
+  mem0: run (stub) hit@1=1.0 hit@k=1.0 p50=6.1191ms p95=8.615ms clean=False residual=6
 decision: do_not_adopt
   - deletion still leaves body copies ... sqlite:history.new_memory, sqlite:history.old_memory
   - Mem0 also shows no measurable benefit: recall is not better and p95 is not at least 20% lower ...
 (exit 0)
 
-# 4) T066 套件，两次背靠背（BRIEF §6.1）
+# 4) T066 套件，合并树两次背靠背（BRIEF §6.1；最终树复跑）
 $ python -m pytest tests/f09/test_t066_mem0_experiment.py -q
-15 passed in 40.10s
+16 passed in 43.13s
 $ python -m pytest tests/f09/test_t066_mem0_experiment.py -q
-15 passed in 46.10s
+16 passed in 36.94s
 
-# 5) 全 F09 套件（T054 25 + T058 22 + T066 15 = 62；此处为本票合并前最终树）
+# 5) 全 F09 套件（T054 25 + T058 22 + T066 16 = 63，合并树）
 $ python -m pytest tests/f09 -q
-61 passed in 646.43s (0:10:46)
+63 passed in 553.71s (0:09:13)
 ```
 
-说明：`tests/f09` 首次统计为 **61**（T054 25 + T058 22 + **T066 14**）运行于新增嵌套指标回归
-之前；随后补了第 15 个 T066 用例，合并后复跑见 §5.1。两次 T066 背靠背均全绿，耗时差异来自
-主机负载，无时间竞态断言（实验只断言数值/集合/枚举，不断言亚秒窗口）。
+说明：合并后第一次全量 `pytest tests/f09` 出现 1 个 **fixture setup error**：
+`tests/f09/test_t054_migration.py::test_migration_0033_keeps_the_worker_privilege_boundary` 在
+`ALTER ROLE orchara_worker PASSWORD ...` 处报 `tuple concurrently updated`——同一 PG 集群上另有
+worktree 的测试并发修改全局角色。该用例单独复跑 **1 passed**，随后全量复跑 **63 passed**；
+不是本票代码失败，也不是被掩盖的跳过（未改成 skip/重试掩盖）。两次 T066 背靠背均全绿，耗时
+差异来自主机负载；实验只断言数值/集合/枚举，不断言亚秒时间窗口。
 
 ```text
 $ go build ./...            (no output, exit 0)
 $ go vet ./...              (no output, exit 0)
-$ go test ./...             (all packages ok; no FAIL; exit 0)
+$ go test ./...             (33 packages ok; no FAIL; exit 0)
 $ gofmt -l .                (no output)
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest   (exit 0)
 $ python -m pytest tests/tooling -q
-21 passed in 5.76s
+21 passed in 7.22s
 ```
 
 ### 5.1 合并结果（BRIEF §7.6）
 
 ```text
 $ git merge integration/f13a-f15a-f09-f10
-<见本节末尾；合并后重跑数字在此填写>
+合并提交 9638ddf（父 0c4b7ec = 本票 docs 提交；父 eb30e1e = 集成 tip，
+含 T062/T064/T067，尚未含 T063 运行时召回）
+冲突：无（PROGRESS 两处修改在不同段落，自动合并；无内容丢失）
+合并树迁移链：0001..0037（T067 检索缓存新增 0037；本票无迁移）
+重跑：pytest tests/f09 63 passed（553.71s）；T066 16 passed ×2（43.13s / 36.94s）；
+      go build/vet/test 33 ok/0 FAIL；gofmt -l 空；sync_spec no drift；tooling 21 passed
+实验复跑：合并树重跑 both（37 个迁移）→ 新记录 SHA-256 2acb230c…，结论不变（do_not_adopt）
 ```
 
 ## 6. `not_run` / 限制（如实）
@@ -250,15 +267,15 @@ $ git merge integration/f13a-f15a-f09-f10
 
 | 输入 | 值 |
 |---|---|
-| 基线 | `ddaeb46`（集成 tip，T054/T058 的 F09 PG 基线） |
-| 结果文件 | `experiments/mem0/evidence/t066-both.json`，SHA-256 `6db5843b9ea83adc158bf7a480171129b63967328fc8175f2d283f885d3cc1ce` |
+| 基线 | `ddaeb46`（实验执行时集成 tip；T054/T058 的 F09 PG 基线）；合并时集成 tip `eb30e1e`（T062/T064/T067，未含 T063） |
+| 结果文件 | `experiments/mem0/evidence/t066-both.json`，SHA-256 `2acb230ce18114543aa168eeb9b69bceda971cbe700ca50667abd1467ad9cd3d`（合并树重跑；安静首轮记录 SHA-256 为 `6db5843b…`，`evidence/t066-both.stdout.log` 为最终运行 stdout） |
 | fixture | schema `t066.mem0.fixture.v1`，seed `66`，canonical SHA-256 `59f439dead24aee865bc2fadd5822e1f1214df27f1992ef2070672f58a55138b` |
 | embedder | `t066-hashed-bow-v1`，64 维，`embedder.py` SHA-256 `49dd0a5095b85414d0a47438311dedfc66c6a5376d01357c28a94643878be6a0` |
 | harness | `harness_sha256` `62552204dc314643020cc5cbfa7cb710e36a00a45d85c03b268808d3d9c5fdc1`（`.py/.go/.in/.txt`，不含文档/证据） |
 | requirements | `requirements.in` SHA-256 `0fa60d0fe4f67ea98a269594c2ac6f497ef7e328647bb1dc16994196cb0b0fa4`；lock SHA-256 `1de3838f34824af007d3519c57013b00746ae1af85a659c6496d519c9d376091`（34 包） |
 | Mem0 版本 | `mem0ai 2.2.1`、`qdrant-client 1.20.0`、`sqlalchemy 2.1.8`、`openai 3.45.0`、Python 3.12.2；`venv-freeze.txt` 记录 34 个精确版本 |
 | PostgreSQL | 16.4（`SHOW server_version`）；`cmd/admin` 二进制 SHA-256 `5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c`；`pgdriver` 二进制 SHA-256 `c7683d3f9cdef48db8f15b3e616e82c5a64a634b29098a8b11207e0902b0b678` |
-| 命令 | 结果 JSON `commands`：venv 安装、lock 验证、`go build`×2、`admin migrate`（36 个迁移，输出 tail 已脱敏）、`pgdriver create×9 / update×1 / delete×1 / bench×252`、`search×252`、副本枚举 |
+| 命令 | 结果 JSON `commands`：venv 安装、lock 验证、`go build`×2、`admin migrate`（合并树 37 个迁移，输出 tail 已脱敏）、`pgdriver create×9 / update×1 / delete×1 / bench×252`、`search×252`、副本枚举 |
 
 ## 10. F11 门禁（正式采用的剩余条件）
 
