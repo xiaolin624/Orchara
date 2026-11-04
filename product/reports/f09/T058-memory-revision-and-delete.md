@@ -160,14 +160,14 @@ $ gofmt -l .
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest   (exit 0)
 
-$ python -m pytest tests/f01/test_t020_personal_boundary.py -q
-2 passed in 12.17s
+$ python -m pytest tests/f01/test_t020_personal_boundary.py -q   # 最终树复跑
+2 passed in 10.26s
 
-$ python -m pytest tests/tooling -q
-21 passed in 4.67s
+$ python -m pytest tests/tooling -q                              # 最终树复跑
+21 passed in 4.83s
 
-$ python -m pytest tests/f10 -q          # 合并进来的邻接套件
-20 passed in 113.59s (0:01:53)
+$ python -m pytest tests/f10 -q          # 合并进来的邻接套件（最终树复跑）
+20 passed in 133.72s (0:02:13)
 ```
 
 套内细分：`tests/f09` 47 = T054 25 + T058 22（`test_t058_migration.py` 4、
