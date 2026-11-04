@@ -1097,8 +1097,14 @@ func (r *runner) waitReady(
 	}
 }
 
-// uploadFailureEvidence uploads the safe diagnostics/log of a failed attempt. It
-// is best effort: a storage failure must not replace the real failure code.
+// uploadFailureEvidence uploads the safe diagnostics/log of a failed attempt and
+// links them to the run. It is best effort: a storage failure must not replace the
+// real failure code.
+//
+// F13A/T056 links the failure evidence through the same Register path as a
+// success artifact, so a per-case result can offer the actual diagnostics/log
+// attachments of a failed case instead of only a state code. The bytes stay the
+// attempt's own: Register re-proves the live attempt token.
 func (r *runner) uploadFailureEvidence(
 	ctx context.Context,
 	code, message string,
@@ -1110,9 +1116,7 @@ func (r *runner) uploadFailureEvidence(
 		// The log is uploaded even when the streams are empty: the header proves
 		// the platform captured them, and an empty log is a fact too.
 		logContent := buildLog(outcome.Stdout, outcome.Stderr, r.options.MaxLogBytes)
-		if _, err := r.uploadArtifact(ctx, "log", "text/plain", logContent, "log"); err != nil {
-			r.logger.Printf("run_id=%s: failed to upload the sandbox log: %v", r.lease.RunID, err)
-		}
+		r.uploadFailureArtifact(ctx, "log", "text/plain", logContent, "log")
 	}
 	document := diagnostics
 	if document == nil {
@@ -1126,8 +1130,26 @@ func (r *runner) uploadFailureEvidence(
 	if len(payload) > sandbox.MaxArtifactBytes {
 		return
 	}
-	if _, err := r.uploadArtifact(ctx, "node_output", "application/json", payload, "artifact"); err != nil {
-		r.logger.Printf("run_id=%s: failed to upload diagnostics: %v", r.lease.RunID, err)
+	r.uploadFailureArtifact(ctx, "node_output", "application/json", payload, "artifact")
+}
+
+// uploadFailureArtifact uploads one piece of failure evidence and registers it to
+// the run. Both halves are best effort and separately logged: a missing link must
+// not mask the failure code, and it must not look like a produced result either.
+func (r *runner) uploadFailureArtifact(
+	ctx context.Context, purpose, mediaType string, content []byte, relation string,
+) {
+	artifactID, err := r.uploadArtifact(ctx, purpose, mediaType, content, relation)
+	if err != nil {
+		r.logger.Printf("run_id=%s: uploading the %s failure evidence failed: %v",
+			r.lease.RunID, purpose, err)
+		return
+	}
+	if _, err := r.deps.Client.Register(
+		ctx, r.lease.RunID, r.lease.AttemptToken, artifactID, relation,
+	); err != nil {
+		r.logger.Printf("run_id=%s: registering the %s failure evidence failed: %v",
+			r.lease.RunID, purpose, err)
 	}
 }
 

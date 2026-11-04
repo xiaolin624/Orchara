@@ -34,8 +34,10 @@ import (
 // the server re-checks the evaluation owner's current authorization.
 type RunClient interface {
 	// CreateCaseRun creates (or returns the already-created) run for one case.
-	// The server owns the run identity, the sealed input and the run owner.
-	CreateCaseRun(ctx context.Context, caseID string, input []byte) (string, error)
+	// The server owns the run identity, the sealed input and the run owner. A
+	// non-nil taskInput asks the server to bind the evaluation owner's own
+	// content-addressed fixture to the run as its task_input artifact (T056).
+	CreateCaseRun(ctx context.Context, caseID string, input []byte, taskInput *TaskInputBinding) (string, error)
 	// CaseRunFacts reads the independent truth of that run.
 	CaseRunFacts(ctx context.Context, runID string) (Facts, error)
 	// Interact performs one predefined platform interaction on the run.
@@ -64,14 +66,20 @@ var restStates = map[string]bool{
 
 // Case refusal reason codes. They are stable, safe and never provider text.
 const (
-	ReasonUnsupportedTarget  = "unsupported_target"
-	ReasonRunTimeout         = "run_timeout"
-	ReasonAssertionFailed    = "assertion_failed"
-	ReasonRunUnavailable     = "run_unavailable"
-	ReasonCollectionRefused  = "collection_refused"
-	ReasonNoAssertions       = "no_assertions"
-	ReasonProvenanceMismatch = "provenance_mismatch"
+	ReasonUnsupportedTarget    = "unsupported_target"
+	ReasonRunTimeout           = "run_timeout"
+	ReasonAssertionFailed      = "assertion_failed"
+	ReasonRunUnavailable       = "run_unavailable"
+	ReasonCollectionRefused    = "collection_refused"
+	ReasonNoAssertions         = "no_assertions"
+	ReasonProvenanceMismatch   = "provenance_mismatch"
+	ReasonTaskInputUnavailable = "task_input_unavailable"
 )
+
+// Check failure_reason is recorded when a case declares the business failure it
+// expects (T056). It is not a contract assertion kind; it is evaluated by the
+// same checker against the run's own state and error code.
+const CheckFailureReason = KindFailureReason
 
 // Checks the collector reports having performed. The report's `checks` array
 // must never be empty, so a dataset-only or target-only refusal still names the
@@ -116,6 +124,9 @@ func collectCase(
 	result := CaseReport{ID: item.CaseID, Verdict: VerdictNotRun, Status: VerdictNotRun}
 	for _, assertion := range item.Assertions {
 		checks[assertion.Kind] = true
+	}
+	if item.ExpectedFailure != nil {
+		checks[CheckFailureReason] = true
 	}
 	checks[CheckRunFacts] = true
 
@@ -170,14 +181,22 @@ func collectCase(
 	defer cancel()
 
 	started := time.Now()
-	runID, err := client.CreateCaseRun(caseCtx, item.CaseID, input)
+	runID, err := client.CreateCaseRun(caseCtx, item.CaseID, input, item.TaskInput)
 	if err != nil {
 		// The platform refused to create the run (a withdrawn application, a
-		// stale lease, a missing snapshot). That is never a pass.
+		// missing fixture, a stale lease, a missing snapshot). That is never a
+		// pass, and a missing fixture gets its own reason so the curator learns
+		// which input bytes to upload.
+		reason := safeReason(err)
 		result.Status = VerdictBlocked
 		result.Verdict = VerdictBlocked
 		result.ReasonCode = ReasonCollectionRefused
-		result.Detail = "the platform refused to create this case's run: " + safeReason(err)
+		result.Detail = "the platform refused to create this case's run: " + reason
+		if reason == ReasonTaskInputUnavailable {
+			result.ReasonCode = ReasonTaskInputUnavailable
+			result.Detail = "the case's task_input fixture is not among the evaluation owner's ready " +
+				"task_input artifacts; upload the exact fixture bytes the case names and retry"
+		}
 		return result
 	}
 	result.Facts = &CaseFacts{RunID: runID}
@@ -209,7 +228,7 @@ func collectCase(
 		result.Detail = fmt.Sprintf(
 			"the run did not reach a rest state within %s (observed state %q); a timeout is recorded as not_run, never passed",
 			timeout, facts.RunState)
-		result.Assertions = EvaluateAssertions(item.Assertions, facts)
+		result.Assertions = caseOutcomes(item, facts)
 		return result
 	}
 	if facts.RunState == "" {
@@ -232,7 +251,7 @@ func collectCase(
 		return result
 	}
 
-	outcomes := EvaluateAssertions(item.Assertions, facts)
+	outcomes := caseOutcomes(item, facts)
 	result.Assertions = outcomes
 	failed := 0
 	for _, outcome := range outcomes {
@@ -250,6 +269,18 @@ func collectCase(
 	result.ReasonCode = ReasonAssertionFailed
 	result.Detail = fmt.Sprintf("%d of %d assertions failed against the run's collected truth", failed, len(outcomes))
 	return result
+}
+
+// caseOutcomes evaluates one case's contract checker plus its optional T056
+// failure expectation against the same collected facts. The failure expectation
+// is appended to the same assertions array, so a bad-input case's pass can never
+// hide an unexpected failure reason.
+func caseOutcomes(item Case, facts Facts) []Outcome {
+	outcomes := EvaluateAssertions(item.Assertions, facts)
+	if outcome := EvaluateFailureExpectation(item.ExpectedFailure, facts); outcome != nil {
+		outcomes = append(outcomes, *outcome)
+	}
+	return outcomes
 }
 
 // waitForRestState polls the run's facts, performs the case's predefined
@@ -324,6 +355,8 @@ func applyFacts(target *CaseFacts, facts Facts) {
 	if facts.CitationsCollected {
 		target.CitationSources = append([]string(nil), facts.Citations...)
 	}
+	target.TaskInputArtifactID = facts.TaskInputArtifactID
+	target.TaskInputSHA256 = facts.TaskInputSHA256
 	provenance := facts.Provenance
 	if provenance.SnapshotID != "" || provenance.ManifestSHA256 != "" {
 		target.Provenance = &provenance

@@ -68,6 +68,12 @@ var ErrEvaluationNotVisible = errors.New("the evaluation is not collectable for 
 // ErrEvaluationRunNotFound means the run is not this evaluation's run.
 var ErrEvaluationRunNotFound = errors.New("that evaluation run does not exist")
 
+// ErrTaskInputUnavailable means a case named a caller fixture by content that is
+// not among the evaluation owner's ready task_input artifacts. It is a located
+// refusal (the case cannot be executed and must never be invented), not a
+// retryable infrastructure failure: uploading the exact bytes fixes it.
+var ErrTaskInputUnavailable = errors.New("the case's task_input fixture is unavailable")
+
 // EvaluationRunRef is one case's created (or already-created) platform run.
 type EvaluationRunRef struct {
 	RunID   string
@@ -87,9 +93,13 @@ type EvaluationRunFacts struct {
 	EffectsCollected   bool
 	Citations          []string
 	CitationsCollected bool
-	Provenance         evaluation.RunProvenance
-	StartedAt          *time.Time
-	FinishedAt         *time.Time
+	// F13A/T056: the caller fixture bound to the run, by artifact id and
+	// content hash. Empty means no fixture was bound.
+	TaskInputArtifactID string
+	TaskInputSHA256     string
+	Provenance          evaluation.RunProvenance
+	StartedAt           *time.Time
+	FinishedAt          *time.Time
 }
 
 // EvaluationRuns is the server-side evaluation run service.
@@ -182,9 +192,13 @@ func (e *EvaluationRuns) loadEvaluationScope(
 }
 
 // Create creates (or returns) the platform run for one case of the job's
-// evaluation. The input bytes are the case's canonical run input.
+// evaluation. The input bytes are the case's canonical run input. A non-nil
+// taskInput binds one of the evaluation owner's own ready fixtures to the run as
+// its task_input artifact (F13A/T056), addressed by content so a committed
+// dataset never embeds a volatile artifact id.
 func (e *EvaluationRuns) Create(
 	ctx context.Context, job *background.Job, caseID string, input []byte,
+	taskInput *evaluation.TaskInputBinding,
 ) (*EvaluationRunRef, error) {
 	caseID = strings.TrimSpace(caseID)
 	if caseID == "" || len(caseID) > evaluation.MaxCaseIDLength {
@@ -220,6 +234,17 @@ func (e *EvaluationRuns) Create(
 		return existing, nil
 	}
 
+	// Resolve the fixture before sealing anything: the case cannot be executed
+	// without it, and a missing fixture must leave no run behind.
+	var taskInputArtifactID string
+	if taskInput != nil {
+		resolved, err := e.resolveTaskInput(ctx, scope, taskInput)
+		if err != nil {
+			return nil, err
+		}
+		taskInputArtifactID = resolved
+	}
+
 	if e.Store == nil {
 		return nil, background.ErrObjectStoreUnavailable
 	}
@@ -241,7 +266,8 @@ func (e *EvaluationRuns) Create(
 		return nil, errors.New("the sealed case input does not match its canonical bytes")
 	}
 
-	ref, err := e.insertCaseRun(ctx, scope, job, caseID, sealedKey, digest, int64(len(canonical)), policy)
+	ref, err := e.insertCaseRun(ctx, scope, job, caseID, sealedKey, digest, int64(len(canonical)),
+		taskInputArtifactID, policy)
 	if err != nil {
 		// Nothing references the object when the transaction did not commit.
 		_ = e.Store.Delete(sealedKey)
@@ -253,6 +279,57 @@ func (e *EvaluationRuns) Create(
 		return nil, err
 	}
 	return ref, nil
+}
+
+// maxEvaluationTaskInputBytes mirrors the preset tool's input cap. The T028
+// admission already bounds a task_input artifact, so this is defence in depth.
+const maxEvaluationTaskInputBytes int64 = 20 << 20
+
+// resolveTaskInput finds the evaluation owner's own ready fixture by content.
+//
+// The lookup is content-addressed on purpose: a committed dataset names bytes
+// (sha256 + media type), never an object key or a volatile artifact id, and only
+// the evaluation owner's own artifacts are considered. When the same bytes were
+// uploaded more than once the earliest artifact wins deterministically; the
+// chosen id is recorded in the case facts, so the sealed result names exactly
+// which platform artifact was bound.
+func (e *EvaluationRuns) resolveTaskInput(
+	ctx context.Context, scope *evaluationScope, binding *evaluation.TaskInputBinding,
+) (string, error) {
+	sha := strings.ToLower(strings.TrimSpace(binding.SHA256))
+	mediaType := strings.TrimSpace(binding.MediaType)
+	if len(sha) != 64 || (mediaType != evaluation.MediaTypeCSV && mediaType != evaluation.MediaTypeXLSX) {
+		return "", &background.ValidationError{
+			Field:   "task_input",
+			Message: "task_input must name a SHA-256 and the CSV or XLSX media type",
+		}
+	}
+	var (
+		artifactID string
+		sizeBytes  sql.NullInt64
+	)
+	err := e.DB.QueryRowContext(ctx, `
+		SELECT id::text, size_bytes
+		  FROM platform.artifacts
+		 WHERE owner_id = $1::uuid
+		   AND purpose = 'task_input'
+		   AND sha256 = $2
+		   AND media_type = $3
+		   AND state = 'ready'
+		   AND deleted_at IS NULL
+		 ORDER BY created_at, id
+		 LIMIT 1`, scope.OwnerID, sha, mediaType,
+	).Scan(&artifactID, &sizeBytes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrTaskInputUnavailable
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolving the case task_input: %w", err)
+	}
+	if !sizeBytes.Valid || sizeBytes.Int64 <= 0 || sizeBytes.Int64 > maxEvaluationTaskInputBytes {
+		return "", fmt.Errorf("the bound task_input artifact size is outside the tool protocol")
+	}
+	return artifactID, nil
 }
 
 var errCaseRunAlreadyExists = errors.New("the case run already exists")
@@ -324,6 +401,7 @@ func (e *EvaluationRuns) insertCaseRun(
 	job *background.Job,
 	caseID, sealedKey, inputSHA string,
 	inputSize int64,
+	taskInputArtifactID string,
 	policy runPolicy,
 ) (*EvaluationRunRef, error) {
 	tx, err := e.DB.BeginTx(ctx, nil)
@@ -420,6 +498,20 @@ func (e *EvaluationRuns) insertCaseRun(
 		runID, inputArtifactID,
 	); err != nil {
 		return nil, fmt.Errorf("linking the case input artifact: %w", err)
+	}
+
+	// F13A/T056: the caller's fixture, resolved by content above, is linked the
+	// same way a debug submission links its artifact_ids: relation=input, so the
+	// supervisor discovers it through ListRunInputArtifacts and the run-scoped
+	// download link serves its sealed bytes.
+	if taskInputArtifactID != "" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO platform.run_artifacts (run_id, artifact_id, attempt_token, relation)
+			VALUES ($1::uuid, $2::uuid, NULL, 'input')`,
+			runID, taskInputArtifactID,
+		); err != nil {
+			return nil, fmt.Errorf("linking the case task_input artifact: %w", err)
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -571,6 +663,22 @@ func (e *EvaluationRuns) Facts(
 		}
 	}
 
+	// F13A/T056: the caller fixture bound to this run, read from the real
+	// run_artifacts link. It is evidence for the per-case result; a case without
+	// a fixture (a minimal start->end chain) simply has no such link.
+	_ = e.DB.QueryRowContext(ctx, `
+		SELECT a.id::text, a.sha256
+		  FROM platform.run_artifacts AS ra
+		  JOIN platform.artifacts AS a ON a.id = ra.artifact_id
+		 WHERE ra.run_id = $1::uuid
+		   AND ra.relation = 'input'
+		   AND a.purpose = 'task_input'
+		   AND a.state = 'ready'
+		   AND a.deleted_at IS NULL
+		 ORDER BY a.created_at, a.id
+		 LIMIT 1`, runID,
+	).Scan(&facts.TaskInputArtifactID, &facts.TaskInputSHA256)
+
 	// The real side-effect ledger: one row per attempted controlled call.
 	effects, collected, err := e.effectCounts(ctx, runID)
 	if err != nil {
@@ -611,20 +719,22 @@ func (e *EvaluationRuns) Facts(
 	}
 
 	return &EvaluationRunFacts{
-		RunID:              runID,
-		State:              facts.RunState,
-		ErrorCode:          facts.RunErrorCode,
-		OutputArtifactID:   facts.OutputArtifactID,
-		OutputSHA256:       facts.OutputSHA256,
-		Output:             facts.Output,
-		OutputCollected:    facts.OutputCollected,
-		Effects:            facts.Effects,
-		EffectsCollected:   facts.EffectsCollected,
-		Citations:          facts.Citations,
-		CitationsCollected: facts.CitationsCollected,
-		Provenance:         facts.Provenance,
-		StartedAt:          facts.StartedAt,
-		FinishedAt:         facts.FinishedAt,
+		RunID:               runID,
+		State:               facts.RunState,
+		ErrorCode:           facts.RunErrorCode,
+		OutputArtifactID:    facts.OutputArtifactID,
+		OutputSHA256:        facts.OutputSHA256,
+		Output:              facts.Output,
+		OutputCollected:     facts.OutputCollected,
+		Effects:             facts.Effects,
+		EffectsCollected:    facts.EffectsCollected,
+		Citations:           facts.Citations,
+		CitationsCollected:  facts.CitationsCollected,
+		TaskInputArtifactID: facts.TaskInputArtifactID,
+		TaskInputSHA256:     facts.TaskInputSHA256,
+		Provenance:          facts.Provenance,
+		StartedAt:           facts.StartedAt,
+		FinishedAt:          facts.FinishedAt,
 	}, nil
 }
 

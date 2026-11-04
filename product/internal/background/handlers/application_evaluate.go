@@ -152,11 +152,14 @@ func (r *evaluationRunner) heartbeat(ctx context.Context) {
 	}
 }
 
-// CreateCaseRun asks the platform to create the case's run as the owner.
-func (r *evaluationRunner) CreateCaseRun(ctx context.Context, caseID string, input []byte) (string, error) {
+// CreateCaseRun asks the platform to create the case's run as the owner. A
+// non-nil taskInput binds the evaluation owner's own fixture (F13A/T056).
+func (r *evaluationRunner) CreateCaseRun(
+	ctx context.Context, caseID string, input []byte, taskInput *evaluation.TaskInputBinding,
+) (string, error) {
 	r.heartbeat(ctx)
 	ref, err := r.work.Scope.EvaluationRun(
-		ctx, r.work.Job.ID, r.work.AttemptToken, caseID, input,
+		ctx, r.work.Job.ID, r.work.AttemptToken, caseID, input, taskInput,
 	)
 	if err != nil {
 		return "", err
@@ -174,20 +177,22 @@ func (r *evaluationRunner) CaseRunFacts(ctx context.Context, runID string) (eval
 		return evaluation.Facts{}, err
 	}
 	return evaluation.Facts{
-		RunID:              facts.RunID,
-		RunState:           facts.State,
-		RunErrorCode:       facts.ErrorCode,
-		Output:             facts.Output,
-		OutputCollected:    facts.OutputCollected,
-		OutputArtifactID:   facts.OutputArtifactID,
-		OutputSHA256:       facts.OutputSHA256,
-		Effects:            facts.Effects,
-		EffectsCollected:   facts.EffectsCollected,
-		Citations:          facts.Citations,
-		CitationsCollected: facts.CitationsCollected,
-		Provenance:         facts.Provenance,
-		StartedAt:          facts.StartedAt,
-		FinishedAt:         facts.FinishedAt,
+		RunID:               facts.RunID,
+		RunState:            facts.State,
+		RunErrorCode:        facts.ErrorCode,
+		Output:              facts.Output,
+		OutputCollected:     facts.OutputCollected,
+		OutputArtifactID:    facts.OutputArtifactID,
+		OutputSHA256:        facts.OutputSHA256,
+		Effects:             facts.Effects,
+		EffectsCollected:    facts.EffectsCollected,
+		Citations:           facts.Citations,
+		CitationsCollected:  facts.CitationsCollected,
+		TaskInputArtifactID: facts.TaskInputArtifactID,
+		TaskInputSHA256:     facts.TaskInputSHA256,
+		Provenance:          facts.Provenance,
+		StartedAt:           facts.StartedAt,
+		FinishedAt:          facts.FinishedAt,
 	}, nil
 }
 

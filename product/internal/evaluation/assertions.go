@@ -48,6 +48,12 @@ type Facts struct {
 	// from the same sealed output document, under /citations.
 	Citations          []string
 	CitationsCollected bool
+	// TaskInputArtifactID/TaskInputSHA256 identify the caller fixture the
+	// platform bound to this run as its task_input artifact (F13A/T056). An empty
+	// id means no fixture was bound; it is evidence, never an assertion by
+	// itself.
+	TaskInputArtifactID string
+	TaskInputSHA256     string
 	// Provenance is the frozen identity the run executed under.
 	Provenance RunProvenance
 	StartedAt  *time.Time
