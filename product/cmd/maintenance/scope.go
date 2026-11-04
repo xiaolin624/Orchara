@@ -243,6 +243,20 @@ func (s *jobScope) EvaluationRunInteraction(
 	return s.client.evaluationRunInteraction(ctx, jobID, attemptToken, runID, interaction)
 }
 
+// EvaluationCaseOutcome records one case's decision through the job-scoped
+// progress bridge (F13A/T065). The decision is the runner's; the server persists
+// it and re-proves the lease and the owner's access.
+func (s *jobScope) EvaluationCaseOutcome(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	ordinal int,
+	verdict, reasonCode string,
+) error {
+	return s.client.evaluationCaseOutcome(
+		ctx, jobID, attemptToken, caseID, ordinal, verdict, reasonCode,
+	)
+}
+
 // parseOptionalTime decodes an RFC 3339 timestamp the server omitted (empty) or
 // sent.
 func parseOptionalTime(value string) (*time.Time, error) {
@@ -671,6 +685,38 @@ func (c *internalClient) evaluationRunInteraction(
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("evaluation-run interaction returned unexpected status %d", status)
+	}
+	return nil
+}
+
+// evaluationCaseOutcome records one case's decision through the job-scoped
+// progress bridge (F13A/T065).
+func (c *internalClient) evaluationCaseOutcome(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	ordinal int,
+	verdict, reasonCode string,
+) error {
+	var response struct {
+		Recorded bool `json:"recorded"`
+	}
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-progress",
+		map[string]any{
+			"attempt_token": attemptToken,
+			"case_id":       caseID,
+			"ordinal":       ordinal,
+			"verdict":       verdict,
+			"reason_code":   reasonCode,
+		},
+		&response,
+	)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK || !response.Recorded {
+		return fmt.Errorf("evaluation progress returned unexpected status %d", status)
 	}
 	return nil
 }

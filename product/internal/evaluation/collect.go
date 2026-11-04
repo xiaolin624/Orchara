@@ -42,6 +42,12 @@ type RunClient interface {
 	CaseRunFacts(ctx context.Context, runID string) (Facts, error)
 	// Interact performs one predefined platform interaction on the run.
 	Interact(ctx context.Context, runID string, interaction Interaction) error
+	// RecordCaseOutcome persists one case's decision through the server
+	// (F13A/T065). It is a live progress fact, not the verdict authority: the
+	// sealed report remains the truth, and the completion guard writes the
+	// final counters. A case with no run (an unsupported target, a refused
+	// collection) is only observable through this call.
+	RecordCaseOutcome(ctx context.Context, caseID string, ordinal int, verdict, reasonCode string) error
 }
 
 // CollectOptions bounds one evaluation.
@@ -121,8 +127,15 @@ func Collect(
 ) ([]CaseReport, []string) {
 	checks := make(map[string]bool)
 	results := make([]CaseReport, 0, len(dataset.Cases))
-	for _, item := range dataset.Cases {
+	for index, item := range dataset.Cases {
 		result := collectCase(ctx, client, item, options, checks)
+		// F13A/T065: report the decision while the evaluation is still running.
+		// This is what makes the progress read move for a case that never gets a
+		// run (a blocked target) and for a verdict the run state alone cannot
+		// express. A progress refusal never aborts the evaluation: the sealed
+		// report below is the authority, and the completion guard persists the
+		// final counters from it.
+		_ = client.RecordCaseOutcome(ctx, result.ID, index, result.Status, result.ReasonCode)
 		results = append(results, result)
 	}
 	names := make([]string, 0, len(checks)+2)

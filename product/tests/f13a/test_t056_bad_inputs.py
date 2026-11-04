@@ -185,8 +185,17 @@ def test_a_missing_fixture_blocks_the_case_and_never_passes(t056_stack) -> None:
     assert case["status"] == "blocked", case
     assert case["verdict"] == "blocked", case
     assert case["reason_code"] == "task_input_unavailable", case
-    # A blocked case never produced a run at all.
-    assert t056.t052.case_run_rows(t056_stack.dbname, evaluation_id) == []
+    # A blocked case never produced a run at all. F13A/T065's progress bridge
+    # records the runner's decision on the case row (that is what makes a
+    # runless case move the live progress counters), so the baseline is
+    # deliberately migrated: one row, no run, blocked verdict/reason.
+    case_runs = t056.t052.case_run_rows(t056_stack.dbname, evaluation_id)
+    assert len(case_runs) == 1, case_runs
+    assert case_runs[0]["case_id"] == "sales-happy-csv", case_runs[0]
+    assert case_runs[0]["run_id"] is None, case_runs[0]
+    assert case_runs[0]["state"] == "blocked", case_runs[0]
+    assert case_runs[0]["verdict"] == "blocked", case_runs[0]
+    assert case_runs[0]["reason_code"] == "task_input_unavailable", case_runs[0]
 
 
 def test_a_malformed_reserved_binding_is_refused_at_submit_time(t056_stack) -> None:

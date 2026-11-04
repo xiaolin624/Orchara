@@ -57,6 +57,23 @@ const (
 	MaxEvaluationOutputBytes int64 = 1 << 20
 	// maxEvaluationCaseInputBytes caps one case's canonical input.
 	maxEvaluationCaseInputBytes int64 = 1 << 20
+
+	// evaluationProgressDoneSQL is the one definition of "a case is decided":
+	// the runner recorded a verdict, or the case's run reached a rest state.
+	// The creation hook, the facts hook and the runner's progress report all use
+	// it, so none of them can lower the counter on a retry. $1 is the
+	// evaluation id in every call site.
+	evaluationProgressDoneSQL = `(SELECT count(*)
+		FROM platform.evaluation_case_runs
+		WHERE evaluation_id = $1::uuid
+		  AND (verdict IS NOT NULL
+		       OR state IN ('succeeded', 'failed', 'cancelled',
+		                    'recovery_pending', 'needs_reconciliation')))`
+	// evaluationProgressFailedSQL counts the runner's failed case verdicts.
+	// $1 is the evaluation id.
+	evaluationProgressFailedSQL = `(SELECT count(*)
+		FROM platform.evaluation_case_runs
+		WHERE evaluation_id = $1::uuid AND verdict = 'failed')`
 )
 
 // ErrEvaluationNotVisible means the evaluation cannot be collected for its
@@ -525,11 +542,7 @@ func (e *EvaluationRuns) insertCaseRun(
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.evaluation_jobs
 		   SET progress_total = GREATEST(progress_total, $2),
-		       progress_done = (
-		           SELECT count(*) FROM platform.evaluation_case_runs
-		            WHERE evaluation_id = $1::uuid AND state IN (
-		                'succeeded', 'failed', 'cancelled',
-		                'recovery_pending', 'needs_reconciliation'))
+		       progress_done = `+evaluationProgressDoneSQL+`
 		 WHERE id = $1::uuid`,
 		job.TargetID, 1,
 	); err != nil {
@@ -708,11 +721,7 @@ func (e *EvaluationRuns) Facts(
 	}
 	if _, err := e.DB.ExecContext(ctx, `
 		UPDATE platform.evaluation_jobs
-		   SET progress_done = (
-		       SELECT count(*) FROM platform.evaluation_case_runs
-		        WHERE evaluation_id = $1::uuid AND state IN (
-		            'succeeded', 'failed', 'cancelled',
-		            'recovery_pending', 'needs_reconciliation'))
+		   SET progress_done = `+evaluationProgressDoneSQL+`
 		 WHERE id = $1::uuid`, job.TargetID,
 	); err != nil {
 		return nil, fmt.Errorf("updating the evaluation progress: %w", err)
