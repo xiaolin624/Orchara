@@ -1,19 +1,21 @@
 package knowledge
 
-// F10/T055 knowledge service: owner-scoped knowledge bases, ingested documents,
-// the controlled enqueue of `document_ingest`, and retrieval.
+// F10/T055/T061 knowledge service: owner-scoped knowledge bases, ingested
+// documents, versioned index builds, the controlled enqueue of `document_ingest`,
+// and retrieval.
 //
 // Two boundaries are deliberate:
 //
-//   - The service never activates a document. `CreateDocument` writes the
-//     document as `scanning` and enqueues one job in the same transaction; the
-//     document_ingest completion guard in internal/background is the only writer
-//     of `ready`/`failed`, `active_revision` and `error_code`.
-//   - Retrieval filters ACL, current readability and current document revision
-//     **in SQL**, then ranks only the surviving candidate set in this process
-//     (ADR 0010). It never ranks first and filters afterwards. The contract has
-//     no query endpoint; the query/chunk-citation routes are the documented
-//     non-contract surface this ticket's acceptance needs.
+//   - The service never activates a document or an index version. It writes the
+//     document as `scanning`, creates one `building` index version and enqueues
+//     one job in the same transaction; the document_ingest completion guard in
+//     internal/background is the only writer of `ready`/`failed`,
+//     `active_index_id`, `active_revision` and `error_code`.
+//   - Retrieval filters ACL, the active index version and the current embedding
+//     model revision **in SQL**, then ranks only the surviving candidate set in
+//     this process (ADR 0010/0017). It never ranks first and filters afterwards.
+//     The contract has no query endpoint; the query/chunk-citation/reindex routes
+//     are the documented non-contract surface this ticket's acceptance needs.
 
 import (
 	"context"
@@ -189,6 +191,7 @@ type ChunkRow struct {
 	ID             string
 	DocumentID     string
 	Revision       int64
+	IndexVersionID string
 	No             int
 	BodyArtifactID string
 	Citation       Citation
@@ -414,10 +417,22 @@ func (s *Service) CreateDocument(
 
 	// The contract has no Idempotency-Key on ingestDocument. Repetition is
 	// resolved against the real resource state: the same source artifact already
-	// bound to this knowledge base is the same intention. A ready/indexing
-	// document is returned as-is; a failed document gets one new revision and a
-	// new job (a failed parse is retryable), which is the seam T061's version
-	// replacement will formalise.
+	// bound to this knowledge base is the same intention. A ready document under
+	// the same embedding model is returned as-is; a ready document whose active
+	// index was built with another embedding model revision starts a rebuild
+	// (new index version, same source revision); a failed document gets a new
+	// index version and, when it never had an active index, one new source
+	// revision (a failed parse is retryable). This is the T061 version
+	// replacement seam.
+	modelRevision := ""
+	if s.Embedder != nil {
+		modelRevision = s.Embedder.ModelRevision()
+	}
+	dimension := embedding.Dimensions
+	if s.Embedder != nil && s.Embedder.Dimensions() > 0 {
+		dimension = s.Embedder.Dimensions()
+	}
+
 	existing, existingErr := scanDocument(tx.QueryRowContext(ctx, `
 		SELECT `+selectDocumentColumns+`
 		  FROM platform.knowledge_documents AS d
@@ -430,36 +445,62 @@ func (s *Service) CreateDocument(
 	))
 	switch {
 	case existingErr == nil:
-		if existing.State != StateFailed {
+		var (
+			activeIndexID sql.NullString
+			activeModel   sql.NullString
+		)
+		if err := tx.QueryRowContext(ctx, `
+			SELECT d.active_index_id::text, coalesce(iv.embedding_model_revision, '')
+			  FROM platform.knowledge_documents AS d
+			  LEFT JOIN platform.knowledge_index_versions AS iv ON iv.id = d.active_index_id
+			 WHERE d.id = $1::uuid`, existing.ID,
+		).Scan(&activeIndexID, &activeModel); err != nil {
+			return Document{}, fmt.Errorf("reading the active index: %w", err)
+		}
+		modelChanged := existing.State == StateReady && activeIndexID.Valid &&
+			activeModel.String != "" && activeModel.String != modelRevision
+		if (existing.State != StateFailed && !modelChanged) ||
+			existing.State == StateScanning || existing.State == StateIndexing {
 			if err := tx.Commit(); err != nil {
 				return Document{}, fmt.Errorf("committing the idempotent document: %w", err)
 			}
 			return existing, nil
 		}
-		nextRevision := existing.Revision + 1
+		nextRevision := existing.Revision
+		if !activeIndexID.Valid {
+			// A document that never activated an index has no readable revision to
+			// preserve; a retry is a new source revision (T055 semantics).
+			nextRevision = existing.Revision + 1
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE platform.knowledge_documents
-			   SET revision = $2, state = 'scanning', active_revision = NULL,
-			       error_code = NULL, parser_version = $3, chunker_version = NULL,
-			       embedding_model_revision = NULL, updated_at = now()
-			 WHERE id = $1::uuid AND revision = $4`,
-			existing.ID, nextRevision, parser.Version(), existing.Revision,
+			   SET revision = $2, state = 'scanning', error_code = NULL,
+			       parser_version = $3, chunker_version = NULL,
+			       active_revision = CASE WHEN active_index_id IS NULL
+			                              THEN NULL ELSE active_revision END,
+			       embedding_model_revision = CASE WHEN active_index_id IS NULL
+			                                       THEN NULL ELSE embedding_model_revision END,
+			       updated_at = now()
+			 WHERE id = $1::uuid`,
+			existing.ID, nextRevision, parser.Version(),
 		); err != nil {
-			return Document{}, fmt.Errorf("retrying the failed document: %w", err)
+			return Document{}, fmt.Errorf("retrying the document: %w", err)
 		}
-		if _, _, err := background.EnqueueTx(ctx, tx, background.EnqueueParams{
-			Kind:             background.KindDocumentIngest,
-			TargetID:         existing.ID,
-			OwnerID:          ownerID,
-			DedupKey:         documentDedupKey(sourceArtifactID, artifactRevision, existing.ID, nextRevision),
-			ExpectedRevision: &nextRevision,
-			InputArtifactID:  sourceArtifactID,
-		}); err != nil {
+		indexID, indexVersion, err := insertIndexVersionTx(
+			ctx, tx, existing.ID, nextRevision, modelRevision, dimension, parser.Version(),
+		)
+		if err != nil {
+			return Document{}, err
+		}
+		if _, err := enqueueIndexBuildTx(
+			ctx, tx, ownerID, existing.ID, sourceArtifactID, indexID, nextRevision,
+		); err != nil {
 			return Document{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return Document{}, fmt.Errorf("committing the retried document: %w", err)
 		}
+		_ = indexVersion
 		existing.Revision = nextRevision
 		existing.State = StateScanning
 		existing.ErrorCode = nil
@@ -484,28 +525,21 @@ func (s *Service) CreateDocument(
 		return Document{}, fmt.Errorf("creating the document: %w", err)
 	}
 	revision := document.Revision
-	if _, _, err := background.EnqueueTx(ctx, tx, background.EnqueueParams{
-		Kind:             background.KindDocumentIngest,
-		TargetID:         document.ID,
-		OwnerID:          ownerID,
-		DedupKey:         documentDedupKey(sourceArtifactID, artifactRevision, document.ID, revision),
-		ExpectedRevision: &revision,
-		InputArtifactID:  sourceArtifactID,
-	}); err != nil {
+	indexID, _, err := insertIndexVersionTx(
+		ctx, tx, document.ID, revision, modelRevision, dimension, parser.Version(),
+	)
+	if err != nil {
+		return Document{}, err
+	}
+	if _, err := enqueueIndexBuildTx(
+		ctx, tx, ownerID, document.ID, sourceArtifactID, indexID, revision,
+	); err != nil {
 		return Document{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Document{}, fmt.Errorf("committing the document: %w", err)
 	}
 	return document, nil
-}
-
-// documentDedupKey names one ingestion intention: this source artifact revision
-// producing this document revision. The contract has no Idempotency-Key, so the
-// queue's UNIQUE(kind, dedup_key) is the durable dedupe (ADR 0010).
-func documentDedupKey(sourceArtifactID string, artifactRevision int64, documentID string, revision int64) string {
-	return fmt.Sprintf("knowledge-doc:%s:%d:%s:%d",
-		sourceArtifactID, artifactRevision, documentID, revision)
 }
 
 // ListDocuments lists one owner's documents in one knowledge base.
@@ -606,20 +640,24 @@ func (s *Service) GetDocument(ctx context.Context, ownerID, documentID string) (
 // single knowledge-state authority (the document row) without a second failure
 // write path (ADR 0012).
 type Diagnostics struct {
-	DocumentID             string
-	State                  string
-	Revision               int64
-	ActiveRevision         *int64
-	ParserVersion          *string
-	ChunkerVersion         *string
-	EmbeddingModelRevision *string
-	ErrorCode              *string
-	Detail                 *ParseDetail
-	ChunkCount             int
-	BackgroundJobID        *string
-	BackgroundJobState     *string
-	BackgroundJobCode      *string
-	BackgroundJobAttempts  int
+	DocumentID                   string
+	State                        string
+	Revision                     int64
+	ActiveRevision               *int64
+	ActiveIndexID                *string
+	ActiveIndex                  *IndexVersion
+	Indexes                      []IndexVersion
+	ActiveEmbeddingModelRevision *string
+	ParserVersion                *string
+	ChunkerVersion               *string
+	EmbeddingModelRevision       *string
+	ErrorCode                    *string
+	Detail                       *ParseDetail
+	ChunkCount                   int
+	BackgroundJobID              *string
+	BackgroundJobState           *string
+	BackgroundJobCode            *string
+	BackgroundJobAttempts        int
 }
 
 // DocumentDiagnostics reads the owner-visible ingestion facts of one document.
@@ -639,25 +677,45 @@ func (s *Service) DocumentDiagnostics(
 	}
 	var (
 		activeRevision sql.NullInt64
+		activeIndexID  sql.NullString
+		activeModel    sql.NullString
 		parserVersion  sql.NullString
 		chunkerVersion sql.NullString
 		modelRevision  sql.NullString
 	)
 	if err := s.DB.QueryRowContext(ctx, `
-		SELECT active_revision, parser_version, chunker_version, embedding_model_revision
+		SELECT active_revision, active_index_id::text, active_embedding_model_revision,
+		       parser_version, chunker_version, embedding_model_revision
 		  FROM platform.knowledge_documents
 		 WHERE id = $1::uuid`, documentID,
-	).Scan(&activeRevision, &parserVersion, &chunkerVersion, &modelRevision); err != nil {
+	).Scan(&activeRevision, &activeIndexID, &activeModel, &parserVersion,
+		&chunkerVersion, &modelRevision); err != nil {
 		return Diagnostics{}, fmt.Errorf("reading the document diagnostics: %w", err)
 	}
 	if activeRevision.Valid {
 		value := activeRevision.Int64
 		diagnostics.ActiveRevision = &value
 	}
+	diagnostics.ActiveIndexID = nullStringPointer(activeIndexID)
+	diagnostics.ActiveEmbeddingModelRevision = nullStringPointer(activeModel)
 	diagnostics.ParserVersion = nullStringPointer(parserVersion)
 	diagnostics.ChunkerVersion = nullStringPointer(chunkerVersion)
 	diagnostics.EmbeddingModelRevision = nullStringPointer(modelRevision)
-	if err := s.DB.QueryRowContext(ctx, `
+	indexes, err := s.readIndexVersions(ctx, documentID, activeIndexID.String, 20)
+	if err != nil {
+		return Diagnostics{}, err
+	}
+	diagnostics.Indexes = indexes
+	for index := range indexes {
+		if indexes[index].Active {
+			active := indexes[index]
+			diagnostics.ActiveIndex = &active
+			break
+		}
+	}
+	if diagnostics.ActiveIndex != nil {
+		diagnostics.ChunkCount = diagnostics.ActiveIndex.ChunkCount
+	} else if err := s.DB.QueryRowContext(ctx, `
 		SELECT count(*) FROM platform.knowledge_chunks
 		 WHERE document_id = $1::uuid AND document_revision = $2`,
 		documentID, document.Revision,
@@ -759,17 +817,22 @@ func nullStringPointer(value sql.NullString) *string {
 // ---------------------------------------------------------------------------
 
 // IngestBinding is what the document_ingest handler is allowed to learn: the
-// document it owns, the exact source artifact revision/hash it must parse, and
-// the parser revision that matches the declared media type. It contains no
-// object key, no DSN and no other principal's data.
+// document it owns, the exact source artifact revision/hash it must parse, the
+// parser revision that matches the declared media type, and the one index version
+// this job may stage chunks for. It contains no object key, no DSN and no other
+// principal's data.
 type IngestBinding struct {
-	DocumentID       string `json:"document_id"`
-	KnowledgeBaseID  string `json:"knowledge_base_id"`
-	DocumentRevision int64  `json:"document_revision"`
-	SourceArtifactID string `json:"source_artifact_id"`
-	SourceSHA256     string `json:"source_sha256"`
-	SourceMediaType  string `json:"source_media_type"`
-	ParserVersion    string `json:"parser_version"`
+	DocumentID             string `json:"document_id"`
+	KnowledgeBaseID        string `json:"knowledge_base_id"`
+	DocumentRevision       int64  `json:"document_revision"`
+	IndexVersionID         string `json:"index_version_id"`
+	IndexVersion           int64  `json:"index_version"`
+	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	EmbeddingDimension     int    `json:"embedding_dimension"`
+	SourceArtifactID       string `json:"source_artifact_id"`
+	SourceSHA256           string `json:"source_sha256"`
+	SourceMediaType        string `json:"source_media_type"`
+	ParserVersion          string `json:"parser_version"`
 }
 
 // DocumentIngestBinding validates one document_ingest job against the real
@@ -781,7 +844,8 @@ func (s *Service) DocumentIngestBinding(ctx context.Context, job *background.Job
 	if job == nil || job.Kind != background.KindDocumentIngest {
 		return IngestBinding{}, ErrNotFound
 	}
-	if !uuid.Valid(job.TargetID) || job.InputArtifactID == nil || !uuid.Valid(*job.InputArtifactID) {
+	if !uuid.Valid(job.TargetID) || job.InputArtifactID == nil || !uuid.Valid(*job.InputArtifactID) ||
+		job.ExpectedIndexVersionID == nil || !uuid.Valid(*job.ExpectedIndexVersionID) {
 		return IngestBinding{}, ErrNotFound
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -848,6 +912,37 @@ func (s *Service) DocumentIngestBinding(ctx context.Context, job *background.Job
 	if !ok {
 		return IngestBinding{}, ErrUnsupportedInput
 	}
+	// The job is bound to one building index version. Re-read it under the
+	// document lock: a version that already failed, belongs to another document
+	// or was built from another source revision must never be fed by this job.
+	var (
+		indexDocument  string
+		indexRevision  int64
+		indexModel     string
+		indexDimension int
+		indexState     string
+	)
+	err = tx.QueryRowContext(ctx, `
+		SELECT document_id::text, document_revision, embedding_model_revision,
+		       embedding_dimension, state, version
+		  FROM platform.knowledge_index_versions
+		 WHERE id = $1::uuid
+		 FOR SHARE`, *job.ExpectedIndexVersionID,
+	).Scan(&indexDocument, &indexRevision, &indexModel, &indexDimension, &indexState,
+		&binding.IndexVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IngestBinding{}, ErrStaleRevision
+	}
+	if err != nil {
+		return IngestBinding{}, fmt.Errorf("reading the index version: %w", err)
+	}
+	if indexDocument != binding.DocumentID || indexRevision != binding.DocumentRevision ||
+		indexState != IndexStateBuilding {
+		return IngestBinding{}, ErrStaleRevision
+	}
+	binding.IndexVersionID = *job.ExpectedIndexVersionID
+	binding.EmbeddingModelRevision = indexModel
+	binding.EmbeddingDimension = indexDimension
 	if state == StateScanning {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE platform.knowledge_documents
@@ -869,16 +964,23 @@ func (s *Service) DocumentIngestBinding(ctx context.Context, job *background.Job
 	return binding, nil
 }
 
-// StageChunks replaces the chunk rows of one (document, revision) with the
-// handler's staged set. It is one transaction: a retried attempt either replaces
-// the whole revision or changes nothing. It never touches the document state;
-// the completion guard activates the revision only after re-reading these rows.
+// StageChunks replaces the chunk rows of one index version with the handler's
+// staged set. It is one transaction: a retried attempt either replaces the whole
+// version's set or changes nothing. The chunks of a superseded/failed index
+// version are never touched by another build, so two builds of the same source
+// revision cannot overwrite each other's vectors. It never touches the document
+// state; the completion guard activates the version only after re-reading these
+// rows.
 func StageChunks(ctx context.Context, db *sql.DB, rows []ChunkRow) error {
 	if len(rows) == 0 {
 		return &ValidationError{Field: "chunks", Message: "at least one chunk is required"}
 	}
 	documentID := rows[0].DocumentID
 	revision := rows[0].Revision
+	indexVersionID := rows[0].IndexVersionID
+	if !uuid.Valid(indexVersionID) {
+		return &ValidationError{Field: "chunks", Message: "an index version is required"}
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting the chunk transaction: %w", err)
@@ -886,14 +988,18 @@ func StageChunks(ctx context.Context, db *sql.DB, rows []ChunkRow) error {
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM platform.knowledge_chunks
-		 WHERE document_id = $1::uuid AND document_revision = $2`,
-		documentID, revision,
+		 WHERE index_version_id = $1::uuid`,
+		indexVersionID,
 	); err != nil {
 		return fmt.Errorf("replacing staged chunks: %w", err)
 	}
 	for _, row := range rows {
-		if row.DocumentID != documentID || row.Revision != revision {
-			return &ValidationError{Field: "chunks", Message: "all chunks must share document and revision"}
+		if row.DocumentID != documentID || row.Revision != revision ||
+			row.IndexVersionID != indexVersionID {
+			return &ValidationError{
+				Field:   "chunks",
+				Message: "all chunks must share document, revision and index version",
+			}
 		}
 		citation, err := json.Marshal(row.Citation)
 		if err != nil {
@@ -907,11 +1013,13 @@ func StageChunks(ctx context.Context, db *sql.DB, rows []ChunkRow) error {
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO platform.knowledge_chunks
-				(id, document_id, document_revision, chunk_no, body_artifact_id, citation,
-				 embedding_model_revision, embedding, embedding_dimension)
-			VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::jsonb, $7, $8::double precision[], $9)`,
-			row.ID, row.DocumentID, row.Revision, row.No, row.BodyArtifactID,
-			string(citation), row.ModelRevision, vector, dimension,
+				(id, document_id, document_revision, index_version_id, chunk_no,
+				 body_artifact_id, citation, embedding_model_revision, embedding,
+				 embedding_dimension)
+			VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6::uuid, $7::jsonb, $8,
+			        $9::double precision[], $10)`,
+			row.ID, row.DocumentID, row.Revision, row.IndexVersionID, row.No,
+			row.BodyArtifactID, string(citation), row.ModelRevision, vector, dimension,
 		); err != nil {
 			return fmt.Errorf("staging a chunk: %w", err)
 		}
@@ -964,15 +1072,20 @@ type QueryResult struct {
 	EmbeddingModelRevision string
 	TopK                   int
 	ACLEpoch               int64
-	Cache                  RetrievalCacheInfo
+	// Index is the additive T061 metadata: the embedding revision of the active
+	// indexes this answer could read, and how many active indexes were excluded
+	// because they were built with another model revision.
+	Index RetrievalIndexInfo
+	Cache RetrievalCacheInfo
 }
 
 // Query ranks the SQL-filtered candidate set for one owner's knowledge base.
 //
 // The SQL statement applies, in this order and before any ranking:
-// owner ACL, knowledge-base tombstone, document tombstone, state=ready,
-// active_revision = revision, chunk.document_revision = revision, body artifact
-// ready/not-deleted, and the embedding model revision. Only the rows that
+// owner ACL, knowledge-base/document tombstones, the document's active index
+// version (ready), chunk.index_version_id = active index, chunk.document_revision
+// = index document_revision, body artifact ready/not-deleted/same owner, and the
+// embedding model revision on both the index and the chunk. Only the rows that
 // survive are scored. An empty result is a normal empty list.
 //
 // With the T067 cache enabled a repeated query may be answered from one stored
@@ -1033,6 +1146,11 @@ func (s *Service) Query(
 			TTLSeconds: int64(s.Cache.ttl().Seconds()),
 		},
 	}
+	indexInfo, err := s.retrievalIndexInfo(ctx, ownerID, base.ID, modelRevision)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	result.Index = indexInfo
 	if s.Cache.Enabled {
 		key, keyErr := s.cacheKeyFor(
 			ctx, ownerID, base, modelRevision, canonicalCacheQuery(normalized), topK,
@@ -1098,14 +1216,18 @@ func (s *Service) rankRetrieval(
 		       kc.body_artifact_id::text, coalesce(a.sha256, '')
 		  FROM platform.knowledge_chunks AS kc
 		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
+		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
 		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
 		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
 		 WHERE kb.id = $1::uuid AND kb.owner_id = $2::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL AND kd.state = 'ready'
-		   AND kd.active_revision = kd.revision
-		   AND kc.document_revision = kd.revision
+		   AND kd.deleted_at IS NULL
+		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
+		   AND iv.document_id = kd.id
+		   AND iv.embedding_model_revision = $3
+		   AND kc.document_revision = iv.document_revision
 		   AND kc.embedding IS NOT NULL
 		   AND kc.embedding_model_revision = $3
+		   AND kc.embedding_dimension = iv.embedding_dimension
 		   AND a.owner_id = kb.owner_id
 		   AND a.deleted_at IS NULL AND a.state = 'ready'
 		 ORDER BY kc.document_id, kc.chunk_no
@@ -1211,12 +1333,14 @@ func (s *Service) GetChunk(ctx context.Context, ownerID, chunkID string) (ChunkV
 		       kc.citation, a.object_key
 		  FROM platform.knowledge_chunks AS kc
 		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
+		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
 		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
 		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
 		 WHERE kc.id = $1::uuid AND kb.owner_id = $2::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL AND kd.state = 'ready'
-		   AND kd.active_revision = kd.revision
-		   AND kc.document_revision = kd.revision
+		   AND kd.deleted_at IS NULL
+		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
+		   AND iv.document_id = kd.id
+		   AND kc.document_revision = iv.document_revision
 		   AND a.owner_id = kb.owner_id
 		   AND a.deleted_at IS NULL AND a.state = 'ready'`,
 		chunkID, ownerID,

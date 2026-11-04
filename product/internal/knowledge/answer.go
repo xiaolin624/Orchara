@@ -306,6 +306,7 @@ type AnswerRetrieval struct {
 	TopK                   int
 	ACLEpoch               int64
 	ChunkIDs               []string
+	Index                  RetrievalIndexInfo
 	Cache                  RetrievalCacheInfo
 }
 
@@ -393,6 +394,7 @@ func (s *Service) Answer(
 			TopK:                   retrieval.TopK,
 			ACLEpoch:               retrieval.ACLEpoch,
 			ChunkIDs:               chunkIDsOf(retrieval.Items),
+			Index:                  retrieval.Index,
 			Cache:                  retrieval.Cache,
 		},
 	}

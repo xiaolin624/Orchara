@@ -165,13 +165,17 @@ func (s *jobScope) DocumentIngest(
 		return background.DocumentIngestBinding{}, err
 	}
 	return background.DocumentIngestBinding{
-		DocumentID:       binding.DocumentID,
-		KnowledgeBaseID:  binding.KnowledgeBaseID,
-		DocumentRevision: binding.DocumentRevision,
-		SourceArtifactID: binding.SourceArtifactID,
-		SourceSHA256:     binding.SourceSHA256,
-		SourceMediaType:  binding.SourceMediaType,
-		ParserVersion:    binding.ParserVersion,
+		DocumentID:             binding.DocumentID,
+		KnowledgeBaseID:        binding.KnowledgeBaseID,
+		DocumentRevision:       binding.DocumentRevision,
+		IndexVersionID:         binding.IndexVersionID,
+		IndexVersion:           binding.IndexVersion,
+		EmbeddingModelRevision: binding.EmbeddingModelRevision,
+		EmbeddingDimension:     binding.EmbeddingDimension,
+		SourceArtifactID:       binding.SourceArtifactID,
+		SourceSHA256:           binding.SourceSHA256,
+		SourceMediaType:        binding.SourceMediaType,
+		ParserVersion:          binding.ParserVersion,
 	}, nil
 }
 
@@ -369,15 +373,19 @@ type evaluationBindingPayload struct {
 }
 
 // documentIngestBindingPayload is the non-contract internal document-ingest
-// binding (T055).
+// binding (T055/T061).
 type documentIngestBindingPayload struct {
-	DocumentID       string `json:"document_id"`
-	KnowledgeBaseID  string `json:"knowledge_base_id"`
-	DocumentRevision int64  `json:"document_revision"`
-	SourceArtifactID string `json:"source_artifact_id"`
-	SourceSHA256     string `json:"source_sha256"`
-	SourceMediaType  string `json:"source_media_type"`
-	ParserVersion    string `json:"parser_version"`
+	DocumentID             string `json:"document_id"`
+	KnowledgeBaseID        string `json:"knowledge_base_id"`
+	DocumentRevision       int64  `json:"document_revision"`
+	IndexVersionID         string `json:"index_version_id"`
+	IndexVersion           int64  `json:"index_version"`
+	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	EmbeddingDimension     int    `json:"embedding_dimension"`
+	SourceArtifactID       string `json:"source_artifact_id"`
+	SourceSHA256           string `json:"source_sha256"`
+	SourceMediaType        string `json:"source_media_type"`
+	ParserVersion          string `json:"parser_version"`
 }
 
 // toolBuildBindingPayload is the non-contract internal tool-build binding (T037).

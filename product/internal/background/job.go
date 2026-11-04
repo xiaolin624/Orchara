@@ -237,6 +237,12 @@ const (
 	CodeIngestCitationInvalid          = "ingest_citation_invalid"
 	CodeIngestCancelled                = "ingest_cancelled"
 	CodeEmbeddingProviderNotConfigured = "embedding_provider_not_configured"
+	// T061: activation refusals. A job whose source revision moved, whose index
+	// version is no longer the building one, or whose deployment embedding model
+	// changed between enqueue and execution must never activate anything. These
+	// are business failures: the newer revision owns the document.
+	CodeStaleRevision         = "stale_revision"
+	CodeEmbeddingModelChanged = "embedding_model_changed"
 
 	// tool_build failure codes (T037). The handler reports the safe code; the
 	// completion guard stores the same closed vocabulary on tool_versions.
@@ -356,28 +362,33 @@ func ClassifyFailure(kind Kind, code string) FailureClass {
 // Job is one row of platform.background_jobs. It is the controller's internal
 // model; the HTTP layer projects the contract's smaller BackgroundJob shape.
 type Job struct {
-	ID                string
-	Kind              Kind
-	TargetID          string
-	OwnerID           string
-	ExpectedRevision  *int64
-	ExpectedSHA256    *string
-	DedupKey          string
-	InputArtifactID   *string
-	ResultArtifactID  *string
-	State             State
-	AvailableAt       time.Time
-	LeaseToken        *string
-	LeaseDeadline     *time.Time
-	WorkerID          *string
-	AttemptCount      int
-	ResultEventID     *string
-	ResultEventDigest *string
-	ErrorCode         *string
-	CreatedAt         time.Time
-	FinishedAt        *time.Time
-	FailureClass      *string
-	LastErrorAt       *time.Time
+	ID               string
+	Kind             Kind
+	TargetID         string
+	OwnerID          string
+	ExpectedRevision *int64
+	// ExpectedIndexVersionID binds a document_ingest job to one
+	// platform.knowledge_index_versions row (T061). The completion guard uses it
+	// to verify the staged chunk set and the activation decision for the same
+	// build; a job without it never activates an index.
+	ExpectedIndexVersionID *string
+	ExpectedSHA256         *string
+	DedupKey               string
+	InputArtifactID        *string
+	ResultArtifactID       *string
+	State                  State
+	AvailableAt            time.Time
+	LeaseToken             *string
+	LeaseDeadline          *time.Time
+	WorkerID               *string
+	AttemptCount           int
+	ResultEventID          *string
+	ResultEventDigest      *string
+	ErrorCode              *string
+	CreatedAt              time.Time
+	FinishedAt             *time.Time
+	FailureClass           *string
+	LastErrorAt            *time.Time
 }
 
 // ErrNotFound is "the row does not exist" and is deliberately the same error
@@ -422,6 +433,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		kind        string
 		state       string
 		expected    sql.NullInt64
+		expectedIdx sql.NullString
 		expSHA      sql.NullString
 		input       sql.NullString
 		result      sql.NullString
@@ -436,7 +448,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		lastError   sql.NullTime
 	)
 	if err := row.Scan(
-		&job.ID, &kind, &job.TargetID, &job.OwnerID, &expected, &expSHA, &job.DedupKey,
+		&job.ID, &kind, &job.TargetID, &job.OwnerID, &expected, &expectedIdx, &expSHA, &job.DedupKey,
 		&input, &result, &state, &job.AvailableAt, &token, &deadline, &worker,
 		&job.AttemptCount, &event, &eventDigest, &errorCode, &job.CreatedAt, &finished, &failure, &lastError,
 	); err != nil {
@@ -448,6 +460,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		value := expected.Int64
 		job.ExpectedRevision = &value
 	}
+	job.ExpectedIndexVersionID = nullString(expectedIdx)
 	job.ExpectedSHA256 = nullString(expSHA)
 	job.InputArtifactID = nullString(input)
 	job.ResultArtifactID = nullString(result)
@@ -482,7 +495,8 @@ func nullString(value sql.NullString) *string {
 
 // selectJobColumns is the single projection scanJob expects.
 const selectJobColumns = `
-	id::text, kind, target_id::text, owner_id::text, expected_revision, expected_sha256,
+	id::text, kind, target_id::text, owner_id::text, expected_revision,
+	expected_index_version_id::text, expected_sha256,
 	dedup_key, input_artifact_id::text, result_artifact_id::text, state, available_at,
 	lease_token::text, lease_deadline, worker_id, attempt_count, result_event_id::text,
 	result_event_digest, error_code, created_at, finished_at, failure_class, last_error_at`
