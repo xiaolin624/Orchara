@@ -352,6 +352,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// the report read never returns the report body or an artifact path.
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+	// F13A/T056: the per-case view of one sealed report (the documented
+	// non-contract extension: artifact ids only, owner-or-admin, 404 otherwise).
+	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}/cases", s.handleGetEvaluationCases)
 
 	// F13A/T062: the administrator-only, non-contract attribution read. It
 	// exposes the account, cancellation outcome and the snapshot/manifest/
@@ -451,6 +454,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F13A/T056: the creator evaluation page. The application id comes from the
+	// path; the page never invents one. Its helpers are served as a separate
+	// asset so the Node page test executes the same bytes a browser receives.
+	mux.HandleFunc("GET /apps/{application_id}/evaluate", s.staticPage("evaluate.html"))
+	mux.HandleFunc("GET /assets/evaluate.js", s.staticPage(filepath.Join("assets", "evaluate.js")))
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))

@@ -1,0 +1,199 @@
+{
+  "cases": [
+    {
+      "schema_version": "1.0",
+      "case_id": "bad_missing_column",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "bad_missing_column",
+        "task_input": {
+          "sha256": "ff565c8c67eea0960b302aa5644049f204126524d11acdd04865cad515c45c55",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "missing_column"
+        }
+      },
+      "fixture_id": "sales-bad-input-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "case_id": "bad_duplicate",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "bad_duplicate",
+        "task_input": {
+          "sha256": "4bae3d66f391315006fb140a3dd12767c2a0c342c9696bf235168c63e7adad5c",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "duplicate_order_id"
+        }
+      },
+      "fixture_id": "sales-bad-input-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "case_id": "bad_negative",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "bad_negative",
+        "task_input": {
+          "sha256": "f2766c4cbbc7218586e9c851f4dd3f61744c56b8459f759fa67e8b0cc69a15e9",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "negative_amount"
+        }
+      },
+      "fixture_id": "sales-bad-input-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "case_id": "bad_formula",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "bad_formula",
+        "task_input": {
+          "sha256": "09634a0ccaad032b6aaf4c58e1490c810372d21931092f503d31a851b622537a",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "formula_not_supported"
+        }
+      },
+      "fixture_id": "sales-bad-input-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "case_id": "sales-over-limit",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "sales-over-limit",
+        "task_input": {
+          "sha256": "b6ce0a560d325bc70c7c7f6890da714c874162ecc827caed44dc7eb4d747d334",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "row_limit_exceeded"
+        }
+      },
+      "fixture_id": "sales-bad-input-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    }
+  ]
+}
