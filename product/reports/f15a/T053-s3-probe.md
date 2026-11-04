@@ -258,6 +258,7 @@ assertions: 0 passed, 9 failed, 0 blocked, 1 not_run
 | 两处修复后（最终） | 1 | `36 passed in 123.68s`，exit 0 |
 | | 2 | `36 passed in 125.45s`，exit 0 |
 | | 3 | `36 passed in 130.01s`，exit 0 |
+| 合并 integration 后复跑（head `4bc875e`） | 1 | `36 passed in 124.84s`，exit 0；`tests/tooling` 21 passed；`go test ./...` 30 ok/0 FAIL/11 no-test |
 
 两次修复后连续 3 次全绿，是本次验收证据。**人为加载不作为验收证据**：一次无界 CPU
 burn-in 在发现后立即终止并未采用（它只会污染共享机器，不能证明探针内在的确定性）；本报告
@@ -269,5 +270,5 @@ burn-in 在发现后立即终止并未采用（它只会污染共享机器，不
 `test_local_fs_analogue.py`（trim 三项 + hex 证据）与 `short_lived_signature_expiry` 的
 `expires_at`/margin 证据；`run_evidence.py` 与 `tests/f15a/helpers.py` 统一使用 `--short-ttl 5`。
 门禁命令与最新 tail：`pytest tests/f15a` 36 passed、`pytest tests/tooling` 21 passed、
-`go build`/`go vet` exit 0、`go test ./...` 29 ok/0 FAIL/11 no-test、`gofmt -l .` 空、
+`go build`/`go vet` exit 0、`go test ./...` 30 ok/0 FAIL/11 no-test、`gofmt -l .` 空、
 `sync_spec --check` no drift。
