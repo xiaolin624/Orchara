@@ -53,10 +53,10 @@ func TestCanonicalCacheQueryTrimsOnlyTheOuterWhitespace(t *testing.T) {
 	// T055 embeds strings.TrimSpace(query), so inner whitespace and line breaks
 	// are significant and must not be collapsed.
 	for raw, want := range map[string]string{
-		"  query  ":            "query",
-		"\n 华南 十月\n":          "华南 十月",
-		"a  b":                "a  b",
-		"第一行\n第二行":            "第一行\n第二行",
+		"  query  ":  "query",
+		"\n 华南 十月\n": "华南 十月",
+		"a  b":       "a  b",
+		"第一行\n第二行":   "第一行\n第二行",
 	} {
 		if got := canonicalCacheQuery(raw); got != want {
 			t.Fatalf("canonicalCacheQuery(%q) = %q, want %q", raw, got, want)
