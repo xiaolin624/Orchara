@@ -146,6 +146,12 @@ func run(logger *log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("answer generator rejected: %w", err)
 	}
+	// F10/T067: the PostgreSQL retrieval cache. The switch is deployment
+	// configuration; an unknown value refuses startup instead of guessing.
+	retrievalCache, err := knowledge.CacheOptionsFromEnv(config.FromEnv())
+	if err != nil {
+		return fmt.Errorf("retrieval cache rejected: %w", err)
+	}
 	apiServer := api.New(api.Deps{
 		Service:           identityService,
 		WebDir:            cfg.WebDir,
@@ -157,6 +163,7 @@ func run(logger *log.Logger) error {
 		Catalog:           modelCatalog,
 		Connectors:        connectorService,
 		Answerer:          answerer,
+		RetrievalCache:    &retrievalCache,
 		PublicURL:         cfg.PublicURL,
 		RetryBackoff:      cfg.RetryBackoff,
 		ExecutionLeaseTTL: cfg.ExecutionLeaseTTL,

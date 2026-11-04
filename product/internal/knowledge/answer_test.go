@@ -213,7 +213,9 @@ func TestAnswererFromEnvDefaultsToTheLabelledExtractiveStub(t *testing.T) {
 func TestAnswererFromEnvParsesTheDocumentedDevStubFaults(t *testing.T) {
 	generator, err := AnswererFromEnv(
 		config.ProfileDevStub,
-		answerFaultLookup(map[string]string{AnswerFaultEnv: "uncited,foreign-chunk,slow=5s"}),
+		answerFaultLookup(map[string]string{
+			AnswerFaultEnv: "uncited,foreign-chunk,wrong-answer,slow=5s",
+		}),
 		nil,
 	)
 	if err != nil {
@@ -223,8 +225,38 @@ func TestAnswererFromEnvParsesTheDocumentedDevStubFaults(t *testing.T) {
 	if !ok {
 		t.Fatalf("generator = %T", generator)
 	}
-	if !stub.Faults.Uncited || !stub.Faults.ForeignChunk || stub.Faults.Slow != 5*time.Second {
+	if !stub.Faults.Uncited || !stub.Faults.ForeignChunk || !stub.Faults.WrongAnswer ||
+		stub.Faults.Slow != 5*time.Second {
 		t.Fatalf("faults = %+v", stub.Faults)
+	}
+}
+
+// TestExtractiveStubWrongAnswerKeepsTheRealCitations is the T067 RAG-failure
+// seam: a wrong answer (text that is not grounded in any retrieved chunk) must
+// stay distinguishable from a citation failure. The stub only changes the text;
+// the real citations survive, so a caller can attribute the failure to
+// generation, not to retrieval or to citation validation.
+func TestExtractiveStubWrongAnswerKeepsTheRealCitations(t *testing.T) {
+	stub := &ExtractiveStub{Faults: AnswerFaults{WrongAnswer: true}}
+	chunks := []ChunkView{
+		sampleChunk("chunk-1", "doc-1", 1, 0, "华北地区十月的销售额是 1234.50 元"),
+		sampleChunk("chunk-2", "doc-1", 1, 1, "退款需在订单完成后 30 天内提交申请"),
+	}
+	draft, err := stub.Generate(context.Background(), "华北销售额是多少", chunks)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(draft.Text, AnswerFaultWrongAnswerSentinel) {
+		t.Fatalf("wrong-answer fault text = %q, want the documented sentinel", draft.Text)
+	}
+	if len(draft.CitedChunkIDs) != 2 ||
+		draft.CitedChunkIDs[0] != "chunk-1" || draft.CitedChunkIDs[1] != "chunk-2" {
+		t.Fatalf("wrong-answer fault must keep the real citations: %v", draft.CitedChunkIDs)
+	}
+	for _, chunk := range chunks {
+		if strings.Contains(chunk.Text, AnswerFaultWrongAnswerSentinel) {
+			t.Fatal("the sentinel must not exist in any retrieved chunk")
+		}
 	}
 }
 

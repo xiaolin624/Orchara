@@ -129,3 +129,11 @@ sessionStorage，不显示 object key。
 - 代价：生成质量只是抽取式拼接（真实模型 blocked）；回答不持久化，页面刷新后不保留历史；
   `ORCHARA_KNOWLEDGE_ANSWER_FAULTS` 是 dev-stub 的显式故障开关（非 stub profile 拒绝）。
 - 未改 `contracts/**`/`docs/spec/**`，`sync_spec --check` no drift；无迁移，0001–0035 未改。
+
+## 后续更新
+
+- 2026-11-04：T067（#68）在 D2 的 dev-stub 故障约定中新增 `wrong-answer`：保留真实引用、
+  只把答案文本替换成任何检索片段中都不存在的固定结论，用于把 RAG 的"错答案"失败类归因到
+  生成阶段（与 `citation_not_found`/`no_results` 区分）。它仍只在 stub profile 生效、只能
+  误标文本，不能绕过 D3 的任何校验。检索缓存设计见 ADR 0015，D3 校验在缓存命中时仍然逐次
+  执行。
