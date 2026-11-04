@@ -679,18 +679,14 @@ func (e *EvaluationRuns) Facts(
 	// F13A/T056: the caller fixture bound to this run, read from the real
 	// run_artifacts link. It is evidence for the per-case result; a case without
 	// a fixture (a minimal start->end chain) simply has no such link.
-	_ = e.DB.QueryRowContext(ctx, `
-		SELECT a.id::text, a.sha256
-		  FROM platform.run_artifacts AS ra
-		  JOIN platform.artifacts AS a ON a.id = ra.artifact_id
-		 WHERE ra.run_id = $1::uuid
-		   AND ra.relation = 'input'
-		   AND a.purpose = 'task_input'
-		   AND a.state = 'ready'
-		   AND a.deleted_at IS NULL
-		 ORDER BY a.created_at, a.id
-		 LIMIT 1`, runID,
-	).Scan(&facts.TaskInputArtifactID, &facts.TaskInputSHA256)
+	// "No fixture" and "the read failed" are different answers: only ErrNoRows
+	// is empty here, so T062's attribution read cannot silently lose it.
+	taskInputID, taskInputSHA, err := e.taskInputOf(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	facts.TaskInputArtifactID = taskInputID
+	facts.TaskInputSHA256 = taskInputSHA
 
 	// The real side-effect ledger: one row per attempted controlled call.
 	effects, collected, err := e.effectCounts(ctx, runID)
@@ -700,14 +696,14 @@ func (e *EvaluationRuns) Facts(
 	facts.Effects = effects
 	facts.EffectsCollected = collected
 
-	// Worker provenance of the latest attempt, if any.
-	_ = e.DB.QueryRowContext(ctx, `
-		SELECT worker_id, execution_unit_id
-		  FROM platform.run_attempts
-		 WHERE run_id = $1::uuid
-		 ORDER BY started_at DESC, token DESC
-		 LIMIT 1`, runID,
-	).Scan(&facts.Provenance.WorkerID, &facts.Provenance.ExecutionUnitID)
+	// Worker provenance of the latest attempt, if any. A run that was never
+	// claimed has no attempt; a failed read is not "no attempt".
+	workerID, executionUnitID, err := e.workerProvenanceOf(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	facts.Provenance.WorkerID = workerID
+	facts.Provenance.ExecutionUnitID = executionUnitID
 
 	// Record the observed state (progress hook for T065) in the same call that
 	// reads it, so progress never becomes a second source of truth.
@@ -786,6 +782,57 @@ func (e *EvaluationRuns) readRunOutput(
 		return nil, "", false
 	}
 	return content, strings.ToLower(sha256.String), true
+}
+
+// taskInputOf reads the caller fixture bound to one run. A run without a
+// task_input link (a minimal start->end chain) is not an error; a failed read
+// is, so the collector never mistakes infrastructure failure for "no fixture"
+// and reports an empty attribution.
+func (e *EvaluationRuns) taskInputOf(
+	ctx context.Context, runID string,
+) (string, string, error) {
+	var artifactID, sha256 string
+	err := e.DB.QueryRowContext(ctx, `
+		SELECT a.id::text, a.sha256
+		  FROM platform.run_artifacts AS ra
+		  JOIN platform.artifacts AS a ON a.id = ra.artifact_id
+		 WHERE ra.run_id = $1::uuid
+		   AND ra.relation = 'input'
+		   AND a.purpose = 'task_input'
+		   AND a.state = 'ready'
+		   AND a.deleted_at IS NULL
+		 ORDER BY a.created_at, a.id
+		 LIMIT 1`, runID,
+	).Scan(&artifactID, &sha256)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("reading the case task input: %w", err)
+	}
+	return artifactID, sha256, nil
+}
+
+// workerProvenanceOf reads the latest attempt's worker identity. A run that was
+// never claimed has no attempt row, which is not an error; a failed read is.
+func (e *EvaluationRuns) workerProvenanceOf(
+	ctx context.Context, runID string,
+) (string, string, error) {
+	var workerID, executionUnitID string
+	err := e.DB.QueryRowContext(ctx, `
+		SELECT worker_id, execution_unit_id
+		  FROM platform.run_attempts
+		 WHERE run_id = $1::uuid
+		 ORDER BY started_at DESC, token DESC
+		 LIMIT 1`, runID,
+	).Scan(&workerID, &executionUnitID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("reading the run attempt provenance: %w", err)
+	}
+	return workerID, executionUnitID, nil
 }
 
 // effectCounts counts the run's real controlled-capability calls per capability.
