@@ -471,4 +471,41 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   不新增 `operations.approval_id`、无 created_at 列，偏差见迁移头注释）；0001–0030、
   `contracts/**`、`docs/spec/**` 未改，`sync_spec --check` 无漂移。
 
+## T051 追加（2026-11-04）：写后丢响应是 unknown，不是失败；核对只结算原 operation，绝不补发
+
+### D18 —— unknown 只查询/人工核对；`reconcileOperation` 用证据结案并经唯一 finalizer 离开核对
+
+- **发送者是 CAS 赢家，未知不是失败。** 写风险 connector 仍先以 `authorized → dispatching`
+  CAS 持久化意图，再发 HTTP；超时、连接丢失、发送后的 5xx、或 2xx 但响应无法验证，一律把
+  operation 置 `unknown`（从不 failed/succeeded），不写回执。重复 invoke/resume 见
+  `dispatching` 返回 `409 operation_in_progress`，见 `unknown` 返回已记录的 unknown 状态，
+  零出站；同逻辑键换参数仍是 `409 operation_conflict`。物理 attempt 行保持 `dispatching`：
+  这是"请求已发出、回答未观察到"的诚实记录，真实写次数因此仍是 1。
+- **unknown 与 Run 的未明外部写同事务落库。** `execution.RecordUnknownOperationTx` 在调用方
+  事务内加 Run 锁、校验 live attempt、写 `run_unknown_operations`（复用 T036 允许码
+  `dispatch_timeout`/`transport_error`/`receipt_missing`）；capability 事务再写 operation
+  `unknown`。attempt 退出时 T031 finalizer 的既有 unknown guard 把 Run 停在
+  `needs_reconciliation`，不以失败/成功掩盖。
+- **核对只接受 owner 或该 operation 的审批人。** `POST /api/v1/operations/{id}/reconcile`
+  （契约 `reconcileOperation`，`Idempotency-Key` 必需）在 Run 锁之后锁 operation；证据
+  artifact 必须 ready、未删除、owner 是 Run owner 或经 `run_artifacts` 链接，且 JSON 绑定
+  `operation_id`（或 `logical_key`+`params_sha256`）。缺证据/绑定不符/已删除/他人证据均为
+  `422 evidence_artifact_invalid`；非 owner/审批人 403；已结算的 operation 或不同结论/证据/
+  key 为 409。
+- **三种结论，只有一种会"成功"。** `confirmed_success` 置 succeeded，优先保留原回执，否则把
+  证据 artifact 作为回执；`confirmed_not_sent`/`confirmed_failure` 置 failed（安全码
+  `operation_not_sent`/派发时的安全码）。F06/T048 的 connector 策略没有供应商幂等键/查询回执
+  能力，因此**不做同 operation 自动重试**：限制事实在派发前持久化
+  （`reconciliation_limitation=no_idempotency_or_query_support`）并由 owner 账本/页面披露。
+  任何路径都不创建第二个 operation id。
+- **离开 `needs_reconciliation` 只有 finalizer 一条路。** 同事务解析该 Run 的唯一 unknown 行
+  后重入 `finalizeRunTx`：有取消意图→cancelled；`confirmed_success` 且 worker 已存成功提案→
+  succeeded（存的是失败提案就仍失败，绝不伪造成功提案）；失败结论用合成 failed 提案落 failed；
+  仍有未知/活跃子 Run 则保持停泊。`needs_reconciliation → queued` 的 requeue 仍归 T038 recover。
+- **幂等以 `(conclusion, evidence, Idempotency-Key)` 元组落库。** 同元组重放返回已记录答案、
+  不重复结算；终态后不同元组 409 `reconciliation_conflict`。
+- 迁移 0032 只给 `platform.operations` 增加可空审计列（`reconciliation_conclusion`、
+  `reconciliation_key`、`reconciliation_limitation`，含 closed CHECK），契约列语义不变；
+  0001–0031、`contracts/**`、`docs/spec/**` 未改，`sync_spec --check` 无漂移。
+
 

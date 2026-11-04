@@ -1723,12 +1723,12 @@ type LedgerOperation struct {
 	// is true only while the operation is `unknown`; the limitation is the
 	// provider-capability fact recorded before dispatch (null when the provider
 	// can be queried / carries an idempotency key).
-	RequiresReconciliation   bool             `json:"requires_reconciliation"`
+	RequiresReconciliation   bool             `json:"requires_reconciliation,omitempty"`
 	ReconciledBy             *string          `json:"reconciled_by,omitempty"`
 	ReconciliationEvidenceID *string          `json:"reconciliation_evidence_id,omitempty"`
 	ReconciliationConclusion *string          `json:"reconciliation_conclusion,omitempty"`
 	ReconciliationLimitation *string          `json:"reconciliation_limitation,omitempty"`
-	ProviderIdempotencyKey   *string          `json:"provider_idempotency_key"`
+	ProviderIdempotencyKey   *string          `json:"provider_idempotency_key,omitempty"`
 	FallbackProfileVersionID *string          `json:"fallback_profile_version_id,omitempty"`
 	FallbackReason           *string          `json:"fallback_reason,omitempty"`
 	TokensIn                 int64            `json:"tokens_in"`
