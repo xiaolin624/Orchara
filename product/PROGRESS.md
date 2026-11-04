@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -975,6 +975,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 
 | T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0009-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
 | T058 | F09 | 用户修订或删除记忆后立即停止旧内容召回 | passed | `reports/f09/T058-memory-revision-and-delete.md`、`docs/adr/0009-f09-memory.md`（§11）、`db/migrations/0036_memory_revision_and_deletion.sql`（最终编号；基线 0034，合并时 T055 占 0034、T052 占 0035 后重编号；契约 `deletion_jobs` 最小切片 + F07 债务）、`internal/memory/{service,memories}.go`（Get/Update/Delete + 428/412 + CAS + 同事务 epoch）、`internal/api/{memory.go,server.go}`（GET/PATCH/DELETE，202 `DeletionAccepted`）、`apps/web/src/{memories.html,assets/memories.js}`（冲突恢复/删除状态，Node 执行）、`tests/f09/`（新增 22：迁移 4 + 记忆 15 + 页面 3；T054 25 保持绿）、`tests/support/t058.py`；真实 PG 16.4 / 编译二进制 / 真实 HTTP+CSRF / 真实 sealed 字节 / Node；`pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿、f01 边界 2 passed、tooling 21 passed、f10 20 passed；not_run：物理清理/delete_content/lease-retry（F07）、`memory_embeddings`（T063）、运行时召回（T063）、检索缓存（T067）、浏览器 DOM、全量 `pytest tests`；合并提交 `7190b2b` + `895a67f` |
+| T063 | F09 | 运行时按上下文预算召回当前应用的已确认记忆 | passed | `reports/f09/T063-runtime-recall.md`、`docs/adr/0009-f09-memory.md`（§12）、`internal/memory/recall.go`（真实 PG 召回源：owner+app、`deleted_at IS NULL`、当前 ready body artifact、候选来源链、逐条 sha256 校验、fail closed）、`internal/memory/service.go`（抽出共享 `readSealedBody`）、`internal/context/context.go`（1/4 记忆预算、新近度排序、最低相关度先截断 `optional_memory`、逐条 memory source/truncation、否定/审批记忆保护、整体压力按条丢弃、线性精确编码）、`internal/presetexec/{presetexec.go,agent.go}`（`Deps.Memory`+`Deps.RunIdentity`，唯一注入点）、`cmd/supervisor/exec.go`+`internal/config/supervisorexec.go`（`ORCHARA_OBJECT_DIR` 可选，run owner+snapshot app scope）、`tests/f09/test_t063_recall.py`（4 用例：包含+隔离+当前修订+来源、over-budget+否定保护、字节缺失 unavailable+恢复、propose 身份 403/201）、`tests/support/t063.py`、`tests/f06/test_t047_context.py`（无记忆 owner 期望 not_run→empty）；真实 PG 16.4 / 编译二进制 / 真实 claim/result/exit / 真实 sealed 字节 / 真实 WSL2+runsc；无新迁移、无新端点；`pytest tests/f09` **51 passed ×2**（671.02s / 700.60s 背靠背；首个整跑 50 passed / 1 `sandbox_failed` 抖动，单独复跑通过）、`pytest tests/f10` 41 passed（577.24s）、`pytest tests/f06/test_t047_context.py` 2 passed（83.04s）、`pytest tests/tooling` 21 passed、`go build/vet/test`/`gofmt -l`/`sync_spec --check` 全绿；not_run：自动抽取/propose producer（F04A）、检索打分/嵌入/缓存（T067）、物理清理（F07）、浏览器 DOM、真实厂商模型（沿用 dev stub）、全量 `pytest tests`；propose 身份核实：supervisor/maintenance 403、worker 201，F04A 执行器已用 worker 容量（无需拆分）；合并提交见 §4 |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -1280,6 +1281,23 @@ ADR 0009 §11。
 | 页面 | 编辑先取强 ETag；412 显示“版本冲突”并用 `details.current_etag` 显式重试；删除显示 job 真实状态 + “旧内容已停止召回” + “物理副本清理由删除治理异步执行”；全部 `textContent`，Node 执行纯函数 |
 | 边界 | 物理清理 / `delete_content` / job 生命周期 = F07；`memory_embeddings`（无 pgvector）= T063；检索缓存 = T067；owner-only 与服务账号 403 不变 |
 | 门禁 | `pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed；`tests/f10` 20 passed；合并提交 `7190b2b` + `895a67f` |
+
+## F09 个人长期记忆：运行时按上下文预算召回（T063，2026-11-04）
+
+T063（GitHub #64）已交付，状态 **`passed`**（范围 = 真实 PostgreSQL 召回源、
+确定性记忆预算取舍、唯一生产接点、真实 run 证明与失败/授权/恢复边界、propose 身份
+核实）。证据：`reports/f09/T063-runtime-recall.md`、ADR 0009 §12。
+
+| 项 | 内容 |
+|---|---|
+| 召回源 | `internal/memory.RecallSource` 每次直接读 PG（不缓存）：`owner_id`+`application_id`+`deleted_at IS NULL`+当前 ready `body_artifact_id`，`LEFT JOIN memory_candidates` 取来源链；逐条 sealed 正文 sha256 校验；一条读不出即整体 fail closed（trace `unavailable`，不注入任何记忆）；候选永不可召回，记忆本身无过期列 |
+| 预算 | 记忆子预算 = `(context_window - max_output_tokens)/4`；`confirmed_at DESC, id DESC` 新近度排序（无 pgvector，检索打分属 T067）；超预算按最低相关度先截断，`reason="optional_memory"` + memory id/revision/tokens_removed；`memory_tokens`/`memory_budget_tokens` 记录实际花费与子预算；逐条 source 带 id/revision/confirmed_at/candidate/source run；编码 O(n) 精确构造并有 pinning 单测 |
+| 保护 | 用户否定/审批记忆按固定词表标记 protected，选择优先且永不截断；整体上下文压力按条丢非受保护记忆；只剩受保护仍放不下走既有 `context_budget_exhausted`（与 protected minimum 同规则）；trace 无正文 |
+| 接点 | `presetexec.Deps.{Memory,RunIdentity}`，唯一注入点仍是 `internal/presetexec/agent.go` 的 `agentcontext.Build`；`cmd/supervisor exec` 读 `runs.owner_id + execution_snapshots.application_id` 作 scope，并可选打开 `ORCHARA_OBJECT_DIR` 读 sealed 正文；未配置时 trace `unavailable`，不伪造 |
+| 数据/契约 | **无新迁移**（0033 `memories_scope` 索引已覆盖；`memory_embeddings` 仍不建）；**无新端点/页面改动**；trace 经既有 `GET /runs/{id}/node-results` + owner-only artifact content 读取 |
+| propose 身份 | 核实：`cmd/supervisor exec` 同时持 supervisor+worker 证书，能力调用与 node-results 已用 worker 容量；真实测试：supervisor/maintenance propose 403 `forbidden`、worker 201 且 application 从 run 推导。结论：传输身份可用，**不需要**拆分进程；自动抽取/propose 行为仍属 F04A（not_run，非 blocked） |
+| 门禁 | `pytest tests/f09` **51 passed ×2**（671.02s / 700.60s 背靠背；首个整跑 50 passed / 1 `sandbox_failed` 抖动，单独复跑通过）、`pytest tests/f10` 41 passed（577.24s）、`pytest tests/f06/test_t047_context.py` 2 passed（83.04s）、`pytest tests/tooling` 21 passed、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿 |
+| 边界/not_run | 自动抽取/propose producer（F04A）；检索打分/嵌入/缓存与 `memory_embeddings`（T067）；物理清理（F07）；浏览器 DOM；真实厂商模型（沿用 dev stub）；全量 `pytest tests`（orchestrator）；合并结果见 §4 |
 
 ## F15A 候选 S3 兼容探针（T053，2026-11-04）
 
