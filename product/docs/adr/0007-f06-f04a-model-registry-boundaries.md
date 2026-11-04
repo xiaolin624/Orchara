@@ -1,0 +1,511 @@
+# ADR 0007：F06 模型目录、兼容验证与完成绑定的边界
+
+- 状态：已接受
+- 日期：2026-11-03
+- 相关：F06 / T039（GitHub #40，规划 ID F06.01/F06.08）；分支
+  `t/t039-model-registry`（worktree `E:\Orchara-wt\t039`）；报告
+  `product/reports/f06/T039-model-registry.md`；前置 T024（`model_validate` handler /
+  `platform_model_calls` 账本）、T026（`evaluation_jobs` / `evaluation_reports` 与报告绑定）、
+  T025（`catalog.modelReadinessProblem` 依赖就绪）；后续 T040/T041（模型选择与共享应用）
+- 备注：简报要求 `docs/adr/0006-f06-f04a-boundaries.md`，但 0006 已被 F05/F03 使用，故本记录为
+  0007；内容仍为简报规定的 D1–D3 + catalog shape。
+
+## 背景
+
+T039 的产品行为是：管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化
+输出兼容用例，查看不可变报告，并且只有 `validation_state=passed` 且未撤销的版本能被共享
+应用引用。T024 已经交付 `model_validate` 后台 handler（下载 fixture → 调模型 → 上传报告 →
+等 finalize → succeeded），T026 已经交付“封存报告 + 严格绑定 + `evaluation_reports`”的
+完成守卫模式，但两者之间没有“谁创建候选/谁把报告变成模型状态”的产品入口。
+
+本票需要同时解决三个边界问题，且不得破坏 T024 已交付的直接入队路径：
+
+1. **引用边界**：`modelproxy.Candidate` 历史上只接受 `env:`/`file:` 部署引用；F06 的产品
+   入口要求管理员只能选择 **预登记** 的 endpoint/credential 引用，而不是自由文本 URL 或密钥。
+2. **完成边界**：兼容报告是 worker 上传的字节，服务端必须把它绑定到候选、fixture、
+   `platform_model_calls` 账本行和评测行；同时 T024 的“无评测行”直接 job 必须保持
+   report-only 语义。
+3. **契约边界**：`registerModel`/`listModels`/`getModel`/`validateModel` 以及两个 admin
+   catalog 读在 `contracts/openapi.json` 中已有精确 schema（`additionalProperties:false`），
+   实现不得添加私有字段，也不得改 contracts。
+
+## 决策
+
+### D1 — 注册只接受 deployer catalog 引用；manifest 由服务端构建
+
+- 新增 `internal/modelregistry` 包；catalog 来自两个环境变量（见下），严格 JSON
+  （未知字段/尾随数据拒绝），**fail closed**：只设一个变量即拒绝；两个都不设是文档化
+  dev-stub 默认。
+- catalog 的 id 必须是 slug（`^[a-z0-9][a-z0-9._-]{0,63}$`），从形状上排除 URL/路径/密钥；
+  endpoint 的 `credential_ref` 必须已登记；同 id 重复拒绝。
+- 注册校验 `ModelInput` 全字段 + `ModelConfig`（kind/protocol 枚举、正值、embedding 条件
+  必填、temperature 0–2、fallback UUID 唯一、price 十进制正则而非二进制浮点）。
+  `data_destination` 必须等于 endpoint 登记目的地；`secret_ref` 必须是该 endpoint 的
+  credential；provider `stub` 只允许 `local-stub`/`capacity-stub`。
+- manifest = 服务端构建对象的 RFC 8785 JCS 字节（format_version/name/provider/model_id/
+  endpoint_ref/secret_ref/config/data_destination；**无时间戳/run 内容**），sha256 即
+  `manifest_sha256`；封存为 `platform.artifacts(purpose=model_manifest, ready)`，与
+  `model_profile_versions(pending)` 同事务；重复 manifest → 409，不写第二行。
+- 公开投影只有契约六字段，永不返回 `secret_ref`；catalog 的 credential 只投影
+  `id`+`description`。可选的 credential `env`（部署环境变量名，非密钥值）用于真实 adapter
+  在 Go 内解析密钥，**不进入任何 API/页面/报告**。
+- `modelproxy.Candidate` 同时接受旧的 `env:`/`file:` 引用与 catalog id（catalog 存在性检查），
+  使 T024/维护路径与 F06 注册路径共存；真实 provider 的凭据读取仍在 Go 内。
+
+### D2 — 完成守卫：有评测行才绑定；无评测行的 T024 job 保持 report-only
+
+- 成功：`verifyJobResultArtifact` 后，**若本 job 有 `evaluation_jobs` 行**，严格解码封存报告
+  （≤1 MiB、未知字段拒绝），校验：
+  candidate id == `job.TargetID`；fixture id == `job.InputArtifactID`；report fixture sha ==
+  fixture artifact sha256；`platform_model_calls.id=call_id` 属于本 job + 本候选 + succeeded；
+  `evaluation_jobs.dataset_artifact_id == job.InputArtifactID`；
+  `compatible == check.passed`；报告状态由 `compatible` 决定。
+  同事务插 `evaluation_reports`（manifest=候选 manifest、dataset=fixture sha、
+  status passed/failed）、evaluation succeeded+report_id、model passed/failed+
+  evaluation_report_id。失败判定 = 成功 job + failed 报告。
+- 终态 failed/cancelled（不可重试）：仅对本 job 有评测行的情况把 evaluation 置
+  failed/cancelled、model 置 failed、不写报告；重试（`retryAllowed`）不改模型/评测。
+- 直接入队的 T024 job（无评测行）：成功仍只要求报告 artifact 就绪且属于本 job；失败/取消
+  也不改任何模型/评测状态。三个分支共用 `modelValidationEvaluationBound` 判定，避免
+  “成功跳过绑定、失败却改状态”的不一致。
+
+### D3 — HTTP 只返回契约投影；幂等与 catalog 读的语义固定
+
+- `POST /api/v1/models`：admin（API key 永不是 admin）、CSRF、201 `Accepted{id,state}`。
+- `GET /api/v1/models`：auth + API key `application:read`；`{items,next_cursor}`；
+  limit 1–100、opaque keyset cursor。`application_id` 是契约声明的参数但语义未定；本票实现为
+  “passed 且未撤销”的可选集合（见报告 §4.7），T040/T041 可依赖该语义。
+- `GET /api/v1/models/{model_version_id}`：auth + `application:read`；admin 全量，其他身份
+  仅 passed 且未撤销；不可见 == 不存在 == 404。
+- `POST /api/v1/models/{model_version_id}/validate`：admin；`Idempotency-Key` 必需且规则与
+  debug 路径一致（缺失/重复/空 → 400 `idempotency_key_required`；同 key 同请求回放记录 202；
+  异请求 → 409 `idempotency_conflict`）。行锁决定 revoked(409)/running(返回既有)/passed(409
+  `already_validated`)/pending|failed(继续)。fixture 是服务端确定性 JCS 字节，封存为
+  `purpose=model_fixture`（T024 的 synthetic-fixture 规则）；provider `stub` 且 model_id 以
+  `-incompatible` 结尾时使用 `structured_output_invalid` 用例（文档化 stub 模拟）。同事务：
+  `EnqueueTx(model_validate, target=model, input=fixture, dedup=evaluationID)` +
+  `evaluation_jobs(kind=model, dataset_artifact_id=fixture)` + model running + 幂等收据；
+  202 返回契约 `EvaluationJob` 六字段。
+- `GET /api/v1/admin/model-endpoints` → 精确 `{items:[{id,data_destination}]}`；
+  `GET /api/v1/admin/credential-refs` → 精确 `{items:[{id,description}]}`。两者 admin-only，
+  不返回 `credential_ref`/`env`/密钥值（契约 `additionalProperties:false`）。
+- `/models` 页面只通过上述 HTTP 读数据；所有内容用 `textContent`，不存 localStorage，
+  不接收/显示任何密钥文本。
+
+## Catalog shape（固定）
+
+```json
+ORCHARA_MODEL_ENDPOINTS='[{"id":"stub-endpoint","data_destination":"local-stub","credential_ref":"stub-credential"}]'
+ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no real secret)"}]'
+```
+
+- endpoint 项：`id`（slug）、`data_destination`（非空，≤100）、`credential_ref`（必须已登记）、
+  可选 `description`。
+- credential 项：`id`（slug）、`description`（1–200）、可选 `env`（`^[A-Za-z_][A-Za-z0-9_]{0,127}$`，
+  只是部署环境变量名）。
+- 默认（两个变量都不设）：`stub-endpoint` → `local-stub` + `stub-credential`
+  （description `dev stub (no real secret)`）。
+- 只设一个变量、未知字段、尾随数据、重复 id、endpoint 指向未登记 credential → 启动/构造失败
+  （fail closed），绝不静默退化为“接受任意引用”。
+
+## 后果
+
+- 正面：注册不可变、可复算 manifest；报告不能脱离候选/fixture/账本被接受；共享应用只可能
+  选中 passed 未撤销版本；T024 既有路径与测试不回归；真实 adapter 的凭据解析仍在 Go 内。
+- 代价：`validateModel` job 必须由产品入口创建（同事务写 evaluation 行）才会对账模型状态；
+  手工 `admin background-jobs enqueue` 的 `model_validate` 仍是 report-only。真实厂商 adapter
+  未实现前，真实 provider 失败为 `provider_not_configured`（诚实失败，不伪造成功）。
+- 不修改 `contracts/**`/`docs/spec/**`/迁移 0001–0024；`sync_spec --check` 保持 no drift。
+
+## T040 追加（2026-11-03）：F04A 线性四节点运行时与画布边界
+
+- 相关：F04A / T040（GitHub #41，规划 ID F04A.01/F04A.02）；分支 `t/t040-canvas`
+  （worktree `E:\Orchara-wt\t040`）；报告 `product/reports/f04a/T040-canvas-and-linear-compile.md`；
+  前置 T025（manifest/`ExecutableError`）、T037（工具就绪+审核）、T039（passed 模型）。
+- 备注：简报仍写“append ADR 0006”，但 0006 已被 F05/F03 使用；T039 已在 0007 记录该编号
+  冲突，本票继续追加到 0007，不再新开编号。
+
+### D4 —— F04A 是线性四节点编译器 + LangGraph stub 证明，不是生产 worker
+
+- 生产 Run 运行时仍由 Go supervisor/线性执行器承担（T042/T043 才交付真实 python/agent
+  节点执行）。本票交付的是：Go 权威校验器（`internal/workflow`）之上的一份 **Python
+  防御性重校验**（`worker/platform_worker/compiler/validate.py`，只覆盖
+  `start → python → agent → end` 子集）、一个只会按声明边顺序执行的 LangGraph
+  `StateGraph`（`graph.py`）以及确定性 stub 适配器（`stub.py`）。
+- 共享语料 `tests/f04a/corpus/linear_f04a.json` 的共享用例同时被 Go
+  `TestF04ACorpusParity` 与 Python 测试断言同一 `(verdict, code, pointer)`；F04A 之外的
+  分支/join/其他节点类型在 Python 侧用稳定码拒绝（`unsupported_node_type`、
+  `linear_order`、`not_linear_chain`、`unsupported_port`、`unsupported_subapp`、
+  `bad_output_mapping`），不伪造“与 Go 全量一致”。
+- `NodeOutcome` 是唯一归一化结果（`succeeded/failed/waiting/needs_reconciliation`），
+  适配器永不返回 provider/framework 对象；失败/等待/需对账会短路后续节点。
+- 不新增执行端点、不做真实模型/工具执行；真正数据/文件/日志/沙箱属 T042/T043。
+
+### D5 —— 画布是真实 Vue Flow 应用，产物是提交的静态 bundle
+
+- `apps/web/canvas` 是独立的 Vue 3 + Vue Flow 应用，`build.mjs` 用 esbuild 打成
+  `apps/web/src/assets/canvas.{js,css}` 并**提交**；运行时/测试都不需要 npm；`node_modules/`
+  被忽略。纯逻辑在 `canvas/src/lib/*.js`，由 Node 测试直接执行（DSL↔图、合法变量来源、
+  错误→节点/字段映射、导出清洗、连线拒绝）。
+- 画布只允许 `start → python → agent → end` 单链：连线在右向/入向已存在、自环、成环、
+  端节点越界时被拒绝并显示原因；非法 DSL 仍可保存（既有 T023 语义），但校验/调试/发布
+  由服务端权威判定。
+- 布局只存在独立 `layout`（`{version:1, positions}`），与 `definition` 分开保存；
+  保存仍走 `PUT /draft` + `If-Match`，412/428 分支与调试入口保持 T023 行为；校验调用
+  `POST /applications/{id}/validate`，`{node_id,code,pointer,message}` 映射到节点和配置字段
+  并可点击跳转，成功时显示 `X-Manifest-SHA256`。
+- 契约/迁移零改动：无新字段、无新执行路径；`/assets/canvas.{js,css}` 只是静态页面资产。
+
+## T041 追加（2026-11-03）：运行域受控能力代理与 worker 适配边界
+
+### D6 —— 一次逻辑 operation，每次物理调用一行 attempt；Go 是唯一重试权威
+
+- `platform.operations` 是逻辑身份（worker 给的 operation id；`UNIQUE(run_id,logical_key)`），
+  `platform.operation_attempts` 是每次真实派发一行；worker 适配器每次 `generate` 只发一次
+  请求，绝不隐藏重试。transient provider 失败最多重试 2 次（每次新 attempt 行）；部署事实
+  （`provider_not_configured`/`adapter_unavailable`）与 schema/权限/校验错误不重试。
+- 授权全部先于 provider：run=running、live attempt、封存 manifest 字节重算 SHA-256、capability
+  version 在 manifest allowlist、kind 双集合歧义拒绝。params 的 RFC 8785 JCS 字节先封存为
+  `capability_params` artifact，其 SHA-256 是回放/冲突/工具 grant 的共同身份。
+- 偏差（已写在迁移 COMMENT）：`operations` 增加 `created_at`/`updated_at`/`last_error_code`；
+  `operation_attempts` 是非契约表（T046 在其上结算）；`attempt_token` 绑定物理 attempt 与
+  run attempt。未创建 approvals/connectors/budget 表。
+
+### D7 —— 工具执行留在 worker；服务端只发 scoped grant 并校验回报
+
+- 工具 operation 在服务端只到 `dispatching`：返回
+  `grant{operation_id,capability_version,capability_kind,risk_class,params_sha256,run_id,
+  attempt_token}`；真实沙箱执行是 T043。
+- 回报走文档化非契约 `POST /internal/v1/runs/{run_id}/capability-results`（worker mTLS）：
+  必须绑定同一 run/attempt 且 operation 处于 dispatching；succeeded 只接受 ready 且 owner 为
+  run owner 的 artifact，或把 worker 上报的小 `data` 服务端封存为 receipt；失败只接受安全
+  小写 code；重复回报幂等。owner 账本只投影状态/尝试数/tool-call id+name/结构化键/stub，不返回
+  params 或回执正文。
+- 真实厂商 adapter 仍未编译：真实 provider 诚实失败，stub 输出处处 `stub=true`；本能力
+  投影/账本不得被读成真实模型结果。
+
+## T042 追加（2026-11-03）：线性 python 节点执行与节点结果边界
+
+### D8 —— 线性计划优先，legacy T033 图逐字节保留
+
+- 执行器先解析封存 `definition` 为 `start → python → end` 单链（恰好 3 节点、2 条边）；
+  分支/汇合/多 python/其他节点类型确定性拒绝，agent 节点以 `agent_node_not_supported`
+  拒绝（T043 替换点）。`agent` 的拒绝分支与 `linearPlan` 是 T043 的唯一扩展缝。
+- 兼容规则：封存 golden 图是 `start/python/agent/end`，T033/T037 的真实行为与既有测试要求
+  它继续成功。因此当 manifest 恰有一个预设 python 节点时走原 legacy 单 python 路径（不执行、
+  不校验 agent 节点，不产生 node 事件/节点结果）；只有没有可运行预设 python 节点的 agent 图
+  才拒绝。T043 落地后删除该兼容分支。
+- `node.status` 的 `attempt_no` 由 supervisor 的可信 DB 读身份按 run 内 attempt 序号派生
+  （契约无该列）；worker 自报的值不被接受。事件只提交 `{node_id,state,attempt_no}`，不含正文。
+
+### D9 —— 节点结果只是 provenance；原始输出绝不直接成为已授权 artifact
+
+- 迁移 0026 `platform.run_node_outputs`：`(run_id,node_id,kind∈{data,file,log},artifact_id,
+  label,created_at)`，PK 四列；不含内容、对象 key、token。artifact 行仍是内容权威，
+  `run_artifact_uploads` 仍是 run/attempt/purpose 预约证明，`run_artifacts` 仍是 run 链接。
+  无 ON DELETE 子句：F07 删除 artifact 时必须同删 provenance 行。
+- 线性 python 节点从不上传原始 `output.json`：data 是 JCS(`output.json.data`)，
+  文件是逐个 admit 的 artifact，日志是截断的 stdout/stderr；三者都必须先走
+  create/complete/register（finalize guard 置 ready）之后才允许写 provenance。上报端点
+  用 live attempt + artifact ready + purpose 匹配 kind 复核（log 不能被报成 data）。
+- 两个端点非契约并记录在 T042 报告：`POST /internal/v1/runs/{run_id}/node-results`
+  （worker/supervisor mTLS + attempt token，1–64 行，幂等）与 owner-only
+  `GET /api/v1/runs/{run_id}/node-results`（返回 artifact 事实，不含内容）。日志仍走
+  既有 `GET /artifacts/{id}/content`，且因 `purpose=log` 不出现在 `listRunArtifacts`。
+- `/runs` 节点结果面板只读上述投影，纯函数由 Node 执行；"无结果"与"失败"是两种显示，
+  不互相顶替；页面不存 localStorage/sessionStorage，不显示 object key。
+
+## T043 追加（2026-11-04）：受控 Agent 节点是能力循环 + 节点 schema 二次校验
+
+### D10 — Agent 节点只经由 T041 capability  seam 行动，最终输出由平台校验
+
+- 四节点线性链 `start → python → agent → end` 的 agent 段是一个有界循环：每轮模型调用、每次
+  工具调用都各是一个 T041 operation（`agent:<node>:model:<turn>` / `agent:<node>:tool:<call_id>`），
+  operation id 由 run id + logical key 派生确定性 UUIDv5，重试重放同一 operation；executor 不直接
+  访问 provider，也不在沙箱外执行工具。
+- agent `tool_versions` 必须是密封 `manifest.tool_artifacts` 的子集；本构建只执行固定预设
+  `sales_stats`，其他声明在模型调用前拒绝。执行前再经 supervisor 只读 `Facts` 复核 passed/
+  ready/callable（与 T041 服务端同一规则），执行后经 `capability-results` 成功/失败回报。
+- 最终输出：模型被请求以节点 `output_schema` 作为 `response_schema` 返回结构化结果；executor
+  仍按同一节点 schema 再校验一次（定位到 JSON Pointer），失败即 `node_output_invalid`，不产生
+  成功 proposal/final artifact。等待/未知/超限/能力错误都映射为平台稳定码
+  （`agent_awaiting_approval`/`agent_unknown`/`agent_turn_limit`/T041 码），绝不透传 provider 对象。
+- Legacy 选择改为显式形状：恰好一个预设 python 节点且 `file` 绑定为 `input#...` → T033 单
+  python 路径；`node:start#/artifact` → T042/T043 线性链。带 agent 的非法图绝不 legacy 回退。
+  这修正了 T042 报告“T043 落地后删除兼容分支”的措辞：兼容分支是 T033 golden 图的必要条件。
+- `/runs` Agent 面板只读既有 node-results 与 T041 账本投影；不用逻辑键扩展 T041 账本投影
+  （会破坏 T041 冻结的 owner 读取形状），而以 executor 文档化的 `tool-log-<call id>` label 与
+  failed-node 状态关联。`node_output_invalid` 的 JSON Pointer 只在 supervisor 报告，不在 owner API。
+
+## T044 追加（2026-11-04）：流式代次是临时投影，不是第二结果源
+
+### D11 — 每帧绑定 operation/generation；final 只从成功代次的完整校验内容构建
+
+- provider seam 增可选
+  `StreamProvider.Stream(ctx, CallRequest, emit func(Chunk) error) (ProviderResponse, error)`；
+  dev stub 从 canonical params 确定性切块（`stub_stream_chunks` 默认 3），
+  `stub_stream_fail_after` 在 N 块后以 `TransientError` 失败。真实厂商 adapter 仍未编译：
+  `StreamingFor` 对 real candidate 返回 `adapter_unavailable`，绝不伪造流。
+- capability seam 增 `(*Service).Stream(ctx, runID, role, Input, emit func(Frame) error)`；复用
+  T041 同一授权/operation/JCS params/idempotency 规则（tool/connector 流在写账本前 422
+  `capability_kind_unsupported`）。每次物理流尝试是一行 `operation_attempts`，其行 id 即帧的
+  `generation_id`；帧 `type` 为 `delta|tool_delta|final|error`，恒带 operation/generation。
+- 半流失败：attempt failed、operation failed；仅 typed transient 且还有尝试时新开 generation
+  从头流。旧代次文本/工具片段绝不拼接；final 的
+  `{text,structured?,tool_calls,usage,model_profile_version_id,stub}` 只取成功代次的 provider
+  完整内容 + 已缓冲完整的 tool-call，并按 T041 校验后封一份 receipt、结算一次 attempt。
+  客户端断开用不可取消的清理上下文把 attempt 记为 failed（`stream_cancelled`），绝不提交成功。
+- 工具调用按 index 缓冲 fragments；只有 id/name 非空且 arguments 片段是完整 JSON 对象的调用
+  进入 final；残缺/畸形调用被丢弃、永不执行。完整调用仍逐项按 T041 校验
+  id/name/arguments/schema。
+- 契约 `POST /internal/v1/runs/{id}/model-stream`（`streamModelCall`，worker mTLS）写 SSE；
+  持久 Run SSE 不变，delta 永不写入 `platform.run_events`。owner 预览
+  `GET /api/v1/runs/{id}/model-preview` 仅进程内 ring buffer（60s TTL、单进程限制），
+  新 generation 清空旧缓冲，final/非重试 error 后关闭；非 owner 与非 getRun 可见性同为 404。
+  预览不是历史，持久快照/事件仍是权威；重试型 error 不关闭预览，下一 generation 替换草稿。
+- 页面 `/debug`、`/runs` 增加临时预览面板（`stream-preview.js`，纯 helper Node 测试；
+  浏览器 DOM 驱动仍未运行），工具片段只显示“待定、未执行”，final/error 后指向持久 Run。
+- worker Python adapter 增 `PlatformChatModel.stream_generate` 与 `stream_agent`：每次 generate
+  一条物理流、无隐藏重试；转发全部帧给预览，新 generation 重置草稿；只有 final 经
+  `_validate_generation` 的 tool calls 才进入 agent loop 执行。Go agent loop 仍使用非流式
+  `invokeCapability`（T043 保持不变），流式路径服务于预览/协议边界。
+
+## T045 追加（2026-11-04）：只有兼容的备用才在可用性故障后接管
+
+### D12 — 备用清单进入冻结闭包；兼容性/预算由 Go 在派发前判定
+
+- 唯一备用来源是主 profile 行的 `ModelConfig.fallback_profile_version_ids`（契约字段），
+  不从 worker params 读取。`catalog.collectDependencyRefs` 仍是文档结构遍历；其扩展在
+  `checkDependencies`：加载主 model 行后读取该配置，把每个备用作为同一 `dependencyModel`
+  加入闭包（pointer 保留主声明的 `/nodes/<i>/config/model_profile_version`，message 标出
+  备用 id 与来源主 profile），再按 `modelReadinessProblem` 要求存在/passed/未 revoke。
+  因此 `execution_manifest.model_profile_versions` 同时冻结主与备用；run 之后改配置不能
+  把未冻结的 profile 塞进本次运行（派发前仍显式检查 manifest 成员）。
+- 兼容性判定在 Go，纯函数：kind 与 protocol 相同且为 `generation`/`chat_compatible`；
+  备用 `context_window` ≥ 本次输入估计（canonical messages 每 4 字节 1 token）+ 请求的
+  `max_output_tokens`；备用 `max_output_tokens` ≥ 请求值；显式声明 `tools: false` 的备用
+  不接带工具调用的请求，显式 `structured_output: false` 不接带 `response_schema` 的请求
+  （契约 ModelConfig 无此二字段，缺省视为允许，只有显式 false 才拒绝）；备用必须 passed、
+  未 revoke、provider 可派发、在该 run manifest 中，且保守预留仍能放进
+  `runs.budget_limit`（扣除本 run 已知 reserved/charged；T046 接管完整账本）。
+  仅“已配置”绝不构成可用。
+- 派发：主 profile 的 transient 故障最多 3 次物理尝试（T041 不变）；第 3 次仍失败且属
+  availability/rate_limited/adapter_unavailable 时，按配置顺序取第一个通过全部门禁的备用，
+  记 1 次物理尝试（attempt_no=4），成功则由该备用作答。权限/授权/语法/schema 校验/
+  工具参数/策略错误始终终止：不重试、不切换。
+- 账本：`platform.operations.fallback_profile_version_id`（FK）+ `fallback_reason`
+  （0027；`availability|rate_limited|adapter_unavailable`，二元组同现同空）。
+  `capability_version` 保持 worker 请求的主版本；receipt 的 `fallback`
+  子对象记录主/实际 profile 与原因。owner 账本投影新增
+  `fallback_profile_version_id`/`fallback_reason`/`tokens_in`/`tokens_out`/`charged_amount`
+  （所有物理尝试求和），页面显示“已切换到 …，原因：…”与合计费用/令牌；用了备用的调用
+  不再看起来像一次无缝的主模型成功。物理尝试与费用仍以 `platform.operation_attempts`
+  为唯一权威。
+- 流式路径同一套门禁：主 3 代次失败后，兼容备用在**新 generation**里作答；主代次文本/
+  工具片段绝不与备用拼接，final/receipt 只来自备用成功代次。
+- dev stub 用 registered `model_id` 前缀制造确定性故障（`stub-unavailable*`、
+  `stub-rate-limited*`、`stub-adapter-down*`、`stub-permission-denied*`、
+  `stub-schema-error*`），因为故障属于服务端解析出的候选而不是 worker params；真实厂商
+  adapter 仍未编译，真实 provider 仍以 `adapter_unavailable` 诚实失败。
+
+## T046 追加（2026-11-04）：十进制账本是预算权威，预留按预算根串行
+
+### D13 —— `usage_ledger` 是唯一权威；预留/释放/结算都是幂等行，绝不使用 float
+
+- 迁移 0028 建契约表 `platform.usage_ledger`（`id/run_id/budget_root_run_id/operation_id/
+  entry_key UNIQUE/kind∈{reserve,release,charge}/amount numeric(20,8)≥0/currency/tokens_in/out/
+  price_version/created_at`）。`budget_root_run_id` 由服务端沿 `runs.parent_run_id` 递归解析；
+  F04A debug run 是自己的根。子 run 的每次物理尝试都记在父预算根上。
+- 账本算术固定为：`outstanding = sum(reserve) - sum(release)`，`charged = sum(charge)`，
+  `consumed = charged + outstanding`。`Reserve` 在**预算根 run 行**上 `SELECT ... FOR UPDATE`，
+  同一事务内检查 `budget_limit - consumed`，放不下即返回 typed `budget_exhausted`（HTTP 429，
+  details 带 `remaining_amount/required_amount/currency`），不写 attempt、不调 provider。
+  并发的最后一个预留因此只可能被一个请求拿到。
+- 金额全程 `math/big.Rat` + 非负十进制字符串：预留按 8 位小数向上取整（保守），实际费用按
+  半进位；`numeric(20,8)` 边界外拒绝而不是静默舍入。价格版本是
+  `price-v1:<profile_id>:in=<每百万输入价>:out=<每百万输出价>:<currency>`；profile 未配置
+  `price` 时是零价 dev stub（预留/费用为 0，纯调用不耗尽预算），配置了异币种价格则 422。
+- 每次物理尝试（重试、fallback、流式 generation）各有一对
+  `entry_key="<operation>#<attempt>:reserve|release|charge"`：失败/取消释放整笔预留；成功
+  释放整笔预留并写入实际 charge（release 抵消 hold，charge 才是花费）；provider 没有 usage
+  对象时保持保守预留、attempt 记 `usage_missing`，由 maintenance-only
+  `POST /internal/v1/runs/{id}/capability-settlements` 后续对账（worker 不能自报费用）。
+  attempt/operation 重放复用既有 operation idempotency，不会二次预留或二次收费。
+- `operation_attempts` 仍是每 attempt 投影：新增 `settlement_state`
+  （`none|reserved|settled|released|usage_missing`）与 `price_version`，`reserved_amount/
+  charged_amount/tokens` 与账本行同事务写入；owner 账本响应增加 `budget` 投影
+  （limit/reserved/charged/remaining/currency/overrun），超支时 `overrun=true` 且页面明确
+  渲染“已超支：运行不能被呈现为成功”。预算拒绝保留此前已确认的 artifact/operation，
+  不删除任何已 sealed 字节。
+- 权限边界与 0007–0027 相同：`platform` 对 `orchara_worker`/PUBLIC 无权限，唯一写者是 API
+  进程；T047/T050 应复用 `internal/budget.Ledger` 的 `Reserve/Settle/Release/Totals`
+  与 `AttemptKey`，不得另起一套金额记录。
+
+## T047 追加（2026-11-04）：授权上下文与受保护事实在 builder 内一次判定
+
+### D14 —— 模型输入预算不是金额账本；截断只发生在授权来源的非 protected 分支
+
+- 新增 `internal/context`（package `agentcontext`）作为 agent 每轮模型输入的唯一组装点。输入
+  是本次 sealed plan 已解析的 start/python/tool 值与 tool history；来源必须命中 run 派生的
+  `Scope{NodeIDs,ArtifactIDs}`，foreign node/artifact 是 typed
+  `context_source_unauthorized`，绝不 best-effort 包含。F09 记忆 seam 只接受同
+  owner+application 的 active+confirmed 行；本批次无存储，生产 source 是
+  `NoMemorySource{}`，trace 记 `memory_state="not_run"`，不注入假记忆。
+- 预算固定为 `context_window - max_output_tokens`；token 估算固定为
+  `ceil(UTF-8 bytes/4)` + 每消息 4 tokens 框架开销，不含 provider tokenizer/时钟/随机数，
+  因此重试重放确定。**它是模型容量预算，不是 T046 的金额账本**：`internal/budget`、
+  `usage_ledger`、`operation_attempts` 金额/结算列完全未改，T050 仍复用 T046 的
+  Reserve/Settle/Release；两套“预算”只在名字上相邻，语义不重叠。
+- 超限截断顺序固定：低相关/旧历史（含仅展示摘要）→ 旧工具结果细节 → 冗长上游文本 →
+  最后手段；protected 键（否定/排除、来源/引用/document id、审批/目标/params、精确
+  金额/统计）整枝逐字保留，任何步骤都不裁剪。system + 仅 protected 输入的最小值放不下时
+  立即 `context_budget_exhausted`，不静默丢 protected 事实，也不产生成功 proposal。
+- 摘要（`HistoryMessage.Summary`）只计数、不进入模型输入、不参与 protected 扫描或任何
+  金额/授权派生；本构建无摘要生成器，真实摘要链路是后续票。trace 只含
+  kind/node/artifact/label、reason、protected 键路径与 token 数，绝不含正文/金额原文。
+- 持久化复用 T042 非契约节点结果：agent 成功时额外登记 `kind=file`、`label=context-trace`、
+  `media_type=application/json` 的 JCS 文档
+  `{version:1,node_id,turns:[Trace]}`；`/runs` 通过既有 owner-only artifact content 路由
+  读取并展示来源/截断/受保护键名。失败路径（含 `context_budget_exhausted`）不写 trace 文件
+  行（报告 §8 偏差 2，未做成假成功）。无新表/新列/新契约端点，迁移 0001–0028 未改。
+
+## T048 追加（2026-11-04）：连接器策略是管理员封存的出站白名单，出站只发生在 Go
+
+### D15 —— manifest 冻结策略身份；worker 只能经能力代理调用；写风险停在审批前
+
+- **策略不是市场对象，也不是脚本可传的 URL。** 管理员登记的那一行是不可变策略：恰好一个
+  `origin`（`scheme://host[:port]`，无 path/query/fragment/userinfo）、一个 method、一个
+  path_prefix、请求/响应 schema、风险类别、`allow_private` 与部署凭据引用/唯一 header 名。
+  策略体按 RFC 8785 JCS 封存为 `platform.artifacts`（`purpose=connector_policy`），
+  `policy_sha256` 是版本身份（UNIQUE）；登记重复体是 409，不是第二个版本。撤销是
+  `revoked_at`，永不删除。`version` 是同一 origin/method/prefix 的登记序号，不进入封存体。
+- **契约基线没有连接器表。** `contracts/database.sql` 只有 `tool_versions.connector_versions`
+  jsonb 列表；新增 `platform.connector_policies` 是记录在案的偏差（迁移 0029 头注释、报告 §8、
+  本 ADR），`docs/spec/**` 与 `contracts/**` 未修改，`sync_spec --check` 无漂移。
+- **冻结的是身份，不是可调用的 URL。** 工具版本声明的 connector id 经 readiness（存在、已批准、
+  未撤销、有 hash）后，把 `{version_id,policy_sha256}` 写入
+  `execution_manifest.connector_policies`（排序/去重规则与其它依赖一致）。运行期
+  `invokeCapability(kind=connector)` 还必须命中 manifest 且 digest 一致；撤销后“下一次调用”
+  以 `connector_policy_revoked` 失败，而不是靠 manifest 过期。同一 UUID 出现在
+  model/tool/connector 任一以上集合是 `capability_kind_ambiguous`，绝不猜类型。
+- **出站守卫在 Go，且不信任第二次 DNS。** URL 只由 origin + prefix 内 path 构成；query 只有
+  管理员在请求 schema 的 `properties.query` 中显式声明才允许。解析出的**每个**地址都分类：
+  loopback/RFC1918 只在 `allow_private=true` 时放行，link-local/metadata/multicast/
+  unspecified 永远拒绝；通过后把全部已验证地址固定进 DialContext（按序尝试，不重新解析，
+  Host/SNI 保持 origin）。重定向一律拒绝（不逐跳重校验），`Proxy=nil`，请求/响应字节与时间
+  上限固定。凭据只在 Go 内按 `env:`/`file:` 解析并写入唯一配置 header，绝不进入 params
+  制品、回执、账本、错误或日志。
+- **一次调用一次物理请求。** 连接器没有隐藏重试：一次 operation 恰好一条 attempt，成功回执
+  只含 status/response_sha256/字节数/header 白名单/JSON body；失败以稳定码记录同一行。
+  写风险策略在派发前停住：operation=`awaiting_approval`、返回 `approval_required`，0 attempt、
+  0 出站；T050 写 approval 行后把同一 operation 恢复为 authorized 再调用 `dispatchConnector`，
+  幂等重放在停住状态只返回停住结果。
+- **工具内容身份扩展。** 工具提交接受已批准未撤销的 connector ids（规范化排序）并纳入
+  `tool_manifest_sha256`；这是本次唯一的既有行为变化（此前 `connector_version_ids` 必须为空），
+  只影响声明连接器的工具。真实厂商连接器语义不在本批编译范围，策略+schema 是部署契约
+  （报告 §8 `not_run`）。
+
+## T049 追加（2026-11-04）：模板是服务端源草稿，实例化是私有调试桥，不是 F02B 发布
+
+### D16 — 模板注册表只保存源草稿；实例化复制为调用者私有应用；发布仍归 F02B
+
+- 新增 `platform.application_templates`（迁移 0030；0028 已被 T046 使用，0030 是下一个空位）：
+  `id text PK`（固定 `sales`）、`name`、`application_id uuid`（唯一）、`definition`/
+  `capability_card` jsonb、时间戳。它指向服务端控制的源应用及其 revision-1 草稿，**不是**
+  `application_versions`/`publication_reviews`/`version_dependencies` 的任何行。
+- `orchara-admin seed-sales-template --owner-login ADMIN --model-version-id UUID` 只接受
+  真实 T039 流程已经 passed 的 stub 模型（pending/failed/revoked/非 stub 一律拒绝，命令从不写
+  `validation_state`）；以真实 `sales_stats.py` 字节的 SHA-256 作为固定预设工具版本的
+  `image_digest` 并幂等确保该行；固定工具 id 已存在且 ready 时复用。重复运行输出相同的
+  `{template_id, application_id, tool_version_id, model_version_id}`，模板行与工具行各一条。
+- 固定定义是四节点 `start → stats(python, preset) → explain(agent) → end`：python 输出
+  `{total,regions,order_count}`；agent 输入只绑定 `node:stats#`，输出 `{report,totals}`；end
+  映射 `{summary, report, totals}`。`summary.json`/`summary.csv` 是 python 节点的文件 artifact，
+  报告是 explain 的 data artifact 与 end 输出，三者互不覆盖。
+- **金额真值仍在 Python。** dev stub 只在 `response_schema` 声明了 `report` 且最后一条 user
+  消息携带已验证 summary 时，按排序后的 region 逐字复制 total/regions/order_count 生成 report
+  与 totals；不重算、不编造。schema 没有 `report` 的 T043 `{text}` 路径不受影响。
+- 非契约 `POST /api/v1/templates/{template_id}/applications`：认证 creator + CSRF；模板是
+  服务端种子，任何 creator 可实例化（未知/畸形 id 同为 404 `template_not_found`），非 creator
+  403 `creator_role_required`；一个事务内创建调用者拥有的应用与 revision-1 草稿，返回
+  `{id, revision, definition_revision}`，不创建 version/review，也不调用发布。
+- 实例化后的路径完全是既有的 validate → debug-run → supervisor/runsc → owner-only
+  node-results/artifact 下载；第三用户对 run/node-results/artifact 全部 404。**F02B 若要把模板
+  变成共享版本，必须新增自己的发布事实与审核门，不得复用本表冒充已发布版本。**
+- 迁移 0030 只新增该表（0001–0029 未改）；`contracts/**` 与 `docs/spec/**` 未改，
+  `sync_spec --check` 无漂移。
+
+## T050 追加（2026-11-04）：审批是服务端构建的真实参数提案；批准不授予权限，恢复走唯一 resume
+
+### D17 —— 提案由服务端从 operation/策略/manifest 构建；决定与恢复分离且各自幂等
+
+- **worker 从不提供人类看到的提案文本。** approval 行与 sealed `purpose=approval_proposal`
+  artifact 由 capability 代理在写风险 connector 的同一事务里创建：真实目标来自管理员批准且
+  manifest 冻结的 connector 策略行（origin/method/path_prefix）与已通过请求 schema 的
+  `path/query`，canonical params 与其 hash 来自 T041 已封存的 params artifact，来源版本来自
+  Run 的 execution snapshot/manifest，deadline 来自服务端时钟。worker 的
+  `approval_required` 只是状态；契约 `prepareApproval` 的 `proposal` 字段被忽略。
+- **审批人是 Run owner；service account 用其负责人类。** 无负责人的 service account 直接
+  `approver_unavailable`（fail closed），不猜审批人。admin 可以读、但不是默认审批人，也不能
+  代替指定审批人决定；stranger 一律 404。发布审核是 `publication_reviews` 另一个聚合，其 id
+  在审批端点表现为不存在。
+- **决定是唯一写入口，锁序 `Run → operation → approval`。** 必须精确携带提案的
+  `params_sha256`；过期按数据库时钟判定；disabled principal、cancelled/terminal Run、已撤销的
+  connector 策略、operation 不再是 `awaiting_approval` 都拒绝。同决定重放 200（同一行、不新增
+  事实），相反决定 409 `decision_conflict`；并发相反决定由行锁串行化，只有一个赢家。
+- **approve 只允许操作继续，不授予权限。** 同事务把 approval 置 `approved`、operation
+  `awaiting_approval → authorized`；决定经
+  `execution.ResolveWaiting(kind=approval,outcome=approved,reference=<approval id>)` 交给 T035，
+  旧尝试退出后由 `maybeEnqueueResumeTx` 创建唯一 resume。恢复的新尝试重新走 capabilities：
+  live attempt、run state、manifest digest、策略批准/未撤销、owner 未 disabled、预算正数都在
+  resume/派发前再校验；`authorized → dispatching` CAS 保证最多一次物理写，replay 返回已记录
+  结果。
+- **reject/expire 是拒绝，不是恢复。** 决定落库后 Run 在 exit 事实齐全时以
+  `approval_rejected`/`approval_expired` 失败，零 resume、零出站。该终止只在 decision reference
+  命名一个真实 `platform.approvals` 行时发生；T035 非契约 synthetic bridge 的 opaque reference
+  保持原有“恢复后由 worker 处理失败”的契约。取消/终态把 pending approvals 置 `invalidated`，
+  保留提案 artifact 供审计。
+- **过期没有后台 sweeper（`not_run`）。** 本票只在决定路径用数据库时钟判定过期；无人处理的
+  pending approval 会保留到读取/决定或 Run 取消/终止，页面显示真实 `expires_at`。
+- 迁移 0031 只新增 `platform.approvals`（契约列；`node_key` 由 logical key 节点前缀填充、
+  不新增 `operations.approval_id`、无 created_at 列，偏差见迁移头注释）；0001–0030、
+  `contracts/**`、`docs/spec/**` 未改，`sync_spec --check` 无漂移。
+
+## T051 追加（2026-11-04）：写后丢响应是 unknown，不是失败；核对只结算原 operation，绝不补发
+
+### D18 —— unknown 只查询/人工核对；`reconcileOperation` 用证据结案并经唯一 finalizer 离开核对
+
+- **发送者是 CAS 赢家，未知不是失败。** 写风险 connector 仍先以 `authorized → dispatching`
+  CAS 持久化意图，再发 HTTP；超时、连接丢失、发送后的 5xx、或 2xx 但响应无法验证，一律把
+  operation 置 `unknown`（从不 failed/succeeded），不写回执。重复 invoke/resume 见
+  `dispatching` 返回 `409 operation_in_progress`，见 `unknown` 返回已记录的 unknown 状态，
+  零出站；同逻辑键换参数仍是 `409 operation_conflict`。物理 attempt 行保持 `dispatching`：
+  这是"请求已发出、回答未观察到"的诚实记录，真实写次数因此仍是 1。
+- **unknown 与 Run 的未明外部写同事务落库。** `execution.RecordUnknownOperationTx` 在调用方
+  事务内加 Run 锁、校验 live attempt、写 `run_unknown_operations`（复用 T036 允许码
+  `dispatch_timeout`/`transport_error`/`receipt_missing`）；capability 事务再写 operation
+  `unknown`。attempt 退出时 T031 finalizer 的既有 unknown guard 把 Run 停在
+  `needs_reconciliation`，不以失败/成功掩盖。
+- **核对只接受 owner 或该 operation 的审批人。** `POST /api/v1/operations/{id}/reconcile`
+  （契约 `reconcileOperation`，`Idempotency-Key` 必需）在 Run 锁之后锁 operation；证据
+  artifact 必须 ready、未删除、owner 是 Run owner 或经 `run_artifacts` 链接，且 JSON 绑定
+  `operation_id`（或 `logical_key`+`params_sha256`）。缺证据/绑定不符/已删除/他人证据均为
+  `422 evidence_artifact_invalid`；非 owner/审批人 403；已结算的 operation 或不同结论/证据/
+  key 为 409。
+- **三种结论，只有一种会"成功"。** `confirmed_success` 置 succeeded，优先保留原回执，否则把
+  证据 artifact 作为回执；`confirmed_not_sent`/`confirmed_failure` 置 failed（安全码
+  `operation_not_sent`/派发时的安全码）。F06/T048 的 connector 策略没有供应商幂等键/查询回执
+  能力，因此**不做同 operation 自动重试**：限制事实在派发前持久化
+  （`reconciliation_limitation=no_idempotency_or_query_support`）并由 owner 账本/页面披露。
+  任何路径都不创建第二个 operation id。
+- **离开 `needs_reconciliation` 只有 finalizer 一条路。** 同事务解析该 Run 的唯一 unknown 行
+  后重入 `finalizeRunTx`：有取消意图→cancelled；`confirmed_success` 且 worker 已存成功提案→
+  succeeded（存的是失败提案就仍失败，绝不伪造成功提案）；失败结论用合成 failed 提案落 failed；
+  仍有未知/活跃子 Run 则保持停泊。`needs_reconciliation → queued` 的 requeue 仍归 T038 recover。
+- **幂等以 `(conclusion, evidence, Idempotency-Key)` 元组落库。** 同元组重放返回已记录答案、
+  不重复结算；终态后不同元组 409 `reconciliation_conflict`。
+- 迁移 0032 只给 `platform.operations` 增加可空审计列（`reconciliation_conclusion`、
+  `reconciliation_key`、`reconciliation_limitation`，含 closed CHECK），契约列语义不变；
+  0001–0031、`contracts/**`、`docs/spec/**` 未改，`sync_spec --check` 无漂移。
+
+

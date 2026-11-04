@@ -770,6 +770,13 @@ func (s *Service) finalizeRunTx(
 	); err != nil {
 		return false, err
 	}
+	if outcome.Finished {
+		// F06/T050: a terminal Run invalidates every pending approval so no
+		// decision can authorise an operation after the Run ended.
+		if err := invalidateRunApprovalsTx(ctx, tx, input.RunID, "run_terminal"); err != nil {
+			return false, err
+		}
+	}
 	// T032: the committed terminal/non-terminal outcome is projected in the same
 	// transaction. Both entry orders (result->exit, exit->result) converge here,
 	// so exactly one outcome event exists per actual transition; a repeated

@@ -33,6 +33,7 @@
     <a href="/apps">应用目录</a>
     <a href="/attachments">附件</a>
     <a href="/tools">工具</a>
+    <a href="/approvals">审批</a>
     <a href="/login">登录</a>
     <a href="/admin">管理台</a>
   </nav>
@@ -138,14 +139,98 @@
       <p id="sandbox-artifacts-status" class="hint" role="status" aria-live="polite">正在加载产物…</p>
     </section>
 
+    <details id="node-results-panel" class="card">
+      <summary>节点结果（F04A/T042：data / 文件 / 日志）</summary>
+      <p
+        id="node-results-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载节点结果…</p>
+      <div id="node-results-nodes"></div>
+      <p class="hint">
+        每个节点分别列出结构化 data、可下载文件与受限日志；日志不是数据，也不会出现在可下载产物列表里。
+        已进入终态却没有结果的节点显示“无结果”，执行失败的节点显示“失败”，两者不会混为一谈；
+        原始 output.json 不会成为可下载产物，只有服务端校验并登记后的 data/文件/日志才会出现在这里。
+      </p>
+    </details>
+
+    <details id="agent-node-panel" class="card">
+      <summary>Agent 节点（F04A/T043：最终输出 / 轮次 / 工具调用）</summary>
+      <p
+        id="agent-node-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载 Agent 节点摘要…</p>
+      <div id="agent-node-body"></div>
+      <h3>上下文跟踪（F06/T047：授权来源 / 截断 / 受保护事实）</h3>
+      <p
+        id="agent-context-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载上下文跟踪…</p>
+      <div id="agent-context-trace"></div>
+      <p class="hint">
+        只显示服务端已登记并校验的 Agent 最终 data、工具产生的文件，以及受控调用账本中的
+        模型轮次、工具调用 id/name 与每次工具操作的状态；不显示提示词、工具参数、回执正文或原始
+        提供方载荷。最终输出未通过 output_schema 时显示 node_output_invalid 与节点 id，具体
+        JSON Pointer 见 supervisor 运行报告。
+      </p>
+    </details>
+
+    <details id="capability-panel" class="card">
+      <summary>受控调用账本（F06/T041）</summary>
+      <p
+        id="capability-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载受控调用账本…</p>
+      <p
+        id="budget-status"
+        class="status"
+        role="status"
+        aria-live="polite"
+      >正在加载预算…</p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">能力</th>
+            <th scope="col">版本</th>
+            <th scope="col">状态</th>
+            <th scope="col">物理尝试</th>
+            <th scope="col">目标</th>
+            <th scope="col">结构化输出</th>
+            <th scope="col">工具调用</th>
+            <th scope="col">来源</th>
+          </tr>
+        </thead>
+        <tbody id="capability-rows"></tbody>
+      </table>
+      <p class="hint">
+        只显示账本投影（状态、尝试次数、工具调用 id/名称、结构化输出键与 stub 标记），
+        不显示参数、工具参数或回执正文；隐藏重试与工具越权不会出现在这里，因为服务端会拒绝它们。
+        F06/T045 起还显示物理尝试的合计费用/令牌，以及「已切换到某备用模型，原因：…」，
+        所以用了备用模型的调用不会看起来像一次无缝的主模型成功。
+        F06/T046 起同一账本给出十进制预算投影：已结算、预留中、剩余；超支时明确标出，
+        运行不会被呈现成干净的成功。
+        F06/T048 起连接器操作显示安全目标（管理员登记的 origin + 允许的 path 前缀）与风险
+        类别；不显示参数、查询值、响应正文或凭据，待审批的操作显示为「待审批」。`n        F06/T051 起结果未知的外部写显示为「结果未知」而不是失败，并披露连接器是否缺少幂等键/查询回执能力；`n        owner/审批人可提交证据 artifact 核对成功/未发送/失败。核对只结算原 operation，不重发；完成后页面显示`n        「真实写次数仍为 N（未增加）」。
+      </p>
+    </details>
+
     <p id="detail-note" class="hint"></p>
     <p id="detail-preview" class="hint" data-preview="not_run">
-      临时模型流式 delta 预览未实现（F06 承接）：本页只显示已提交的持久事件，不把临时 delta
-      当成正文，也不伪造预览文本。finalizing 只是阶段，终态以服务端提交为准。
+      临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
+      operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
+      不执行。预览不持久，最终以持久 Run 快照/事件为准。
     </p>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
 </body>
 </html>

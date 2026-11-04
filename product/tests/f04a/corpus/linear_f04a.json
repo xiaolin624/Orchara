@@ -1,0 +1,3347 @@
+{
+  "probe": "f04a_linear",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "name": "valid-linear",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "valid",
+        "problems": []
+      }
+    },
+    {
+      "name": "missing-end",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "agent",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Produce a summary.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "start_end_count",
+            "pointer": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-id",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "1extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_id",
+            "pointer": "/nodes/1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-type",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "bogus",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unknown_type",
+            "pointer": "/nodes/2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-id",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "summarise",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "duplicate_id",
+            "pointer": "/nodes/2"
+          },
+          {
+            "code": "unknown_endpoint",
+            "pointer": "/edges/0"
+          },
+          {
+            "code": "unknown_endpoint",
+            "pointer": "/edges/1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-endpoint",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "ghost"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unknown_endpoint",
+            "pointer": "/edges/2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cycle",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          },
+          {
+            "source": "end",
+            "target": "extract"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "cycle",
+            "pointer": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "unreachable",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unreachable_node",
+            "pointer": "/nodes/1"
+          },
+          {
+            "code": "unreachable_node",
+            "pointer": "/nodes/2"
+          },
+          {
+            "code": "unreachable_node",
+            "pointer": "/nodes/3"
+          },
+          {
+            "code": "cannot_reach_end",
+            "pointer": "/nodes/0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-ref-pointer",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/nope"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_pointer",
+            "pointer": "/nodes/1/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downstream-ref",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "non_ancestor_ref",
+            "pointer": "/nodes/1/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-binding",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file",
+                "literal": 1
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_binding",
+            "pointer": "/nodes/1/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-config",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_config",
+            "pointer": "/nodes/1/config"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-schema",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "widget": 1
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_schema",
+            "pointer": "/output_schema/properties/summary/widget"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-policy",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "US",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_policy",
+            "pointer": "/policy/currency"
+          }
+        ]
+      }
+    },
+    {
+      "name": "merge-branch",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          },
+          {
+            "source": "start",
+            "target": "summarise"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "merge_without_join",
+            "pointer": "/nodes/2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fork-branch",
+      "scope": "shared",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          },
+          {
+            "source": "extract",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "merge_without_join",
+            "pointer": "/nodes/3"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsupported-node-type",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "model",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "Summarise.",
+              "response_mode": "text"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unsupported_node_type",
+            "pointer": "/nodes/1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-edge",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "not_linear_chain",
+            "pointer": "/edges/1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "extra-port",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract",
+            "port": "true"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unsupported_port",
+            "pointer": "/edges/0/port"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nonempty-subapps",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [
+                "11111111-1111-4111-8111-111111111111"
+              ],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "unsupported_subapp",
+            "pointer": "/nodes/2/config/subapp_versions"
+          }
+        ]
+      }
+    },
+    {
+      "name": "undeclared-end-output",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "python",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "node:extract#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise the extracted text.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/summary"
+              },
+              "extra": {
+                "literal": 1
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "bad_output_mapping",
+            "pointer": "/nodes/3/inputs/extra"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-order",
+      "scope": "f04a_only",
+      "document": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            "config": {}
+          },
+          {
+            "id": "extract",
+            "type": "agent",
+            "inputs": {
+              "text": {
+                "ref": "input#/file"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "summary"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "instructions": "Summarise.",
+              "max_turns": 4,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            }
+          },
+          {
+            "id": "summarise",
+            "type": "python",
+            "inputs": {
+              "summary": {
+                "ref": "node:extract#/summary"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "tool_version": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "summary": {
+                "ref": "node:summarise#/text"
+              }
+            },
+            "output_schema": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            },
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "extract"
+          },
+          {
+            "source": "extract",
+            "target": "summarise"
+          },
+          {
+            "source": "summarise",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "budget_limit": "1.50",
+          "currency": "USD",
+          "max_active_seconds": 300,
+          "max_child_calls": 0,
+          "max_child_depth": 0
+        }
+      },
+      "notes": "",
+      "expect": {
+        "verdict": "invalid",
+        "problems": [
+          {
+            "code": "linear_order",
+            "pointer": "/nodes/1"
+          }
+        ]
+      }
+    }
+  ]
+}

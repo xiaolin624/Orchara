@@ -110,18 +110,10 @@ def seed_attempt(dbname: str, *, job_id: str, run_id: str) -> str:
 # ---------------------------------------------------------------------------
 def test_0020_is_recorded_once_in_the_chain(migrated_database, go_binaries) -> None:
     dsn, dbname = migrated_database
-    ledgers = st.sql_rows(
-        dbname,
-        "SELECT version, name FROM platform.schema_migrations ORDER BY version",
-    )
-    versions = [row["version"] for row in ledgers]
-    # T035/T036 append 0021/0022; 0020 stays at its own position.
-    assert versions == [f"{number:04d}" for number in range(1, 25)], versions
-    assert ledgers[-5]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-4]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-3]["name"] == "0022_run_unknown_operations.sql"
-    assert ledgers[-2]["name"] == "0023_tool_builds_and_review.sql"
-    assert ledgers[-1]["name"] == "0024_run_recovery_evidence.sql"
+    # 0020 keeps its own position; later tickets append more rows. The chain is
+    # contiguous from 0001 with one row per version, never a pinned tail.
+    names = st.migration_chain(dbname)
+    assert names["0020"] == "0020_active_time_and_deadline.sql"
     replay = st.migrate_or_fail(go_binaries["admin"], dsn)
     assert "no pending migrations" in replay, replay
 

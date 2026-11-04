@@ -98,13 +98,15 @@
     <ul id="run-timeline" aria-live="polite"></ul>
     <p id="run-note" class="hint"></p>
     <p id="run-preview" class="hint" data-preview="not_run">
-      模型流式 delta 预览未实现（F06 承接）：本页只渲染已提交的持久事件，不伪造正文预览；
-      finalizing 不是成功，终态以 Go finalizer 提交为准。
+      临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
+      operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
+      不执行。预览不持久，最终以持久 Run 快照/事件为准。
     </p>
     <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
   <script src="/assets/debug.js"></script>
 </body>

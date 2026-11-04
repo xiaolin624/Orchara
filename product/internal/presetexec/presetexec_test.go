@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/sandbox"
 )
 
@@ -43,22 +44,64 @@ type recordedRegistration struct {
 type fakeClient struct {
 	mu sync.Mutex
 
-	lease       *Lease
-	manifest    []byte
-	inputs      []InputArtifact
-	inputBytes  []byte
-	runState    string
-	runError    string
-	cancelAt    int // heartbeat number that reports cancel; 0 = never
-	heartbeats  int
-	uploadSeq   int
-	uploads     []recordedUpload
-	proposals   []recordedProposal
-	exits       []recordedExit
-	registers   []recordedRegistration
-	statuses    map[string]ArtifactView
-	registerErr error
-	statusErr   error
+	lease         *Lease
+	manifest      []byte
+	inputs        []InputArtifact
+	inputBytes    []byte
+	runInput      []byte
+	runInputErr   error
+	runState      string
+	runError      string
+	cancelAt      int // heartbeat number that reports cancel; 0 = never
+	heartbeats    int
+	uploadSeq     int
+	uploads       []recordedUpload
+	proposals     []recordedProposal
+	exits         []recordedExit
+	registers     []recordedRegistration
+	nodeEvents    []recordedNodeEvent
+	nodeResults   []NodeResult
+	statuses      map[string]ArtifactView
+	registerErr   error
+	statusErr     error
+	nodeEventErr  error
+	nodeResultErr error
+
+	// scripted capability seam (agent tests)
+	invokeCapability  func(capabilities.Input) (*capabilities.Result, error)
+	reportCapability  func(capabilities.ResultReport) (*capabilities.Result, error)
+	capabilityInputs  []capabilities.Input
+	capabilityReports []capabilities.ResultReport
+}
+
+// recordedNodeEvent is one observed node.status transition.
+type recordedNodeEvent struct {
+	NodeID string
+	State  string
+}
+
+func (f *fakeClient) SubmitNodeStatus(
+	_ context.Context, _ string, _ string, nodeID, state string,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.nodeEventErr != nil {
+		return f.nodeEventErr
+	}
+	f.nodeEvents = append(f.nodeEvents, recordedNodeEvent{NodeID: nodeID, State: state})
+	return nil
+}
+
+func (f *fakeClient) RecordNodeResults(
+	_ context.Context, _ string, _ string, results []NodeResult,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.nodeResultErr != nil {
+		return f.nodeResultErr
+	}
+	f.nodeResults = append(f.nodeResults, results...)
+	return nil
 }
 
 func (f *fakeClient) Claim(context.Context, string, string) (*Lease, error) {
@@ -75,7 +118,10 @@ func (f *fakeClient) Heartbeat(context.Context, string, string, string) (Heartbe
 	return Heartbeat{}, nil
 }
 
-func (f *fakeClient) Fetch(context.Context, string) ([]byte, error) {
+func (f *fakeClient) Fetch(_ context.Context, link string) ([]byte, error) {
+	if f.lease != nil && link == f.lease.InputURL {
+		return f.runInput, f.runInputErr
+	}
 	return f.manifest, nil
 }
 
@@ -158,6 +204,36 @@ func (f *fakeClient) Download(context.Context, string, string, string) ([]byte, 
 
 func (f *fakeClient) RunState(context.Context, string) (string, string, error) {
 	return f.runState, f.runError, nil
+}
+
+// InvokeCapability implements Client with the test's scripted capability seam.
+func (f *fakeClient) InvokeCapability(
+	_ context.Context, _ string, _ string, input capabilities.Input,
+) (*capabilities.Result, error) {
+	f.mu.Lock()
+	f.capabilityInputs = append(f.capabilityInputs, input)
+	handler := f.invokeCapability
+	f.mu.Unlock()
+	if handler == nil {
+		return nil, errors.New("no capability handler is scripted")
+	}
+	return handler(input)
+}
+
+// ReportCapabilityResult implements Client with the test's scripted seam.
+func (f *fakeClient) ReportCapabilityResult(
+	_ context.Context, _ string, _ string, report capabilities.ResultReport,
+) (*capabilities.Result, error) {
+	f.mu.Lock()
+	f.capabilityReports = append(f.capabilityReports, report)
+	handler := f.reportCapability
+	f.mu.Unlock()
+	if handler == nil {
+		return &capabilities.Result{
+			OperationID: report.OperationID, State: report.State,
+		}, nil
+	}
+	return handler(report)
 }
 
 func (f *fakeClient) uploadsByPurpose() map[string]recordedUpload {

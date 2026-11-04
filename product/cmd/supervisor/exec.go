@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,6 +31,11 @@ import (
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/uuid"
 )
+
+// nodeEventSequence is the diagnostic local_sequence of this process's
+// node.status events. It is monotonic for the process; the server's committed
+// order is the request order, never this number.
+var nodeEventSequence atomic.Int64
 
 const execUsage = `usage: orchara-supervisor exec --once [flags]
 
@@ -145,9 +151,11 @@ func runExec(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	execClient := execClient{supClient: client, db: dbAccess{db: db}}
 	report := presetexec.Run(ctx, presetexec.Deps{
-		Client:  execClient{supClient: client, db: dbAccess{db: db}},
+		Client:  execClient,
 		Inputs:  dbAccess{db: db},
+		Facts:   execClient,
 		Sandbox: executor,
 		Options: presetexec.Options{
 			WorkerID:        options.workerID,
@@ -214,6 +222,31 @@ func (a dbAccess) RunState(ctx context.Context, runID string) (string, string, e
 	return state, errorCode.String, nil
 }
 
+// AttemptNumber is the dense run-local attempt ordinal of the live attempt. The
+// contract has no attempt_no column (the attempt token is the credential), so the
+// node.status payload's required attempt_no is derived from the trusted database
+// identity instead of trusting a caller value.
+func (a dbAccess) AttemptNumber(ctx context.Context, runID, token string) (int64, error) {
+	var number int64
+	err := a.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		  FROM platform.run_attempts AS earlier
+		  JOIN platform.run_attempts AS current
+		    ON current.run_id = earlier.run_id
+		 WHERE current.token = $2::uuid
+		   AND current.run_id = $1::uuid
+		   AND (earlier.started_at, earlier.token) <= (current.started_at, current.token)`,
+		runID, token,
+	).Scan(&number)
+	if err != nil {
+		return 0, err
+	}
+	if number < 1 {
+		return 0, errors.New("the attempt has no recorded attempt number")
+	}
+	return number, nil
+}
+
 // execClient composes the protocol client with the trusted run-state read.
 type execClient struct {
 	*supClient
@@ -222,4 +255,113 @@ type execClient struct {
 
 func (c execClient) RunState(ctx context.Context, runID string) (string, string, error) {
 	return c.db.RunState(ctx, runID)
+}
+
+// SubmitNodeStatus implements presetexec.Client: one node.status transition over
+// the worker mTLS capacity. The payload is exactly {node_id,state,attempt_no};
+// the attempt number is read from the trusted database identity, never taken
+// from the manifest or the environment.
+func (c execClient) SubmitNodeStatus(
+	ctx context.Context, runID, attemptToken, nodeID, state string,
+) error {
+	attemptNo, err := c.db.AttemptNumber(ctx, runID, attemptToken)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{
+		"attempt_token": attemptToken,
+		"events": []map[string]any{{
+			"event_id":       uuid.NewString(),
+			"local_sequence": nodeEventSequence.Add(1),
+			"type":           "node.status",
+			"payload": map[string]any{
+				"node_id": nodeID, "state": state, "attempt_no": attemptNo,
+			},
+		}},
+	}
+	_, err = c.post(ctx, c.worker, workerRole, runPath(runID, "/events"), body, nil)
+	return err
+}
+
+// RecordNodeResults implements presetexec.Client: the per-node data/file/log
+// provenance report. It carries no content; the server re-proves the live
+// attempt and that every artifact is a ready node_output/log of this run.
+func (c execClient) RecordNodeResults(
+	ctx context.Context, runID, attemptToken string, results []presetexec.NodeResult,
+) error {
+	items := make([]map[string]string, 0, len(results))
+	for _, result := range results {
+		items = append(items, map[string]string{
+			"node_id":     result.NodeID,
+			"kind":        result.Kind,
+			"artifact_id": result.ArtifactID,
+			"label":       result.Label,
+		})
+	}
+	body := map[string]any{"attempt_token": attemptToken, "results": items}
+	_, err := c.post(ctx, c.worker, workerRole, runPath(runID, "/node-results"), body, nil)
+	return err
+}
+
+// ModelProfile implements presetexec.Facts. It is the supervisor's trusted
+// read-only model identity: only a passed, unrevoked profile may be spent on a
+// model call.
+func (c execClient) ModelProfile(
+	ctx context.Context, modelProfileVersionID string,
+) (presetexec.ModelFact, error) {
+	var fact presetexec.ModelFact
+	var revoked bool
+	var configJSON string
+	err := c.db.db.QueryRowContext(ctx, `
+		SELECT id::text, validation_state, revoked_at IS NOT NULL, config::text
+		  FROM platform.model_profile_versions WHERE id = $1::uuid`,
+		modelProfileVersionID,
+	).Scan(&fact.ID, &fact.ValidationState, &revoked, &configJSON)
+	if err != nil {
+		return presetexec.ModelFact{}, err
+	}
+	fact.Revoked = revoked
+	// F06/T047: the declared budget is read from the profile config. Missing
+	// fields stay zero; the executor applies its documented defaults and records
+	// the resulting budget in the context trace.
+	var config struct {
+		ContextWindow   int64 `json:"context_window"`
+		MaxOutputTokens int64 `json:"max_output_tokens"`
+	}
+	if configJSON != "" {
+		_ = json.Unmarshal([]byte(configJSON), &config)
+	}
+	fact.ContextWindow = config.ContextWindow
+	fact.MaxOutputTokens = config.MaxOutputTokens
+	return fact, nil
+}
+
+// ToolFacts implements presetexec.Facts. Callable mirrors the T041 server rule:
+// ready and either approved or (debug run) owned by the run's author. The
+// capability server re-proves the same fact on invoke.
+func (c execClient) ToolFacts(
+	ctx context.Context, runID string, toolVersionIDs []string,
+) ([]presetexec.ToolFact, error) {
+	rows, err := c.db.db.QueryContext(ctx, `
+		SELECT t.id::text, t.state,
+		       (t.approved_at IS NOT NULL OR (r.kind = 'debug' AND t.owner_id = r.owner_id)),
+		       t.input_schema::text
+		  FROM platform.tool_versions AS t
+		  JOIN platform.runs AS r ON r.id = $1::uuid
+		 WHERE t.id::text = ANY($2::text[])`, runID, toolVersionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	facts := make([]presetexec.ToolFact, 0, len(toolVersionIDs))
+	for rows.Next() {
+		var fact presetexec.ToolFact
+		var schema string
+		if err := rows.Scan(&fact.ID, &fact.State, &fact.Callable, &schema); err != nil {
+			return nil, err
+		}
+		fact.InputSchema = json.RawMessage(schema)
+		facts = append(facts, fact)
+	}
+	return facts, rows.Err()
 }

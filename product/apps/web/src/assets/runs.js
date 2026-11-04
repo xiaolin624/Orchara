@@ -36,6 +36,416 @@ function runArtifactsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/artifacts';
 }
 
+/** The owner-only controlled-capability ledger path for one run id (T041). */
+function runCapabilitiesPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/capabilities';
+}
+
+/** The ledger state vocabulary as the owner-facing label. */
+function capabilityStateText(state) {
+  switch (String(state || '')) {
+    case 'succeeded':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'dispatching':
+      return '执行中';
+    case 'authorized':
+      return '已授权';
+    case 'prepared':
+      return '已准备';
+    case 'awaiting_approval':
+      return '待审批';
+    case 'unknown':
+      return '结果未知';
+    default:
+      return '未知状态';
+  }
+}
+
+/** model/tool/connector as the label the ledger panel shows. */
+function capabilityKindText(kind) {
+  switch (String(kind || '')) {
+    case 'model':
+      return '模型';
+    case 'tool':
+      return '工具';
+    case 'connector':
+      return '连接器';
+    default:
+      return '能力';
+  }
+}
+
+/** The risk class as the short owner-facing label (T048 connector risk). */
+function capabilityRiskText(risk) {
+  switch (String(risk || '')) {
+    case 'pure':
+      return '无风险';
+    case 'read':
+      return '读';
+    case 'write':
+      return '写';
+    default:
+      return '未知风险';
+  }
+}
+
+/** A short, non-secret version label (the full id stays in the title attribute). */
+function capabilityVersionLabel(version) {
+  const text = String(version || '');
+  return text.length > 12 ? text.slice(0, 8) + '…' : text;
+}
+
+/** Tool-call ids/names only: the ledger read never returns arguments. */
+function summarizeToolCalls(calls) {
+  const items = Array.isArray(calls) ? calls : [];
+  if (items.length === 0) {
+    return '无工具调用';
+  }
+  return items
+    .map((call) => {
+      const id = String((call && call.id) || '');
+      const name = String((call && call.name) || '');
+      return id + '(' + name + ')';
+    })
+    .join('、');
+}
+
+/**
+ * The owner-facing projection of one capability operation. Only fields the
+ * ledger endpoint returns are read; params and receipt bodies are never here.
+ */
+function describeCapabilityOperation(operation) {
+  const value = operation || {};
+  const attempts = Number(value.attempts || 0);
+  const keys = Array.isArray(value.structured_output_keys)
+    ? value.structured_output_keys.map((key) => String(key))
+    : [];
+  const toolCalls = Array.isArray(value.tool_call_summary)
+    ? value.tool_call_summary.map((call) => ({
+        id: String((call && call.id) || ''),
+        name: String((call && call.name) || ''),
+      }))
+    : [];
+  const errorCode = value.error_code ? String(value.error_code) : '';
+  // T048: a connector operation shows only the safe target (registered origin +
+  // path prefix) and its risk class. Params, query values, response bodies and
+  // the credential never reach the ledger projection.
+  const connectorTarget = value.connector_target ? String(value.connector_target) : '';
+  const riskClass = value.risk_class ? String(value.risk_class) : '';
+  const riskText = capabilityRiskText(riskClass);
+  // T045: a call that switched profiles must not look like a seamless primary
+  // success. The ledger projection carries the fallback profile and the closed
+  // reason code; the cost/tokens are the sum over every physical attempt.
+  const fallbackProfileVersionID = value.fallback_profile_version_id
+    ? String(value.fallback_profile_version_id)
+    : '';
+  const fallbackReason = value.fallback_reason ? String(value.fallback_reason) : '';
+  const fallbackReasonText = capabilityFallbackReasonText(fallbackReason);
+  // F06/T051: an unknown external write is never shown as a failure. The ledger
+  // carries the reconcile facts; the page only renders them and posts the
+  // owner's evidence-backed conclusion.
+  const reconciliationLimitation = value.reconciliation_limitation
+    ? String(value.reconciliation_limitation)
+    : '';
+  const reconciliationConclusion = value.reconciliation_conclusion
+    ? String(value.reconciliation_conclusion)
+    : '';
+  const reconciliationEvidenceID = value.reconciliation_evidence_id
+    ? String(value.reconciliation_evidence_id)
+    : '';
+  const requiresReconciliation = String(value.state || '') === 'unknown';
+  const reconciled = reconciliationEvidenceID !== '' || reconciliationConclusion !== '';
+  const providerIdempotencyKey = value.provider_idempotency_key
+    ? String(value.provider_idempotency_key)
+    : '';
+  const chargedAmount =
+    value.charged_amount === undefined || value.charged_amount === null
+      ? ''
+      : String(value.charged_amount);
+  const tokensIn = Number(value.tokens_in || 0);
+  const tokensOut = Number(value.tokens_out || 0);
+  const costText =
+    chargedAmount === '' ? '' : '费用 ' + chargedAmount + '，令牌 ' + tokensIn + '/' + tokensOut;
+  const fallbackText =
+    fallbackProfileVersionID === ''
+      ? ''
+      : '已切换到 ' + capabilityVersionLabel(fallbackProfileVersionID) +
+        '，原因：' + fallbackReasonText;
+  return {
+    id: String(value.id || ''),
+    kindText: capabilityKindText(value.capability_kind),
+    version: String(value.capability_version || ''),
+    versionLabel: capabilityVersionLabel(value.capability_version),
+    state: String(value.state || ''),
+    stateText: capabilityStateText(value.state),
+    attempts,
+    attemptsText: attempts + ' 次',
+    attemptsDetailText: attempts + ' 次' + (costText === '' ? '' : ' · ' + costText),
+    errorCode,
+    errorText: errorCode === '' ? '' : '错误码 ' + errorCode,
+    // T048: the safe connector target (origin + approved path prefix) and risk.
+    connectorTarget,
+    targetText: connectorTarget,
+    riskClass,
+    riskText,
+    isConnector: String(value.capability_kind || '') === 'connector',
+    // F06/T051 reconciliation projection.
+    requiresReconciliation,
+    reconciliationLimitation,
+    reconciliationLimitationText: reconciliationLimitationText(reconciliationLimitation),
+    reconciliationConclusion,
+    reconciliationConclusionText: reconciliationConclusionText(reconciliationConclusion),
+    reconciliationEvidenceID,
+    reconciled,
+    providerIdempotencyKey,
+    writeCountText: '真实写次数 ' + attempts + '（核对不增加）',
+    toolCalls,
+    toolCallsText: summarizeToolCalls(value.tool_call_summary),
+    structuredKeys: keys,
+    structuredText: keys.length === 0 ? '无结构化输出' : keys.join('、'),
+    stub: value.stub === true,
+    stubLabel: value.stub === true ? 'stub（开发桩）' : '真实提供方',
+    hasReceipt: Boolean(value.receipt_artifact_id),
+    fallbackProfileVersionID,
+    fallbackReason,
+    fallbackReasonText,
+    fallbackText,
+    fallback: {
+      profileVersionID: fallbackProfileVersionID,
+      reason: fallbackReason,
+      reasonText: fallbackReasonText,
+      text: fallbackText,
+    },
+    costText,
+    tokensIn,
+    tokensOut,
+    chargedAmount,
+  };
+}
+
+/** T045's closed fallback reason vocabulary as the owner-facing label. */
+function capabilityFallbackReasonText(reason) {
+  switch (String(reason || '')) {
+    case 'availability':
+      return '可用性故障';
+    case 'rate_limited':
+      return '限流';
+    case 'adapter_unavailable':
+      return '适配器不可用';
+    default:
+      return String(reason || '');
+  }
+}
+
+/** The whole ledger body the panel renders; never echoes another owner's data. */
+function describeCapabilityLedger(body) {
+  const items = Array.isArray(body && body.items) ? body.items : [];
+  const described = items.map(describeCapabilityOperation);
+  return {
+    items: described,
+    count: described.length,
+    empty: described.length === 0,
+    text:
+      described.length === 0
+        ? '还没有受控调用（模型调用或已授权的工具调用会出现这里）。'
+        : '共有 ' + described.length + ' 次受控调用。',
+  };
+}
+
+/** F06/T051: the owner reconcile path for one unknown operation. */
+function reconcileOperationPath(operationId) {
+  return '/api/v1/operations/' + encodeURIComponent(String(operationId || '')) + '/reconcile';
+}
+
+/** The recorded connector limitation as an explicit owner-facing disclosure. */
+function reconciliationLimitationText(limitation) {
+  switch (String(limitation || '')) {
+    case 'no_idempotency_or_query_support':
+      return '该连接器没有供应商幂等键或查询回执能力：平台无法向供应商确认结果，只能由授权证据核对结案，且不会自动补发。';
+    default:
+      return String(limitation || '');
+  }
+}
+
+/** The reconciliation conclusion as the owner-facing label. */
+function reconciliationConclusionText(conclusion) {
+  switch (String(conclusion || '')) {
+    case 'confirmed_success':
+      return '已确认写入成功';
+    case 'confirmed_not_sent':
+      return '已确认未发送';
+    case 'confirmed_failure':
+      return '已确认写入失败';
+    default:
+      return String(conclusion || '');
+  }
+}
+
+/**
+ * F06/T051: one unknown operation's reconcile state and the exact disclosure the
+ * panel shows. Only ledger fields are read; the evidence body is never here.
+ */
+function describeReconciliation(operation) {
+  const value = operation || {};
+  const state = String(value.state || '');
+  const requires = state === 'unknown';
+  const conclusion = value.reconciliation_conclusion
+    ? String(value.reconciliation_conclusion)
+    : '';
+  const evidence = value.reconciliation_evidence_id
+    ? String(value.reconciliation_evidence_id)
+    : '';
+  const limitation = value.reconciliation_limitation
+    ? String(value.reconciliation_limitation)
+    : '';
+  const attempts = Number(value.attempts || 0);
+  if (requires) {
+    return {
+      required: true,
+      canSubmit: true,
+      settled: false,
+      operationId: String(value.id || ''),
+      state,
+      statusText: '结果未知：写入可能已发生，必须由 owner/审批人提交证据核对；平台不会自动补发。',
+      limitation,
+      limitationText: reconciliationLimitationText(limitation),
+      providerIdempotencyKey: '',
+      attempts,
+      writeCountText: '真实写次数 ' + attempts,
+      conclusion: '',
+      conclusionText: '',
+      evidenceArtifactID: '',
+    };
+  }
+  return {
+    required: false,
+    canSubmit: false,
+    settled: evidence !== '' || conclusion !== '',
+    operationId: String(value.id || ''),
+    state,
+    statusText:
+      evidence === '' && conclusion === ''
+        ? '已结算：该操作不需要核对。'
+        : '已核对：' + reconciliationConclusionText(conclusion) + '（证据 ' +
+          (evidence === '' ? '—' : evidence) + '）。',
+    limitation,
+    limitationText: reconciliationLimitationText(limitation),
+    providerIdempotencyKey: value.provider_idempotency_key
+      ? String(value.provider_idempotency_key)
+      : '',
+    attempts,
+    writeCountText: '真实写次数 ' + attempts,
+    conclusion,
+    conclusionText: reconciliationConclusionText(conclusion),
+    evidenceArtifactID: evidence,
+  };
+}
+
+/**
+ * F06/T051: the exact POST the reconcile form submits. The Idempotency-Key is a
+ * real client key: the same conclusion/evidence retried with the same key is the
+ * server's idempotent replay, never a second settlement.
+ */
+function describeReconcileRequest(operationId, conclusion, evidenceArtifactID, idempotencyKey) {
+  return {
+    path: reconcileOperationPath(operationId),
+    method: 'POST',
+    headers: { 'Idempotency-Key': String(idempotencyKey || '') },
+    body: {
+      conclusion: String(conclusion || ''),
+      evidence_artifact_id: String(evidenceArtifactID || ''),
+    },
+  };
+}
+
+/**
+ * F06/T051: the post-reconcile proof shown to the owner. The physical attempt
+ * count must not have increased: reconciliation means "settle the unknown write",
+ * never "send it again".
+ */
+function describeReconcileOutcome(before, after) {
+  const beforeCount = Number((before && before.attempts) || 0);
+  const afterCount = Number((after && after.attempts) || 0);
+  const unchanged = beforeCount === afterCount;
+  const state = String((after && after.state) || '');
+  const conclusionText = reconciliationConclusionText(
+    (after && after.reconciliation_conclusion) || ''
+  );
+  return {
+    beforeCount,
+    afterCount,
+    unchanged,
+    state,
+    text: unchanged
+      ? '核对完成：' + (conclusionText || state) + '；真实写次数仍为 ' + afterCount + '（未增加）。'
+      : '核对完成，但真实写次数从 ' + beforeCount + ' 变成 ' + afterCount + '（异常，请调查）。',
+  };
+}
+
+/** F06/T051: the unknown-operation summary line the panel shows. */
+function describeUnknownWrites(body) {
+  const items = Array.isArray(body && body.items) ? body.items : [];
+  const unknown = items.filter((item) => String((item && item.state) || '') === 'unknown');
+  const limitations = new Set(
+    unknown
+      .map((item) => String((item && item.reconciliation_limitation) || ''))
+      .filter((value) => value !== '')
+  );
+  return {
+    count: unknown.length,
+    operationIds: unknown.map((item) => String((item && item.id) || '')),
+    limitations: Array.from(limitations),
+    empty: unknown.length === 0,
+    text:
+      unknown.length === 0
+        ? '没有结果未知的外部写。'
+        : '有 ' + unknown.length + ' 个外部写结果未知，等待授权核对；核对不会重发，也不会增加真实写次数。',
+  };
+}
+
+/**
+ * F06/T046: the decimal budget projection of one run tree. Amounts are opaque
+ * decimal strings from the ledger and are displayed verbatim; the page never
+ * re-computes money with binary floats.
+ */
+function describeRunBudget(body) {
+  const budget =
+    body && typeof body.budget === 'object' && body.budget !== null ? body.budget : null;
+  if (!budget) {
+    return {
+      known: false,
+      overrun: false,
+      currency: '',
+      limit: '',
+      reserved: '',
+      charged: '',
+      remaining: '',
+      text: '预算投影不可用（账本未返回 budget 字段）。',
+    };
+  }
+  const currency = String(budget.currency || '');
+  const limit = String(budget.budget_limit || '0.00000000');
+  const reserved = String(budget.reserved_amount || '0.00000000');
+  const charged = String(budget.charged_amount || '0.00000000');
+  const remaining = String(budget.remaining_amount || '0.00000000');
+  const overrun = budget.overrun === true;
+  return {
+    known: true,
+    overrun,
+    currency,
+    limit,
+    reserved,
+    charged,
+    remaining,
+    text:
+      '预算 ' + limit + ' ' + currency + '：已结算 ' + charged +
+      '，预留中 ' + reserved + '，剩余 ' + remaining +
+      (overrun ? '（已超支：运行不能被呈现为成功）' : ''),
+  };
+}
+
 /** One owner-visible artifact download path. */
 function artifactDownloadPath(artifactID) {
   return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/download';
@@ -1125,8 +1535,239 @@ async function loadRunArtifacts(runId) {
   }
 }
 
-function cancelDetailStatus(message, kind) {
-  const element = document.getElementById('detail-cancel-status');
+function capabilityStatus(message, kind) {
+  const element = document.getElementById('capability-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+// F06/T046: the same status pattern for the decimal budget line. An overrun is
+// a 'bad' status, never a neutral one.
+function budgetStatus(message, kind) {
+  const element = document.getElementById('budget-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+function renderCapabilityRow(operation) {
+  const row = document.createElement('tr');
+  const cells = [
+    operation.kindText,
+    operation.versionLabel,
+    operation.stateText,
+    operation.attemptsDetailText || operation.attemptsText,
+    // T048: the safe connector target, never the params or the credential.
+    operation.targetText || '—',
+    operation.structuredText,
+    operation.toolCallsText,
+    '风险 ' + operation.riskText + ' · ' +
+      operation.stubLabel +
+      (operation.fallbackText ? ' · ' + operation.fallbackText : '') +
+      (operation.errorText ? ' · ' + operation.errorText : '') +
+      (operation.requiresReconciliation ? ' · 结果未知（待核对）' : '') +
+      (operation.reconciled && operation.reconciliationConclusionText
+        ? ' · ' + operation.reconciliationConclusionText
+        : '') +
+      (operation.reconciliationLimitationText
+        ? ' · ' + operation.reconciliationLimitationText
+        : ''),
+  ];
+  for (const text of cells) {
+    const cell = document.createElement('td');
+    cell.textContent = text;
+    row.appendChild(cell);
+  }
+  if (operation.version) {
+    row.title = operation.version;
+  }
+  return row;
+}
+
+// F06/T051: one unknown operation's reconcile form. The conclusion and the
+// evidence artifact are explicit user choices; the page never guesses them and
+// never retries the write itself.
+function renderReconcileRow(operation) {
+  const row = document.createElement('tr');
+  row.className = 'reconcile-row';
+  const cell = document.createElement('td');
+  cell.colSpan = 8;
+
+  const title = document.createElement('strong');
+  title.textContent = '核对外部写（' + operation.id + '）：';
+  cell.appendChild(title);
+
+  const hint = document.createElement('span');
+  hint.textContent = operation.reconciliationLimitationText
+    ? operation.reconciliationLimitationText + ' '
+    : '';
+  cell.appendChild(hint);
+
+  const conclusion = document.createElement('select');
+  conclusion.id = 'reconcile-conclusion-' + operation.id;
+  for (const option of [
+    ['confirmed_success', '已确认写入成功'],
+    ['confirmed_not_sent', '已确认未发送'],
+    ['confirmed_failure', '已确认写入失败'],
+  ]) {
+    const item = document.createElement('option');
+    item.value = option[0];
+    item.textContent = option[1];
+    conclusion.appendChild(item);
+  }
+  cell.appendChild(conclusion);
+
+  const evidence = document.createElement('input');
+  evidence.id = 'reconcile-evidence-' + operation.id;
+  evidence.type = 'text';
+  evidence.placeholder = '证据 artifact id';
+  evidence.size = 40;
+  cell.appendChild(evidence);
+
+  const button = document.createElement('button');
+  button.id = 'reconcile-button-' + operation.id;
+  button.type = 'button';
+  button.textContent = '提交核对证据';
+  button.addEventListener('click', () => {
+    submitReconciliation(operation.id);
+  });
+  cell.appendChild(button);
+
+  const status = document.createElement('span');
+  status.id = 'reconcile-status-' + operation.id;
+  status.className = 'status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  cell.appendChild(status);
+
+  row.appendChild(cell);
+  return row;
+}
+
+// F06/T051: submit the owner's evidence-backed conclusion. The Idempotency-Key
+// makes a retried click a replay, not a second settlement; the outcome line
+// proves the physical write count did not increase.
+async function submitReconciliation(operationId) {
+  const select = document.getElementById('reconcile-conclusion-' + operationId);
+  const evidence = document.getElementById('reconcile-evidence-' + operationId);
+  const button = document.getElementById('reconcile-button-' + operationId);
+  const status = document.getElementById('reconcile-status-' + operationId);
+  const beforeBody = lastCapabilityLedger;
+  const beforeItem =
+    beforeBody && Array.isArray(beforeBody.items)
+      ? beforeBody.items.find((item) => String(item && item.id) === String(operationId))
+      : null;
+  const idempotencyKey =
+    'reconcile-' + String(operationId) + '-' + String(Number(Date.now()) || 0);
+  const request = describeReconcileRequest(
+    operationId,
+    select ? select.value : '',
+    evidence ? evidence.value.trim() : '',
+    idempotencyKey
+  );
+  if (!request.body.evidence_artifact_id) {
+    if (status) {
+      status.textContent = '请先填写证据 artifact id。';
+      status.className = 'status bad';
+    }
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  if (status) {
+    status.textContent = '正在提交核对…';
+    status.className = 'status pending';
+  }
+  try {
+    const token = await csrf();
+    await api(request.path, {
+      method: request.method,
+      body: request.body,
+      csrf: token,
+      headers: request.headers,
+    });
+    await loadCapabilityLedger(lastCapabilityRunID);
+    const afterBody = lastCapabilityLedger;
+    const afterItem =
+      afterBody && Array.isArray(afterBody.items)
+        ? afterBody.items.find((item) => String(item && item.id) === String(operationId))
+        : null;
+    const outcome = describeReconcileOutcome(
+      describeCapabilityOperation(beforeItem || {}),
+      describeCapabilityOperation(afterItem || {})
+    );
+    if (status) {
+      status.textContent = outcome.text;
+      status.className = 'status ' + (outcome.unchanged ? 'ok' : 'bad');
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    if (status) {
+      status.textContent =
+        '核对失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误');
+      status.className = 'status bad';
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+// T041: the owner-only controlled-capability ledger. It shows identity, state,
+// attempt count, a structured-output key list and tool-call ids/names; it never
+// shows params, arguments or a receipt body.
+async function loadCapabilityLedger(runId) {
+  const rows = document.getElementById('capability-rows');
+  if (!rows) {
+    return;
+  }
+  rows.replaceChildren();
+  capabilityStatus('正在加载受控调用账本…', 'pending');
+  try {
+    const body = await api(runCapabilitiesPath(runId));
+    lastCapabilityLedger = body && typeof body === 'object' ? body : null;
+    lastCapabilityRunID = String(runId || '');
+    const ledger = describeCapabilityLedger(body);
+    const unknown = describeUnknownWrites(body);
+    capabilityStatus(
+      ledger.text + (unknown.empty ? '' : ' ' + unknown.text),
+      unknown.empty ? (ledger.empty ? '' : 'ok') : 'bad'
+    );
+    const budget = describeRunBudget(body);
+    budgetStatus(budget.text, budget.overrun ? 'bad' : budget.known ? 'ok' : '');
+    for (const operation of ledger.items) {
+      rows.appendChild(renderCapabilityRow(operation));
+      if (operation.requiresReconciliation) {
+        rows.appendChild(renderReconcileRow(operation));
+      }
+    }
+    renderAgentNodePanel();
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    capabilityStatus(
+      '受控调用账本不可用 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+    budgetStatus('预算投影不可用（账本请求失败）。', 'bad');
+  }
+}
+
+function cancelDetailStatus(message, kind) {  const element = document.getElementById('detail-cancel-status');
   if (!element) {
     return;
   }
@@ -1208,6 +1849,7 @@ function beginRunTimeline(runId, elements) {
       if (isCancelled() || !list) {
         return;
       }
+      recordNodeStatus(event);
       // One line per committed event; describeRunEvent never renders payload
       // content, and the seq dedupe above already suppressed replays.
       const item = document.createElement('li');
@@ -1248,6 +1890,8 @@ async function pollRunDetail(runId, polls) {
     return pollRunDetail(runId, polls + 1);
   }
   await loadRunArtifacts(runId);
+  await loadCapabilityLedger(runId);
+  await loadNodeResults(runId);
   runsStatus('Run ' + runId + ' 已进入终态 ' + (merged && merged.state ? merged.state : '') + '。', 'ok');
 }
 
@@ -1260,16 +1904,26 @@ async function loadRunDetail(runId) {
       // must not mask the newly selected Run.
       displayedRunID = runId;
       displayedRun = null;
+      nodeStatusByID = {};
+      lastNodeResults = null;
+      lastCapabilityLedger = null;
     }
     const result = await apiFull(runDetailPath(runId));
     const facts = runRuntimeFacts(result.headers);
     const merged = showRunDetail(result.payload, facts);
     loadRunArtifacts(runId);
+    loadCapabilityLedger(runId);
+    loadNodeResults(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',
       previewID: 'detail-preview',
     });
+    // T044: the temporary model preview (in-process, non-persistent). It closes
+    // itself on final/error and never replaces the persistent run snapshot.
+    if (typeof beginModelPreview === 'function') {
+      beginModelPreview(runId, { panelID: 'detail-preview' });
+    }
     if (merged && shouldPollRun(merged)) {
       runsStatus('已加载 Run ' + runId + '，仍在执行；页面会轮询到终态（不会提前显示成功）。', 'pending');
       await pollRunDetail(runId, 0);
@@ -1310,6 +1964,805 @@ async function loadRunsPage(cursor) {
       return;
     }
     runsStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// F04A/T042: the per-node result panel (data / files / capped logs).
+//
+// The panel reads the owner-only non-contract node-results projection and then
+// the existing artifact content route; it never invents a result. A node with no
+// rows after the Run reached a terminal state is shown as "no result", and a
+// failed node is shown as "failed" — the two are not conflated. Logs are capped
+// in the page as well as on the server, and never rendered as data.
+// ---------------------------------------------------------------------------
+let nodeStatusByID = {};
+let lastNodeResults = null;
+
+function runNodeResultsPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/node-results';
+}
+
+function artifactContentPath(artifactID) {
+  return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/content';
+}
+
+function nodeResultKindText(kind) {
+  if (kind === 'data') {
+    return 'data';
+  }
+  if (kind === 'file') {
+    return '文件';
+  }
+  if (kind === 'log') {
+    return '日志';
+  }
+  return String(kind || '未知');
+}
+
+function nodeStatusText(state) {
+  switch (String(state || '')) {
+    case 'pending':
+      return '等待';
+    case 'running':
+      return '运行中';
+    case 'succeeded':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'skipped':
+      return '已跳过';
+    case 'no_result':
+      return '无结果';
+    default:
+      return '未知';
+  }
+}
+
+function formatBytes(count) {
+  const size = Number(count);
+  if (!Number.isFinite(size) || size < 0) {
+    return '0 B';
+  }
+  if (size < 1024) {
+    return String(Math.floor(size)) + ' B';
+  }
+  return (size / 1024).toFixed(1) + ' KiB';
+}
+
+/** Cap one log view exactly like the server caps the artifact. */
+function capLogText(text, limit) {
+  const source = typeof text === 'string' ? text : '';
+  const cap = Number.isSafeInteger(limit) && limit > 0 ? limit : 4096;
+  if (source.length <= cap) {
+    return { text: source, truncated: false, notice: '' };
+  }
+  return {
+    text: source.slice(0, cap),
+    truncated: true,
+    notice:
+      '日志已截断：只显示前 ' +
+      cap +
+      ' 个字符（共 ' +
+      source.length +
+      ' 个字符，完整内容以服务端上限为准）。',
+  };
+}
+
+function prettyJSONText(raw) {
+  const source = typeof raw === 'string' ? raw : '';
+  try {
+    return JSON.stringify(JSON.parse(source), null, 2);
+  } catch (error) {
+    return source;
+  }
+}
+
+function describeNodeResultItem(item) {
+  const entry = item && typeof item === 'object' ? item : {};
+  const artifactID = String(entry.artifact_id || '');
+  const label = String(entry.label || '');
+  const mediaType = String(entry.media_type || '');
+  const sizeBytes = Number(entry.size_bytes) || 0;
+  return {
+    artifactID: artifactID,
+    kind: String(entry.kind || ''),
+    kindText: nodeResultKindText(entry.kind),
+    label: label,
+    mediaType: mediaType,
+    sizeBytes: sizeBytes,
+    sizeText: formatBytes(sizeBytes),
+    sha256: String(entry.sha256 || ''),
+    line:
+      nodeResultKindText(entry.kind) +
+      ' · ' +
+      label +
+      ' · ' +
+      (mediaType || '未知类型') +
+      ' · ' +
+      formatBytes(sizeBytes),
+    downloadPath: artifactDownloadPath(artifactID),
+    contentPath: artifactContentPath(artifactID),
+  };
+}
+
+/**
+ * Group the node-results projection by node and derive an honest status.
+ *
+ * `statuses` is the map filled from committed node.status events; when it has no
+ * entry, a node with rows is a success (the rows only exist after the server
+ * registered them), a failed/cancelled Run's silent node is failed, and a
+ * succeeded Run's silent node is "no result" rather than invented output.
+ */
+function describeNodeResults(body, statuses, runState) {
+  const items = body && Array.isArray(body.items) ? body.items : [];
+  const known = statuses && typeof statuses === 'object' ? statuses : {};
+  const groups = [];
+  const byNode = new Map();
+  for (const item of items) {
+    const nodeID = String((item && item.node_id) || '');
+    if (!byNode.has(nodeID)) {
+      const group = { nodeID: nodeID, data: [], files: [], logs: [], count: 0 };
+      byNode.set(nodeID, group);
+      groups.push(group);
+    }
+    const group = byNode.get(nodeID);
+    const described = describeNodeResultItem(item);
+    group.count += 1;
+    if (described.kind === 'data') {
+      group.data.push(described);
+    } else if (described.kind === 'file') {
+      group.files.push(described);
+    } else if (described.kind === 'log') {
+      group.logs.push(described);
+    }
+  }
+  // Nodes observed only through node.status events still appear, so a failed
+  // node (no rows, by definition) is visible as "failed" instead of vanishing.
+  for (const nodeID of Object.keys(known)) {
+    if (!byNode.has(nodeID)) {
+      const group = { nodeID: nodeID, data: [], files: [], logs: [], count: 0 };
+      byNode.set(nodeID, group);
+      groups.push(group);
+    }
+  }
+  const state = String(runState || '');
+  let dataCount = 0;
+  let fileCount = 0;
+  let logCount = 0;
+  for (const group of groups) {
+    let status = String(known[group.nodeID] || '');
+    if (status === '') {
+      if (group.count > 0) {
+        status = 'succeeded';
+      } else if (state === 'failed' || state === 'cancelled') {
+        status = 'failed';
+      } else if (state === 'succeeded') {
+        status = 'no_result';
+      }
+    }
+    group.status = status;
+    group.statusText = nodeStatusText(status);
+    group.resultText = group.count > 0 ? '有结果' : '无结果';
+    dataCount += group.data.length;
+    fileCount += group.files.length;
+    logCount += group.logs.length;
+  }
+  const empty = groups.length === 0;
+  return {
+    visible: true,
+    empty: empty,
+    nodeCount: groups.length,
+    dataCount: dataCount,
+    fileCount: fileCount,
+    logCount: logCount,
+    nodes: groups,
+    text: empty
+      ? '该 Run 还没有节点结果（旧版单 python 执行路径不产生节点结果）。'
+      : groups.length +
+        ' 个节点 · data ' +
+        dataCount +
+        ' · 文件 ' +
+        fileCount +
+        ' · 日志 ' +
+        logCount,
+  };
+}
+
+function nodeResultsStatus(message, kind) {
+  const element = document.getElementById('node-results-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+// ---------------------------------------------------------------------------
+// F04A/T043: the agent node summary.
+//
+// The node-results read has no node-type field and the T041 ledger read has no
+// logical key (adding one would change the frozen T041 projection), so the page
+// links them through two closed conventions the executor documents:
+//   - the agent node's tool log rows are labelled "tool-log-<call id>";
+//   - a failed agent node has a node.status=failed entry but no rows, while the
+//     ledger shows model operations.
+// The summary never shows params or receipt bodies; tool-call ids/names and the
+// per-operation state are already the non-secret ledger projection.
+// ---------------------------------------------------------------------------
+let lastCapabilityLedger = null;
+// F06/T051: the run the reconcile form belongs to. A reconcile reloads this
+// ledger so the owner sees the settled state and the unchanged write count.
+let lastCapabilityRunID = '';
+
+function agentNodeIDOf(nodeBody, ledgerBody, statuses) {
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  const toolLog = items.find(
+    (item) => item && item.kind === 'log' && String(item.label || '').indexOf('tool-log-') === 0,
+  );
+  if (toolLog) {
+    return String(toolLog.node_id || '');
+  }
+  const ledger = describeCapabilityLedger(ledgerBody);
+  const hasModelOperation = ledger.items.some((item) => item.kindText === '模型');
+  if (hasModelOperation) {
+    const known = statuses && typeof statuses === 'object' ? statuses : {};
+    const withRows = new Set(items.map((item) => String((item && item.node_id) || '')));
+    for (const nodeID of Object.keys(known)) {
+      if (known[nodeID] === 'failed' && !withRows.has(nodeID)) {
+        return nodeID;
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Derive the agent panel from the node-results projection, the capability ledger,
+ * the committed node.status map and the Run's state/error code.
+ */
+function describeAgentNode(nodeBody, ledgerBody, statuses, runState, runErrorCode) {
+  const nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  const nodeItems = nodeID === '' ? [] : items.filter((item) => String(item.node_id || '') === nodeID);
+  const data = nodeItems.filter((item) => item.kind === 'data').map(describeNodeResultItem);
+  const files = nodeItems.filter((item) => item.kind === 'file').map(describeNodeResultItem);
+  const logs = nodeItems.filter((item) => item.kind === 'log').map(describeNodeResultItem);
+  const ledger = describeCapabilityLedger(ledgerBody);
+  const models = ledger.items.filter((item) => item.kindText === '模型');
+  const tools = ledger.items.filter((item) => item.kindText === '工具');
+  const toolCalls = [];
+  for (const model of models) {
+    for (const call of model.toolCalls) {
+      toolCalls.push(call);
+    }
+  }
+  const known = statuses && typeof statuses === 'object' ? statuses : {};
+  let status = nodeID === '' ? '' : String(known[nodeID] || '');
+  if (status === '' && nodeItems.length > 0) {
+    status = 'succeeded';
+  }
+  if (status === '' && nodeID !== '' && String(runState || '') === 'failed') {
+    status = 'failed';
+  }
+  const errorCode = String(runErrorCode || '');
+  const present = nodeID !== '';
+  const schemaFailure = present && status === 'failed' && errorCode === 'node_output_invalid';
+  const toolStateText =
+    tools.length === 0
+      ? '还没有工具操作'
+      : tools.map((item) => item.stateText + ' · ' + item.attemptsText).join('；');
+  return {
+    visible: true,
+    present,
+    nodeID,
+    status,
+    statusText: present ? nodeStatusText(status) : '无 Agent 节点',
+    turns: models.length,
+    turnsText: present ? String(models.length) + ' 轮模型调用' : '无模型调用',
+    toolCalls,
+    toolCallsText:
+      toolCalls.length === 0
+        ? '无工具调用'
+        : toolCalls.map((call) => call.id + '(' + call.name + ')').join('、'),
+    toolOperations: tools,
+    toolStateText,
+    stub: models.some((item) => item.stub),
+    dataCount: data.length,
+    fileCount: files.length,
+    logCount: logs.length,
+    data,
+    files,
+    logs,
+    errorCode,
+    schemaFailure,
+    errorText: !present
+      ? ''
+      : schemaFailure
+        ? '节点 ' + nodeID + ' 最终输出未通过 output_schema（node_output_invalid）；定位指针见 supervisor 运行报告。'
+        : errorCode !== ''
+          ? '节点 ' + nodeID + ' 失败：' + errorCode
+          : '',
+    text: !present
+      ? '该 Run 没有 Agent 节点（旧版单 python 路径不产生 Agent 摘要）。'
+      : 'Agent 节点 ' +
+        nodeID +
+        ' · ' +
+        nodeStatusText(status) +
+        ' · ' +
+        models.length +
+        ' 轮模型调用 · ' +
+        (toolCalls.length === 0 ? '无工具调用' : '工具调用 ' + toolCalls.length + ' 次') +
+        (tools.length === 0 ? '' : ' · 工具操作 ' + tools.length + ' 次'),
+  };
+}
+
+function agentNodeStatus(message, kind) {
+  const element = document.getElementById('agent-node-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+/** The persisted T047 context-trace file row of the agent node, if any. */
+function contextTraceRowOf(nodeBody, ledgerBody, statuses) {
+  const items = nodeBody && Array.isArray(nodeBody.items) ? nodeBody.items : [];
+  let nodeID = agentNodeIDOf(nodeBody, ledgerBody, statuses);
+  if (nodeID === '') {
+    // An agent node may declare no tools (so it has no tool-log row) and still
+    // persist a context trace; the trace label itself is enough to locate it.
+    const traceRow = items.find(
+      (item) => item && item.kind === 'file' && String(item.label || '') === 'context-trace',
+    );
+    if (traceRow) {
+      nodeID = String(traceRow.node_id || '');
+    }
+  }
+  if (nodeID === '') {
+    return null;
+  }
+  return (
+    items.find(
+      (item) =>
+        String((item && item.node_id) || '') === nodeID &&
+        item &&
+        item.kind === 'file' &&
+        String(item.label || '') === 'context-trace',
+    ) || null
+  );
+}
+
+/** The fixed truncation-reason labels of the T047 trace document. */
+function contextTruncationReasonText(reason) {
+  switch (String(reason || '')) {
+    case 'low_relevance_history':
+      return '低相关历史';
+    case 'display_only_summary':
+      return '仅展示摘要';
+    case 'old_tool_detail':
+      return '旧工具结果细节';
+    case 'verbose_upstream_text':
+      return '冗长上游文本';
+    case 'optional_memory':
+      return '可选个人记忆';
+    case 'protected_minimum':
+      return '受保护最小输入';
+    default:
+      return String(reason || '未知原因');
+  }
+}
+
+/**
+ * Pure projection of the persisted T047 trace document. It renders identifiers,
+ * truncation reasons, protected key paths and token counts only: the trace has
+ * no message text, memory text or credential, and this function never invents
+ * one.
+ */
+function describeContextTrace(document_) {
+  const value = document_ && typeof document_ === 'object' ? document_ : {};
+  const turns = Array.isArray(value.turns) ? value.turns : [];
+  const sources = [];
+  const truncations = [];
+  const protectedPaths = [];
+  let budgetTokens = 0;
+  let reservedOutputTokens = 0;
+  let estimatedTokens = 0;
+  let memoryState = 'not_run';
+  for (const turn of turns) {
+    const item = turn && typeof turn === 'object' ? turn : {};
+    budgetTokens = Math.max(budgetTokens, Number(item.budget_tokens || 0));
+    reservedOutputTokens = Math.max(reservedOutputTokens, Number(item.reserved_output_tokens || 0));
+    estimatedTokens = Math.max(estimatedTokens, Number(item.estimated_tokens || 0));
+    if (item.memory_state) {
+      memoryState = String(item.memory_state);
+    }
+    for (const source of Array.isArray(item.sources) ? item.sources : []) {
+      const entry = source && typeof source === 'object' ? source : {};
+      const kind = String(entry.kind || '');
+      const nodeID = String(entry.node_id || '');
+      const artifactID = String(entry.artifact_id || '');
+      const label = String(entry.label || '');
+      const key = [kind, nodeID, artifactID, label, String(entry.estimated_tokens || 0)].join('|');
+      if (!sources.some((existing) => existing.key === key)) {
+        sources.push({
+          key,
+          kind,
+          nodeID,
+          artifactID,
+          label,
+          tokens: Number(entry.estimated_tokens || 0),
+          protected: Boolean(entry.protected),
+        });
+      }
+    }
+    for (const truncation of Array.isArray(item.truncations) ? item.truncations : []) {
+      const entry = truncation && typeof truncation === 'object' ? truncation : {};
+      truncations.push({
+        source: String(entry.source || ''),
+        reason: String(entry.reason || ''),
+        reasonText: contextTruncationReasonText(entry.reason),
+        tokensRemoved: Number(entry.tokens_removed || 0),
+      });
+    }
+    for (const path of Array.isArray(item.protected) ? item.protected : []) {
+      const text = String(path || '');
+      if (text !== '' && !protectedPaths.includes(text)) {
+        protectedPaths.push(text);
+      }
+    }
+  }
+  const sourceText =
+    sources.length === 0
+      ? '没有授权来源记录'
+      : sources
+          .map((source) => {
+            const where = [source.kind, source.nodeID, source.artifactID, source.label]
+              .filter((part) => part !== '')
+              .join('/');
+            return where + '（约 ' + String(source.tokens) + ' tokens）';
+          })
+          .join('；');
+  const truncationText =
+    truncations.length === 0
+      ? '本次上下文未触发截断'
+      : truncations
+          .map(
+            (entry) =>
+              entry.source + ' · ' + entry.reasonText + ' · 移除 ' +
+              String(entry.tokensRemoved) + ' tokens',
+          )
+          .join('；');
+  const protectedText =
+    protectedPaths.length === 0 ? '没有受保护事实键' : protectedPaths.join('、');
+  const memoryText =
+    memoryState === 'not_run'
+      ? 'not_run（F09 个人记忆存储未实现，未注入任何记忆）'
+      : memoryState;
+  return {
+    visible: turns.length > 0,
+    turnCount: turns.length,
+    budgetTokens,
+    reservedOutputTokens,
+    estimatedTokens,
+    memoryState,
+    memoryText,
+    sources,
+    truncations,
+    protectedPaths,
+    sourceText,
+    truncationText,
+    protectedText,
+    budgetText:
+      '预算 ' +
+      String(budgetTokens) +
+      ' tokens（预留输出 ' +
+      String(reservedOutputTokens) +
+      '，估算输入 ' +
+      String(estimatedTokens) +
+      '）',
+  };
+}
+
+function contextTraceStatus(message, kind) {
+  const element = document.getElementById('agent-context-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+/**
+ * Load and render the persisted context trace of the agent node. The trace is a
+ * registered run file, read through the existing owner-only artifact content
+ * route; a missing trace is stated plainly, never re-created from model text.
+ */
+async function renderContextTrace(described) {
+  const container = document.getElementById('agent-context-trace');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  if (!described || !described.present) {
+    contextTraceStatus('该 Run 没有 Agent 节点，因此没有上下文跟踪。', '');
+    return null;
+  }
+  const row = contextTraceRowOf(lastNodeResults, lastCapabilityLedger, nodeStatusByID);
+  if (!row) {
+    contextTraceStatus(
+      '该 Run 没有持久化的上下文跟踪文件（失败发生在首次模型调用前，或该 Run 来自旧版本）。',
+      'pending',
+    );
+    return null;
+  }
+  contextTraceStatus('正在加载上下文跟踪…', 'pending');
+  try {
+    const document_ = JSON.parse(await fetchArtifactText(String(row.artifact_id || '')));
+    const trace = describeContextTrace(document_);
+    if (!trace.visible) {
+      contextTraceStatus('上下文跟踪文件没有轮次记录。', 'pending');
+      return trace;
+    }
+    const summary = document.createElement('dl');
+    summary.className = 'run';
+    const add = (label, content) => {
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const definition = document.createElement('dd');
+      definition.textContent = content;
+      summary.append(term, definition);
+    };
+    add('轮次 / 预算', '第 ' + String(trace.turnCount) + ' 轮 · ' + trace.budgetText);
+    add('授权来源', trace.sourceText);
+    add('截断', trace.truncationText);
+    add('受保护事实', trace.protectedText);
+    add('个人记忆', trace.memoryText);
+    container.appendChild(summary);
+    contextTraceStatus(
+      '上下文跟踪来自服务端登记的 context-trace 文件；只含来源、截断原因与受保护键名，不含提示词或正文。',
+      'ok',
+    );
+    return trace;
+  } catch (error) {
+    contextTraceStatus(
+      '上下文跟踪不可用 [' + (error && error.code ? error.code : 'error') + ']',
+      'bad',
+    );
+    return null;
+  }
+}
+
+function renderAgentNodePanel() {
+  const container = document.getElementById('agent-node-body');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  const described = describeAgentNode(
+    lastNodeResults,
+    lastCapabilityLedger,
+    nodeStatusByID,
+    displayedRun && displayedRun.state,
+    displayedRun && displayedRun.error_code,
+  );
+  agentNodeStatus(described.text, described.present ? 'ok' : '');
+  void renderContextTrace(described);
+  if (!described.present) {
+    return described;
+  }
+  const summary = document.createElement('dl');
+  summary.className = 'run';
+  const add = (label, value) => {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const definition = document.createElement('dd');
+    definition.textContent = value;
+    summary.append(term, definition);
+  };
+  add('节点 / 状态', described.nodeID + ' · ' + described.statusText);
+  add('模型轮次', described.turnsText + (described.stub ? '（stub 提供方）' : ''));
+  add('工具调用', described.toolCallsText);
+  add('工具操作', described.toolStateText);
+  add('结果', 'data ' + described.dataCount + ' · 文件 ' + described.fileCount + ' · 日志 ' + described.logCount);
+  container.appendChild(summary);
+  if (described.errorText !== '') {
+    const failure = document.createElement('p');
+    failure.className = described.schemaFailure ? 'status bad' : 'status';
+    failure.textContent = described.errorText;
+    container.appendChild(failure);
+  }
+  for (const data of described.data) {
+    const row = document.createElement('div');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '查看 Agent 最终输出';
+    const output = document.createElement('pre');
+    output.className = 'hint';
+    button.addEventListener('click', async () => {
+      try {
+        output.textContent = prettyJSONText(await fetchArtifactText(data.artifactID));
+      } catch (error) {
+        output.textContent =
+          'Agent 输出不可用 [' + (error && error.code ? error.code : 'error') + ']';
+      }
+    });
+    row.append(button, ' ', data.line);
+    container.append(row, output);
+  }
+  if (described.files.length > 0) {
+    const list = document.createElement('ul');
+    for (const file of described.files) {
+      const item = document.createElement('li');
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = '下载';
+      download.addEventListener('click', () => downloadNodeArtifact(file.artifactID));
+      item.append(file.label + ' · ' + file.mediaType + ' · ' + file.sizeText + ' ', download);
+      list.appendChild(item);
+    }
+    container.appendChild(list);
+  }
+  return described;
+}
+
+function recordNodeStatus(event) {
+  if (!event || event.type !== 'node.status') {
+    return;
+  }
+  const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+  const nodeID = String(payload.node_id || '');
+  if (nodeID === '') {
+    return;
+  }
+  nodeStatusByID[nodeID] = String(payload.state || '');
+  if (lastNodeResults) {
+    renderNodeResults(lastNodeResults);
+  }
+}
+
+async function fetchArtifactText(artifactID) {
+  const response = await fetch(artifactContentPath(artifactID), {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch (parseError) {
+      payload = null;
+    }
+    const detail = (payload && payload.error) || {};
+    const failure = new Error(detail.message || 'HTTP ' + response.status);
+    failure.code = detail.code || 'http_' + response.status;
+    failure.status = response.status;
+    throw failure;
+  }
+  return text;
+}
+
+async function downloadNodeArtifact(artifactID) {
+  try {
+    const ticket = await api(artifactDownloadPath(artifactID));
+    if (!ticket.url) {
+      throw new Error('下载响应没有 URL');
+    }
+    window.open(ticket.url, '_blank', 'noopener');
+  } catch (error) {
+    nodeResultsStatus(
+      '下载失败 [' +
+        (error && error.code ? error.code : 'error') +
+        '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+  }
+}
+
+function renderNodeResults(body) {
+  lastNodeResults = body && typeof body === 'object' ? body : null;
+  const container = document.getElementById('node-results-nodes');
+  if (!container) {
+    return null;
+  }
+  container.replaceChildren();
+  const described = describeNodeResults(
+    lastNodeResults,
+    nodeStatusByID,
+    displayedRun && displayedRun.state,
+  );
+  nodeResultsStatus(described.text, described.empty ? '' : 'ok');
+  for (const group of described.nodes) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent =
+      group.nodeID + ' · ' + group.statusText + (group.count > 0 ? '' : ' · 无结果');
+    section.appendChild(heading);
+
+    for (const data of group.data) {
+      const row = document.createElement('div');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '查看 data';
+      const output = document.createElement('pre');
+      output.className = 'hint';
+      button.addEventListener('click', async () => {
+        try {
+          output.textContent = prettyJSONText(await fetchArtifactText(data.artifactID));
+        } catch (error) {
+          output.textContent =
+            'data 不可用 [' + (error && error.code ? error.code : 'error') + ']';
+        }
+      });
+      row.append(button, ' ', data.line);
+      section.append(row, output);
+    }
+
+    if (group.files.length > 0) {
+      const list = document.createElement('ul');
+      for (const file of group.files) {
+        const item = document.createElement('li');
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.textContent = '下载';
+        download.addEventListener('click', () => downloadNodeArtifact(file.artifactID));
+        item.append(file.label + ' · ' + file.mediaType + ' · ' + file.sizeText + ' ', download);
+        list.appendChild(item);
+      }
+      section.appendChild(list);
+    }
+
+    for (const log of group.logs) {
+      const row = document.createElement('div');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '查看日志（受限）';
+      const notice = document.createElement('p');
+      notice.className = 'hint';
+      const output = document.createElement('pre');
+      output.className = 'hint';
+      button.addEventListener('click', async () => {
+        try {
+          const capped = capLogText(await fetchArtifactText(log.artifactID), 4096);
+          output.textContent = capped.text;
+          notice.textContent = capped.notice;
+        } catch (error) {
+          output.textContent =
+            '日志不可用 [' + (error && error.code ? error.code : 'error') + ']';
+        }
+      });
+      row.append(button, ' ', log.line);
+      section.append(row, notice, output);
+    }
+    container.appendChild(section);
+  }
+  renderAgentNodePanel();
+  return described;
+}
+
+async function loadNodeResults(runId) {
+  try {
+    const body = await api(runNodeResultsPath(runId));
+    if (displayedRunID !== runId) {
+      return;
+    }
+    renderNodeResults(body);
+  } catch (error) {
+    if (error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    nodeResultsStatus(
+      '节点结果不可用 [' +
+        (error && error.code ? error.code : 'error') +
+        '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
   }
 }
 

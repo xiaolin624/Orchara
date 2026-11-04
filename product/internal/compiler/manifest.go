@@ -238,6 +238,7 @@ func Build(
 	definition, capabilityCard map[string]any,
 	tools []ToolArtifact,
 	modelProfileVersions, subappVersions []string,
+	connectors ...ConnectorPolicy,
 ) (*Built, error) {
 	if !digestPattern.MatchString(inputs.WorkerImageDigest) {
 		return nil, invalid("worker_image_digest", "must be sha256:<64 lowercase hex>")
@@ -269,6 +270,10 @@ func Build(
 	if err != nil {
 		return nil, err
 	}
+	normalConnectors, err := normaliseConnectors(connectors)
+	if err != nil {
+		return nil, err
+	}
 
 	manifest := &Manifest{
 		ManifestVersion:      ManifestVersion,
@@ -283,7 +288,7 @@ func Build(
 		ToolArtifacts:        normalTools,
 		ModelProfileVersions: normalModels,
 		SubappVersions:       normalSubapps,
-		ConnectorPolicies:    []ConnectorPolicy{},
+		ConnectorPolicies:    normalConnectors,
 	}
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
@@ -432,4 +437,35 @@ func containsString(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+// normaliseConnectors canonicalises manifest.connector_policies: version ids are
+// UUIDs, digests are 64 lowercase hex, one digest per version id, sorted by
+// version id. The compiler never invents a policy: the closure is resolved by
+// catalog from approved/unrevoked rows; this function only refuses a malformed
+// set and removes duplicates.
+func normaliseConnectors(policies []ConnectorPolicy) ([]ConnectorPolicy, error) {
+	byID := make(map[string]string, len(policies))
+	for _, policy := range policies {
+		if !uuid.Valid(policy.VersionID) {
+			return nil, invalid("connector_policies", "version_id "+policy.VersionID+" must be a UUID")
+		}
+		if !lockPattern.MatchString(policy.PolicySHA256) {
+			return nil, invalid("connector_policies", "policy "+policy.VersionID+" must have a 64 lowercase hex sha256")
+		}
+		if existing, present := byID[policy.VersionID]; present && existing != policy.PolicySHA256 {
+			return nil, invalid("connector_policies", "policy "+policy.VersionID+" is referenced with two different digests")
+		}
+		byID[policy.VersionID] = policy.PolicySHA256
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	normalised := make([]ConnectorPolicy, 0, len(ids))
+	for _, id := range ids {
+		normalised = append(normalised, ConnectorPolicy{VersionID: id, PolicySHA256: byID[id]})
+	}
+	return normalised, nil
 }

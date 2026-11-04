@@ -35,9 +35,11 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/health"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
+	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
 )
 
@@ -125,6 +127,17 @@ func run(logger *log.Logger) error {
 	notifier := background.NewInProcessNotifier(sync.OnceFunc(func() {
 		logger.Print("wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)")
 	}))
+	// F06/T039: the deployer-registered model catalog. A malformed catalog
+	// refuses startup (fail closed) rather than serving a half-configured
+	// registration surface.
+	modelCatalog, err := modelregistry.FromEnv(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("model catalog rejected: %w", err)
+	}
+	// F06/T048: the versioned connector registry. Credential references are
+	// resolved inside Go from the deployer's env/file root; no request value can
+	// name a credential or an endpoint.
+	connectorService := connectors.New(db, objects, config.FromEnv(), cfg.SecretDir)
 	apiServer := api.New(api.Deps{
 		Service:           identityService,
 		WebDir:            cfg.WebDir,
@@ -133,6 +146,8 @@ func run(logger *log.Logger) error {
 		Objects:           objects,
 		Signer:            signer,
 		Providers:         providers,
+		Catalog:           modelCatalog,
+		Connectors:        connectorService,
 		PublicURL:         cfg.PublicURL,
 		RetryBackoff:      cfg.RetryBackoff,
 		ExecutionLeaseTTL: cfg.ExecutionLeaseTTL,

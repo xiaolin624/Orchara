@@ -343,6 +343,26 @@ def migrate_or_fail(admin_binary: Path, dsn: str) -> str:
     return (completed.stdout + completed.stderr).strip()
 
 
+def migration_chain(dbname: str) -> dict[str, str]:
+    """The applied migration ledger keyed by version.
+
+    The only stable chain invariant is continuity: a fresh database applies
+    0001, 0002, ... with no gap and exactly one row per version. A pinned
+    ``ends at 00NN`` list rots the moment a later ticket appends a migration, so
+    a ticket asserts its own migration name at its own version instead of the
+    transient tail.
+    """
+    rows = sql_rows(
+        dbname,
+        "SELECT version, name FROM platform.schema_migrations ORDER BY version",
+    )
+    versions = [row["version"] for row in rows]
+    assert versions == [
+        f"{number:04d}" for number in range(1, len(versions) + 1)
+    ], versions
+    return {row["version"]: row["name"] for row in rows}
+
+
 def bootstrap_or_fail(
     admin_binary: Path,
     dsn: str,

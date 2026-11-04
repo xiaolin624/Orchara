@@ -2,13 +2,39 @@ package modelproxy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
 	"strings"
 
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/jcs"
 )
+
+// TransientError is a provider failure the server may retry (bounded by the
+// caller's attempt ceiling). A provider that returns anything else is a
+// deployment/permission/validation fact and must not be retried.
+type TransientError struct {
+	Reason string
+}
+
+func (e *TransientError) Error() string {
+	if e.Reason == "" {
+		return "the model provider failed transiently"
+	}
+	return "the model provider failed transiently: " + e.Reason
+}
+
+// IsTransient reports whether err is a retryable provider failure.
+func IsTransient(err error) bool {
+	var transient *TransientError
+	return errors.As(err, &transient)
+}
 
 // Provider is the seam between the ledger and one model backend. It receives
 // only what the server resolved for this job: the candidate row, its params and
@@ -123,6 +149,13 @@ func (s *stubProvider) Call(_ context.Context, request CallRequest) (ProviderRes
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
 	}
+	// F06/T041 agent branch: a run-scoped capability call carries `messages`
+	// (and `task: "agent"`); the job-scoped validation call carries a fixture.
+	// The agent answer is derived deterministically from the canonical params,
+	// never from a vendor and never from the wall clock, so a test can replay it.
+	if isAgentCall(request.Params) {
+		return stubAgentResponse(request)
+	}
 	fixture := request.Fixture
 	if request.FixtureSHA256 != "" && request.FixtureSHA256 != fixtureSHA256Hex(fixture) {
 		return ProviderResponse{}, fmt.Errorf("%w: fixture hash does not match the bytes", ErrNotConfigured)
@@ -187,4 +220,349 @@ func canonicalJSON(value any) ([]byte, error) {
 		return nil, err
 	}
 	return jcs.CanonicalizeBytes(raw)
+}
+
+// isAgentCall distinguishes a run-scoped agent capability call from the
+// job-scoped validation call: the agent call always carries messages.
+func isAgentCall(params map[string]any) bool {
+	if params == nil {
+		return false
+	}
+	if task, ok := params["task"].(string); ok && task == "agent" {
+		return true
+	}
+	_, hasMessages := params["messages"]
+	return hasMessages
+}
+
+// stubAgentResponse is the deterministic F06 agent stub: same params, same
+// answer; an explicit stub label; the documented stub_tool_calls hint passed
+// through for the capability validator to accept or refuse; stub_transient_failures
+// makes the retry/ledger path testable without a vendor.
+func stubAgentResponse(request CallRequest) (ProviderResponse, error) {
+	// T045: the model-id convention makes an availability fault reproducible
+	// without a vendor. A primary registered with this model id always answers
+	// with the same typed failure, so the bounded retry and compatible-fallback
+	// path is exercised end to end; a compatible fallback registered under a
+	// normal stub model id then succeeds.
+	if fault := stubModelFault(request.Candidate.ModelID); fault != nil {
+		return ProviderResponse{}, fault
+	}
+	if failures, ok := integerParam(request.Params["stub_transient_failures"]); ok &&
+		request.Attempt <= int(failures) {
+		return ProviderResponse{}, &TransientError{
+			Reason: fmt.Sprintf("stub transient failure %d", request.Attempt),
+		}
+	}
+	rawParams, err := json.Marshal(request.Params)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("encoding the stub agent params: %w", err)
+	}
+	canonical, err := jcs.CanonicalizeBytes(rawParams)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent params: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	digest := hex.EncodeToString(sum[:])
+	text := "stub-agent:" + digest[:16]
+	data := map[string]any{
+		"provider":   "stub",
+		"stub":       true,
+		"model_id":   request.Candidate.ModelID,
+		"text":       text,
+		"tool_calls": []any{},
+	}
+	if hint, ok := request.Params["stub_tool_calls"]; ok {
+		data["tool_calls"] = hint
+	} else if calls := stubAgentAutoToolCalls(request.Params); calls != nil {
+		// T043: a controlled agent whose node declares a tool must be able to
+		// exercise the real grant/sandbox/result path end to end with the dev
+		// stub. Absent an explicit hint, the stub plays a model that calls the
+		// first declared tool on its first turn and answers once a tool result
+		// message exists.
+		data["tool_calls"] = calls
+	}
+	if schema, ok := request.Params["response_schema"].(map[string]any); ok {
+		// F04A/T049: the sales template's explain node receives the python
+		// node's validated summary in its user message. When the response schema
+		// asks for a report, the deterministic stub copies those verified
+		// numbers verbatim — it never recomputes or invents an amount — and the
+		// totals object is the same summary. Amount truth stays with the python
+		// tool; the model only explains.
+		if structured := verifiedSalesReport(schema, request.Params); structured != nil {
+			data["structured"] = structured
+		} else if structured, ok := stubSchemaValue(schema, digest, 0).(map[string]any); ok {
+			data["structured"] = structured
+		}
+	}
+	tokensIn := int64((len(canonical) + 3) / 4)
+	tokensOut := int64((len(text) + 3) / 4)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(request.Candidate.ModelID)), "stub-usage-missing") {
+		// F06/T046: a provider answer without a usage object. The capability
+		// service keeps the conservative reservation (usage_missing) until a
+		// maintenance reconciliation settles it; the stub is honest about not
+		// knowing the cost instead of inventing one.
+		output, err := canonicalJSON(data)
+		if err != nil {
+			return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent answer: %w", err)
+		}
+		return ProviderResponse{Data: data, Output: output}, nil
+	}
+	data["usage"] = map[string]any{
+		"input_tokens":  tokensIn,
+		"output_tokens": tokensOut,
+	}
+	output, err := canonicalJSON(data)
+	if err != nil {
+		return ProviderResponse{}, fmt.Errorf("canonicalising the stub agent answer: %w", err)
+	}
+	return ProviderResponse{
+		Data:         data,
+		Output:       output,
+		TokensIn:     tokensIn,
+		TokensOut:    tokensOut,
+		ChargedUnits: (tokensIn + tokensOut) * reservedUnitsPerInputToken,
+	}, nil
+}
+
+// verifiedSalesReport builds the deterministic explain answer for the F04A/T049
+// sales template.
+//
+// It is used only when the response schema declares a `report` property and the
+// agent's user message contains the python node's validated summary object. The
+// report sentence copies total/regions/order_count exactly; `totals` is the same
+// object. A schema without `report` (T043's `{text}`) is unaffected, and a
+// message without a summary falls through to the generic deterministic stub.
+func verifiedSalesReport(schema map[string]any, params map[string]any) map[string]any {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if _, ok := properties["report"]; !ok {
+		return nil
+	}
+	summary := verifiedSummaryFromMessages(params)
+	if summary == nil {
+		return nil
+	}
+	total, _ := summary["total"].(string)
+	regions, _ := summary["regions"].(map[string]any)
+	names := make([]string, 0, len(regions))
+	for name := range regions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var report strings.Builder
+	report.WriteString("销售报告：总额 ")
+	report.WriteString(total)
+	report.WriteString("，订单数 ")
+	report.WriteString(strconv.Itoa(int(summary["order_count"].(float64))))
+	report.WriteString("，区域：")
+	for index, name := range names {
+		if index > 0 {
+			report.WriteString("，")
+		}
+		report.WriteString(name)
+		report.WriteString(" ")
+		report.WriteString(regions[name].(string))
+	}
+	report.WriteString("。以上数字全部来自已验证统计，报告未重新计算任何金额。")
+	return map[string]any{"report": report.String(), "totals": summary}
+}
+
+// verifiedSummaryFromMessages finds the validated summary the executor placed in
+// the last user message's inputs JSON. It scans messages from newest to oldest so
+// a later tool turn can never shadow the original inputs, and it accepts only an
+// object with the tool's exact total/regions/order_count shape.
+func verifiedSummaryFromMessages(params map[string]any) map[string]any {
+	messages, _ := params["messages"].([]any)
+	for index := len(messages) - 1; index >= 0; index-- {
+		message, ok := messages[index].(map[string]any)
+		if !ok || message["role"] != "user" {
+			continue
+		}
+		content, ok := message["content"].(string)
+		if !ok {
+			continue
+		}
+		var value any
+		if json.Unmarshal([]byte(content), &value) != nil {
+			continue
+		}
+		if summary := findSummaryObject(value); summary != nil {
+			return summary
+		}
+	}
+	return nil
+}
+
+// findSummaryObject walks a decoded inputs document (nested objects/arrays) for
+// the validated summary shape.
+func findSummaryObject(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		if summary := summaryOf(typed); summary != nil {
+			return summary
+		}
+		for _, child := range typed {
+			if summary := findSummaryObject(child); summary != nil {
+				return summary
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if summary := findSummaryObject(child); summary != nil {
+				return summary
+			}
+		}
+	}
+	return nil
+}
+
+// summaryOf reports whether object is the preset tool's summary document.
+func summaryOf(object map[string]any) map[string]any {
+	total, ok := object["total"].(string)
+	if !ok || strings.TrimSpace(total) == "" {
+		return nil
+	}
+	regions, ok := object["regions"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	for name, value := range regions {
+		amount, ok := value.(string)
+		if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(amount) == "" {
+			return nil
+		}
+	}
+	count, ok := object["order_count"].(float64)
+	if !ok || count < 0 || count != math.Trunc(count) {
+		return nil
+	}
+	return object
+}
+
+// stubModelFault maps a registered stub model id to a deterministic failure.
+// T045 uses this (instead of a params hint) so the primary and the fallback of
+// one call can answer differently: the fault belongs to the candidate the
+// server resolved, not to worker-supplied params. A normal model id (for
+// example "stub-model") is unaffected.
+//
+//   - stub-unavailable*      bounded-transient availability fault
+//   - stub-rate-limited*     bounded-transient rate-limit fault
+//   - stub-adapter-down*     deployment availability fault (no adapter)
+//   - stub-permission-denied* terminal provider refusal (never retried/fallen back)
+//   - stub-schema-error*     terminal schema refusal (never retried/fallen back)
+//   - stub-usage-missing*    success without a usage object (T046 reconciliation path)
+func stubModelFault(modelID string) error {
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	switch {
+	case strings.HasPrefix(normalized, "stub-adapter-down"):
+		return ErrAdapterUnavailable
+	case strings.HasPrefix(normalized, "stub-rate-limited"):
+		return &TransientError{Reason: "rate limited (429) by the stub provider"}
+	case strings.HasPrefix(normalized, "stub-unavailable"):
+		return &TransientError{Reason: "the stub provider is unavailable"}
+	case strings.HasPrefix(normalized, "stub-permission-denied"):
+		return fmt.Errorf("the stub provider refused the call: permission denied")
+	case strings.HasPrefix(normalized, "stub-schema-error"):
+		return fmt.Errorf("the stub provider rejected the response schema")
+	default:
+		return nil
+	}
+}
+
+// stubAgentAutoToolCalls is the deterministic "model calls the tool first"
+// script: when the call declares tools and the conversation has no tool result
+// yet, emit one call for the first declared tool. The empty argument object is
+// validated by the capability server against the real tool input_schema, so a
+// tool that needs arguments refuses the call exactly like a real model mistake.
+func stubAgentAutoToolCalls(params map[string]any) []any {
+	tools, _ := params["tools"].([]any)
+	if len(tools) == 0 {
+		return nil
+	}
+	if messages, ok := params["messages"].([]any); ok {
+		for _, raw := range messages {
+			message, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if role, _ := message["role"].(string); role == "tool" {
+				return nil
+			}
+		}
+	}
+	first, _ := tools[0].(map[string]any)
+	name, _ := first["name"].(string)
+	if name == "" {
+		return nil
+	}
+	return []any{map[string]any{
+		"id": "stub-call-1", "name": name, "arguments": map[string]any{},
+	}}
+}
+
+// stubSchemaValue builds a deterministic value that satisfies the restricted
+// schema subset the capability validator understands. It only ever fills
+// declared properties, so an additionalProperties:false schema still passes.
+func stubSchemaValue(schema map[string]any, seed string, depth int) any {
+	if depth > 16 || schema == nil {
+		return nil
+	}
+	if enum, ok := schema["enum"].([]any); ok && len(enum) > 0 {
+		return enum[0]
+	}
+	kind, _ := schema["type"].(string)
+	switch kind {
+	case "object":
+		object := map[string]any{}
+		if properties, ok := schema["properties"].(map[string]any); ok {
+			for name, raw := range properties {
+				child, ok := raw.(map[string]any)
+				if !ok {
+					continue
+				}
+				object[name] = stubSchemaValue(child, seed, depth+1)
+			}
+		}
+		return object
+	case "array":
+		item, _ := schema["items"].(map[string]any)
+		value := stubSchemaValue(item, seed, depth+1)
+		if value == nil {
+			return []any{}
+		}
+		return []any{value}
+	case "string":
+		if len(seed) > 16 {
+			seed = seed[:16]
+		}
+		return seed
+	case "number":
+		return float64(1)
+	case "integer":
+		return float64(1)
+	case "boolean":
+		return true
+	default:
+		return nil
+	}
+}
+
+func integerParam(raw any) (int64, bool) {
+	switch value := raw.(type) {
+	case float64:
+		return int64(value), math.Trunc(value) == value
+	case int:
+		return int64(value), true
+	case int64:
+		return value, true
+	case json.Number:
+		integer, err := value.Int64()
+		return integer, err == nil
+	default:
+		return 0, false
+	}
 }

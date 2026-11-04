@@ -155,6 +155,29 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-downloads", s.handleInternalRunArtifactDownload)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifact-status", s.handleInternalRunArtifactStatus)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/artifacts", s.handleInternalRegisterRunArtifact)
+	// F04A/T042: the per-node data/file/log provenance report (non-contract).
+	// Worker or supervisor capacity; the attempt token is re-proved by the
+	// service, and only artifacts already registered through the routes above
+	// can be named.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-results", s.handleInternalRunNodeResults)
+
+	// F06/T041: the run-scoped controlled-capability protocol. Worker-only: a
+	// supervisor or maintenance certificate is refused, and the attempt token in
+	// the body is re-proved against the run in the path. The capabilities route
+	// is the contract invokeCapability; the capability-results route is the
+	// documented non-contract bridge T042/T043 report tool execution through.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capabilities", s.handleInternalCapability)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-results", s.handleInternalCapabilityResult)
+	// F06/T050: the contract prepareApproval. Worker-only; the server builds the
+	// proposal from the operation/policy rows and never copies the worker text.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/approvals", s.handleInternalPrepareApproval)
+	// F06/T046: maintenance-only reconciliation of a retained missing-usage
+	// budget reservation. Non-contract, like capability-results.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-settlements", s.handleInternalCapabilitySettlement)
+	// F06/T044: the contract streamModelCall SSE. Worker-only, same body and
+	// authorization as invokeCapability; every frame carries operation/generation
+	// identity. The durable run-event SSE is a different endpoint and is untouched.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/model-stream", s.handleInternalModelStream)
 }
 
 type internalClaimRequest struct {

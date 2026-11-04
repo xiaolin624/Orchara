@@ -64,9 +64,10 @@ const (
 )
 
 const (
-	dependencyModel  = "model"
-	dependencyTool   = "tool"
-	dependencySubapp = "subapp"
+	dependencyModel     = "model"
+	dependencyTool      = "tool"
+	dependencySubapp    = "subapp"
+	dependencyConnector = "connector"
 )
 
 // ExecutionOptions selects who is compiling the draft.
@@ -96,6 +97,10 @@ type dependencyRef struct {
 	id      string
 	pointer string
 	nodeID  string
+	// source is the primary profile version id when this ref is a declared
+	// fallback of that profile (T045). It never changes the pointer: the
+	// fallback list lives on the profile row, not in the draft document.
+	source string
 }
 
 // ValidateExecution compiles one draft and seals the manifest bytes.
@@ -156,6 +161,7 @@ func (r *Reader) ValidateExecution(
 		dependencies.tools,
 		dependencies.models,
 		dependencies.subapps,
+		dependencies.connectors...,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("building the execution manifest: %w", err)
@@ -174,9 +180,10 @@ func (r *Reader) ValidateExecution(
 
 // executionDependencySet is the normalised closure the builder consumes.
 type executionDependencySet struct {
-	tools   []compiler.ToolArtifact
-	models  []string
-	subapps []string
+	tools      []compiler.ToolArtifact
+	models     []string
+	subapps    []string
+	connectors []compiler.ConnectorPolicy
 }
 
 // normalizeDependencyID is the identity form of a dependency reference.
@@ -233,9 +240,47 @@ func (r *Reader) checkDependencies(
 	if err != nil {
 		return nil, nil, err
 	}
+	// T045: every primary profile's declared fallback profiles join the same
+	// closure and are frozen into the manifest beside the primary. The list is
+	// stored on the profile row (ModelConfig.fallback_profile_version_ids), not
+	// in the draft document, so the expansion needs the loaded rows; each
+	// expanded ref keeps the primary's document pointer and names its source.
+	fallbackRefs := fallbackModelRefs(refs, models)
+	if len(fallbackRefs) > 0 {
+		fallbackIDs := make([]string, 0, len(fallbackRefs))
+		for _, ref := range fallbackRefs {
+			fallbackIDs = append(fallbackIDs, ref.id)
+		}
+		fallbacks, err := r.loadModelDependencies(ctx, fallbackIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		for id, row := range fallbacks {
+			models[id] = row
+		}
+		refs = append(refs, fallbackRefs...)
+	}
 	tools, err := r.loadToolDependencies(ctx, toolIDs)
 	if err != nil {
 		return nil, nil, err
+	}
+	// F06/T048 §3: a tool version's declared connector ids expand the closure.
+	// The reference is located at the tool's own document pointer (that is the
+	// field that selected the tool) and names the tool as its source, so a
+	// missing/revoked/unapproved connector is reported where the author can fix
+	// it. Connector ids are not a node config field in this batch.
+	connectorRefs := connectorRefsForTools(refs, tools)
+	var connectors map[string]connectorDependency
+	if len(connectorRefs) > 0 {
+		connectorIDs := make([]string, 0, len(connectorRefs))
+		for _, ref := range connectorRefs {
+			connectorIDs = append(connectorIDs, ref.id)
+		}
+		connectors, err = r.loadConnectorDependencies(ctx, connectorIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		refs = append(refs, connectorRefs...)
 	}
 	subapps, err := r.loadSubappDependencies(ctx, subappIDs)
 	if err != nil {
@@ -243,9 +288,10 @@ func (r *Reader) checkDependencies(
 	}
 
 	set := &executionDependencySet{
-		tools:   make([]compiler.ToolArtifact, 0, len(tools)),
-		models:  make([]string, 0, len(models)),
-		subapps: make([]string, 0, len(subapps)),
+		tools:      make([]compiler.ToolArtifact, 0, len(tools)),
+		models:     make([]string, 0, len(models)),
+		subapps:    make([]string, 0, len(subapps)),
+		connectors: make([]compiler.ConnectorPolicy, 0, len(connectors)),
 	}
 	located := make([]ExecutableError, 0)
 	emitted := make(map[string]bool)
@@ -261,11 +307,16 @@ func (r *Reader) checkDependencies(
 		}
 		emitted[key] = true
 		if !uuid.Valid(ref.id) {
+			message := "the referenced id is not a UUID; fixed versions, never latest or a name, are required"
+			if ref.source != "" {
+				message = "the declared fallback profile version " + ref.id + " of " + ref.source +
+					" is not a UUID; fixed versions are required"
+			}
 			located = append(located, ExecutableError{
 				NodeID:  ref.nodeID,
 				Code:    CodeDependencyInvalidID,
 				Pointer: ref.pointer,
-				Message: "the referenced id is not a UUID; fixed versions, never latest or a name, are required",
+				Message: message,
 			})
 			continue
 		}
@@ -273,6 +324,9 @@ func (r *Reader) checkDependencies(
 		case dependencyModel:
 			row, present := models[id]
 			if code, message := modelReadinessProblem(row, present); code != "" {
+				if ref.source != "" {
+					message = "fallback profile version " + id + " declared by " + ref.source + ": " + message
+				}
 				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
 				continue
 			}
@@ -302,6 +356,15 @@ func (r *Reader) checkDependencies(
 				continue
 			}
 			set.subapps = append(set.subapps, id)
+		case dependencyConnector:
+			row, present := connectors[id]
+			if code, message := connectorReadinessProblem(row, present); code != "" {
+				located = append(located, ExecutableError{NodeID: ref.nodeID, Code: code, Pointer: ref.pointer, Message: message})
+				continue
+			}
+			set.connectors = append(set.connectors, compiler.ConnectorPolicy{
+				VersionID: id, PolicySHA256: row.policySHA256,
+			})
 		}
 	}
 	if len(located) > 0 {
@@ -392,6 +455,10 @@ func collectDependencyRefs(document map[string]any) []dependencyRef {
 type modelDependency struct {
 	validationState string
 	revoked         bool
+	// fallbackIDs is the profile's declared ModelConfig.fallback_profile_version_ids.
+	// They join the frozen closure exactly like the primary (T045), so a run can
+	// never dispatch to a profile its manifest did not freeze.
+	fallbackIDs []string
 }
 
 type toolDependency struct {
@@ -399,6 +466,17 @@ type toolDependency struct {
 	state       string
 	approved    bool
 	imageDigest sql.NullString
+	// connectorIDs is the tool version's declared connector_versions list
+	// (migration 0012). T048 expands each into the manifest connector closure.
+	connectorIDs []string
+}
+
+// connectorDependency is one registry row reduced to the readiness facts the
+// manifest closure needs.
+type connectorDependency struct {
+	policySHA256 string
+	approved     bool
+	revoked      bool
 }
 
 type subappDependency struct {
@@ -461,6 +539,56 @@ func subappReadinessProblem(row subappDependency, present bool) (string, string)
 	return "", ""
 }
 
+// connectorReadinessProblem applies the T048 rule: the policy must exist, be
+// approved and not revoked. A revoked policy is dependency_revoked; a missing or
+// unapproved one is dependency_not_ready (or dependency_not_found).
+func connectorReadinessProblem(row connectorDependency, present bool) (string, string) {
+	if !present {
+		return CodeDependencyNotFound, "the connector policy referenced by this tool does not exist; only administrator-registered fixed connectors are executable"
+	}
+	if row.revoked {
+		return CodeDependencyRevoked, "the connector policy referenced by this tool is revoked"
+	}
+	if !row.approved || row.policySHA256 == "" {
+		return CodeDependencyNotReady, "the connector policy referenced by this tool is not approved or has no sealed policy digest; shared execution requires an administrator-approved connector"
+	}
+	return "", ""
+}
+
+// connectorRefsForTools expands each referenced tool version's declared
+// connector_versions into a located dependency reference. The pointer stays the
+// tool's document pointer and source names the tool, so the author sees where
+// the connector was selected. Invalid ids are kept verbatim (readiness reports
+// dependency_invalid_id), never silently dropped.
+func connectorRefsForTools(refs []dependencyRef, tools map[string]toolDependency) []dependencyRef {
+	expanded := make([]dependencyRef, 0)
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if ref.kind != dependencyTool {
+			continue
+		}
+		row, present := tools[normalizeDependencyID(ref.id)]
+		if !present {
+			continue
+		}
+		for _, connectorID := range row.connectorIDs {
+			id := normalizeDependencyID(connectorID)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			expanded = append(expanded, dependencyRef{
+				kind:    dependencyConnector,
+				id:      connectorID,
+				pointer: ref.pointer,
+				nodeID:  ref.nodeID,
+				source:  normalizeDependencyID(ref.id),
+			})
+		}
+	}
+	return expanded
+}
+
 // ---------------------------------------------------------------------------
 // loading
 // ---------------------------------------------------------------------------
@@ -471,7 +599,7 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 		return rows, nil
 	}
 	result, err := r.DB.QueryContext(ctx, `
-		SELECT id::text, validation_state, revoked_at IS NOT NULL
+		SELECT id::text, validation_state, revoked_at IS NOT NULL, config
 		  FROM platform.model_profile_versions
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
@@ -481,12 +609,14 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 	for result.Next() {
 		var (
 			id, state string
+			config    []byte
 			row       modelDependency
 		)
-		if err := result.Scan(&id, &state, &row.revoked); err != nil {
+		if err := result.Scan(&id, &state, &row.revoked, &config); err != nil {
 			return nil, fmt.Errorf("reading model profile versions: %w", err)
 		}
 		row.validationState = state
+		row.fallbackIDs = modelFallbackIDs(config)
 		rows[id] = row
 	}
 	if err := result.Err(); err != nil {
@@ -495,13 +625,78 @@ func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[s
 	return rows, nil
 }
 
+// modelFallbackIDs reads the declared fallback list of one stored profile
+// config. Invalid entries are kept verbatim so readiness can report
+// dependency_invalid_id at the primary's pointer instead of silently dropping
+// a misconfigured fallback.
+func modelFallbackIDs(config []byte) []string {
+	if len(config) == 0 {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(config, &decoded); err != nil {
+		return nil
+	}
+	raw, present := decoded["fallback_profile_version_ids"]
+	if !present {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(string)
+		if !ok {
+			continue
+		}
+		ids = append(ids, strings.TrimSpace(value))
+	}
+	return ids
+}
+
+// fallbackModelRefs expands the closure with the fallback profile versions a
+// primary profile declares. The pointer stays the primary's declaration (that
+// is the document field that selected the profile) and source names the
+// primary, so a located error is honest about where the reference came from.
+func fallbackModelRefs(refs []dependencyRef, models map[string]modelDependency) []dependencyRef {
+	expanded := make([]dependencyRef, 0, len(refs))
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if ref.kind != dependencyModel || !uuid.Valid(ref.id) {
+			continue
+		}
+		row, present := models[normalizeDependencyID(ref.id)]
+		if !present {
+			continue
+		}
+		for _, fallbackID := range row.fallbackIDs {
+			key := normalizeDependencyID(fallbackID)
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			expanded = append(expanded, dependencyRef{
+				kind:    dependencyModel,
+				id:      fallbackID,
+				pointer: ref.pointer,
+				nodeID:  ref.nodeID,
+				source:  normalizeDependencyID(ref.id),
+			})
+		}
+	}
+	return expanded
+}
+
 func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[string]toolDependency, error) {
 	rows := map[string]toolDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
 	result, err := r.DB.QueryContext(ctx, `
-		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest
+		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest,
+		       connector_versions
 		  FROM platform.tool_versions
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
 	if err != nil {
@@ -510,16 +705,68 @@ func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[st
 	defer result.Close()
 	for result.Next() {
 		var (
-			id  string
-			row toolDependency
+			id            string
+			row           toolDependency
+			connectorsRaw []byte
 		)
-		if err := result.Scan(&id, &row.ownerID, &row.state, &row.approved, &row.imageDigest); err != nil {
+		if err := result.Scan(&id, &row.ownerID, &row.state, &row.approved,
+			&row.imageDigest, &connectorsRaw); err != nil {
 			return nil, fmt.Errorf("reading tool versions: %w", err)
 		}
+		row.connectorIDs = connectorVersionIDs(connectorsRaw)
 		rows[id] = row
 	}
 	if err := result.Err(); err != nil {
 		return nil, fmt.Errorf("reading tool versions: %w", err)
+	}
+	return rows, nil
+}
+
+// connectorVersionIDs reads a tool version's connector_versions jsonb list.
+// Invalid entries stay verbatim so readiness can locate dependency_invalid_id.
+func connectorVersionIDs(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []any
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if value, ok := item.(string); ok {
+			ids = append(ids, strings.TrimSpace(value))
+		}
+	}
+	return ids
+}
+
+// loadConnectorDependencies reads the registry rows the tool closure named.
+func (r *Reader) loadConnectorDependencies(ctx context.Context, ids []string) (map[string]connectorDependency, error) {
+	rows := map[string]connectorDependency{}
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	result, err := r.DB.QueryContext(ctx, `
+		SELECT id::text, policy_sha256, approved_at IS NOT NULL, revoked_at IS NOT NULL
+		  FROM platform.connector_policies
+		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
+	if err != nil {
+		return nil, fmt.Errorf("reading connector policies: %w", err)
+	}
+	defer result.Close()
+	for result.Next() {
+		var (
+			id  string
+			row connectorDependency
+		)
+		if err := result.Scan(&id, &row.policySHA256, &row.approved, &row.revoked); err != nil {
+			return nil, fmt.Errorf("reading connector policies: %w", err)
+		}
+		rows[id] = row
+	}
+	if err := result.Err(); err != nil {
+		return nil, fmt.Errorf("reading connector policies: %w", err)
 	}
 	return rows, nil
 }

@@ -12,6 +12,17 @@
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
 T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030、T033、T037
 passed）** 与 **F03（T029、T031、T032、T034、T035、T036、T038 passed）**；其余票保持 open。
+**F06（T039–T051）与 F04A（T040、T042、T043、T049）已按 #40→#52 顺序交付，全部 13 个 issue
+关闭**；证据见各票报告、ADR 0007 与下方票表。批次最终门禁（2026-11-04，分支
+`feat/f06-f04a-models-and-workflow`，HEAD `b9147a8`）：`pytest tests -q` **1323 passed in
+4051.57s（67m31s）**，`go vet ./...`/`go test ./...`/`gofmt -l`/`sync_spec --check` 全绿；两轴
+复核的 10 个迁移链测试、stream manifest 绕过、connector 前缀边界、unknown replay 披露、approval
+等待错误吞掉、T042 cancel 测试与迁移约定均已修复（`t/review-fixes`，merge `b9147a8`）。
+第二轮独立复核（2026-11-04，HEAD `c6618d3`，merge `t/review2-fixes`）又确认并修复 5 个 P1：
+connector 重复 query 参数绕过 schema、登记的 minimum/maximum/minLength/maxLength 运行时不执行、
+外部写成功但回执保存失败被记为 failed、批准过期后仍可执行、输出校验失败释放真实模型费用；
+每项都有回归测试（f06 共 173 个：全量跑 172 passed + 1 个既有 WSL sandbox 瞬时 flake，隔离复跑
+通过；T036 21 passed、tooling 21 passed、go test/vet、gofmt、sync_spec 全绿）。
 F01（T015/T017/T019/T020/T021）已交付身份基础：迁移与管理命令、邀请/激活/登录/登出、
 Cookie 会话与 CSRF、默认拒绝的资源 ACL、服务账号与可撤销 API Key、禁用与责任交接。
 F00B 的 T022 已交付持久后台任务控制器（迁移 0009、对象存储、claim/租约/重试/完成守卫、
@@ -84,6 +95,9 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 | T036 | F03 | 取消正在运行的执行并让迟到消息不能复活终态 | passed | `reports/f03/T036-cancel.md`、`db/migrations/0022_run_unknown_operations.sql`（唯一新表 `platform.run_unknown_operations`：run/operation_id/reason/resolved_at + `UNIQUE(run_id,operation_id)` + 未解决 partial index；`run_waitings.cancel_requested_at`；无 `runs.cancel_reason/cancelled_by`，worker/PUBLIC 零权限）、`internal/execution/cancel.go`（owner-only `Cancel` 两分支：无 live attempt 立即 cancelled/unknown→needs_reconciliation；有 live attempt 记录 intent→cancelling；unknown record/resolve bridge）、`internal/execution/cancel_store.go`（cancel/job/waiting/ledger SQL）、`internal/execution/service.go`（`finalizeRunTx` 单一优先级：live child 阻塞 > unknown→needs_reconciliation > deadline→failed(deadline_exceeded) > cancel→cancelled > proposal；started=false cancel 走 job void）、`internal/execution/{store,waiting,waiting_store,runartifacts}.go`（unknown guard 查询、waiting cancel marker、receipt/query 在 cancelling 仍可用）、`internal/api/{cancel.go,execution.go,server.go,internal.go}`（public `POST /api/v1/runs/{id}/cancel` + 两个 internal unknown bridge）、`apps/web/src/{runs.html,assets/runs.js}`（取消按钮/正在停止 vs 已停止/终态原因/终态不回翻）、`tests/support/t036.py`、`tests/f03/test_t036_*.py`（6 文件 29 用例：cancel 14、unknown 6、migration 5、pages 4，真实 PG + 编译 API + 真实 mTLS + 对象字节 + Node）；迁移链 0021→0022 适配 11 个测试，T033 的取消 interim 断言由 T036 终态取代；`tests/f03` 170 passed；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；T038 恢复/核对重驱、F06 真实 operations 属后续票，见报告 §2/§5/§6 |
 | T037 | F05 | 提交脚本依赖并审核成可共享固定工具 | passed | `reports/f05/T037-tool-builds.md`、`db/migrations/0023_tool_builds_and_review.sql`（`tool_versions` 扩展：revision/source_sha256/dependency_lock_sha256/build_log/sbom/build_bundle_digest/build_started_finished/build_error_code + reviewed_*/revoked_*；契约列/状态枚举保留；worker/PUBLIC 零权限；非契约扩展见报告 §4）、`internal/toolversions/service.go`（submit 单事务/幂等/跨 owner `tool_conflict`、JCS `manifest_sha256`、owner-or-admin-or-approved 读、review/revoke CAS+audit、job-scoped build binding）、`internal/api/tools.go`（`submitTool`/`listTools`/`getTool`/`reviewTool` + 非契约 `POST /tools/{id}/revoke`、`GET /tools/{id}/build`、内部 `POST /internal/v1/background/jobs/{job_id}/tool-build`）、`internal/background/{toolbuild.go,handlers/tool_build.go}`（claim submitted→building；完成守卫 CAS revision+source hash+ready/job-linked log+SBOM，唯一 ready 写入者；内容包摘要 `sha256:<hex>`=sorted(source+canonical lock+SBOM) 非 OCI）、`internal/sandbox/*` + `deploy/sandbox/{sandbox_exec.sh,build_tool.py}`（复用 T033 runsc bundle：固定 argv/无网络/uid 65534/只读 rootfs+inputs/可写 workspace；安全解包 + `setup.py build` 钩子；lock 需不可用 wheelhouse 时安全 `dependencies_unavailable`）、`internal/artifacts/admission.go`（`application/zip` 仅 `purpose=tool_source`：entry/解压/ratio/traversal/symlink/encrypted 拒绝；其他 purpose 仍拒绝）、`apps/web/src/{tools.html,assets/tools.js}`（提交/构建日志+SBOM 下载/审核状态 + 管理员审核队列，Node 执行逻辑）、`tests/support/{t037.py,fixtures.py}`、`tests/f05/test_t037_*.py`（8 文件 39 用例：迁移 6、submit 11、admission 4、真实 runsc 构建 2、恶意钩子/崩溃/依赖/源变更 4、审核/撤销 8、internal binding 1、页面 3；真实 PG + 编译二进制 + 真实 mTLS + WSL2/runsc + Node）；`tests/f05` **145 passed in 611.79s**；`go test ./...` 全绿、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；F06 connectors、F15A 镜像构建、F04A 进程拆分属后续票，见报告 §5/§6 |
 | T038 | F03 | 恢复待证据并在核对后安全重驱 | passed | `reports/f03/T038-recovery.md`、`db/migrations/0024_run_recovery_evidence.sql`（唯一新表 `platform.run_recovery_evidence`：run/attempt、闭合证据 jsonb + JCS sha256、真实 principal `recorded_by`、`recorded_at`、UNIQUE `resumed_job_id`、`UNIQUE(run_id,attempt_token)`、run 索引；`runs.recovery_reason/recovery_since` + 配对/闭合 CHECK；worker/PUBLIC 零权限；重复 migrate no-op）、`internal/execution/recovery.go`（证据闭合形状 + JCS SHA-256、`SweepExpiredLeases` 只 park、`Recover` 全检查 + 单事务重排、`RecoveryFacts`、拒绝码）、`internal/execution/recovery_store.go`（sweep/recover/actor/evidence SQL + 行锁复检）、`internal/execution/{store,service,cancel_store}.go`（T031 park 写 `exit_without_result`；离开 recovery_pending 时清列）、`cmd/admin/runs.go` + `cmd/admin/main.go`（`runs sweep-leases [--grace] [--dry-run]` / `runs recover --run --evidence [--check-only] [--actor-login] [--grace]`，stdout 单 JSON，exit 0/1/2，绝不打印 token/DSN）、`internal/api/debug.go`（非契约 `X-Run-Recovery-Reason/Since/Evidence-At/Evidence-SHA256`）、`apps/web/src/{runs.html,assets/runs.js}`（恢复原因/挂起时间/证据/运维命令，无恢复按钮，终态不回翻，`runLifecycle` 增加 recovery_pending）、`tests/support/t038.py`、`tests/f03/test_t038_{migration,sweep,recover,recovery_refusals,pages}.py`（5 文件 27 用例：migration 5、sweep 5、recover 7、refusals 6、pages 4；真实 PG + 编译 admin/API + 真实 mTLS + 真实对象字节 + 真实打开中的 psql 事务/pg_stat_activity + Node）；迁移链 0023→0024 适配 12 个迁移测试；`tests/f03` **197 passed**；`go test ./...` 22 ok/9 no-test/0 FAIL、`go vet`/`gofmt -l` 干净、`sync_spec --check` no drift；not_run：常驻租约巡检、cancelling/waiting_* 失联恢复、真实 F04A supervisor 证据、浏览器 DOM、25 分钟多套件门禁（orchestrator），见报告 §5 |
+
+| T039 | F06 | 管理员登记模型并查看兼容验证后才共享 | passed | `reports/f06/T039-model-registry.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`、`internal/modelregistry/{catalog,modelregistry,validate}.go`（deployer catalog 严格解析/fail closed、JCS manifest + sha256、单事务 manifest artifact + pending model、`FOR UPDATE` 验证编排、确定性 fixture 封存、Idempotency-Key 收据/回放）、`internal/api/{models.go,server.go}`（`registerModel`/`listModels`/`getModel`/`validateModel` + admin `model-endpoints`/`credential-refs` + `/models` 页面）、`internal/background/{model_validate.go,complete.go,evaluation.go}`（报告严格绑定 candidate/fixture/`platform_model_calls` 账本、`evaluation_reports` + model passed/failed 同事务；T024 直接入队 job 保持 report-only 语义）、`internal/modelproxy/{modelproxy.go}`（catalog id 与 `env:` 引用双形态）、`apps/web/src/{models.html,assets/models.js}`（登记/列表/验证/报告，Node 执行）、`tests/support/{t039.py,fixtures.py}`、`tests/f06/`（15 用例：注册/可见性/幂等/可重试失败/失败用例/终端失败/依赖就绪/页面）；真实 PG + 编译二进制 + 真实 HTTP/mTLS + 对象字节 + maintenance 双进程 + Node；`go test ./...` 23 ok/0 FAIL/9 no-test、`go vet` exit 0、`gofmt -l` 空、`sync_spec --check` no drift；not_run：真实厂商 provider adapter（本构建 real 失败为 `provider_not_configured`，已断言）、浏览器 DOM、全量 `pytest tests`（orchestrator）；无迁移（0011/0013 已够用） |
+| T040 | F04A | 在画布配置线性流程并看到服务端校验反馈 | passed | `reports/f04a/T040-canvas-and-linear-compile.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T040 追加 D4/D5）、`worker/platform_worker/compiler/{validate,graph,stub,jcs,__init__}.py`（F04A 线性子集防御性校验 + 真实 LangGraph `StateGraph` + 确定性 stub adapter；共享语料 22 例 = 16 shared + 6 f04a_only）、`internal/workflow/f04a_corpus_test.go`（Go 权威对共享语料断言同 `(verdict, code, pointer)`）、`tests/f04a/corpus/linear_f04a.json`、`apps/web/canvas/`（Vue 3.5.44 + Vue Flow 1.48.2 真实应用；`build.mjs` esbuild 0.28.2；纯模块 `lib/{dsl,sources,errors,export}.js`）、`apps/web/src/assets/canvas.{js,css}`（提交的静态产物，测试/运行不需要 npm）、`apps/web/src/{editor.html,assets/editor.js}`（画布主编辑、四类节点配置面板、工具/模型选择器、合法变量来源、错误点击跳转、`X-Manifest-SHA256`、折叠 JSON 视图；保留 ETag/412/428/调试入口）、`internal/api/server.go`（`GET /assets/canvas.{js,css}`）、`tests/f04a/`（36 用例：validate 17、graph 7、assets 5、integration 7；Node 8 模块检查；真实 PG + 编译二进制 + 真实 HTTP + P01 langgraph 1.2.4）、`go vet` exit 0、`go test ./...` 23 ok/9 no-test/0 FAIL、`gofmt -l` 空、`pytest tests/f04a tests/f02a` **140 passed**、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、生产 LangGraph worker（Go runtime 属 T042/T043）、全量 `pytest tests`（orchestrator）；无迁移/契约改动 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -932,6 +946,270 @@ no drift: spec copy and contract snapshot match the manifest
 objectstore 2（attempt key 向量、Move）、background 4（守卫移动/拒绝/stale/另一尝试）、handlers 4
 （写尝试 key、hash/size 失败只删自己的、staging 缺失）。文档提交后 `git status --short` 为空；
 未推送、未关闭 issue。
+
+## F04A 线性四节点编译器与 Vue Flow 画布（1/1：T040）
+
+T040（GitHub #41）已交付，状态 **`passed`**（范围 = Python 防御性线性编译器 +
+LangGraph stub-adapter 图证明 + 真实 Vue Flow 画布；生产 Run 运行时仍是 Go，真实
+python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-and-linear-compile.md`。
+
+| 项 | 结果 |
+|---|---|
+| Python 校验 | `worker/platform_worker/compiler/validate.py` 只覆盖 `start → python → agent → end`；与 Go 共享语料 16 例逐例对账 `verdict/code/pointer`（`internal/workflow/f04a_corpus_test.go` + `tests/f04a/test_validate.py`）；另 6 例 F04A 额外拒绝（`unsupported_node_type`、`linear_order`、`not_linear_chain`、`unsupported_port`、`unsupported_subapp`、`bad_output_mapping`） |
+| LangGraph | `graph.py` 的 `LinearGraph` 先校验再建 `StateGraph`；只按声明边执行；`NodeContext`/`NodeOutcome`（succeeded/failed/waiting/needs_reconciliation）为唯一归一化缝；`stub.py` 确定性回显应用输入→python→agent→end；失败/等待短路；真实 P01 env（langgraph 1.2.4）执行 |
+| 画布 | `apps/web/canvas/` 真实 Vue 3 + Vue Flow；palette 只有四类节点；单链连线拒绝有原因；python 只列 ready+approved 工具、agent 只列 passed 模型；合法变量只列 `input#` + 上游 output；错误映射到节点/字段并可点击跳转；成功显示 `X-Manifest-SHA256`；导出只含 `{definition,layout}` 并拒绝敏感字段 |
+| Bundle | `npm ci && npm run build` → 提交的 `apps/web/src/assets/canvas.{js,css}`；`node_modules/` 忽略；测试/运行不需要 npm；服务端新增 `/assets/canvas.{js,css}` 静态路由 |
+| T023 行为 | 保存仍走 `PUT /draft` + `If-Match`；412/428/重载/下载本地副本/`#debug-entry` 不变；ETag/CSRF 不进 URL/存储 |
+| 集成 | 真实 PG + 编译二进制 + 真实 HTTP：草稿 round-trip（含小数坐标）、定位错误（bad_pointer/missing_value/bad_config）、pending model + unapproved/non-ready tool 的 `dependency_not_ready`、非 owner/creator 拒绝、草稿无 run input/secret/memory |
+| 门禁 | `go vet` exit 0；`go test ./...` 23 ok/9 no-test/0 FAIL；`gofmt -l` 空；`pytest tests/f04a tests/f02a` **140 passed**（f04a 36 + f02a 104）；`pytest tests/tooling` 21；`sync_spec --check` no drift；`node --check canvas.js` 0；Node 8 模块检查通过 |
+| 边界/not_run | 生产 LangGraph worker 未实现（Go runtime 属 T042/T043）；浏览器 DOM/拖拽/焦点未做自动化；全量 `pytest tests` 由 orchestrator；未 push/未关闭 issue；无迁移、无契约/规格改动 |
+| T042 | F04A | 运行固定 Python 节点并查看结构数据与文件 | passed |
+| T043 | F04A | 运行受控 Agent 节点并校验最终输出 | passed | `reports/f04a/T043-agent-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T043 追加 D10）、`internal/presetexec/{plan.go,agent.go,linear.go,presetexec.go}`（3/4 节点线性计划、agent 配置校验、确定性 operation UUIDv5、模型轮次 + 固定预设工具真实沙箱 + capability-results 回报、最终输出节点 schema 二次校验、agent data/file/log 行与 node.status、heartbeat 取消/lease deadline、legacy `input#` 形状选择）、`internal/presetexec/{Facts,ModelFact,ToolFact}` + `cmd/supervisor/{client.go,exec.go}`（`InvokeCapability`/`ReportCapabilityResult` worker mTLS、只读 model/tool Facts）、`internal/modelproxy/provider.go`（dev stub 声明工具时确定性首轮工具调用，仍 `stub=true`）、`apps/web/src/{runs.html,assets/runs.js}`（Agent 面板：最终输出/轮次/工具调用 id+name/每次工具操作状态；`describeAgentNode` Node 执行）、`tests/support/t043.py`、`tests/f06/{test_t043_agent_node.py,test_t043_pages.py}`（6+3 用例，真实 PG/mTLS/对象字节/WSL2+runsc）；`go vet` exit 0、`go test ./...` 全绿、`gofmt -l` 空、`tests/f06` 62 passed、`tests/f05`、`tests/f04a` 36、`tests/tooling` 21、`sync_spec --check` no drift；not_run：真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈下 executor 的未知/重复工具调用 guard（服务端先拒绝，仅 Go 单测）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026 | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
+
+P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
+venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
+`pytest.fail`（不 skip）。
+
+## F06 受控能力代理（T041，2026-11-03）
+
+T041（GitHub #42）已交付，状态 **`passed`**（范围 = 运行域 Go 能力代理：模型调用全链路 +
+工具调用授权/worker 回报；`invokeCapability` 契约端点 + 非契约 `capability-results`；迁移
+0025 `operations`/`operation_attempts`；owner-only 账本读取 + `/runs` 受控调用账本面板；
+Python worker adapter/agent loop）。证据：`reports/f06/T041-capability-proxy.md`。
+
+| 项 | 结果 |
+|---|---|
+| 授权 | run running + live attempt + 封存 manifest SHA-256/allowlist + kind 歧义拒绝；全部先于 provider |
+| 账本 | 逻辑 operation 一行、物理 attempt 一行；JCS params SHA-256；同 op+params 回放、logical-key 冲突 409 |
+| 模型调用 | profile passed/未撤销；Go 唯一重试权威（transient ≤2 次重试）；tool-call id/name/arguments 与 response_schema 全校验后才封存 receipt |
+| 工具调用 | ready+approved（或 debug 作者拥有）；grant 绑定 run/attempt/params hash；结果端点幂等回报；真实执行 T043 |
+| 账本读取 | owner-only `GET /api/v1/runs/{id}/capabilities`；不含 params/receipt 正文；`/runs` 面板 Node 测试 |
+| 适配器 | `worker/platform_worker/agents`：每次 generate 一次物理调用、无隐藏重试；agent loop 只返回 NodeOutcome |
+| 真实栈 | 真实 PG/mTLS/HTTP/对象字节：`tests/f06` 42 passed；真实本地 Python 工具执行 + 2 轮真实端点 loop（transport 调用=2=operation 数=attempt 总数） |
+| 门禁 | `go vet` exit 0；`go test ./...` exit 0（24 ok/0 FAIL）；`gofmt -l` 空；`pytest tests/f06` 42；`tests/f04a` 36；`tests/tooling` 21；目标 T024 12；`sync_spec --check` no drift |
+| 边界/not_run | 真实厂商 adapter、沙箱 python/agent 节点（T042/T043）、connector（T050）、预算结算（T046）、审批来源（T048）、浏览器 DOM、全量 `pytest tests`/全量 `tests/f00b`（Windows 管道风险，仅目标 T024） |
+| 提交 | 5 个里程碑提交（迁移/服务、HTTP/测试、worker、页面、报告/文档）+ 3 个加固/证据/偏差说明提交（worker 角色 + manifest digest 校验、门禁复跑、已知偏差）；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0024 |
+
+## F04A 固定 Python 节点执行与节点结果（T042，2026-11-03）
+
+T042（GitHub #43）已交付，状态 **`passed`**（范围 = 线性 `start → python → end` 调试运行、
+显式绑定解析、固定预设工具的真实 WSL2/runsc 执行、每个 python 节点的 data/文件/受限日志
+provenance + owner 只读接口 + `/runs` 折叠面板；agent 节点执行明确留给 T043 并
+`agent_node_not_supported` 拒绝）。证据：`reports/f04a/T042-python-node.md`。
+
+| 项 | 结果 |
+|---|---|
+| 迁移 | 0026 `platform.run_node_outputs`：run/node/kind/artifact/label + 复合 PK；kind 仅 data/file/log；artifact 行仍是内容权威；无第二内容存储；worker/PUBLIC 无权限 |
+| 计划 | 封存 definition 必须是 1 start + 1 python + 1 end、恰好 2 条链式边；分支/汇合/多 python/其他类型拒绝；agent → `agent_node_not_supported`（T043 缝）；python 必须引用固定预设工具 |
+| 绑定 | `literal`/`input#/...`/`node:<id>#/...` 的 RFC 6901 解析；python `file` 必须解析为本 run linked input 的服务器事实；缺失/类型不符 → 定位 `node_input_invalid`（沙箱不启动） |
+| 执行 | 真实 runsc：start 校验 `input_schema` 并附单一 task_input 事实；python 下载/校验 size+sha → 固定 argv/uid/no-network → 严格 output.json → 节点 schema → admit 文件 → 登记 data/文件/日志；end 映射 `output_schema` → final_output → 成功 proposal/exit |
+| 节点结果 | 非契约 `POST /internal/v1/runs/{id}/node-results`（worker/supervisor mTLS + live attempt + ready/purpose 复核 + 幂等）+ owner-only `GET /api/v1/runs/{id}/node-results`（artifact 事实，无内容）；日志 `purpose=log` 不进 `listRunArtifacts`；原始 output.json 从不成为 artifact |
+| 事件 | 每节点 pending→running→succeeded/failed/skipped 一条 `node.status`（payload 恰好 node_id/state/attempt_no，无正文）；失败/取消不提交成功，后续节点 skipped；attempt_no 由 supervisor DB 派生 |
+| 取消/超时 | 复用 T033/T036 runner 控制；真实取消 e2e：stats failed、end skipped、无 node result、无输出 artifact、无沙箱残留；线性 timeout 与 legacy 共用同一分支（legacy T033 超时已覆盖），报告如实标注未单独跑 |
+| 兼容 | golden `start/python/agent/end` 图在恰有一个预设 python 节点时走原 legacy 路径，T033/T037 行为逐字节不变（真实 e2e 断言 summary/CSV/log/列表一致且不产生 node result）；agent-only 图才拒绝 |
+| 页面 | `/runs` 折叠“节点结果”面板：按节点状态、data pretty JSON、文件下载、日志截断；`describeNodeResults` 等纯函数 Node 执行；“无结果”与“失败”分离；无 localStorage/sessionStorage/object key |
+| 真实栈 | 真实 PG/迁移 0026/编译二进制/mTLS/对象字节/WSL2+runsc `release-20241118.0`；`tests/f06/test_t042_*` 11 用例（6+3+2）全部通过 |
+| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL/9 no-test；`gofmt -l` 空；`pytest tests/f05` 149；`tests/f03` 203；`tests/f06` 53；`tests/tooling` 21；`sync_spec --check` no drift |
+| 边界/not_run | 浏览器 DOM、全量 `pytest tests`（orchestrator）、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、T049 后续 UI |
+| 提交 | 3 个里程碑提交（0026+provenance API、线性执行+事件+集成测试、面板+页面/迁移测试）+ 报告/文档提交；未 push、未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
+
+## F04A 受控 Agent 节点与最终输出校验（T043，2026-11-04）
+
+T043（GitHub #44）已交付，状态 **`passed`**（范围 = 四节点线性链 `start → python → agent → end`、
+Go 受控 agent 循环（T041 模型轮次 + 固定预设工具真实 WSL2/runsc 执行 + `capability-results` 回报）、
+最终输出节点 schema 定位校验、agent 节点 data/文件/状态事件、`/runs` Agent 面板）。证据：
+`reports/f04a/T043-agent-node.md`。
+
+| 项 | 内容 |
+|---|---|
+| 计划 | 3 节点 T042 链不变；4 节点链 agent 必须恰一个且位于 python/end 之间；agent 配置 `model_profile_version`/`instructions`/`max_turns` 1–50/`tool_versions`（manifest 子集、本构建只允许固定预设、最多 1 个）/`subapp_versions` 空/object `output_schema`；稳定拒绝码 |
+| Agent 循环 | 绑定复用 T042 resolver；用户消息只含 inputs JCS；每轮 model operation（`agent:<node>:model:<turn>`）+ 每次 tool operation（`agent:<node>:tool:<call_id>`），确定性 UUIDv5 operation id；工具调用真实沙箱（独立 runsc unit）、文件/日志分别登记、`capability-results` 先回报再给模型只含校验 data 的 tool 消息；不把 stdout 发给模型 |
+| 最终输出 | `structured` 优先，否则 `{text}`；节点 schema 以 `#` 指针再校验；`node_output_invalid` 含节点 id + pointer，无成功 proposal/final artifact；成功登记唯一 agent data 行并上报 file/log |
+| 平台 outcome | `agent_turn_limit`、`agent_awaiting_approval`、`agent_unknown`、`agent_capability_failed`、`agent_tool_call_invalid`、`agent_config_invalid`、`agent_subapp_unsupported`、`agent_deadline_exceeded`；能力/工具失败沿用 T041 码；`run_cancelled` → cancelled/cancel_requested |
+| 执行缝 | `presetexec.Client` 增 `InvokeCapability`/`ReportCapabilityResult`（worker mTLS，不绕过服务端授权/账本）；`Deps.Facts` 只读 model_profile/tool_versions（callable 与 T041 同规则） |
+| Legacy | 恰一个预设 python 且 `file` 绑定 `input#...` → 原 T033 路径（golden `start/python/agent/end` 不变）；`node:start#/artifact` → 线性链；带 agent 的非法图 typed refusal，不回退 |
+| Dev stub | 声明 tools 且无 tool 消息时，dev stub 确定性返回第一个声明工具的一次调用（id `stub-call-1`、arguments `{}`），仍 `stub=true`；真实 provider 仍 `provider_not_configured` |
+| 页面 | `/runs` 折叠 Agent 面板：节点状态、模型轮次、工具调用 id/name、每次工具操作状态/尝试数、data/文件/日志计数与最终输出查看；`describeAgentNode` 由 Node 执行；不显示 params/receipt |
+| 真实栈 | 真实 PG（0025/0026）、编译二进制、真实 mTLS、对象字节、WSL2+runsc `release-20241118.0`；`tests/f06/test_t043_*` 9 用例（6+3）通过；T042 legacy/节点结果回归仍绿 |
+| 门禁 | 见 `reports/f04a/T043-agent-node.md` §6/§9 |
+| 边界/not_run | 真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈 executor guard（未知/重复工具调用由 T041 服务端先拒）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue |
+
+## F06 流式代次、半流失败与残缺工具调用（T044，2026-11-04）
+
+T044（GitHub #45）已交付，状态 **`passed`**（范围 = 受控临时模型流：provider 流式 seam、
+`streamModelCall` 契约 SSE、operation/generation 账本语义、半流失败新代次且不拼接、残缺
+tool-call 丢弃不执行、owner-only 临时预览 + `/debug`/`/runs` 面板、Python worker 流式适配；
+持久 Run SSE 与 run_events 不变；真实厂商 adapter 仍未编译）。证据：
+`reports/f06/T044-streaming.md`。
+
+| 项 | 内容 |
+|---|---|
+| Provider seam | `StreamProvider.Stream(ctx, CallRequest, emit func(Chunk) error)`；dev stub 从 canonical params 确定性切块（`stub_stream_chunks` 默认 3）、`stub_stream_fail_after`/`stub_stream_fail_attempts` 产生 typed transient、`stub_stream_incomplete_tool_call` 产生残缺片段；真实 candidate `adapter_unavailable`，不伪造 |
+| 代次/账本 | 每次物理流 = 一行 `operation_attempts`，其行 id 即 `generation_id`；帧恒带 operation/generation；transient + 还有尝试 → 新 generation 从头流，旧文本/工具片段不拼接；final 仅取成功代次完整内容 + 完整缓冲 tool-call，按 T041 校验后只封一份 receipt、只结算一次 attempt |
+| 残缺工具 | 按 index 缓冲 fragments；id/name 缺失或 arguments 非完整 JSON object 的调用被丢弃、永不进入 final/执行；完整调用仍走 T041 id/name/schema 校验 |
+| 契约协议 | `POST /internal/v1/runs/{id}/model-stream`（`streamModelCall`，worker mTLS）SSE：`delta`/`tool_delta`/`final`/`error`；授权错误在首帧前仍为 JSON；首帧后错误以 error 帧收尾；delta 绝不写入 `platform.run_events` |
+| owner 预览 | `GET /api/v1/runs/{id}/model-preview`（session/API key + `application:read` + getRun 404 规则）；进程内 ring buffer（256 帧/60s TTL/单进程）、新 generation 清空旧缓冲、final/非重试 error 关闭、终态无缓冲 404；不持久 |
+| 页面 | 新共享 `assets/stream-preview.js`（`previewPath`/`parsePreviewEvent`/`applyPreviewFrame`/`describePreview`/`beginModelPreview`）；`/debug`、`/runs` 预览面板显示 generation、流式文本、工具片段“待定、未执行”，新代次整块丢弃旧草稿，final/error 关闭并指向持久 Run；纯 helper Node 执行 |
+| Worker | `PlatformChatModel.stream_generate` + `StreamingCapabilityTransport.stream` + `stream_agent`：每 generate 一条物理流、无隐藏重试；新 generation 重置草稿；只有 final 经 T041 同规则校验后的 tool calls 进入 agent loop 执行 |
+| 真实栈 | 真实 PG（0001–0026）、编译二进制、真实 worker mTLS、对象字节、公网 owner SSE、真实 TLS socket RST 断开；`tests/f06/test_t044_*` 21 用例（10 流式 + 4 页面 + 7 Python worker）通过；断连时用不可取消清理上下文落 `stream_cancelled`，绝无成功 receipt |
+| 门禁 | `go vet` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l` 空；`pytest tests/f04a` 36；`pytest tests/tooling` 21；`sync_spec --check` no drift；`pytest tests/f06` 83 passed + 1 个与本票无关的 T043 sandbox/lease 计时 flake（该文件隔离重跑 6 passed；T044 三文件 22 passed） |
+| 边界/not_run | 真实厂商流式 adapter、浏览器 DOM 驱动、多进程预览 fan-out、全量 `pytest tests`/`tests/f00b`、T045/T046 预算与切换；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026、未新增迁移 |
+T045（GitHub #46）已交付，状态 **`passed`**（范围 = 供应商可用性故障后的兼容备用：
+备用清单进入冻结依赖闭包、kind/protocol/context/tools/schema/budget/manifest/已通过
+门禁的 Go 判定、主重试仍 Go-only 有界、失败后第一个兼容备用只花一次物理尝试、
+权限/语法/schema/工具参数/策略错误绝不重试或切换、operation/receipt/owner 账本/页面
+展示切换原因与全部尝试费用；流式路径同一门禁且新代次作答；真实厂商 adapter 仍未编译）。
+证据：`reports/f06/T045-fallback.md`；实现提交 `592fb69`、`d552282`，测试提交
+`3e874c4`，f02a 门禁修复 `3e45eb1`。
+
+| 项 | 内容 |
+|---|---|
+| 备用闭包 | 唯一来源是主 profile 行的 `ModelConfig.fallback_profile_version_ids`；`checkDependencies` 加载主行后把每个备用作为同一 `dependencyModel` 加入闭包（pointer 保留主声明，message 标出备用 id/来源），同一 `modelReadinessProblem` 要求存在/passed/未 revoke；`execution_manifest.model_profile_versions` 冻结主+备用，运行后改配置不能引入未冻结 profile |
+| 兼容判定 | 纯 Go：同 `kind`/`protocol` 且为 `generation`/`chat_compatible`；备用 `context_window` ≥ 输入估计（canonical messages 每 4 字节 1 token）+ 请求 `max_output_tokens`；备用 `max_output_tokens` ≥ 请求值；显式 `tools:false` 不接带工具调用、显式 `structured_output:false` 不接带 `response_schema`（契约无此字段，缺省允许，只有显式 false 拒绝）；必须 passed/未 revoke/provider 可派发/在 manifest/保守预留放得进 `runs.budget_limit`（T046 接管完整账本）；仅“已配置”绝不启用 |
+| 派发 | 主 transient 仍最多 3 次物理尝试（T041 不变）；第 3 次失败且属 `availability`/`rate_limited`/`adapter_unavailable` 时按配置顺序取第一个全门禁通过的备用，记 1 次物理尝试（attempt_no=4）；无兼容备用则返回主 typed failure。权限/授权/语法/schema/工具参数/策略错误 1 次尝试即终止，不重试不切换 |
+| 账本/回执 | 迁移 0027 增 `platform.operations.fallback_profile_version_id`（FK）+ `fallback_reason`（closed：availability/rate_limited/adapter_unavailable；二元组同现同空）；`capability_version` 仍是 worker 请求的主版本；receipt 增 `fallback{primary_profile_version_id,profile_version_id,reason}`；owner 账本投影增 fallback 字段与 `tokens_in/tokens_out/charged_amount`（所有物理尝试求和），仍不含 params/回执正文 |
+| 页面 | `/runs` 账本：物理尝试列显示合计费用/令牌，来源列显示“已切换到 <profile>，原因：<closed reason>”；`describeCapabilityOperation` 暴露 `fallback`/`fallbackText`/`costText`/`attemptsDetailText`，`capabilityFallbackReasonText` 映射稳定码；纯 helper 由 Node 执行，DOM 驱动 not_run |
+| 流式 | `dispatchStreamFallback`：主 3 代次失败后兼容备用在**新 generation**作答；主代次文本/工具片段绝不与备用拼接，final/receipt 只来自备用成功代次；权限/schema 流失败仍终止 |
+| 真实栈 | 真实 PG（0001–0027）、编译 `cmd/api`、真实 worker mTLS、对象字节、公网 owner HTTP/SSE；`test_t045_fallback.py` 9 用例（兼容切换+4 次尝试+费用、rate_limited、协议不兼容、权限单次、未冻结 manifest、未 passed 编译拒绝、预算耗尽、工具不兼容、流式新代次）+ `test_t045_pages.py` 3 用例通过；`test_t041_capabilities.py` 账本键集随投影扩展更新 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 24 ok/0 FAIL；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 96 passed（479.53s）；`pytest tests/f02a -q` 104 passed（726.21s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
+| 边界/not_run | 真实厂商 adapter（真实主/备切换 not_run）、浏览器 DOM 驱动、多进程预览 fan-out、T046 预算结算/释放与完整账本、全量 `pytest tests`/f00b/f03/f05 未跑；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0027（0001–0026 未改）；f02a 三个“迁移链尾”断言原本在 base 已红（T041/T042 追加 0025/0026），本票改为连续性断言（仅测试） |
+
+## F06 共享十进制预算预留与实际用量结算（T046，2026-11-04）
+
+T046（GitHub #47）已交付，状态 **`passed`**（范围 = 一次 Run 树的共享十进制预算：
+契约表 `platform.usage_ledger` 为唯一权威，物理调用前按预算根行锁原子预留，成功按价格版本
+结算实际 usage 并释放未用预留，失败/取消释放，缺 usage 保留保守预留待维护对账；重试/备用/
+流式共用父预算，回放不二次预留；预算拒绝是 typed 平台失败且保留已确认 artifact；owner
+账本/`/runs` 页面显示预算投影）。证据：`reports/f06/T046-budget.md`。
+
+| 项 | 内容 |
+|---|---|
+| 账本 | 迁移 0028 建 `platform.usage_ledger`（契约列 + `entry_key` 幂等键 + 非负 `numeric(20,8)`）；加法列 `operation_attempts.settlement_state`（none/reserved/settled/released/usage_missing）。`outstanding=sum(reserve)-sum(release)`、`charged=sum(charge)`；`budget_root_run_id` 递归解析父 run，F04A run 自为根 |
+| 原子预留 | `internal/budget.ReserveTx` 在预算根 run 行 `FOR UPDATE`，同一事务检查 `limit-(charged+outstanding)`，放不下返回 typed `ExhaustedError`（HTTP 429 `budget_exhausted` + remaining/required/currency），不写 attempt、不调 provider；并发调用只能有一个拿到最后一笔预留 |
+| 十进制 | `math/big.Rat` + 非负十进制字符串；预留向上取整、实际费用半进位，`numeric(20,8)` 溢出拒绝而非舍入；价格版本 `price-v1:<profile>:in=<输入价/百万>:out=<输出价/百万>:<currency>`；无 price 配置为零价 stub，异币种价格 422 |
+| 结算/释放 | 每物理 attempt 一对 `entry_key`：失败/取消 release 整笔；成功 release 整笔 + charge 实际费用（price version）；provider 无 usage 时保留预留、attempt `usage_missing`，maintenance-only `POST /internal/v1/runs/{id}/capability-settlements` 对账（worker 不能自报费用，重复对账幂等） |
+| 集成 | `internal/capabilities` 在 `beginModelAttempt` 内原子写 attempt + reserve，`finishModelSuccess` 同事务写 receipt + settle；重试/fallback/流式 generation 全部复用同一父预算根；回放走既有 operation idempotency，不二次预留/收费；预算拒绝保留此前 confirmed artifacts |
+| 页面/接口 | owner `GET /api/v1/runs/{id}/capabilities` 响应增 `budget{budget_limit,reserved_amount,charged_amount,remaining_amount,currency,overrun}`；`/runs` 增 `#budget-status`，`describeRunBudget` 原样显示十进制串并在 overrun 时渲染“已超支：运行不能被呈现为成功”；纯 helper Node 执行 |
+| 真实栈 | 真实 PG（0001–0028）、编译 `cmd/api`、真实 worker/maintenance mTLS、真实 run 行锁并发门（psql 持锁 + `pg_stat_activity` 等待计数，不以 sleep 决定胜负）；`test_t046_budget.py` 7 用例 + `test_t046_pages.py` 3 用例通过 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 25 ok/0 FAIL/9 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06 -q` 106 passed（523.91s）；`pytest tests/f02a -q` 104 passed（689.15s）；`pytest tests/tooling -q` 21 passed；`python tools/sync_spec.py --check` no drift |
+| 边界/not_run | 真实厂商 adapter（真实 usage/流式 not_run）、浏览器 DOM 驱动、全量 `pytest tests`/f00b/f03/f05、跨 run 的父/子预算真实 e2e（只有 F04A 自根 run 被真实验证，递归解析代码有单元级/迁移级证据）；未 push/未关 issue；未改 docs/spec/contracts；迁移只新增 0028（0001–0027 未改） |
+
+## F06 授权上下文与受保护事实（T047，2026-11-04）
+
+T047（GitHub #48）已交付，状态 **`passed`**（范围 = agent 每轮模型输入只含本次 Run 的已授权
+start/python/tool 来源；预算 `context_window - max_output_tokens` 的确定性 byte/4 估算；超限按
+低相关历史 → 旧工具细节 → 冗长上游文本截断；否定/来源引用/审批参数/精确金额统计逐字保留并
+记 trace；摘要仅展示、绝不进入模型输入或事实派生；F09 记忆存储不存在 → `not_run`，不造假；
+trace 作为 agent 节点 `context-trace` 文件行持久化并显示在 `/runs`）。证据：
+`reports/f06/T047-context.md`、ADR 0007 D14。
+
+| 项 | 内容 |
+|---|---|
+| builder | 新增 `internal/context`（package `agentcontext`）：`Build(ctx, Request) (Output, error)`；`Scope{NodeIDs,ArtifactIDs}` 由 sealed plan 派生，foreign node/artifact → typed `context_source_unauthorized`；`ResolvedInput` 必须带 literal/start/python/tool 来源；`Output.Messages` 为 role/content，`Output.Trace` 只含 id/kind/label/token 数/截断 reason/protected 键路径，绝不含正文或金额原文 |
+| 预算/截断 | `budget = context_window - max_output_tokens`；估算 `ceil(UTF-8 bytes/4)` + 每消息 4 tokens，无 provider tokenizer/时钟/随机，重放确定；顺序：仅展示摘要与低相关历史 → 旧工具结果细节（保留 protected 分支）→ 冗长上游文本（1024→256→64→0）→ 最后手段；system+protected 最小值放不下 → `context_budget_exhausted`，绝不静默裁剪 protected |
+| protected 事实 | 固定键表：`exclude/must_not/negative*/negations`、`sources/citations/document_id(s)/references`、`approval/proposal/target(s)/params`、`amount(s)/total/currency/quantity/price/count/stats` 等；匹配键整枝逐字保留；Go 单测断言 bounded input 仍含否定/来源/审批/金额，真实栈封存 model params 仍含 `"total":"250.00"`、`"order_count":3` |
+| 摘要/记忆 | `HistoryMessage.Summary=true` 不进入模型输入、不扫描 protected、不派生金额/授权（`DisplayOnlySummaryCount` 计数）；`MemorySource` 生产实现 `NoMemorySource{}` 返回空，trace `memory_state=not_run`，模型无 memory 消息；active+confirmed 且同 owner+application 的记忆语义仅 Go 单测 seam，真实 F09 存储 not_run |
+| Agent 集成 | `internal/presetexec/agent.go` 每轮模型调用前重建消息（system+authorized inputs+tool history），`ModelFact` 增 `ContextWindow/MaxOutputTokens`，supervisor 只读 `model_profile_versions.config`；超限/builder 错误以 `contextFailureCode` 作为 run error_code；未复制 T046 金额/预留/结算逻辑（`internal/budget`、`usage_ledger`、金额列零改动） |
+| 持久化/页面 | 成功时新增 `kind=file`、`label=context-trace`、media `application/json` 的 JCS 文档 `{version:1,node_id,turns:[Trace]}`；`/runs` Agent 面板新增 `#agent-context-status`/`#agent-context-trace`，纯函数 `contextTraceRowOf`/`describeContextTrace` 渲染来源/截断原因/受保护键名/`memory_state=not_run`，通过既有 owner-only artifact content 读取，不新增接口 |
+| 真实栈 | 真实 PG（0001–0028）、编译 `cmd/api`/`cmd/supervisor`、真实 mTLS、对象字节、WSL2+runsc python/tool 节点；模型 profile 在 run 入队后改小窗口（3072/1024 或 200/100）；`test_t047_context.py` 2 用例（截断+protected 经封存 model params 验证；protected 最小值超预算稳定失败、0 operation）+ `test_t047_pages.py` 3 用例通过 |
+| 回归 | T043 6+3 用例通过（节点结果 8→9、analysis file 集合加 context-trace，其它断言未削弱）；T044/T046 共 32 用例通过；未跑 f05/f03 |
+| 门禁 | 见 `reports/f06/T047-context.md` §9（go vet/test、gofmt、pytest f06/f04a/tooling、sync_spec --check 顺序执行） |
+| 边界/not_run | 真实厂商 adapter/真实 tokenizer、F09 个人记忆存储与真实记忆消费、摘要生成链路、真实栈 foreign source 注入（只有 Go seam）、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；失败路径不写 trace 文件行（报告 §8 偏差 2）；未 push/未关 issue、未改 docs/spec/contracts、未新增迁移 |
+
+## F06 固定 HTTP 连接器与受控出站（T048，2026-11-04）
+
+T048（GitHub #49）已交付，状态 **`passed`**（范围 = 管理员登记版本化连接器策略并封存不可变
+JCS artifact；工具声明的 connector 版本进入编译期 manifest 闭包；`invokeCapability(kind=connector)`
+校验 manifest 成员/策略 hash/已批准未撤销/method/path/请求 schema/风险后，由 Go 执行一次真实
+HTTP 出站并施加 SSRF/DNS/重定向/私网/元数据/凭据保护；写风险停在 `awaiting_approval`/
+`approval_required`；撤销使下一次调用失败；能力种类歧义拒绝；operation/attempt/回执/owner 账本
+完整；真实厂商连接器仍是部署定义，见报告 §8）。证据：`reports/f06/T048-connectors.md`、
+ADR 0007 D15。
+
+| 项 | 内容 |
+|---|---|
+| 迁移/注册表 | 新增 `0029_connector_policies.sql`：versioned `platform.connector_policies`（origin 恰为 scheme://host[:port]、method 集合、path_prefix、request/response schema、secret_ref/header、risk read|write、allow_private、policy_artifact_id、policy_sha256 UNIQUE、approved_at/revoked_at），撤销保留行不删除；同 0007–0028 权限边界。契约基线无此表：docs/spec/contracts 未改，偏差写入迁移注释/报告 §8 |
+| 管理员 API | `POST/GET /api/v1/admin/connectors`、`POST /api/v1/admin/connectors/{id}/revoke`（admin+CSRF）；校验 origin/method/prefix/schema/secret 引用/header/risk；策略体 RFC 8785 JCS 封存为 `purpose=connector_policy` artifact，`policy_sha256` 为版本身份；重复体 409 `connector_policy_exists`+details.policy_id；响应不含凭据值 |
+| 编译期闭包 | `platform.tool_versions.connector_versions` 展开到工具 document pointer（source=工具版本）；不存在/撤销/未批准分别 `dependency_not_found`/`dependency_revoked`/`dependency_not_ready`；`compiler.Build` 规范化并冻结 `manifest.connector_policies[{version_id,policy_sha256}]`；空集仍为 `[]`，不改既有 manifest 字节。工具提交接受已批准策略 id 并纳入内容身份 |
+| invokeCapability | manifest 成员 + sealed digest 匹配 + 已批准未撤销 + params 仅 path/query/body + method/body 规则 + 请求 schema + query 声明；同 UUID 跨 model/tool/connector 集合 → 409 `capability_kind_ambiguous`；read 风险一次 operation/一次 attempt/一次真实 HTTP/回执；无隐藏重试 |
+| 写风险/审批 | `risk_class=write` → operation `awaiting_approval`、返回 `state=awaiting_approval` + `data.error_code=approval_required`，0 attempt、0 出站；同键重放同一停住结果；T050 写 approval 行并把同一 operation 恢复为 authorized 后调用 `dispatchConnector` |
+| 受控出站 | URL 仅 origin+prefix 内 path（无绝对 URL/点段/fragment/控制字符），query 需 request schema 显式声明；解析全部地址逐个分类（metadata/link-local/multicast/unspecified 即使 allow_private 也拒绝；loopback/RFC1918 仅 allow_private），已验证地址固定进 DialContext 不二次解析；重定向一律拒绝；Proxy=nil、10s 超时、请求/响应 1 MiB 上限、无 keep-alive；凭据只在 Go 内解析并写入 secret_header，不落 params/回执/日志/错误 |
+| 账本/回执 | operation（connector、risk、params artifact、prepared→authorized→dispatching→succeeded/failed）、每物理调用一条 attempt、回执 artifact（status/response_sha256/response_bytes/headers 白名单/JSON body，无请求参数与凭据）；owner `GET /runs/{id}/capabilities` 每项新增 `risk_class`，连接器项新增 `connector_target`（METHOD origin+prefix） |
+| 页面 | `/runs` 账本新增「目标」列与风险标签（读/写/无风险），写风险显示「待审批」；`describeCapabilityOperation` 暴露 `connectorTarget/targetText/riskClass/riskText/isConnector`；不显示 params/query/回执正文/凭据；纯函数 Node 执行 |
+| 真实栈 | 真实 PG（0001–0029）、编译 `cmd/api`、真实 mTLS、对象字节、debug run manifest 编译、真实 loopback HTTP server；`test_t048_connectors.py` 12 用例（成功/凭据/SSRF/私网/DNS/重定向/撤销/歧义/写风险/method-path-schema-query/未入 manifest/管理员校验+ACL+重复+404）+ `test_t048_pages.py` 3 用例通过 |
+| 回归 | T041 账本项集合随新增 `risk_class` 更新（唯一既有断言变化）；两次全量 f06 中 T042 legacy 与 T043 revoked-model 各出现一次 WSL2/runsc `sandbox_failed` 抖动，单独重跑均通过（连接器代码路径未触及）；`tests/f02a` 104 passed、`tests/tooling` 21 passed |
+| 门禁 | 见 `reports/f06/T048-connectors.md` §6/§9（go vet/test、gofmt、pytest f02a/tooling、f06、sync_spec --check 顺序执行） |
+| 边界/not_run | 真实厂商连接器语义、T050 审批写行与恢复、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #49、未改 docs/spec/contracts、迁移仅新增 0029（0001–0028 未改） |
+
+## F04A 销售模板：另一使用者运行并下载已验证报告（T049，2026-11-04）
+
+T049（GitHub #50）已交付，状态 **`passed`**（范围 = 服务端受控销售模板注册表与非契约实例化桥；
+另一个真实 creator 把模板复制成自己的私有应用，用真实 CSV/XLSX 走既有 debug → supervisor →
+WSL2/runsc 路径得到 250.00/东区 200.00/西区 50.00/3 单，报告只引用已验证统计；summary/CSV/正文
+分离，第三用户隔离；模板实例化**不是** F02B 发布）。证据：`reports/f04a/T049-sales-template.md`、
+ADR 0007 D16。
+
+| 项 | 内容 |
+|---|---|
+| 迁移/注册表 | 新增 `0030_application_templates.sql`（0028 已被 T046 占用，0030 为下一个空位）：`platform.application_templates(id text PK, name, application_id uuid UNIQUE REFERENCES applications, definition jsonb, capability_card jsonb, created_at, updated_at)`；源应用 + revision-1 草稿是服务端种子，不是 application_version/publication_review；契约基线无此表，偏差写入迁移头注释/报告 §7 |
+| Seed CLI | `orchara-admin seed-sales-template --owner-login ADMIN --model-version-id UUID`：只接受真实 T039 流程 passed 的 stub profile（pending/failed/revoked/非 stub 拒绝，绝不写 validation_state）；以真实 `sales_stats.py` SHA-256 作固定工具版本 image_digest，状态 ready/risk read/approved_by+at，幂等；定义解析为实际 tool/model UUID（无 2222… 占位）；重复运行输出相同 `{template_id,application_id,tool_version_id,model_version_id}` |
+| 定义 | 固定四节点 `start → stats(python,sales_stats) → explain(agent) → end`：python 输出 `{total,regions,order_count}`；agent 只绑定 `node:stats#`、输出 `{report,totals}`、max_turns 4、无工具；end 映射 `{summary,report,totals}`。summary.json/summary.csv 是 python 文件 artifact，报告是 explain data + end 输出，互不覆盖 |
+| 实例化 API | 非契约 `POST /api/v1/templates/{template_id}/applications`（creator+CSRF）：一个事务复制定义/卡为新应用 + revision-1 草稿，返回 `{id,revision=1,definition_revision}`；未知/畸形模板 404 `template_not_found`；非 creator 403 `creator_role_required`；未认证 401；不创建 version/review |
+| 金额真值 | dev stub 仅在 response_schema 声明 `report` 且最后一条 user 消息含已验证 summary 时，逐字复制 total/regions/order_count 生成 report 与 totals（不重算不编造）；T043 `{text}` 路径不变。独立测试侧 `decimal.Decimal` 从字面量重算 250/200/50/3，校验 summary.json、summary.csv、report 全部两位小数与订单数，并证明扰动 total→251.00 / report→999.00 会失败 |
+| 页面 | `/apps` 新增「从销售模板创建（F04A/T049）」动作；`app.js` 纯 helper `salesTemplateInstantiateRequest()` 由 Node 执行（路径编码/方法/空体/空 id 拒绝）；`/runs` report 下载路径与 stub 标签结构断言 |
+| 真实栈 | 真实 PG（0001–0030）、真实 T039 register/validate + model_validate/artifact_finalize、真实 `cmd/api`/mTLS/对象字节、真实 supervisor + WSL2/runsc python 与 agent 节点；`test_t049_template.py` 3 用例（seed/实例化边界、CSV+XLSX 已验证报告、重复/负数/空输入拒绝）+ `test_t049_pages.py` 4 用例通过 |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` 28 ok/0 FAIL/10 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 131 passed + 2 条既有 WSL2/runsc 抖动（T043，单独重跑 2 passed）；`pytest tests/f04a` 36 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | F02B 发布/共享版本（本票明确不做）、真实厂商 adapter、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #50、未改 docs/spec/contracts、迁移仅新增 0030（0001–0029 未改） |
+
+## F06 精确参数审批与安全恢复（T050，2026-11-04）
+
+T050（GitHub #51）已交付，状态 **`passed`**（范围 = 服务端从 Run/operation/策略/manifest 真实
+事实构建并封存审批提案；写风险连接器操作在 capability 代理同事务创建 pending approval 并停住；
+指定人类审批人读取/决定；精确 params hash、过期、撤权、Run 终态/取消使批准不可复用；并发相反
+决定只有一个赢家、同决定重放幂等；批准把 operation 翻到 `authorized`，旧尝试退出后经 T035 唯一
+`maybeEnqueueResumeTx` 创建恰好一个 resume，恢复的尝试仍重校验权限/预算并在
+`authorized → dispatching` CAS 后恰好派发一次；拒绝/过期为 `approval_rejected`/`approval_expired`
+且零外部写入；发布审核无法决定 Run 审批）。证据：`reports/f06/T050-approvals.md`、ADR 0007 D17。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0031_run_approvals.sql`：`platform.approvals`（契约列 + `UNIQUE(operation_id)`、`UNIQUE(run_id,node_key,params_sha256)`、`approvals_pending`/`approvals_run` 索引、`pending ⇔ decided_at IS NULL` CHECK）；偏差（node_key 由 logical key 节点前缀填充；不新增 operations.approval_id；无 created_at 列）写入迁移头注释/报告 §8。0001–0030 未改 |
+| approvals 服务 | 新增 `internal/approvals`：`PrepareRecordTx`（capability 同事务建提案+行）、`Prepare`（契约 prepareApproval，忽略 worker proposal）、`Get/List`（审批人或 admin 读，stranger 404，pending-first cursor）、`Decide`（Run→approval→operation 锁序；hash/审批人/过期/权限/状态/策略撤销全查；同决定幂等、相反 409；approve→operation authorized，reject/expire→operation failed）；提案 JCS 封存 `purpose=approval_proposal`，owner=审批人，经既有 artifact-content ACL 读取 |
+| capability 集成 | `capabilities.Service.Approvals`；写风险 connector 同事务建 approval + `awaiting_approval`，返回契约 `approval_id`；停住重放同 approval；`authorized` 写操作在恢复调用时 `proceed`，仍由 `authorized → dispatching` CAS 保证恰好一次；`loadAuthorizedRun` 新增 owner disabled 检查（批准不绕过当前权限），`resolveConnector` 重启策略撤销校验 |
+| waiting/resume 桥 | `applyWaitingTransitionTx` 采纳先落库的真实 approval 决定；`maybeEnqueueResumeTx` 对真实 rejected/expired approval 以 `approval_rejected`/`approval_expired` 终止 Run，T035 synthetic opaque reference 保持既有 resume 契约；cancel/终态把 pending approvals 置 invalidated；唯一 resume 创建者仍是 T035 事务 |
+| executor | `presetexec.Proposal.CheckpointID`；`runner.waitAgent` 把 `awaiting_approval` 转为 `waiting_approval` + `checkpoint_id=capability:<operation_id>` + `approval_required`，提交 waiting result 后 ConfirmExit；agent 模型/工具两处不再失败 Run；supervisor client 透传 checkpoint |
+| HTTP/页面 | `POST /internal/v1/runs/{run_id}/approvals`（worker mTLS）、`GET /api/v1/approvals`、`GET /api/v1/approvals/{id}`、`POST /api/v1/approvals/{id}/decision`（Idempotency-Key 必需）；`/approvals` 页面展示真实目标/方法/路径/canonical params/去向/来源版本/过期/hash，批准/拒绝无默认选择，明确“批准不赋予额外权限”“拒绝/取消不撤销外部写入”；`/runs` 导航新增审批入口 |
+| 真实栈 | 真实 PG（0001–0031）、编译 `cmd/api`、真实 mTLS、对象字节、真实 admin connector registry + loopback HTTP；`test_t050_approval.py` 15 用例（提案/ACL/list、内部 prepare 幂等、三种顺序各 1 resume + 恰好 1 次出站、reject、expire、换参数/错 hash、并发相反决定+幂等重放、撤权、预算 0、批准后撤策略、取消失效、真实 publication_reviews 行 404）+ `test_t050_pages.py` 3 用例通过 |
+| 回归 | `tests/f03` T035 migration/waiting/resume/resume_refusals/pages 与 T036 cancel/unknown 全绿（T035 迁移尾部测试改为“连续链 + 本票行按 version”，不钉死 0026；synthetic rejected/expired resume 契约未改）；`go test ./...` 全 ok；`tests/tooling` 21 passed |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 151 passed；`pytest tests/f03` 目标集全绿；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | 自动过期 sweeper、`approval.required` 持久事件、真实浏览器 DOM、service-account 审批人真实栈路径、agent→connector 写策略消费、真实厂商连接器、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #51、未改 docs/spec/contracts、迁移仅新增 0031（0001–0030 未改） |
+
+## F06 写后丢响应暂停核对与真实写次数不增加（T051，2026-11-04）
+
+T051（GitHub #52）已交付，状态 **`passed`**（范围 = 写风险连接器派发前持久化
+`authorized → dispatching` 意图，只有 CAS 赢家发送；超时/连接丢失/发送后 5xx/无法验证的 2xx
+一律把 operation 置 `unknown`（从不 failed/succeeded），同事务写 T036
+`run_unknown_operations`，attempt 退出后 Run 停在 `needs_reconciliation`；重复
+invoke/resume 只回放已记录状态、零出站；owner 或该 operation 审批人用经校验且绑定 operation
+的证据 artifact 调 `reconcileOperation`，`confirmed_success` 置 succeeded（原回执优先，否则
+证据作为回执），`confirmed_not_sent`/`confirmed_failure` 置 failed；无供应商幂等键/查询回执
+能力时披露限制且绝不自动补发；同一事务经唯一 T031 finalizer 让 Run 离开核对；同
+(conclusion,evidence,Idempotency-Key) 幂等、不同结论 409；真实写次数全程为 1）。证据：
+`reports/f06/T051-unknown-operations.md`、ADR 0007 D18。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0032_operation_reconciliation.sql`：`platform.operations` 可空审计列 `reconciliation_conclusion`（closed CHECK）、`reconciliation_key`（≤200）、`reconciliation_limitation`（closed CHECK）；契约列语义不变，无新表/触发器；0001–0031 未改 |
+| unknown 派发 | `capabilities.dispatchConnector` 在 `Connectors.Execute` 返回 timeout/transport/5xx-after-send/response-invalid 且策略为 write 时调 `markConnectorUnknown`：同一事务（`execution.RecordUnknownOperationTx` 锁 Run+校验 live attempt+写 unknown 行，再写 operation `unknown`）提交；返回契约 `CapabilityResult{state:"unknown"}`；物理 attempt 保持 `dispatching`；失败路径不改写为 failed/succeeded |
+| CAS 单发送者 | `beginConnectorAttempt` 仍以 `authorized → dispatching` CAS（operation 行锁 + UNIQUE attempt）为唯一发送门；重复 invoke 见 `dispatching` 409 `operation_in_progress`、见 `unknown` 200 回放；同逻辑键换参数 409 `operation_conflict` |
+| 限制披露 | 派发前持久化 `reconciliation_limitation=no_idempotency_or_query_support`（connector 策略当前无供应商幂等键/查询回执能力）；dispatch `data.limitation`、owner 账本与 `/runs` 页面三处披露；无任何自动重发 |
+| 核对服务 | 新增 `internal/capabilities/reconciliation.go`：`ReconcileOperation`（Run→operation 锁序；owner 或 `platform.approvals.approver_id`；证据 artifact ready/未删/owner 或 run 链接 + JSON 绑定 operation_id 或 logical_key+params_sha256；`Idempotency-Key` 必需；同元组幂等回放、不同元组 409）与 `internal/execution/reconcile.go`：`ReconcileUnknownOperationTx`（解析唯一 unknown 行后重入 `finalizeRunTx`：取消意图优先、成功提案→succeeded、失败结论→合成 failed 提案、仍有未知/子 Run 保持停泊） |
+| 结论语义 | `confirmed_success`：operation succeeded，原回执优先否则证据 artifact 作回执；`confirmed_not_sent`：failed + `operation_not_sent`，因策略无显式安全重试支持不做第二次派发、不建第二个 operation id；`confirmed_failure`：failed + 派发时安全码；三者都只结算原 operation |
+| HTTP/页面 | 契约 `POST /api/v1/operations/{operation_id}/reconcile`（cookie+CSRF 或 API key `application:write`；返回 `Accepted{id,state}`；缺 `Idempotency-Key` 422）；owner 账本新增 `requires_reconciliation`/`reconciled_by`/`reconciliation_evidence_id`/`reconciliation_conclusion`/`reconciliation_limitation`/`provider_idempotency_key`（空值省略，旧投影不变）；`/runs` 显示「结果未知（待核对）」、限制披露与逐操作核对表单，核对后显示「真实写次数仍为 N（未增加）」 |
+| 真实栈 | 真实 PG（0001–0032）、编译 `cmd/api`、真实 mTLS、对象字节、真实 T050 审批→resume、真实 loopback 端点（收到真实写后关闭连接不回响应）+ 真实 egress guard；`test_t051_unknown.py` 9 用例（丢回执 unknown/run 停泊/重复不补发/换参 409、5xx→unknown、confirmed_success+证据+Run succeeded+幂等重放+冲突 409、confirmed_not_sent 无第二次 operation/写、confirmed_failure、非 owner 403、证据缺失/绑定错误/已删除/他人证据 422、缺 Idempotency-Key/坏结论 422、无幂等/查询能力披露且不自动重发）+ `test_t051_pages.py` 3 用例通过；端点请求数=physical attempt 数=1 |
+| 回归 | `tests/f03` T036 unknown/cancel 21 passed（T036 bridge 行为未改）；`go test ./...` 全 ok；`pytest tests/f06` 164 passed（含 T039–T051）；`tests/tooling` 21 passed |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 164 passed（582.73s）；`pytest tests/f03` 目标集 21 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | 真实厂商连接器（无幂等键/查询回执 API，故不做同 operation 安全重试分支）、owner 以外的独立审批人核对（T050 审批人恒为 owner）、`needs_reconciliation → queued` requeue（T038 recover 仍是唯一 requeue 权威）、真实浏览器 DOM、自动重试/sweeper、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #52、未改 docs/spec/contracts、迁移仅新增 0032（0001–0031 未改） |
 
 ## 记录模板
 

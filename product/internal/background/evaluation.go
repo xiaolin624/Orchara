@@ -342,15 +342,26 @@ func (c *Controller) resolveBoundManifest(
 // markEvaluationRunning is called inside the claim transaction. A job attempt
 // that owns the work is what makes the evaluation running; a retry keeps it
 // running (there is still an attempt in flight).
+//
+// application_evaluate targets the evaluation row directly; model_validate
+// targets the model profile, so its evaluation is found by background_job_id.
 func markEvaluationRunning(ctx context.Context, tx *sql.Tx, job *Job) error {
-	if job.Kind != KindApplicationEvaluate {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE platform.evaluation_jobs
-		   SET state = 'running'
-		 WHERE id = $1::uuid AND state = 'queued'`, job.TargetID); err != nil {
-		return fmt.Errorf("marking the evaluation running: %w", err)
+	switch job.Kind {
+	case KindApplicationEvaluate:
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.evaluation_jobs
+			   SET state = 'running'
+			 WHERE id = $1::uuid AND state = 'queued'`, job.TargetID); err != nil {
+			return fmt.Errorf("marking the evaluation running: %w", err)
+		}
+	case KindModelValidate:
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.evaluation_jobs
+			   SET state = 'running'
+			 WHERE kind = 'model' AND background_job_id = $1::uuid AND state = 'queued'`,
+			job.ID); err != nil {
+			return fmt.Errorf("marking the model evaluation running: %w", err)
+		}
 	}
 	return nil
 }
@@ -379,11 +390,17 @@ func failEvaluationForJobTx(
 	kind Kind,
 	targetID, errorCode string,
 ) error {
-	if kind != KindApplicationEvaluate {
+	switch kind {
+	case KindApplicationEvaluate:
+		return failEvaluationTx(ctx, tx, targetID, errorCode)
+	case KindModelValidate:
+		// A model_validate job targets the model profile; the evaluation and
+		// the model state both become failed.
+		return failModelValidationForJobTx(ctx, tx, targetID, errorCode)
+	default:
 		// No other kind owns bound business state in this batch.
 		return nil
 	}
-	return failEvaluationTx(ctx, tx, targetID, errorCode)
 }
 
 // cancelEvaluationTx records a cancelled evaluation.

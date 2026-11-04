@@ -8,14 +8,18 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/approvals"
 	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/modelproxy"
+	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 	"orchara/platform/internal/toolruns"
@@ -44,8 +48,19 @@ type Server struct {
 	// toolVersions is the F05/T037 submission/build/review service.
 	toolVersions *toolversions.Service
 	models       *modelproxy.Service
-	objects      *objectstore.Store
-	signer       *objectstore.Signer
+	// modelRegistry is the F06/T039 registration and validation service.
+	modelRegistry *modelregistry.Service
+	// capabilities is the F06/T041 run-scoped controlled-capability boundary.
+	capabilities *capabilities.Service
+	// connectors is the F06/T048 versioned connector registry (admin-only).
+	connectors *connectors.Service
+	// approvals is the F06/T050 exact-parameter approval lifecycle.
+	approvals *approvals.Service
+	// preview is the F06/T044 temporary in-process model stream preview hub. It
+	// is not persisted and not shared across processes.
+	preview *previewHub
+	objects *objectstore.Store
+	signer  *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -83,6 +98,12 @@ type Deps struct {
 	Signer  *objectstore.Signer
 	// Providers is the model-proxy provider set built from deployment configuration.
 	Providers *modelproxy.Providers
+	// Connectors is the F06/T048 registry and guarded egress client. Nil fails
+	// closed: no connector capability can be invoked.
+	Connectors *connectors.Service
+	// Catalog is the deployer-registered model endpoint/credential catalog. Nil
+	// means the documented dev-stub default, never an open catalog.
+	Catalog *modelregistry.Catalog
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -124,6 +145,26 @@ func New(deps Deps) *Server {
 	)
 	// local_sequence diagnostics go to the process log, never the API body.
 	executionService.Logger = logger
+	catalogRefs := deps.Catalog
+	if catalogRefs == nil {
+		// The dev-stub default is deterministic and cannot fail; a nil catalog
+		// must never mean "accept anything".
+		catalogRefs, _ = modelregistry.FromEnv(nil)
+	}
+	modelRegistry, err := modelregistry.New(deps.Service.DB, deps.Objects, catalogRefs)
+	if err != nil {
+		// Only reachable for an impossible nil default; keep the registration
+		// surface failing closed instead of panicking at startup.
+		modelRegistry = nil
+	}
+	capabilityService := capabilities.New(deps.Service.DB, deps.Objects, deps.Providers)
+	capabilityService.Connectors = deps.Connectors
+	// F06/T051: the T036 bridge is the one writer of the unknown ledger row, and
+	// the reconcile transaction re-drives the same finalizer through it.
+	capabilityService.Unknowns = executionService
+	capabilityService.Reconciler = executionService
+	approvalService := approvals.New(deps.Service.DB, deps.Objects, executionService)
+	capabilityService.Approvals = approvalService
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -135,7 +176,12 @@ func New(deps Deps) *Server {
 		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
 		toolRuns:          toolruns.New(deps.Service.DB, notifier),
 		toolVersions:      toolversions.New(deps.Service.DB),
-		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers),
+		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		modelRegistry:     modelRegistry,
+		capabilities:      capabilityService,
+		connectors:        deps.Connectors,
+		approvals:         approvalService,
+		preview:           newPreviewHub(),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -198,6 +244,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
+	// F04A/T049: copy the server-controlled sales template into the caller's own
+	// private application. Non-contract and not a publication: the caller then
+	// uses the normal draft/debug path, and F02B still owns shared versions.
+	mux.HandleFunc("POST /api/v1/templates/{template_id}/applications", s.handleInstantiateTemplate)
+
 	// F02A/T025: compile the current draft, resolve its fixed dependency closure
 	// and return located errors. A valid draft also returns the server-side
 	// manifest hash in X-Manifest-SHA256 (the 200 schema has no field for it; the
@@ -219,6 +270,17 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/events", s.handleRunEvents)
 	// F05/T033: the owner-only run artifact list.
 	mux.HandleFunc("GET /api/v1/runs/{run_id}/artifacts", s.handleListRunArtifacts)
+	// F04A/T042: the owner-only per-node data/file/log provenance read
+	// (non-contract). Content stays on the artifact content/download routes.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/node-results", s.handleListRunNodeResults)
+	// F06/T041: the owner-only controlled-capability ledger read. Non-contract
+	// (no public capability invocation exists); the service projection carries no
+	// params or receipt bodies.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/capabilities", s.handleRunCapabilities)
+	// F06/T044: the temporary owner-only model stream preview (non-contract). It
+	// is separate from the durable Run SSE above: it replays the current
+	// generation from in-process memory only and closes on final/error.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/model-preview", s.handleRunModelPreview)
 
 	// F00B/T022: the redacted diagnostic read for a background job's owner or an
 	// administrator. The internal claim/heartbeat/result routes live on the
@@ -262,6 +324,29 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/tools/{tool_version_id}/revoke", s.handleRevokeTool)
 	mux.HandleFunc("GET /api/v1/tools/{tool_version_id}/build", s.handleGetToolBuild)
 
+	// F06/T039: model registration, reads and compatibility validation.
+	mux.HandleFunc("POST /api/v1/models", s.handleRegisterModel)
+	mux.HandleFunc("GET /api/v1/models", s.handleListModels)
+	mux.HandleFunc("GET /api/v1/models/{model_version_id}", s.handleGetModel)
+	mux.HandleFunc("POST /api/v1/models/{model_version_id}/validate", s.handleValidateModel)
+	// Non-contract admin catalog reads: which deployment references exist.
+	mux.HandleFunc("GET /api/v1/admin/model-endpoints", s.handleListModelEndpoints)
+	mux.HandleFunc("GET /api/v1/admin/credential-refs", s.handleListCredentialRefs)
+	// F06/T048: the versioned connector registry (admin-only; non-contract).
+	mux.HandleFunc("POST /api/v1/admin/connectors", s.handleRegisterConnector)
+	mux.HandleFunc("GET /api/v1/admin/connectors", s.handleListConnectors)
+	mux.HandleFunc("POST /api/v1/admin/connectors/{connector_id}/revoke", s.handleRevokeConnector)
+
+	// F06/T050: exact-parameter approvals. The designated approver (the run
+	// owner) is the only human who can read or decide; a stranger sees 404.
+	mux.HandleFunc("GET /api/v1/approvals", s.handleListApprovals)
+	mux.HandleFunc("GET /api/v1/approvals/{approval_id}", s.handleGetApproval)
+	mux.HandleFunc("POST /api/v1/approvals/{approval_id}/decision", s.handleDecideApproval)
+	// F06/T051: the owner/approver evidence reconciliation for one unknown
+	// external write. The operation id is the binding; no second operation or
+	// automatic resend exists on this path.
+	mux.HandleFunc("POST /api/v1/operations/{operation_id}/reconcile", s.handleReconcileOperation)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -272,6 +357,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F05/T037: the creator tools page and its admin review queue. Like every
 	// static route, the path is a compile-time constant.
 	mux.HandleFunc("GET /tools", s.staticPage("tools.html"))
+	mux.HandleFunc("GET /models", s.staticPage("models.html"))
 	// F02A/T023: the editor is served per application so the page never needs a
 	// query string (the path segment is the application id the editor edits).
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
@@ -280,12 +366,23 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F06/T050: the approval queue/detail page. Static, compile-time path.
+	mux.HandleFunc("GET /approvals", s.staticPage("approvals.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
+	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
+	// F06/T050: the approval page helpers (proposal rendering, no defaults).
+	mux.HandleFunc("GET /assets/approvals.js", s.staticPage(filepath.Join("assets", "approvals.js")))
+	// F06/T044: the shared temporary model preview helpers loaded by /debug and /runs.
+	mux.HandleFunc("GET /assets/stream-preview.js", s.staticPage(filepath.Join("assets", "stream-preview.js")))
+	// F04A/T040: the committed Vue Flow canvas bundle. The page never needs npm;
+	// the bundle and its stylesheet are static build artifacts checked into the tree.
+	mux.HandleFunc("GET /assets/canvas.js", s.staticPage(filepath.Join("assets", "canvas.js")))
+	mux.HandleFunc("GET /assets/canvas.css", s.staticPage(filepath.Join("assets", "canvas.css")))
 }
 
 type loginRequest struct {

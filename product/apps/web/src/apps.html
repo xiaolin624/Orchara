@@ -66,6 +66,17 @@
     <button id="apps-next" type="button" hidden>下一页</button>
   </section>
 
+  <section class="card">
+    <h2>从销售模板创建（F04A/T049）</h2>
+    <p class="hint">
+      复制服务端受控销售模板到你的账号：CSV/XLSX → 已验证统计（summary.json / summary.csv）→
+      只引用这些数字的报告正文。创建结果是你自己的私有草稿，随后直接进入调试流程；
+      它<strong>不是</strong>已发布版本，发布与共享版本属于 F02B。
+    </p>
+    <button id="create-from-template" type="button">从销售模板创建</button>
+    <p id="template-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script>
     const listElement = document.getElementById('apps-list');
@@ -165,6 +176,35 @@
     nextButton.addEventListener('click', () => {
       if (nextCursor) {
         loadPage(nextCursor);
+      }
+    });
+
+    const templateButton = document.getElementById('create-from-template');
+    const templateStatus = document.getElementById('template-status');
+
+    function setTemplateStatus(message, kind) {
+      templateStatus.textContent = message;
+      templateStatus.className = 'status ' + (kind || '');
+    }
+
+    // F04A/T049: the request shape lives in app.js so it is Node-tested.
+    templateButton.addEventListener('click', async () => {
+      setTemplateStatus('正在从销售模板创建…', 'pending');
+      try {
+        await requireLogin();
+        const request = salesTemplateInstantiateRequest('sales');
+        const created = await api(request.path, {
+          method: request.method,
+          body: request.body,
+          csrf: await csrf(),
+        });
+        window.location.assign('/apps/' + encodeURIComponent(created.id) + '/debug');
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setTemplateStatus('创建失败 [' + error.code + '] ' + error.message, 'bad');
       }
     });
 
