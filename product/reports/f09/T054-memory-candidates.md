@@ -38,7 +38,7 @@
    - 页面：结构 + Node 执行纯函数（先红：页面不存在；绿：3 用例）；
    - 并发：两个 propose 同 logical_key → 同一候选/一条 artifact；两个不同 key 同时确认 →
      同一 memory（并据此补上 23505 竞态恢复分支）。
-3. 跑门禁（§4），写 ADR 0008/本报告/PROGRESS；按 feat/test/docs 提交；未 push、未关 issue、
+3. 跑门禁（§4），写 ADR 0009/本报告/PROGRESS；按 feat/test/docs 提交；未 push、未关 issue、
    未改 `docs/spec/**`/`contracts/**`。
 
 ## 1. 交付内容
@@ -93,7 +93,7 @@
   `POST /internal/v1/runs/{run_id}/memory-candidates`（worker-only mTLS，201
   `MemoryCandidate` 精确五字段）；
 - 五个端点在任何 body/存储访问前拒绝服务凭据：403 `personal_scope_forbidden`（契约列了
-  `apiKey`，这是记录在 ADR 0008 §1 的刻意偏离）；
+  `apiKey`，这是记录在 ADR 0009 §1 的刻意偏离）；
 - 错误词表：沿用 `resource_not_found`/`validation_failed`/`forbidden`/`stale_attempt`/
   `run_not_running`/`run_cancelled`/`personal_scope_forbidden`/`idempotency_conflict`/
   `object_store_unavailable`/`invalid_cursor`；新增三个聚合码
@@ -188,8 +188,8 @@ $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync
 ```
 
 注：集成 tip 的 T053 也新增了 `docs/adr/0008-f15a-object-store-compatibility.md`，与本票
-`0008-f09-memory.md` 同号；按 orchestrator 约定（“merger renumbers”）两个文件各自自包含，
-重编号由合并方执行。
+ADR 原同号；按 orchestrator 约定（“merger renumbers”），本票 ADR 已重编号为
+`docs/adr/0009-f09-memory.md`（两个文件各自自包含，互不依赖）。
 
 ## 5. 输入与版本
 
@@ -200,7 +200,7 @@ $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync
 | `internal/memory/{service,candidates,memories}.go` | `5E43509D012BB1D5…` / `B830986802BB93DE…` / `888117788B021571…` |
 | `internal/api/memory.go` | `FEEDBDDF517D9382…` |
 | `apps/web/src/memories.html` / `assets/memories.js` | `A9E550E14CCB206D…` / `6DB0FDE3DD96737D…` |
-| `docs/adr/0008-f09-memory.md` | `51DD1B8A31D31C5C…` |
+| `docs/adr/0009-f09-memory.md` | `51DD1B8A31D31C5C…` |
 | `tests/f09/test_t054_{memory,migration,pages}.py` | `C07D148064A23E1A…` / `C6B6BD5846C77D3B…` / `5C5DD9413E1FAA54…` |
 | manifest / 运行输入 | T025 golden manifest（T054 不改 compile/execution） |
 
@@ -216,7 +216,7 @@ $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync
 | 记忆编辑/删除/强 ETag/412/428（`getMemory`/`updateMemory`/`deleteMemory`） | T058（#59）；本票只留 revision/deleted_at/epoch seam |
 | 运行时召回（上下文预算内） | T063（#64）；`MemorySource` 仍是 `NoMemorySource`，候选永不可召回 |
 | Mem0 对照写入/映射 | T067（#67）；未运行，不声称采用 |
-| 记忆共享/授权（`policy.ResourceTypes` 扩展） | 本票不扩展；owner-only + 管理员只看自己，债务记录在 ADR 0008 §9 |
+| 记忆共享/授权（`policy.ResourceTypes` 扩展） | 本票不扩展；owner-only + 管理员只看自己，债务记录在 ADR 0009 §9 |
 | 真实 worker 自动抽取器 | 真实内部端点、真实 worker 证书、真实 attempt 被调用；抽取策略本身属 F04A agent 循环，本票不冒充 |
 | 全量 `pytest tests/f01`（38 个文件） | 启动后 >1 小时未完成（CPU 时间仅 ~55s，疑有等待型用例），按“不把未完成运行写成通过”的规则终止；与记忆边界直接相关的 `tests/f01/test_t020_personal_boundary.py` 在合并前后各跑一次均 2 passed（9.68s / 33.48s）。全量 f01 由 orchestrator 在合并后运行 |
 | 全量 `pytest tests`（约 67 分钟） | BRIEF §3 明令不跑；由 orchestrator 合并后运行 |
@@ -234,7 +234,7 @@ $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync
 
 ## 8. ADR
 
-`product/docs/adr/0008-f09-memory.md`（服务账号偏离、sealed 正文与复用、worker-only 角色、
+`product/docs/adr/0009-f09-memory.md`（服务账号偏离、sealed 正文与复用、worker-only 角色、
 TTL/过期、决定幂等、cache epoch、来源单链、结构 seam、共享债务、页面来源显示边界）。
-合并后与 T053 的 `0008-f15a-object-store-compatibility.md` 同号，按 orchestrator 约定由
-合并方重编号（两文件互不依赖，本票内容自包含）。
+已与 T053 的 `0008-f15a-object-store-compatibility.md` 区分：本票 ADR 由合并方重编号为
+`0009-f09-memory.md`（两文件互不依赖，本票内容自包含）。

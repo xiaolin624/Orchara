@@ -11,7 +11,7 @@ package api
 // Every public handler refuses a service credential with 403
 // `personal_scope_forbidden` before any store code runs (the F01/T020 boundary:
 // personal memory belongs to humans only). The contract lists `apiKey` on these
-// operations; the refusal is the deliberate deviation recorded in ADR 0008 鎼?.
+// operations; the refusal is the deliberate deviation recorded in ADR 0009 §1.
 //
 // The handlers contain no SQL: every candidate/memory row and every sealed body
 // comes from internal/memory. A typed *memory.Error maps one-to-one onto the
