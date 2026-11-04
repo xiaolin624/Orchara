@@ -116,7 +116,7 @@ def run_probe(
         "--out",
         str(report_path),
         "--short-ttl",
-        "1",
+        "5",
         "--timeout",
         "10",
         "--retries",

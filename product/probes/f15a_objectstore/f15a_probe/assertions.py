@@ -17,8 +17,9 @@ import re
 import secrets
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from .config import ProbeEnvironmentError, Target
 from .httpclient import Response, S3Client, object_path
@@ -546,6 +547,21 @@ def staging_overwrite_preserves_sealed(ctx: ProbeContext) -> AssertionResult:
 # ---------------------------------------------------------------------------
 # 7: short-lived signature
 # ---------------------------------------------------------------------------
+def presigned_expiry_epoch(url: str) -> float:
+    """Absolute expiry of a presigned URL, from its own signed query.
+
+    ``X-Amz-Date`` is whole-second; the probe therefore never *races* the
+    boundary. The TTL floor (5 s) plus this explicit deadline gives the
+    accept-before-expiry check a load-tolerant window, and the expiry check
+    waits past the deadline itself instead of assuming a fixed sleep is enough.
+    """
+    params = dict(parse_qsl(urlsplit(url).query))
+    stamp = datetime.strptime(params["X-Amz-Date"], "%Y%m%dT%H%M%SZ").replace(
+        tzinfo=timezone.utc
+    )
+    return stamp.timestamp() + int(params["X-Amz-Expires"])
+
+
 def short_lived_signature_expiry(ctx: ProbeContext) -> AssertionResult:
     started = time.monotonic()
     title = "a presigned GET works within its TTL and is rejected after it expires"
@@ -557,20 +573,32 @@ def short_lived_signature_expiry(ctx: ProbeContext) -> AssertionResult:
         url = ctx.client.presign_get(
             sealed, expires=ctx.target.short_ttl, credential="runtime"
         )
+        expires_at = presigned_expiry_epoch(url)
         before = ctx.client.get_url(url)
-        waited = ctx.target.short_ttl + ctx.target.expiry_skew + 1.25
+        accepted_margin = expires_at - time.time()
+        if before.status != 200 and accepted_margin <= 0:
+            raise _Blocked(
+                "the host could not issue the pre-expiry GET inside the "
+                f"{ctx.target.short_ttl}s window (margin {accepted_margin:.2f}s); "
+                "this is a probe-host timing failure, not a candidate violation"
+            )
+        waited = max(0.0, expires_at - time.time()) + ctx.target.expiry_skew + 1.5
         time.sleep(waited)
         after = ctx.client.get_url(url)
         checks = [
             Check(
                 "accepted_before_expiry",
                 before.status == 200 and before.body_sha256() == _sha(body),
-                {"status": before.status, "body_sha256": before.body_sha256()},
+                {
+                    "status": before.status,
+                    "body_sha256": before.body_sha256(),
+                    "seconds_before_expiry_when_accepted": round(accepted_margin, 3),
+                },
             ),
             Check(
                 "rejected_after_expiry",
                 after.status in (400, 401, 403),
-                {"status": after.status},
+                {"status": after.status, "waited_seconds": round(waited, 3)},
             ),
             Check(
                 "no_body_after_expiry",
@@ -587,7 +615,9 @@ def short_lived_signature_expiry(ctx: ProbeContext) -> AssertionResult:
                 "sealed_key": sealed,
                 "ttl_seconds": ctx.target.short_ttl,
                 "clock_skew_allowance_seconds": ctx.target.expiry_skew,
-                "waited_seconds": round(waited, 3),
+                "expires_at_unix": round(expires_at, 3),
+                "seconds_before_expiry_when_accepted": round(accepted_margin, 3),
+                "waited_past_expiry_seconds": round(waited, 3),
                 "before_status": before.status,
                 "after_status": after.status,
             },

@@ -148,19 +148,19 @@ no drift: spec copy and contract snapshot match the manifest
 
 ```text
 $ python probes/f15a_objectstore/object_store_probe.py --out reports/f15a/candidate-absent.json \
-    --short-ttl 1 --timeout 10 --retries 2 --profile candidate
+    --short-ttl 5 --timeout 10 --retries 2 --profile candidate
 status: blocked (exit 2)
 blocked: endpoint_unreachable: cannot reach http://127.0.0.1:9000: ConnectionRefusedError: [WinError 10061] ...
 assertions: 0 passed, 0 failed, 0 blocked, 0 not_run
 
 $ python probes/f15a_objectstore/object_store_probe.py --out reports/f15a/fixture-compliant.json \
-    --short-ttl 1 --timeout 10 --retries 2 --profile fixture
+    --short-ttl 5 --timeout 10 --retries 2 --profile fixture
 status: passed (exit 0)
 assertions: 9 passed, 0 failed, 0 blocked, 1 not_run
   [not_run] versions_immutable: bucket versioning is not enabled; ...
 
 $ python probes/f15a_objectstore/object_store_probe.py --out reports/f15a/fixture-violating-all.json \
-    --short-ttl 1 --timeout 10 --retries 2 --profile fixture
+    --short-ttl 5 --timeout 10 --retries 2 --profile fixture
 status: failed (exit 1)
 assertions: 0 passed, 9 failed, 0 blocked, 1 not_run
 ```
@@ -216,3 +216,58 @@ assertions: 0 passed, 9 failed, 0 blocked, 1 not_run
 - 本地 FS 回归：`go run ./probes/f15a_objectstore/localfs_probe -root <tmp> -out <json>` 可作为
   对象存储边界回归入口（`not_s3_evidence: true`）。
 - ADR：[`docs/adr/0008-f15a-object-store-compatibility.md`](../../docs/adr/0008-f15a-object-store-compatibility.md)。
+
+## 7. 确定性修复（2026-11-04，集成/后续门禁暴露的两处探针自身缺陷）
+
+两次缺陷都不是候选行为，而是探针在负载或概率下的自伤；按“任何加载的机器都能输掉”的标准修复。
+
+### 7.1 签名过期窗口竞态（`fix(f15a): T053 make signature-expiry assertions load-tolerant`）
+
+- 症状：集成门禁连续 3 次中 2 次失败于 `short_lived_signature_expiry.accepted_before_expiry`
+  （403）与 Go 本地 FS 的 1 s TTL 立即验签；SigV4 `X-Amz-Date` 是整秒截断，1 s TTL 留下 0–1 s
+  窗口。
+- 修复：
+  - 探针 `--short-ttl` 下限/默认 **5 s**；过期断言从 URL 自有查询解析
+    `X-Amz-Date + X-Amz-Expires` 得到绝对 `expires_at`，先做“窗口内必须被接受”的检查并记录
+    `seconds_before_expiry_when_accepted`（本次证据 4.415 s），再
+    `sleep(max(0, expires_at-now) + skew + 1.5s)` 做过期**负向控制**；若主机在窗口内连一次 GET
+    都来不及完成，记 `blocked`（探针宿主调度失败），不误判候选 `failed`。
+  - `localfs_probe` 的 HMAC TTL 改 5 s + 1 s margin，记录 `verified_after_ms`。
+  - 证据用 5 s TTL 重新生成：15 次运行，合规夹具仍 9 passed + 1 not_run，
+    `fixture-violation-short_lived_signature_expiry` 仍 failed（判别力未削弱）。
+
+### 7.2 随机签名 key 被 TrimSpace 截短（同提交）
+
+- 症状：本地 FS 探针用 32 字节**原始随机** key；`NewSigner` 会 `strings.TrimSpace`，key 首/尾
+  恰为空白字节（约 4–6% 概率）时有效长度 < `MinSigningKeyBytes=32`，探针以 1 退出——这是探针
+  输入缺陷，不是存储边界失败。
+- 修复：key 改为 32 字节随机数的 **hex** 编码（64 字符，trim 为 no-op）；并在
+  `signed_link_boundaries` 内加入确定性的 trim 回归检查：
+  `generated_signing_key_is_trim_stable`、`whitespace_padded_key_is_accepted_after_trim`
+  （前后加空白仍按 64 字符配置成功）、`whitespace_trimmed_below_minimum_refused`
+  （32 字节含 1 空格 → trim 后 31 字节，干净拒绝而非崩溃/伪通过）。`tests/f15a` 对三个检查
+  逐一断言，证据记录 `signing_key_encoding="hex"`、`signing_key_bytes=64`。
+
+### 7.3 重复门禁（正常机器，同一 worktree，连续运行）
+
+| 批次 | run | 结果 |
+|---|---|---|
+| TTL 修复后（fix 2 前） | 1 | `36 passed in 134.48s`，exit 0 |
+| | 2 | `36 passed in 128.05s`，exit 0 |
+| | 3 | `36 passed in 126.95s`，exit 0 |
+| 两处修复后（最终） | 1 | `36 passed in 123.68s`，exit 0 |
+| | 2 | `36 passed in 125.45s`，exit 0 |
+| | 3 | `36 passed in 130.01s`，exit 0 |
+
+两次修复后连续 3 次全绿，是本次验收证据。**人为加载不作为验收证据**：一次无界 CPU
+burn-in 在发现后立即终止并未采用（它只会污染共享机器，不能证明探针内在的确定性）；本报告
+的结论只来自正常机器连续运行与 5 s/负向控制的确定性设计。
+
+### 7.4 回归覆盖
+
+`tests/f15a` 现在 36 用例仍全绿；新增/加强的确定性断言在
+`test_local_fs_analogue.py`（trim 三项 + hex 证据）与 `short_lived_signature_expiry` 的
+`expires_at`/margin 证据；`run_evidence.py` 与 `tests/f15a/helpers.py` 统一使用 `--short-ttl 5`。
+门禁命令与最新 tail：`pytest tests/f15a` 36 passed、`pytest tests/tooling` 21 passed、
+`go build`/`go vet` exit 0、`go test ./...` 29 ok/0 FAIL/11 no-test、`gofmt -l .` 空、
+`sync_spec --check` no drift。

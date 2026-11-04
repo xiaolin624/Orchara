@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 DEFAULT_REGION = "us-east-1"
 DEFAULT_PREFIX = "orchara-probe"
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_SHORT_TTL = 2
+DEFAULT_SHORT_TTL = 5
 DEFAULT_EXPIRY_SKEW = 0.0
 DEFAULT_RETRIES = 2
 
@@ -218,7 +218,7 @@ def load_target(args, env: dict[str, str] | None = None) -> Target:
         _number(
             getattr(args, "short_ttl", None) or DEFAULT_SHORT_TTL,
             name="short_ttl",
-            minimum=1,
+            minimum=5,
             maximum=900,
         )
     )
