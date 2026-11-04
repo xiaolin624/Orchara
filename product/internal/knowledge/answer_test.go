@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"orchara/platform/internal/config"
 )
 
 func sampleChunk(id, documentID string, revision int64, no int, text string) ChunkView {
@@ -186,5 +188,62 @@ func TestExtractiveStubSlowFaultHonoursCancellation(t *testing.T) {
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+func answerFaultLookup(values map[string]string) config.Lookup {
+	return func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+}
+
+func TestAnswererFromEnvDefaultsToTheLabelledExtractiveStub(t *testing.T) {
+	generator, err := AnswererFromEnv(
+		config.ProfileRealModel, answerFaultLookup(map[string]string{}), nil,
+	)
+	if err != nil {
+		t.Fatalf("AnswererFromEnv: %v", err)
+	}
+	if !generator.Stub() || generator.Version() != AnswerGeneratorVersion {
+		t.Fatalf("default generator = %q stub=%v", generator.Version(), generator.Stub())
+	}
+}
+
+func TestAnswererFromEnvParsesTheDocumentedDevStubFaults(t *testing.T) {
+	generator, err := AnswererFromEnv(
+		config.ProfileDevStub,
+		answerFaultLookup(map[string]string{AnswerFaultEnv: "uncited,foreign-chunk,slow=5s"}),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("AnswererFromEnv: %v", err)
+	}
+	stub, ok := generator.(*ExtractiveStub)
+	if !ok {
+		t.Fatalf("generator = %T", generator)
+	}
+	if !stub.Faults.Uncited || !stub.Faults.ForeignChunk || stub.Faults.Slow != 5*time.Second {
+		t.Fatalf("faults = %+v", stub.Faults)
+	}
+}
+
+func TestAnswererFromEnvRejectsFaultsOutsideAStubProfile(t *testing.T) {
+	for _, profile := range []config.Profile{config.ProfileRealModel, config.ProfileLinuxSandbox} {
+		if _, err := AnswererFromEnv(
+			profile, answerFaultLookup(map[string]string{AnswerFaultEnv: "uncited"}), nil,
+		); err == nil {
+			t.Fatalf("profile %q accepted the answer-stub fault switch", profile)
+		}
+	}
+}
+
+func TestAnswererFromEnvRejectsUnknownOrInvalidFaults(t *testing.T) {
+	for _, raw := range []string{"fabricate-everything", "slow=soon", "slow=0"} {
+		if _, err := AnswererFromEnv(
+			config.ProfileDevStub, answerFaultLookup(map[string]string{AnswerFaultEnv: raw}), nil,
+		); err == nil {
+			t.Fatalf("fault %q was accepted", raw)
+		}
 	}
 }
