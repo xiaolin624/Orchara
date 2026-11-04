@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -975,6 +975,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 
 | T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0009-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
 | T058 | F09 | 用户修订或删除记忆后立即停止旧内容召回 | passed | `reports/f09/T058-memory-revision-and-delete.md`、`docs/adr/0009-f09-memory.md`（§11）、`db/migrations/0036_memory_revision_and_deletion.sql`（最终编号；基线 0034，合并时 T055 占 0034、T052 占 0035 后重编号；契约 `deletion_jobs` 最小切片 + F07 债务）、`internal/memory/{service,memories}.go`（Get/Update/Delete + 428/412 + CAS + 同事务 epoch）、`internal/api/{memory.go,server.go}`（GET/PATCH/DELETE，202 `DeletionAccepted`）、`apps/web/src/{memories.html,assets/memories.js}`（冲突恢复/删除状态，Node 执行）、`tests/f09/`（新增 22：迁移 4 + 记忆 15 + 页面 3；T054 25 保持绿）、`tests/support/t058.py`；真实 PG 16.4 / 编译二进制 / 真实 HTTP+CSRF / 真实 sealed 字节 / Node；`pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿、f01 边界 2 passed、tooling 21 passed、f10 20 passed；not_run：物理清理/delete_content/lease-retry（F07）、`memory_embeddings`（T063）、运行时召回（T063）、检索缓存（T067）、浏览器 DOM、全量 `pytest tests`；合并提交 `7190b2b` + `895a67f` |
+| T066 | F09 | 在隔离数据中对比 Mem0 与 PG 并决定是否值得接入 | passed（实验已执行；决策 **do_not_adopt**，保留 PG；Mem0 证据标 **stub**，未采用） | `reports/f09/T066-mem0-comparison.md`、`experiments/mem0/`（独立 venv + 34 包 hash lock、fixture seed 66、runner CLI、`pgdriver` 调真实 `internal/memory`、Mem0/SQLite/Qdrant 副本枚举）、`experiments/mem0/evidence/t066-both.json`（SHA-256 `6db5843b…`；PG real：hit@1 1.0、p50 0.560 ms / p95 1.670 ms、删除后仅 1 个 sealed 对象 + pending job；Mem0 stub：hit@1 1.0、p50 5.709 ms / p95 11.107 ms、删除后 6 处正文副本）、`tests/f09/test_t066_mem0_experiment.py`（15 用例，含真实 PG 侧）、`evidence/{pip-install-mem0ai-2.2.1.log,venv-freeze.txt,lock-verify.log}`；T066 15 passed ×2（40.10s / 46.10s）、`pytest tests/f09` 61 passed（合并前）、`go build/vet/test`/`gofmt`/`sync_spec` 全绿、tooling 21 passed；未采用 Mem0、未加产品依赖、未改 `internal/`/`contracts/`/`docs/spec/`；剩余门禁 **F11** |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -1280,6 +1281,27 @@ ADR 0009 §11。
 | 页面 | 编辑先取强 ETag；412 显示“版本冲突”并用 `details.current_etag` 显式重试；删除显示 job 真实状态 + “旧内容已停止召回” + “物理副本清理由删除治理异步执行”；全部 `textContent`，Node 执行纯函数 |
 | 边界 | 物理清理 / `delete_content` / job 生命周期 = F07；`memory_embeddings`（无 pgvector）= T063；检索缓存 = T067；owner-only 与服务账号 403 不变 |
 | 门禁 | `pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed；`tests/f10` 20 passed；合并提交 `7190b2b` + `895a67f` |
+
+## F09 Mem0 对照实验：保留 PostgreSQL（T066，2026-11-04）
+
+T066（GitHub #67）已交付，状态 **`passed`**（实验范围；**不是采用票**）。决策
+**`do_not_adopt`**：Mem0 在删除后仍在自己的 SQLite history/Qdrant 文件中保留正文副本，且在
+共享确定性 embedder 下召回不优于 PG、p95 慢约 6.65×；正式采用还须 **F11**。Mem0 侧证据按票面
+标 **`stub`**（`infer=False` + 本地 embedder，无模型 provider）。证据：
+`reports/f09/T066-mem0-comparison.md`、`experiments/mem0/evidence/t066-both.json`。
+
+| 项 | 内容 |
+|---|---|
+| 隔离 | 独立 `product/experiments/mem0/`：一次性 `orchara_t066_mem0_<hex>` PG 库（真实 `cmd/admin migrate`）、一次性 Mem0 工作目录、自有 venv 与 34 包 hash lock；`mem0ai` 不进产品运行时依赖，`internal/` 不 import 实验代码，未使用产品数据库 |
+| fixture | 固定 seed 66 + canonical SHA-256：2 用户/3 应用/9 条已确认记忆/1 次修订/1 次删除/1 个 pending 候选/8 正例 + 4 反例（跨用户、跨应用、已删、候选）；两侧同一 64 维确定性本地 embedder |
+| PG 侧（real） | `pgdriver`（编译实验二进制）调用真实 `internal/memory.Service.Create/Update/Delete`；真实 sealed 对象字节、revision/tombstone/`deletion_jobs`/epoch；query 级召回指标由实验实现（T063 不在本分支基线，`t066.memory_vectors` 为实验索引替身，已记录限制） |
+| Mem0 侧（stub） | 真实 mem0ai 2.2.1 + SQLite history + Qdrant local；`add(infer=False)`/`update`/`delete`/`search` 真实执行；无模型 provider，`infer=True`/rerank/hybrid 未跑 |
+| 测量 | 12 query × 21 次（≥20）：PG hit@1 1.0、p50 0.560 ms / p95 1.670 ms；Mem0 hit@1 1.0、p50 5.709 ms / p95 11.107 ms；存储与依赖成本：PG 无新增，Mem0 新增 35 个发行包 / venv 162.9 MB + 20 KB SQLite + 29 KB Qdrant |
+| 副本清理 | 删除一条已确认记忆后逐列/逐文件枚举正文：PG = 1 个 sealed 对象（数据库无正文列；T058 同步停召回，`deletion_jobs` pending，F07 清理；旧 revision 另 1 个对象）；Mem0 = 6 处（SQLite `history.new_memory`/`history.old_memory`、`history.db`、Qdrant `storage.sqlite`、DEBUG 日志；默认 WARNING 日志 0） |
+| 决策 | `do_not_adopt`，理由两条均成立：治理不合格单独即可否决 + 无可测收益；`decision.gates.f11.passed=false`、`remaining_gates=["F11"]`；不会把初测当正式采用 |
+| 记录校验 | `records.validate` 拒绝 `complete`、拒绝未运行/仅 stub/有残留副本/F11 未过的 adopt；无 venv 时 runner 以 exit 2 产出 `blocked` 记录（无数字），不跳过 |
+| 门禁 | T066 15 passed ×2（40.10s / 46.10s，真实 PG + 纯规则 + blocked 记录）；`pytest tests/f09` 61 passed（合并前最终树）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；tooling 21 passed；未 push/未关 issue、未改 `docs/spec/`/`contracts/`/`internal/` |
+| 边界/not_run | 真实模型/provider、`infer=True` 抽取、rerank、部署型向量库、多 worker history、备份恢复、规模压测、BM25/spaCy、浏览器 UI、F11、F07 物理清理、全量 `pytest tests`/f01 |
 
 ## F15A 候选 S3 兼容探针（T053，2026-11-04）
 

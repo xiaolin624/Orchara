@@ -1,0 +1,1000 @@
+{
+  "command": "both",
+  "commands": [
+    {
+      "cmd": "python experiments/mem0/run_experiment.py both --out experiments\\mem0\\evidence\\t066-both.json --work-dir experiments\\mem0\\work\\both",
+      "exit": 0
+    },
+    {
+      "cmd": "go build -o E:\\orchara-worktrees\\t066\\product\\experiments\\mem0\\.target\\bin\\orchara-admin.exe ./cmd/admin",
+      "exit": 0,
+      "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+    },
+    {
+      "cmd": "go build -o E:\\orchara-worktrees\\t066\\product\\experiments\\mem0\\.target\\bin\\t066-pgdriver.exe ./experiments/mem0/pgdriver",
+      "exit": 0,
+      "sha256": "c7683d3f9cdef48db8f15b3e616e82c5a64a634b29098a8b11207e0902b0b678"
+    },
+    {
+      "cmd": "cmd/admin migrate (ORCHARA_DB_DSN=<isolated throwaway>)",
+      "exit": 0,
+      "output_tail": "0009_background_jobs.sql\norchara-admin 2026/11/04 12:19:11 applied 0010_application_drafts.sql\norchara-admin 2026/11/04 12:19:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:19:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:19:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:19:12 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:19:12 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:19:12 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:19:12 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:19:12 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:19:12 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:19:12 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:19:12 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:19:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:19:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:19:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:19:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:19:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:19:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:19:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:19:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:19:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:19:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:19:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:19:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:19:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:19:12 36 migration(s) applied",
+      "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+    },
+    {
+      "cmd": "pgdriver create (real internal/memory.Service.Create)",
+      "exit": 0,
+      "rows": 9
+    },
+    {
+      "cmd": "pgdriver update (real internal/memory.Service.Update, If-Match)",
+      "exit": 0,
+      "rows": 1
+    },
+    {
+      "cmd": "pgdriver delete (real internal/memory.Service.Delete)",
+      "exit": 0,
+      "rows": 1
+    },
+    {
+      "cmd": "pgdriver bench (real SQL recall, persistent connection)",
+      "exit": 0,
+      "runs": 252
+    }
+  ],
+  "cost": {
+    "mem0": {
+      "history_db_bytes": 20480,
+      "new_runtime_dependency": true,
+      "python_distributions": 35,
+      "qdrant_bytes": 29311,
+      "venv_bytes": 162928132
+    },
+    "pg": {
+      "database_bytes": 11612643,
+      "new_runtime_dependency": false,
+      "note": "the baseline uses the existing PostgreSQL instance and the existing Go service"
+    }
+  },
+  "decision": {
+    "benefit": {
+      "latency_gain": false,
+      "latency_gain_threshold_ratio": 0.8,
+      "mem0_hit_at_1": 1.0,
+      "mem0_hit_at_3": 1.0,
+      "mem0_p95_ms": 11.1067,
+      "p95_ratio": 6.651590837361307,
+      "pg_hit_at_1": 1.0,
+      "pg_hit_at_3": 1.0,
+      "pg_p95_ms": 1.669781,
+      "recall_gain": false
+    },
+    "decision": "do_not_adopt",
+    "gates": {
+      "f11": {
+        "passed": false,
+        "reason": "F11 deletion governance has not delivered its physical purge, retention/backup policy and vendor egress gate in this build; no evidence is claimed for it"
+      }
+    },
+    "governance": {
+      "clean": false,
+      "evidence_level": "stub",
+      "residual_body_copies": [
+        "file:history.db",
+        "file:mem0-debug.log",
+        "file:qdrant/collection/t066_memories/storage.sqlite",
+        "log:mem0-debug.log",
+        "sqlite:history.new_memory",
+        "sqlite:history.old_memory"
+      ]
+    },
+    "reasons": [
+      "deletion still leaves body copies in Mem0's own stores: file:history.db, file:mem0-debug.log, file:qdrant/collection/t066_memories/storage.sqlite, log:mem0-debug.log, sqlite:history.new_memory, sqlite:history.old_memory; a memory store that cannot show a clean copy purge is disqualified",
+      "Mem0 also shows no measurable benefit: recall is not better and p95 is not at least 20% lower than the deterministic PostgreSQL baseline"
+    ],
+    "remaining_gates": [
+      "F11"
+    ]
+  },
+  "environment": {
+    "cpu_count": 12,
+    "generated_at": "2026-11-04T12:19:43+00:00",
+    "isolation": "throwaway PostgreSQL database + experiment temp directory; the product database and product runtime dependencies are never used",
+    "machine": "AMD64",
+    "mem0ai": "recorded per system",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.2",
+    "python_executable": "E:\\orchara-worktrees\\t066\\product\\experiments\\mem0\\.venv\\Scripts\\python.exe",
+    "python_implementation": "CPython",
+    "working_directory": "E:\\orchara-worktrees\\t066\\product"
+  },
+  "experiment_status": "executed",
+  "fixture": {
+    "applications": 3,
+    "candidate": "cand-alice-window-seat",
+    "confirmed_memories": [
+      "mem-alice-flight-seat",
+      "mem-alice-hotel-kitchen",
+      "mem-alice-expense-manager",
+      "mem-alice-vacation-train",
+      "mem-alice-lufthansa-loyalty",
+      "mem-alice-daily-standup",
+      "mem-bob-report-format",
+      "mem-bob-dinner-category",
+      "mem-bob-preferred-airport"
+    ],
+    "deleted_memory": "mem-bob-preferred-airport",
+    "memories": 9,
+    "negative_queries": 4,
+    "positive_queries": 8,
+    "queries": [
+      {
+        "app_key": "app-alice-travel",
+        "expected_memory": "mem-alice-flight-seat",
+        "forbidden_memories": [],
+        "key": "q-flight-seat",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-alice-travel",
+        "expected_memory": "mem-alice-hotel-kitchen",
+        "forbidden_memories": [],
+        "key": "q-hotel-kitchen",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-alice-travel",
+        "expected_memory": "mem-alice-expense-manager",
+        "forbidden_memories": [],
+        "key": "q-expense-manager",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-alice-travel",
+        "expected_memory": "mem-alice-vacation-train",
+        "forbidden_memories": [],
+        "key": "q-vacation-train",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-alice-work",
+        "expected_memory": "mem-alice-lufthansa-loyalty",
+        "forbidden_memories": [],
+        "key": "q-loyalty-number",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-alice-work",
+        "expected_memory": "mem-alice-daily-standup",
+        "forbidden_memories": [],
+        "key": "q-daily-standup",
+        "kind": "positive",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-bob-work",
+        "expected_memory": "mem-bob-report-format",
+        "forbidden_memories": [],
+        "key": "q-report-format",
+        "kind": "positive",
+        "owner_key": "user-bob"
+      },
+      {
+        "app_key": "app-bob-work",
+        "expected_memory": "mem-bob-dinner-category",
+        "forbidden_memories": [],
+        "key": "q-dinner-category",
+        "kind": "positive",
+        "owner_key": "user-bob"
+      },
+      {
+        "app_key": "app-bob-work",
+        "expected_memory": null,
+        "forbidden_memories": [
+          "mem-bob-preferred-airport"
+        ],
+        "key": "n-deleted-airport",
+        "kind": "negative",
+        "owner_key": "user-bob"
+      },
+      {
+        "app_key": "app-alice-work",
+        "expected_memory": null,
+        "forbidden_memories": [
+          "mem-alice-expense-manager"
+        ],
+        "key": "n-cross-application",
+        "kind": "negative",
+        "owner_key": "user-alice"
+      },
+      {
+        "app_key": "app-bob-work",
+        "expected_memory": null,
+        "forbidden_memories": [
+          "mem-alice-flight-seat"
+        ],
+        "key": "n-cross-user",
+        "kind": "negative",
+        "owner_key": "user-bob"
+      },
+      {
+        "app_key": "app-alice-travel",
+        "expected_memory": null,
+        "forbidden_memories": [
+          "cand-alice-window-seat"
+        ],
+        "key": "n-pending-candidate",
+        "kind": "negative",
+        "owner_key": "user-alice"
+      }
+    ],
+    "revisions": [
+      "mem-alice-expense-manager"
+    ],
+    "schema": "t066.mem0.fixture.v1",
+    "seed": 66,
+    "sha256": "59f439dead24aee865bc2fadd5822e1f1214df27f1992ef2070672f58a55138b",
+    "users": 2
+  },
+  "generated_at": "2026-11-04T12:19:43+00:00",
+  "inputs": {
+    "embedder": {
+      "algorithm": "signed sha256 hashing of lower-cased tokens, L2-normalised",
+      "dimensions": 64,
+      "local": true,
+      "model": "t066-hashed-bow-v1",
+      "provider_calls": 0,
+      "tokenizer": "lower-case [a-z0-9]+, length>=2, trailing 's' stripped for len>3"
+    },
+    "embedder_sha256": "49dd0a5095b85414d0a47438311dedfc66c6a5376d01357c28a94643878be6a0",
+    "fixture_schema": "t066.mem0.fixture.v1",
+    "fixture_sha256": "59f439dead24aee865bc2fadd5822e1f1214df27f1992ef2070672f58a55138b",
+    "harness_sha256": "62552204dc314643020cc5cbfa7cb710e36a00a45d85c03b268808d3d9c5fdc1",
+    "requirements_in_sha256": "0fa60d0fe4f67ea98a269594c2ac6f497ef7e328647bb1dc16994196cb0b0fa4",
+    "requirements_lock_sha256": "1de3838f34824af007d3519c57013b00746ae1af85a659c6496d519c9d376091"
+  },
+  "not_run": [
+    "Mem0 infer=True extraction / LLM query rewriting / reranker (no model provider)",
+    "F11 deletion-governance physical purge and retention/backup review",
+    "browser/UI (the platform has no Mem0 UI and this ticket adds none)"
+  ],
+  "schema": "t066.mem0.experiment.v1",
+  "stub_real": {
+    "mem0": "stub",
+    "note": "Mem0 ran the real library, SQLite history and Qdrant store, but only the infer=False write path with a deterministic local embedder (no model provider): labelled stub, never adoption evidence",
+    "pg": "real"
+  },
+  "systems": {
+    "mem0": {
+      "cleanup": {
+        "body_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
+        "deleted_memory": "mem-bob-preferred-airport",
+        "digest_references": {
+          "note": "mem0 keeps no digest-only index in SQLite; the body itself is in the history row"
+        },
+        "entity_store": {
+          "collections": [
+            {
+              "name": "t066_memories",
+              "payload_rows_with_body": 0,
+              "points": 8
+            }
+          ],
+          "note": "infer=False writes no entities; the entity path needs the LLM extraction pipeline",
+          "rows_with_body": 0
+        },
+        "logs": {
+          "debug": {
+            "exists": true,
+            "level": "DEBUG",
+            "line_numbers": [
+              20
+            ],
+            "lines_with_body": 1,
+            "path": "mem0-debug.log"
+          },
+          "default_warning_probe": {
+            "exists": true,
+            "level": "WARNING",
+            "line_numbers": [],
+            "lines_with_body": 0,
+            "path": "mem0-default-warning.log"
+          },
+          "note": "mem0 writes the body to its DEBUG log when DEBUG is enabled; the default-WARNING probe observed whether the body appears without it"
+        },
+        "objects": [
+          {
+            "contains_body": true,
+            "path": "history.db",
+            "size_bytes": 20480
+          },
+          {
+            "contains_body": true,
+            "path": "mem0-debug.log",
+            "size_bytes": 3172
+          },
+          {
+            "contains_body": true,
+            "path": "qdrant/collection/t066_memories/storage.sqlite",
+            "size_bytes": 28672
+          }
+        ],
+        "qdrant": {
+          "collections": [
+            {
+              "name": "t066_memories",
+              "payload_rows_with_body": 0,
+              "points": 8
+            }
+          ],
+          "hits": []
+        },
+        "residual_body_copies": [
+          "file:history.db",
+          "file:mem0-debug.log",
+          "file:qdrant/collection/t066_memories/storage.sqlite",
+          "log:mem0-debug.log",
+          "sqlite:history.new_memory",
+          "sqlite:history.old_memory"
+        ],
+        "revision_leftovers": {
+          "body_sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
+          "note": "the superseded revision body remains in the SQLite history and on disk; the vector payload itself was updated in place, and the qdrant scan for it ran after the update only for the deleted body",
+          "raw_files": [
+            {
+              "contains_body": true,
+              "path": "history.db",
+              "size_bytes": 20480
+            },
+            {
+              "contains_body": true,
+              "path": "mem0-debug.log",
+              "size_bytes": 3172
+            },
+            {
+              "contains_body": true,
+              "path": "qdrant/collection/t066_memories/storage.sqlite",
+              "size_bytes": 28672
+            }
+          ],
+          "sqlite": {
+            "columns_scanned": 16,
+            "hits": [
+              {
+                "location": "history.old_memory",
+                "row_count": 1
+              },
+              {
+                "location": "history.new_memory",
+                "row_count": 1
+              }
+            ],
+            "table_rows": {
+              "history": 11,
+              "messages": 0
+            },
+            "tables_scanned": 2
+          }
+        },
+        "sqlite": {
+          "columns_scanned": 16,
+          "hits": [
+            {
+              "location": "history.old_memory",
+              "row_count": 1
+            },
+            {
+              "location": "history.new_memory",
+              "row_count": 1
+            }
+          ],
+          "table_rows": {
+            "history": 11,
+            "messages": 0
+          },
+          "tables_scanned": 2
+        },
+        "stores_clean": false
+      },
+      "commands": [
+        {
+          "cmd": "python -m pip install --no-input mem0ai==2.2.1 (isolated venv)",
+          "exit": 0
+        },
+        {
+          "cmd": "Memory.from_config(provider=openai embedder -> local 127.0.0.1 embeddings)",
+          "construction_ms": 3352.963,
+          "exit": 0
+        },
+        {
+          "cmd": "add(infer=False) x9",
+          "exit": 0,
+          "rows": 9
+        },
+        {
+          "cmd": "update() x1",
+          "exit": 0,
+          "rows": 1
+        },
+        {
+          "cmd": "delete() x1",
+          "exit": 0,
+          "rows": 1
+        },
+        {
+          "cmd": "search() x252",
+          "exit": 0,
+          "rows": 252
+        },
+        {
+          "cmd": "copy-cleanup enumeration (sqlite/qdrant/files/logs)",
+          "exit": 0
+        }
+      ],
+      "deleted": {
+        "delete_response": {
+          "message": "Memory deleted successfully!"
+        },
+        "id": "92f412cf-ec78-4125-a4e8-6a62331c2e66",
+        "key": "mem-bob-preferred-airport",
+        "search_after_delete_ids": [],
+        "text_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce"
+      },
+      "embedder_calls": {
+        "external_calls": 0,
+        "note": "MEM0_TELEMETRY=false before import; the only HTTP target is the local embedder",
+        "search_requests": 252,
+        "server_url": "http://127.0.0.1:<ephemeral>/v1"
+      },
+      "evidence_level": "stub",
+      "id_map": {
+        "mem-alice-daily-standup": "b92ca17e-f324-4d77-a698-8251583a7caa",
+        "mem-alice-expense-manager": "b2efc3b7-066d-4687-8ce6-474e36b194ea",
+        "mem-alice-flight-seat": "2f7b5090-b56f-4711-a53b-8e6466e2f5f3",
+        "mem-alice-hotel-kitchen": "5114bbc0-4351-4e3b-b586-3dd3d3fdd761",
+        "mem-alice-lufthansa-loyalty": "55925e2c-a935-47ea-90c7-5398048377d2",
+        "mem-alice-vacation-train": "5564a641-7b7a-4261-aa8b-8fa71d6c69b0",
+        "mem-bob-dinner-category": "ce2c35fd-a59e-4c0e-ad7b-21f592caceff",
+        "mem-bob-preferred-airport": "92f412cf-ec78-4125-a4e8-6a62331c2e66",
+        "mem-bob-report-format": "f72d671c-1966-4429-8e8a-688d9c699c3e"
+      },
+      "latency": {
+        "iterations_per_query": 21,
+        "measurement": "Memory.search() including its embedding call to the local 127.0.0.1 endpoint",
+        "note": "latency is host-dependent; recall, storage and cleanup are deterministic",
+        "p50_ms": 5.7088,
+        "p95_ms": 11.1067,
+        "runs": 252
+      },
+      "limitations": [
+        "stub run: infer=False writes only; no model provider, no LLM extraction path, no reranker, no model-backed query rewriting",
+        "qdrant local/embedded mode, not a deployed vector store; no multi-worker history sharing or backup/restore",
+        "BM25/spaCy extras are not installed, so mem0's hybrid keyword path is disabled",
+        "the deterministic local embedder is weak by design; both systems share it, so the comparison is about the memory system, not about model quality"
+      ],
+      "recall": {
+        "candidate_never_recalled": true,
+        "deleted_memory_recalled": false,
+        "forbidden_hits": 0,
+        "hit_at_1": 1.0,
+        "hit_at_3": 1.0,
+        "negative_queries": 4,
+        "per_query": [
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-flight-seat",
+              "mem-alice-vacation-train",
+              "mem-alice-hotel-kitchen"
+            ],
+            "kind": "positive",
+            "query": "q-flight-seat"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-hotel-kitchen",
+              "mem-alice-vacation-train"
+            ],
+            "kind": "positive",
+            "query": "q-hotel-kitchen"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-expense-manager",
+              "mem-alice-flight-seat"
+            ],
+            "kind": "positive",
+            "query": "q-expense-manager"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-vacation-train",
+              "mem-alice-flight-seat"
+            ],
+            "kind": "positive",
+            "query": "q-vacation-train"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-lufthansa-loyalty"
+            ],
+            "kind": "positive",
+            "query": "q-loyalty-number"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-daily-standup",
+              "mem-alice-lufthansa-loyalty"
+            ],
+            "kind": "positive",
+            "query": "q-daily-standup"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-bob-report-format"
+            ],
+            "kind": "positive",
+            "query": "q-report-format"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-bob-dinner-category"
+            ],
+            "kind": "positive",
+            "query": "q-dinner-category"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [],
+            "kind": "negative",
+            "query": "n-deleted-airport"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [],
+            "kind": "negative",
+            "query": "n-cross-application"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [],
+            "kind": "negative",
+            "query": "n-cross-user"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [
+              "mem-alice-flight-seat",
+              "mem-alice-vacation-train"
+            ],
+            "kind": "negative",
+            "query": "n-pending-candidate"
+          }
+        ],
+        "positive_queries": 8,
+        "top_k": 3
+      },
+      "revision_map": {
+        "mem-alice-expense-manager": 2
+      },
+      "status": "run",
+      "storage": {
+        "fixture_bodies": 9,
+        "history_db_bytes": 20480,
+        "note": "mem0 keeps a SQLite history database in addition to the vector store",
+        "qdrant_bytes": 29311,
+        "qdrant_files": 3,
+        "sqlite_rows": {
+          "history": 11,
+          "messages": 0
+        },
+        "venv_bytes": 162928132,
+        "venv_files": 10076,
+        "work_dir_bytes": 86531,
+        "work_dir_files": 10
+      },
+      "versions": {
+        "embedder": {
+          "algorithm": "signed sha256 hashing of lower-cased tokens, L2-normalised",
+          "dimensions": 64,
+          "local": true,
+          "model": "t066-hashed-bow-v1",
+          "provider_calls": 0,
+          "tokenizer": "lower-case [a-z0-9]+, length>=2, trailing 's' stripped for len>3"
+        },
+        "history_store": "SQLite (mem0's own history.db)",
+        "installed_distributions": 35,
+        "llm": "no model provider configured for a real call; OpenAI client constructed but never invoked",
+        "mem0ai": "2.2.1",
+        "openai": "3.45.0",
+        "python": "3.12.2",
+        "qdrant-client": "1.20.0",
+        "sqlalchemy": "2.1.8",
+        "telemetry": "disabled before import (MEM0_TELEMETRY=false)",
+        "vector_store": "qdrant local mode (embedded, on_disk=false)"
+      }
+    },
+    "pg": {
+      "cleanup": {
+        "body_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
+        "cache_epoch": {
+          "revision": 4,
+          "scope": "memory:f4502609-ae5f-4cc8-a7df-95dc6bb6e770:c00919fb-6f32-4c00-9d27-d69cd0493bc1"
+        },
+        "candidate": {
+          "artifact_id": "2b6d8654-2f17-4778-b55c-570e1060fe8a",
+          "id": "3e0b1084-ddda-40a5-9969-a530990a6aa4",
+          "key": "cand-alice-window-seat",
+          "object_key": "sealed/15849690e3aade6c65f193440c634fe1ba287c01f69aed20ae23e7c440ea1a9d",
+          "seeded_by": "experiment fixture builder (not the T054 worker propose path)",
+          "state": "pending"
+        },
+        "cleanup_owner": "F07 deletion governance performs the physical purge; T058 already stopped recall synchronously",
+        "current_artifact": {
+          "id": "0d855652-501f-428a-8d3c-452e752b8c20",
+          "object_key": "sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1",
+          "sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
+          "size_bytes": 37,
+          "state": "ready"
+        },
+        "deleted_memory": "mem-bob-preferred-airport",
+        "deletion_job": {
+          "deletion_revision": 2,
+          "id": "e745332b-55e6-48ff-90a6-2096635d0a42",
+          "remaining_scopes": [
+            "artifact",
+            "embedding",
+            "memory_row",
+            "object"
+          ],
+          "state": "pending"
+        },
+        "digest_references": [
+          {
+            "relation": "platform.artifacts",
+            "row_count": 1
+          }
+        ],
+        "logical": {
+          "columns_scanned": 201,
+          "hits": [],
+          "needle_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
+          "tables_scanned": 55
+        },
+        "logs": {
+          "hits": [],
+          "reason": "the experiment starts no product process, so no service log is produced; the durable log-like store (platform.audit_events) is covered by the table scan",
+          "status": "not_applicable"
+        },
+        "object_files": [
+          {
+            "contains_body": true,
+            "path": "sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1",
+            "sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce",
+            "size_bytes": 37
+          }
+        ],
+        "residual_body_copies": [
+          "object:sealed/be8792927cbe9156c22d5c07d5d3e189921c129908a51a0090b49ee82e4965e1"
+        ],
+        "revision_leftovers": {
+          "body_sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
+          "logical": {
+            "columns_scanned": 201,
+            "hits": [],
+            "needle_sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
+            "tables_scanned": 55
+          },
+          "note": "the superseded revision artifact is retained by design; F07 owns the purge",
+          "object_files": [
+            {
+              "contains_body": true,
+              "path": "sealed/88d8f4e0380cbdb8c228329be993b7786d462db84b5b46b27359dd1cb18e15e4",
+              "sha256": "b8d7626451ec3cb054bff9c77334bc6c4343b1d31c00547904a967623cf74f04",
+              "size_bytes": 59
+            }
+          ]
+        },
+        "stores_clean": false,
+        "tombstone": {
+          "confirmed_at": "2026-11-04 20:19:14.029822+08",
+          "deleted_at": "2026-11-04 20:19:14.281172+08",
+          "id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+          "revision": 2
+        }
+      },
+      "commands": [
+        {
+          "cmd": "cmd/admin migrate (ORCHARA_DB_DSN=<isolated throwaway>)",
+          "exit": 0,
+          "output_tail": "0009_background_jobs.sql\norchara-admin 2026/11/04 12:19:11 applied 0010_application_drafts.sql\norchara-admin 2026/11/04 12:19:11 applied 0011_job_files_and_models.sql\norchara-admin 2026/11/04 12:19:11 applied 0012_manifest_and_tool_versions.sql\norchara-admin 2026/11/04 12:19:11 applied 0013_evaluation_pool.sql\norchara-admin 2026/11/04 12:19:12 applied 0014_execution_snapshots_and_runs.sql\norchara-admin 2026/11/04 12:19:12 applied 0015_artifact_admissions.sql\norchara-admin 2026/11/04 12:19:12 applied 0016_execution_claims_and_quota.sql\norchara-admin 2026/11/04 12:19:12 applied 0017_tool_run_kind.sql\norchara-admin 2026/11/04 12:19:12 applied 0018_run_events.sql\norchara-admin 2026/11/04 12:19:12 applied 0019_run_artifact_uploads.sql\norchara-admin 2026/11/04 12:19:12 applied 0020_active_time_and_deadline.sql\norchara-admin 2026/11/04 12:19:12 applied 0021_run_waitings.sql\norchara-admin 2026/11/04 12:19:12 applied 0022_run_unknown_operations.sql\norchara-admin 2026/11/04 12:19:12 applied 0023_tool_builds_and_review.sql\norchara-admin 2026/11/04 12:19:12 applied 0024_run_recovery_evidence.sql\norchara-admin 2026/11/04 12:19:12 applied 0025_run_capability_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0026_run_node_outputs.sql\norchara-admin 2026/11/04 12:19:12 applied 0027_run_operation_fallback.sql\norchara-admin 2026/11/04 12:19:12 applied 0028_usage_ledger.sql\norchara-admin 2026/11/04 12:19:12 applied 0029_connector_policies.sql\norchara-admin 2026/11/04 12:19:12 applied 0030_application_templates.sql\norchara-admin 2026/11/04 12:19:12 applied 0031_run_approvals.sql\norchara-admin 2026/11/04 12:19:12 applied 0032_operation_reconciliation.sql\norchara-admin 2026/11/04 12:19:12 applied 0033_memory_candidates.sql\norchara-admin 2026/11/04 12:19:12 applied 0034_knowledge.sql\norchara-admin 2026/11/04 12:19:12 applied 0035_evaluation_runner.sql\norchara-admin 2026/11/04 12:19:12 applied 0036_memory_revision_and_deletion.sql\norchara-admin 2026/11/04 12:19:12 36 migration(s) applied",
+          "sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c"
+        },
+        {
+          "cmd": "pgdriver create (real internal/memory.Service.Create)",
+          "exit": 0,
+          "rows": 9
+        },
+        {
+          "cmd": "pgdriver update (real internal/memory.Service.Update, If-Match)",
+          "exit": 0,
+          "rows": 1
+        },
+        {
+          "cmd": "pgdriver delete (real internal/memory.Service.Delete)",
+          "exit": 0,
+          "rows": 1
+        },
+        {
+          "cmd": "pgdriver bench (real SQL recall, persistent connection)",
+          "exit": 0,
+          "runs": 252
+        }
+      ],
+      "database": {
+        "created_by_experiment": true,
+        "dropped_after": true,
+        "isolated": true,
+        "name": "orchara_t066_mem0_c257236fdc2b"
+      },
+      "deleted": {
+        "delete_response": {
+          "id": "e745332b-55e6-48ff-90a6-2096635d0a42",
+          "ok": true,
+          "resource_id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+          "state": "pending"
+        },
+        "id": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+        "key": "mem-bob-preferred-airport",
+        "text_sha256": "cb5ac3942478135212a8e27fe56ac61feadf1fe3fda692df38e0dd6158244cce"
+      },
+      "evidence_level": "real",
+      "id_map": {
+        "mem-alice-daily-standup": "02328223-b066-45d8-b6de-c3978a75c3d5",
+        "mem-alice-expense-manager": "fe34d7d9-11ba-41da-81a8-9222e924d9f1",
+        "mem-alice-flight-seat": "bc5aff4a-876e-44e3-b41f-928f7b967bc1",
+        "mem-alice-hotel-kitchen": "b69c0782-617d-455c-a7c6-c93396ac015d",
+        "mem-alice-lufthansa-loyalty": "e5757729-a904-4bb8-954e-92c10f0babfa",
+        "mem-alice-vacation-train": "b744692a-50d3-43f9-9a67-d760598fc4c2",
+        "mem-bob-dinner-category": "5df1a912-e1fa-4877-bbfb-5e1f06a3f6ef",
+        "mem-bob-preferred-airport": "06ac6e67-ea20-48a8-99bb-77c1637c0888",
+        "mem-bob-report-format": "ae14f948-dde1-44ce-a156-30c5c4787b5a"
+      },
+      "latency": {
+        "embed_p50_ms": 0.03571,
+        "embed_p95_ms": 0.058086,
+        "iterations_per_query": 21,
+        "measurement": "end-to-end: Python query embedding + one real SQL recall round trip",
+        "note": "latency is host-dependent; recall, storage and cleanup are deterministic",
+        "p50_ms": 0.559881,
+        "p95_ms": 1.669781,
+        "query_p50_ms": 0.523,
+        "query_p95_ms": 1.6332,
+        "runs": 252
+      },
+      "limitations": [
+        "query-level PG recall is implemented by the experiment (T063 runtime recall is not in this branch's baseline); both sides share the same deterministic local embedder",
+        "t066.memory_vectors is experiment-owned and is not a platform migration",
+        "the pending candidate body was seeded by the fixture builder, not by the T054 worker path"
+      ],
+      "platform_recall": {
+        "kind": "list_all_current_memories_newest_first",
+        "note": "the platform injects all current memories within the context budget and applies no query ranking, so for this small fixture every expected memory is in the injected set by construction; the measured query-level numbers below are the experiment's cheapest credible semantic PG baseline",
+        "owner": "T063 runtime recall semantics (not present in this branch's baseline)",
+        "scopes": [
+          {
+            "active_memories": 4,
+            "app_key": "app-alice-travel",
+            "approx_context_tokens": 60,
+            "body_bytes": 244,
+            "owner_key": "user-alice"
+          },
+          {
+            "active_memories": 2,
+            "app_key": "app-alice-work",
+            "approx_context_tokens": 21,
+            "body_bytes": 87,
+            "owner_key": "user-alice"
+          },
+          {
+            "active_memories": 2,
+            "app_key": "app-bob-work",
+            "approx_context_tokens": 27,
+            "body_bytes": 114,
+            "owner_key": "user-bob"
+          }
+        ]
+      },
+      "recall": {
+        "candidate_never_recalled": true,
+        "deleted_memory_recalled": false,
+        "forbidden_hits": 0,
+        "hit_at_1": 1.0,
+        "hit_at_3": 1.0,
+        "negative_queries": 4,
+        "per_query": [
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-flight-seat",
+              "mem-alice-vacation-train",
+              "mem-alice-hotel-kitchen"
+            ],
+            "kind": "positive",
+            "query": "q-flight-seat"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-hotel-kitchen",
+              "mem-alice-vacation-train",
+              "mem-alice-expense-manager"
+            ],
+            "kind": "positive",
+            "query": "q-hotel-kitchen"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-expense-manager",
+              "mem-alice-flight-seat",
+              "mem-alice-vacation-train"
+            ],
+            "kind": "positive",
+            "query": "q-expense-manager"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-vacation-train",
+              "mem-alice-flight-seat",
+              "mem-alice-expense-manager"
+            ],
+            "kind": "positive",
+            "query": "q-vacation-train"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-lufthansa-loyalty",
+              "mem-alice-daily-standup"
+            ],
+            "kind": "positive",
+            "query": "q-loyalty-number"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-alice-daily-standup",
+              "mem-alice-lufthansa-loyalty"
+            ],
+            "kind": "positive",
+            "query": "q-daily-standup"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-bob-report-format",
+              "mem-bob-dinner-category"
+            ],
+            "kind": "positive",
+            "query": "q-report-format"
+          },
+          {
+            "hit_at_1": true,
+            "hit_at_k": true,
+            "ids": [
+              "mem-bob-dinner-category",
+              "mem-bob-report-format"
+            ],
+            "kind": "positive",
+            "query": "q-dinner-category"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [
+              "mem-bob-dinner-category",
+              "mem-bob-report-format"
+            ],
+            "kind": "negative",
+            "query": "n-deleted-airport"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [
+              "mem-alice-lufthansa-loyalty",
+              "mem-alice-daily-standup"
+            ],
+            "kind": "negative",
+            "query": "n-cross-application"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [
+              "mem-bob-dinner-category",
+              "mem-bob-report-format"
+            ],
+            "kind": "negative",
+            "query": "n-cross-user"
+          },
+          {
+            "forbidden_hits": [],
+            "ids": [
+              "mem-alice-flight-seat",
+              "mem-alice-vacation-train",
+              "mem-alice-hotel-kitchen"
+            ],
+            "kind": "negative",
+            "query": "n-pending-candidate"
+          }
+        ],
+        "positive_queries": 8,
+        "top_k": 3
+      },
+      "revision_map": {
+        "mem-alice-expense-manager": 2
+      },
+      "status": "run",
+      "storage": {
+        "database_bytes": 11612643,
+        "database_bytes_after_migrate": 11366883,
+        "database_bytes_delta": 245760,
+        "fixture_bodies": 9,
+        "memory_body_bytes": 541,
+        "note": "t066.memory_vectors is the experiment-owned recall index stand-in, not a platform table",
+        "object_bytes": 582,
+        "object_files": 11,
+        "row_counts": {
+          "artifacts_memory_body": 10,
+          "deletion_jobs": 1,
+          "memories_active": 8,
+          "memories_total": 9,
+          "memory_candidates": 1,
+          "memory_vectors": 8
+        },
+        "table_bytes": {
+          "platform.artifacts": 65536,
+          "platform.deletion_jobs": 49152,
+          "platform.memories": 73728,
+          "platform.memory_candidates": 81920,
+          "platform.policy_epochs": 32768,
+          "t066.memory_vectors": 32768
+        }
+      },
+      "versions": {
+        "admin_binary_sha256": "5b04ffbe09bbe87a6a7c86fe24d9af509dc475d13fe997d3e24066c9a584d77c",
+        "pgdriver_binary_sha256": "c7683d3f9cdef48db8f15b3e616e82c5a64a634b29098a8b11207e0902b0b678",
+        "postgres": "16.4",
+        "python": "3.12.2"
+      }
+    }
+  },
+  "ticket": "T066 (#67)"
+}
