@@ -970,6 +970,8 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 | T042 | F04A | 运行固定 Python 节点并查看结构数据与文件 | passed |
 | T043 | F04A | 运行受控 Agent 节点并校验最终输出 | passed | `reports/f04a/T043-agent-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T043 追加 D10）、`internal/presetexec/{plan.go,agent.go,linear.go,presetexec.go}`（3/4 节点线性计划、agent 配置校验、确定性 operation UUIDv5、模型轮次 + 固定预设工具真实沙箱 + capability-results 回报、最终输出节点 schema 二次校验、agent data/file/log 行与 node.status、heartbeat 取消/lease deadline、legacy `input#` 形状选择）、`internal/presetexec/{Facts,ModelFact,ToolFact}` + `cmd/supervisor/{client.go,exec.go}`（`InvokeCapability`/`ReportCapabilityResult` worker mTLS、只读 model/tool Facts）、`internal/modelproxy/provider.go`（dev stub 声明工具时确定性首轮工具调用，仍 `stub=true`）、`apps/web/src/{runs.html,assets/runs.js}`（Agent 面板：最终输出/轮次/工具调用 id+name/每次工具操作状态；`describeAgentNode` Node 执行）、`tests/support/t043.py`、`tests/f06/{test_t043_agent_node.py,test_t043_pages.py}`（6+3 用例，真实 PG/mTLS/对象字节/WSL2+runsc）；`go vet` exit 0、`go test ./...` 全绿、`gofmt -l` 空、`tests/f06` 62 passed、`tests/f05`、`tests/f04a` 36、`tests/tooling` 21、`sync_spec --check` no drift；not_run：真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈下 executor 的未知/重复工具调用 guard（服务端先拒绝，仅 Go 单测）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026 | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
+| T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0008-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
+
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
 `pytest.fail`（不 skip）。
@@ -1214,6 +1216,28 @@ invoke/resume 只回放已记录状态、零出站；owner 或该 operation 审�
 | 回归 | `tests/f03` T036 unknown/cancel 21 passed（T036 bridge 行为未改）；`go test ./...` 全 ok；`pytest tests/f06` 164 passed（含 T039–T051）；`tests/tooling` 21 passed |
 | 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 164 passed（582.73s）；`pytest tests/f03` 目标集 21 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
 | 边界/not_run | 真实厂商连接器（无幂等键/查询回执 API，故不做同 operation 安全重试分支）、owner 以外的独立审批人核对（T050 审批人恒为 owner）、`needs_reconciliation → queued` requeue（T038 recover 仍是唯一 requeue 权威）、真实浏览器 DOM、自动重试/sweeper、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #52、未改 docs/spec/contracts、迁移仅新增 0032（0001–0031 未改） |
+
+
+## F09 个人长期记忆：候选确认后才保存（T054，2026-11-04）
+
+T054（GitHub #55）已交付，状态 **`passed`**（范围 = `createMemory` / `listMemories`
+真实读模型 + `proposeMemoryCandidate`（worker mTLS）+ `listMemoryCandidates` +
+`decideMemoryCandidate`，候选→确认的完整垂直切片与 `/memories` 页面）。证据：
+`reports/f09/T054-memory-candidates.md`、ADR 0008。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0033_memory_candidates.sql`：契约表 `platform.memory_candidates`、`platform.memories`；列级偏离（logical_key + UNIQUE(run,key)、created_at/decided_at/decided_by/decision_key、memories.confirmed_by）逐条写在头部；`memory_embeddings` 延后到 T063（无 pgvector）；0001–0032 未改；重复 migrate no-op；worker/PUBLIC 零权限 |
+| 存储 | `internal/memory`：候选/记忆正文均为 sealed artifact（`purpose=memory_candidate|memory_body`，sha256 校验，回滚删对象）；确认复用候选正文（不复制第二份个人字节），确认前重读校验；`UNIQUE(candidate_id)` 保证一条记忆 |
+| 候选生命周期 | `ORCHARA_MEMORY_CANDIDATE_TTL`（默认 7 天，1m–365d，非法值拒绝启动）；过期由服务端按 `expires_at` 强制：列表惰性 `pending→expired`，决定在行锁内复检；拒绝/过期不产生记忆，之后确认 409 `memory_candidate_expired`/`memory_candidate_rejected` |
+| 幂等 | 重复确认返回同一 memory（不同或相同 `Idempotency-Key` 都一样，不写第二行/第二个对象）；契约要求的 `Idempotency-Key` 用 `platform.idempotency_keys` 收据（JCS 决定摘要 + 已存 body），同 key 相反决定 409 `idempotency_conflict`；失败决定不收据 |
+| 服务账号 | 五个记忆端点（含 T058 将加的写读）在读 body/存储前 403 `personal_scope_forbidden`；`owner_id`/`confirmed_by` 引用 `platform.users`，数据库层也无法把服务账号写成所有者/确认者 |
+| 所有权 | 列表在 SQL 同一 WHERE 里过滤 owner；他人与管理员对单条候选/决定得到同一 404（不泄露存在性）；管理员列表为空而不是别人的行 |
+| 缓存 epoch | 确认/直接写入在同一事务 bump `platform.policy_epochs` 的 `memory:<owner>:<application>`（不新建表；授权器只读 `acl`，故对鉴权惰性）；T058/T063/T067 的失效 seam |
+| 页面 | `/memories` + `assets/memories.js`：候选（来源类别/应用范围/状态/过期时间/正文）+ 确认/拒绝（每次点击新 `Idempotency-Key`，无默认选择）+ 当前记忆（revision）；全部 `textContent`，无凭据/正文留存；Node 执行纯函数 |
+| 真实栈 | 真实 PG 16.4、编译 `cmd/api`、真实 mTLS worker 证书 + run live attempt、真实 supervisor claim、真实对象字节（删字节→503 失败闭合，恢复→同一行可读）、真实 cookie+CSRF 决定；`tests/f09` 25 用例 |
+| 门禁 | 见报告 §4（`pytest tests/f09` 25 passed；`go vet`/`go test`/`gofmt -l`/`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed） |
+| 边界/not_run | 浏览器 DOM；后台过期清扫进程（惰性迁移 + 决定复检已生效）；记忆编辑/删除/ETag（T058）、运行时召回（T063）、Mem0（T067）；记忆共享/授权；真实 worker 自动抽取生产者（本票用真实 supervisor claim + 真实 worker mTLS 调用真实内部端点）；全量 `pytest tests`；未 push/未关 issue、未改 docs/spec/contracts |
 
 ## F15A 候选 S3 兼容探针（T053，2026-11-04）
 
