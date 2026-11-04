@@ -134,14 +134,15 @@ def test_ingest_requires_a_ready_owner_artifact_and_a_registered_parser(t055_sta
     assert accepted.status == 202, accepted.text
     assert accepted.json["state"] == "scanning"
 
-    # A format with no registered parser (PDF -> T060) is still a clear 422, not
-    # a failed job. The real artifact bytes are seeded because the T028 admission
-    # gate refuses application/pdf before an upload could complete.
-    pdf_artifact = t055.seed_ready_source_artifact(
-        t055_stack, alice.principal_id, b"%PDF-1.7 not parsed in this build\n",
-        media_type="application/pdf",
+    # A format with no registered parser is still a clear 422, not a failed job.
+    # (PDF was the unregistered example until T060 registered it; Word documents
+    # remain an unsupported knowledge source.) The real artifact bytes are seeded
+    # because the T028 admission gate refuses application/msword at upload time.
+    unsupported_artifact = t055.seed_ready_source_artifact(
+        t055_stack, alice.principal_id, b"\xd0\xcf\x11\xe0 not ingested in this build\n",
+        media_type="application/msword",
     )
-    unsupported = t055.ingest_document(alice, base_id, pdf_artifact)
+    unsupported = t055.ingest_document(alice, base_id, unsupported_artifact)
     assert unsupported.status == 422, unsupported.text
     assert unsupported.json["error"]["code"] == "validation_failed"
     assert unsupported.json["error"]["details"]["field"] == "source_artifact_id"

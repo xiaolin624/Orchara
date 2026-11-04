@@ -152,14 +152,16 @@ def test_an_oversized_staging_object_is_quarantined(t028_stack) -> None:
 def test_an_unsupported_declared_media_type_is_quarantined(t028_stack) -> None:
     # The public createUpload path refuses this declaration (422, covered in the
     # flow tests). A row that already exists with an unsupported declaration is
-    # refused by the handler instead of trusting it.
+    # refused by the handler instead of trusting it. (application/pdf was the
+    # example until F10/T060 admitted it for purpose=knowledge; a Word document
+    # remains an unsupported knowledge source.)
     session = uploader(t028_stack)
     artifact = t028.seed_user_artifact(
         t028_stack.dbname,
         t028_stack.object_dir,
         session.principal_id,
-        media_type="application/pdf",
-        content=b"%PDF-1.7\nnot admitted\n",
+        media_type="application/msword",
+        content=b"\xd0\xcf\x11\xe0 not admitted\n",
         purpose="knowledge",
     )
     t028.enqueue_finalize(t028_stack, artifact)
@@ -170,7 +172,7 @@ def test_an_unsupported_declared_media_type_is_quarantined(t028_stack) -> None:
         job_code="artifact_format_rejected", reason="unsupported_media_type",
     )
     admission = t028.admission_row(t028_stack.dbname, artifact.id)
-    assert admission["declared_media_type"] == "application/pdf", admission
+    assert admission["declared_media_type"] == "application/msword", admission
     assert admission["detected_format"] in {"text", "binary", "unknown"}, admission
     assert t028.object_keys(t028_stack.object_dir, "sealed/") == set()
 

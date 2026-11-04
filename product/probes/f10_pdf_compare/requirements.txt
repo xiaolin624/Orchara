@@ -1,0 +1,15 @@
+# F10/T060 comparison-only dependencies.
+#
+# These are NOT product runtime or pytest-runner dependencies: the platform parser
+# is Go and the test-runner lock stays `tests/requirements-test.lock.txt`. They are
+# the ambient research environment used by `probes/f10_pdf_compare/`:
+#
+#   python -m pip install -r probes/f10_pdf_compare/requirements.txt
+#
+# Docling is deliberately absent: its isolated installation attempt is recorded in
+# `docling_attempt.json` (and the raw pip log in the T060 report) instead of being
+# declared as a working dependency.
+pymupdf==1.27.2.3      # AGPL-3.0 - candidate B extractor (AGPL is a real adoption cost)
+pypdf==6.9.1           # BSD-3-Clause - extra extraction row
+pdfminer.six==20251230 # MIT - extra extraction row
+psutil==7.2.2          # BSD-3-Clause - peak working set sampling

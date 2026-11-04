@@ -123,8 +123,27 @@ def worker_password() -> str:
 
 
 def set_worker_password(database: str) -> None:
-    """Give ``orchara_worker`` a login password so denial tests can connect as it."""
-    sql(database, f"ALTER ROLE orchara_worker PASSWORD {pg_dev.quote_literal(worker_password())}")
+    """Give ``orchara_worker`` a login password so denial tests can connect as it.
+
+    ``ALTER ROLE`` is a cluster-global catalog write and this batch runs several
+    suites concurrently on one development cluster (BRIEF §6.1). PostgreSQL can
+    answer one of those concurrent writes with ``tuple concurrently updated``
+    (SQLSTATE XX000) even though the value being written is identical. That is a
+    transient catalog race, not a test failure: retry that exact error a few times
+    with a short backoff, and raise every other failure immediately. No assertion
+    or wait window is relaxed elsewhere.
+    """
+    query = f"ALTER ROLE orchara_worker PASSWORD {pg_dev.quote_literal(worker_password())}"
+    result = None
+    for attempt in range(5):
+        result = psql(database, query)
+        if result.code == 0:
+            return
+        if "tuple concurrently updated" not in result.output:
+            break
+        time.sleep(0.2 * (attempt + 1))
+    assert result is not None
+    raise AssertionError(f"SQL failed: {query}\n{result.output}")
 
 
 # ---------------------------------------------------------------------------

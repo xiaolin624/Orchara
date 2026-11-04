@@ -257,6 +257,60 @@ func TestAnUnsupportedDeclaredTypeIsRejectedWithASafeSniff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// T060: application/pdf is admitted only for purpose=knowledge
+// ---------------------------------------------------------------------------
+
+func TestPDFAdmissionIsKnowledgeScopedAndSniffedFromMagicBytes(t *testing.T) {
+	// The declaration is admitted for the knowledge purpose only. Every other
+	// purpose keeps the pre-T060 refusal: a PDF is a knowledge source, not a
+	// generic task input, tool bundle or evaluation dataset.
+	if format, ok := SupportedUploadMediaTypeForPurpose("knowledge", "application/pdf"); !ok || format != FormatPDF {
+		t.Fatalf("purpose=knowledge did not admit application/pdf as pdf: %q %v", format, ok)
+	}
+	if _, ok := SupportedUploadMediaTypeForPurpose("knowledge", " APPLICATION/PDF "); !ok {
+		t.Fatal("the declared media type must be case/space insensitive")
+	}
+	for _, purpose := range []string{"task_input", "tool_source", "evaluation_dataset"} {
+		if _, ok := SupportedUploadMediaTypeForPurpose(purpose, "application/pdf"); ok {
+			t.Fatalf("purpose %q must not admit application/pdf", purpose)
+		}
+	}
+
+	// The declaration is accepted at reservation time (the 20 MiB object
+	// ceiling is unchanged) but refused at completion unless the real bytes
+	// start with the PDF magic header.
+	if _, _, err := NormalizeUploadInput(UploadInput{
+		MediaType: "application/pdf", SizeBytes: 1024, Purpose: "knowledge",
+	}); err != nil {
+		t.Fatalf("a knowledge PDF declaration was refused: %v", err)
+	}
+	_, _, err := NormalizeUploadInput(UploadInput{
+		MediaType: "application/pdf", SizeBytes: MaxUploadBytes + 1, Purpose: "knowledge",
+	})
+	if validation, ok := err.(*ValidationError); !ok || validation.Field != "size_bytes" {
+		t.Fatalf("over-ceiling PDF error = %v, want size_bytes validation", err)
+	}
+
+	accepted := InspectUploadForPurpose("application/pdf", "knowledge", []byte("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n"))
+	if accepted.Verdict != VerdictAccepted || accepted.DetectedFormat != FormatPDF {
+		t.Fatalf("valid PDF bytes were refused: %+v", accepted)
+	}
+	if accepted.SniffedMediaType != "application/pdf" {
+		t.Fatalf("sniffed media type = %q, want application/pdf", accepted.SniffedMediaType)
+	}
+
+	// A PDF declaration whose bytes are text, a zip, or whose header is not at
+	// offset zero is a content-type mismatch, not a guessed PDF.
+	assertRejected(t, InspectUploadForPurpose("application/pdf", "knowledge", []byte("hello, this is not a pdf\n")), ReasonContentTypeMismatch)
+	assertRejected(t, InspectUploadForPurpose("application/pdf", "knowledge", []byte("PK\x03\x04zip")), ReasonContentTypeMismatch)
+	assertRejected(t, InspectUploadForPurpose("application/pdf", "knowledge", []byte("junk%PDF-1.7\n")), ReasonContentTypeMismatch)
+	assertRejected(t, InspectUploadForPurpose("application/pdf", "knowledge", []byte("")), ReasonEmptyContent)
+
+	// The base allowlist stays closed: an unscoped declaration is still refused.
+	assertRejected(t, InspectUpload("application/pdf", []byte("%PDF-1.7\n")), ReasonUnsupportedMediaType)
+}
+
+// ---------------------------------------------------------------------------
 // T037: application/zip is admitted only for purpose=tool_source
 // ---------------------------------------------------------------------------
 

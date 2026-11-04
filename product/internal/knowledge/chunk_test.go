@@ -61,8 +61,8 @@ func TestMarkdownParserIsRegisteredWithItsOwnRevision(t *testing.T) {
 	if _, ok := ParserFor(MediaTypeXLSX); !ok {
 		t.Fatal("XLSX must be registered by T059")
 	}
-	if _, ok := ParserFor("application/pdf"); ok {
-		t.Fatal("PDF must stay unregistered (T060)")
+	if _, ok := ParserFor(MediaTypePDF); !ok {
+		t.Fatal("PDF must be registered by T060")
 	}
 }
 
