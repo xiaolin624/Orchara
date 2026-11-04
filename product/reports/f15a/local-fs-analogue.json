@@ -14,7 +14,7 @@
   "store": {
     "implementation": "internal/objectstore (local filesystem, HMAC links)",
     "max_object_bytes": 20971520,
-    "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-aygk84_c\\local-fs-store"
+    "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-puabge6j\\local-fs-store"
   },
   "assertions": [
     {
@@ -84,8 +84,8 @@
         }
       ],
       "evidence": {
-        "sealed_key": "sealed/52eaa3326bd905dbeb87e83eaa9a28e51fe806ab1c8129884df3f472a305883c",
-        "staging_key": "staging/cb47651f7761447a3206048943539d1dc9d3dcf934e210561079bb95de66a88c"
+        "sealed_key": "sealed/0a4c6007d07ce44e592eb374404c945270a78bef31a2f10f4deaaa1ff0c9280a",
+        "staging_key": "staging/4a2d9e36ac38b89cbc0779b96a23e4c44e6cb1c4b46425a6b99cb8369fbcb768"
       }
     },
     {
@@ -104,8 +104,8 @@
         }
       ],
       "evidence": {
-        "sealed_key": "sealed/58616c23e57b6bf1b3b2c91a971d721fe57caeffb708b8f8bd92059a52db17e6",
-        "staging_key": "staging/8292a42fea98c8dc4d9974249cb1bc080b600c389f74c91a0bc43df52df48482"
+        "sealed_key": "sealed/7354d18285a699726ddc3f2e67bad40998b3624a320c5f09e44e1271e9b2086b",
+        "staging_key": "staging/89722f6c019b3b09f459255a92f2f576fd53b3a4a3767814fa3bd55fdd60019c"
       }
     },
     {
@@ -115,12 +115,37 @@
       "reason": "all checks held",
       "checks": [
         {
+          "name": "generated_signing_key_is_trim_stable",
+          "ok": true,
+          "detail": {
+            "key_chars": 64
+          }
+        },
+        {
+          "name": "whitespace_padded_key_is_accepted_after_trim",
+          "ok": true,
+          "detail": {
+            "padded_key_error": "\u003cnil\u003e"
+          }
+        },
+        {
+          "name": "whitespace_trimmed_below_minimum_refused",
+          "ok": true,
+          "detail": {
+            "effective_bytes": 31
+          }
+        },
+        {
           "name": "put_link_minted_for_staging",
           "ok": true
         },
         {
-          "name": "put_link_verifies",
-          "ok": true
+          "name": "put_link_verifies_inside_ttl",
+          "ok": true,
+          "detail": {
+            "ttl_ms": 5000,
+            "verified_after_ms": 0
+          }
         },
         {
           "name": "put_link_cannot_be_used_as_get",
@@ -143,7 +168,7 @@
           "ok": true
         },
         {
-          "name": "link_expires_after_ttl",
+          "name": "link_expires_past_ttl_plus_margin",
           "ok": true
         },
         {
@@ -160,8 +185,11 @@
         }
       ],
       "evidence": {
-        "signing_key_bytes": 32,
-        "ttl_seconds": 1
+        "expiry_margin_seconds": 1,
+        "signing_key_bytes": 64,
+        "signing_key_encoding": "hex",
+        "ttl_seconds": 5,
+        "verified_after_ms": 0
       }
     },
     {
@@ -188,8 +216,8 @@
         }
       ],
       "evidence": {
-        "deleted_key": "sealed/faee9a95f2c8ba7d241fde9253bd9ee6a256c54898b5aa6f9cb564eea495947f",
-        "sibling_key": "sealed/53818ea03e917b9cd0674e8c4291083d26f8deea945d789903a7c648a0ff34af"
+        "deleted_key": "sealed/4e9620e190f76ce7293955518c4dbc8a7d0949737daa8baa1191ad19bfac50d1",
+        "sibling_key": "sealed/8247d8e087b6b8189287f9d4dfb640b2e2ac013c3e354f78e49d3100c7290d47"
       }
     },
     {
@@ -245,7 +273,7 @@
     "no object versioning, backup/restore, replication or server-side encryption in the local FS store",
     "the local journal/rename guarantees are filesystem-specific and say nothing about an S3 implementation"
   ],
-  "started_at": "2026-11-04T08:16:36.8813291Z",
-  "finished_at": "2026-11-04T08:16:38.1650449Z",
-  "duration_ms": 1283
+  "started_at": "2026-11-04T09:08:41.3203175Z",
+  "finished_at": "2026-11-04T09:08:47.4586224Z",
+  "duration_ms": 6138
 }

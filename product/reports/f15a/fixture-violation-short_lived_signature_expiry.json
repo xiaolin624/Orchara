@@ -3,8 +3,8 @@
   "probe_version": "1.0.0",
   "ticket": "T053/F15A",
   "scope": "candidate-s3",
-  "run_id": "404850734dbb54f8",
-  "started_at": "2026-11-04T08:16:11.180+00:00",
+  "run_id": "d9ba1392452d0782",
+  "started_at": "2026-11-04T09:07:58.159+00:00",
   "environment": {
     "python": "3.12.2",
     "python_implementation": "CPython",
@@ -12,14 +12,14 @@
     "probe_version": "1.0.0"
   },
   "config": {
-    "endpoint": "http://127.0.0.1:55296",
-    "endpoint_host": "127.0.0.1:55296",
+    "endpoint": "http://127.0.0.1:50589",
+    "endpoint_host": "127.0.0.1:50589",
     "scheme": "http",
     "bucket": "probe-bucket",
     "region": "us-east-1",
     "tenant_prefix": "orchara-probe",
     "addressing_style": "path",
-    "short_ttl_seconds": 1,
+    "short_ttl_seconds": 5,
     "expiry_skew_seconds": 0.0,
     "timeout_seconds": 10.0,
     "retries": 2,
@@ -49,7 +49,7 @@
           "ok": true,
           "detail": {
             "response_body_sha256": "dd7fdc37356b1121323539666cda50c832dad4f898248064ab1cc0ae8b48fd77",
-            "object_sha256": "11ff5905101740ac828b24eec8638d78d3d7bd4da21a2d774965eb25c15037e1",
+            "object_sha256": "6f3d4e4346d27aae990eb59063abbc52c79a380c7a3f8ccd863ff4677d546722",
             "response_body_bytes": 123
           }
         },
@@ -62,13 +62,13 @@
         }
       ],
       "evidence": {
-        "sealed_key": "orchara-probe/sealed/2a2616ae5b36869aa0ca074775753918b71891d6034f91eb7f523ecf312a8cc9",
+        "sealed_key": "orchara-probe/sealed/6b1dde0b5fe8e8e9924d7ddd458b880f0feb791ac1bdb2926b101f3a6d5c930a",
         "http_status": 403,
         "response_body_sha256": "dd7fdc37356b1121323539666cda50c832dad4f898248064ab1cc0ae8b48fd77",
         "response_body_bytes": 123,
-        "object_sha256": "11ff5905101740ac828b24eec8638d78d3d7bd4da21a2d774965eb25c15037e1"
+        "object_sha256": "6f3d4e4346d27aae990eb59063abbc52c79a380c7a3f8ccd863ff4677d546722"
       },
-      "duration_ms": 15
+      "duration_ms": 30
     },
     {
       "id": "anonymous_put_denied",
@@ -92,11 +92,11 @@
         }
       ],
       "evidence": {
-        "staging_key": "orchara-probe/staging/2784971331a7f530703b14d5d78c2ae1ae05098dc2a169b6bc502f39fd71b48f",
+        "staging_key": "orchara-probe/staging/3743bd91f30cf6dcdd881163891cf4a124cfd6820afa56ae8edad7617bea1ab8",
         "http_status": 403,
         "follow_up_signed_get_status": 404
       },
-      "duration_ms": 31
+      "duration_ms": 32
     },
     {
       "id": "anonymous_list_denied",
@@ -123,7 +123,7 @@
         "http_status": 403,
         "body_bytes": 123
       },
-      "duration_ms": 15
+      "duration_ms": 14
     },
     {
       "id": "out_of_range_key_denied",
@@ -216,7 +216,7 @@
           }
         }
       },
-      "duration_ms": 92
+      "duration_ms": 125
     },
     {
       "id": "sealed_put_denied",
@@ -240,11 +240,11 @@
         }
       ],
       "evidence": {
-        "sealed_key": "orchara-probe/sealed/1640ef89f05b49c5fc37db489e48fc67b1a9493417a36836dd25cad356c78ed2",
+        "sealed_key": "orchara-probe/sealed/0819b75b5709eb9f1935dd211b4ba596bebcc6e234287bd8eb84b752b7f9e172",
         "http_status": 403,
         "object_after": 404
       },
-      "duration_ms": 16
+      "duration_ms": 15
     },
     {
       "id": "staging_overwrite_preserves_sealed",
@@ -271,8 +271,8 @@
           "name": "sealed_bytes_unchanged",
           "ok": true,
           "detail": {
-            "sealed_sha256_before": "602d52ae117bcc34c9783f2635f262f3535339080faf792a977760da630489f8",
-            "sealed_sha256_after": "602d52ae117bcc34c9783f2635f262f3535339080faf792a977760da630489f8"
+            "sealed_sha256_before": "786ed22a9c458906d9ac78c2de395f81ca160ef83ebc51c64f98bba786626f20",
+            "sealed_sha256_after": "786ed22a9c458906d9ac78c2de395f81ca160ef83ebc51c64f98bba786626f20"
           }
         },
         {
@@ -280,20 +280,20 @@
           "ok": true,
           "detail": {
             "staging_get_status": 200,
-            "staging_sha256": "cd3b5e6750045a80b3fc19afa7f017d06659d864a8bacb47dce547091458b3d1"
+            "staging_sha256": "176f0cf18ff9541cb7ca3ee11d2a4e0618fd3e7b625d8550783e87dfdb202d22"
           }
         }
       ],
       "evidence": {
-        "staging_key": "orchara-probe/staging/3017884cdb4f78fdd6c7f1f476e64c0ce885df3fe442e16f733952337bd9a243",
-        "sealed_key": "orchara-probe/sealed/3017884cdb4f78fdd6c7f1f476e64c0ce885df3fe442e16f733952337bd9a243",
-        "sealed_sha256": "602d52ae117bcc34c9783f2635f262f3535339080faf792a977760da630489f8",
-        "staging_first_sha256": "bd34e6f2bea4eda480397d0fced5cfe66611e0dd01156051257a36067abe3308",
-        "staging_second_sha256": "cd3b5e6750045a80b3fc19afa7f017d06659d864a8bacb47dce547091458b3d1",
+        "staging_key": "orchara-probe/staging/d83d6fd59675dc7e03fec6389c8d3d479973cd53812e908d1f08f543bfefa4d3",
+        "sealed_key": "orchara-probe/sealed/d83d6fd59675dc7e03fec6389c8d3d479973cd53812e908d1f08f543bfefa4d3",
+        "sealed_sha256": "786ed22a9c458906d9ac78c2de395f81ca160ef83ebc51c64f98bba786626f20",
+        "staging_first_sha256": "e93a575cc9069dabef1f9b7702b767294aceeab3b8a69e1bc4a33c284da481e5",
+        "staging_second_sha256": "176f0cf18ff9541cb7ca3ee11d2a4e0618fd3e7b625d8550783e87dfdb202d22",
         "sealed_get_status": 200,
         "staging_get_status": 200
       },
-      "duration_ms": 77
+      "duration_ms": 0
     },
     {
       "id": "short_lived_signature_expiry",
@@ -306,33 +306,37 @@
           "ok": true,
           "detail": {
             "status": 200,
-            "body_sha256": "e4f8e4eaab742e751230253b2940776d75cb58131714a148bbdea65bbabea4d4"
+            "body_sha256": "47c2fbc3636b708f943a8cd2bebf17d3663c6b73cd332366c80c9c36fa699f79",
+            "seconds_before_expiry_when_accepted": 4.477
           }
         },
         {
           "name": "rejected_after_expiry",
           "ok": false,
           "detail": {
-            "status": 200
+            "status": 200,
+            "waited_seconds": 5.977
           }
         },
         {
           "name": "no_body_after_expiry",
           "ok": false,
           "detail": {
-            "body_sha256": "e4f8e4eaab742e751230253b2940776d75cb58131714a148bbdea65bbabea4d4"
+            "body_sha256": "47c2fbc3636b708f943a8cd2bebf17d3663c6b73cd332366c80c9c36fa699f79"
           }
         }
       ],
       "evidence": {
-        "sealed_key": "orchara-probe/sealed/0464e21f8dbad0364a878d724a90a260f3f2d10c2e865466715033321d095b6d",
-        "ttl_seconds": 1,
+        "sealed_key": "orchara-probe/sealed/a2b11d6db699838de63540da1d869e7077a7fcba01b9806f1a3eb8061b956532",
+        "ttl_seconds": 5,
         "clock_skew_allowance_seconds": 0.0,
-        "waited_seconds": 2.25,
+        "expires_at_unix": 1793783283.0,
+        "seconds_before_expiry_when_accepted": 4.477,
+        "waited_past_expiry_seconds": 5.977,
         "before_status": 200,
         "after_status": 200
       },
-      "duration_ms": 2280
+      "duration_ms": 6000
     },
     {
       "id": "proxy_download_boundary",
@@ -388,7 +392,7 @@
         }
       ],
       "evidence": {
-        "sealed_key": "orchara-probe/sealed/0fdf57917b124b80f7276ad73be3b4ae4b53c47033d406336b7a5c7e3f51bdbb",
+        "sealed_key": "orchara-probe/sealed/52d0ea44e7aa1037be38f15c3e23ad8ba02b4582c40f881148139096985e3a98",
         "object_bytes": 20972544,
         "product_cap_bytes": 20971520,
         "head_status": 200,
@@ -411,7 +415,7 @@
           "requires_proxy_download": true
         }
       },
-      "duration_ms": 329
+      "duration_ms": 436
     },
     {
       "id": "delete_semantics",
@@ -453,21 +457,21 @@
           "ok": true,
           "detail": {
             "status": 200,
-            "body_sha256": "8b6cc8acde5f145d53287c6968eefef9f93b0342e9cf110f95ec89f9699c511a"
+            "body_sha256": "74ad6062452c98ad1474bb53457c5b15d1fa21d7de19de3480b3570aa61ab2ec"
           }
         }
       ],
       "evidence": {
-        "deleted_key": "orchara-probe/sealed/f9d1fc6af85651c9043d8ad887378e0bec44faa79b9358eda37048028848c2ee",
-        "sibling_key": "orchara-probe/sealed/4eabb9459e9f4debc41dba002537a6e02610e7c09594b42c50afff9fccc8c043",
+        "deleted_key": "orchara-probe/sealed/03db463980aad730186792b011f3897d705d53d05b35aab8a5b7f91b9aa567bb",
+        "sibling_key": "orchara-probe/sealed/9a47d8710c975b1054fdd7c9b8ac2c1f3087eed22228a929f622d709c92ddd6a",
         "runtime_delete_status": 403,
         "first_delete_status": 204,
         "get_after_delete_status": 404,
         "second_delete_status": 204,
         "sibling_get_status": 200,
-        "sibling_sha256": "8b6cc8acde5f145d53287c6968eefef9f93b0342e9cf110f95ec89f9699c511a"
+        "sibling_sha256": "74ad6062452c98ad1474bb53457c5b15d1fa21d7de19de3480b3570aa61ab2ec"
       },
-      "duration_ms": 78
+      "duration_ms": 16
     },
     {
       "id": "versions_immutable",
@@ -479,7 +483,7 @@
         "versioning_status": 200,
         "versioning_enabled": false
       },
-      "duration_ms": 0
+      "duration_ms": 15
     }
   ],
   "summary": {
@@ -506,64 +510,64 @@
   ],
   "input_hashes": {
     "anonymous-put": {
-      "sha256": "18161d0d883633e1928e3ac59e7a00128ef5f5abbf605ba2dd71a4ea9826e28b",
+      "sha256": "82a123c0b0b19f98e9790c7af7ecf428fcfd67cd127a31dd6fcb1db2fb2cf216",
       "bytes": 64
     },
     "anonymous-read": {
-      "sha256": "11ff5905101740ac828b24eec8638d78d3d7bd4da21a2d774965eb25c15037e1",
+      "sha256": "6f3d4e4346d27aae990eb59063abbc52c79a380c7a3f8ccd863ff4677d546722",
       "bytes": 96
     },
     "cross-key-a": {
-      "sha256": "6ff91bebc920b41925152b1abe20934d0694b21996aec9906d0ffbe184454da7",
+      "sha256": "3543b1de360a013b95438bbdb43789ef7d983a9f6427d8765026e4be2ab942bc",
       "bytes": 64
     },
     "cross-key-b": {
-      "sha256": "5fa44b711fc058fc04dbfc642a43135f04eb771275b3c36562bd31ede5b6947e",
+      "sha256": "9ba7cf5f419b8ecab2504ec07ffa196e0d181c0badfac798c0f9a0e1484a6920",
       "bytes": 64
     },
     "delete-a": {
-      "sha256": "bb654a48e64abb70346e7c4d8a1dedb11c43bfac2ffbf87543d206af3772dde9",
+      "sha256": "3cf9ad6d4088862957c75f398ecb5e3a60e248cab9009a2a53f71fc843635f20",
       "bytes": 64
     },
     "delete-b": {
-      "sha256": "8b6cc8acde5f145d53287c6968eefef9f93b0342e9cf110f95ec89f9699c511a",
+      "sha256": "74ad6062452c98ad1474bb53457c5b15d1fa21d7de19de3480b3570aa61ab2ec",
       "bytes": 96
     },
     "oversized": {
-      "sha256": "ac008601e0d58520a1e81befac092112f91e8c52b752103f0947f125dcb6105a",
+      "sha256": "8b3e00f2c97325c77e53ca79c200cf55bee03d23e8048bb5a1eb27a01a5328b2",
       "bytes": 20972544
     },
     "revocation": {
-      "sha256": "fb7c9b71087449af121223f2340ed81cb420b39f3d2ad190b591d9b1a75595ec",
+      "sha256": "de3e047554e3b408e33cf80c45f8c41727e356085fe11b0dfa979bd946b5078c",
       "bytes": 64
     },
     "revocation-rewritten": {
-      "sha256": "f2297409bd03dbcc081c749e4047e1d5b3765d03d5c0c6c6d5a617c7a765537f",
+      "sha256": "50da5eb7afc76f3bec56a087bf9e2f33c6f98450e543f47d495c7e579441fcc7",
       "bytes": 80
     },
     "sealed-put": {
-      "sha256": "59b8304db99c8e6a0bcb7f41d9389bb08c4896ed799ced7bfc71b5e5cb70de34",
+      "sha256": "34738f26d8498dd36010d6e8e680b2b3c0d252099e9e2f88ba5e19d4b2e3bed6",
       "bytes": 80
     },
     "sealed-stable": {
-      "sha256": "602d52ae117bcc34c9783f2635f262f3535339080faf792a977760da630489f8",
+      "sha256": "786ed22a9c458906d9ac78c2de395f81ca160ef83ebc51c64f98bba786626f20",
       "bytes": 128
     },
     "short-ttl": {
-      "sha256": "e4f8e4eaab742e751230253b2940776d75cb58131714a148bbdea65bbabea4d4",
+      "sha256": "47c2fbc3636b708f943a8cd2bebf17d3663c6b73cd332366c80c9c36fa699f79",
       "bytes": 96
     },
     "staging-first": {
-      "sha256": "bd34e6f2bea4eda480397d0fced5cfe66611e0dd01156051257a36067abe3308",
+      "sha256": "e93a575cc9069dabef1f9b7702b767294aceeab3b8a69e1bc4a33c284da481e5",
       "bytes": 80
     },
     "staging-second": {
-      "sha256": "cd3b5e6750045a80b3fc19afa7f017d06659d864a8bacb47dce547091458b3d1",
+      "sha256": "176f0cf18ff9541cb7ca3ee11d2a4e0618fd3e7b625d8550783e87dfdb202d22",
       "bytes": 144
     }
   },
-  "finished_at": "2026-11-04T08:16:14.630+00:00",
-  "duration_ms": 3454,
+  "finished_at": "2026-11-04T09:08:05.154+00:00",
+  "duration_ms": 7000,
   "status": "failed",
   "exit_code": 1
 }

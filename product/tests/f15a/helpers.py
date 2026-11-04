@@ -149,7 +149,7 @@ def run_probe(port: int, report_path: Path, *, extra_args: tuple[str, ...] = ())
         "--out",
         str(report_path),
         "--short-ttl",
-        "1",
+        "5",
         "--timeout",
         "10",
         "--retries",

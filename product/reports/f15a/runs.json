@@ -1,18 +1,18 @@
 {
   "probe": "f15a-s3-compat",
   "ticket": "T053/F15A",
-  "generated_at": "2026-11-04T08:16:38+00:00",
+  "generated_at": "2026-11-04T09:08:47+00:00",
   "python": "3.12.2",
   "platform": "win32",
   "note": "fixture runs are discrimination evidence, not candidate acceptance; candidate-absent is the real environment result (blocked, exit 2); local-fs-analogue is not S3 evidence",
   "runs": [
     {
       "name": "fixture-compliant",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-compliant.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-compliant.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 0,
       "status": "passed",
       "report": "fixture-compliant.json",
-      "report_sha256": "3c9a83a2d36b0820ed864204e2968840aa20109e3431e51a7e5c496798412ae6",
+      "report_sha256": "8ab90126500f8f6574a9cc07565e0fe86a8e210f992a5b4c4b78fb0b2c58ee54",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -34,11 +34,11 @@
     },
     {
       "name": "fixture-violating-all",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violating-all.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violating-all.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violating-all.json",
-      "report_sha256": "5d3d6ba385fc6f16cf71af88434a0396db839527150d83a91d9fa2505551e484",
+      "report_sha256": "b949ff66d4a74585c38656f36ae001d72900e951c931d81585af0beca0d7185e",
       "verdicts": {
         "anonymous_read_denied": "failed",
         "anonymous_put_denied": "failed",
@@ -60,11 +60,11 @@
     },
     {
       "name": "fixture-violation-anonymous_read_denied",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_read_denied.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_read_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-anonymous_read_denied.json",
-      "report_sha256": "4773941b78ae83d753a60b845930da58b2794571c0ad4c927b79d0f3bcf9f460",
+      "report_sha256": "84cadce92382e6c7a3093cf309c795a44df0484b361a35c192bd78acf45e3e64",
       "verdicts": {
         "anonymous_read_denied": "failed",
         "anonymous_put_denied": "passed",
@@ -86,11 +86,11 @@
     },
     {
       "name": "fixture-violation-anonymous_put_denied",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_put_denied.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_put_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-anonymous_put_denied.json",
-      "report_sha256": "bb2fbf01aeeac93561ea8590ea6862a2ee3e4a43ee334322f3da659f7eede137",
+      "report_sha256": "03d2227c78999b1e680171db8007669ae91bd42c2073bd7d3c0ad63541fc569e",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "failed",
@@ -112,11 +112,11 @@
     },
     {
       "name": "fixture-violation-anonymous_list_denied",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_list_denied.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-anonymous_list_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-anonymous_list_denied.json",
-      "report_sha256": "7c8a3b243f6d5bc7738df966e324c5d8473781549a5f883191f6833fd71c3d56",
+      "report_sha256": "bd89fc52f1261acf6a4a285534b3d2ad4b5a9d1ebcf88a8404fc1795ac2ab491",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -138,11 +138,11 @@
     },
     {
       "name": "fixture-violation-out_of_range_key_denied",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-out_of_range_key_denied.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-out_of_range_key_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-out_of_range_key_denied.json",
-      "report_sha256": "0d2ac4780a55d5358c891baa884ab5402480854fa9ed67d3b15c903cc2d31c76",
+      "report_sha256": "fafebcf22229973693fe11448dc5cb0584b4bd46f8c6e3e1eeec44f132dd6418",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -164,11 +164,11 @@
     },
     {
       "name": "fixture-violation-sealed_put_denied",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-sealed_put_denied.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-sealed_put_denied.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-sealed_put_denied.json",
-      "report_sha256": "e4a99e5c354545b56444bb6c24485996b49d1e3bf7b66f8fc58df2395a0c26a8",
+      "report_sha256": "ffbdf2b8df29b52e125536c3dac301e9412611a8b2dfeba4041bd393c951c38a",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -190,11 +190,11 @@
     },
     {
       "name": "fixture-violation-staging_overwrite_preserves_sealed",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-staging_overwrite_preserves_sealed.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-staging_overwrite_preserves_sealed.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-staging_overwrite_preserves_sealed.json",
-      "report_sha256": "d6d7a5c639a41e76083dc8485e2e96f5a0f45080b8229033571ff4c747b2b812",
+      "report_sha256": "bc11c56e542dfde0a89463eaf0f1f17506fb653f46ce9cbc2510330c2c20cef4",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -216,11 +216,11 @@
     },
     {
       "name": "fixture-violation-short_lived_signature_expiry",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-short_lived_signature_expiry.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-short_lived_signature_expiry.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-short_lived_signature_expiry.json",
-      "report_sha256": "97da9347176986b21eaf8bf23f05dfde0661f7d39c603ea8fdbee5c63ebf41e4",
+      "report_sha256": "dc3ac4042c60771e6b58d412a860fc2c3c8e5ecafabb279104f6d1dca09d8c63",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -242,11 +242,11 @@
     },
     {
       "name": "fixture-violation-proxy_download_boundary",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-proxy_download_boundary.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-proxy_download_boundary.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-proxy_download_boundary.json",
-      "report_sha256": "2ac8506176cfb76176ab1ba08f714ce5511e994f95f75efd84f3c54edb389a44",
+      "report_sha256": "91e74d9b5efae8a3e31b503cffc26eedb927349e65140929095739f076e56ae3",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -268,11 +268,11 @@
     },
     {
       "name": "fixture-violation-delete_semantics",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-delete_semantics.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-violation-delete_semantics.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 1,
       "status": "failed",
       "report": "fixture-violation-delete_semantics.json",
-      "report_sha256": "10b18411d458531d6e889fe4af0a02b81d55a15309fe86abb3b0bd8ac8e16284",
+      "report_sha256": "54eff17d00897def6b7f4833554806a3bb9c587a0960b639ab47e4c8339cfe9d",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -294,11 +294,11 @@
     },
     {
       "name": "fixture-transient-retry",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-transient-retry.json --short-ttl 1 --timeout 10 --retries 2 --profile fixture",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\fixture-transient-retry.json --short-ttl 5 --timeout 10 --retries 2 --profile fixture",
       "exit_code": 0,
       "status": "passed",
       "report": "fixture-transient-retry.json",
-      "report_sha256": "70064e62bff3c94796380839d2810584abcc92b1d22248cde69feb3c5b5f5e06",
+      "report_sha256": "5776dd8deaa953475fcd59b97f98e01fc983a75048780a9dae2a9975dac3dc8f",
       "verdicts": {
         "anonymous_read_denied": "passed",
         "anonymous_put_denied": "passed",
@@ -320,11 +320,11 @@
     },
     {
       "name": "candidate-absent",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-absent.json --short-ttl 1 --timeout 10 --retries 2 --profile candidate",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-absent.json --short-ttl 5 --timeout 10 --retries 2 --profile candidate",
       "exit_code": 2,
       "status": "blocked",
       "report": "candidate-absent.json",
-      "report_sha256": "abc9d0e7beba0ab0629e0fb179278fd866340a7a26c65c915b89f2cf0a3d0d38",
+      "report_sha256": "587fd6da2202ac88cf01420c75f04bf4b7a2e21ebbcb58ec66158c733051ff5e",
       "verdicts": {},
       "stdout_tail": [
         "status: blocked (exit 2)",
@@ -335,11 +335,11 @@
     },
     {
       "name": "candidate-not-configured",
-      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-not-configured.json --short-ttl 1 --timeout 10 --retries 2 --profile candidate",
+      "command": "python probes\\f15a_objectstore\\object_store_probe.py --out reports\\f15a\\candidate-not-configured.json --short-ttl 5 --timeout 10 --retries 2 --profile candidate",
       "exit_code": 2,
       "status": "blocked",
       "report": "candidate-not-configured.json",
-      "report_sha256": "980aeb88d4ffff22af6f6ee68c51ae3ece75e87e322bef52e8acdd5e80c1006a",
+      "report_sha256": "fc84ec9619a7359d7abff311364d7b7a02e541fa18cb7ce5a1f572f6ee1a1ebd",
       "verdicts": {},
       "stdout_tail": [
         "status: blocked (exit 2)",
@@ -354,7 +354,7 @@
       "exit_code": 0,
       "status": "passed",
       "report": "local-fs-analogue.json",
-      "report_sha256": "1f114b137411ba9fbde4cd1fc0fb823f0c9bdd530e64b696294fe8e46924f989",
+      "report_sha256": "895b5a3d60d191bdde8782cb20e5760f07a25d0ab6f092f1d094e0dbadb7688f",
       "verdicts": {
         "key_typing_and_traversal_refused": "passed",
         "staging_sealed_separation": "passed",
@@ -373,7 +373,7 @@
       "store": {
         "implementation": "internal/objectstore (local filesystem, HMAC links)",
         "max_object_bytes": 20971520,
-        "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-aygk84_c\\local-fs-store"
+        "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-puabge6j\\local-fs-store"
       },
       "stdout_tail": [
         "  [passed] size_cap_enforced: all checks held",
