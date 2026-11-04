@@ -59,3 +59,9 @@ def t052_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.
     )
     f00b.wait_for_internal(stack)
     return stack
+
+
+@pytest.fixture
+def t056_stack(t052_stack) -> t026.T026Stack:
+    """T056 runs on the T052 stack: the same real server, database and binaries."""
+    return t052_stack

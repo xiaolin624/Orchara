@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "schema_version": "1.0",
+      "case_id": "sales-happy-xlsx",
+      "category": "sales",
+      "family_id": "sales-happy",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "sales-happy-xlsx",
+        "task_input": {
+          "sha256": "287bd26ca0cac1ef630caef40807c0a82739e86285b4343905242979190cdb60",
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      },
+      "fixture_id": "sales-happy-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "succeeded"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/total",
+          "expected": "250.00"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/东区",
+          "expected": "200.00"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/西区",
+          "expected": "50.00"
+        },
+        {
+          "kind": "json_equals",
+          "pointer": "/summary/order_count",
+          "expected": 3
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    }
+  ]
+}

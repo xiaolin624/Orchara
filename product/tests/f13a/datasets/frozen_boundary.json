@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "schema_version": "1.0",
+      "case_id": "sales-frozen-boundary",
+      "category": "sales",
+      "family_id": "sales-frozen-boundary",
+      "split": "frozen_test",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "sales-frozen-boundary",
+        "task_input": {
+          "sha256": "c727ff1844688a229dde27794f5f261c4aa2eecaafef66c711d17805556c212b",
+          "media_type": "text/csv"
+        }
+      },
+      "fixture_id": "sales-frozen-boundary-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "succeeded"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/total",
+          "expected": "101234.60"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/北区",
+          "expected": "1234.60"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/南区",
+          "expected": "100000.00"
+        },
+        {
+          "kind": "json_equals",
+          "pointer": "/summary/order_count",
+          "expected": 4
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    }
+  ]
+}
