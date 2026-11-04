@@ -67,8 +67,11 @@ const KNOWLEDGE_FAILURE_TEXT = Object.freeze({
   ingest_citation_invalid: '片段引用不一致，索引未激活',
   ingest_cancelled: '摄取已取消',
   embedding_provider_not_configured: '未配置 embedding 提供方，无法生成向量',
+  stale_revision: '源版本或索引版本已变化：这次旧构建不会激活任何索引',
+  embedding_model_changed: '部署的 embedding 模型已变化：任务未写入任何向量',
+  source_deleted: '源文件已删除，旧任务不能复活文档',
+  index_build_in_progress: '已有索引构建在进行中，请等待或稍后重试',
   provider_not_configured: '未配置 embedding 提供方',
-  source_deleted: '源文件已删除',
   artifact_not_ready: '源文件尚未完成封存',
 });
 
@@ -94,6 +97,21 @@ function knowledgeDocumentPath(documentID) {
 
 function knowledgeDocumentDiagnosticsPath(documentID) {
   return knowledgeDocumentPath(documentID) + '/diagnostics';
+}
+
+/**
+ * The T061 non-contract rebuild entry. Rebuilding without a body re-indexes the
+ * current source revision under the deployment's embedding model; an optional
+ * source artifact id replaces the source revision (the old active index stays
+ * readable until the guard activates the new one).
+ */
+function reindexDocumentPath(documentID) {
+  return knowledgeDocumentPath(documentID) + '/reindex';
+}
+
+function buildReindexBody(sourceArtifactID) {
+  const value = String(sourceArtifactID || '').trim();
+  return { ok: true, body: value ? { source_artifact_id: value } : {} };
 }
 
 function retrievalQueriesPath(baseID) {
@@ -370,6 +388,69 @@ function describeDiagnostics(diagnostics) {
     jobState: job ? String(job.state || '') : '',
     jobErrorCode: job && job.error_code ? String(job.error_code) : '',
     jobAttempts: job ? Number(job.attempt_count || 0) : 0,
+    activeIndexVersion: value.active_index ? Number(value.active_index.version || 0) : 0,
+    activeIndexModel: value.active_index
+      ? String(value.active_index.embedding_model_revision || '')
+      : '',
+  };
+}
+
+/**
+ * The index-version history of one document (T061). It shows the per-document
+ * build version, the embedding model revision it was built with, the persisted
+ * state/stage and chunk counter, the latest job attempts and the failure reason.
+ * `active` marks the one version the activation pointer names; the page never
+ * infers a percentage from these counters.
+ */
+const INDEX_STATE_TEXT = Object.freeze({
+  building: '构建中',
+  ready: '可检索',
+  failed: '构建失败',
+  superseded: '已被取代',
+});
+
+function describeIndexes(diagnostics) {
+  const value = diagnostics || {};
+  const raw = Array.isArray(value.indexes) ? value.indexes : [];
+  const items = raw.map((item) => {
+    const job = item.background_job || null;
+    const version = Number(item.version || 0);
+    const state = String(item.state || '');
+    const stage = String(item.stage || state);
+    const active = item.active === true;
+    const model = String(item.embedding_model_revision || '');
+    const chunkCount = Number(item.chunk_count || 0);
+    const errorCode = item.error_code ? String(item.error_code) : '';
+    const line = '索引 v' + version + ' · ' + model + ' · '
+      + (INDEX_STATE_TEXT[state] || state)
+      + (stage && stage !== state ? '（' + stage + '）' : '')
+      + ' · 已写入片段 ' + chunkCount
+      + (job
+        ? ' · 任务 ' + String(job.state || '') + ' · 尝试 ' + Number(job.attempt_count || 0) + ' 次'
+        : '')
+      + (errorCode ? ' · 失败码 ' + errorCode : '')
+      + (active ? ' · 当前激活' : '');
+    return {
+      version: version,
+      state: state,
+      stage: stage,
+      active: active,
+      embeddingModelRevision: model,
+      chunkCount: chunkCount,
+      errorCode: errorCode,
+      jobState: job ? String(job.state || '') : '',
+      jobAttempts: job ? Number(job.attempt_count || 0) : 0,
+      line: line,
+    };
+  });
+  const active = items.find((item) => item.active) || null;
+  return {
+    active: active,
+    items: items,
+    text: items.map((item) => item.line).join('\n'),
+    activeText: active
+      ? '当前激活索引 v' + active.version + ' · embedding=' + active.embeddingModelRevision
+      : '没有激活的索引',
   };
 }
 
@@ -378,11 +459,20 @@ function describeRetrieval(payload) {
   const value = payload || {};
   const items = Array.isArray(value.items) ? value.items.map(describeChunk) : [];
   const retrieval = value.retrieval || {};
+  const index = retrieval.index || {};
   return {
     items: items,
     empty: items.length === 0,
     emptyText: items.length === 0 ? '没有检索到可读片段（不是错误）' : '',
     embeddingModelRevision: String(retrieval.embedding_model_revision || ''),
+    activeIndexRevision: String(index.embedding_model_revision || ''),
+    activeIndexes: Number(index.active_indexes || 0),
+    excludedIndexes: Number(index.excluded_indexes || 0),
+    indexText: '激活索引 ' + Number(index.active_indexes || 0)
+      + ' 个 · embedding=' + String(index.embedding_model_revision || '')
+      + (Number(index.excluded_indexes || 0) > 0
+        ? ' · 其他模型 revision 的索引 ' + Number(index.excluded_indexes) + ' 个（不混用）'
+        : ''),
     topK: Number(retrieval.top_k || 0),
     aclEpoch: Number(retrieval.acl_epoch || 0),
   };
@@ -412,7 +502,15 @@ function describeIngestion(document, diagnostics) {
   if (diag.jobState) {
     lines.push('后台任务：' + diag.jobState + ' · 尝试 ' + diag.jobAttempts + ' 次');
   }
-  return { states: doc, diagnostics: diag, text: lines.join('\n') };
+  const indexes = describeIndexes(diagnostics);
+  if (indexes.active) {
+    lines.push('当前激活索引：v' + indexes.active.version
+      + ' · embedding=' + indexes.active.embeddingModelRevision);
+  }
+  if (indexes.items.length > 0) {
+    lines.push(indexes.text);
+  }
+  return { states: doc, diagnostics: diag, indexes: indexes, text: lines.join('\n') };
 }
 
 /*
@@ -485,14 +583,20 @@ function describeAnswerRetrieval(retrieval) {
   const revision = String(value.embedding_model_revision || '');
   const topK = Number(value.top_k || 0);
   const aclEpoch = Number(value.acl_epoch || 0);
+  const index = value.index || {};
+  const activeIndexRevision = String(index.embedding_model_revision || '');
   return {
     embeddingModelRevision: revision,
+    activeIndexRevision: activeIndexRevision,
+    activeIndexes: Number(index.active_indexes || 0),
+    excludedIndexes: Number(index.excluded_indexes || 0),
     topK: topK,
     aclEpoch: aclEpoch,
     chunkIds: chunkIds,
     chunkCount: chunkIds.length,
     text: '本次检索：' + chunkIds.length + ' 个片段 · embedding=' + revision
-      + ' · top_k=' + topK + ' · acl_epoch=' + aclEpoch,
+      + ' · 激活索引=' + activeIndexRevision + ' · top_k=' + topK
+      + ' · acl_epoch=' + aclEpoch,
   };
 }
 

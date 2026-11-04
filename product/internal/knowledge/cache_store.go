@@ -66,13 +66,16 @@ func (s *Service) cacheKeyFor(
 }
 
 // sourceRevisionDigest hashes the current non-deleted documents of one knowledge
-// base: (id, revision, state, active_revision). Adding, deleting or re-activating
-// a source changes it; the count is stored with the entry for debugging.
+// base: (id, revision, state, active_revision, active_index_id,
+// active_embedding_model_revision). Adding, deleting, re-activating or replacing
+// the active index changes it; the count is stored with the entry for debugging.
 func (s *Service) sourceRevisionDigest(
 	ctx context.Context, ownerID, baseID string,
 ) (string, int, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT d.id::text, d.revision, d.state, coalesce(d.active_revision, 0)
+		SELECT d.id::text, d.revision, d.state, coalesce(d.active_revision, 0),
+		       coalesce(d.active_index_id::text, ''),
+		       coalesce(d.active_embedding_model_revision, '')
 		  FROM platform.knowledge_documents AS d
 		  JOIN platform.knowledge_bases AS b ON b.id = d.knowledge_base_id
 		 WHERE d.knowledge_base_id = $1::uuid AND b.owner_id = $2::uuid
@@ -95,8 +98,12 @@ func (s *Service) sourceRevisionDigest(
 			revision       int64
 			state          string
 			activeRevision int64
+			activeIndexID  string
+			activeModel    string
 		)
-		if err := rows.Scan(&documentID, &revision, &state, &activeRevision); err != nil {
+		if err := rows.Scan(
+			&documentID, &revision, &state, &activeRevision, &activeIndexID, &activeModel,
+		); err != nil {
 			return "", 0, fmt.Errorf("reading a source revision: %w", err)
 		}
 		builder.WriteString(documentID)
@@ -106,13 +113,17 @@ func (s *Service) sourceRevisionDigest(
 		builder.WriteString(state)
 		builder.WriteByte('|')
 		builder.WriteString(strconv.FormatInt(activeRevision, 10))
+		builder.WriteByte('|')
+		builder.WriteString(activeIndexID)
+		builder.WriteByte('|')
+		builder.WriteString(activeModel)
 		builder.WriteByte('\n')
 		documentCnt++
 	}
 	if err := rows.Err(); err != nil {
 		return "", 0, fmt.Errorf("reading the source revisions: %w", err)
 	}
-	return hashCacheComponents("knowledge-source-revisions/1", builder.String()), documentCnt, nil
+	return hashCacheComponents("knowledge-source-revisions/2", builder.String()), documentCnt, nil
 }
 
 // cachedRetrieval looks one entry up by (cache_key, principal, knowledge base) and
@@ -234,13 +245,15 @@ func (s *Service) validateCachedItems(
 		       kc.body_artifact_id::text, coalesce(a.sha256, '')
 		  FROM platform.knowledge_chunks AS kc
 		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
+		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
 		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
 		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
 		 WHERE kc.id = ANY(string_to_array($1::text, ',')::uuid[])
 		   AND kb.id = $2::uuid AND kb.owner_id = $3::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL AND kd.state = 'ready'
-		   AND kd.active_revision = kd.revision
-		   AND kc.document_revision = kd.revision
+		   AND kd.deleted_at IS NULL
+		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
+		   AND iv.document_id = kd.id
+		   AND kc.document_revision = iv.document_revision
 		   AND a.owner_id = kb.owner_id
 		   AND a.deleted_at IS NULL AND a.state = 'ready'`,
 		strings.Join(ids, ","), key.KnowledgeBaseID, key.PrincipalID,

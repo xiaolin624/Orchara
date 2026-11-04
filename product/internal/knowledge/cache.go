@@ -6,15 +6,16 @@ package knowledge
 // cache hit may never return deleted or revoked content:
 //
 //   - the key is a digest of principal + effective authorization revision +
-//     knowledge-base revision + a digest of the current readable document
-//     revisions + embedding model revision + canonical query + top_k, recomputed
-//     from current state on every request. Identity, permission or source-version
-//     changes therefore produce a different key; an asynchronous eviction is an
-//     optimization, never a permission guarantee.
-//   - every hit re-checks each returned chunk's document in SQL (not deleted,
-//     active_revision = revision, body artifact ready/not deleted/same owner) and
-//     the body artifact's content hash. Any disagreement discards the entry and
-//     the request proceeds as a miss.
+//     knowledge-base revision + a digest of the current readable documents
+//     (revision/state/active revision/active index id/active embedding revision)
+//     + embedding model revision + canonical query + top_k, recomputed from
+//     current state on every request. Identity, permission, source-version or
+//     index-activation changes therefore produce a different key; an asynchronous
+//     eviction is an optimization, never a permission guarantee.
+//   - every hit re-checks each returned chunk's document in SQL (not deleted, the
+//     chunk belongs to the document's active ready index version, body artifact
+//     ready/not deleted/same owner) and the body artifact's content hash. Any
+//     disagreement discards the entry and the request proceeds as a miss.
 //   - the row is looked up by (cache_key, principal_id, knowledge_base_id), so a
 //     stored body can never be served to a different principal.
 //   - `expires_at` is a TTL, not an authorization: a hit inside the TTL still runs
