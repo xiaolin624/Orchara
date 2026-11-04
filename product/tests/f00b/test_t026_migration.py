@@ -30,6 +30,16 @@ EVALUATION_COLUMNS = (
     "error_code",
     "created_at",
     "finished_at",
+    # F13A/T052 migration 0035 adds four additive columns to the contract table:
+    # `application_id` (T062/T065 ownership + history), `cancel_requested_at`
+    # (T062 cancellation) and `progress_total`/`progress_done` (T065 progress).
+    # They are documented deviations in 0035's header; the contract columns above
+    # are unchanged. T026's baseline assertion is deliberately migrated here
+    # rather than left stale, and the T052 report records the migration.
+    "application_id",
+    "cancel_requested_at",
+    "progress_total",
+    "progress_done",
 )
 REPORT_COLUMNS = (
     "id",

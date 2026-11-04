@@ -87,6 +87,9 @@ type runOptions struct {
 	datasetWaitTimeout time.Duration
 	evaluationPoll     time.Duration
 	reportWaitTimeout  time.Duration
+	// evaluationCaseTimeout bounds one evaluation case's run to a rest state
+	// (F13A/T052). A timeout is recorded as not_run, never passed.
+	evaluationCaseTimeout time.Duration
 	// toolTimeout bounds one trusted preset-tool subprocess (T030).
 	toolTimeout time.Duration
 	// toolBuildTimeout bounds one sandboxed tool build (T037).
@@ -216,6 +219,8 @@ func parseRunOptions(args []string) (*runOptions, error) {
 		"evaluation status-poll/heartbeat cadence (env ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL)")
 	reportWait := flags.Duration("report-wait-timeout", 0,
 		"how long one attempt waits for its report to be finalized (env ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT)")
+	evaluationCase := flags.Duration("evaluation-case-timeout", 0,
+		"how long one evaluation case's run may take to reach a rest state (env ORCHARA_MAINTENANCE_EVALUATION_CASE_TIMEOUT)")
 	toolTimeout := flags.Duration("tool-timeout", 0,
 		"how long one trusted preset-tool subprocess may run (env ORCHARA_MAINTENANCE_TOOL_TIMEOUT)")
 	toolBuildTimeout := flags.Duration("tool-build-timeout", 0,
@@ -290,6 +295,7 @@ func parseRunOptions(args []string) (*runOptions, error) {
 	options.datasetWaitTimeout = *datasetWait
 	options.evaluationPoll = *evaluationPoll
 	options.reportWaitTimeout = *reportWait
+	options.evaluationCaseTimeout = *evaluationCase
 	options.toolTimeout = *toolTimeout
 	options.toolBuildTimeout = *toolBuildTimeout
 	return options, nil
@@ -343,6 +349,11 @@ func (o *runOptions) applyConfig(cfg *config.MaintenanceConfig) error {
 	}
 	o.reportWaitTimeout, err = resolveDuration("report-wait-timeout",
 		o.explicit["report-wait-timeout"], o.reportWaitTimeout, cfg.ReportWaitTimeout)
+	if err != nil {
+		return err
+	}
+	o.evaluationCaseTimeout, err = resolveDuration("evaluation-case-timeout",
+		o.explicit["evaluation-case-timeout"], o.evaluationCaseTimeout, cfg.EvaluationCaseTimeout)
 	if err != nil {
 		return err
 	}
@@ -735,6 +746,7 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 				DatasetWaitTimeout:     r.options.datasetWaitTimeout,
 				EvaluationPollInterval: r.options.evaluationPoll,
 				ReportWaitTimeout:      r.options.reportWaitTimeout,
+				EvaluationCaseTimeout:  r.options.evaluationCaseTimeout,
 				ToolBuildTimeout:       r.options.toolBuildTimeout,
 			},
 			Embedder: embedding.FromEnv(),

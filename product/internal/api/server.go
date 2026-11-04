@@ -39,6 +39,10 @@ type Server struct {
 	artifacts *background.ArtifactStore
 	// execution owns the F03 claim/heartbeat/attempt-exit primitive.
 	execution *execution.Service
+	// evaluationRuns is F13A/T052's job-scoped evaluation run bridge: it creates
+	// a case's run as the evaluation owner and reads the independent truth the
+	// checker decides on.
+	evaluationRuns *execution.EvaluationRuns
 	// runArtifacts owns F05/T033's run-bound upload/download/status/register:
 	// the supervisor may claim an attempt, but only the live attempt that
 	// reserved an artifact can complete and register it.
@@ -188,24 +192,26 @@ func New(deps Deps) *Server {
 	if embedder == nil {
 		embedder = embedding.FromEnv()
 	}
+	jobsController := background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier)
 	return &Server{
-		service:       deps.Service,
-		policy:        authorizer,
-		catalog:       catalog.New(deps.Service.DB, authorizer),
-		jobs:          background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
-		artifacts:     background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		execution:     executionService,
-		runArtifacts:  execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		userArtifacts: artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		knowledge:     knowledge.New(deps.Service.DB, deps.Objects, embedder),
-		toolRuns:      toolruns.New(deps.Service.DB, notifier),
-		toolVersions:  toolversions.New(deps.Service.DB),
-		models:        modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
-		modelRegistry: modelRegistry,
-		capabilities:  capabilityService,
-		connectors:    deps.Connectors,
-		approvals:     approvalService,
-		preview:       newPreviewHub(),
+		service:        deps.Service,
+		policy:         authorizer,
+		catalog:        catalog.New(deps.Service.DB, authorizer),
+		jobs:           jobsController,
+		artifacts:      background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:      executionService,
+		evaluationRuns: execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
+		runArtifacts:   execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts:  artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		knowledge:      knowledge.New(deps.Service.DB, deps.Objects, embedder),
+		toolRuns:       toolruns.New(deps.Service.DB, notifier),
+		toolVersions:   toolversions.New(deps.Service.DB),
+		models:         modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		modelRegistry:  modelRegistry,
+		capabilities:   capabilityService,
+		connectors:     deps.Connectors,
+		approvals:      approvalService,
+		preview:        newPreviewHub(),
 		memory: memory.New(
 			deps.Service.DB, deps.Objects,
 			catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
@@ -331,6 +337,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// the report read never returns the report body or an artifact path.
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+
+	// F13A/T052: the contract's evaluateDraft. The creator names a frozen draft
+	// revision and an uploaded, sealed evaluation dataset; the platform freezes
+	// the execution snapshot, queues the trusted runner and returns the queued
+	// evaluation. A caller can never attest its own verdict: only the completion
+	// guard writes a report row.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/evaluations", s.handleSubmitEvaluation)
 
 	// F00B/T024: presigned object transfers. There is deliberately no session
 	// requirement here (the HMAC token is the whole authority) and no list
