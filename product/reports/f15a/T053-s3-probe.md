@@ -121,11 +121,11 @@ HMAC 链接 TTL/操作/上限绑定/未配置 fail closed、幂等删除与兄�
 ```text
 $ python -m pytest tests/f15a -q
 ....................................                                     [100%]
-36 passed in 76.91s (0:01:16)
+36 passed in 77.08s (0:01:17)
 
 $ python -m pytest tests/tooling -q
 .....................                                                    [100%]
-21 passed in 6.24s
+21 passed in 6.17s
 
 $ go build ./...
 (exit 0, no output)
