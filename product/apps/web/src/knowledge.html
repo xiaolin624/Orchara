@@ -128,6 +128,38 @@
     </div>
   </section>
 
+  <section class="card">
+    <h2>5. 就知识库提问（回答只引用本次检索且当前可读的资料）</h2>
+    <p class="hint">
+      服务端先做与检索相同的 ACL/当前版本过滤，再用抽取式 stub 组合作答（本构建
+      <strong>未配置模型 provider</strong>，回答都标注生成方式，不会冒充模型答案）。返回前逐个校验：
+      引用必须属于本次检索，且必须在当前授权与当前文档版本下可读；否则整条回答被拒绝。
+      没有检索到资料时返回空答案（不是错误）。点击引用会重新打开
+      <code>GET /knowledge-citations/{id}</code>；撤销或删除后显示“引用不可用”，绝不回放旧正文。
+    </p>
+    <form id="answer-form" method="post">
+      <label for="answer-query">问题</label>
+      <input id="answer-query" type="text" autocomplete="off" maxlength="2000" required />
+      <label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
+      <input id="answer-top-k" type="number" min="1" max="50" step="1" value="8" />
+      <button id="answer-submit" type="submit">提问</button>
+      <p id="answer-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="answer-panel" hidden aria-live="polite">
+      <h3>回答</h3>
+      <p id="answer-generation" class="meta"></p>
+      <pre id="answer-text"></pre>
+      <p id="answer-retrieval" class="meta"></p>
+      <h3>引用（点击重新校验当前可读性）</h3>
+      <ul id="answer-citations" class="bases"></ul>
+      <div id="answer-citation-panel" hidden>
+        <p id="answer-citation-meta" class="meta"></p>
+        <pre id="answer-citation-text"></pre>
+        <p id="answer-citation-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script src="/assets/knowledge.js"></script>
   <script>
@@ -301,6 +333,7 @@
         currentBase = String(el('kb-select').value || '');
         currentDocument = '';
         el('document-panel').hidden = true;
+        clearAnswerPanel();
       });
 
       el('knowledge-file').addEventListener('change', () => {
@@ -480,6 +513,98 @@
             : '返回 ' + view.items.length + ' 个片段', 'ok');
         } catch (error) {
           setStatus(status, '检索失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      function clearAnswerPanel() {
+        el('answer-panel').hidden = true;
+        el('answer-generation').textContent = '';
+        el('answer-text').textContent = '';
+        el('answer-retrieval').textContent = '';
+        clear(el('answer-citations'));
+        el('answer-citation-panel').hidden = true;
+        el('answer-citation-meta').textContent = '';
+        el('answer-citation-text').textContent = '';
+        setStatus(el('answer-citation-status'), '', '');
+      }
+
+      function openAnswerCitation(citation) {
+        const panel = el('answer-citation-panel');
+        panel.hidden = false;
+        el('answer-citation-meta').textContent = citation.citationText;
+        el('answer-citation-text').textContent = '';
+        setStatus(el('answer-citation-status'), '读取引用并重新校验…', 'pending');
+        api(knowledgeCitationPath(citation.chunkId)).then((chunk) => {
+          const opened = describeChunk(chunk);
+          el('answer-citation-meta').textContent = opened.citationText;
+          el('answer-citation-text').textContent = opened.text;
+          setStatus(el('answer-citation-status'),
+            opened.citationOk ? '引用当前可读' : '引用不一致：不展示为该片段的来源',
+            opened.citationOk ? 'ok' : 'bad');
+        }).catch((error) => {
+          // Never fall back to the answer's cached citation text: a revoked or
+          // deleted source is unavailable, not a stale body.
+          el('answer-citation-text').textContent = '';
+          setStatus(el('answer-citation-status'),
+            '引用不可用 ' + describeFailure(error), 'bad');
+        });
+      }
+
+      function renderAnswer(payload) {
+        const view = describeAnswer(payload);
+        clearAnswerPanel();
+        el('answer-panel').hidden = false;
+        el('answer-generation').textContent = view.generation.text;
+        el('answer-retrieval').textContent = view.retrieval.text;
+        el('answer-text').textContent = view.empty
+          ? '（没有检索到可读资料：空答案，不是错误）'
+          : view.text;
+        view.citations.forEach((citation) => {
+          const row = document.createElement('li');
+          row.className = citation.citationOk ? '' : 'bad-citation';
+          const meta = document.createElement('p');
+          meta.className = 'meta';
+          meta.textContent = citation.citationText + ' · score ' + citation.score.toFixed(4);
+          row.appendChild(meta);
+          const quote = document.createElement('p');
+          quote.textContent = citation.text;
+          row.appendChild(quote);
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = '打开引用';
+          open.addEventListener('click', () => openAnswerCitation(citation));
+          row.appendChild(open);
+          el('answer-citations').appendChild(row);
+        });
+        return view;
+      }
+
+      el('answer-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('answer-status');
+        if (!currentBase) {
+          setStatus(status, '请先创建或选择知识库', 'bad');
+          return;
+        }
+        const built = buildAnswerBody(el('answer-query').value, el('answer-top-k').value);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '检索并逐个校验引用…', 'pending');
+          const payload = await api(knowledgeAnswerPath(currentBase), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          const view = renderAnswer(payload);
+          setStatus(status, answerOutcomeText(view.outcome), 'ok');
+        } catch (error) {
+          const refusal = describeAnswerRefusal(error);
+          clearAnswerPanel();
+          setStatus(status, refusal.outcomeText
+            + '（' + refusal.code + (refusal.chunkID ? ' · ' + refusal.chunkID : '') + '）', 'bad');
         }
       });
 
