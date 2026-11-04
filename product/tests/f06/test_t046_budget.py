@@ -455,3 +455,46 @@ def test_an_invalid_projection_still_charges_the_real_usage(f06_stack) -> None:
     assert second.status == 429, second.text
     assert second.json["error"]["code"] == "budget_exhausted", second.text
     assert t041.attempt_count(f06_stack.dbname, operation_id) == 1
+
+def test_an_invalid_projection_without_usage_keeps_the_reservation(f06_stack) -> None:
+    """P1-5 (missing-usage half): the conservative reservation is never released.
+
+    The provider answered but reported no usage object, and the projection is
+    refused. The failed attempt must keep the reservation as ``usage_missing``
+    (only maintenance reconciliation can settle it), not release it as if the
+    call had been free.
+    """
+    owner = t041.owner(f06_stack)
+    t046.configure_golden(
+        f06_stack.dbname, model_id="stub-usage-missing", config=priced_config()
+    )
+    owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
+    params = t041.model_params(
+        response_schema={
+            "type": "object",
+            "required": ["count"],
+            "properties": {"count": {"type": "banana"}},
+        }
+    )
+    reservation = t046.expected_reservation(
+        params, input_per_million="1", output_per_million="2"
+    )
+    t046.set_budget(f06_stack.dbname, run["id"], str(reservation))
+
+    operation_id = t041.new_uuid()
+    response = t041.invoke(t041.worker_client(f06_stack), lease,
+                           operation_id=operation_id, params=params)
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "provider_response_invalid", response.text
+
+    attempt = t046.attempt_row(f06_stack.dbname, operation_id, 1)
+    assert attempt["state"] == "failed", attempt
+    assert attempt["settlement_state"] == "usage_missing", attempt
+    assert attempt["charged_amount"] is None, attempt
+    assert attempt["price_version"].startswith("price-v1:"), attempt
+
+    rows = t046.ledger_rows(f06_stack.dbname, run["id"])
+    assert [row["kind"] for row in rows] == ["reserve"], rows
+    facts = t046.budget_facts(owner, run["id"])
+    assert Decimal(facts["reserved_amount"]) == reservation, facts
+    assert Decimal(facts["charged_amount"]) == 0, facts
