@@ -163,6 +163,25 @@ type Citation struct {
 	SheetName              string   `json:"sheet_name,omitempty"`
 	Columns                []string `json:"columns,omitempty"`
 	ColumnsOmitted         bool     `json:"columns_omitted,omitempty"`
+	// PDF is set only on a PDF chunk (T060). It is one additive object rather
+	// than flat fields so that a page-local offset of zero is representable and
+	// the citation of every other input family keeps its exact shape.
+	PDF *CitationPDF `json:"pdf,omitempty"`
+}
+
+// CitationPDF is the page attribution of one PDF chunk. PageStart/PageEnd are
+// 1-based inclusive page numbers (equal for the page-bounded chunker);
+// PageCharStart/PageCharEnd are rune offsets inside that page's text;
+// PageCount is the document's page count and PagesWithoutText lists the pages
+// that had no text layer, so a partial text layer is recorded honestly instead of
+// being presented as full coverage.
+type CitationPDF struct {
+	PageStart        int   `json:"page_start"`
+	PageEnd          int   `json:"page_end"`
+	PageCharStart    int   `json:"page_char_start"`
+	PageCharEnd      int   `json:"page_char_end"`
+	PageCount        int   `json:"page_count"`
+	PagesWithoutText []int `json:"pages_without_text,omitempty"`
 }
 
 // ChunkRow is one staged chunk the handler writes before activation.

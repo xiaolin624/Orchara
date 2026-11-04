@@ -267,7 +267,7 @@ func (s *Server) writeKnowledgeFailure(w http.ResponseWriter, r *http.Request, e
 	case errors.Is(err, knowledge.ErrUnsupportedInput):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			"this source format is not supported yet; this slice ingests text/plain, "+
-				"text/markdown, text/csv and XLSX",
+				"text/markdown, text/csv, XLSX and PDF",
 			map[string]any{"field": "source_artifact_id"})
 	case errors.As(err, &validation):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",

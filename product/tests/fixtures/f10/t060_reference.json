@@ -1,0 +1,65 @@
+{
+  "generator": "tests/fixtures/f10/build_pdf_fixtures.py",
+  "min_text_runes": 32,
+  "hand_checked": "page texts were compared with a rendered page image during T060; the scanned fixture renders one image and no text",
+  "fixtures": {
+    "t060_plain.pdf": {
+      "sha256": "21907eb06c072d2682c1c0dad7f69c266e4fd08d1d61e90175c5655ad46f2109",
+      "bytes": 1987,
+      "media_type": "application/pdf",
+      "page_count": 3,
+      "pages": [
+        "Quarterly Sales Report\nPrepared for the regional operations review.\n\nNorth region revenue reached 1234.50 yuan across 42 orders.\nEast region revenue reached 987.25 yuan across 31 orders.",
+        "Refund policy\nA refund may be requested within 30 days after the order is completed.\nRequests after that window are not accepted.",
+        "Operations notes\nThe October close is scheduled for the first business day of November.\nAll figures in this report are stated in yuan."
+      ],
+      "pages_without_text": []
+    },
+    "t060_layout.pdf": {
+      "sha256": "e81e076cc714a8774817ef3d25ad624931c97e277a83523263ad11c6017b1d4f",
+      "bytes": 1192,
+      "media_type": "application/pdf",
+      "page_count": 1,
+      "pages": [
+        "Order ID Region Amount\nA-1001 North 120.50\nA-1002 East 987.25\nA-1003 South 450.00\nA-1004 West 88.10"
+      ],
+      "pages_without_text": []
+    },
+    "t060_scanned.pdf": {
+      "sha256": "ddeb26336fc626abefc8487d9a0f5f9efaa0893a2680e34ab0b943e33d0dc770",
+      "bytes": 2199,
+      "media_type": "application/pdf",
+      "page_count": 1,
+      "pages": [
+        ""
+      ],
+      "pages_without_text": [
+        1
+      ]
+    },
+    "t060_partial.pdf": {
+      "sha256": "2d5b7793a9f21028a89320367f3a6b7f0370326cbfb980199828aa4ea0768bbc",
+      "bytes": 2938,
+      "media_type": "application/pdf",
+      "page_count": 3,
+      "pages": [
+        "Archive cover sheet\nThis document was assembled from three source pages.",
+        "",
+        "Archive continuation\nThe middle page is kept as an image because its text layer is missing."
+      ],
+      "pages_without_text": [
+        2
+      ]
+    },
+    "t060_short.pdf": {
+      "sha256": "1cbaf751412fd9cb663353579b5285e84cccb6c7b71741b30d8ce25aa743a463",
+      "bytes": 1097,
+      "media_type": "application/pdf",
+      "page_count": 1,
+      "pages": [
+        "Scan from the office copier"
+      ],
+      "pages_without_text": []
+    }
+  }
+}
