@@ -435,4 +435,40 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
 - 迁移 0030 只新增该表（0001–0029 未改）；`contracts/**` 与 `docs/spec/**` 未改，
   `sync_spec --check` 无漂移。
 
+## T050 追加（2026-11-04）：审批是服务端构建的真实参数提案；批准不授予权限，恢复走唯一 resume
+
+### D17 —— 提案由服务端从 operation/策略/manifest 构建；决定与恢复分离且各自幂等
+
+- **worker 从不提供人类看到的提案文本。** approval 行与 sealed `purpose=approval_proposal`
+  artifact 由 capability 代理在写风险 connector 的同一事务里创建：真实目标来自管理员批准且
+  manifest 冻结的 connector 策略行（origin/method/path_prefix）与已通过请求 schema 的
+  `path/query`，canonical params 与其 hash 来自 T041 已封存的 params artifact，来源版本来自
+  Run 的 execution snapshot/manifest，deadline 来自服务端时钟。worker 的
+  `approval_required` 只是状态；契约 `prepareApproval` 的 `proposal` 字段被忽略。
+- **审批人是 Run owner；service account 用其负责人类。** 无负责人的 service account 直接
+  `approver_unavailable`（fail closed），不猜审批人。admin 可以读、但不是默认审批人，也不能
+  代替指定审批人决定；stranger 一律 404。发布审核是 `publication_reviews` 另一个聚合，其 id
+  在审批端点表现为不存在。
+- **决定是唯一写入口，锁序 `Run → operation → approval`。** 必须精确携带提案的
+  `params_sha256`；过期按数据库时钟判定；disabled principal、cancelled/terminal Run、已撤销的
+  connector 策略、operation 不再是 `awaiting_approval` 都拒绝。同决定重放 200（同一行、不新增
+  事实），相反决定 409 `decision_conflict`；并发相反决定由行锁串行化，只有一个赢家。
+- **approve 只允许操作继续，不授予权限。** 同事务把 approval 置 `approved`、operation
+  `awaiting_approval → authorized`；决定经
+  `execution.ResolveWaiting(kind=approval,outcome=approved,reference=<approval id>)` 交给 T035，
+  旧尝试退出后由 `maybeEnqueueResumeTx` 创建唯一 resume。恢复的新尝试重新走 capabilities：
+  live attempt、run state、manifest digest、策略批准/未撤销、owner 未 disabled、预算正数都在
+  resume/派发前再校验；`authorized → dispatching` CAS 保证最多一次物理写，replay 返回已记录
+  结果。
+- **reject/expire 是拒绝，不是恢复。** 决定落库后 Run 在 exit 事实齐全时以
+  `approval_rejected`/`approval_expired` 失败，零 resume、零出站。该终止只在 decision reference
+  命名一个真实 `platform.approvals` 行时发生；T035 非契约 synthetic bridge 的 opaque reference
+  保持原有“恢复后由 worker 处理失败”的契约。取消/终态把 pending approvals 置 `invalidated`，
+  保留提案 artifact 供审计。
+- **过期没有后台 sweeper（`not_run`）。** 本票只在决定路径用数据库时钟判定过期；无人处理的
+  pending approval 会保留到读取/决定或 Run 取消/终止，页面显示真实 `expires_at`。
+- 迁移 0031 只新增 `platform.approvals`（契约列；`node_key` 由 logical key 节点前缀填充、
+  不新增 `operations.approval_id`、无 created_at 列，偏差见迁移头注释）；0001–0030、
+  `contracts/**`、`docs/spec/**` 未改，`sync_spec --check` 无漂移。
+
 
