@@ -7,47 +7,48 @@
 - 实现进度权威：[PROGRESS.md](PROGRESS.md)
 - 决策记录：[docs/adr/](docs/adr/)
 - 术语表：[docs/spec/GLOSSARY.md](docs/spec/GLOSSARY.md)
+- 干净开发环境启动与销售冒烟：[deploy/dev/README.md](deploy/dev/README.md)
 
 ## 当前状态（不要读成"平台已完成"）
 
-已实现范围：**D00 + P01–P05 + F00 + F01**。
+**已交付范围**（逐票证据以 [PROGRESS.md](PROGRESS.md) 为准）：
 
-- **D00–P05**：环境探测与规格复现、锁定依赖、双语言指纹/DSL 校验、检查点恢复与制品钉版、
-  Profile/CI、WSL2 沙箱隔离（ADR 0002）、租约/排空/丢回执。
-- **F00**：可启动的 HTTP 骨架、健康/就绪检查、静态状态页、环境 profile。
-- **F01（身份基础，5/5）**：迁移链与 `cmd/admin migrate` / `bootstrap`；本地用户邀请、激活、
-  登录、登出，Cookie 会话与 CSRF 强制；默认拒绝的资源 ACL（`platform.applications` 读模型、
-  `policy_epochs` / `resource_grants`、授权/撤销、角色更新与 last-admin）；具名负责人的服务账号
-  与可撤销、带 scope 的 bearer API Key；禁用/启用（同一事务撤销会话与 Key、bump epoch、审计）
-  与 `cmd/admin handover`；`/login`、`/admin`、`/apps`、`/activate` 页面。
+- **D00 + P01–P05 + F00 + F01**：环境探测与规格复现、锁定依赖、双语言指纹/DSL 校验、
+  检查点恢复与制品钉版、Profile/CI、WSL2 沙箱探针、租约/排空/丢回执；可启动 HTTP 骨架与
+  身份基础（迁移/bootstrap、邀请/激活/登录/登出、CSRF、默认拒绝的资源 ACL、服务账号与
+  可撤销 API Key、禁用与责任交接）。
+- **F00B**：持久后台任务控制器与 `cmd/maintenance run` 双池；job 限定文件访问、HMAC 签名
+  URL、受控模型调用（T026 的合成评测 runner 属 F13A，状态为 `partial`）。
+- **F02A**：草稿 ETag/CAS 与版本读模型、执行清单固化与依赖校验、私有 debug 快照与排队 Run
+  （T023/T025 的发布提交与真实 worker 分别属 F02B/F03，状态为 `partial`；T027 `passed`）。
+- **F03**：领取/租约/配额、结果提议 + 身份化退出证据的统一幂等 finalizer、持久事件流/SSE、
+  跨尝试活跃时钟与截止、等待/唯一恢复、取消与迟到消息不可复活、恢复证据与安全重驱。
+- **F05**：上传/格式准入/封存与授权下载、预置 `sales_stats` 工具（Decimal CSV/XLSX）、
+  run 绑定的沙箱工具调试与产物登记、工具构建与审核（WSL2/runsc；正式隔离仍是外部阻塞）。
+- **F06 / F04A**：模型登记/兼容验证/受控调用、连接器、预算、上下文、模板、审批、能力账本；
+  画布线性编译与校验（T039–T051 共 13 个 issue）。
+- **F15A / T057**：干净开发环境的可重放启动产品 `deploy/dev/`，以及真实 HTTP 的销售/失败/
+  取消/stub 模型 profile 冒烟与证据 [`reports/f15a/`](reports/f15a/)。Compose、S3、真实
+  模型与正式隔离均为 `blocked`，不是"已覆盖"。
 
-平台**仍不是完整 v1**：请求/路由/执行/评测/RAG/记忆/审批/编译器/画布/发布门禁/部署与灾备等
-后续 epic 尚未实现。F01 的已知边界（详见 [`reports/f01/`](reports/f01/) 与
-[PROGRESS.md](PROGRESS.md)）：
+平台**仍不是完整 v1**：路由/评测执行器（F13A）、发布门禁（F02B）、RAG/记忆（F08/F09）、
+审批后的真实外部操作、编译器其余节点、部署与灾备等 epic 尚未实现；`cmd/worker` 目前只是
+**不领取工作的 liveness 骨架**，真实异步循环是 `cmd/maintenance run` 与
+`cmd/supervisor exec --once`。open issue 数以 GitHub 为准。
 
-- **没有浏览器 E2E**：页面测试是真实 HTTP 内容断言；共享 `assets/app.js` 由 Node 真实执行，
-  页面内联脚本做 `node --check`，但 DOM/交互行为未跑。
-- **没有 approvals / F09 记忆存储**：F01 只交付服务账号责任交接与 `/memories` 的服务凭据拒绝
-  边界；审批属 F06，记忆属 F09。
-- **登录限流是单进程内存态**（5 次/60 秒），多实例配额属 F15B；限流键取直连 peer 地址。
-- **ACL 词汇表只有 `application` / `read`**；`createApplication` 与 `application_versions`
-  外键属 F02A。
-- **`app.operations` 的 worker 授权仍是未验证的 P04 声明**：当前链没有创建该表，0005 的条件
-  GRANT 不执行；F03 必须建表并显式授权。
-- **`Secure` Cookie 由 Go 单测覆盖**；`linux-sandbox` / `real-model` profile 未做 HTTP 级实测。
-
-真实状态以 [PROGRESS.md](PROGRESS.md) 为准；F01 各票的证据与限制见 `reports/f01/T015-*.md`…
-`T021-*.md`。
-
-已知阻塞 / 限制（D00/T001 实测 + F01 补充）：
+### 已登记阻塞（D00/T001 实测 + 后续补充）
 
 | 阻塞 | 影响 | 解除条件 |
 |---|---|---|
 | `linux_isolation`（生产） | 验收已在 WSL2 完成（ADR 0002）；生产隔离交付仍需真实独立 Linux 宿主 | 独立 Linux 宿主 + runsc/gVisor + root，并重跑 P03 证据 |
-| `model_credentials` | 只能报告 stub 路径；真实模型质量不可声明 | 部署者提供已获批模型端点凭据 |
-| `container_runtime` | Compose 部署票不可验证 | 安装 Docker/兼容运行时 |
+| `model_credentials` | 只能报告 `dev-stub` / `capacity-stub` 的 stub 路径；真实模型质量不可声明 | 部署者提供已获批模型端点凭据 |
+| `container_runtime` | Compose/镜像部署票不可验证；当前是"多进程 + 本地 PG"启动 | 安装 Docker/兼容运行时 |
 
-GPU 存在（RTX 3050 Laptop，4 GiB），但未运行任何训练；4 GiB 显存低于常规 LoRA 微调需求，F14 仍为 not_run。
+**另一种缺项不是阻塞**：本机无 Redis（平台用 PostgreSQL 轮询）、无 S3/MinIO（用真实本地
+文件系统 store）；这两项按 `not_run`/`blocked` 如实记录，不为了拓扑图新增组件。
+
+GPU 存在（RTX 3050 Laptop，4 GiB），但未运行任何训练；4 GiB 显存低于常规 LoRA 微调需求，
+F14 仍为 `not_run`。
 
 ## 工具链位置
 
@@ -87,7 +88,13 @@ python tools/pg_dev.py status
 python tools/bootstrap_probe.py            # 或 --recreate 重建
 python tools/sbom.py                       # 生成 reports/p01/sbom.json
 
-# 启动产品骨架（F00）：浏览器打开 http://127.0.0.1:8088/
+# F15A/T057：干净开发环境（migrate → bootstrap → API → maintenance）与销售冒烟
+# 细节、逐条原始命令和 blocked/not_run 说明见 deploy/dev/README.md
+$env:ORCHARA_DEV_ADMIN_PASSWORD = "<至少 12 位的本地管理员口令>"
+python deploy\dev\bringup.py smoke --fresh --out reports\f15a\dev-smoke-run.json
+# 常驻开发环境：python deploy\dev\bringup.py up --fresh  （Ctrl-C 停止）
+
+# 手工启动骨架（等价于 deploy/dev 的原始命令）
 $env:ORCHARA_PROFILE  = "dev-stub"          # 必填，缺失即拒绝启动
 $env:ORCHARA_DB_DSN   = (python tools/pg_dev.py dsn)
 $env:ORCHARA_HTTP_ADDR = "127.0.0.1:8088"
@@ -97,36 +104,29 @@ go run ./cmd/api
 # F01 身份：迁移 → 建首个管理员（密码只从隐藏 stdin 读）→ 启动后访问页面
 go run ./cmd/admin migrate
 go run ./cmd/admin bootstrap --login admin --display-name "Platform Admin"
-# 终端里会隐藏读取密码；管道/脚本输入时读一行，不回显、不落日志
-go run ./cmd/api
-# 页面：/login（登录）、/admin（邀请/授权/角色/服务账号/禁用）、
-#       /apps（ACL 过滤后的应用列表）、/activate（一次性令牌激活）
-
-# F01 交接：服务账号责任转给另一位启用中的人类管理员（CLI-only）
-go run ./cmd/admin handover --from <旧负责人 uuid> --to <新负责人 uuid> --by <操作者 uuid>
+# 页面：/login、/admin、/apps、/activate；F05/F06 另有 /attachments、/runs、/models
 ```
-
-F01 的命令、接口、原始结果与限制见 [`reports/f01/`](reports/f01/)（T015–T021），票状态见
-[PROGRESS.md](PROGRESS.md)。`admin` 的 DSN 只从 `ORCHARA_DB_DSN` 读取，不要放在 argv 上。
 
 可选 profile：`dev-stub` / `linux-sandbox` / `real-model` / `capacity-stub`。
 非 `linux-sandbox` 下启用 `ORCHARA_ALLOW_ARBITRARY_SCRIPTS=true` 会被拒绝；
 `real-model` 需要 `ORCHARA_MODEL_ENDPOINT` 与 `ORCHARA_MODEL_SECRET_REF`（只接受
-`env:NAME` / `file:NAME`，不接受 URL 或路径）。
+`env:NAME` / `file:NAME`，不接受 URL 或路径）。本机**只有** `dev-stub` 可实际启动
+（无模型凭据、无被接受的 Linux 隔离宿主）。
 
 一键基础检查：`python tools/ci_checks.py`（无 Go/数据库时加 `--quick`）。
 
 健康检查同时提供契约路径 `/health/live`、`/health/ready`（`contracts/openapi.json`
-的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。
-页面每 3 秒读 `/health/live` 与 `/api/status`：数据库不可用时 `/health/ready` 返回 503，
-不会因为"进程还活着"就报告就绪。
+的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。页面每 3 秒读
+`/health/live` 与 `/api/status`：数据库不可用时 `/health/ready` 返回 503，不会因为
+"进程还活着"就报告就绪。状态页还会显示 `profile` 与 `stub_results` 标记。
 
 ## 测试
 
 ```powershell
-python -m pytest tests -q        # 工具 + 探针 + 集成（集成需 Go 与开发库）
-go test ./...                    # 平台 Go 测试
-cd probes/jcs/go; go test ./...   # JCS 黄金向量（Go 侧）
+python -m pytest tests -q             # 工具 + 探针 + 集成（集成需 Go 与开发库）
+python -m pytest tests/acceptance -q  # F15A/T057 干净环境冒烟（真实 PG/二进制/HTTP/mTLS）
+go test ./...                         # 平台 Go 测试
+cd probes/jcs/go; go test ./...       # JCS 黄金向量（Go 侧）
 ```
 
 规格自带的静态校验（在仓库根目录执行）：
@@ -136,3 +136,6 @@ tools/.venv/Scripts/python.exe tools/validate_contracts.py
 tools/.venv/Scripts/python.exe tools/validate_handoff.py
 tools/.venv/Scripts/python.exe tools/check_handoff_package.py
 ```
+
+各票证据与限制见 [`reports/`](reports/)（`f06/T039-model-registry.md` 是报告体例样例）；
+票状态见 [PROGRESS.md](PROGRESS.md)。

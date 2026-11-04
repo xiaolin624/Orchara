@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 个人记忆（F09/T054）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 0; margin: .4rem 0 0; list-style: none; }
+    li { margin: .8rem 0; padding: .6rem .7rem; border-left: 3px solid rgba(128,128,128,.5); }
+    .row { display: grid; grid-template-columns: 7.5rem 1fr; gap: .2rem .9rem; font-size: .88rem; }
+    .row .label { opacity: .7; }
+    .row .value { word-break: break-word; white-space: pre-wrap; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .hint { font-size: .82rem; opacity: .7; }
+    .decision-buttons { display: flex; gap: .75rem; margin-top: .7rem; }
+    button { padding: .4rem .9rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/runs">运行</a>
+    <a href="/approvals">审批</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>个人长期记忆（F09/T054）</h1>
+  <p class="sub">
+    候选只是<strong>提议</strong>：它由 Run 内的自动抽取提出，正文由服务端封存，<strong>确认前不可召回</strong>。
+    只有你明确点击“确认”才会保存为个人记忆；拒绝或过期都不会生成记忆，也不会自动保存。
+    重复确认返回同一条记忆，不会产生第二条记录，也不会复制第二份正文。
+  </p>
+  <p class="hint">
+    个人记忆按“使用者 + 应用范围”隔离，换到另一个应用不会自动带走。管理员也不是例外：
+    看不到或决定不了别人的候选与记忆。页面全部使用 textContent 渲染服务端文本，
+    不在浏览器里保留凭据或记忆正文。
+  </p>
+
+  <section class="card">
+    <h2>待我确认的候选</h2>
+    <p class="hint">
+      每条候选显示来源、应用范围、过期时间与候选内容；确认/拒绝按钮只对“待确认”的候选出现，
+      服务端在决定时会再次校验过期时间与所有者。
+    </p>
+    <p id="candidates-status" class="status" role="status" aria-live="polite">正在加载候选…</p>
+    <ul id="candidates-list"></ul>
+    <p id="candidates-empty" class="hint" hidden>当前没有候选。只有确认后的候选才会出现在下面的“当前记忆”里。</p>
+    <button id="candidates-next" type="button" hidden>下一页候选</button>
+    <p id="decision-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2>当前记忆</h2>
+    <p class="hint">
+      每条记忆按 revision 标识版本；之后的编辑/删除走强 ETag 与冲突提示（F09 后续票），
+      不会静默覆盖。候选状态：待确认 / 已确认 / 已拒绝 / 已过期。
+    </p>
+    <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
+    <ul id="memories-list"></ul>
+    <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。确认一条候选，或在一个应用里明确“记住”。</p>
+    <button id="memories-next" type="button" hidden>下一页记忆</button>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/memories.js"></script>
+</body>
+</html>
