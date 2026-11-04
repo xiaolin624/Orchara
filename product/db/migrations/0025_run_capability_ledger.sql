@@ -22,17 +22,19 @@
 --   2. `platform.operation_attempts` is not in the contract baseline. It is the
 --      F06/T041 physical-attempt ledger (IMPLEMENTATION-DETAILS §5: every
 --      physical call is a row, never a hidden retry). T046 adds budget
---      settlement on top of `reserved_amount`/`charged_amount`; T050 adds
---      connector/approval rows, which this ticket deliberately does not create.
+--      settlement on top of `reserved_amount`/`charged_amount`; T048 (migration
+--      0029) adds the connector registry and T050 (0031) the approval table,
+--      neither of which this ticket creates.
 --   3. `operation_attempts.attempt_token` binds the physical attempt to the
 --      live run attempt that caused it (worker provenance and the result
 --      endpoint's "belongs to this run/attempt" check). It is nullable so a
 --      future maintenance/supervisor-owned dispatch can exist, but T041 always
 --      writes it.
---   4. `connector` is a legal `capability_kind` in the contract, but no
---      connector capability is executable in this batch: the Go service refuses
---      it with 422 `capability_kind_unsupported`. The CHECK still accepts it so
---      T050 can insert connector rows without a second migration.
+--   4. `connector` is a legal `capability_kind` in the contract. T041 itself
+--      did not execute a connector (the Go service refused it with 422
+--      `capability_kind_unsupported`); the CHECK still accepts the kind so the
+--      later T048 connector rows (migration 0029) and T050 approvals (0031)
+--      need no second migration.
 --   5. `provider_idempotency_key`, `dispatched_at`, `reconciled_by` and
 --      `reconciliation_evidence_id` are contract columns this ticket creates but
 --      does not write (no provider idempotency key exists until a real adapter

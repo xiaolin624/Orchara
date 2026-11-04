@@ -79,9 +79,21 @@ CREATE INDEX IF NOT EXISTS usage_ledger_budget_root
 ALTER TABLE platform.operation_attempts
     ADD COLUMN IF NOT EXISTS settlement_state text NOT NULL DEFAULT 'none';
 
-ALTER TABLE platform.operation_attempts
-    ADD CONSTRAINT operation_attempts_settlement_state_check
-        CHECK (settlement_state IN ('none', 'reserved', 'settled', 'released', 'usage_missing'));
+-- Guarded constraint: ADD CONSTRAINT has no IF NOT EXISTS, so it is added only
+-- when absent. The DO block keeps the whole migration replayable.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+          WHERE conname = 'operation_attempts_settlement_state_check'
+            AND conrelid = 'platform.operation_attempts'::regclass
+    ) THEN
+        ALTER TABLE platform.operation_attempts
+            ADD CONSTRAINT operation_attempts_settlement_state_check
+            CHECK (settlement_state IN ('none', 'reserved', 'settled', 'released', 'usage_missing'));
+    END IF;
+END
+$$;
 
 -- Same privilege boundary as 0007–0027: a worker never gets a direct path and
 -- nothing is inherited from PUBLIC.

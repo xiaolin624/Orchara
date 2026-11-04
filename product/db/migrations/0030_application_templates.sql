@@ -17,6 +17,13 @@
 -- `definition` and `capability_card` are stored exactly as the source draft
 -- holds them, so a seed can be re-run without recompiling anything and an
 -- instantiate is a byte-for-byte copy of the reviewed source.
+--
+-- Deliberate deviation from `contracts/database.sql`, and its owner:
+--   1. The contract baseline has **no template table**. T049 adds
+--      `platform.application_templates` as the server-controlled source-draft
+--      registry; docs/contracts are not edited and the generated contract is
+--      unchanged. A template is not an application, version or publication:
+--      the F02B publication boundary is untouched.
 CREATE TABLE IF NOT EXISTS platform.application_templates (
     id              text PRIMARY KEY CHECK (length(btrim(id)) > 0),
     name            text NOT NULL CHECK (length(btrim(name)) > 0),
