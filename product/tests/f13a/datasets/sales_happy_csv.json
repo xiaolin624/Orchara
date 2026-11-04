@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "schema_version": "1.0",
+      "case_id": "sales-happy-csv",
+      "category": "sales",
+      "family_id": "sales-happy",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "sales-happy-csv",
+        "task_input": {
+          "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+          "media_type": "text/csv"
+        }
+      },
+      "fixture_id": "sales-happy-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "succeeded"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/total",
+          "expected": "250.00"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/东区",
+          "expected": "200.00"
+        },
+        {
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/西区",
+          "expected": "50.00"
+        },
+        {
+          "kind": "json_equals",
+          "pointer": "/summary/order_count",
+          "expected": 3
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    }
+  ]
+}

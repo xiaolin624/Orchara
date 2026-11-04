@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "schema_version": "1.0",
+      "case_id": "sales-tool-timeout",
+      "category": "sales",
+      "family_id": "sales-timeout",
+      "split": "dev",
+      "target": {
+        "kind": "debug_snapshot",
+        "id": "frozen-evaluation-snapshot"
+      },
+      "input": {
+        "source": "sales-tool-timeout",
+        "task_input": {
+          "sha256": "bdf57955292d5d388b2f0a3152ffd35477da79f59f1b7fc6e2e2f9eef08c922e",
+          "media_type": "text/csv"
+        },
+        "expected_failure": {
+          "error_code": "tool_timeout"
+        }
+      },
+      "fixture_id": "sales-timeout-v1",
+      "assertions": [
+        {
+          "kind": "run_state",
+          "expected": "failed"
+        },
+        {
+          "kind": "effect_count",
+          "capability": "test.send",
+          "expected": 0,
+          "source": "stub_ledger"
+        }
+      ],
+      "provenance": {
+        "origin": "self_created",
+        "reference": "tests/f13a/datasets",
+        "license_review": "not_applicable"
+      }
+    }
+  ]
+}

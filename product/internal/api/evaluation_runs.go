@@ -29,10 +29,16 @@ import (
 	"orchara/platform/internal/execution"
 )
 
+type internalEvaluationTaskInput struct {
+	SHA256    string `json:"sha256"`
+	MediaType string `json:"media_type"`
+}
+
 type internalEvaluationRunRequest struct {
-	AttemptToken string          `json:"attempt_token"`
-	CaseID       string          `json:"case_id"`
-	Input        json.RawMessage `json:"input"`
+	AttemptToken string                       `json:"attempt_token"`
+	CaseID       string                       `json:"case_id"`
+	Input        json.RawMessage              `json:"input"`
+	TaskInput    *internalEvaluationTaskInput `json:"task_input,omitempty"`
 }
 
 func (r internalEvaluationRunRequest) attemptToken() string { return r.AttemptToken }
@@ -56,20 +62,22 @@ type internalEvaluationRunResponse struct {
 }
 
 type internalEvaluationRunFactsResponse struct {
-	RunID              string                   `json:"run_id"`
-	State              string                   `json:"state"`
-	ErrorCode          string                   `json:"error_code"`
-	OutputArtifactID   *string                  `json:"output_artifact_id"`
-	OutputSHA256       string                   `json:"output_sha256"`
-	Output             json.RawMessage          `json:"output"`
-	OutputCollected    bool                     `json:"output_collected"`
-	EffectCounts       map[string]int64         `json:"effect_counts"`
-	EffectsCollected   bool                     `json:"effects_collected"`
-	Citations          []string                 `json:"citations"`
-	CitationsCollected bool                     `json:"citations_collected"`
-	Provenance         evaluation.RunProvenance `json:"provenance"`
-	StartedAt          string                   `json:"started_at"`
-	FinishedAt         string                   `json:"finished_at"`
+	RunID               string                   `json:"run_id"`
+	State               string                   `json:"state"`
+	ErrorCode           string                   `json:"error_code"`
+	OutputArtifactID    *string                  `json:"output_artifact_id"`
+	OutputSHA256        string                   `json:"output_sha256"`
+	Output              json.RawMessage          `json:"output"`
+	OutputCollected     bool                     `json:"output_collected"`
+	EffectCounts        map[string]int64         `json:"effect_counts"`
+	EffectsCollected    bool                     `json:"effects_collected"`
+	Citations           []string                 `json:"citations"`
+	CitationsCollected  bool                     `json:"citations_collected"`
+	TaskInputArtifactID string                   `json:"task_input_artifact_id"`
+	TaskInputSHA256     string                   `json:"task_input_sha256"`
+	Provenance          evaluation.RunProvenance `json:"provenance"`
+	StartedAt           string                   `json:"started_at"`
+	FinishedAt          string                   `json:"finished_at"`
 }
 
 func (s *Server) writeEvaluationRunError(w http.ResponseWriter, r *http.Request, err error) bool {
@@ -91,6 +99,11 @@ func (s *Server) writeEvaluationRunError(w http.ResponseWriter, r *http.Request,
 	case errors.Is(err, execution.ErrEvaluationNotVisible):
 		writeError(w, r, http.StatusConflict, "evaluation_not_visible",
 			"the evaluation's owner can no longer access this application; the case cannot be collected")
+	case errors.Is(err, execution.ErrTaskInputUnavailable):
+		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "task_input_unavailable",
+			"the case names a task_input fixture that is not among this evaluation owner's ready artifacts; "+
+				"upload the exact fixture bytes and retry",
+			map[string]any{"field": "task_input"})
 	case errors.Is(err, execution.ErrEvaluationRunNotFound):
 		writeError(w, r, http.StatusNotFound, "evaluation_run_not_found",
 			"that run does not belong to this evaluation")
@@ -112,7 +125,14 @@ func (s *Server) handleInternalEvaluationRun(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	ref, err := s.evaluationRuns.Create(r.Context(), job, request.CaseID, request.Input)
+	var taskInput *evaluation.TaskInputBinding
+	if request.TaskInput != nil {
+		taskInput = &evaluation.TaskInputBinding{
+			SHA256:    request.TaskInput.SHA256,
+			MediaType: request.TaskInput.MediaType,
+		}
+	}
+	ref, err := s.evaluationRuns.Create(r.Context(), job, request.CaseID, request.Input, taskInput)
 	if !s.writeEvaluationRunError(w, r, err) {
 		return
 	}
@@ -132,19 +152,21 @@ func (s *Server) handleInternalEvaluationRunFacts(w http.ResponseWriter, r *http
 		return
 	}
 	response := internalEvaluationRunFactsResponse{
-		RunID:              facts.RunID,
-		State:              facts.State,
-		ErrorCode:          facts.ErrorCode,
-		OutputArtifactID:   facts.OutputArtifactID,
-		OutputSHA256:       facts.OutputSHA256,
-		OutputCollected:    facts.OutputCollected,
-		EffectCounts:       facts.Effects,
-		EffectsCollected:   facts.EffectsCollected,
-		Citations:          facts.Citations,
-		CitationsCollected: facts.CitationsCollected,
-		Provenance:         facts.Provenance,
-		StartedAt:          evaluation.FormatTime(facts.StartedAt),
-		FinishedAt:         evaluation.FormatTime(facts.FinishedAt),
+		RunID:               facts.RunID,
+		State:               facts.State,
+		ErrorCode:           facts.ErrorCode,
+		OutputArtifactID:    facts.OutputArtifactID,
+		OutputSHA256:        facts.OutputSHA256,
+		OutputCollected:     facts.OutputCollected,
+		EffectCounts:        facts.Effects,
+		EffectsCollected:    facts.EffectsCollected,
+		Citations:           facts.Citations,
+		CitationsCollected:  facts.CitationsCollected,
+		TaskInputArtifactID: facts.TaskInputArtifactID,
+		TaskInputSHA256:     facts.TaskInputSHA256,
+		Provenance:          facts.Provenance,
+		StartedAt:           evaluation.FormatTime(facts.StartedAt),
+		FinishedAt:          evaluation.FormatTime(facts.FinishedAt),
 	}
 	if facts.OutputCollected && len(facts.Output) > 0 {
 		response.Output = json.RawMessage(facts.Output)

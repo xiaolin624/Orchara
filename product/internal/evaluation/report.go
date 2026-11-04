@@ -105,7 +105,12 @@ type CaseFacts struct {
 	OutputSHA256     string           `json:"output_sha256,omitempty"`
 	EffectCounts     map[string]int64 `json:"effect_counts"`
 	CitationSources  []string         `json:"citation_sources"`
-	Provenance       *RunProvenance   `json:"provenance,omitempty"`
+	// F13A/T056: the caller fixture bound to the run as its task_input artifact,
+	// by content. It is real platform evidence (run_artifacts -> artifacts), so a
+	// per-case reader can show which input bytes produced the result.
+	TaskInputArtifactID string         `json:"task_input_artifact_id,omitempty"`
+	TaskInputSHA256     string         `json:"task_input_sha256,omitempty"`
+	Provenance          *RunProvenance `json:"provenance,omitempty"`
 }
 
 // CaseTimings records how long the case's run and collection took, in

@@ -58,6 +58,26 @@ const (
 	// case's run is in flight. It is stripped from the run input before sealing
 	// so a case's app never sees platform control data.
 	InteractionKey = "interactions"
+	// TaskInputKey is the reserved case-input member F13A/T056 adds: it names the
+	// caller-uploaded fixture the platform must bind to the case's run as the
+	// run's task_input artifact (by content, never by a path). Like InteractionKey
+	// it is stripped from the sealed run input: binding an artifact is a platform
+	// action, not application input.
+	TaskInputKey = "task_input"
+	// ExpectedFailureKey is the reserved case-input member F13A/T056 adds: the
+	// business failure the case expects (for example missing_column). The
+	// evaluation-case contract has no assertion kind for a run's error code, so
+	// the expectation lives in the contract-legal `input` object and is evaluated
+	// by the same checker; it is stripped from the run input and recorded as one
+	// more per-case outcome.
+	ExpectedFailureKey = "expected_failure"
+
+	// MediaTypeCSV and MediaTypeXLSX are the only input media types the preset
+	// sales tool accepts. They are repeated here (the tool package owns the tool
+	// protocol) because the case-binding shape must be validatable without
+	// importing the executor.
+	MediaTypeCSV  = "text/csv"
+	MediaTypeXLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 // Dataset is one parsed, fully validated evaluation dataset.
@@ -76,6 +96,29 @@ type Case struct {
 	FixtureID  string
 	Assertions []Assertion
 	Provenance Provenance
+
+	// T056 reserved case-input bindings. They are parsed from `input` members
+	// the contract allows (additionalProperties:true) and are never part of the
+	// sealed run input.
+	TaskInput       *TaskInputBinding
+	ExpectedFailure *FailureExpectation
+}
+
+// TaskInputBinding names the caller-uploaded fixture a case's run must receive as
+// its task_input artifact. The artifact is addressed by content (its recorded
+// SHA-256 and media type), never by object key or filesystem path: a committed
+// dataset can therefore name a fixture without embedding a volatile artifact id,
+// and the server resolves it among the evaluation owner's own ready artifacts.
+type TaskInputBinding struct {
+	SHA256    string
+	MediaType string
+}
+
+// FailureExpectation is the business failure a bad-input case expects. It is
+// evaluated against the run's own platform state and error code, never against
+// tool stdout or a log line.
+type FailureExpectation struct {
+	ErrorCode string
 }
 
 // Target names what the case runs against. F13A executes debug_snapshot
@@ -317,6 +360,9 @@ func parseCase(raw json.RawMessage, pointer string) (*Case, error) {
 		}
 	}
 	item.Input = canonical
+	if err := parseReservedBindings(trimmedInput, pointer+"/input", item); err != nil {
+		return nil, err
+	}
 
 	assertions, err := parseAssertions(fields["assertions"], pointer+"/assertions")
 	if err != nil {
@@ -676,6 +722,132 @@ func parseAssertion(raw json.RawMessage, pointer string) (*Assertion, error) {
 	return assertion, nil
 }
 
+// parseReservedBindings strictly validates the two reserved case-input members
+// T056 adds. They are optional; when present, a wrong shape is a located refusal
+// at submit time rather than a silent no-op at collection time.
+func parseReservedBindings(raw json.RawMessage, pointer string, item *Case) error {
+	fields, ok := decodeObject(raw)
+	if !ok {
+		// parseCase already refused a non-object input.
+		return nil
+	}
+	if binding, present := fields[TaskInputKey]; present {
+		parsed, err := parseTaskInputBinding(binding, pointer+"/"+TaskInputKey)
+		if err != nil {
+			return err
+		}
+		item.TaskInput = parsed
+	}
+	if expectation, present := fields[ExpectedFailureKey]; present {
+		parsed, err := parseFailureExpectation(expectation, pointer+"/"+ExpectedFailureKey)
+		if err != nil {
+			return err
+		}
+		item.ExpectedFailure = parsed
+	}
+	return nil
+}
+
+// parseTaskInputBinding validates one content-addressed fixture binding.
+func parseTaskInputBinding(raw json.RawMessage, pointer string) (*TaskInputBinding, error) {
+	fields, ok := decodeObject(raw)
+	if !ok {
+		return nil, &Error{
+			Code: CodeDatasetSchema, Pointer: pointer,
+			Message: "task_input must be an object with sha256 and media_type",
+		}
+	}
+	for key := range fields {
+		if key != "sha256" && key != "media_type" {
+			return nil, &Error{
+				Code: CodeDatasetUnknownField, Pointer: pointer + "/" + escapePointerToken(key),
+				Message: "task_input is additionalProperties:false; it accepts exactly sha256 and media_type",
+			}
+		}
+	}
+	sha, err := requireString(fields, "sha256", pointer)
+	if err != nil {
+		return nil, err
+	}
+	sha = strings.ToLower(strings.TrimSpace(sha))
+	if !validSHA256Hex(sha) {
+		return nil, &Error{
+			Code: CodeDatasetSchema, Pointer: pointer + "/sha256",
+			Message: "task_input.sha256 must be the 64-hex-character SHA-256 of the uploaded fixture",
+		}
+	}
+	mediaType, err := requireString(fields, "media_type", pointer)
+	if err != nil {
+		return nil, err
+	}
+	if mediaType != MediaTypeCSV && mediaType != MediaTypeXLSX {
+		return nil, &Error{
+			Code: CodeDatasetSchema, Pointer: pointer + "/media_type",
+			Message: "task_input.media_type must be text/csv or the XLSX media type; the preset tool accepts nothing else",
+		}
+	}
+	return &TaskInputBinding{SHA256: sha, MediaType: mediaType}, nil
+}
+
+// parseFailureExpectation validates the expected business failure code.
+func parseFailureExpectation(raw json.RawMessage, pointer string) (*FailureExpectation, error) {
+	fields, ok := decodeObject(raw)
+	if !ok {
+		return nil, &Error{
+			Code: CodeDatasetSchema, Pointer: pointer,
+			Message: "expected_failure must be an object with error_code",
+		}
+	}
+	for key := range fields {
+		if key != "error_code" {
+			return nil, &Error{
+				Code: CodeDatasetUnknownField, Pointer: pointer + "/" + escapePointerToken(key),
+				Message: "expected_failure is additionalProperties:false; it accepts exactly error_code",
+			}
+		}
+	}
+	code, err := requireString(fields, "error_code", pointer)
+	if err != nil {
+		return nil, err
+	}
+	if !validErrorCode(code) {
+		return nil, &Error{
+			Code: CodeDatasetSchema, Pointer: pointer + "/error_code",
+			Message: `expected_failure.error_code must be a stable lowercase code such as "missing_column"`,
+		}
+	}
+	return &FailureExpectation{ErrorCode: code}, nil
+}
+
+// validSHA256Hex reports whether value is 64 hexadecimal characters.
+func validSHA256Hex(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		char := value[index]
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// validErrorCode reports whether value is a stable machine code: lowercase
+// letters/digits/underscore, starting with a letter, at most 64 characters.
+func validErrorCode(value string) bool {
+	if value == "" || len(value) > 64 || value[0] < 'a' || value[0] > 'z' {
+		return false
+	}
+	for index := 1; index < len(value); index++ {
+		char := value[index]
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '_' {
+			return false
+		}
+	}
+	return true
+}
+
 // Interactions returns the case's predefined interactions, validated. They live
 // in the reserved case-input member (input.interactions) because the case
 // schema itself is additionalProperties:false.
@@ -744,8 +916,9 @@ type Interaction struct {
 var InteractionKinds = map[string]bool{"cancel": true}
 
 // RunInput returns the canonical bytes the case's run receives: the case input
-// with the collector's reserved member removed. The removal is deliberate and
-// documented: platform control data is not part of the application's input, and
+// with the collector's reserved members removed. The removal is deliberate and
+// documented: platform control data (predefined interactions, the task_input
+// binding and the expected failure) is not part of the application's input, and
 // the sealed bytes must be the exact bytes the platform used.
 func (c *Case) RunInput() ([]byte, error) {
 	var input map[string]json.RawMessage
@@ -753,6 +926,8 @@ func (c *Case) RunInput() ([]byte, error) {
 		return nil, err
 	}
 	delete(input, InteractionKey)
+	delete(input, TaskInputKey)
+	delete(input, ExpectedFailureKey)
 	encoded, err := json.Marshal(input)
 	if err != nil {
 		return nil, err

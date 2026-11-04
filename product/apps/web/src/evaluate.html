@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 评测（F13A 逐例结果）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 68rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    h3 { font-size: .92rem; margin: .9rem 0 .3rem; }
+    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .86rem; margin: .7rem 0 .25rem; }
+    input[type="text"], input[type="number"], input[type="file"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
+    .hint { font-size: .82rem; opacity: .7; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    button { margin-top: .55rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
+    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
+    dl.facts dt { opacity: .7; }
+    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .6rem; }
+    th, td { text-align: left; vertical-align: top; padding: .4rem .5rem; border-bottom: 1px solid rgba(128,128,128,.22); }
+    th { font-weight: 600; opacity: .8; }
+    td ul { margin: 0; padding-left: 1.05rem; }
+    td li { margin: .12rem 0; }
+    .verdict-passed { color: #15803d; font-weight: 600; }
+    .verdict-failed { color: #b91c1c; font-weight: 600; }
+    .verdict-blocked { color: #a16207; font-weight: 600; }
+    .verdict-not_run { color: #6b7280; font-weight: 600; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/attachments">附件</a>
+    <a href="/tools">工具</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>运行评测并查看逐例结果</h1>
+  <p class="sub">
+    本页走正式的 <code>evaluateDraft</code> 路径：先上传一个冻结的评估数据集
+    （<code>purpose=evaluation_dataset</code>，JSON），并可选择上传案例引用的 CSV/XLSX 案例输入
+    （<code>purpose=task_input</code>，按内容 SHA-256 绑定）。提交后平台冻结当前草稿快照、由受信执行器
+    逐例真实运行，并把结果封存成只读报告。页面轮询到报告后读取逐例结果，展示<strong>独立期望</strong>、
+    <strong>实际值/状态</strong>、<strong>失败原因</strong>和可下载的实际附件。
+  </p>
+  <p class="hint">
+    逐例结果的期望/实际/失败原因来自封存的只读报告（<code>GET /evaluation-reports/{id}/cases</code>，
+    ADR 0013），页面不重新计算任何金额；金额按报告里的十进制字符串原样展示。附件下载在点击时才向服务器换取
+    短时签名链接，页面不把链接写入浏览器存储。只有评测所有者或管理员能读到报告（其他人 404）。
+  </p>
+
+  <section class="card">
+    <h2>1. 上传评估数据集与案例输入</h2>
+    <form id="evaluate-form" method="post">
+      <label for="evaluate-dataset-file">评估数据集（JSON，案例数组；服务端会严格校验）</label>
+      <input id="evaluate-dataset-file" name="dataset" type="file" accept=".json,application/json" required />
+      <label for="evaluate-fixture-file">案例输入文件（可选；数据集按内容 SHA-256 引用的 CSV/XLSX）</label>
+      <input id="evaluate-fixture-file" name="fixture" type="file" accept=".csv,.xlsx" />
+      <button id="evaluate-upload-submit" type="submit">上传并封存</button>
+      <p id="evaluate-upload-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="evaluate-artifact-panel" hidden aria-live="polite">
+      <h3>封存状态</h3>
+      <dl class="facts">
+        <dt>数据集 artifact id</dt><dd id="evaluate-dataset-id"></dd>
+        <dt>数据集状态</dt><dd id="evaluate-dataset-state"></dd>
+        <dt>案例输入 artifact id</dt><dd id="evaluate-fixture-id"></dd>
+        <dt>案例输入状态</dt><dd id="evaluate-fixture-state"></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. 开始评测并等待报告</h2>
+    <form id="evaluation-submit-form" method="post">
+      <label for="evaluation-draft-revision">草稿 revision（提交时冻结该版本）</label>
+      <input id="evaluation-draft-revision" type="number" min="1" step="1" value="1" />
+      <label for="evaluation-dataset-artifact">数据集 artifact id（上传成功后自动填入）</label>
+      <input id="evaluation-dataset-artifact" type="text" autocomplete="off" spellcheck="false" />
+      <button id="evaluation-submit" type="submit">提交评测</button>
+      <p id="evaluation-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="evaluation-panel" hidden aria-live="polite">
+      <h3>评测任务</h3>
+      <dl class="facts">
+        <dt>evaluation id</dt><dd id="evaluation-id"></dd>
+        <dt>状态</dt><dd id="evaluation-state"></dd>
+        <dt>报告 id</dt><dd id="evaluation-report-id"></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3. 逐例结果（只读报告）</h2>
+    <p id="evaluation-summary" class="status" role="status" aria-live="polite"></p>
+    <p id="case-empty" class="hint" hidden>报告还没有逐例结果。</p>
+    <table id="case-table" hidden>
+      <thead>
+        <tr>
+          <th>案例</th>
+          <th>判决</th>
+          <th>期望</th>
+          <th>实际</th>
+          <th>失败原因</th>
+          <th>实际附件</th>
+        </tr>
+      </thead>
+      <tbody id="case-rows"></tbody>
+    </table>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/evaluate.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      let csrfToken = '';
+      let applicationId = '';
+      let datasetArtifactId = '';
+      let fixtureArtifactId = '';
+      let pollTimer = null;
+
+      const el = (id) => document.getElementById(id);
+
+      function setStatus(node, text, kind) {
+        if (!node) {
+          return;
+        }
+        node.textContent = String(text || '');
+        node.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function clear(node) {
+        while (node && node.firstChild) {
+          node.removeChild(node.firstChild);
+        }
+      }
+
+      async function sha256Hex(buffer) {
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        return Array.from(new Uint8Array(digest))
+          .map((value) => value.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      function applicationFromPath() {
+        const match = window.location.pathname.match(/^\/apps\/([^/]+)\/evaluate$/);
+        return match ? decodeURIComponent(match[1]) : '';
+      }
+
+      async function pollArtifact(artifactId, statusNode) {
+        for (;;) {
+          const artifact = await api(caseArtifactPath(artifactId));
+          if (artifact.state === 'ready') {
+            return artifact;
+          }
+          if (artifact.state === 'quarantined' || artifact.state === 'deleted') {
+            return artifact;
+          }
+          setStatus(statusNode, '后台封存中（' + artifact.state + '）…', 'pending');
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+
+      async function uploadBytes(file, body, statusNode) {
+        setStatus(statusNode, '计算 SHA-256…', 'pending');
+        const bytes = await file.arrayBuffer();
+        const digest = await sha256Hex(bytes);
+        const ticket = await api('/api/v1/artifacts/uploads', {
+          method: 'POST',
+          body: body,
+          csrf: csrfToken,
+        });
+        setStatus(statusNode, '上传到签名地址…', 'pending');
+        const put = await fetch(ticket.upload_url, {
+          method: 'PUT',
+          body: bytes,
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+        if (put.status !== 204) {
+          throw new Error('签名上传返回 ' + put.status);
+        }
+        await api(caseArtifactPath(ticket.artifact_id) + '/complete', {
+          method: 'POST',
+          body: { sha256: digest },
+          csrf: csrfToken,
+        });
+        setStatus(statusNode, '等待后台封存…', 'pending');
+        return pollArtifact(ticket.artifact_id, statusNode);
+      }
+
+      function renderArtifact(artifact, kind) {
+        const panel = el('evaluate-artifact-panel');
+        panel.hidden = false;
+        if (kind === 'dataset') {
+          el('evaluate-dataset-id').textContent = String(artifact.id || '');
+          el('evaluate-dataset-state').textContent = String(artifact.state || '');
+          if (artifact.state === 'ready') {
+            datasetArtifactId = String(artifact.id);
+            el('evaluation-dataset-artifact').value = datasetArtifactId;
+          }
+        } else {
+          el('evaluate-fixture-id').textContent = String(artifact.id || '');
+          el('evaluate-fixture-state').textContent = String(artifact.state || '');
+          if (artifact.state === 'ready') {
+            fixtureArtifactId = String(artifact.id);
+          }
+        }
+      }
+
+      function renderCaseRow(item) {
+        const tr = document.createElement('tr');
+        const idCell = document.createElement('td');
+        idCell.className = 'mono';
+        idCell.textContent = item.caseId;
+        tr.appendChild(idCell);
+
+        const verdictCell = document.createElement('td');
+        verdictCell.className = 'verdict-' + item.verdict;
+        verdictCell.textContent = item.verdictLabel;
+        tr.appendChild(verdictCell);
+
+        const expectationCell = document.createElement('td');
+        const expectationList = document.createElement('ul');
+        item.expectation.forEach((line) => {
+          const li = document.createElement('li');
+          li.textContent = line;
+          expectationList.appendChild(li);
+        });
+        expectationCell.appendChild(expectationList);
+        tr.appendChild(expectationCell);
+
+        const actualCell = document.createElement('td');
+        const actualList = document.createElement('ul');
+        item.actual.forEach((line) => {
+          const li = document.createElement('li');
+          li.textContent = line;
+          actualList.appendChild(li);
+        });
+        actualCell.appendChild(actualList);
+        tr.appendChild(actualCell);
+
+        const reasonCell = document.createElement('td');
+        const reasonList = document.createElement('ul');
+        const reasonLines = item.reasons.length ? item.reasons : ['—'];
+        reasonLines.forEach((line) => {
+          const li = document.createElement('li');
+          li.textContent = line;
+          reasonList.appendChild(li);
+        });
+        reasonCell.appendChild(reasonList);
+        tr.appendChild(reasonCell);
+
+        const attachmentCell = document.createElement('td');
+        const attachmentList = document.createElement('ul');
+        if (item.attachments.length === 0) {
+          const li = document.createElement('li');
+          li.textContent = '无';
+          attachmentList.appendChild(li);
+        }
+        item.attachments.forEach((attachment) => {
+          const li = document.createElement('li');
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = '下载 ' + attachment.label;
+          // attachment.downloadPath is built by caseArtifactDownloadPath(id): the
+          // page only ever holds an artifact id until the click exchanges it for
+          // a short-lived signed link.
+          button.addEventListener('click', async () => {
+            setStatus(el('evaluation-summary'), '正在获取短时下载链接…', 'pending');
+            try {
+              const link = await api(attachment.downloadPath);
+              window.location.assign(link.url);
+            } catch (error) {
+              setStatus(el('evaluation-summary'),
+                '下载失败 ' + describeFailure(error), 'bad');
+            }
+          });
+          li.appendChild(button);
+          attachmentList.appendChild(li);
+        });
+        attachmentCell.appendChild(attachmentList);
+        tr.appendChild(attachmentCell);
+        return tr;
+      }
+
+      function renderCases(payload) {
+        const view = describeCases(payload);
+        const summary = describeCaseSummary(payload);
+        setStatus(el('evaluation-summary'), summary.text, 'ok');
+        const rows = el('case-rows');
+        clear(rows);
+        el('case-table').hidden = view.cases.length === 0;
+        el('case-empty').hidden = view.cases.length !== 0;
+        view.cases.forEach((item) => rows.appendChild(renderCaseRow(item)));
+      }
+
+      async function loadCases(reportId) {
+        const payload = await api(evaluationCasesPath(reportId));
+        renderCases(payload);
+      }
+
+      async function pollEvaluation(evaluationId) {
+        const evaluation = await api(evaluationPath(evaluationId));
+        el('evaluation-id').textContent = String(evaluation.id || '');
+        el('evaluation-state').textContent = evaluationStateLabel(evaluation.state);
+        if (evaluation.report_id) {
+          el('evaluation-report-id').textContent = String(evaluation.report_id);
+        }
+        if (shouldPollEvaluation(evaluation.state)) {
+          setStatus(el('evaluation-status'),
+            '评测' + evaluationStateLabel(evaluation.state) + '…', 'pending');
+          pollTimer = setTimeout(() => pollEvaluation(evaluationId), 700);
+          return;
+        }
+        if (evaluation.report_id) {
+          await loadCases(evaluation.report_id);
+          setStatus(el('evaluation-status'), '报告已封存，逐例结果按只读报告展示。', 'ok');
+          return;
+        }
+        setStatus(el('evaluation-status'),
+          '评测结束但没有报告：' + String(evaluation.error_code || evaluation.state), 'bad');
+      }
+
+      el('evaluate-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('evaluate-upload-status');
+        const datasetFile = el('evaluate-dataset-file').files
+          && el('evaluate-dataset-file').files[0];
+        if (!datasetFile) {
+          setStatus(status, '请选择评估数据集 JSON 文件', 'bad');
+          return;
+        }
+        const datasetBody = artifactUploadBody(datasetFile.size);
+        if (!datasetBody.ok) {
+          setStatus(status, datasetBody.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '上传数据集…', 'pending');
+          const dataset = await uploadBytes(datasetFile, datasetBody.body, status);
+          renderArtifact(dataset, 'dataset');
+          if (dataset.state !== 'ready') {
+            setStatus(status, '数据集未通过封存：' + dataset.state, 'bad');
+            return;
+          }
+          const fixtureFile = el('evaluate-fixture-file').files
+            && el('evaluate-fixture-file').files[0];
+          if (fixtureFile) {
+            const fixtureBody = caseInputUploadBody(fixtureFile);
+            if (!fixtureBody.ok) {
+              setStatus(status, fixtureBody.error, 'bad');
+              return;
+            }
+            setStatus(status, '上传案例输入…', 'pending');
+            const fixture = await uploadBytes(fixtureFile, fixtureBody.body, status);
+            renderArtifact(fixture, 'fixture');
+            if (fixture.state !== 'ready') {
+              setStatus(status, '案例输入未通过封存：' + fixture.state, 'bad');
+              return;
+            }
+          }
+          setStatus(status, '数据集与案例输入已封存，可提交评测。', 'ok');
+        } catch (error) {
+          if (error.status === 401) {
+            window.location.assign('/login');
+            return;
+          }
+          setStatus(status, '上传失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      el('evaluation-submit-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('evaluation-status');
+        if (pollTimer !== null) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+        const dataset = String(
+          el('evaluation-dataset-artifact').value || datasetArtifactId
+        ).trim();
+        const built = evaluateDraftBody(el('evaluation-draft-revision').value, dataset);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '提交评测…', 'pending');
+          const accepted = await api(evaluationDraftPath(applicationId), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+            headers: { 'Idempotency-Key': newEvaluationIdempotencyKey() },
+          });
+          el('evaluation-panel').hidden = false;
+          el('evaluation-id').textContent = String(accepted.id || '');
+          el('evaluation-state').textContent = evaluationStateLabel(accepted.state);
+          setStatus(status, '已排队（' + evaluationStateLabel(accepted.state) + '），轮询中…', 'pending');
+          pollTimer = setTimeout(() => pollEvaluation(accepted.id), 500);
+        } catch (error) {
+          if (error.status === 401) {
+            window.location.assign('/login');
+            return;
+          }
+          setStatus(status, '提交失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      (async () => {
+        try {
+          applicationId = applicationFromPath();
+          await requireLogin();
+          csrfToken = await csrf();
+          if (!applicationId) {
+            setStatus(el('evaluation-status'), 'URL 缺少 application id', 'bad');
+            return;
+          }
+          const draft = await api(evaluationDraftRevisionPath(applicationId));
+          if (draft && Number.isInteger(draft.revision)) {
+            el('evaluation-draft-revision').value = String(draft.revision);
+          }
+        } catch (error) {
+          if (error.status === 401) {
+            window.location.assign('/login');
+            return;
+          }
+          setStatus(el('evaluation-status'), '初始化失败 ' + describeFailure(error), 'bad');
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

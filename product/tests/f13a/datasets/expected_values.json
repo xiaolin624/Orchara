@@ -1,0 +1,35 @@
+{
+  "sales_happy_csv": {
+    "input": "examples/sales/input.csv",
+    "media_type": "text/csv",
+    "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+    "total": "250.00",
+    "regions": {
+      "东区": "200.00",
+      "西区": "50.00"
+    },
+    "order_count": 3
+  },
+  "sales_happy_xlsx": {
+    "input": "examples/sales/input.xlsx",
+    "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "287bd26ca0cac1ef630caef40807c0a82739e86285b4343905242979190cdb60",
+    "total": "250.00",
+    "regions": {
+      "东区": "200.00",
+      "西区": "50.00"
+    },
+    "order_count": 3
+  },
+  "frozen_boundary": {
+    "input": "tests/f13a/datasets/inputs/frozen_boundary.csv",
+    "media_type": "text/csv",
+    "sha256": "c727ff1844688a229dde27794f5f261c4aa2eecaafef66c711d17805556c212b",
+    "total": "101234.60",
+    "regions": {
+      "北区": "1234.60",
+      "南区": "100000.00"
+    },
+    "order_count": 4
+  }
+}

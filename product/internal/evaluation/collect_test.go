@@ -18,6 +18,7 @@ type stagedRunClient struct {
 	facts        Facts
 	created      int
 	interactions []string
+	taskInputs   []*TaskInputBinding
 	outcomes     []stagedOutcome
 }
 
@@ -29,9 +30,10 @@ type stagedOutcome struct {
 }
 
 func (c *stagedRunClient) CreateCaseRun(
-	_ context.Context, caseID string, _ []byte,
+	_ context.Context, caseID string, _ []byte, taskInput *TaskInputBinding,
 ) (string, error) {
 	c.created++
+	c.taskInputs = append(c.taskInputs, taskInput)
 	return "run-" + caseID, nil
 }
 

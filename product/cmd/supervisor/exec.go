@@ -27,6 +27,8 @@ import (
 
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/execution"
+	"orchara/platform/internal/memory"
+	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/presetexec"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/uuid"
@@ -51,6 +53,10 @@ Required environment (mTLS, no database credentials are printed):
   ORCHARA_INTERNAL_URL, ORCHARA_INTERNAL_CA,
   ORCHARA_SUPERVISOR_CLIENT_CERT/KEY, ORCHARA_WORKER_CLIENT_CERT/KEY,
   ORCHARA_SUPERVISOR_DSN   (read-only: input resolution and run state)
+
+Optional environment:
+  ORCHARA_OBJECT_DIR        sealed-object root for F09 personal-memory recall;
+                            without it recall reports unavailable, never fake text
 
 Sandbox environment:
   ORCHARA_WSL_DISTRO                default Ubuntu-24.04 (empty = run bash directly)
@@ -151,12 +157,29 @@ func runExec(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	execClient := execClient{supClient: client, db: dbAccess{db: db}}
+	// F09/T063: the recall source reads the sealed memory bodies from the same
+	// object root the API writes them to. A missing root is not a startup failure
+	// (every other node still runs); it makes recall fail closed as unavailable.
+	var objects *objectstore.Store
+	if strings.TrimSpace(cfg.ObjectDir) != "" {
+		opened, openErr := objectstore.Open(cfg.ObjectDir)
+		if openErr != nil {
+			logger.Printf("personal memory recall has no object store: %v", openErr)
+		} else {
+			objects = opened
+		}
+	}
+	recall := memory.NewRecallSource(db, objects)
+
+	access := dbAccess{db: db}
+	execClient := execClient{supClient: client, db: access}
 	report := presetexec.Run(ctx, presetexec.Deps{
-		Client:  execClient,
-		Inputs:  dbAccess{db: db},
-		Facts:   execClient,
-		Sandbox: executor,
+		Client:      execClient,
+		Inputs:      access,
+		Facts:       execClient,
+		Memory:      recall,
+		RunIdentity: access,
+		Sandbox:     executor,
 		Options: presetexec.Options{
 			WorkerID:        options.workerID,
 			ExecutionUnitID: options.executionUnitID,
@@ -220,6 +243,22 @@ func (a dbAccess) RunState(ctx context.Context, runID string) (string, string, e
 		return "", "", err
 	}
 	return state, errorCode.String, nil
+}
+
+// RunScope implements presetexec.RunIdentity: the trusted owner+application of
+// one run. The application is the frozen execution snapshot's, not a value the
+// manifest names, so F09 recall can never read across applications or owners.
+func (a dbAccess) RunScope(ctx context.Context, runID string) (presetexec.RunScope, error) {
+	var scope presetexec.RunScope
+	err := a.db.QueryRowContext(ctx, `
+		SELECT r.owner_id::text, s.application_id::text
+		  FROM platform.runs AS r
+		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
+		 WHERE r.id = $1::uuid`, runID).Scan(&scope.OwnerID, &scope.ApplicationID)
+	if err != nil {
+		return presetexec.RunScope{}, err
+	}
+	return scope, nil
 }
 
 // AttemptNumber is the dense run-local attempt ordinal of the live attempt. The
