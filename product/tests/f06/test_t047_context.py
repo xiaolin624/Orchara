@@ -9,8 +9,9 @@ model-params artifact is the exact request the platform would have sent.
 
 The test forces a small ``context_window`` through the model-profile config, so
 truncation is observed on the real request rather than reconstructed from Go
-unit-test helpers. F09 personal-memory storage does not exist in this batch; the
-trace therefore records ``not_run`` and no memory message is injected.
+unit-test helpers. F09/T063 now wires the real memory source into the production
+seam; this owner+application has no confirmed memories, so the trace records
+``empty`` and no memory message is injected.
 """
 
 from __future__ import annotations
@@ -88,7 +89,10 @@ def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
     assert last["budget_tokens"] == 3072 - 1024, last
     assert last["reserved_output_tokens"] == 1024, last
     assert 0 < last["estimated_tokens"] <= last["budget_tokens"], last
-    assert last["memory_state"] == "not_run", last
+    # F09/T063 wired the real memory source into the same production seam. The
+    # golden owner has no confirmed memories, so the honest state is "empty" (the
+    # store was read and had nothing for this owner+application), not "not_run".
+    assert last["memory_state"] == "empty", last
     assert "stats" in last["protected"], last
     reasons = [entry["reason"] for entry in last["truncations"]]
     assert "verbose_upstream_text" in reasons, reasons
@@ -144,7 +148,8 @@ def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
         if entry.get("node_id"):
             assert entry["node_id"] in allowed_nodes, entry
 
-    # F09 memory storage is absent, so the platform injects nothing and says so.
+    # F09/T063 reads the real memory store; this owner has no confirmed memory,
+    # so the platform injects nothing and the trace says empty.
     assert all(message["role"] in {"system", "user", "tool"} for message in messages)
     for message in messages:
         assert "confirmed_memory" not in message["content"]

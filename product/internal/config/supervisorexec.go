@@ -50,9 +50,14 @@ type SupervisorExecConfig struct {
 	WorkerCert     string
 	WorkerKey      string
 	DBDSN          string
-	Heartbeat      time.Duration
-	ResultWait     time.Duration
-	PollInterval   time.Duration
+	// ObjectDir is ORCHARA_OBJECT_DIR, the sealed-object root the F09 recall
+	// source reads memory bodies from. It is optional at startup: without it the
+	// supervisor can still run every node, and personal-memory recall degrades to
+	// unavailable in the context trace instead of inventing text.
+	ObjectDir    string
+	Heartbeat    time.Duration
+	ResultWait   time.Duration
+	PollInterval time.Duration
 }
 
 // LoadSupervisorExec validates the executor's configuration.
@@ -120,6 +125,7 @@ func LoadSupervisorExec(lookup Lookup) (*SupervisorExecConfig, error) {
 		WorkerCert:     value(lookup, EnvWorkerClientCert),
 		WorkerKey:      value(lookup, EnvWorkerClientKey),
 		DBDSN:          value(lookup, EnvSupervisorDSN),
+		ObjectDir:      value(lookup, EnvObjectDir),
 		Heartbeat:      heartbeat,
 		ResultWait:     resultWait,
 		PollInterval:   poll,
