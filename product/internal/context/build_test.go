@@ -8,10 +8,12 @@ import (
 	stdcontext "context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func baseRequest() Request {
@@ -450,5 +452,172 @@ func TestHistoryWithoutProtectedFactsIsDroppedBeforeTheInputIsTouched(t *testing
 	}
 	if len(output.Messages) != 2 {
 		t.Fatalf("the dropped history message is still present: %+v", output.Messages)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// F09/T063: confirmed personal memory inside the deterministic budget.
+// ---------------------------------------------------------------------------
+
+func memoryRowsForBudget() []Memory {
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	rows := make([]Memory, 0, 5)
+	for index := 1; index <= 5; index++ {
+		rows = append(rows, Memory{
+			ID: fmt.Sprintf("m%d", index), OwnerID: "owner-1", ApplicationID: "app-1",
+			State: "active", Confirmed: true, Revision: int64(index),
+			ConfirmedAt: base.Add(time.Duration(index) * time.Hour),
+			Text:        fmt.Sprintf("memory-%d ", index) + strings.Repeat("value ", 200),
+		})
+	}
+	return rows
+}
+
+func memorySourceIDs(trace Trace) []string {
+	ids := make([]string, 0, 4)
+	for _, source := range trace.Sources {
+		if source.Kind == "memory" {
+			ids = append(ids, source.MemoryID)
+		}
+	}
+	return ids
+}
+
+func memoryTruncationIDs(trace Trace) []string {
+	ids := make([]string, 0, 4)
+	for _, truncation := range trace.Truncations {
+		if truncation.Reason == ReasonOptionalMemory {
+			ids = append(ids, truncation.MemoryID)
+		}
+	}
+	return ids
+}
+
+func TestMemorySelectionIsBudgetedDeterministicAndDropsLowestRelevanceFirst(t *testing.T) {
+	request := baseRequest()
+	request.Model = ModelConfig{ContextWindow: 4096, MaxOutputTokens: 1024} // budget 3072
+	request.Memory = fakeMemorySource{rows: memoryRowsForBudget()}
+	output := mustBuild(t, request)
+
+	if output.Trace.MemoryState != MemoryIncluded {
+		t.Fatalf("memory state = %q, want included", output.Trace.MemoryState)
+	}
+	if output.Trace.MemoryBudgetTokens != 768 {
+		t.Fatalf("memory budget = %d, want 768 (a quarter of 3072)",
+			output.Trace.MemoryBudgetTokens)
+	}
+	if output.Trace.MemoryTokens <= 0 || output.Trace.MemoryTokens > 768 {
+		t.Fatalf("memory tokens = %d, want 1..768", output.Trace.MemoryTokens)
+	}
+	// The two newest rows fit; recency is the documented relevance proxy.
+	ids := memorySourceIDs(output.Trace)
+	if !reflect.DeepEqual(ids, []string{"m5", "m4"}) {
+		t.Fatalf("included memory ids = %v, want [m5 m4]", ids)
+	}
+	for _, source := range output.Trace.Sources {
+		if source.Kind != "memory" {
+			continue
+		}
+		if source.EstimatedTokens <= 0 || source.MemoryRevision <= 0 ||
+			source.MemoryConfirmedAt == "" {
+			t.Fatalf("memory source lacks its provenance: %+v", source)
+		}
+	}
+	// The three oldest rows are dropped lowest-relevance first.
+	truncated := memoryTruncationIDs(output.Trace)
+	if !reflect.DeepEqual(truncated, []string{"m1", "m2", "m3"}) {
+		t.Fatalf("truncated memory ids = %v, want [m1 m2 m3]", truncated)
+	}
+	for _, truncation := range output.Trace.Truncations {
+		if truncation.Reason == ReasonOptionalMemory && truncation.TokensRemoved <= 0 {
+			t.Fatalf("a memory truncation removed no tokens: %+v", truncation)
+		}
+	}
+	encoded, _ := json.Marshal(output.Messages)
+	if !strings.Contains(string(encoded), "memory-5") ||
+		!strings.Contains(string(encoded), "memory-4") {
+		t.Fatalf("the newest memories are missing: %s", encoded)
+	}
+	for _, dropped := range []string{"memory-1", "memory-2", "memory-3"} {
+		if strings.Contains(string(encoded), dropped) {
+			t.Fatalf("the truncated memory %q reached the model: %s", dropped, encoded)
+		}
+	}
+
+	// A retried attempt builds exactly the same input and trace.
+	second := mustBuild(t, request)
+	firstEncoded, _ := json.Marshal(output)
+	secondEncoded, _ := json.Marshal(second)
+	if string(firstEncoded) != string(secondEncoded) {
+		t.Fatalf("the memory selection is not deterministic:\n%s\n%s", firstEncoded, secondEncoded)
+	}
+}
+
+func TestMemoryNegationIsIncludedAndNeverTruncated(t *testing.T) {
+	request := baseRequest()
+	request.Model = ModelConfig{ContextWindow: 4096, MaxOutputTokens: 1024} // budget 3072
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	rows := []Memory{{
+		ID: "m-old", OwnerID: "owner-1", ApplicationID: "app-1",
+		State: "active", Confirmed: true, Revision: 7,
+		ConfirmedAt: base,
+		Text:        "The user must not receive marketing email.",
+	}}
+	for _, row := range memoryRowsForBudget() {
+		rows = append(rows, row)
+	}
+	request.Memory = fakeMemorySource{rows: rows}
+	output := mustBuild(t, request)
+	ids := memorySourceIDs(output.Trace)
+	if !containsString(ids, "m-old") {
+		t.Fatalf("the negation memory was dropped: %v", ids)
+	}
+	found := false
+	for _, source := range output.Trace.Sources {
+		if source.Kind == "memory" && source.MemoryID == "m-old" {
+			found = true
+			if !source.Protected {
+				t.Fatalf("the negation memory is not marked protected: %+v", source)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the negation memory has no trace source: %+v", output.Trace.Sources)
+	}
+	encoded, _ := json.Marshal(output.Messages)
+	if !strings.Contains(string(encoded), "must not receive marketing email") {
+		t.Fatalf("the protected negation is missing from the model input: %s", encoded)
+	}
+	for _, truncation := range output.Trace.Truncations {
+		if truncation.Reason == ReasonOptionalMemory && truncation.MemoryID == "m-old" {
+			t.Fatalf("the protected negation was truncated: %+v", truncation)
+		}
+	}
+}
+
+func TestMemoryIsReducedPerItemWhenTheWholeContextIsOverBudget(t *testing.T) {
+	request := baseRequest()
+	request.System = strings.Repeat("platform constraint ", 160) // ~3 KiB
+	request.Model = ModelConfig{ContextWindow: 1600, MaxOutputTokens: 600}
+	request.Memory = fakeMemorySource{rows: []Memory{{
+		ID: "m-big", OwnerID: "owner-1", ApplicationID: "app-1",
+		State: "active", Confirmed: true, Revision: 3,
+		ConfirmedAt: time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC),
+		Text:        "big-memory " + strings.Repeat("detail ", 100),
+	}}}
+	output := mustBuild(t, request)
+	if output.Trace.MemoryState != MemoryTruncated {
+		t.Fatalf("memory state = %q, want truncated", output.Trace.MemoryState)
+	}
+	if output.Trace.MemoryTokens != 0 {
+		t.Fatalf("memory tokens = %d, want 0 after the drop", output.Trace.MemoryTokens)
+	}
+	encoded, _ := json.Marshal(output.Messages)
+	if strings.Contains(string(encoded), "confirmed_memory") {
+		t.Fatalf("the over-budget memory message survived: %s", encoded)
+	}
+	ids := memoryTruncationIDs(output.Trace)
+	if !reflect.DeepEqual(ids, []string{"m-big"}) {
+		t.Fatalf("truncated memory ids = %v, want [m-big]", ids)
 	}
 }

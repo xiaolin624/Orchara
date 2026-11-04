@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"orchara/platform/internal/jcs"
 )
@@ -83,7 +84,17 @@ const (
 	MemoryIncluded    = "included"
 	MemoryEmpty       = "empty"
 	MemoryUnavailable = "unavailable"
+	// MemoryTruncated means confirmed rows existed but the budget held none of
+	// them (every row was dropped, or a whole-context trim removed the ones that
+	// had been selected). It is never reported as a success.
+	MemoryTruncated = "truncated"
 )
+
+// MemoryBudgetDivisor bounds how much of the model budget optional personal
+// memory may consume: one quarter. The remaining three quarters are for the run's
+// authorized inputs, history and tool results, so memory can never crowd them out
+// before the builder's own truncation order has run.
+const MemoryBudgetDivisor = 4
 
 // Error is a typed context refusal. Code is the only part the run records.
 type Error struct {
@@ -178,7 +189,9 @@ type DeclaredTool struct {
 }
 
 // Memory is one confirmed, active personal-memory row. Confirmed is always true
-// for an includable row; State must be "active".
+// for an includable row; State must be "active". Revision, ConfirmedAt,
+// CandidateID and SourceRunID are provenance only: they are reported in the
+// trace, never rendered into the model message.
 type Memory struct {
 	ID            string
 	OwnerID       string
@@ -186,20 +199,31 @@ type Memory struct {
 	State         string
 	Confirmed     bool
 	Text          string
+	// Revision is the current revision of the memory row. A recall source must
+	// read the current row (and its current body artifact), never a superseded
+	// revision.
+	Revision    int64
+	ConfirmedAt time.Time
+	// CandidateID and SourceRunID are the single provenance chain
+	// memories.candidate_id -> memory_candidates.source_run_id. They are empty
+	// for a memory the user wrote directly (no candidate).
+	CandidateID string
+	SourceRunID string
 }
 
-// MemorySource is the F09 seam. The production source is NoMemorySource because
-// the personal-memory storage does not exist in this batch; its absence is
-// reported as not_run, never simulated with canned rows.
+// MemorySource is the F09 seam. The production source is memory.RecallSource,
+// which reads the current owner+application rows from PostgreSQL; NoMemorySource
+// is the "none wired" implementation used by processes that have no store.
 type MemorySource interface {
 	ConfirmedMemories(ctx stdcontext.Context, ownerID, applicationID string) ([]Memory, error)
 }
 
-// NoMemorySource is the production memory seam: F09 storage is absent, so it
-// reads nothing. It is a real implementation of "no storage", not fake memory.
+// NoMemorySource is the seam's "no source wired" implementation: it reads nothing
+// and the trace reports not_run. It is a real implementation of "no source", not
+// fake memory.
 type NoMemorySource struct{}
 
-// ConfirmedMemories returns no rows: this build has no personal-memory store.
+// ConfirmedMemories returns no rows: this process has no personal-memory source.
 func (NoMemorySource) ConfirmedMemories(
 	stdcontext.Context, string, string,
 ) ([]Memory, error) {
@@ -218,6 +242,8 @@ type Request struct {
 }
 
 // TraceSource is one trace entry naming an authorized source, never its text.
+// The memory_* fields are identifiers of the memory row the entry stands for;
+// they carry no body content.
 type TraceSource struct {
 	Kind            string `json:"kind"`
 	NodeID          string `json:"node_id,omitempty"`
@@ -225,13 +251,23 @@ type TraceSource struct {
 	Label           string `json:"label,omitempty"`
 	EstimatedTokens int    `json:"estimated_tokens"`
 	Protected       bool   `json:"protected,omitempty"`
+	MemoryID        string `json:"memory_id,omitempty"`
+	MemoryRevision  int64  `json:"memory_revision,omitempty"`
+	// MemoryConfirmedAt is RFC 3339 UTC, or empty when the fake row carried no
+	// timestamp (production rows always have one).
+	MemoryConfirmedAt string `json:"memory_confirmed_at,omitempty"`
+	MemoryCandidateID string `json:"memory_candidate_id,omitempty"`
+	MemorySourceRunID string `json:"memory_source_run_id,omitempty"`
 }
 
 // Truncation is one trace entry: which source lost tokens, why, and how many.
+// A memory truncation also names the memory row and revision that was dropped.
 type Truncation struct {
-	Source        string `json:"source"`
-	Reason        string `json:"reason"`
-	TokensRemoved int    `json:"tokens_removed"`
+	Source         string `json:"source"`
+	Reason         string `json:"reason"`
+	TokensRemoved  int    `json:"tokens_removed"`
+	MemoryID       string `json:"memory_id,omitempty"`
+	MemoryRevision int64  `json:"memory_revision,omitempty"`
 }
 
 // Trace is the durable, secret-free record of one build.
@@ -243,6 +279,11 @@ type Trace struct {
 	BudgetTokens    int           `json:"budget_tokens"`
 	ReservedOutput  int           `json:"reserved_output_tokens"`
 	MemoryState     string        `json:"memory_state"`
+	// MemoryTokens is how many tokens the selected confirmed memories spent in
+	// the model input (0 when none were included). MemoryBudgetTokens is the
+	// sub-budget the selection used (budget / MemoryBudgetDivisor).
+	MemoryTokens       int `json:"memory_tokens"`
+	MemoryBudgetTokens int `json:"memory_budget_tokens"`
 	// DisplayOnlySummaryCount counts history summaries the builder deliberately
 	// kept out of the model input. A summary is display-only: it is never model
 	// context and never a fact source.
@@ -266,6 +307,30 @@ type builtMessage struct {
 	tool      bool
 	memory    bool
 	label     string
+	// memoryItems is the selected memory rows of a memory message. The global
+	// over-budget path drops them one at a time (lowest relevance first) instead
+	// of discarding the whole message, so a protected negation/approval memory
+	// can never be the thing that gets cut.
+	memoryItems []memoryItem
+}
+
+// memoryItem is one confirmed memory selected for the model input. Text never
+// leaves this struct except through the encoded memory message; the trace only
+// ever sees the identifier fields.
+type memoryItem struct {
+	ID          string
+	Text        string
+	Revision    int64
+	ConfirmedAt time.Time
+	CandidateID string
+	SourceRunID string
+	Protected   bool
+}
+
+// memoryBlock is the encoded memory message plus the rows it was built from.
+type memoryBlock struct {
+	items   []memoryItem
+	content string
 }
 
 // EstimateTokens is the documented deterministic estimate for one string:
@@ -322,7 +387,7 @@ func Build(ctx stdcontext.Context, request Request) (Output, error) {
 	if inputErr != nil {
 		return Output{Trace: trace}, inputErr
 	}
-	memoryContent, memErr := loadMemory(ctx, request, &trace)
+	memory, memErr := loadMemory(ctx, request, &trace, budget)
 	if memErr != nil {
 		return Output{Trace: trace}, memErr
 	}
@@ -370,10 +435,10 @@ func Build(ctx stdcontext.Context, request Request) (Output, error) {
 		role: "user", content: inputJSON, source: Source{Kind: "inputs"},
 		label: "inputs",
 	})
-	if memoryContent != "" {
+	if memory != nil && memory.content != "" {
 		messages = append(messages, &builtMessage{
-			role: "user", content: memoryContent, source: Source{Kind: "memory"},
-			label: "memory", memory: true,
+			role: "user", content: memory.content, source: Source{Kind: "memory"},
+			label: "memory", memory: true, memoryItems: memory.items,
 		})
 	}
 	for _, item := range request.History {
@@ -501,15 +566,7 @@ func Build(ctx stdcontext.Context, request Request) (Output, error) {
 			if message.role == "system" || message.role == "user" && message.label == "inputs" {
 				continue
 			}
-			if message.memory {
-				before := contentTokens(message.content)
-				message.content = ""
-				total -= before
-				addTruncation(&trace, message, ReasonOptionalMemory, before)
-				dropped[message] = true
-				continue
-			}
-			if message.tool {
+			if message.memory || message.tool {
 				continue
 			}
 			before := contentTokens(message.content)
@@ -518,6 +575,20 @@ func Build(ctx stdcontext.Context, request Request) (Output, error) {
 			addTruncation(&trace, message, ReasonLowRelevanceHistory, before)
 		}
 		messages = compact(messages, dropped)
+	}
+	// Step 4: optional memory, one row at a time, lowest relevance first. A
+	// protected negation/approval memory is never dropped by this step; only the
+	// final protected-minimum check may fail the build rather than cut it.
+	total = estimateMessages(messages)
+	for total > budget {
+		removed, changed, memoryErr := dropLowestMemoryItem(&messages, &trace)
+		if memoryErr != nil {
+			return Output{Trace: trace}, memoryErr
+		}
+		if !changed {
+			break
+		}
+		total -= removed
 	}
 	total = estimateMessages(messages)
 	if total > budget {
@@ -636,59 +707,269 @@ func traceKind(source Source) string {
 	return kind
 }
 
-// loadMemory reads the F09 seam. No storage is not a failure: the trace says
-// not_run and no memory message is produced. A returned row is used only when it
-// is confirmed, active and owned by exactly this run's owner+application; a
-// foreign row is a typed refusal rather than silently filtered into a partial
-// memory view.
-func loadMemory(ctx stdcontext.Context, request Request, trace *Trace) (string, *Error) {
+// loadMemory reads the F09 seam and applies the deterministic memory budget.
+//
+// No source wired is not a failure: the trace says not_run and no memory message
+// is produced. A returned row is used only when it is confirmed, active and owned
+// by exactly this run's owner+application; a foreign row is a typed refusal
+// rather than silently filtered into a partial memory view.
+//
+// Selection is deterministic and explainable:
+//
+//   - recency is the relevance proxy (`confirmed_at` DESC, then id DESC), because
+//     the store has no embedding score in this build (T067 owns retrieval
+//     scoring);
+//   - the memory sub-budget is `budget / MemoryBudgetDivisor`; the newest rows are
+//     added while the encoded message fits, and the remaining rows are truncated
+//     lowest-relevance first with reason optional_memory;
+//   - a row whose text carries a user negation or approval parameter is
+//     protected: it is selected first and is never truncated, even when the
+//     unprotected rows around it are dropped.
+func loadMemory(
+	ctx stdcontext.Context, request Request, trace *Trace, budget int,
+) (*memoryBlock, *Error) {
 	if request.Memory == nil {
 		trace.MemoryState = MemoryNotRun
-		return "", nil
+		return nil, nil
 	}
 	if _, absent := request.Memory.(NoMemorySource); absent {
 		trace.MemoryState = MemoryNotRun
-		return "", nil
+		return nil, nil
 	}
+	memoryBudget := budget / MemoryBudgetDivisor
+	if memoryBudget < 1 {
+		memoryBudget = 1
+	}
+	trace.MemoryBudgetTokens = memoryBudget
 	rows, err := request.Memory.ConfirmedMemories(
 		ctx, request.Scope.OwnerID, request.Scope.ApplicationID,
 	)
 	if err != nil {
 		trace.MemoryState = MemoryUnavailable
-		return "", nil
+		return nil, nil
 	}
 	if len(rows) == 0 {
 		trace.MemoryState = MemoryEmpty
-		return "", nil
+		return nil, nil
 	}
-	items := make([]map[string]any, 0, len(rows))
+	items := make([]memoryItem, 0, len(rows))
 	for _, row := range rows {
 		if row.State != "active" || !row.Confirmed || strings.TrimSpace(row.Text) == "" {
 			continue
 		}
 		if row.OwnerID != request.Scope.OwnerID ||
 			row.ApplicationID != request.Scope.ApplicationID {
-			return "", &Error{Code: CodeSourceUnauthorized,
+			return nil, &Error{Code: CodeSourceUnauthorized,
 				Message: "the memory source returned a row for another owner or application"}
 		}
-		items = append(items, map[string]any{
-			"id": row.ID, "text": row.Text,
+		items = append(items, memoryItem{
+			ID: row.ID, Text: row.Text, Revision: row.Revision,
+			ConfirmedAt: row.ConfirmedAt, CandidateID: row.CandidateID,
+			SourceRunID: row.SourceRunID,
+			Protected:   memoryTextIsProtected(row.Text),
 		})
 	}
 	if len(items) == 0 {
 		trace.MemoryState = MemoryEmpty
-		return "", nil
+		return nil, nil
 	}
-	encoded, encodeErr := canonical(map[string]any{"confirmed_memory": items})
+	// Newest first, id descending as the deterministic tie-break.
+	sort.SliceStable(items, func(left, right int) bool {
+		if items[left].ConfirmedAt.Equal(items[right].ConfirmedAt) {
+			return items[left].ID > items[right].ID
+		}
+		return items[left].ConfirmedAt.After(items[right].ConfirmedAt)
+	})
+
+	chosen := make([]bool, len(items))
+	for index := range items {
+		if items[index].Protected {
+			chosen[index] = true
+		}
+	}
+	for index := range items {
+		if chosen[index] {
+			continue
+		}
+		chosen[index] = true
+		if memoryTokensFor(items, chosen, trace) > memoryBudget {
+			chosen[index] = false
+		}
+	}
+	selected := selectedMemoryItems(items, chosen)
+	if len(selected) == 0 {
+		// Rows existed but even the newest did not fit: this is an observable
+		// truncation, never a silent empty success.
+		trace.MemoryState = MemoryTruncated
+		trace.MemoryTokens = 0
+		appendMemoryTruncations(trace, items, chosen, 0)
+		return nil, nil
+	}
+	encoded, encodeErr := encodeMemory(selected)
 	if encodeErr != nil {
-		return "", invalid("the confirmed memory cannot be encoded")
+		return nil, encodeErr
 	}
 	trace.MemoryState = MemoryIncluded
-	trace.Sources = append(trace.Sources, TraceSource{
-		Kind: "memory", Label: "confirmed_memory",
-		EstimatedTokens: EstimateTokens(encoded),
-	})
+	trace.MemoryTokens = contentTokens(encoded)
+	trace.Sources = appendMemorySources(trace.Sources, items, chosen, trace.MemoryTokens)
+	appendMemoryTruncations(trace, items, chosen, trace.MemoryTokens)
+	return &memoryBlock{items: selected, content: encoded}, nil
+}
+
+// selectedMemoryItems returns the chosen rows still in relevance order.
+func selectedMemoryItems(items []memoryItem, chosen []bool) []memoryItem {
+	selected := make([]memoryItem, 0, len(items))
+	for index := range items {
+		if chosen[index] {
+			selected = append(selected, items[index])
+		}
+	}
+	return selected
+}
+
+// encodeMemory renders the one memory message. Only the memory id and text reach
+// the model; revision/provenance stay in the trace.
+func encodeMemory(items []memoryItem) (string, *Error) {
+	payload := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, map[string]any{"id": item.ID, "text": item.Text})
+	}
+	encoded, err := canonical(map[string]any{"confirmed_memory": payload})
+	if err != nil {
+		return "", invalid("the confirmed memory cannot be encoded")
+	}
 	return encoded, nil
+}
+
+// memoryTokensFor returns the exact message token cost of one chosen set.
+func memoryTokensFor(items []memoryItem, chosen []bool, trace *Trace) int {
+	selected := selectedMemoryItems(items, chosen)
+	if len(selected) == 0 {
+		return 0
+	}
+	encoded, err := encodeMemory(selected)
+	if err != nil {
+		trace.MemoryState = MemoryUnavailable
+		return 0
+	}
+	return contentTokens(encoded)
+}
+
+// appendMemorySources records one trace source per selected memory row. The
+// estimated token count is that row's marginal cost: the message cost with the
+// row minus the message cost without it, so the numbers explain the spend.
+func appendMemorySources(
+	sources []TraceSource, items []memoryItem, chosen []bool, spent int,
+) []TraceSource {
+	for index := range items {
+		if !chosen[index] {
+			continue
+		}
+		without := make([]bool, len(chosen))
+		copy(without, chosen)
+		without[index] = false
+		marginal := spent - memoryTokensFor(items, without, &Trace{})
+		if marginal < 0 {
+			marginal = 0
+		}
+		item := items[index]
+		source := TraceSource{
+			Kind: "memory", Label: "memory:" + item.ID,
+			EstimatedTokens: marginal, Protected: item.Protected,
+			MemoryID: item.ID, MemoryRevision: item.Revision,
+			MemoryCandidateID: item.CandidateID, MemorySourceRunID: item.SourceRunID,
+		}
+		if !item.ConfirmedAt.IsZero() {
+			source.MemoryConfirmedAt = item.ConfirmedAt.UTC().Format(time.RFC3339)
+		}
+		sources = append(sources, source)
+	}
+	return sources
+}
+
+// appendMemoryTruncations records the rows the memory budget dropped, lowest
+// relevance first (the oldest unprotected row is truncated first). Each entry
+// names the memory row and revision and the tokens it would have cost.
+func appendMemoryTruncations(trace *Trace, items []memoryItem, chosen []bool, spent int) {
+	for index := len(items) - 1; index >= 0; index-- {
+		if chosen[index] {
+			continue
+		}
+		with := make([]bool, len(chosen))
+		copy(with, chosen)
+		with[index] = true
+		removed := memoryTokensFor(items, with, &Trace{}) - spent
+		if removed <= 0 {
+			removed = EstimateTokens(items[index].Text)
+		}
+		trace.Truncations = append(trace.Truncations, Truncation{
+			Source: "memory:" + items[index].ID, Reason: ReasonOptionalMemory,
+			TokensRemoved: removed, MemoryID: items[index].ID,
+			MemoryRevision: items[index].Revision,
+		})
+	}
+}
+
+// memoryProtectedMarkers is the fixed, closed vocabulary that marks a memory
+// paragraph as carrying a user negation or an approval parameter. It mirrors the
+// builder's protected-key rule for structured inputs: a new marker must be added
+// here and tested, never inferred from a model summary. A memory matching any
+// marker is never truncated by the memory budget.
+var memoryProtectedMarkers = []string{
+	"must not", "do not", "does not", "never", "exclude", "excluded",
+	"not allowed", "forbidden", "without approval", "approval", "approve",
+	"approver",
+	"不要", "不得", "禁止", "绝不", "审批", "批准", "除外",
+}
+
+// memoryTextIsProtected reports whether one memory body must survive the memory
+// budget. ASCII markers are matched on word boundaries so "whenever" is not read
+// as "never"; CJK markers are matched as substrings.
+func memoryTextIsProtected(text string) bool {
+	lowered := strings.ToLower(text)
+	for _, marker := range memoryProtectedMarkers {
+		if memoryMarkerPresent(lowered, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func memoryMarkerPresent(text, marker string) bool {
+	if marker == "" {
+		return false
+	}
+	offset := 0
+	for {
+		index := strings.Index(text[offset:], marker)
+		if index < 0 {
+			return false
+		}
+		start := offset + index
+		end := start + len(marker)
+		if isWordBoundary(text, start, end) {
+			return true
+		}
+		offset = start + 1
+	}
+}
+
+// isWordBoundary is ASCII-letter/digit aware so an English marker cannot match
+// inside a longer word. Non-ASCII markers (CJK) have no word boundaries and are
+// accepted as-is.
+func isWordBoundary(text string, start, end int) bool {
+	if start > 0 && isASCIIWordByte(text[start-1]) && isASCIIWordByte(text[start]) {
+		return false
+	}
+	if end < len(text) && isASCIIWordByte(text[end-1]) && isASCIIWordByte(text[end]) {
+		return false
+	}
+	return true
+}
+
+func isASCIIWordByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9' || value == '_'
 }
 
 // protectedKeys is the fixed protected-key vocabulary. It is intentionally
@@ -1018,6 +1299,71 @@ func addTruncation(trace *Trace, message *builtMessage, reason string, removed i
 	trace.Truncations = append(trace.Truncations, Truncation{
 		Source: source, Reason: reason, TokensRemoved: removed,
 	})
+}
+
+// dropLowestMemoryItem removes the lowest-relevance unprotected memory row from
+// the memory message and re-encodes it. It never removes a protected row and
+// reports changed=false when nothing may be dropped. It is the whole-context
+// counterpart of the memory sub-budget: under pressure a protected negation
+// survives while ordinary personal context is given up first.
+func dropLowestMemoryItem(messages *[]*builtMessage, trace *Trace) (int, bool, *Error) {
+	list := *messages
+	messageIndex := -1
+	for index, message := range list {
+		if message.memory {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		return 0, false, nil
+	}
+	message := list[messageIndex]
+	victim := -1
+	for index := len(message.memoryItems) - 1; index >= 0; index-- {
+		if !message.memoryItems[index].Protected {
+			victim = index
+			break
+		}
+	}
+	if victim < 0 {
+		return 0, false, nil
+	}
+	removedItem := message.memoryItems[victim]
+	before := contentTokens(message.content)
+	message.memoryItems = append(message.memoryItems[:victim], message.memoryItems[victim+1:]...)
+	if len(message.memoryItems) == 0 {
+		*messages = append(list[:messageIndex], list[messageIndex+1:]...)
+		trace.MemoryTokens = 0
+		trace.MemoryState = MemoryTruncated
+		trace.Truncations = append(trace.Truncations, Truncation{
+			Source: "memory:" + removedItem.ID, Reason: ReasonOptionalMemory,
+			TokensRemoved: before, MemoryID: removedItem.ID,
+			MemoryRevision: removedItem.Revision,
+		})
+		return before, true, nil
+	}
+	encoded, encodeErr := encodeMemory(message.memoryItems)
+	if encodeErr != nil {
+		return 0, false, encodeErr
+	}
+	message.content = encoded
+	after := contentTokens(encoded)
+	removed := before - after
+	if removed < 0 {
+		removed = 0
+	}
+	if trace.MemoryTokens >= removed {
+		trace.MemoryTokens -= removed
+	} else {
+		trace.MemoryTokens = 0
+	}
+	trace.Truncations = append(trace.Truncations, Truncation{
+		Source: "memory:" + removedItem.ID, Reason: ReasonOptionalMemory,
+		TokensRemoved: removed, MemoryID: removedItem.ID,
+		MemoryRevision: removedItem.Revision,
+	})
+	return removed, true, nil
 }
 
 func sourceName(source Source) string {
