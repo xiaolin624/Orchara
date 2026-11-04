@@ -39,9 +39,11 @@ type JobScope interface {
 	// EvaluationRun creates (or returns) the platform run that executes one
 	// evaluation case, as the evaluation's owner, from the evaluation's frozen
 	// snapshot. The handler supplies the case input bytes; the server seals them,
-	// creates the run and its start job, and re-proves the owner's access. It is
-	// the F13A/T052 bridge (ADR 0011).
-	EvaluationRun(ctx context.Context, jobID, attemptToken, caseID string, input []byte) (EvaluationRunRef, error)
+	// creates the run and its start job, and re-proves the owner's access. A
+	// non-nil taskInput asks the server to bind the owner's own fixture to the
+	// run as its task_input artifact (F13A/T056). It is the F13A/T052 bridge
+	// (ADR 0011, extended by ADR 0017).
+	EvaluationRun(ctx context.Context, jobID, attemptToken, caseID string, input []byte, taskInput *evaluation.TaskInputBinding) (EvaluationRunRef, error)
 	// EvaluationRunFacts reads the independent truth of one evaluation case run:
 	// its state, its sealed output artifact, the real operation ledger counts and
 	// the citation sources that output declares. It is a platform read, never the
@@ -151,7 +153,10 @@ type EvaluationRunFacts struct {
 	EffectsCollected   bool
 	Citations          []string
 	CitationsCollected bool
-	Provenance         evaluation.RunProvenance
-	StartedAt          *time.Time
-	FinishedAt         *time.Time
+	// F13A/T056: the caller fixture bound to the run, by artifact id and hash.
+	TaskInputArtifactID string
+	TaskInputSHA256     string
+	Provenance          evaluation.RunProvenance
+	StartedAt           *time.Time
+	FinishedAt          *time.Time
 }

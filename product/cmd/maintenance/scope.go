@@ -187,12 +187,13 @@ func (s *jobScope) EvaluationRun(
 	ctx context.Context,
 	jobID, attemptToken, caseID string,
 	input []byte,
+	taskInput *evaluation.TaskInputBinding,
 ) (background.EvaluationRunRef, error) {
 	var raw json.RawMessage
 	if err := json.Unmarshal(input, &raw); err != nil {
 		return background.EvaluationRunRef{}, errors.New("the case input is not valid JSON")
 	}
-	ref, err := s.client.evaluationRun(ctx, jobID, attemptToken, caseID, raw)
+	ref, err := s.client.evaluationRun(ctx, jobID, attemptToken, caseID, raw, taskInput)
 	if err != nil {
 		return background.EvaluationRunRef{}, err
 	}
@@ -209,18 +210,20 @@ func (s *jobScope) EvaluationRunFacts(
 		return background.EvaluationRunFacts{}, err
 	}
 	facts := background.EvaluationRunFacts{
-		RunID:              payload.RunID,
-		State:              payload.State,
-		ErrorCode:          payload.ErrorCode,
-		OutputArtifactID:   payload.OutputArtifactID,
-		OutputSHA256:       payload.OutputSHA256,
-		Output:             payload.Output,
-		OutputCollected:    payload.OutputCollected,
-		Effects:            payload.EffectCounts,
-		EffectsCollected:   payload.EffectsCollected,
-		Citations:          payload.Citations,
-		CitationsCollected: payload.CitationsCollected,
-		Provenance:         payload.Provenance,
+		RunID:               payload.RunID,
+		State:               payload.State,
+		ErrorCode:           payload.ErrorCode,
+		OutputArtifactID:    payload.OutputArtifactID,
+		OutputSHA256:        payload.OutputSHA256,
+		Output:              payload.Output,
+		OutputCollected:     payload.OutputCollected,
+		Effects:             payload.EffectCounts,
+		EffectsCollected:    payload.EffectsCollected,
+		Citations:           payload.Citations,
+		CitationsCollected:  payload.CitationsCollected,
+		TaskInputArtifactID: payload.TaskInputArtifactID,
+		TaskInputSHA256:     payload.TaskInputSHA256,
+		Provenance:          payload.Provenance,
 	}
 	if facts.StartedAt, err = parseOptionalTime(payload.StartedAt); err != nil {
 		return background.EvaluationRunFacts{}, err
@@ -573,20 +576,22 @@ type evaluationRunPayload struct {
 
 // evaluationRunFactsPayload is the T052 bridge's independent-truth answer.
 type evaluationRunFactsPayload struct {
-	RunID              string                   `json:"run_id"`
-	State              string                   `json:"state"`
-	ErrorCode          string                   `json:"error_code"`
-	OutputArtifactID   *string                  `json:"output_artifact_id"`
-	OutputSHA256       string                   `json:"output_sha256"`
-	Output             json.RawMessage          `json:"output"`
-	OutputCollected    bool                     `json:"output_collected"`
-	EffectCounts       map[string]int64         `json:"effect_counts"`
-	EffectsCollected   bool                     `json:"effects_collected"`
-	Citations          []string                 `json:"citations"`
-	CitationsCollected bool                     `json:"citations_collected"`
-	Provenance         evaluation.RunProvenance `json:"provenance"`
-	StartedAt          string                   `json:"started_at"`
-	FinishedAt         string                   `json:"finished_at"`
+	RunID               string                   `json:"run_id"`
+	State               string                   `json:"state"`
+	ErrorCode           string                   `json:"error_code"`
+	OutputArtifactID    *string                  `json:"output_artifact_id"`
+	OutputSHA256        string                   `json:"output_sha256"`
+	Output              json.RawMessage          `json:"output"`
+	OutputCollected     bool                     `json:"output_collected"`
+	EffectCounts        map[string]int64         `json:"effect_counts"`
+	EffectsCollected    bool                     `json:"effects_collected"`
+	Citations           []string                 `json:"citations"`
+	CitationsCollected  bool                     `json:"citations_collected"`
+	TaskInputArtifactID string                   `json:"task_input_artifact_id"`
+	TaskInputSHA256     string                   `json:"task_input_sha256"`
+	Provenance          evaluation.RunProvenance `json:"provenance"`
+	StartedAt           string                   `json:"started_at"`
+	FinishedAt          string                   `json:"finished_at"`
 }
 
 // evaluationRun creates (or returns) one case's platform run.
@@ -594,11 +599,18 @@ func (c *internalClient) evaluationRun(
 	ctx context.Context,
 	jobID, attemptToken, caseID string,
 	input json.RawMessage,
+	taskInput *evaluation.TaskInputBinding,
 ) (evaluationRunPayload, error) {
 	body := map[string]any{
 		"attempt_token": attemptToken,
 		"case_id":       caseID,
 		"input":         input,
+	}
+	if taskInput != nil {
+		body["task_input"] = map[string]string{
+			"sha256":     taskInput.SHA256,
+			"media_type": taskInput.MediaType,
+		}
 	}
 	var response evaluationRunPayload
 	status, err := c.post(

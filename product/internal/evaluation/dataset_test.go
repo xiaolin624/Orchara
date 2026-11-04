@@ -189,6 +189,88 @@ func TestRunInputStripsTheReservedInteractionMember(t *testing.T) {
 	}
 }
 
+// T056: a case may bind exactly one caller-uploaded task_input artifact and may
+// declare the business failure it expects. Both live in the contract-legal
+// `input` object (additionalProperties:true) and are stripped from the run input.
+func TestParseDatasetAcceptsTheReservedTaskInputAndFailureBindings(t *testing.T) {
+	sha := strings.Repeat("ab", 32)
+	input := map[string]any{
+		"source":           "sales-happy-csv",
+		"task_input":       map[string]any{"sha256": sha, "media_type": "text/csv"},
+		"expected_failure": map[string]any{"error_code": "missing_column"},
+	}
+	dataset, err := ParseDataset(datasetOf(t, validCase(map[string]any{"input": input})))
+	if err != nil {
+		t.Fatalf("the reserved bindings must not make the dataset invalid: %v", err)
+	}
+	item := dataset.Cases[0]
+	if item.TaskInput == nil || item.TaskInput.SHA256 != sha || item.TaskInput.MediaType != "text/csv" {
+		t.Fatalf("the task_input binding was not parsed: %+v", item.TaskInput)
+	}
+	if item.ExpectedFailure == nil || item.ExpectedFailure.ErrorCode != "missing_column" {
+		t.Fatalf("the failure expectation was not parsed: %+v", item.ExpectedFailure)
+	}
+	runInput, err := item.RunInput()
+	if err != nil {
+		t.Fatalf("RunInput: %v", err)
+	}
+	for _, reserved := range []string{"task_input", "expected_failure", "interactions"} {
+		if strings.Contains(string(runInput), reserved) {
+			t.Fatalf("the reserved member %q leaked into the run input: %s", reserved, runInput)
+		}
+	}
+	if !strings.Contains(string(runInput), "sales-happy-csv") {
+		t.Fatalf("the application input was lost: %s", runInput)
+	}
+}
+
+func TestParseDatasetRefusesAnInvalidTaskInputBinding(t *testing.T) {
+	sha := strings.Repeat("ab", 32)
+	for _, test := range []struct {
+		name    string
+		binding any
+		code    string
+		pointer string
+	}{
+		{"missing sha256", map[string]any{"media_type": "text/csv"},
+			CodeDatasetMissingField, "/cases/0/input/task_input/sha256"},
+		{"short sha256", map[string]any{"sha256": "abc", "media_type": "text/csv"},
+			CodeDatasetSchema, "/cases/0/input/task_input/sha256"},
+		{"unsupported media type", map[string]any{"sha256": sha, "media_type": "text/plain"},
+			CodeDatasetSchema, "/cases/0/input/task_input/media_type"},
+		{"unknown member", map[string]any{"sha256": sha, "media_type": "text/csv", "path": "/etc/passwd"},
+			CodeDatasetUnknownField, "/cases/0/input/task_input/path"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := map[string]any{"source": "x", "task_input": test.binding}
+			_, err := ParseDataset(datasetOf(t, validCase(map[string]any{"input": input})))
+			assertDatasetError(t, err, test.code, test.pointer)
+		})
+	}
+}
+
+func TestParseDatasetRefusesAnInvalidFailureExpectation(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		expectation any
+		code        string
+		pointer     string
+	}{
+		{"missing error_code", map[string]any{},
+			CodeDatasetMissingField, "/cases/0/input/expected_failure/error_code"},
+		{"not a safe code", map[string]any{"error_code": "Missing Column"},
+			CodeDatasetSchema, "/cases/0/input/expected_failure/error_code"},
+		{"unknown member", map[string]any{"error_code": "missing_column", "status": "failed"},
+			CodeDatasetUnknownField, "/cases/0/input/expected_failure/status"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := map[string]any{"source": "x", "expected_failure": test.expectation}
+			_, err := ParseDataset(datasetOf(t, validCase(map[string]any{"input": input})))
+			assertDatasetError(t, err, test.code, test.pointer)
+		})
+	}
+}
+
 func assertDatasetError(t *testing.T, err error, code, pointer string) {
 	t.Helper()
 	if err == nil {

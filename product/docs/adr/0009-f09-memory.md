@@ -1,12 +1,14 @@
 # ADR 0009：F09/T054 个人长期记忆的候选/确认边界
 
-- 状态：已接受（T054 主体；T058 增补见 §11）
-- 日期：2026-11-04（T058 增补：2026-11-04）
-- 相关：F09 / T054（GitHub #55，规划 ID F09.01）与 F09 / T058（GitHub #59，
-  修订/删除停止旧内容召回）；分支 `t/t054-memory-candidates` / `t/t058-memory-revision`；
+- 状态：已接受（T054 主体；T058 增补见 §11；T063 增补见 §12）
+- 日期：2026-11-04（T058 增补：2026-11-04；T063 增补：2026-11-04）
+- 相关：F09 / T054（GitHub #55，规划 ID F09.01）、F09 / T058（GitHub #59，
+  修订/删除停止旧内容召回）与 F09 / T063（GitHub #64，运行时按上下文预算召回）；
+  分支 `t/t054-memory-candidates` / `t/t058-memory-revision` / `t/t063-runtime-recall`；
   报告 `product/reports/f09/T054-memory-candidates.md`、
-  `product/reports/f09/T058-memory-revision-and-delete.md`；后续：
-  T063（#64，运行时召回与上下文预算）、T067（#67，Mem0 对照与检索缓存）；
+  `product/reports/f09/T058-memory-revision-and-delete.md`、
+  `product/reports/f09/T063-runtime-recall.md`；后续：
+  T067（#67，Mem0 对照与检索缓存）；
   F07（删除治理，物理副本清理）与 F10/T055（知识库，ADR 0010）另有自己的
   ADR/债务，本文件不覆盖。
 - 契约：`contracts/openapi.json`（T054 五个 + T058 三个 operation）、
@@ -207,6 +209,66 @@ T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
 10. **共享与管理员可见性不变：** 仍是 owner-only，管理员对他人记忆是 404（§9 的债务
     继续有效，T058 不扩展 `policy.ResourceTypes`）。
 
+### 12. T063 增补：运行时召回、记忆预算与来源跟踪
+
+T063（#64）在 T054/T058 的存储与失效 seam 上接上运行时召回，仍然没有第二个记忆存储、
+没有新迁移、没有新契约端点。
+
+1. **召回源 = PostgreSQL 当前行，不是缓存。** `internal/memory.RecallSource` 每次调用
+   直接查 `platform.memories`：`owner_id`、`application_id` 与 `LIMIT` 在同一条 WHERE；
+   `deleted_at IS NULL`（T058 墓碑）；`JOIN platform.artifacts` 只接受 `state='ready'`
+   且未删除的当前 `body_artifact_id`；`LEFT JOIN memory_candidates` 只为来源链
+   `candidate_id -> source_run_id`。候选（pending/expired/confirmed）永远不是召回源；
+   记忆本身没有过期列，过期是候选生命周期事实。正文逐条从 sealed 对象读取并校验
+   sha256；**一条读不出即整体失败关闭**（trace `memory_state=unavailable`、不注入任何
+   记忆），绝不返回“部分记忆”——部分视图与“用户从未说过”不可区分。
+   `RecallRowLimit=200` 只防止病态账户让单轮读取无界；真正的取舍在上下文预算。
+2. **范围来自 run 身份，不来自 manifest/body。** 监督进程用可信只读数据库身份读
+   `runs.owner_id` + `execution_snapshots.application_id`（`presetexec.RunIdentity`），
+   传给上下文 builder 的 `Scope`；缺失或读取失败时召回源拒绝空 scope（fail closed），
+   trace 报 unavailable，运行本身继续（个人记忆是可选上下文，不因它失败整个 run）。
+3. **记忆预算 = 上下文预算的四分之一。** `budget = context_window - max_output_tokens`，
+   `memory_budget = budget / 4`（`agentcontext.MemoryBudgetDivisor`）；其余预算留给本次
+   run 的授权输入、历史与工具结果，记忆不能先挤掉它们。选择规则是可解释的确定性规则：
+   `confirmed_at DESC, id DESC` 的“新近度即相关度”（本构建没有 pgvector 嵌入打分；
+   检索打分属 T067），按新近度依次加入直到编码后的消息超过子预算；被放弃的行按
+   **最低相关度优先**写入 `truncations[]`，`reason="optional_memory"`，并带
+   `memory_id`/`memory_revision`/`tokens_removed`。`memory_state` 取值
+   `not_run|empty|included|truncated|unavailable`；`memory_tokens` 是实际花费，
+   `memory_budget_tokens` 是使用的子预算。过预算因此是可观察的，不是静默丢弃。
+4. **来源逐条可解释。** 每条被选中的记忆是一个 `sources[]` 条目（`kind="memory"`，
+   `label="memory:<id>"`），带 `memory_id`、`memory_revision`、`memory_confirmed_at`
+   （RFC3339 UTC）、`memory_candidate_id`、`memory_source_run_id` 与边际 token 数；
+   trace 只有标识/原因/计数，**没有记忆正文**。读取面沿用 T047 的
+   `GET /api/v1/runs/{run_id}/node-results` 定位 `context-trace` + 普通 owner-only
+   artifact content 路由，不新增端点、不改 `/runs` 页面。
+5. **用户否定/审批参数永不截断。** 记忆正文按固定词表（`memoryProtectedMarkers`：
+   `must not`/`do not`/`never`/`exclude`/`approval`/`不要`/`不得`/`禁止`/`审批` 等，
+   ASCII 按词边界匹配，避免 `whenever` 命中 `never`）标记为受保护：选择时优先纳入，
+   预算截断永远不丢；整个上下文超预算时按条丢“非受保护”记忆（最低相关度优先），
+   只剩受保护记忆仍放不下则走既有 `context_budget_exhausted`（与受保护最小输入同一
+   规则，绝不静默裁剪）。这是与 §2 的 protected-key 规则对齐的封闭词表，新增标记必须
+   同时加测试；不从模型摘要推断。
+6. **生产接点只有一个。** `internal/presetexec/agent.go` 的 `agentcontext.Build` 调用是
+   唯一注入点；`presetexec.Deps.Memory` + `Deps.RunIdentity` 由
+   `cmd/supervisor exec` 组合根注入（`memory.NewRecallSource(db, objectstore.Open(
+   ORCHARA_OBJECT_DIR))`）。`ORCHARA_OBJECT_DIR` 在监督进程是可选启动项：未配置时
+   召回读得到行但读不到字节，trace 报 unavailable，绝不伪造文本；配置后与 API 共用
+   同一个 sealed 根。没有缓存，因此 T058 的
+   `policy_epochs(memory:<owner>:<app>)` 失效 seam 不会被跳过，只会供 T067 的检索缓存
+   使用。
+7. **没有新迁移。** 0033 的 `memories_scope(owner_id, application_id) WHERE deleted_at
+   IS NULL` 已覆盖召回查询；`platform.memory_embeddings` 仍**不创建**（PG 16 无
+   pgvector；本票不写嵌入，检索打分/缓存属 T067）。迁移号不被本票占用。
+8. **propose 身份问题（T054 记录）核实结论：** F04A 执行器并非“只持 supervisor 证书”
+   ——`cmd/supervisor exec` 同时持有 supervisor 与 worker 两套 mTLS 身份，能力调用
+   （`InvokeCapability`）与 `RecordNodeResults` 都用 `worker` 容量 + `x-internal-role:
+   worker` 发起；T063 的真实 run 正是通过该 worker-only 路由记录 trace 并成功的。因此
+   worker-only 的 `proposeMemoryCandidate` 对一个接入 agent loop 的生产者**有可用传输
+   身份**，不需要拆分 supervisor/worker 进程。本票未实现“自动抽取并 propose”的产品
+   行为（属 F04A 抽取策略；票面明确不默认从完整聊天抽取永久事实），故 producer 本身
+   是 `not_run`，但身份前提已验证而非假设。
+
 ## 影响
 
 - `contracts/**`、`docs/spec/**`、`tools/sync_spec.py --check` 不受影响；
@@ -218,15 +280,23 @@ T058（#59）在 0033 的 `revision`/`deleted_at`/`policy_epochs` seam 上补齐
 - F01 的“诚实空列表”被真实读模型替换：`GET /api/v1/memories` 现在校验
   `cursor`/`application_id`，`tests/f01/test_t020_personal_boundary.py` 同步更新为真实边界；
 - T058 后 `GET /memories/{id}`、`PATCH`、`DELETE` 是正式入口；`/memories` 页面可展示
-  ETag 冲突与删除状态。
+  ETag 冲突与删除状态；
+- T063 后 agent 节点的上下文会按预算召回当前用户+应用的已确认记忆：新增
+  `internal/memory/recall.go`（`RecallSource`）、`presetexec.Deps.{Memory,RunIdentity}`、
+  `internal/config.SupervisorExecConfig.ObjectDir`，trace 增加
+  `memory_tokens`/`memory_budget_tokens` 与逐条 memory source/truncation 字段；
+  `tests/f06/test_t047_context.py` 对无记忆 owner 的期望由 `not_run` 更新为 `empty`。
 
 ## 未做（如实）
 
 - 浏览器 DOM 驱动：`not_run`（页面纯函数由 Node 执行）；
 - 后台过期清扫进程：`not_run`（惰性迁移 + 决定复检已真实生效）；
-- 运行时召回（T063）、Mem0 对照与检索缓存（T067）：本票不实现，只预留 §11.7 seam；
+- Mem0 对照与检索缓存（T067）：T063 不做嵌入检索，只留
+  `(memory_id, memory_revision)` + `policy_epochs` 失效 seam；
+- 自动记忆抽取与对 agent loop 的 propose 接入：`not_run`（F04A 抽取策略；T063 只证明
+  worker-only propose 的传输身份可用，票面明确不默认从完整聊天抽取永久事实）；
 - 物理副本清理与删除作业的 claim/retry/completion（F07）：T058 只写 `pending` job，
   不注册 `delete_content` handler，不删除对象/artifact 行；债务记录在迁移 0036 头、
   §11.5 与报告 §6；
-- `memory_embeddings`（无 pgvector，T063 拥有）：本票只保证 revision/epoch 失效事实；
+- `memory_embeddings`（无 pgvector）：T063 不创建，检索打分/缓存属 T067；
 - 记忆共享/授权：不实现，债务记录在报告 §6。

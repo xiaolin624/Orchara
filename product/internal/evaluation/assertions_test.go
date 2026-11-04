@@ -198,6 +198,31 @@ func TestValidDecimalString(t *testing.T) {
 	}
 }
 
+func TestFailureExpectationChecksTheCollectedErrorCode(t *testing.T) {
+	facts := Facts{RunState: "failed", RunErrorCode: "missing_column"}
+	matched := EvaluateFailureExpectation(&FailureExpectation{ErrorCode: "missing_column"}, facts)
+	if matched == nil || !matched.Passed {
+		t.Fatalf("the expected business failure must pass: %+v", matched)
+	}
+	if matched.Kind != KindFailureReason || matched.Actual != "missing_column" {
+		t.Fatalf("the outcome must report the real error code: %+v", matched)
+	}
+	if matched.Expected != "missing_column" {
+		t.Fatalf("the outcome must report the expected code: %+v", matched)
+	}
+	mismatched := EvaluateFailureExpectation(&FailureExpectation{ErrorCode: "duplicate_order_id"}, facts)
+	if mismatched.Passed {
+		t.Fatalf("a run that failed for another reason must not satisfy the expectation: %+v", mismatched)
+	}
+	noState := EvaluateFailureExpectation(&FailureExpectation{ErrorCode: "missing_column"}, Facts{})
+	if noState.Passed {
+		t.Fatal("an uncollected run state must not satisfy a failure expectation")
+	}
+	if EvaluateFailureExpectation(nil, facts) != nil {
+		t.Fatal("a case without a failure expectation must not gain an outcome")
+	}
+}
+
 func TestCaseTimingsFormattingOmitsZeroInstants(t *testing.T) {
 	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	if got := FormatTime(&start); got != "2026-01-02T03:04:05Z" {

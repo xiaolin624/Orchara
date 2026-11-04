@@ -48,6 +48,12 @@ type Facts struct {
 	// from the same sealed output document, under /citations.
 	Citations          []string
 	CitationsCollected bool
+	// TaskInputArtifactID/TaskInputSHA256 identify the caller fixture the
+	// platform bound to this run as its task_input artifact (F13A/T056). An empty
+	// id means no fixture was bound; it is evidence, never an assertion by
+	// itself.
+	TaskInputArtifactID string
+	TaskInputSHA256     string
 	// Provenance is the frozen identity the run executed under.
 	Provenance RunProvenance
 	StartedAt  *time.Time
@@ -80,6 +86,44 @@ type Outcome struct {
 	Actual     string `json:"actual"`
 	Passed     bool   `json:"passed"`
 	Detail     string `json:"detail,omitempty"`
+}
+
+// KindFailureReason is the outcome kind of the T056 failure expectation. It is
+// not a contract assertion kind: the expectation lives in the contract-legal
+// reserved case-input member (input.expected_failure) because
+// contracts/evaluation-case.schema.json has no assertion for a run's error code.
+// It is evaluated by this same checker against the run's own platform state and
+// is reported in the same assertions array, so a bad-input case's verdict cannot
+// pass without the located business reason.
+const KindFailureReason = "failure_reason"
+
+// EvaluateFailureExpectation checks one case's declared business failure against
+// the collected run truth. A nil expectation produces no outcome. An uncollected
+// state or an empty error code never passes.
+func EvaluateFailureExpectation(expectation *FailureExpectation, facts Facts) *Outcome {
+	if expectation == nil {
+		return nil
+	}
+	outcome := &Outcome{
+		Kind:     KindFailureReason,
+		Expected: expectation.ErrorCode,
+		Actual:   facts.RunErrorCode,
+	}
+	switch {
+	case strings.TrimSpace(facts.RunState) == "":
+		outcome.Actual = "not_collected"
+		outcome.Detail = "no terminal run state was collected for this case"
+	case facts.RunState != "failed":
+		outcome.Detail = "the run reached " + facts.RunState + "; a bad-input case must fail"
+	case facts.RunErrorCode == "":
+		outcome.Actual = "not_collected"
+		outcome.Detail = "the failed run carries no error code to compare"
+	case facts.RunErrorCode == expectation.ErrorCode:
+		outcome.Passed = true
+	default:
+		outcome.Detail = "the run failed for a different reason than the case expects"
+	}
+	return outcome
 }
 
 // ValidDecimalString reports whether value is the contract's decimal string
