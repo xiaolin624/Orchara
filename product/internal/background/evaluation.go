@@ -45,6 +45,7 @@ import (
 	"strings"
 	"time"
 
+	eval "orchara/platform/internal/evaluation"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
 )
@@ -92,6 +93,15 @@ type EvaluationBinding struct {
 	Kind              string
 	DatasetArtifactID string
 	ManifestSHA256    string
+	// F13A/T052: the frozen identity behind the hash. The runner copies these
+	// into the report's provenance block so a result is traceable to an exact
+	// snapshot, compiler build and worker image rather than to a hash alone.
+	SnapshotID         string
+	ApplicationID      string
+	DraftRevision      int64
+	CompilerVersion    string
+	WorkerImageDigest  string
+	StateSchemaVersion string
 }
 
 // Evaluation errors. The internal endpoint maps them to stable contract codes;
@@ -249,12 +259,28 @@ func (c *Controller) ResolveEvaluationBinding(ctx context.Context, job *Job) (*E
 	if err != nil {
 		return nil, err
 	}
-	return &EvaluationBinding{
+	binding := &EvaluationBinding{
 		EvaluationID:      evaluation.ID,
 		Kind:              evaluation.Kind,
 		DatasetArtifactID: evaluation.DatasetArtifactID,
 		ManifestSHA256:    manifestSHA,
-	}, nil
+	}
+	if evaluation.Kind == "application" && evaluation.SnapshotID != nil {
+		if err := c.DB.QueryRowContext(ctx, `
+			SELECT s.id::text, s.application_id::text, COALESCE(s.draft_revision, 0),
+			       s.compiler_version, s.worker_image_digest, s.state_schema_version
+			  FROM platform.execution_snapshots AS s
+			 WHERE s.id = $1::uuid`, *evaluation.SnapshotID,
+		).Scan(
+			&binding.SnapshotID, &binding.ApplicationID, &binding.DraftRevision,
+			&binding.CompilerVersion, &binding.WorkerImageDigest, &binding.StateSchemaVersion,
+		); errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrEvaluationBindingUnavailable
+		} else if err != nil {
+			return nil, fmt.Errorf("reading the evaluation snapshot identity: %w", err)
+		}
+	}
+	return binding, nil
 }
 
 // queryer is the small subset of *sql.DB / *sql.Tx the manifest resolution
@@ -364,6 +390,78 @@ func markEvaluationRunning(ctx context.Context, tx *sql.Tx, job *Job) error {
 		}
 	}
 	return nil
+}
+
+// guardReportProvenanceTx is the F13A/T052 binding extension. A report without a
+// provenance block keeps the T026 rules. A report that declares one must match
+// the frozen snapshot row exactly: the snapshot id, the compiler version, the
+// worker image digest and the state-schema version are read from the database,
+// never trusted from the document. That is what makes "运行产物可追溯到
+// manifest/dataset" verifiable and what stops a report from another snapshot,
+// application or build from being accepted.
+func guardReportProvenanceTx(
+	ctx context.Context, tx *sql.Tx, evaluation *EvaluationJob, document *eval.Report,
+) string {
+	if document.Provenance == nil {
+		return ""
+	}
+	if document.Provenance.DatasetArtifactID != "" &&
+		document.Provenance.DatasetArtifactID != evaluation.DatasetArtifactID {
+		return CodeReportBindingMismatch
+	}
+	if evaluation.SnapshotID == nil {
+		// A model evaluation has no snapshot; a provenance block claiming one is
+		// not a document this pipeline produced.
+		if document.Provenance.SnapshotID != "" {
+			return CodeReportBindingMismatch
+		}
+		return ""
+	}
+	var (
+		snapshotID      string
+		manifestSHA256  string
+		compilerVersion string
+		workerDigest    string
+		stateSchema     string
+		ownerID         string
+		applicationID   sql.NullString
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT s.id::text, s.manifest_sha256, s.compiler_version, s.worker_image_digest,
+		       s.state_schema_version, s.owner_id::text, e.application_id::text
+		  FROM platform.execution_snapshots AS s
+		  JOIN platform.evaluation_jobs AS e ON e.snapshot_id = s.id
+		 WHERE s.id = $1::uuid
+		   AND e.id = $2::uuid`, *evaluation.SnapshotID, evaluation.ID,
+	).Scan(&snapshotID, &manifestSHA256, &compilerVersion, &workerDigest, &stateSchema,
+		&ownerID, &applicationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CodeEvaluationBindingMissing
+	}
+	if err != nil {
+		return ""
+	}
+	if document.Provenance.SnapshotID != snapshotID {
+		return CodeReportBindingMismatch
+	}
+	// The optional identity fields are exact when they are present: a document
+	// that names a compiler/worker/state-schema/application identity must name
+	// the frozen one.
+	if value := document.Provenance.CompilerVersion; value != "" && value != compilerVersion {
+		return CodeReportBindingMismatch
+	}
+	if value := document.Provenance.WorkerImageDigest; value != "" && value != workerDigest {
+		return CodeReportBindingMismatch
+	}
+	if value := document.Provenance.StateSchemaVersion; value != "" && value != stateSchema {
+		return CodeReportBindingMismatch
+	}
+	if value := document.Provenance.ApplicationID; value != "" {
+		if !applicationID.Valid || !strings.EqualFold(value, applicationID.String) {
+			return CodeReportBindingMismatch
+		}
+	}
+	return ""
 }
 
 // failEvaluationTx records a terminal evaluation failure. It is idempotent: an
@@ -547,6 +645,13 @@ func (c *Controller) guardEvaluationSuccess(
 	case document.EvaluationKind != evaluation.Kind:
 		return CodeReportInvalid, nil
 	}
+	// F13A/T052: a report that declares its provenance must prove that the
+	// snapshot/compiler/worker identities it names are the frozen identity the
+	// evaluation actually runs under. The identity is never taken from the
+	// document; it is re-read from the row the binding already resolved.
+	if code := guardReportProvenanceTx(ctx, tx, evaluation, &document); code != "" {
+		return code, nil
+	}
 
 	reportID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `
@@ -583,40 +688,23 @@ func (c *Controller) guardEvaluationSuccess(
 	return "", nil
 }
 
-// EvaluationReportDocument is the exact report document the T026 synthetic
-// evaluator writes and the completion guard accepts. It is exported so the
-// handler and the guard share one schema instead of two drifting structs.
+// EvaluationReportDocument is the sealed report document the trusted runner
+// writes and the completion guard accepts. It is an alias of the F13A/T052
+// document so the handler and the guard share one schema instead of two
+// drifting structs.
 //
-// This is deliberately a *synthetic* evaluator placeholder: it proves the
-// download -> evaluate -> upload -> finalize -> guarded-report pipeline on real
-// bytes. F13A owns the real evaluation runner/checker suite; it may extend the
-// case fields, but must keep report_version/kind/status/checks/cases and the two
-// binding hashes, or the guard's binding rules must be extended with it.
-type EvaluationReportDocument struct {
-	ReportVersion     int                    `json:"report_version"`
-	Kind              string                 `json:"kind"`
-	EvaluationKind    string                 `json:"evaluation_kind"`
-	EvaluationID      string                 `json:"evaluation_id"`
-	DatasetArtifactID string                 `json:"dataset_artifact_id"`
-	DatasetSHA256     string                 `json:"dataset_sha256"`
-	ManifestSHA256    string                 `json:"manifest_sha256"`
-	Status            string                 `json:"status"`
-	Checks            []string               `json:"checks"`
-	CaseCount         int                    `json:"case_count"`
-	Cases             []EvaluationReportCase `json:"cases"`
-	Synthetic         bool                   `json:"synthetic"`
-	Evaluator         string                 `json:"evaluator"`
-}
+// T026 introduced a *synthetic* evaluator placeholder (synthetic-jcs-case/1)
+// that proves the download -> evaluate -> upload -> finalize -> guarded-report
+// pipeline on real bytes. F13A/T052 adds the real runner (the runner evaluator
+// id) and extends the document additively with per-case evidence, provenance and
+// the informational quality slot. The five load-bearing fields
+// (report_version/kind/status/checks/cases plus the two binding hashes) keep
+// their exact meaning.
+type EvaluationReportDocument = eval.Report
 
-// EvaluationReportCase is one evaluated case. The guard only needs identity and
-// verdict; the hash fields make the synthetic evaluator's outcome auditable.
-type EvaluationReportCase struct {
-	ID             string `json:"id"`
-	Status         string `json:"status"`
-	ExpectedSHA256 string `json:"expected_sha256,omitempty"`
-	ActualSHA256   string `json:"actual_sha256,omitempty"`
-	Detail         string `json:"detail,omitempty"`
-}
+// EvaluationReportCase is one evaluated case. It is an alias of the F13A/T052
+// case document so the guard, the handler and the synthetic legacy path agree.
+type EvaluationReportCase = eval.CaseReport
 
 // decodeEvaluationReport strictly decodes one report document. Unknown fields,
 // trailing data or invalid JSON are a malformed report, never an accepted one.
@@ -634,63 +722,23 @@ func decodeEvaluationReport(content []byte, document *EvaluationReportDocument) 
 	return nil
 }
 
-// validateEvaluationReportShape applies the passed/failed/not_run rules:
+// validateEvaluationReportShape applies the report's structural and verdict
+// rules. They live in internal/evaluation so the runner that builds a document
+// and the guard that accepts one use exactly the same rules.
 //
-//	passed  -> at least one case, at least one check, every case passed
-//	failed  -> at least one case, at least one check, at least one case failed
-//	not_run -> no cases at all
+// The rules are never weaker than T026's:
 //
-// Anything else is report_invalid. In particular an empty case set or an empty
-// check set can never be passed, and a status that disagrees with the cases is
-// refused rather than trusted.
+//	passed  -> at least one case, at least one check, every case passed, and for
+//	           the real runner every passed case carries at least one passed
+//	           assertion (an empty checker is not a pass)
+//	failed  -> at least one case, at least one check, at least one case did not
+//	           pass or did not run
+//	not_run -> nothing was collected (no cases, or every case is not_run/blocked)
+//
+// Anything else is report_invalid. In particular the declared status must equal
+// the status computed from the cases; a quality/judge score is never an input.
 func validateEvaluationReportShape(document *EvaluationReportDocument) string {
-	if document.ReportVersion != 1 || document.Kind != "evaluation" {
-		return CodeReportInvalid
-	}
-	if document.EvaluationKind != "model" && document.EvaluationKind != "application" {
-		return CodeReportInvalid
-	}
-	if len(document.Checks) == 0 {
-		return CodeReportInvalid
-	}
-	for _, check := range document.Checks {
-		if strings.TrimSpace(check) == "" {
-			return CodeReportInvalid
-		}
-	}
-	if document.CaseCount < 0 || document.CaseCount != len(document.Cases) {
-		return CodeReportInvalid
-	}
-	seen := make(map[string]bool, len(document.Cases))
-	passed, failed := 0, 0
-	for _, item := range document.Cases {
-		if strings.TrimSpace(item.ID) == "" || seen[item.ID] {
-			return CodeReportInvalid
-		}
-		seen[item.ID] = true
-		switch item.Status {
-		case "passed":
-			passed++
-		case "failed":
-			failed++
-		default:
-			return CodeReportInvalid
-		}
-	}
-	switch document.Status {
-	case "passed":
-		if len(document.Cases) == 0 || failed != 0 || passed == 0 {
-			return CodeReportInvalid
-		}
-	case "failed":
-		if len(document.Cases) == 0 || failed == 0 {
-			return CodeReportInvalid
-		}
-	case "not_run":
-		if len(document.Cases) != 0 {
-			return CodeReportInvalid
-		}
-	default:
+	if reason := eval.ValidateShape(document); reason != "" {
 		return CodeReportInvalid
 	}
 	return ""

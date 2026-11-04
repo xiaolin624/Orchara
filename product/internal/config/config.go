@@ -124,6 +124,9 @@ const (
 	EnvDatasetWaitTimeout     = "ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT"
 	EnvEvaluationPollInterval = "ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL"
 	EnvReportWaitTimeout      = "ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT"
+	// EnvEvaluationCaseTimeout bounds how long one evaluation case's run may take
+	// to reach a rest state before the case is recorded as not_run (F13A/T052).
+	EnvEvaluationCaseTimeout = "ORCHARA_MAINTENANCE_EVALUATION_CASE_TIMEOUT"
 
 	// F05/T030 trusted preset tool. PythonPath is the interpreter used for the
 	// fixed tool script (default: "python" on Windows, "python3" elsewhere);
@@ -145,6 +148,9 @@ const (
 	DefaultDatasetWaitTimeout     = 60 * time.Second
 	DefaultEvaluationPollInterval = 100 * time.Millisecond
 	DefaultReportWaitTimeout      = 60 * time.Second
+	// DefaultEvaluationCaseTimeout bounds one evaluation case's run to a rest
+	// state. A timeout is recorded as not_run, never passed (F13A/T052).
+	DefaultEvaluationCaseTimeout = 2 * time.Minute
 	// DefaultToolRunTimeout bounds one trusted preset-tool subprocess. It is
 	// longer than a normal run (Python startup + a 20 MiB sheet) and short
 	// enough that a wedged tool cannot hold a work slot indefinitely.
@@ -303,6 +309,9 @@ type MaintenanceConfig struct {
 	DatasetWaitTimeout     time.Duration
 	EvaluationPollInterval time.Duration
 	ReportWaitTimeout      time.Duration
+	// EvaluationCaseTimeout bounds one evaluation case's run to a rest state
+	// (F13A/T052). A timeout is recorded as not_run.
+	EvaluationCaseTimeout time.Duration
 	// F05/T030: the trusted preset tool's interpreter, product root (the fixed
 	// script lives under it) and per-run timeout.
 	PythonPath       string
@@ -628,6 +637,10 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	caseTimeout, err := parseHandlerDuration(lookup, EnvEvaluationCaseTimeout, DefaultEvaluationCaseTimeout)
+	if err != nil {
+		return nil, err
+	}
 	pythonPath := value(lookup, EnvPython)
 	if pythonPath == "" {
 		// The default interpreter for this OS. It is a configured executable
@@ -677,6 +690,7 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		DatasetWaitTimeout:     datasetWait,
 		EvaluationPollInterval: pollInterval,
 		ReportWaitTimeout:      reportWait,
+		EvaluationCaseTimeout:  caseTimeout,
 		PythonPath:             pythonPath,
 		ProductRoot:            productRoot,
 		ToolTimeout:            toolTimeout,

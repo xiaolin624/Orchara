@@ -130,6 +130,13 @@ type internalEvaluationBindingResponse struct {
 	Kind              string `json:"kind"`
 	DatasetArtifactID string `json:"dataset_artifact_id"`
 	ManifestSHA256    string `json:"manifest_sha256"`
+	// F13A/T052: the frozen identity the report's provenance block declares.
+	SnapshotID         string `json:"snapshot_id"`
+	ApplicationID      string `json:"application_id"`
+	DraftRevision      int64  `json:"draft_revision"`
+	CompilerVersion    string `json:"compiler_version"`
+	WorkerImageDigest  string `json:"worker_image_digest"`
+	StateSchemaVersion string `json:"state_schema_version"`
 }
 
 func (s *Server) handleInternalEvaluationBinding(w http.ResponseWriter, r *http.Request) {
@@ -157,9 +164,15 @@ func (s *Server) handleInternalEvaluationBinding(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, internalEvaluationBindingResponse{
-		EvaluationID:      binding.EvaluationID,
-		Kind:              binding.Kind,
-		DatasetArtifactID: binding.DatasetArtifactID,
-		ManifestSHA256:    binding.ManifestSHA256,
+		EvaluationID:       binding.EvaluationID,
+		Kind:               binding.Kind,
+		DatasetArtifactID:  binding.DatasetArtifactID,
+		ManifestSHA256:     binding.ManifestSHA256,
+		SnapshotID:         binding.SnapshotID,
+		ApplicationID:      binding.ApplicationID,
+		DraftRevision:      binding.DraftRevision,
+		CompilerVersion:    binding.CompilerVersion,
+		WorkerImageDigest:  binding.WorkerImageDigest,
+		StateSchemaVersion: binding.StateSchemaVersion,
 	})
 }
