@@ -186,9 +186,10 @@ func (g *streamGeneration) frameForChunk(chunk modelproxy.Chunk) Frame {
 //
 // role is the mTLS capacity; only the worker capacity may stream. The same
 // authorization/operation/params/idempotency rules as Invoke apply (the model
-// branch): a replay emits only the sealed final frame and never calls a provider.
-// A tool/connector request is refused with 422 capability_kind_unsupported before
-// any ledger row is written.
+// branch), including the run manifest's model-profile allowlist and the
+// model/tool/connector kind-ambiguity refusal: a replay emits only the sealed
+// final frame and never calls a provider. A tool/connector request is refused
+// with 422 capability_kind_unsupported before any ledger row is written.
 //
 // emit receives frames in wire order. If emit fails the provider stream is
 // stopped and no success is ever committed.
@@ -213,9 +214,18 @@ func (s *Service) Stream(
 	if capErr != nil {
 		return nil, capErr
 	}
-	spec, capErr := s.resolveModel(ctx, run, normalized)
+	// The stream path is the same capability authorization seam as Invoke: the
+	// manifest allowlist and the three-kind ambiguity rule run before the model
+	// profile is even loaded. Checking existence/passed/revoked alone would let a
+	// worker stream any passed profile UUID (not frozen into this run's manifest)
+	// or a UUID that is also a tool/connector.
+	spec, capErr := s.resolveCapability(ctx, run, normalized)
 	if capErr != nil {
 		return nil, capErr
+	}
+	if spec.Kind != "model" {
+		return nil, capFailure(422, CodeKindUnsupported,
+			"only model capabilities can be streamed")
 	}
 	canonical, digest, err := canonicalParams(normalized.Params)
 	if err != nil {

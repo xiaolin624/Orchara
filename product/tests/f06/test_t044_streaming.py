@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 import time
 
-from support import t029, t041, t044
+from support import t025, t029, t041, t044
 from support import stack as st
 
 
@@ -205,6 +205,39 @@ def test_stale_token_non_worker_and_tool_kind_are_refused_without_a_stream(f06_s
     assert tool_kind.status == 422, tool_kind.text
     assert tool_kind.json["error"]["code"] == "capability_kind_unsupported", tool_kind.text
     assert t041.operation_rows(f06_stack.dbname, run["id"]) == []
+
+
+def test_stream_refuses_a_passed_model_outside_the_run_manifest(f06_stack) -> None:
+    """T044 regression: Stream honors the manifest allowlist like Invoke.
+
+    A model profile that exists, is passed and is unrevoked but was never frozen
+    into this run's manifest must not be streamable. resolveModel alone would
+    accept it; the capability proxy's manifest check must refuse it before any
+    operation, attempt or receipt row exists.
+    """
+    owner, run, lease = t041.claimed_run(f06_stack)
+    foreign_model = t025.seed_model_version(
+        f06_stack.dbname,
+        owner.creator.principal_id,
+        validation_state="passed",
+    )
+    assert foreign_model not in lease["manifest"]["model_profile_versions"], lease["manifest"]
+    operation_id = t041.new_uuid()
+
+    response = t044.stream(
+        t041.worker_client(f06_stack),
+        lease,
+        operation_id=operation_id,
+        logical_key="outside-manifest-stream",
+        capability_version=foreign_model,
+        params=t041.model_params(),
+    )
+    assert response.status == 403, response.text
+    assert response.json["error"]["code"] == "capability_not_allowed", response.text
+    assert "text/event-stream" not in (response.header("Content-Type") or "")
+    assert t041.operation_rows(f06_stack.dbname, run["id"]) == []
+    assert t041.attempt_rows(f06_stack.dbname, operation_id) == []
+    assert t044.receipt_artifact_count(f06_stack.dbname, run["id"]) == 0
 
 
 def test_cancelled_run_cannot_stream_a_model(f06_stack) -> None:

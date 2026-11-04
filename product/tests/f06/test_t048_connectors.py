@@ -24,7 +24,7 @@ import uuid
 
 import pytest
 
-from support import f00b, t024, t025, t029, t041, t048
+from support import f00b, t024, t025, t029, t041, t044, t048
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
 
@@ -386,6 +386,47 @@ def test_a_uuid_declared_as_both_model_and_connector_is_refused(t048_stack, loca
     assert as_model.json["error"]["code"] == "capability_kind_ambiguous", as_model.text
     assert local_server.records == [], local_server.records
     assert t041.operation_rows(t048_stack.dbname, run["id"]) == []
+
+
+def test_a_model_stream_of_a_uuid_also_declared_as_connector_is_refused(
+    t048_stack, local_server
+) -> None:
+    """T044 regression: stream authorization is Invoke's, not resolveModel alone.
+
+    The stream path used to resolve a model UUID directly, so it accepted a UUID
+    that the manifest also declares as a connector. Here the same run manifest is
+    frozen with one UUID in both sets: the ambiguous stream must be refused
+    before any operation/attempt row, exactly like ``invokeCapability``.
+    """
+    owner = t041.owner(t048_stack)
+    policy = t048.register(t048_stack, owner.admin, origin=local_server.url)
+    st.sql(
+        t048_stack.dbname,
+        "UPDATE platform.connector_policies SET id = "
+        f"{st.quote_literal(t041.GOLDEN_MODEL_ID)}::uuid "
+        f"WHERE id = {st.quote_literal(policy['id'])}::uuid",
+    )
+    t048.bind_tool_connectors(t048_stack.dbname, [t041.GOLDEN_MODEL_ID])
+    _, run, lease = t041.claimed_run(t048_stack, run_owner=owner)
+    assert t041.GOLDEN_MODEL_ID in [
+        entry["version_id"] for entry in t048.manifest_connector_policies(lease)
+    ], lease["manifest"]
+
+    operation_id = str(uuid.uuid4())
+    response = t044.stream(
+        t041.worker_client(t048_stack),
+        lease,
+        operation_id=operation_id,
+        logical_key="ambiguous-model-stream",
+        capability_version=t041.GOLDEN_MODEL_ID,
+        params=t041.model_params(),
+    )
+    assert response.status == 409, response.text
+    assert response.json["error"]["code"] == "capability_kind_ambiguous", response.text
+    assert "text/event-stream" not in (response.header("Content-Type") or "")
+    assert local_server.records == [], local_server.records
+    assert t041.operation_rows(t048_stack.dbname, run["id"]) == []
+    assert t041.attempt_rows(t048_stack.dbname, operation_id) == []
 
 
 # ---------------------------------------------------------------------------
