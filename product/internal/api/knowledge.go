@@ -16,6 +16,16 @@ package api
 //	POST /api/v1/knowledge-bases/{id}/retrieval-queries        -> 200 ranked chunks
 //	GET  /api/v1/knowledge-citations/{chunk_id}               -> 200 one chunk + citation
 //	GET  /api/v1/knowledge-documents/{id}/diagnostics         -> 200 ingestion facts
+//	POST /api/v1/knowledge-bases/{id}/answer                  -> 200 grounded answer
+//	                                                             (ADR 0012, T064)
+//
+// The answer surface is the T064 grounded-citation contract: the answer's
+// citations are validated against this retrieval and re-read under the caller's
+// current ACL and the document's current revision before the answer is returned.
+// A refusal is one of three distinct codes (answer_without_citation,
+// citation_not_found, citation_unreadable); an empty retrieval is a normal empty
+// answer (`no_results`), not an error. Generation is a labelled extractive stub
+// (no model provider exists in this deployment).
 //
 // ACL: owner-only for every operation, administrator included. A foreign or
 // missing resource is one 404 `resource_not_found`; existence is never leaked as
@@ -100,6 +110,82 @@ type retrievalResponse struct {
 	Retrieval  retrievalMetadata    `json:"retrieval"`
 }
 
+// ---------------------------------------------------------------------------
+// F10/T064: the grounded answer surface
+// ---------------------------------------------------------------------------
+
+type answerGenerationView struct {
+	Kind          string `json:"kind"`
+	Version       string `json:"version"`
+	Stub          bool   `json:"stub"`
+	ModelProvider string `json:"model_provider"`
+}
+
+type answerCitationView struct {
+	ChunkID          string          `json:"chunk_id"`
+	DocumentID       string          `json:"document_id"`
+	DocumentRevision int64           `json:"document_revision"`
+	ChunkNo          int             `json:"chunk_no"`
+	Span             knowledge.Span  `json:"span"`
+	Score            float64         `json:"score"`
+	Text             string          `json:"text"`
+	Citation         json.RawMessage `json:"citation"`
+}
+
+type answerView struct {
+	Text       string               `json:"text"`
+	Generation answerGenerationView `json:"generation"`
+	Citations  []answerCitationView `json:"citations"`
+}
+
+type answerRetrievalView struct {
+	EmbeddingModelRevision string   `json:"embedding_model_revision"`
+	TopK                   int      `json:"top_k"`
+	ACLEpoch               int64    `json:"acl_epoch"`
+	ChunkIDs               []string `json:"chunk_ids"`
+}
+
+type answerResponse struct {
+	Outcome   string              `json:"outcome"`
+	Answer    answerView          `json:"answer"`
+	Retrieval answerRetrievalView `json:"retrieval"`
+}
+
+func answerResponseOf(result knowledge.AnswerResult) answerResponse {
+	citations := make([]answerCitationView, 0, len(result.Answer.Citations))
+	for _, citation := range result.Answer.Citations {
+		citations = append(citations, answerCitationView{
+			ChunkID:          citation.ChunkID,
+			DocumentID:       citation.DocumentID,
+			DocumentRevision: citation.DocumentRevision,
+			ChunkNo:          citation.ChunkNo,
+			Span:             citation.Span,
+			Score:            citation.Score,
+			Text:             citation.Text,
+			Citation:         json.RawMessage(citation.Citation),
+		})
+	}
+	return answerResponse{
+		Outcome: string(result.Outcome),
+		Answer: answerView{
+			Text: result.Answer.Text,
+			Generation: answerGenerationView{
+				Kind:          result.Answer.Generation.Kind,
+				Version:       result.Answer.Generation.Version,
+				Stub:          result.Answer.Generation.Stub,
+				ModelProvider: result.Answer.Generation.ModelProvider,
+			},
+			Citations: citations,
+		},
+		Retrieval: answerRetrievalView{
+			EmbeddingModelRevision: result.Retrieval.EmbeddingModelRevision,
+			TopK:                   result.Retrieval.TopK,
+			ACLEpoch:               result.Retrieval.ACLEpoch,
+			ChunkIDs:               result.Retrieval.ChunkIDs,
+		},
+	}
+}
+
 type diagnosticsView struct {
 	DocumentID             string                    `json:"document_id"`
 	State                  string                    `json:"state"`
@@ -177,6 +263,10 @@ func (s *Server) writeKnowledgeFailure(w http.ResponseWriter, r *http.Request, e
 	case errors.Is(err, knowledge.ErrObjectStoreUnavailable):
 		writeError(w, r, http.StatusServiceUnavailable, "object_store_unavailable",
 			"the object store is not configured on this server")
+	case errors.Is(err, knowledge.ErrAnswerGeneratorUnavailable):
+		// No generator means no grounded answer. Refuse instead of inventing one.
+		writeError(w, r, http.StatusServiceUnavailable, "provider_not_configured",
+			"no answer generator is configured on this server")
 	case errors.Is(err, catalog.ErrInvalidCursor):
 		writeError(w, r, http.StatusBadRequest, "invalid_cursor",
 			"cursor is not a valid continuation token")
@@ -439,6 +529,71 @@ func (s *Server) handleGetKnowledgeCitation(w http.ResponseWriter, r *http.Reque
 		Span:             chunk.Span,
 		Citation:         chunk.Citation,
 	})
+}
+
+// handleKnowledgeAnswer is the F10/T064 grounded-answer entry point.
+//
+// It returns the answer only when every citation came from this retrieval and
+// was readable at the moment the answer was assembled. A refusal is a distinct
+// error code per failure (never a partially-valid answer):
+//
+//	422 answer_without_citation  the generator answered but cited nothing
+//	422 citation_not_found       a cited chunk is not in this retrieval
+//	409 citation_unreadable      a cited chunk is no longer readable now
+//
+// An empty retrieval is 200 `no_results` with an empty answer, not an error.
+func (s *Server) handleKnowledgeAnswer(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.knowledgeScope(w, r, caller, identity.ScopeApplicationRead) {
+		return
+	}
+	var request struct {
+		Query string `json:"query"`
+		TopK  int    `json:"top_k"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json",
+			"request body is not valid JSON")
+		return
+	}
+	result, err := s.knowledge.Answer(
+		r.Context(), caller.PrincipalID, r.PathValue("knowledge_base_id"),
+		request.Query, request.TopK,
+	)
+	if err != nil {
+		s.writeKnowledgeFailure(w, r, err)
+		return
+	}
+	switch result.Outcome {
+	case knowledge.OutcomeAnswered, knowledge.OutcomeNoResults:
+		writeJSON(w, http.StatusOK, answerResponseOf(result))
+	case knowledge.OutcomeAnswerWithoutCitation:
+		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity,
+			string(result.Outcome),
+			"the generated answer cites no chunk; an answer over a knowledge base must cite this retrieval",
+			map[string]any{"outcome": string(result.Outcome)})
+	case knowledge.OutcomeCitationNotFound:
+		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity,
+			string(result.Outcome),
+			"a cited chunk is not part of this retrieval; the answer is refused",
+			map[string]any{
+				"outcome":  string(result.Outcome),
+				"chunk_id": result.OffendingChunkID,
+			})
+	case knowledge.OutcomeCitationUnreadable:
+		writeErrorWithDetails(w, r, http.StatusConflict,
+			string(result.Outcome),
+			"a cited chunk is no longer readable under the current access rights or document revision; the answer is refused",
+			map[string]any{
+				"outcome":  string(result.Outcome),
+				"chunk_id": result.OffendingChunkID,
+			})
+	default:
+		s.internalError(w, r, errors.New("unhandled answer outcome"))
+	}
 }
 
 // ---------------------------------------------------------------------------

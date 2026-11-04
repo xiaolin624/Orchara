@@ -75,6 +75,9 @@ var (
 	ErrEmbeddingUnavailable = errors.New("embedding provider is not configured")
 	// ErrObjectStoreUnavailable means ORCHARA_OBJECT_DIR is missing.
 	ErrObjectStoreUnavailable = errors.New("the object store is not configured")
+	// ErrAnswerGeneratorUnavailable means no answer generator was wired. The
+	// answer surface fails closed instead of returning an ungrounded answer.
+	ErrAnswerGeneratorUnavailable = errors.New("the answer generator is not configured")
 )
 
 // ValidationError names the request field that failed semantic validation.
@@ -158,12 +161,19 @@ type Service struct {
 	DB       *sql.DB
 	Objects  *objectstore.Store
 	Embedder *embedding.Service
+	// Answerer is the labelled answer generator (F10/T064). New wires the
+	// extractive stub; a deployment may replace it, but Answer always validates
+	// the draft against its own retrieval before returning it.
+	Answerer AnswerGenerator
 }
 
 // New builds the service. A nil embedder means the deployment has not configured
 // one; the service then refuses queries instead of ranking with a guess.
 func New(db *sql.DB, objects *objectstore.Store, embedder *embedding.Service) *Service {
-	return &Service{DB: db, Objects: objects, Embedder: embedder}
+	return &Service{
+		DB: db, Objects: objects, Embedder: embedder,
+		Answerer: &ExtractiveStub{},
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -907,6 +917,7 @@ func (s *Service) Query(
 		   AND kc.document_revision = kd.revision
 		   AND kc.embedding IS NOT NULL
 		   AND kc.embedding_model_revision = $3
+		   AND a.owner_id = kb.owner_id
 		   AND a.deleted_at IS NULL AND a.state = 'ready'
 		 ORDER BY kc.document_id, kc.chunk_no
 		 LIMIT $4`,
@@ -1007,6 +1018,7 @@ func (s *Service) GetChunk(ctx context.Context, ownerID, chunkID string) (ChunkV
 		   AND kd.deleted_at IS NULL AND kd.state = 'ready'
 		   AND kd.active_revision = kd.revision
 		   AND kc.document_revision = kd.revision
+		   AND a.owner_id = kb.owner_id
 		   AND a.deleted_at IS NULL AND a.state = 'ready'`,
 		chunkID, ownerID,
 	).Scan(&view.ChunkID, &view.DocumentID, &view.DocumentRevision, &view.ChunkNo,
