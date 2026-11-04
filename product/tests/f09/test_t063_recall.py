@@ -103,6 +103,11 @@ def test_the_agent_recalls_only_this_users_this_applications_current_confirmed_m
     assert state["finished_at"] is not None, state
 
     trace = t063.trace_document(run_owner.creator, stack, run["id"])
+    # Current authorization: another human cannot read this run's trace at all.
+    refused_trace = other_owner.creator.client.get(
+        f"/api/v1/runs/{run['id']}/node-results"
+    )
+    st.assert_error(refused_trace, 404, "resource_not_found")
     turn = t063.last_turn(trace)
     assert turn["memory_state"] == "included", turn
     assert turn["memory_budget_tokens"] > 0, turn
@@ -254,6 +259,8 @@ def test_missing_memory_bytes_fail_closed_and_never_inject_text(t054_stack) -> N
     )
     row = t063.memory_row(stack.dbname, memory["id"])
     artifact = t054.artifact_row(stack.dbname, row["body_artifact_id"])
+    object_path = t054.object_path(stack, artifact["object_key"])
+    payload = object_path.read_bytes()
     t054.remove_object(stack, artifact["object_key"])
 
     run = t063.submit_run(stack, run_owner, application_id)
@@ -269,6 +276,25 @@ def test_missing_memory_bytes_fail_closed_and_never_inject_text(t054_stack) -> N
     request_text = t063.messages_text(t063.model_messages(stack, run["id"]))
     assert "unreadable-memory-marker" not in request_text
     assert '"confirmed_memory"' not in request_text
+
+    # Recovery: restore the exact sealed bytes and retry the same run input. The
+    # recall is uncached, so the next run reads the same authoritative row again
+    # instead of replaying the previous unavailable decision.
+    object_path.write_bytes(payload)
+    recovered_run = t063.submit_run(stack, run_owner, application_id)
+    completed, report = t063.run_agent_once(stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "succeeded", report
+    recovered_trace = t063.trace_document(
+        run_owner.creator, stack, recovered_run["id"]
+    )
+    recovered_turn = t063.last_turn(recovered_trace)
+    assert recovered_turn["memory_state"] == "included", recovered_turn
+    recovered_text = t063.messages_text(
+        t063.model_messages(stack, recovered_run["id"])
+    )
+    assert "unreadable-memory-marker" in recovered_text
+    assert t063.memory_sources(recovered_turn)[0]["memory_id"] == memory["id"]
 
 
 def test_the_memory_producer_identity_is_verified_not_assumed(t054_stack) -> None:
