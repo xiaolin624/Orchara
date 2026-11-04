@@ -139,3 +139,211 @@ def test_memories_are_isolated_by_owner_and_application(t058_stack) -> None:
     assert t058.list_memories(other.creator).json["items"] == []
     for memory_id in (first["id"], second["id"]):
         st.assert_error(t058.detail(other.creator, memory_id), 404, t058.RESOURCE_NOT_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/memories/{memory_id}: strong If-Match, never last-writer-wins
+# ---------------------------------------------------------------------------
+def test_a_missing_if_match_is_refused_and_never_overwrites(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    artifacts_before = len(t058.memory_body_artifacts(t058_stack.dbname))
+
+    for if_match in (None, ""):
+        response = t058.update(owner.creator, created["id"], text=REVISED, if_match=if_match)
+        error = st.assert_error(response, 428, t058.PRECONDITION_REQUIRED)
+        assert error["details"]["header"] == "If-Match", error
+
+    # Nothing moved: no revision bump, no new object, the same text.
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1
+    assert t058.text_of_memory(t058_stack, row) == TEXT
+    assert len(t058.memory_body_artifacts(t058_stack.dbname)) == artifacts_before
+    assert t058.detail(owner.creator, created["id"]).json["text"] == TEXT
+
+
+def test_a_stale_or_garbled_etag_is_a_412_that_reports_the_current_etag(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    artifacts_before = len(t058.memory_body_artifacts(t058_stack.dbname))
+
+    # The only accepted token is this server's strong ETag for the current
+    # revision. Weak validators, lists, "*", unquoted numbers and an earlier or
+    # future revision are all a stale precondition, never a write.
+    for if_match in ('"0"', '"2"', "1", 'W/"1"', "*", '"1", "2"', "multiple-values"):
+        response = t058.update(owner.creator, created["id"], text=REVISED, if_match=if_match)
+        error = st.assert_error(response, 412, t058.PRECONDITION_FAILED)
+        assert error["details"]["current_etag"] == t058.expected_etag(1), (if_match, error)
+        assert error["details"]["current_revision"] == 1, (if_match, error)
+
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1
+    assert t058.text_of_memory(t058_stack, row) == TEXT
+    assert len(t058.memory_body_artifacts(t058_stack.dbname)) == artifacts_before
+
+
+def test_a_matching_etag_writes_a_new_body_and_bumps_revision_and_epoch(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    before = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert before is not None
+    epoch_before = t058.epoch_of(
+        t058_stack.dbname, owner.creator.principal_id, owner.application_id
+    )
+
+    response = t058.update(owner.creator, created["id"], text=REVISED,
+                           if_match=t058.expected_etag(1))
+    assert response.status == 200, response.text
+    body = response.json
+    assert set(body) == t058.MEMORY_FIELDS, body
+    assert body["id"] == created["id"]
+    assert body["revision"] == 2
+    assert body["text"] == REVISED
+    assert t058.etag_of(response) == t058.expected_etag(2)
+
+    # The new content is a new sealed artifact; the row points at it.
+    after = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert after is not None and after["revision"] == 2
+    assert after["body_artifact_id"] != before["body_artifact_id"]
+    new_artifact = t058.artifact_of(t058_stack.dbname, after["body_artifact_id"])
+    assert new_artifact["purpose"] == "memory_body", new_artifact
+    assert new_artifact["sha256"] == st.sha256_hex(REVISED), new_artifact
+    assert t054.memory_text(t058_stack, after) == REVISED
+    # The superseded artifact is intentionally left for F07 physical cleanup; the
+    # row (the recall authority) no longer references it.
+    assert t058.artifact_of(t058_stack.dbname, before["body_artifact_id"])["state"] == "ready"
+
+    # Delete/update invalidation is synchronous: the memory-scope epoch moved in
+    # the same transaction as the revision.
+    epoch_after = t058.epoch_of(
+        t058_stack.dbname, owner.creator.principal_id, owner.application_id
+    )
+    assert epoch_after > epoch_before, (epoch_before, epoch_after)
+
+    # The old text is no longer served as current, through detail or list.
+    detail = t058.detail(owner.creator, created["id"])
+    assert detail.json["text"] == REVISED
+    assert t058.etag_of(detail) == t058.expected_etag(2)
+    assert t058.list_memories(owner.creator).json["items"][0]["text"] == REVISED
+
+    # A retry holding the old ETag must not overwrite the new revision.
+    stale = t058.update(owner.creator, created["id"], text="late write",
+                        if_match=t058.expected_etag(1))
+    error = st.assert_error(stale, 412, t058.PRECONDITION_FAILED)
+    assert error["details"]["current_etag"] == t058.expected_etag(2), error
+    assert t058.row_of_memory(t058_stack.dbname, created["id"])["revision"] == 2
+
+    # The new ETag is the one that writes revision 3.
+    accepted = t058.update(owner.creator, created["id"], text="The user moved to Shanghai.",
+                           if_match=t058.expected_etag(2))
+    assert accepted.status == 200, accepted.text
+    assert accepted.json["revision"] == 3
+    assert t058.etag_of(accepted) == t058.expected_etag(3)
+
+
+def test_concurrent_updates_with_one_etag_have_exactly_one_winner(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    texts = ["first concurrent revision", "second concurrent revision"]
+    responses: dict[int, object] = {}
+    barrier = threading.Barrier(2)
+
+    def push(index: int) -> None:
+        barrier.wait(timeout=30)
+        responses[index] = t058.update(
+            owner.creator, created["id"], text=texts[index],
+            if_match=t058.expected_etag(1),
+        )
+
+    threads = [threading.Thread(target=push, args=(index,)) for index in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+
+    statuses = sorted(response.status for response in responses.values())
+    assert statuses == [200, 412], [response.text for response in responses.values()]
+    winner = next(response for response in responses.values() if response.status == 200)
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None
+    assert row["revision"] == 2
+    # One winner wrote revision 2; the loser's text was never committed, and no
+    # third revision exists.
+    assert t054.memory_text(t058_stack, row) == winner.json["text"]
+    assert winner.json["text"] in texts
+
+
+def test_the_update_body_is_validated_after_the_precondition(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    artifacts_before = len(t058.memory_body_artifacts(t058_stack.dbname))
+
+    good = t058.expected_etag(1)
+    for kwargs, field in (
+        ({"text": REVISED, "confirmed": None}, "confirmed"),
+        ({"text": REVISED, "confirmed": False}, "confirmed"),
+        ({"text": "   ", "confirmed": True}, "text"),
+        ({"text": "a" * 4001, "confirmed": True}, "text"),
+        ({"text": None, "confirmed": True}, "text"),
+    ):
+        response = t058.update(owner.creator, created["id"], if_match=good, **kwargs)
+        error = st.assert_error(response, 422, t058.VALIDATION_FAILED)
+        assert error["details"]["field"] == field, (kwargs, error)
+
+    # Unknown top-level keys are refused by the shared decoder (the contract body
+    # has additionalProperties:false).
+    malicious = owner.creator.client.request(
+        "PATCH",
+        t058.memory_path(created["id"]),
+        body={"text": REVISED, "confirmed": True, "application_id": owner.application_id},
+        csrf=owner.creator.csrf,
+        headers={"If-Match": good},
+    )
+    st.assert_error(malicious, 400, "invalid_json")
+
+    # The precondition runs before the body: a missing If-Match with an invalid
+    # body is still a 428, and nothing was written by any refused call.
+    first = t058.update(owner.creator, created["id"], text="", confirmed=False, if_match=None)
+    st.assert_error(first, 428, t058.PRECONDITION_REQUIRED)
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1
+    assert t058.text_of_memory(t058_stack, row) == TEXT
+    assert len(t058.memory_body_artifacts(t058_stack.dbname)) == artifacts_before
+
+
+def test_a_foreign_or_unknown_memory_cannot_be_updated(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    other = t058.other_owner(t058_stack)
+    artifacts_before = len(t058.memory_body_artifacts(t058_stack.dbname))
+
+    for memory_id in (created["id"], str(uuid.uuid4()), "not-a-uuid"):
+        response = t058.update(other.creator, memory_id, text=REVISED,
+                               if_match=t058.expected_etag(1))
+        st.assert_error(response, 404, t058.RESOURCE_NOT_FOUND)
+    # The administrator is a different principal too.
+    admin = t058.update(owner.admin, created["id"], text=REVISED,
+                        if_match=t058.expected_etag(1))
+    st.assert_error(admin, 404, t058.RESOURCE_NOT_FOUND)
+
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1
+    assert len(t058.memory_body_artifacts(t058_stack.dbname)) == artifacts_before
+
+
+def test_a_service_credential_is_refused_on_the_write_paths(t058_stack) -> None:
+    owner = t058.owner(t058_stack)
+    created = owned_memory(t058_stack, owner)
+    service = t058.service_client(t058_stack)
+
+    st.assert_error(
+        service.request(
+            "PATCH", t058.memory_path(created["id"]),
+            body={"text": REVISED, "confirmed": True},
+            headers={"If-Match": t058.expected_etag(1)},
+        ),
+        403, t058.PERSONAL_SCOPE_FORBIDDEN,
+    )
+    row = t058.row_of_memory(t058_stack.dbname, created["id"])
+    assert row is not None and row["revision"] == 1
+    assert t058.text_of_memory(t058_stack, row) == TEXT

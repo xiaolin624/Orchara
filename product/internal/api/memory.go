@@ -184,6 +184,60 @@ func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
 }
 
+// updateMemoryRequest is the contract's updateMemory body: exactly {text,
+// confirmed}. `confirmed` is a pointer so a missing/false value is a located 422
+// instead of a silent default. The contract body has no application_id and no
+// owner: an update cannot move a memory across a scope boundary.
+type updateMemoryRequest struct {
+	Text      string `json:"text"`
+	Confirmed *bool  `json:"confirmed"`
+}
+
+// handleUpdateMemory is the optimistic-concurrency write:
+//
+//	missing If-Match          -> 428 precondition_required (details.header)
+//	stale/garbled If-Match    -> 412 precondition_failed (+ current_etag)
+//	invalid body shape        -> 422 validation_failed
+//	deleted/foreign/unknown   -> 404 resource_not_found (before the precondition)
+//	accepted                  -> 200 Memory + the new strong ETag
+//
+// The body is decoded first only for genuinely malformed JSON (the shared
+// decoder's 400); shape validation happens inside the service after visibility
+// and If-Match, so a refused precondition is never masked by a 422.
+func (s *Server) handleUpdateMemory(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.requireHumanMemory(w, r, caller) {
+		return
+	}
+	var request updateMemoryRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	// Repeated If-Match values are not the single opaque token the contract
+	// defines; treat the header as garbled rather than guessing which is meant
+	// (the same rule the draft PUT applies).
+	ifMatch := r.Header.Get("If-Match")
+	if len(r.Header.Values("If-Match")) > 1 {
+		ifMatch = "multiple-values"
+	}
+	confirmed := request.Confirmed != nil && *request.Confirmed
+	entry, err := s.memory.Update(r.Context(), caller.PrincipalID, memory.UpdateInput{
+		MemoryID:  r.PathValue("memory_id"),
+		Text:      request.Text,
+		Confirmed: confirmed,
+		IfMatch:   ifMatch,
+	})
+	if !s.writeMemoryError(w, r, err) {
+		return
+	}
+	w.Header().Set("ETag", catalog.FormatETag(entry.Revision))
+	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
+}
+
 // handleListMemoryCandidates returns the owner's candidates. A pending candidate
 // past its deadline is reported as expired by the server, never left for the page
 // to infer.
@@ -314,8 +368,17 @@ func (s *Server) writeMemoryError(w http.ResponseWriter, r *http.Request, err er
 	}
 	if typed, ok := memory.AsError(err); ok {
 		var details map[string]any
+		if len(typed.Details) > 0 {
+			details = make(map[string]any, len(typed.Details)+1)
+			for key, value := range typed.Details {
+				details[key] = value
+			}
+		}
 		if typed.Field != "" {
-			details = map[string]any{"field": typed.Field}
+			if details == nil {
+				details = map[string]any{}
+			}
+			details["field"] = typed.Field
 		}
 		writeErrorWithDetails(w, r, typed.Status, typed.Code, typed.Message, details)
 		return false

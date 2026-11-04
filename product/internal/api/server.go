@@ -241,6 +241,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/memories", s.handleCreateMemory)
 	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
 	mux.HandleFunc("GET /api/v1/memories/{memory_id}", s.handleGetMemory)
+	mux.HandleFunc("PATCH /api/v1/memories/{memory_id}", s.handleUpdateMemory)
 	mux.HandleFunc("GET /api/v1/memory-candidates", s.handleListMemoryCandidates)
 	mux.HandleFunc("POST /api/v1/memory-candidates/{candidate_id}/decision",
 		s.handleDecideMemoryCandidate)

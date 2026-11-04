@@ -154,6 +154,148 @@ func (s *Service) Get(ctx context.Context, ownerID, memoryID string) (*Memory, e
 	return &memory, nil
 }
 
+// UpdateInput is the contract's updateMemory body plus the required If-Match.
+//
+// The contract body is exactly {text, confirmed:true}: a memory's application
+// scope and owner are facts of the row, not of the request, so an update can
+// never move a memory to another application or another human.
+type UpdateInput struct {
+	MemoryID  string
+	Text      string
+	Confirmed bool
+	IfMatch   string
+}
+
+// Update writes a new body for one memory and bumps its revision.
+//
+// Order is structural and matches the draft PUT (the platform's existing
+// optimistic-concurrency precedent): visibility (404) -> If-Match (428/412) ->
+// body shape (422) -> the write itself. A caller who cannot see the memory learns
+// nothing; a stale writer is told the current revision and the exact ETag to use;
+// only then can a body problem be reported.
+//
+// The new body is a new sealed artifact written in the same transaction as the
+// revision bump and the memory-scope cache-epoch bump. The superseded artifact is
+// left in place (F07 owns physical purge); the memory row — the recall authority
+// — no longer references it, and its revision can never be served as current.
+func (s *Service) Update(
+	ctx context.Context, ownerID string, input UpdateInput,
+) (*Memory, error) {
+	if !uuid.Valid(strings.TrimSpace(ownerID)) {
+		return nil, failure(401, "unauthenticated", "an authenticated human is required")
+	}
+	target := strings.TrimSpace(input.MemoryID)
+	if !uuid.Valid(target) {
+		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
+	}
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting the memory update transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	memory, err := lockOwnedMemory(ctx, tx, target, ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If-Match is required and must be exactly this server's strong ETag for the
+	// revision the caller claims to have seen. Missing is 428 (not a silent
+	// last-writer-wins), anything else that is not the current token is 412.
+	if strings.TrimSpace(input.IfMatch) == "" {
+		return nil, preconditionRequired()
+	}
+	claimed, ok := catalog.ParseETag(input.IfMatch)
+	if !ok || claimed != memory.Revision {
+		return nil, preconditionFailed(memory.Revision)
+	}
+
+	text, err := validateText("text", input.Text)
+	if err != nil {
+		return nil, err
+	}
+	if !input.Confirmed {
+		return nil, fieldFailure(422, "validation_failed",
+			"confirmed must be true; an updated memory is still a confirmed memory", "confirmed")
+	}
+
+	artifactID, sealedKey, err := s.sealText(ctx, tx, ownerID, PurposeMemory, text)
+	if err != nil {
+		return nil, err
+	}
+	var revision int64
+	err = tx.QueryRowContext(ctx, `
+		UPDATE platform.memories
+		   SET body_artifact_id = $3::uuid,
+		       revision         = revision + 1
+		 WHERE id = $1::uuid
+		   AND owner_id = $2::uuid
+		   AND revision = $4
+		   AND deleted_at IS NULL
+		 RETURNING revision`,
+		target, ownerID, artifactID, claimed,
+	).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The row lock already serialized writers, so this can only mean the row
+		// was deleted between the lock and the update; either way the caller's
+		// precondition no longer holds.
+		s.discardObject(sealedKey)
+		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
+	}
+	if err != nil {
+		s.discardObject(sealedKey)
+		return nil, fmt.Errorf("updating the memory: %w", err)
+	}
+	if err := bumpMemoryEpoch(ctx, tx, ownerID, memory.ApplicationID); err != nil {
+		s.discardObject(sealedKey)
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		s.discardObject(sealedKey)
+		return nil, fmt.Errorf("committing the memory update: %w", err)
+	}
+
+	memory.BodyArtifactID = artifactID
+	memory.Revision = revision
+	memory.Text = text
+	return memory, nil
+}
+
+// lockOwnedMemory reads and locks one active memory owned by ownerID. A foreign,
+// unknown, malformed or deleted row is ErrMemoryNotVisible (404): the owner
+// filter is in the same query as the id, so a foreign row can never be locked and
+// the caller cannot learn that it exists.
+func lockOwnedMemory(ctx context.Context, tx *sql.Tx, memoryID, ownerID string) (*Memory, error) {
+	var (
+		memory    Memory
+		candidate sql.NullString
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT id::text, owner_id::text, application_id::text, body_artifact_id::text,
+		       candidate_id::text, revision, confirmed_at, confirmed_by::text
+		  FROM platform.memories
+		 WHERE id = $1::uuid
+		   AND owner_id = $2::uuid
+		   AND deleted_at IS NULL
+		 FOR UPDATE`,
+		memoryID, ownerID,
+	).Scan(
+		&memory.ID, &memory.OwnerID, &memory.ApplicationID, &memory.BodyArtifactID,
+		&candidate, &memory.Revision, &memory.ConfirmedAt, &memory.ConfirmedBy,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the memory: %w", err)
+	}
+	if candidate.Valid {
+		memory.CandidateID = candidate.String
+	}
+	return &memory, nil
+}
+
 // List returns the owner's active memories, newest first.
 func (s *Service) List(
 	ctx context.Context, ownerID string, limit int, cursor, applicationID string,
