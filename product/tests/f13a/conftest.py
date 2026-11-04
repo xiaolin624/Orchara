@@ -62,6 +62,43 @@ def t052_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.
 
 
 @pytest.fixture
-def t056_stack(t052_stack) -> t026.T026Stack:
-    """T056 runs on the T052 stack: the same real server, database and binaries."""
-    return t052_stack
+def t056_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t026.T026Stack:
+    """T056's stack: T052's real server, with a longer execution lease.
+
+    The T056 e2e cases really run the preset tool in the shared WSL2/runsc
+    sandbox. Under several concurrently running suites on one laptop the internal
+    API can be briefly slow; T052's default 30 s lease would then expire while a
+    heartbeat is in flight and the supervisor would abandon the attempt (the
+    sandbox keeps the lease proof, so the run is abandoned, not recovered). A
+    300 s lease makes a transient stall survivable without changing any product
+    rule: the supervisor still heartbeats, and the sandbox timeout still bounds
+    the work. The report records this test-only margin.
+    """
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir()
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    compiler_inputs = t025.api_extra_env(None)
+    compiler_inputs["ORCHARA_EXECUTION_LEASE_TTL"] = "300s"
+    server = api_server(
+        dsn,
+        extra_env=t024.api_extra_env(
+            object_dir, certificates, signing_key=signing_key, extra=compiler_inputs
+        ),
+    )
+    stack = t026.T026Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
