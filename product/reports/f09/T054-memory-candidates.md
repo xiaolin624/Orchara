@@ -173,6 +173,24 @@ $ python -m pytest tests/f01/test_t020_personal_boundary.py -q
 套内细分：`test_t054_migration.py` 4、`test_t054_memory.py` 18（含 2 个并发用例）、
 `test_t054_pages.py` 3。
 
+### 合并结果（BRIEF §7.6）
+
+```text
+$ git merge integration/f13a-f15a-f09-f10
+merge commit b7cfd6c（父 1b1c283 = 本票 docs 提交；父 7e0ccc2 = 集成 tip）
+冲突：仅 product/PROGRESS.md → 保留 T054 与 T053 两节（无内容丢失）
+
+# 合并后的最终树
+$ python -m pytest tests/f09 -q
+25 passed in 262.90s (0:04:22)
+$ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync_spec.py --check
+全部 exit 0；gofmt 空；“no drift: spec copy and contract snapshot match the manifest”
+```
+
+注：集成 tip 的 T053 也新增了 `docs/adr/0008-f15a-object-store-compatibility.md`，与本票
+`0008-f09-memory.md` 同号；按 orchestrator 约定（“merger renumbers”）两个文件各自自包含，
+重编号由合并方执行。
+
 ## 5. 输入与版本
 
 | 输入 | 版本 / SHA-256（前 16 位） |
@@ -217,3 +235,5 @@ $ python -m pytest tests/f01/test_t020_personal_boundary.py -q
 
 `product/docs/adr/0008-f09-memory.md`（服务账号偏离、sealed 正文与复用、worker-only 角色、
 TTL/过期、决定幂等、cache epoch、来源单链、结构 seam、共享债务、页面来源显示边界）。
+合并后与 T053 的 `0008-f15a-object-store-compatibility.md` 同号，按 orchestrator 约定由
+合并方重编号（两文件互不依赖，本票内容自包含）。
