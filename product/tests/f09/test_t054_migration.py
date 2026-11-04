@@ -67,12 +67,12 @@ def constraint_definitions(dbname: str, table: str) -> str:
 
 def test_migration_0033_is_the_next_link_of_the_chain(migrated_database, go_binaries) -> None:
     dsn, dbname = migrated_database
-    chain = st.migration_chain(dbname)
-    assert chain[VERSION] == NAME, chain
     # migration_chain() itself asserts the chain is contiguous from 0001 with one
     # row per version. A pinned "ends at 0033" tail would rot as soon as a later
-    # ticket appends a migration (T055 adds 0034), so only this ticket's own link
-    # is asserted here.
+    # ticket appends a migration (T055 adds 0034, T058 adds 0035), so only this
+    # ticket's own link is asserted here.
+    chain = st.migration_chain(dbname)
+    assert chain[VERSION] == NAME, chain
 
     # Repeating migrate on the same database is a no-op, not a second apply.
     completed = st.run_admin(go_binaries["admin"], ["migrate"], dsn=dsn)

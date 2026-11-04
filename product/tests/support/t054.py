@@ -1,4 +1,4 @@
-﻿"""F09/T054 real-stack helpers: memory candidates and the confirmed memory read model.
+"""F09/T054 real-stack helpers: memory candidates and the confirmed memory read model.
 
 The stack is T054's (real PostgreSQL migrated through 0033, the compiled
 ``cmd/api``, the real internal mTLS listener, the real filesystem object store and
@@ -223,6 +223,11 @@ class _BearerClient:
         headers = dict(kwargs.pop("headers", None) or {})
         headers["Authorization"] = "Bearer " + self._secret
         return self._client.post(path, headers=headers, **kwargs)
+
+    def request(self, method: str, path: str, **kwargs):
+        headers = dict(kwargs.pop("headers", None) or {})
+        headers["Authorization"] = "Bearer " + self._secret
+        return self._client.request(method, path, headers=headers, **kwargs)
 
 
 # ---------------------------------------------------------------------------
