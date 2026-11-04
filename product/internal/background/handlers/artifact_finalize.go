@@ -33,6 +33,8 @@ var Registry = background.Registry{
 	background.KindApplicationEvaluate: ApplicationEvaluate,
 	background.KindToolRun:             ToolRun,
 	background.KindToolBuild:           ToolBuild,
+	// T055: txt/md ingestion (parse -> chunk -> embed -> sealed chunk bodies).
+	background.KindDocumentIngest: DocumentIngest,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from

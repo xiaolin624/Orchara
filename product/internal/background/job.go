@@ -222,6 +222,22 @@ const (
 	CodeToolArtifactCount    = "tool_artifact_count_exceeded"
 	CodeToolInputInvalid     = "tool_input_invalid"
 
+	// document_ingest failure codes (T055). Empty parse, unsupported/corrupt
+	// input and a handler failure must end in document failed with one of these
+	// specific codes; none of them can ever produce ready. The chunk-artifact
+	// wait and transient storage/internal failures are the only retryable ones.
+	CodeIngestEmptyContent             = "ingest_empty_content"
+	CodeIngestUnsupportedMediaType     = "ingest_unsupported_media_type"
+	CodeIngestInvalidEncoding          = "ingest_invalid_encoding"
+	CodeIngestSourceUnavailable        = "ingest_source_unavailable"
+	CodeIngestSourceChanged            = "ingest_source_changed"
+	CodeIngestTooManyChunks            = "ingest_too_many_chunks"
+	CodeIngestChunkArtifactTimeout     = "ingest_chunk_artifact_timeout"
+	CodeIngestIncomplete               = "ingest_incomplete"
+	CodeIngestCitationInvalid          = "ingest_citation_invalid"
+	CodeIngestCancelled                = "ingest_cancelled"
+	CodeEmbeddingProviderNotConfigured = "embedding_provider_not_configured"
+
 	// tool_build failure codes (T037). The handler reports the safe code; the
 	// completion guard stores the same closed vocabulary on tool_versions.
 	// Only the three transient codes are retryable; every build rejection is
@@ -296,6 +312,17 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeLeaseExpired:       true,
 		CodeToolTimeout:        true,
 		CodeToolCrash:          true,
+	},
+	// document_ingest (T055): waiting for the chunk-body artifacts to be
+	// finalized can recover, as can transient storage/internal/lease failures. A
+	// parse rejection, an unbound/deleted source or an incomplete staged set is
+	// deterministic and is never retried; an unknown code stays business
+	// (fail safe), so a document can never be retried into ready by accident.
+	KindDocumentIngest: {
+		CodeTransientStorageIO:         true,
+		CodeTransientInternal:          true,
+		CodeLeaseExpired:               true,
+		CodeIngestChunkArtifactTimeout: true,
 	},
 	// tool_build (T037): transient storage/internal/lease failures are retried;
 	// a dependency-unavailable, unsafe-source or sandbox refusal is deterministic

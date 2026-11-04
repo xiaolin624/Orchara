@@ -126,6 +126,10 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// dependency lock, manifest identity). Non-contract internal extension; the
 	// handler never reads the tool row itself.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/tool-build", s.handleInternalToolBuild)
+	// F10/T055: the job-scoped document-ingest binding (document, revision, bound
+	// source artifact/hash/media type, parser revision). Non-contract internal
+	// extension; the handler never reads the document row itself.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/document-ingest", s.handleInternalDocumentIngestBinding)
 
 	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
 	// capacities; heartbeat may be served by either the supervisor or the worker

@@ -50,6 +50,11 @@ const (
 // says unsupported formats are refused rather than guessed at.
 const XLSXMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+// MarkdownMediaType is the F10/T055 knowledge-source declaration. It is admitted
+// only for purpose=knowledge: markdown is text for the knowledge parser, not a
+// general task input, so the same declaration elsewhere stays refused.
+const MarkdownMediaType = "text/markdown"
+
 // ZipMediaType is the T037 build-source bundle. It is admitted **only** for
 // purpose=tool_source: the bytes are an untrusted source archive that the
 // sandboxed build unpacks, so the same archive for a task input (where no
@@ -132,8 +137,11 @@ func SupportedUploadMediaType(raw string) (Format, bool) {
 // string gets the default (restricted) allowlist.
 func SupportedUploadMediaTypeForPurpose(purpose, raw string) (Format, bool) {
 	mediaType := strings.ToLower(strings.TrimSpace(raw))
-	if strings.TrimSpace(purpose) == "tool_source" && mediaType == ZipMediaType {
+	switch {
+	case strings.TrimSpace(purpose) == "tool_source" && mediaType == ZipMediaType:
 		return FormatZip, true
+	case strings.TrimSpace(purpose) == "knowledge" && mediaType == MarkdownMediaType:
+		return FormatText, true
 	}
 	return SupportedUploadMediaType(mediaType)
 }
