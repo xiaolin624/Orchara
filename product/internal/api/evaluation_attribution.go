@@ -9,7 +9,7 @@ package api
 // account that produced a report, the cancellation outcome of a case, or the
 // snapshot/manifest/dataset/compiler/worker identity behind it. T056 owns the
 // per-case user read; this ticket adds a documented non-contract administrator
-// surface (ADR 0013) instead of widening a contract projection.
+// surface (ADR 0014) instead of widening a contract projection.
 //
 // It is administrator-only: a non-admin caller gets 403 before any lookup, so
 // the refusal cannot be used to probe for an evaluation's existence. The

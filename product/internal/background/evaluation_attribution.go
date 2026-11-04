@@ -9,7 +9,7 @@ package background
 // /api/v1/evaluations/{id} carries only the six contract fields and the report
 // read carries four. This file is the server half of the documented,
 // administrator-only, non-contract read that exposes exactly the attribution
-// facts (ADR 0013):
+// facts (ADR 0014):
 //
 //	evaluation owner principal + login, application, snapshot, draft revision,
 //	manifest/dataset hashes, compiler version, worker image digest, state-schema
