@@ -216,7 +216,12 @@ def test_tool_call_ids_and_arguments_are_validated_before_sealing(f06_stack) -> 
         assert len(attempts) == 1, (name, attempts)
         assert attempts[0]["state"] == "failed"
         assert attempts[0]["error_code"] == "provider_response_invalid"
-        assert attempts[0]["tokens_in"] is None, (name, attempts[0])
+        # P1-5: the provider did answer and reported real usage, so the refused
+        # projection still settles the consumed tokens instead of releasing them.
+        assert attempts[0]["settlement_state"] == "settled", (name, attempts[0])
+        assert attempts[0]["tokens_in"] is not None, (name, attempts[0])
+        assert attempts[0]["tokens_out"] is not None, (name, attempts[0])
+        assert attempts[0]["charged_amount"] is not None, (name, attempts[0])
 
     assert len(t041.operation_rows(f06_stack.dbname, run["id"])) == len(cases)
     for operation_id in failed_ids:

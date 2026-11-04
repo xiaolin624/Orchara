@@ -496,6 +496,51 @@ def test_expired_approval_cannot_be_approved_and_fails_expired(
     assert local_server.records == []
 
 
+def test_an_approved_write_cannot_execute_after_the_approval_expires(
+    t050_stack, local_server
+) -> None:
+    """P1-4 regression: the resume re-checks the approval's deadline.
+
+    The human approves the exact params while the approval is live, then the
+    approval expires before the resumed attempt re-enters the call. The
+    ``authorized`` replay must not dispatch: the approval is marked expired, the
+    operation fails with ``approval_expired`` and the endpoint sees no request.
+    """
+    owner = t041.owner(t050_stack)
+    prepared = prepare_write(t050_stack, local_server, owner)
+    approval = prepared["approval"]
+    park(t050_stack, prepared["lease"], prepared["operation_id"])
+    approved = t050.decide(
+        owner.creator, approval["id"], params_sha256=approval["params_sha256"]
+    )
+    assert approved.status == 200, approved.text
+    confirm_exit(t050_stack, prepared["lease"])
+    t050.point_expiry_past(t050_stack.dbname, approval["id"])
+
+    lease = resumed_lease(t050_stack)
+    refused = t050.invoke_write(
+        t050_stack,
+        lease,
+        policy_id=prepared["policy"]["id"],
+        params=t050.default_params(),
+        logical_key="agent:approval-node:tool:call-1",
+        operation_id=prepared["operation_id"],
+    )
+    assert refused.status == 409, refused.text
+    assert refused.json["error"]["code"] == t050.APPROVAL_EXPIRED, refused.json
+
+    stored = t050.approval_row(t050_stack.dbname, approval["id"])
+    assert stored["state"] == "expired", stored
+    operation = t050.operation(
+        t050_stack.dbname, prepared["run"]["id"], prepared["operation_id"]
+    )
+    assert operation["state"] == "failed", operation
+    assert operation["last_error_code"] == "approval_expired", operation
+    # No second approval was created and no write reached the endpoint.
+    assert len(t050.approval_rows(t050_stack.dbname, run_id=prepared["run"]["id"])) == 1
+    assert local_server.records == []
+
+
 # ---------------------------------------------------------------------------
 # changed params / exact hash
 # ---------------------------------------------------------------------------

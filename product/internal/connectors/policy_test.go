@@ -169,6 +169,63 @@ func TestAddressPolicyRefusesMetadataEvenWhenPrivateIsAllowed(t *testing.T) {
 	}
 }
 
+// P1-2: a registered schema bound that cannot be evaluated must be refused at
+// registration, so an unusable policy can never become a run's frozen contract.
+func TestValidatePolicyEnforcesSchemaBoundShapes(t *testing.T) {
+	base := Input{
+		Origin: "https://connector.example.test", Method: "POST", PathPrefix: "/v1",
+		SecretRef: "env:T048_KEY", SecretHeader: "Authorization", RiskClass: "read",
+	}
+	property := func(bounds map[string]any) map[string]any {
+		schema := map[string]any{"type": "number"}
+		for keyword, value := range bounds {
+			schema[keyword] = value
+		}
+		return map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"amount": schema},
+		}
+	}
+	bad := map[string]map[string]any{
+		"minimum is a string":       property(map[string]any{"minimum": "1"}),
+		"maximum is a bool":         property(map[string]any{"maximum": true}),
+		"minimum above maximum":     property(map[string]any{"minimum": 10, "maximum": 1}),
+		"minLength is negative":     property(map[string]any{"type": "string", "minLength": -1}),
+		"minLength is fractional":   property(map[string]any{"type": "string", "minLength": 1.5}),
+		"maxLength is a string":     property(map[string]any{"type": "string", "maxLength": "3"}),
+		"minLength above maxLength": property(map[string]any{"type": "string", "minLength": 5, "maxLength": 3}),
+	}
+	for name, schema := range bad {
+		input := base
+		input.RequestSchema = schema
+		if _, problems := normalizePolicyInput(input); len(problems) == 0 {
+			t.Errorf("%s: the unusable bound was accepted", name)
+		}
+	}
+
+	good := base
+	good.RequestSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"amount": map[string]any{
+				"type": "number", "minimum": 1, "maximum": 10,
+			},
+			"label": map[string]any{
+				"type": "string", "minLength": 2, "maxLength": 4,
+			},
+		},
+	}
+	good.ResponseSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"note": map[string]any{"type": "string", "maxLength": 500},
+		},
+	}
+	if _, problems := normalizePolicyInput(good); len(problems) != 0 {
+		t.Fatalf("a well-formed bounded schema was refused: %v", problems)
+	}
+}
+
 // A policy body is sealed as canonical JCS; the hash is the version identity.
 // The body must not contain the secret value or the artifact id.
 func TestPolicyBodyIsCanonicalAndHashStable(t *testing.T) {

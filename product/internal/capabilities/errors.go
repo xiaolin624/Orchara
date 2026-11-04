@@ -66,6 +66,9 @@ const (
 	CodeBudgetCurrencyMismatch = "budget_currency_mismatch"
 	CodeBudgetPriceInvalid     = "budget_price_invalid"
 	CodeUsageNotReserved       = "usage_not_reserved"
+	// F06/T050 approval-resume vocabulary (review2 P1-4): an authorized write
+	// whose approval row is missing or no longer usable fails closed.
+	CodeApprovalUnavailable = "approval_unavailable"
 )
 
 // Error is a capability failure with a stable HTTP status and code. Field is

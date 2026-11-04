@@ -132,15 +132,26 @@ func (e *Egress) Execute(ctx context.Context, policy *Policy, call Call) (*Respo
 	if err != nil {
 		return nil, validationProblem(Problem{Field: "path", Message: err.Error()})
 	}
+	// The URL carries every merged value, so a key that appears more than once
+	// (twice inline, or once inline and once in Call.Query) would send a value
+	// that was never validated: `?scope=forbidden&scope=allowed` would pass an
+	// enum check on the last value while the remote saw both. One key, one value,
+	// refused before validation and before any socket is opened.
 	query := url.Values{}
-	for name, values := range inlineQuery {
-		for _, value := range values {
-			query.Add(name, value)
-		}
-	}
-	for name, values := range call.Query {
-		for _, value := range values {
-			query.Add(name, value)
+	for _, source := range []url.Values{inlineQuery, call.Query} {
+		for name, values := range source {
+			if len(values) == 0 {
+				return nil, validationProblem(Problem{
+					Field: "query." + name, Message: "the query key has no value"})
+			}
+			if _, present := query[name]; present || len(values) > 1 {
+				return nil, &Error{
+					Status: 422, Code: CodeRequestInvalid,
+					Message: "the connector query declares the same key more than once",
+					Field:   "query." + name,
+				}
+			}
+			query[name] = []string{values[0]}
 		}
 	}
 	if len(query) > 0 {
@@ -150,7 +161,7 @@ func (e *Egress) Execute(ctx context.Context, policy *Policy, call Call) (*Respo
 		}
 		queryObject := map[string]any{}
 		for name, values := range query {
-			queryObject[name] = values[len(values)-1]
+			queryObject[name] = values[0]
 		}
 		querySchema := policy.RequestSchema["properties"].(map[string]any)["query"].(map[string]any)
 		if problems := jsonschema.ValidateValue(querySchema, queryObject); len(problems) > 0 {

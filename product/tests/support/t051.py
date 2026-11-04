@@ -130,6 +130,49 @@ class LostReceiptServer:
         self._httpd.server_close()
 
 
+class ReceiptSealFault:
+    """Break receipt sealing *after* the real write request was received.
+
+    The connector responder runs on the endpoint's own thread, so it can act
+    between "the request was sent" and "the capability service seals the
+    receipt": it moves the API process's sealed object directory aside and puts
+    a regular file in its place. The endpoint then answers 2xx, which is exactly
+    the P1-3 fault: the external write really happened but its receipt cannot be
+    persisted. ``restore`` returns the object store to its normal state so the
+    rest of the approval/reconciliation flow can seal real artifacts.
+    """
+
+    def __init__(self, stack) -> None:
+        self.sealed = stack.object_dir / "sealed"
+        self.moved = stack.object_dir / "sealed-receipt-fault"
+        self.broken = False
+
+    def break_now(self) -> None:
+        if self.broken or self.moved.exists():
+            return
+        if self.sealed.exists():
+            self.sealed.rename(self.moved)
+        self.sealed.write_text("the sealed object directory is unavailable")
+        self.broken = True
+
+    def restore(self) -> None:
+        if not self.broken:
+            return
+        if self.sealed.is_file():
+            self.sealed.unlink()
+        if self.moved.exists():
+            self.moved.rename(self.sealed)
+        self.broken = False
+
+    def responder(self, _record):
+        self.break_now()
+        return (
+            200,
+            {"Content-Type": "application/json"},
+            json.dumps({"ok": True, "write_id": "w-real-1"}).encode(),
+        )
+
+
 # ---------------------------------------------------------------------------
 # the unknown write: register, park, approve, resume, lose the receipt
 # ---------------------------------------------------------------------------

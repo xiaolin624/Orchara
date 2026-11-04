@@ -416,7 +416,9 @@ func (s *Service) dispatchStream(
 		// T041 does. An incomplete call was already dropped by the buffer.
 		finalText, _ := response.Data["text"].(string)
 		if generation.textValue() != finalText {
-			_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeProviderResponseInvalid)
+			// The complete provider answer exists; its usage is real consumption.
+			_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
+				CodeProviderResponseInvalid, usageProjection(response.Data), pricing)
 			_ = emit(Frame{
 				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
 				Error: &StreamError{Code: CodeProviderResponseInvalid,
@@ -538,7 +540,9 @@ func (s *Service) dispatchStreamFallback(
 	}
 	finalText, _ := response.Data["text"].(string)
 	if generation.textValue() != finalText {
-		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeProviderResponseInvalid)
+		// The complete fallback answer exists; its usage is real consumption.
+		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
+			CodeProviderResponseInvalid, usageProjection(response.Data), pricing)
 		_ = emit(Frame{
 			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
 			Error: &StreamError{Code: CodeProviderResponseInvalid,

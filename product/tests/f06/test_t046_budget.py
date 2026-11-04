@@ -24,6 +24,8 @@ Covered:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal
 
 from support import t041, t045, t046
@@ -37,6 +39,21 @@ def priced_config(**overrides) -> dict:
         "output_per_million": "2",
     }
     return config
+
+
+def stub_usage(params: dict) -> tuple[int, int]:
+    """The dev stub's documented usage derivation, computed independently.
+
+    ``stubAgentResponse`` reports ``input_tokens = ceil(len(JCS(params))/4)`` and
+    ``output_tokens = ceil(len("stub-agent:" + sha256(JCS(params))[:16])/4)``.
+    """
+    canonical = json.dumps(
+        params, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    tokens_in = (len(canonical) + 3) // 4
+    text = "stub-agent:" + hashlib.sha256(canonical).hexdigest()[:16]
+    tokens_out = (len(text) + 3) // 4
+    return tokens_in, tokens_out
 
 
 def test_concurrent_calls_cannot_exceed_the_parent_budget(f06_stack) -> None:
@@ -378,3 +395,106 @@ def test_large_price_and_token_counts_stay_exact(f06_stack) -> None:
     facts = t046.budget_facts(owner, run["id"])
     assert Decimal(facts["charged_amount"]) == charge, facts
     assert Decimal(facts["remaining_amount"]) == Decimal(huge_price) - charge, facts
+
+def test_an_invalid_projection_still_charges_the_real_usage(f06_stack) -> None:
+    """P1-5 regression: a provider answer with valid usage was really consumed.
+
+    The stub returns a well-formed ``usage`` object but its structured projection
+    fails validation (the schema declares an unsupported child type). Before the
+    fix the whole reservation was released, the ledger held only reserve+release
+    and the consumed budget could be spent again. The real usage must settle a
+    charge, the attempt must be a *failed* attempt with ``settled`` state and the
+    next call must not fit the budget.
+    """
+    owner = t041.owner(f06_stack)
+    t046.configure_golden(f06_stack.dbname, config=priced_config())
+    owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
+    params = t041.model_params(
+        response_schema={
+            "type": "object",
+            "required": ["count"],
+            "properties": {"count": {"type": "banana"}},
+        }
+    )
+    reservation = t046.expected_reservation(
+        params, input_per_million="1", output_per_million="2"
+    )
+    t046.set_budget(f06_stack.dbname, run["id"], str(reservation))
+
+    operation_id = t041.new_uuid()
+    response = t041.invoke(t041.worker_client(f06_stack), lease,
+                           operation_id=operation_id, params=params)
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "provider_response_invalid", response.text
+
+    tokens_in, tokens_out = stub_usage(params)
+    charge = t046.expected_charge(
+        tokens_in, tokens_out, input_per_million="1", output_per_million="2"
+    )
+    attempt = t046.attempt_row(f06_stack.dbname, operation_id, 1)
+    assert attempt["state"] == "failed", attempt
+    assert attempt["settlement_state"] == "settled", attempt
+    assert int(attempt["tokens_in"]) == tokens_in, attempt
+    assert int(attempt["tokens_out"]) == tokens_out, attempt
+    assert Decimal(attempt["charged_amount"]) == charge, attempt
+    assert attempt["price_version"] == (
+        f"price-v1:{t041.GOLDEN_MODEL_ID}:in=1:out=2:USD"
+    ), attempt
+
+    rows = t046.ledger_rows(f06_stack.dbname, run["id"])
+    assert sorted(row["kind"] for row in rows) == ["charge", "release", "reserve"], rows
+    charged = next(row for row in rows if row["kind"] == "charge")
+    assert Decimal(charged["amount"]) == charge, charged
+    operation = t041.operation_row(f06_stack.dbname, run["id"], operation_id)
+    assert operation["state"] == "failed", operation
+    assert operation["last_error_code"] == "provider_response_invalid", operation
+
+    # The consumed budget is gone: the same reservation no longer fits.
+    second = t041.invoke(t041.worker_client(f06_stack), lease,
+                         operation_id=t041.new_uuid(), logical_key="call-2", params=params)
+    assert second.status == 429, second.text
+    assert second.json["error"]["code"] == "budget_exhausted", second.text
+    assert t041.attempt_count(f06_stack.dbname, operation_id) == 1
+
+def test_an_invalid_projection_without_usage_keeps_the_reservation(f06_stack) -> None:
+    """P1-5 (missing-usage half): the conservative reservation is never released.
+
+    The provider answered but reported no usage object, and the projection is
+    refused. The failed attempt must keep the reservation as ``usage_missing``
+    (only maintenance reconciliation can settle it), not release it as if the
+    call had been free.
+    """
+    owner = t041.owner(f06_stack)
+    t046.configure_golden(
+        f06_stack.dbname, model_id="stub-usage-missing", config=priced_config()
+    )
+    owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
+    params = t041.model_params(
+        response_schema={
+            "type": "object",
+            "required": ["count"],
+            "properties": {"count": {"type": "banana"}},
+        }
+    )
+    reservation = t046.expected_reservation(
+        params, input_per_million="1", output_per_million="2"
+    )
+    t046.set_budget(f06_stack.dbname, run["id"], str(reservation))
+
+    operation_id = t041.new_uuid()
+    response = t041.invoke(t041.worker_client(f06_stack), lease,
+                           operation_id=operation_id, params=params)
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "provider_response_invalid", response.text
+
+    attempt = t046.attempt_row(f06_stack.dbname, operation_id, 1)
+    assert attempt["state"] == "failed", attempt
+    assert attempt["settlement_state"] == "usage_missing", attempt
+    assert attempt["charged_amount"] is None, attempt
+    assert attempt["price_version"].startswith("price-v1:"), attempt
+
+    rows = t046.ledger_rows(f06_stack.dbname, run["id"])
+    assert [row["kind"] for row in rows] == ["reserve"], rows
+    facts = t046.budget_facts(owner, run["id"])
+    assert Decimal(facts["reserved_amount"]) == reservation, facts
+    assert Decimal(facts["charged_amount"]) == 0, facts

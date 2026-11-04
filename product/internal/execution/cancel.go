@@ -55,6 +55,10 @@ var unknownOperationReasons = map[string]bool{
 	"receipt_missing":   true,
 	"provider_timeout":  true,
 	"cancellation_race": true,
+	// F06/review2 P1-3: the connector write was sent but its receipt could not
+	// be projected or sealed. These are safe run facts, not free text.
+	"connector_receipt_unavailable": true,
+	"receipt_seal_failed":           true,
 }
 
 // ErrUnknownOperationNotFound is 404 resource_not_found on the resolve bridge: no
