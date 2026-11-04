@@ -181,7 +181,7 @@ func (g *ExtractiveStub) Generate(
 	}
 	if g.Faults.ForeignChunk {
 		// Keep the real citations and add one that cannot resolve: the point is
-		//that a single fabricated citation refuses the whole answer.
+		// that a single fabricated citation refuses the whole answer.
 		draft.CitedChunkIDs = append([]string{AnswerFaultForeignChunkID}, draft.CitedChunkIDs...)
 	}
 	return draft, nil
