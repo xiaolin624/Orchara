@@ -36,10 +36,12 @@ type approvalRunFacts struct {
 // Decide stores one approval decision and hands it to the single F03/T035 resume
 // transaction.
 //
-// Locking order is Run -> approval, the same order the cancel path uses, so a
-// cancel and a decision can never deadlock. Two opposite concurrent decisions
-// therefore serialize: the second one observes the first state and answers 409;
-// a replay of the same decision is the idempotent 200.
+// Locking order is Run -> approval -> operation. The capability proxy, cancel
+// and waiting-resolution paths all take the Run lock before touching their
+// operation/approval/waiting rows, so a decision cannot invert that order against
+// them. Two opposite concurrent decisions serialize on the same Run row and then
+// the approval row: one wins, the other observes the stored state and answers 409.
+// A replay of the same decision is the idempotent 200.
 func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approval, error) {
 	decision, err := validateDecision(request.Decision)
 	if err != nil {

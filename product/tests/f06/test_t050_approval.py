@@ -302,6 +302,94 @@ def test_decision_after_exit_still_creates_one_resume(t050_stack, local_server) 
     assert len(t035.resume_jobs(t050_stack.dbname, prepared["run"]["id"])) == 1
 
 
+def test_approve_before_the_waiting_result_lands_still_converges_to_one_resume(
+    t050_stack, local_server
+) -> None:
+    owner = t041.owner(t050_stack)
+    prepared = prepare_write(t050_stack, local_server, owner)
+    approval = prepared["approval"]
+    run_id = prepared["run"]["id"]
+
+    # The human decides while the worker is still running (no waiting result yet).
+    # The decision is durable; the waiting row adopts it when the result lands.
+    decided = t050.decide(owner.creator, approval["id"], params_sha256=approval["params_sha256"])
+    assert decided.status == 200, decided.text
+    assert t050.approval_row(t050_stack.dbname, approval["id"])["state"] == "approved"
+    assert t035.waiting_row(t050_stack.dbname, run_id) is None
+    assert t035.resume_jobs(t050_stack.dbname, run_id) == []
+
+    park(t050_stack, prepared["lease"], prepared["operation_id"])
+    waiting = t035.waiting_row(t050_stack.dbname, run_id)
+    assert json.loads(waiting["decision"])["outcome"] == "approved", waiting
+    assert t035.resume_jobs(t050_stack.dbname, run_id) == []
+    confirm_exit(t050_stack, prepared["lease"])
+    assert len(t035.resume_jobs(t050_stack.dbname, run_id)) == 1
+
+    lease = resumed_lease(t050_stack)
+    resumed = t050.invoke_write(
+        t050_stack,
+        lease,
+        policy_id=prepared["policy"]["id"],
+        params=t050.default_params(),
+        logical_key="agent:approval-node:tool:call-1",
+        operation_id=prepared["operation_id"],
+    )
+    assert resumed.status == 200, resumed.text
+    assert resumed.json["state"] == "succeeded", resumed.json
+    assert len(local_server.records) == 1, local_server.records
+
+
+def test_a_stale_earlier_approval_cannot_authorise_a_later_wait(
+    t050_stack, local_server
+) -> None:
+    owner = t041.owner(t050_stack)
+    first = prepare_write(t050_stack, local_server, owner, logical_key="agent:approval-node:tool:call-1")
+    second = t050.invoke_write(
+        t050_stack,
+        first["lease"],
+        policy_id=first["policy"]["id"],
+        params={"path": "/v1/orders", "body": {"amount": 7, "currency": "CNY"}},
+        logical_key="agent:approval-node:tool:call-2",
+    )
+    assert second.status == 200, second.text
+    assert second.json["state"] == "awaiting_approval", second.json
+    second_approval = t050.approval_row(t050_stack.dbname, second.json["approval_id"])
+    assert second_approval is not None
+
+    # Approve the earlier operation while the Run is still running.
+    approved_first = t050.decide(
+        owner.creator, first["approval"]["id"], params_sha256=first["approval"]["params_sha256"],
+    )
+    assert approved_first.status == 200, approved_first.text
+
+    # The executor now parks on the *second* operation. The earlier decision must
+    # not be adopted by this waiting row.
+    park(t050_stack, first["lease"], second.json["operation_id"])
+    waiting = t035.waiting_row(t050_stack.dbname, first["run"]["id"])
+    assert waiting["decision"] is None, waiting
+    confirm_exit(t050_stack, first["lease"])
+    assert t035.resume_jobs(t050_stack.dbname, first["run"]["id"]) == []
+
+    # Only the second approval can resume; then the second operation dispatches.
+    approved_second = t050.decide(
+        owner.creator, second_approval["id"], params_sha256=second_approval["params_sha256"],
+    )
+    assert approved_second.status == 200, approved_second.text
+    assert len(t035.resume_jobs(t050_stack.dbname, first["run"]["id"])) == 1
+    lease = resumed_lease(t050_stack)
+    resumed = t050.invoke_write(
+        t050_stack,
+        lease,
+        policy_id=first["policy"]["id"],
+        params={"path": "/v1/orders", "body": {"amount": 7, "currency": "CNY"}},
+        logical_key="agent:approval-node:tool:call-2",
+        operation_id=second.json["operation_id"],
+    )
+    assert resumed.status == 200, resumed.text
+    assert resumed.json["state"] == "succeeded", resumed.json
+    assert len(local_server.records) == 1, local_server.records
+
+
 # ---------------------------------------------------------------------------
 # reject / expire
 # ---------------------------------------------------------------------------
