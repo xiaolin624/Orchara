@@ -583,6 +583,161 @@ def test_method_path_schema_and_query_rules_are_enforced(t048_stack, local_serve
     ), t041.operation_rows(t048_stack.dbname, run["id"])
 
 
+def test_a_duplicate_query_key_is_refused_before_dialing(t048_stack, local_server) -> None:
+    """P1-1 regression: the URL sends every merged value, so duplicates are refused.
+
+    ``path=/v1/items?scope=forbidden&scope=allowed`` plus ``query.scope=allowed``
+    used to pass the enum check on the last value while the real request carried
+    ``scope=forbidden`` too. The guard must refuse the duplicate before any
+    socket is opened and before an operation row exists.
+    """
+    owner = t041.owner(t048_stack)
+    query_schema = {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "query": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"scope": {"type": "string", "enum": ["allowed"]}},
+            }
+        },
+    }
+    policy = t048.register(
+        t048_stack, owner.admin, origin=local_server.url, request_schema=query_schema
+    )
+    t048.bind_tool_connectors(t048_stack.dbname, [policy["id"]])
+    _, run, lease = t041.claimed_run(t048_stack, run_owner=owner)
+
+    refused = t048.invoke(
+        t048_stack,
+        lease,
+        policy_id=policy["id"],
+        params={
+            "path": "/v1/items?scope=forbidden&scope=allowed",
+            "query": {"scope": "allowed"},
+        },
+        logical_key="duplicate-query",
+    )
+    assert refused.status == 422, refused.text
+    assert refused.json["error"]["code"] == "connector_request_invalid", refused.text
+    assert refused.json["error"]["details"]["field"] == "query.scope", refused.text
+    assert local_server.records == []
+    # The refusal is decided by the egress guard after the physical attempt row
+    # exists: no request was dialed and the operation is a recorded failure.
+    rows = t041.operation_rows(t048_stack.dbname, run["id"])
+    assert len(rows) == 1, rows
+    assert rows[0]["state"] == "failed", rows
+    assert rows[0]["last_error_code"] == "connector_request_invalid", rows
+    assert t041.attempt_rows(t048_stack.dbname, rows[0]["id"])[0]["state"] == "failed", rows
+
+
+def test_registered_schema_bounds_are_enforced_for_real(t048_stack, local_server) -> None:
+    """P1-2 regression: minimum/maximum/minLength/maxLength are enforced.
+
+    A policy with ``maximum: 10`` / ``maxLength: 3`` used to accept
+    ``amount=1000000, label="far-too-long"`` because the runtime validator
+    ignored the keywords. Both the request and the response side must enforce
+    them, the boundary values must pass, and an unusable bound declaration must
+    not be registrable.
+    """
+    owner = t041.owner(t048_stack)
+    request_schema = {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "body": {
+                "type": "object",
+                "required": ["amount", "label"],
+                "properties": {
+                    "amount": {"type": "integer", "minimum": 1, "maximum": 10},
+                    "label": {"type": "string", "minLength": 2, "maxLength": 3},
+                },
+            }
+        },
+    }
+    response_schema = {
+        "type": "object",
+        "required": ["ok", "total"],
+        "properties": {
+            "ok": {"type": "boolean"},
+            "total": {"type": "integer", "minimum": 0, "maximum": 10},
+            "note": {"type": "string", "maxLength": 3},
+        },
+    }
+    policy = t048.register(
+        t048_stack,
+        owner.admin,
+        origin=local_server.url,
+        method="POST",
+        request_schema=request_schema,
+        response_schema=response_schema,
+    )
+    t048.bind_tool_connectors(t048_stack.dbname, [policy["id"]])
+    _, run, lease = t041.claimed_run(t048_stack, run_owner=owner)
+
+    local_server.respond_json({"ok": True, "total": 10, "note": "abc"})
+    boundary = t048.invoke(
+        t048_stack,
+        lease,
+        policy_id=policy["id"],
+        params={"path": "/v1/orders", "body": {"amount": 10, "label": "abc"}},
+        logical_key="bounds-boundary",
+    )
+    assert boundary.status == 200, boundary.text
+    assert boundary.json["state"] == "succeeded", boundary.json
+    assert len(local_server.records) == 1, local_server.records
+
+    for logical_key, body, field in (
+        ("bounds-amount", {"amount": 1000000, "label": "abc"}, "body/amount"),
+        ("bounds-label", {"amount": 5, "label": "far-too-long"}, "body/label"),
+        ("bounds-label-short", {"amount": 5, "label": "a"}, "body/label"),
+    ):
+        refused = t048.invoke(
+            t048_stack,
+            lease,
+            policy_id=policy["id"],
+            params={"path": "/v1/orders", "body": body},
+            logical_key=logical_key,
+        )
+        assert refused.status == 422, (logical_key, refused.text)
+        assert refused.json["error"]["code"] == "validation_failed", (logical_key, refused.text)
+        assert refused.json["error"]["details"]["field"] == field, (logical_key, refused.text)
+    assert len(local_server.records) == 1, local_server.records
+
+    # The response side is enforced before the body can become a receipt.
+    local_server.respond_json({"ok": True, "total": 11, "note": "abc"})
+    bad_response = t048.invoke(
+        t048_stack,
+        lease,
+        policy_id=policy["id"],
+        params={"path": "/v1/orders", "body": {"amount": 5, "label": "abc"}},
+        logical_key="bounds-response",
+    )
+    assert bad_response.status == 422, bad_response.text
+    assert bad_response.json["error"]["code"] == "connector_response_invalid", bad_response.text
+    assert len(local_server.records) == 2, local_server.records
+
+    # A registration whose declared bounds cannot be evaluated is refused.
+    base = t048.registration_body(origin=local_server.url)
+    unusable = (
+        {"type": "object", "additionalProperties": True,
+         "properties": {"amount": {"type": "number", "minimum": "1"}}},
+        {"type": "object", "additionalProperties": True,
+         "properties": {"label": {"type": "string", "minLength": -1}}},
+        {"type": "object", "additionalProperties": True,
+         "properties": {"amount": {"type": "number", "minimum": 10, "maximum": 1}}},
+        {"type": "object", "additionalProperties": True,
+         "properties": {"label": {"type": "string", "minLength": 5, "maxLength": 3}}},
+    )
+    for schema in unusable:
+        body = dict(base)
+        body["request_schema"] = schema
+        rejected = t048.register_raw(t048_stack, owner.admin, body)
+        assert rejected.status == 422, rejected.text
+        assert rejected.json["error"]["code"] == "validation_failed", rejected.text
+
+
 def test_invoking_a_policy_outside_the_manifest_is_refused(t048_stack, local_server) -> None:
     owner = t041.owner(t048_stack)
     bound = t048.register(t048_stack, owner.admin, origin=local_server.url)

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -45,6 +46,123 @@ func testEgress() *Egress {
 			}
 			return "", false
 		},
+	}
+}
+
+// newQueryPolicy builds an allow_private policy whose request schema declares
+// exactly one query member, restricted to the enum ["allowed"].
+func newQueryPolicy(t *testing.T, serverURL string) *Policy {
+	t.Helper()
+	normalized, problems := normalizePolicyInput(Input{
+		Origin: serverURL, Method: "GET", PathPrefix: "/v1",
+		SecretRef: "env:T048_TEST_SECRET", SecretHeader: "X-Connector-Secret",
+		RiskClass: "read", AllowPrivate: true,
+		RequestSchema: map[string]any{
+			"type": "object", "additionalProperties": true,
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type": "object", "additionalProperties": false,
+					"properties": map[string]any{
+						"scope": map[string]any{"type": "string", "enum": []any{"allowed"}},
+					},
+				},
+			},
+		},
+		ResponseSchema: map[string]any{
+			"type": "object", "required": []any{"ok"},
+			"properties": map[string]any{"ok": map[string]any{"type": "boolean"}},
+		},
+	})
+	if len(problems) != 0 {
+		t.Fatalf("policy setup: %v", problems)
+	}
+	policy := policyFromInput(normalized)
+	approved := time.Now()
+	policy.ApprovedAt = &approved
+	policy.ID = "00000000-0000-4000-8000-000000000002"
+	return policy
+}
+
+// P1-1: the URL sends every merged query value, so a key that appears more than
+// once must be refused before validation/dialing. The old code validated only
+// the last value while `query.Encode()` sent all of them: `?scope=forbidden` plus
+// query.scope=allowed passed the enum check but the remote saw `forbidden`.
+func TestEgressRejectsDuplicateInlineQueryValuesBeforeDialing(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	policy := newQueryPolicy(t, server.URL)
+	_, err := testEgress().Execute(context.Background(), policy,
+		Call{Path: "/v1/items?scope=forbidden&scope=allowed"})
+	if err == nil || code(err) != CodeRequestInvalid {
+		t.Fatalf("duplicate inline query was not refused: %v", err)
+	}
+	typed, ok := AsError(err)
+	if !ok || typed.Field != "query.scope" {
+		t.Fatalf("field=%v, want query.scope", typed)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("a duplicate query was dialed: calls=%d", calls.Load())
+	}
+}
+
+// A key may also be duplicated by the path's inline query and the structured
+// Call.Query. Both values would be sent, so it is the same refusal.
+func TestEgressRejectsAQueryKeyPresentBothInlineAndInTheCall(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	policy := newQueryPolicy(t, server.URL)
+	_, err := testEgress().Execute(context.Background(), policy, Call{
+		Path:  "/v1/items?scope=forbidden",
+		Query: url.Values{"scope": {"allowed"}},
+	})
+	if err == nil || code(err) != CodeRequestInvalid {
+		t.Fatalf("inline+call query duplicate was not refused: %v", err)
+	}
+	typed, ok := AsError(err)
+	if !ok || typed.Field != "query.scope" {
+		t.Fatalf("field=%v, want query.scope", typed)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("a duplicate query was dialed: calls=%d", calls.Load())
+	}
+}
+
+// One value per key still works, from the inline query and from Call.Query, and
+// the remote sees exactly that one value.
+func TestEgressSendsASchemaApprovedQueryValueExactlyOnce(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	policy := newQueryPolicy(t, server.URL)
+	response, err := testEgress().Execute(context.Background(), policy,
+		Call{Path: "/v1/items?scope=allowed"})
+	if err != nil || response.Status != 200 {
+		t.Fatalf("inline single query was refused: status=%v err=%v", response, err)
+	}
+	response, err = testEgress().Execute(context.Background(), policy,
+		Call{Path: "/v1/items", Query: url.Values{"scope": {"allowed"}}})
+	if err != nil || response.Status != 200 {
+		t.Fatalf("structured single query was refused: status=%v err=%v", response, err)
+	}
+	if len(seen) != 2 || seen[0] != "scope=allowed" || seen[1] != "scope=allowed" {
+		t.Fatalf("the remote saw %v, want exactly scope=allowed twice", seen)
 	}
 }
 

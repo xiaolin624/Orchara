@@ -40,6 +40,7 @@ import (
 
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/jcs"
+	"orchara/platform/internal/jsonschema"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/uuid"
 )
@@ -464,6 +465,64 @@ func validateSchema(field string, schema map[string]any, root bool) []Problem {
 	if enum, present := schema["enum"]; present {
 		if _, ok := enum.([]any); !ok {
 			problems = append(problems, Problem{Field: field + ".enum", Message: "schema enum must be an array"})
+		}
+	}
+	problems = append(problems, validateSchemaBounds(field, schema)...)
+	return problems
+}
+
+// validateSchemaBounds refuses a declared bound the runtime validator cannot
+// evaluate. minimum/maximum must be JSON numbers with minimum<=maximum;
+// minLength/maxLength must be non-negative integers with minLength<=maxLength.
+// Without this an unusable policy could be registered and then either silently
+// widen the call or refuse every invocation at runtime.
+func validateSchemaBounds(field string, schema map[string]any) []Problem {
+	problems := make([]Problem, 0)
+	for _, keyword := range []string{"minimum", "maximum"} {
+		raw, present := schema[keyword]
+		if !present {
+			continue
+		}
+		if !jsonschema.IsJSONNumber(raw) {
+			problems = append(problems, Problem{
+				Field:   field + "." + keyword,
+				Message: "schema " + keyword + " must be a number",
+			})
+		}
+	}
+	if minimum, hasMinimum := schema["minimum"]; hasMinimum {
+		if maximum, hasMaximum := schema["maximum"]; hasMaximum {
+			if comparison, ok := jsonschema.CompareNumbers(minimum, maximum); ok && comparison > 0 {
+				problems = append(problems, Problem{
+					Field:   field + ".minimum",
+					Message: "schema minimum must not exceed maximum",
+				})
+			}
+		}
+	}
+	for _, keyword := range []string{"minLength", "maxLength"} {
+		raw, present := schema[keyword]
+		if !present {
+			continue
+		}
+		if _, ok := jsonschema.NonNegativeInteger(raw); !ok {
+			problems = append(problems, Problem{
+				Field:   field + "." + keyword,
+				Message: "schema " + keyword + " must be a non-negative integer",
+			})
+		}
+	}
+	if minimum, hasMinimum := schema["minLength"]; hasMinimum {
+		if maximum, hasMaximum := schema["maxLength"]; hasMaximum {
+			if minimumValue, ok := jsonschema.NonNegativeInteger(minimum); ok {
+				if maximumValue, ok := jsonschema.NonNegativeInteger(maximum); ok &&
+					minimumValue > maximumValue {
+					problems = append(problems, Problem{
+						Field:   field + ".minLength",
+						Message: "schema minLength must not exceed maxLength",
+					})
+				}
+			}
 		}
 	}
 	return problems
