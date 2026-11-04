@@ -82,10 +82,11 @@ def test_txt_upload_becomes_ready_with_traceable_chunks(t055_stack) -> None:
     assert set(payload) == {"items", "next_cursor", "retrieval"}, payload
     assert payload["next_cursor"] is None
     retrieval = payload["retrieval"]
-    # T067 adds the additive non-contract `cache` metadata to the retrieval
-    # surface; the pre-existing fields keep their exact meaning.
+    # T067 adds the additive non-contract `cache` metadata and T061 the additive
+    # `index` metadata to the retrieval surface; the pre-existing fields keep
+    # their exact meaning.
     assert set(retrieval) == {
-        "embedding_model_revision", "top_k", "acl_epoch", "cache",
+        "embedding_model_revision", "top_k", "acl_epoch", "index", "cache",
     }, retrieval
     assert retrieval["embedding_model_revision"] == EMBEDDING_REVISION
     assert retrieval["top_k"] == 5

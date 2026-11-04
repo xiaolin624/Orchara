@@ -103,12 +103,21 @@ def test_foreign_keys_are_real_and_the_kind_check_still_admits_document_ingest(
     ) == "1"
 
 
-def test_unique_chunk_number_per_revision_and_the_dimension_check(migrated_database) -> None:
+def test_unique_chunk_number_per_index_version_and_the_dimension_check(migrated_database) -> None:
     _dsn, dbname = migrated_database
+    # T061 moved the chunk identity from (document_id, document_revision, chunk_no)
+    # to (index_version_id, chunk_no): a rebuild of the same source revision under
+    # another embedding model owns a different index version and must not collide
+    # with the old vectors. The old unique constraint is intentionally gone.
+    assert st.sql(
+        dbname,
+        "SELECT count(*) FROM pg_indexes WHERE schemaname = 'platform' "
+        "AND indexname = 'knowledge_chunks_index_version_no'",
+    ) == "1"
     assert st.sql(
         dbname,
         "SELECT count(*) FROM pg_constraint WHERE conname = 'knowledge_chunks_unique_no'",
-    ) == "1"
+    ) == "0"
     assert st.sql(
         dbname,
         "SELECT count(*) FROM pg_constraint "
