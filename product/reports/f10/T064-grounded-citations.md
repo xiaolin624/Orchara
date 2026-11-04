@@ -168,6 +168,16 @@ $ python -m pytest tests/tooling -q
 > `upstream_new gate-t064.log`（规格源多了一个文件），把日志移出仓库后复检 no drift；
 > 这是本票检查方式的失误，不是契约漂移。
 
+合并 `integration/f13a-f15a-f09-f10`（merge 时的 tip = `9f58fc2`，与本分支切出基线相同）：
+`git merge --no-ff` 返回 **"Already up to date"**，没有产生新的 merge commit，也没有冲突
+（分支已包含集成 tip；报告的 `MERGE-COMMIT` 记为 `9f58fc2`）。merge 后复跑目标门禁：
+
+```text
+$ python -m pytest tests/f10 -q          # merge 之后
+.................................                                        [100%]
+33 passed in 336.63s (0:05:36)
+```
+
 > 说明：全量 `pytest tests` 按 BRIEF §3 不在本票运行（≈67 分钟），由 orchestrator 在合并后
 > 执行。本票运行 `tests/f10`（含既有 T055 的 20 个用例）与 `tests/tooling`。`tests/f00b`
 > 等相邻套未整跑：本票对共享代码的改动只有两条 SQL 的 owner 谓词、`knowledge.New` 的默认
@@ -239,3 +249,6 @@ $ python -m pytest tests/tooling -q
 4. 检索/引用 SQL 增加 `a.owner_id = kb.owner_id`（T055 谓词的补强，非契约变化）——
    ADR 0012 D4。
 5. 不持久化回答、无缓存、无迁移——ADR 0012 D5。
+6. 票面/简报写“通过 `GET /knowledge-chunks/{id}` 打开引用”；T055 的实际非契约路径是
+   `GET /api/v1/knowledge-citations/{chunk_id}`（ADR 0010 §3），本票沿用后者，不新增第二套
+   引用路由（同一 SQL 谓词复用为返回前复检），`/knowledge` 页面也用它。
