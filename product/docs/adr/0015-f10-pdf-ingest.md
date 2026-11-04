@@ -1,8 +1,9 @@
-# ADR 0014：F10 PDF 摄取、页码引用与解析/分块候选对照
+# ADR 0015：F10 PDF 摄取、页码引用与解析/分块候选对照
 
 - 状态：已接受
 - 日期：2026-11-04
-- 编号：本分支首个空闲号 0014；若集成批次其它票先占用，合并时由 orchestrator 让号。
+- 编号：合并 `integration/f13a-f15a-f09-f10` 时 T062 已占用 ADR 0014，
+  本 ADR 让号为 0015。
 - 相关：F10 / T060（GitHub #61，规划 ID F10.02 之后的 PDF 切片）；
   分支 `t/t060-pdf-ingest`；报告 `product/reports/f10/T060-pdf-ingest.md`；
   基础：T055（#56）的解析器缝 / chunker / citation / 完成守卫 / 非契约检索与诊断面

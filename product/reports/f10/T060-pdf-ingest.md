@@ -3,8 +3,9 @@
 - 任务：F10 / GitHub Issue #61（票 `T060`），分支 `t/t060-pdf-ingest`
   （worktree `E:\orchara-worktrees\t060`，基线 integration tip `ddaeb46`）；
   父门禁 #53–#68 集成批次。
-- 合并：`integration/f13a-f15a-f09-f10` 合入本分支（merge commit 见 §3 末尾；
-  迁移让号/ADR 让号按合并结果记录）。
+- 合并：`integration/f13a-f15a-f09-f10` tip `c7d7e21`（T062）已合入本分支，
+  merge commit **`9aa2982`**；T062 已占用 ADR 0014，本票 ADR 让号为 **0015**；
+  迁移 `0037` 在集成 tip 上未冲突；合并后目标门禁复跑见 §3 末尾。
 - 状态：**`passed`**（本票范围 = 在 T055 摄取链上新增 **普通文本 PDF 一种输入族**：
   `purpose=knowledge` 的 `application/pdf` 上传准入 + 魔数嗅探、逐页文本解析与页码
   citation、页内分块、无文字层/损坏/加密 PDF 的可诊断 failed 文档、部分文字层的空页
@@ -21,7 +22,7 @@
 - 契约偏差：新增迁移 `0037_pdf_admission.sql`，只扩展 T028 **非契约**表
   `platform.artifact_admissions.detected_format` 的闭合词表（+`pdf`）；
   `citation` 的 `pdf` 对象是 jsonb additive 字段；新增 Go 依赖 `rsc.io/pdf v0.1.1`
-  （BSD-3-Clause）。均记录在 ADR 0014；`docs/spec/**`、`contracts/**` 未改，
+  （BSD-3-Clause）。均记录在 ADR 0015；`docs/spec/**`、`contracts/**` 未改，
   `sync_spec --check` no drift。
 
 ## 0. 工作记录（简短）
@@ -41,7 +42,7 @@
      扫描/短文本/损坏/加密失败矩阵；ACL/撤销/重试边界；页面结构 + Node 执行 helper；
    - 对照：Go 基线 probe + Docling 隔离安装/真实运行 + PyMuPDF/pypdf/pdfminer 替代，
      冻结夹具上度量覆盖率/页码归属/块形状/墙钟/峰值 RSS，按“无收益即淘汰”给结论。
-3. 跑门禁（§3），两次连跑 `tests/f10`；写本报告/PROGRESS/ADR 0014；按 feat/test/docs
+3. 跑门禁（§3），两次连跑 `tests/f10`；写本报告/PROGRESS/ADR 0015；按 feat/test/docs
    提交；合并 integration 后复跑；未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`；
    迁移只新增 `0037`。
 
@@ -75,7 +76,7 @@
 - 失败：结构损坏/解析 panic → `pdf_invalid`（part=xref/structure/page/header）；
   声明 `/Encrypt`（或 NewReader 因密码失败）→ `pdf_encrypted`（不解密）；
   非 PDF 头 → `pdf_invalid(header)`。
-- 支持边界（ADR 0014 §2）：不支持 OCR、解密、Type0/CID 精确宽度；这些不是静默错误，
+- 支持边界（ADR 0015 §2）：不支持 OCR、解密、Type0/CID 精确宽度；这些不是静默错误，
   除宽度近似外都以具体码失败。
 
 ### 1.3 分块器 `orchara-pdf-page-paragraph-chunker/1` 与 citation
@@ -171,7 +172,7 @@ $ go vet ./...
 (exit 0, no output)
 
 $ go test ./...
-# 36 个包 ok / 0 FAIL（含 internal/knowledge、artifacts、background、api；
+# 33 个包 ok / 0 FAIL（含 internal/knowledge、artifacts、background、api；
 # probes/f10_pdf_compare/go_baseline 为无测试文件的真实编译入口）
 (exit 0)
 
@@ -198,6 +199,39 @@ decision docling-native: eliminated: no measured strict quality gain ...
 > 错误做最多 5 次、0.2–1.0 s 退避重试（每次写入的值相同，未放宽任何断言）；其余等待
 > 窗口均 ≥30 s（文档状态 60–90 s、artifact 30 s），没有 <5 s 的时序断言，也没有
 > “短睡眠后断言无副作用”的检查。
+
+合并 `integration/f13a-f15a-f09-f10`（tip `c7d7e21`，含 T062；merge commit
+`9aa2982`）后复跑目标门禁（T062 只与本票的 `PROGRESS.md`/ADR 编号相交；因 T062 已占
+ADR 0014，本票 ADR 让号为 0015）：
+
+```text
+$ python -m pytest tests/f10 -q          # merge 9aa2982 之后
+......................................................                   [100%]
+54 passed in 708.85s (0:11:48)
+
+$ python -m pytest tests/tooling -q
+.....................                                                    [100%]
+21 passed in 8.53s
+
+$ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
+(exit 0；33 个包 ok / 0 FAIL；gofmt 空)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+相邻套回归（本票改到上传准入、`artifact_admissions` 词表、`document_ingest` handler、
+knowledge citation/页面；T028 的“未支持声明”例子从 PDF 改成 msword）：
+
+```text
+$ python -m pytest tests/f05/test_t028_quarantine.py tests/f05/test_t028_upload_flow.py \
+    tests/f00b/test_t024_artifacts.py tests/f00b/test_t022_finalize.py -q
+......................................                                   [100%]
+38 passed in 473.69s (0:07:53)
+```
+
+> 全量 `pytest tests`、`tests/f05`/`tests/f00b` 整包按 BRIEF §3 不在本票运行
+> （orchestrator 的合并门禁负责），故不写成“全绿”。
 
 
 ## 4. 真实栈、输入与版本
@@ -311,7 +345,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 | 浏览器 DOM 驱动页面 | **not_run** | 只做 `GET /knowledge` 结构与 Node 执行纯 helper（与既有页面票同一边界） |
 | 版本重建/删除治理/检索规模/缓存 | **not_run / 后续** | T061、F07/T058、T064、T067 |
 | 全量 `pytest tests` | **not_run（orchestrator）** | 按 BRIEF §3；本票跑 `tests/f10` 两遍 + `tests/tooling` |
-| 直接替换生产 parser 为候选 | **不做（决策）** | ADR 0014 §6：任何候选采用都需新 parser/chunker revision + 新安全/OCR 决定 |
+| 直接替换生产 parser 为候选 | **不做（决策）** | ADR 0015 §6：任何候选采用都需新 parser/chunker revision + 新安全/OCR 决定 |
 
 ## 8. 下一票接口（复用点）
 
@@ -348,7 +382,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 
 ## 10. 参考
 
-- ADR：`product/docs/adr/0014-f10-pdf-ingest.md`（本票）；`0010`/`0013`（F10 基础/
+- ADR：`product/docs/adr/0015-f10-pdf-ingest.md`（本票）；`0010`/`0013`（F10 基础/
   表格族）；`0005`/`0007`（非契约面先例）。
 - 基础：`product/reports/f10/T055-knowledge-ingest.md`、
   `product/reports/f10/T059-tabular-ingest.md`。
