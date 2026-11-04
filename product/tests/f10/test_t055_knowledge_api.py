@@ -123,13 +123,25 @@ def test_ingest_requires_a_ready_owner_artifact_and_a_registered_parser(t055_sta
     foreign = t055.ingest_document(alice, base_id, bobs)
     f00b_assert_404(foreign)
 
-    # CSV has no registered parser in this slice: a clear 422, not a failed job.
+    # CSV is a registered parser since T059: it is accepted into scanning (the
+    # document is then failed by the real pipeline in test_t059_tabular.py).
     csv_artifact = t055.upload_text_artifact(
         alice, "region,amount\nnorth,1\n", media_type=t055.CSV
     )
     t055.finalize_once(t055_stack)
     t055.wait_for_artifact_state(alice, csv_artifact, {"ready"})
-    unsupported = t055.ingest_document(alice, base_id, csv_artifact)
+    accepted = t055.ingest_document(alice, base_id, csv_artifact)
+    assert accepted.status == 202, accepted.text
+    assert accepted.json["state"] == "scanning"
+
+    # A format with no registered parser (PDF -> T060) is still a clear 422, not
+    # a failed job. The real artifact bytes are seeded because the T028 admission
+    # gate refuses application/pdf before an upload could complete.
+    pdf_artifact = t055.seed_ready_source_artifact(
+        t055_stack, alice.principal_id, b"%PDF-1.7 not parsed in this build\n",
+        media_type="application/pdf",
+    )
+    unsupported = t055.ingest_document(alice, base_id, pdf_artifact)
     assert unsupported.status == 422, unsupported.text
     assert unsupported.json["error"]["code"] == "validation_failed"
     assert unsupported.json["error"]["details"]["field"] == "source_artifact_id"

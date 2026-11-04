@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,6 +76,9 @@ const (
 // The stable error vocabulary of this aggregate. The HTTP layer maps each one
 // onto the contract error envelope; the three decision codes mirror the
 // approval aggregate's `approval_expired`/`approval_not_pending` precedent.
+// `precondition_required`/`precondition_failed` are the shared optimistic-
+// concurrency codes the draft PUT already uses (API.md: missing If-Match is 428,
+// a stale one is 412); T058 reuses them instead of inventing a memory-only pair.
 const (
 	CodeResourceNotFound       = "resource_not_found"
 	CodePersonalScope          = "personal_scope_forbidden"
@@ -87,14 +91,21 @@ const (
 	CodeCandidateConfirmed     = "memory_candidate_confirmed"
 	CodeIdempotencyConflict    = "idempotency_conflict"
 	CodeObjectStoreUnavailable = "object_store_unavailable"
+	CodePreconditionRequired   = "precondition_required"
+	CodePreconditionFailed     = "precondition_failed"
 )
 
 // Error is one located refusal. It never carries memory text or a credential.
+//
+// Details carries the contract's error details for the few refusals that must
+// teach the client how to recover (the current ETag on a stale If-Match, the
+// header name on a missing one). It is merged with Field by the HTTP layer.
 type Error struct {
 	Status  int
 	Code    string
 	Message string
 	Field   string
+	Details map[string]any
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -105,6 +116,31 @@ func failure(status int, code, message string) *Error {
 
 func fieldFailure(status int, code, message, field string) *Error {
 	return &Error{Status: status, Code: code, Message: message, Field: field}
+}
+
+// preconditionRequired is the 428 for a write with no If-Match at all.
+func preconditionRequired() *Error {
+	return &Error{
+		Status:  http.StatusPreconditionRequired,
+		Code:    CodePreconditionRequired,
+		Message: "If-Match is required to update a memory",
+		Details: map[string]any{"header": "If-Match"},
+	}
+}
+
+// preconditionFailed is the 412 for a stale or garbled If-Match. It reports the
+// revision and the exact strong ETag the client now has to use, which is what
+// makes the page able to recover instead of guessing.
+func preconditionFailed(revision int64) *Error {
+	return &Error{
+		Status:  http.StatusPreconditionFailed,
+		Code:    CodePreconditionFailed,
+		Message: "the memory has moved on; fetch it again and retry with the current ETag",
+		Details: map[string]any{
+			"current_revision": revision,
+			"current_etag":     catalog.FormatETag(revision),
+		},
+	}
 }
 
 // AsError renders a typed *Error from err (nil otherwise).

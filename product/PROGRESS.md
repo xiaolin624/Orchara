@@ -1,4 +1,4 @@
-# 产品实现进度（权威）
+﻿# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -103,6 +103,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 
 | T053 | F15A | 在候选 S3 上验证封存、匿名拒绝和删除 | **blocked** | `reports/f15a/T053-s3-probe.md`（探针与判别证明真实执行并通过；本机无候选 S3 端点 → 真实候选运行 exit 2 `blocked`，不伪造通过）、`probes/f15a_objectstore/`（`object_store_probe.py` 十条断言 + stdlib SigV4 + 环境凭据、`fixtures/{compliant,violating}_server.py` 真实 HTTP 判别夹具、`run_evidence.py`、`localfs_probe/main.go` 真实 `internal/objectstore` 类比）、`tests/f15a/`（36 passed：AWS SigV4 向量 8 + 配置失败 4 + 判别矩阵 13 + 边界常量 4 + 本地 FS 2 + 证据诚实性 5）、`reports/f15a/`（`candidate-absent`/`candidate-not-configured` blocked、`fixture-compliant` passed、`fixture-violating-all` 9 failed、逐条违规 9 份、503 重试、`local-fs-analogue`、`runs.json`、`environment-profile.json`）、`docs/adr/0008-f15a-object-store-compatibility.md`；`go build/vet/test`（29 ok / 0 FAIL / 11 no-test）、`gofmt -l` 空、`pytest tests/tooling` 21 passed、`sync_spec --check` no drift；not_run：版本化（夹具未启用）、备份/恢复（F15B）、真实候选 IAM/桶策略与平台 S3 后端接入；无迁移/契约改动 |
 | T055 | F10 | 上传文本资料后检索到可追溯片段 | passed | `reports/f10/T055-knowledge-ingest.md`、`db/migrations/0034_knowledge.sql`、`internal/knowledge/`、`internal/embedding/`、`internal/background/handlers/document_ingest.go`、`internal/background/document_ingest.go`（完成守卫）、`internal/api/knowledge.go`、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/t055.py`、`tests/f10/`（20 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；pgvector 不可安装 → `double precision[]`/384 维（T064/T067），本地 `local-hash-v1` embedding（真实 provider blocked），非契约检索/引用/诊断面见 ADR 0010 |
+| T059 | F10 | 摄取 CSV/XLSX 并保留行范围和安全错误 | passed | `reports/f10/T059-tabular-ingest.md`、`docs/adr/0013-f10-tabular-ingest.md`、`internal/knowledge/{table.go,parse_csv.go,parse_xlsx.go}`（`orchara-csv-parser/1`、`orchara-xlsx-parser/1`、`orchara-table-row-batch-chunker/1`；citation additive `row_start/row_end/row_count/header_row/sheet_name/columns/columns_omitted/text_render`；公式/DTD/宏/压缩比/工作表/行/列/单元格/单行上限 → 具体 failed 码；行不拆分）、`internal/knowledge/{parse.go,chunk.go,service.go}`（注册表/Parsed.Table/诊断 `detail` 只读派生）、`internal/background/handlers/document_ingest.go`、`internal/api/knowledge.go`、`internal/artifacts/admission.go`（仅导出 `SafeArchivePath`，准入无改动）、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/{t059.py,fixtures.py}`、`tests/fixtures/f10/`（提交夹具 + 确定性生成器）、`tests/f10/`（28 passed ×2 合并前；合并后 41 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；无迁移、无契约改动、`sync_spec` no drift；真实 provider 继承 T055 blocked |
 | T064 | F10 | 回答只引用本次检索且当前可读的资料 | passed | `reports/f10/T064-grounded-citations.md`、`docs/adr/0012-f10-grounded-answers.md`、`internal/knowledge/answer.go`（`Answer` + 带标签抽取式 stub `extractive-stub/1` + `validateAnswerDraft` + 引用返回前 `GetChunk` 复检 + dev-stub 故障约定）、`internal/knowledge/service.go`（检索/引用 SQL 硬化 `a.owner_id = kb.owner_id`）、`internal/api/knowledge.go`（非契约 `POST /knowledge-bases/{id}/answer`：200 answered/no_results、422 answer_without_citation/citation_not_found、409 citation_unreadable）、`internal/api/server.go`、`cmd/api/main.go`（`Answerer` 装配）、`apps/web/src/{knowledge.html,assets/knowledge.js}`（问答视图 + 引用点击重校验 + 撤销后显示不可用）、`tests/support/t064.py`、`tests/f10/{test_t064_answer.py,test_t064_pages.py}`（外加 Go 单测）；真实 PG 16.4 + 编译二进制 + 真实 HTTP + 真实封存字节 + 真实 maintenance 摄取 + 第二个真实 API 进程（故障约定）；真实模型生成 blocked（无凭据/adapter，生成=stub），无迁移、未改契约/规格 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
@@ -973,6 +974,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 | T043 | F04A | 运行受控 Agent 节点并校验最终输出 | passed | `reports/f04a/T043-agent-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T043 追加 D10）、`internal/presetexec/{plan.go,agent.go,linear.go,presetexec.go}`（3/4 节点线性计划、agent 配置校验、确定性 operation UUIDv5、模型轮次 + 固定预设工具真实沙箱 + capability-results 回报、最终输出节点 schema 二次校验、agent data/file/log 行与 node.status、heartbeat 取消/lease deadline、legacy `input#` 形状选择）、`internal/presetexec/{Facts,ModelFact,ToolFact}` + `cmd/supervisor/{client.go,exec.go}`（`InvokeCapability`/`ReportCapabilityResult` worker mTLS、只读 model/tool Facts）、`internal/modelproxy/provider.go`（dev stub 声明工具时确定性首轮工具调用，仍 `stub=true`）、`apps/web/src/{runs.html,assets/runs.js}`（Agent 面板：最终输出/轮次/工具调用 id+name/每次工具操作状态；`describeAgentNode` Node 执行）、`tests/support/t043.py`、`tests/f06/{test_t043_agent_node.py,test_t043_pages.py}`（6+3 用例，真实 PG/mTLS/对象字节/WSL2+runsc）；`go vet` exit 0、`go test ./...` 全绿、`gofmt -l` 空、`tests/f06` 62 passed、`tests/f05`、`tests/f04a` 36、`tests/tooling` 21、`sync_spec --check` no drift；not_run：真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈下 executor 的未知/重复工具调用 guard（服务端先拒绝，仅 Go 单测）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026 | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
 | T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0009-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
+| T058 | F09 | 用户修订或删除记忆后立即停止旧内容召回 | passed | `reports/f09/T058-memory-revision-and-delete.md`、`docs/adr/0009-f09-memory.md`（§11）、`db/migrations/0036_memory_revision_and_deletion.sql`（最终编号；基线 0034，合并时 T055 占 0034、T052 占 0035 后重编号；契约 `deletion_jobs` 最小切片 + F07 债务）、`internal/memory/{service,memories}.go`（Get/Update/Delete + 428/412 + CAS + 同事务 epoch）、`internal/api/{memory.go,server.go}`（GET/PATCH/DELETE，202 `DeletionAccepted`）、`apps/web/src/{memories.html,assets/memories.js}`（冲突恢复/删除状态，Node 执行）、`tests/f09/`（新增 22：迁移 4 + 记忆 15 + 页面 3；T054 25 保持绿）、`tests/support/t058.py`；真实 PG 16.4 / 编译二进制 / 真实 HTTP+CSRF / 真实 sealed 字节 / Node；`pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿、f01 边界 2 passed、tooling 21 passed、f10 20 passed；not_run：物理清理/delete_content/lease-retry（F07）、`memory_embeddings`（T063）、运行时召回（T063）、检索缓存（T067）、浏览器 DOM、全量 `pytest tests`；合并提交 `7190b2b` + `895a67f` |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -1261,6 +1263,24 @@ T054（GitHub #55）已交付，状态 **`passed`**（范围 = `createMemory` / 
 | 门禁 | 见报告 §4（`pytest tests/f09` 25 passed；`go vet`/`go test`/`gofmt -l`/`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed） |
 | 边界/not_run | 浏览器 DOM；后台过期清扫进程（惰性迁移 + 决定复检已生效）；记忆编辑/删除/ETag（T058）、运行时召回（T063）、Mem0（T067）；记忆共享/授权；真实 worker 自动抽取生产者（本票用真实 supervisor claim + 真实 worker mTLS 调用真实内部端点）；全量 `pytest tests`；未 push/未关 issue、未改 docs/spec/contracts |
 
+## F09 个人长期记忆：修订/删除立即停止旧召回（T058，2026-11-04）
+
+T058（GitHub #59）已交付，状态 **`passed`**（范围 = `getMemory` 强 ETag、
+`updateMemory` 必填 `If-Match`（428/412、新 revision/新正文 artifact/同事务 epoch）、
+`deleteMemory` 202 `DeletionAccepted` + tombstone + `deletion_jobs`，以及 `/memories`
+页面的冲突恢复与删除状态）。证据：`reports/f09/T058-memory-revision-and-delete.md`、
+ADR 0009 §11。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0036_memory_revision_and_deletion.sql`（最终编号；基线分支为 0034，合并时 T055 先占 0034、T052 再占 0035）：契约 `platform.deletion_jobs` 最小切片（pending + remaining_scopes + `UNIQUE(resource_type,resource_id,deletion_revision)`）；`memories` 不加列（ETag = 既有 `revision`，tombstone = 既有 `deleted_at`）；F07 债务写在头部；重复 migrate no-op；worker/PUBLIC 零权限 |
+| 强 ETag | 复用草稿 PUT 的 `catalog.FormatETag/ParseETag` 与 `precondition_required/precondition_failed` 词表；弱/乱码/列表/多值一律 412（带 `details.current_etag`/`current_revision`），不做宽松解析 |
+| 更新 | 行锁 + CAS（`WHERE revision=$claimed`），新 sealed `memory_body` artifact，`revision+1`，同事务 bump `memory:<owner>:<app>` epoch；旧 ETag 重试 412；并发同 ETag 恰一胜者 |
+| 删除 | 202 `DeletionAccepted{id(deletion_job),state,resource_id}`；同一事务 tombstone + revision+1 + job + epoch 后才提交；重复/并发删除同 job、不再 bump；GET/列表/召回形查询立即拒绝旧内容 |
+| 页面 | 编辑先取强 ETag；412 显示“版本冲突”并用 `details.current_etag` 显式重试；删除显示 job 真实状态 + “旧内容已停止召回” + “物理副本清理由删除治理异步执行”；全部 `textContent`，Node 执行纯函数 |
+| 边界 | 物理清理 / `delete_content` / job 生命周期 = F07；`memory_embeddings`（无 pgvector）= T063；检索缓存 = T067；owner-only 与服务账号 403 不变 |
+| 门禁 | `pytest tests/f09` **47 passed ×5**（308.18s / 330.67s / 480.97s / 499.18s / 337.02s，最终树后两轮）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed；`tests/f10` 20 passed；合并提交 `7190b2b` + `895a67f` |
+
 ## F15A 候选 S3 兼容探针（T053，2026-11-04）
 
 T053（GitHub #54）**候选 S3 验收 `blocked`**：本机没有候选 S3 端点（无 Docker/Compose、
@@ -1291,6 +1311,18 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 真实栈 | `tests/f10/` 20 用例：迁移链/约束/零授权、KB CRUD/游标/owner+admin 404/CSRF/API key scope、txt+md 上传→ready→检索→citation 独立真值（源 hash/rune 切片/行号/body 字节）、非当前 revision 与 tombstone 过滤、空解析/非法 UTF-8 永不 ready、可重试失败→重试成功、租约丢失→恢复；页面结构 + Node 执行 `knowledge.js` |
 | 门禁 | `pytest tests/f10 -q` **20 passed**；`go build ./...`/`go vet ./...`/`go test ./...` exit 0；`gofmt -l .` 空；`sync_spec.py --check` no drift；`tests/f00b` 135 passed；f05 合并跑出现 T028 隔离用例环境抖动，单文件复跑 10 passed（见报告 §3） |
 | 边界/not_run | 真实 embedding provider（无凭据/adapter，blocked，HTTP/handler 均 fail closed）；精确扫描性能/规模（not_run，T064/T067）；浏览器 DOM（not_run，与既有页面票同一边界）；CSV/XLSX（T059）、PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索缓存（T067，本票不加表）；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F10/T059 CSV/XLSX 表格摄取与行范围（2026-11-04）
+
+| 项 | 内容 |
+|---|---|
+| 输入族 | CSV：源文本保留（单 BOM 剥离、CRLF/引号/字段内换行原样）、逻辑记录号（表头=行 1）、行批次 chunk、citation span 回切封存字节；XLSX：stdlib zip+XML 只读，工作簿顺序第一个工作表、共享字符串/富文本、工作表自身行号、`sheet_csv/1` 确定性渲染；行永不拆分，超长行失败 |
+| citation | jsonb additive 字段 `row_start/row_end/row_count/header_row/sheet_name/columns/columns_omitted/text_render`；txt/md citation 一个字节不变；无迁移、无契约改动（ADR 0013 §4） |
+| 安全/失败 | `<f>` 公式→`ingest_formula_not_supported`（sheet/row/column/cell，缓存值不使用）；DTD/实体→`ingest_dtd_not_supported`；宏→`ingest_macro_present`；路径穿越/条目 512/解压 64 MiB/压缩比 100（总量+单条目）复用 `internal/artifacts` 常量；工作表 64/数据行 10 000/列 64/单元格 640 064/单行 64 KiB；坏 CSV/坏 zip→具体码；全部 failed、business、0 chunk、检索空 |
+| 诊断 | `GET /knowledge-documents/{id}/diagnostics` 新增只读派生 `detail`：仅 failed + 解析拒绝码 + 记录 parser revision 未变 + 源 artifact 可读时，用同解析器重放同封存字节；源删/换版→null。不新增表/列/写路径，完成守卫仍是唯一状态写者（ADR 0013 §5） |
+| 真实栈 | `tests/f10/` 合并前 28 用例（T055 20 + T059 8），合并 T064 后 41 用例：CSV/XLSX 真实上传（`purpose=knowledge` 准入已存在）→ready→检索→citation 独立真值（封存字节 sha256、rune 切片、独立 Python zip+XML 行值）；10 类内容拒绝；公式重试仍失败→新 artifact 恢复 ready；csv+xlsx+txt 同 ACL/引用/撤销；页面结构 + Node 执行 `formatRowRange`/`describeFailureDetail`；夹具 2 541 B/3 297 B 已提交 + 确定性生成器 |
+| 门禁 | 合并前 `pytest tests/f10 -q` **28 passed**（289.16s / 286.58s 两次连跑）；两次合入 integration（含 T064、T058；最终 merge commit `79af135`）后 `pytest tests/f10 -q` **41 passed**（220.94s / 269.94s，含 T064 13 用例）、`tests/tooling` 21 passed；`tests/tooling + f05 t028 quarantine/upload_flow` 37 passed、`f00b t024 artifacts/t022 finalize` 22 passed（合并前树）；`go build ./...`/`go vet ./...` exit 0；`go test ./...` 33 ok/0 FAIL；`gofmt -l .` 空；`sync_spec --check` no drift |
+| 边界/not_run | 真实 embedding provider（继承 T055 blocked）；浏览器 DOM（not_run）；PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索规模/缓存（T064/T067）；XLSX 只读第一个工作表；全量 `pytest tests`、f05/f00b 整包 not_run（orchestrator）；未 push/未关 issue、未改 docs/spec/contracts、无迁移 |
 
 ## F10/T064 回答只引用本次检索且当前可读的资料（2026-11-04）
 

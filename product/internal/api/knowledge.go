@@ -195,8 +195,22 @@ type diagnosticsView struct {
 	ChunkerVersion         *string                   `json:"chunker_version"`
 	EmbeddingModelRevision *string                   `json:"embedding_model_revision"`
 	ErrorCode              *string                   `json:"error_code"`
+	Detail                 *diagnosticsDetail        `json:"detail"`
 	ChunkCount             int                       `json:"chunk_count"`
 	BackgroundJob          *diagnosticsBackgroundJob `json:"background_job"`
+}
+
+// diagnosticsDetail is the re-derived, safe location of a content refusal. It
+// is null whenever this build cannot re-derive it (a non-parse failure, a
+// tombstoned source, or a parser revision that is no longer registered).
+type diagnosticsDetail struct {
+	Sheet  string `json:"sheet,omitempty"`
+	Row    int    `json:"row,omitempty"`
+	Column string `json:"column,omitempty"`
+	Cell   string `json:"cell,omitempty"`
+	Part   string `json:"part,omitempty"`
+	Limit  string `json:"limit,omitempty"`
+	Value  int    `json:"value,omitempty"`
 }
 
 type diagnosticsBackgroundJob struct {
@@ -252,7 +266,8 @@ func (s *Server) writeKnowledgeFailure(w http.ResponseWriter, r *http.Request, e
 			"the source artifact is not ready; wait for its upload to finish")
 	case errors.Is(err, knowledge.ErrUnsupportedInput):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
-			"this source format is not supported yet; this slice ingests text/plain and text/markdown",
+			"this source format is not supported yet; this slice ingests text/plain, "+
+				"text/markdown, text/csv and XLSX",
 			map[string]any{"field": "source_artifact_id"})
 	case errors.As(err, &validation):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
@@ -456,6 +471,12 @@ func (s *Server) handleKnowledgeDocumentDiagnostics(w http.ResponseWriter, r *ht
 		EmbeddingModelRevision: diagnostics.EmbeddingModelRevision,
 		ErrorCode:              diagnostics.ErrorCode,
 		ChunkCount:             diagnostics.ChunkCount,
+	}
+	if detail := diagnostics.Detail; detail != nil {
+		view.Detail = &diagnosticsDetail{
+			Sheet: detail.Sheet, Row: detail.Row, Column: detail.Column,
+			Cell: detail.Cell, Part: detail.Part, Limit: detail.Limit, Value: detail.Value,
+		}
 	}
 	if diagnostics.BackgroundJobID != nil {
 		view.BackgroundJob = &diagnosticsBackgroundJob{

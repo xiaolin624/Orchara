@@ -55,8 +55,11 @@ func TestMarkdownParserIsRegisteredWithItsOwnRevision(t *testing.T) {
 	if parser.Version() != ParserVersionMarkdown {
 		t.Fatalf("version = %q", parser.Version())
 	}
-	if _, ok := ParserFor("text/csv"); ok {
-		t.Fatal("CSV must stay unregistered (T059)")
+	if _, ok := ParserFor("text/csv"); !ok {
+		t.Fatal("CSV must be registered by T059")
+	}
+	if _, ok := ParserFor(MediaTypeXLSX); !ok {
+		t.Fatal("XLSX must be registered by T059")
 	}
 	if _, ok := ParserFor("application/pdf"); ok {
 		t.Fatal("PDF must stay unregistered (T060)")
