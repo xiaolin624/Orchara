@@ -126,6 +126,11 @@ type Deps struct {
 	// Answerer is the F10/T064 labelled answer generator. Nil means the
 	// extractive stub wired by knowledge.New (no model provider exists here).
 	Answerer knowledge.AnswerGenerator
+	// RetrievalCache is the F10/T067 retrieval cache configuration. Nil means the
+	// knowledge.New default (enabled, 15 minutes); cmd/api always passes the
+	// value derived from ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE (an unknown value is a
+	// startup error there, never a silent default).
+	RetrievalCache *knowledge.CacheOptions
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -199,6 +204,9 @@ func New(deps Deps) *Server {
 	knowledgeService := knowledge.New(deps.Service.DB, deps.Objects, embedder)
 	if deps.Answerer != nil {
 		knowledgeService.Answerer = deps.Answerer
+	}
+	if deps.RetrievalCache != nil {
+		knowledgeService.Cache = *deps.RetrievalCache
 	}
 	return &Server{
 		service:        deps.Service,
@@ -344,6 +352,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// the report read never returns the report body or an artifact path.
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+
+	// F13A/T062: the administrator-only, non-contract attribution read. It
+	// exposes the account, cancellation outcome and the snapshot/manifest/
+	// dataset/compiler/worker identity behind a report, and never a sealed object
+	// key, a report body or another user's content (ADR 0014). Non-admins get 403
+	// before any lookup.
+	mux.HandleFunc("GET /api/v1/admin/evaluations/{evaluation_id}/attribution",
+		s.handleGetEvaluationAttribution)
 
 	// F13A/T052: the contract's evaluateDraft. The creator names a frozen draft
 	// revision and an uploaded, sealed evaluation dataset; the platform freezes

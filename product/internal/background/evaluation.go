@@ -464,6 +464,91 @@ func guardReportProvenanceTx(
 	return ""
 }
 
+// guardReportCaseRunsTx is the F13A/T062 report-to-run binding. A sealed report is
+// a claim; the platform rows are the truth. For an application evaluation (the
+// only kind the real runner produces), a passed case must be backed by *this*
+// evaluation's case run, owned by the evaluation's owner, executed against the
+// bound snapshot and manifest, and finished (succeeded or failed).
+//
+// This is what makes "a forged, borrowed, cancelled or incomplete report cannot
+// pass acceptance" true even when the document is internally consistent: a
+// crafted passed case with fabricated assertions, or a real run that is still
+// queued/cancelled, is refused with report_binding_mismatch. A model evaluation
+// has no case runs and keeps its pre-existing synthetic rules.
+func guardReportCaseRunsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	evaluation *EvaluationJob,
+	boundManifest string,
+	document *eval.Report,
+) (string, error) {
+	if evaluation.Kind != "application" {
+		return "", nil
+	}
+	// F13A/T062: an application evaluation is executed by the real runner. The
+	// legacy synthetic evaluator is a model-only placeholder, so a document that
+	// declares any other evaluator is not a report this pipeline produced; this
+	// closes the "declare the placeholder to skip the evidence rules" bypass.
+	if document.Evaluator != eval.RunnerEvaluatorID {
+		return CodeReportInvalid, nil
+	}
+	for _, item := range document.Cases {
+		facts := item.Facts
+		if facts == nil || strings.TrimSpace(facts.RunID) == "" {
+			if item.Status == eval.VerdictPassed {
+				// A pass with no run at all is an unproven claim.
+				return CodeReportBindingMismatch, nil
+			}
+			continue
+		}
+		var (
+			runID      string
+			runState   string
+			runOwner   string
+			snapshotID sql.NullString
+			manifest   sql.NullString
+		)
+		err := tx.QueryRowContext(ctx, `
+			SELECT r.id::text, r.state, r.owner_id::text,
+			       r.execution_snapshot_id::text, r.manifest_sha256
+			  FROM platform.evaluation_case_runs AS cr
+			  JOIN platform.runs AS r ON r.id = cr.run_id
+			 WHERE cr.evaluation_id = $1::uuid AND cr.case_id = $2`,
+			evaluation.ID, item.ID,
+		).Scan(&runID, &runState, &runOwner, &snapshotID, &manifest)
+		if errors.Is(err, sql.ErrNoRows) {
+			// The report names a run that is not this evaluation's case run.
+			return CodeReportBindingMismatch, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("reading the report's case run: %w", err)
+		}
+		if runID != facts.RunID || !strings.EqualFold(runOwner, evaluation.OwnerID) {
+			return CodeReportBindingMismatch, nil
+		}
+		if evaluation.SnapshotID != nil &&
+			(!snapshotID.Valid || !strings.EqualFold(snapshotID.String, *evaluation.SnapshotID)) {
+			return CodeReportBindingMismatch, nil
+		}
+		if !manifest.Valid || !strings.EqualFold(manifest.String, boundManifest) {
+			return CodeReportBindingMismatch, nil
+		}
+		if item.Status == eval.VerdictPassed {
+			// A pass is only acceptable over a finished run, and the report's
+			// recorded state must agree with the platform row. Failed/not_run
+			// cases keep their evidence but no further state assertion, because a
+			// reconciliation state may legitimately move after collection.
+			if !eval.CompletedRunState(runState) {
+				return CodeReportBindingMismatch, nil
+			}
+			if facts.RunState != "" && facts.RunState != runState {
+				return CodeReportBindingMismatch, nil
+			}
+		}
+	}
+	return "", nil
+}
+
 // failEvaluationTx records a terminal evaluation failure. It is idempotent: an
 // evaluation that is already terminal is left alone (the job row is the lock
 // that makes this unreachable twice), and a retry never calls it.
@@ -650,6 +735,14 @@ func (c *Controller) guardEvaluationSuccess(
 	// evaluation actually runs under. The identity is never taken from the
 	// document; it is re-read from the row the binding already resolved.
 	if code := guardReportProvenanceTx(ctx, tx, evaluation, &document); code != "" {
+		return code, nil
+	}
+	// F13A/T062: the document's per-case claims are checked against the
+	// evaluation's real case runs. A forged pass, a borrowed run, or a case whose
+	// run never finished is refused before any report row exists.
+	if code, err := guardReportCaseRunsTx(ctx, tx, evaluation, boundManifest, &document); err != nil {
+		return "", err
+	} else if code != "" {
 		return code, nil
 	}
 
