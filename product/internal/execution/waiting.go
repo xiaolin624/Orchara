@@ -298,6 +298,15 @@ func (s *Service) applyWaitingTransitionTx(
 	if err := insertWaitingConditionTx(ctx, tx, run.ID, kind, checkpointID); err != nil {
 		return err
 	}
+	if kind == WaitingKindApproval {
+		// F06/T050: a decision may already be durable (the human decided while
+		// the attempt was still exiting). Adopt only the decision that belongs to
+		// this checkpoint's operation, so a stale earlier approval cannot authorise
+		// a later wait.
+		if err := adoptApprovalDecisionTx(ctx, tx, run.ID, checkpointID); err != nil {
+			return err
+		}
+	}
 	if err := moveRunToWaitingTx(
 		ctx, tx, run.ID, run.State, run.Revision, kind,
 	); err != nil {
@@ -526,6 +535,31 @@ func (s *Service) maybeEnqueueResumeTx(
 	if waiting.Kind == WaitingKindChildren {
 		if err := checkWaitingChildTx(ctx, tx, run.ID, waiting.Decision); err != nil {
 			return nil, err
+		}
+	}
+	// F06/T050: a human rejection or an expired *real* approval is a refusal, not
+	// a resume. The Run fails with the stable code once the exit fact exists; a
+	// decision that arrives before the exit is failed by ConfirmExit's call into
+	// this same function. The non-contract T035 synthetic bridge keeps its
+	// documented behaviour: a synthetic rejected/expired decision is a decision
+	// the worker resumes to handle, because it names no durable approval row.
+	if waiting.Kind == WaitingKindApproval {
+		outcome := waitingDecisionOutcome(waiting.Decision)
+		if outcome == "rejected" || outcome == "expired" {
+			refuses, err := approvalDecisionRefusesTx(ctx, tx, waiting.Decision)
+			if err != nil {
+				return nil, err
+			}
+			if refuses {
+				code := ApprovalRejectedCode
+				if outcome == "expired" {
+					code = ApprovalExpiredCode
+				}
+				if err := failWaitingRunTx(ctx, tx, run, attempt, code); err != nil {
+					return nil, err
+				}
+				return &resumeOutcome{FailedCode: code}, nil
+			}
 		}
 	}
 

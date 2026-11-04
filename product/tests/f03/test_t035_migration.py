@@ -97,14 +97,19 @@ def test_0021_is_recorded_once_at_the_chain_tail(migrated_database, go_binaries)
         "SELECT version, name FROM platform.schema_migrations ORDER BY version",
     )
     versions = [row["version"] for row in ledgers]
-    assert versions == [f"{number:04d}" for number in range(1, 27)], versions
-    assert ledgers[-7]["name"] == "0020_active_time_and_deadline.sql"
-    assert ledgers[-6]["name"] == "0021_run_waitings.sql"
-    assert ledgers[-5]["name"] == "0022_run_unknown_operations.sql"
-    assert ledgers[-4]["name"] == "0023_tool_builds_and_review.sql"
-    assert ledgers[-3]["name"] == "0024_run_recovery_evidence.sql"
-    assert ledgers[-2]["name"] == "0025_run_capability_ledger.sql"
-    assert ledgers[-1]["name"] == "0026_run_node_outputs.sql"
+    # The chain is contiguous from 0001 and each migration is recorded exactly
+    # once. (A pinned "ends at 00NN" list rotted when later tickets appended
+    # migrations; the invariant is what this test is for, plus this ticket's own
+    # row at its position.)
+    assert versions == [f"{number:04d}" for number in range(1, len(versions) + 1)], versions
+    names = {row["version"]: row["name"] for row in ledgers}
+    assert names["0020"] == "0020_active_time_and_deadline.sql"
+    assert names["0021"] == "0021_run_waitings.sql"
+    assert names["0022"] == "0022_run_unknown_operations.sql"
+    assert names["0023"] == "0023_tool_builds_and_review.sql"
+    assert names["0024"] == "0024_run_recovery_evidence.sql"
+    assert names["0025"] == "0025_run_capability_ledger.sql"
+    assert names["0026"] == "0026_run_node_outputs.sql"
     replay = st.migrate_or_fail(go_binaries["admin"], dsn)
     assert "no pending migrations" in replay, replay
 

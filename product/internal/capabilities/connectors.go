@@ -29,6 +29,7 @@ import (
 	"net/url"
 	"strings"
 
+	"orchara/platform/internal/approvals"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/jsonschema"
@@ -340,9 +341,11 @@ func (s *Service) connectorAwaitingApproval(spec *capabilitySpec) bool {
 	return spec != nil && spec.Kind == ConnectorKind && spec.RiskClass == "write"
 }
 
-// connectorApprovalResult is the contract-shaped answer for a write policy.
-func connectorApprovalResult(operationID string, spec *capabilitySpec) *Result {
-	return &Result{
+// connectorApprovalResult is the contract-shaped answer for a write policy. The
+// approval id is the server-created row T050's page and decision endpoint use;
+// no proposal text is copied into the worker-visible body.
+func connectorApprovalResult(operationID string, spec *capabilitySpec, approvalID string) *Result {
+	result := &Result{
 		OperationID: operationID,
 		State:       "awaiting_approval",
 		Data: map[string]any{
@@ -352,4 +355,31 @@ func connectorApprovalResult(operationID string, spec *capabilitySpec) *Result {
 			"status":                      "awaiting_approval",
 		},
 	}
+	if approvalID != "" {
+		value := approvalID
+		result.ApprovalID = &value
+	}
+	return result
+}
+
+// connectorApprovalTarget projects the administrator-approved policy and the
+// validated call onto the proposal target. Nothing here comes from the worker
+// beyond the params the server already canonicalised.
+func connectorApprovalTarget(spec *capabilitySpec) approvals.Target {
+	target := approvals.Target{
+		Origin:     spec.Connector.Origin,
+		Method:     spec.Connector.Method,
+		PathPrefix: spec.Connector.PathPrefix,
+		Path:       spec.ConnectorCall.Path,
+	}
+	if len(spec.ConnectorCall.Query) > 0 {
+		query := map[string]string{}
+		for name, values := range spec.ConnectorCall.Query {
+			if len(values) > 0 {
+				query[name] = values[0]
+			}
+		}
+		target.Query = query
+	}
+	return target
 }

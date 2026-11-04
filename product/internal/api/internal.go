@@ -168,6 +168,9 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// documented non-contract bridge T042/T043 report tool execution through.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capabilities", s.handleInternalCapability)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-results", s.handleInternalCapabilityResult)
+	// F06/T050: the contract prepareApproval. Worker-only; the server builds the
+	// proposal from the operation/policy rows and never copies the worker text.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/approvals", s.handleInternalPrepareApproval)
 	// F06/T046: maintenance-only reconciliation of a retained missing-usage
 	// budget reservation. Non-contract, like capability-results.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-settlements", s.handleInternalCapabilitySettlement)

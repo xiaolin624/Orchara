@@ -224,6 +224,9 @@ func (c *supClient) SubmitResult(
 	if proposal.ErrorCode != "" {
 		body["error_code"] = proposal.ErrorCode
 	}
+	if proposal.CheckpointID != "" {
+		body["checkpoint_id"] = proposal.CheckpointID
+	}
 	status, err := c.post(ctx, c.supervisor, supervisorRole, runPath(runID, "/result"), body, nil)
 	if err != nil {
 		return err

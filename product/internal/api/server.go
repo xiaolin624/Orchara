@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"orchara/platform/internal/approvals"
 	"orchara/platform/internal/artifacts"
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/capabilities"
@@ -53,6 +54,8 @@ type Server struct {
 	capabilities *capabilities.Service
 	// connectors is the F06/T048 versioned connector registry (admin-only).
 	connectors *connectors.Service
+	// approvals is the F06/T050 exact-parameter approval lifecycle.
+	approvals *approvals.Service
 	// preview is the F06/T044 temporary in-process model stream preview hub. It
 	// is not persisted and not shared across processes.
 	preview *previewHub
@@ -156,6 +159,8 @@ func New(deps Deps) *Server {
 	}
 	capabilityService := capabilities.New(deps.Service.DB, deps.Objects, deps.Providers)
 	capabilityService.Connectors = deps.Connectors
+	approvalService := approvals.New(deps.Service.DB, deps.Objects, executionService)
+	capabilityService.Approvals = approvalService
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -171,6 +176,7 @@ func New(deps Deps) *Server {
 		modelRegistry:     modelRegistry,
 		capabilities:      capabilityService,
 		connectors:        deps.Connectors,
+		approvals:         approvalService,
 		preview:           newPreviewHub(),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
@@ -327,6 +333,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/admin/connectors", s.handleListConnectors)
 	mux.HandleFunc("POST /api/v1/admin/connectors/{connector_id}/revoke", s.handleRevokeConnector)
 
+	// F06/T050: exact-parameter approvals. The designated approver (the run
+	// owner) is the only human who can read or decide; a stranger sees 404.
+	mux.HandleFunc("GET /api/v1/approvals", s.handleListApprovals)
+	mux.HandleFunc("GET /api/v1/approvals/{approval_id}", s.handleGetApproval)
+	mux.HandleFunc("POST /api/v1/approvals/{approval_id}/decision", s.handleDecideApproval)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -346,6 +358,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F06/T050: the approval queue/detail page. Static, compile-time path.
+	mux.HandleFunc("GET /approvals", s.staticPage("approvals.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
@@ -353,6 +367,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
 	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
+	// F06/T050: the approval page helpers (proposal rendering, no defaults).
+	mux.HandleFunc("GET /assets/approvals.js", s.staticPage(filepath.Join("assets", "approvals.js")))
 	// F06/T044: the shared temporary model preview helpers loaded by /debug and /runs.
 	mux.HandleFunc("GET /assets/stream-preview.js", s.staticPage(filepath.Join("assets", "stream-preview.js")))
 	// F04A/T040: the committed Vue Flow canvas bundle. The page never needs npm;

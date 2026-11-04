@@ -159,6 +159,12 @@ func moveRunToCancellingTx(ctx context.Context, tx *sql.Tx, run *cancelRunFacts)
 	if affected != 1 {
 		return ErrStaleAttempt
 	}
+	// F06/T050: a pending approval can never be decided once the Run is
+	// cancelling. The sealed proposal stays for audit; the state says a decision
+	// is no longer possible.
+	if err := invalidateRunApprovalsTx(ctx, tx, run.ID, "run_cancel_requested"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -207,6 +213,9 @@ func commitImmediateCancelTx(
 	}
 	if affected != 1 {
 		return ErrStaleAttempt
+	}
+	if err := invalidateRunApprovalsTx(ctx, tx, run.ID, "run_cancelled"); err != nil {
+		return err
 	}
 	if _, err := AppendRunStatusTx(ctx, tx, run.ID); err != nil {
 		return err
@@ -271,6 +280,9 @@ func (s *Service) commitCancelReconciliationTx(
 	}
 	if affected != 1 {
 		return ErrStaleAttempt
+	}
+	if err := invalidateRunApprovalsTx(ctx, tx, run.ID, "run_cancel_requested"); err != nil {
+		return err
 	}
 	if _, err := AppendRunStatusTx(ctx, tx, run.ID); err != nil {
 		return err

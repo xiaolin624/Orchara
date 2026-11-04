@@ -325,33 +325,50 @@ func TestAgentFinalOutputSchemaViolationIsLocatedAndNeverSucceeds(t *testing.T) 
 	}
 }
 
-func TestAgentTypedWaitingAndUnknownOutcomes(t *testing.T) {
-	for _, testCase := range []struct {
-		state string
-		code  string
-	}{
-		{"awaiting_approval", CodeAgentAwaitingApproval},
-		{"unknown", CodeAgentUnknown},
-	} {
-		t.Run(testCase.state, func(t *testing.T) {
-			lease, manifest, _ := linearLease(t, agentDefinitionMap(t))
-			input := inputArtifact()
-			client := linearClient(t, lease, manifest, input, []byte(salesCSV))
-			client.invokeCapability = func(call capabilities.Input) (*capabilities.Result, error) {
-				return &capabilities.Result{OperationID: call.OperationID, State: testCase.state}, nil
-			}
-			box := successSandbox()
-			report := Run(context.Background(), agentDeps(t, client, box, currentFacts()))
-			if report.Outcome != "failed" || report.ErrorCode != testCase.code {
-				t.Fatalf("report = %+v", report)
-			}
-			if len(client.proposals) != 1 || client.proposals[0].SuggestedState != "failed" {
-				t.Fatalf("proposals = %+v", client.proposals)
-			}
-			if client.proposals[0].ErrorCode != testCase.code {
-				t.Fatalf("proposal code = %q", client.proposals[0].ErrorCode)
-			}
-		})
+func TestAgentAwaitingApprovalParksTheAttempt(t *testing.T) {
+	lease, manifest, _ := linearLease(t, agentDefinitionMap(t))
+	input := inputArtifact()
+	client := linearClient(t, lease, manifest, input, []byte(salesCSV))
+	var invoked capabilities.Input
+	client.invokeCapability = func(call capabilities.Input) (*capabilities.Result, error) {
+		invoked = call
+		return &capabilities.Result{OperationID: call.OperationID, State: "awaiting_approval"}, nil
+	}
+	box := successSandbox()
+	report := Run(context.Background(), agentDeps(t, client, box, currentFacts()))
+	if report.Outcome != "waiting_approval" || report.ErrorCode != "approval_required" {
+		t.Fatalf("report = %+v", report)
+	}
+	if len(client.proposals) != 1 {
+		t.Fatalf("proposals = %+v", client.proposals)
+	}
+	proposal := client.proposals[0]
+	if proposal.SuggestedState != "waiting_approval" || proposal.ErrorCode != "approval_required" {
+		t.Fatalf("proposal = %+v", proposal)
+	}
+	wantCheckpoint := "capability:" + invoked.OperationID
+	if proposal.CheckpointID != wantCheckpoint {
+		t.Fatalf("checkpoint = %q, want %q", proposal.CheckpointID, wantCheckpoint)
+	}
+	if len(client.exits) != 1 {
+		t.Fatalf("the waiting attempt did not certify its exit: %+v", client.exits)
+	}
+}
+
+func TestAgentUnknownOutcomeStillFails(t *testing.T) {
+	lease, manifest, _ := linearLease(t, agentDefinitionMap(t))
+	input := inputArtifact()
+	client := linearClient(t, lease, manifest, input, []byte(salesCSV))
+	client.invokeCapability = func(call capabilities.Input) (*capabilities.Result, error) {
+		return &capabilities.Result{OperationID: call.OperationID, State: "unknown"}, nil
+	}
+	box := successSandbox()
+	report := Run(context.Background(), agentDeps(t, client, box, currentFacts()))
+	if report.Outcome != "failed" || report.ErrorCode != CodeAgentUnknown {
+		t.Fatalf("report = %+v", report)
+	}
+	if len(client.proposals) != 1 || client.proposals[0].SuggestedState != "failed" {
+		t.Fatalf("proposals = %+v", client.proposals)
 	}
 }
 

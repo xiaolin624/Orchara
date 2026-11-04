@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"orchara/platform/internal/approvals"
 	"orchara/platform/internal/budget"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/connectors"
@@ -58,6 +59,9 @@ type Service struct {
 	// Connectors is the F06/T048 versioned connector registry and the guarded
 	// egress client. Nil fails closed: no connector can be invoked.
 	Connectors *connectors.Service
+	// Approvals is the F06/T050 approval writer. Nil fails closed: a write-risk
+	// connector operation can never be parked without its server-built proposal.
+	Approvals *approvals.Service
 	// ToolExecutor is reserved for T042/T043; nil means worker execution (the
 	// only path in this batch).
 	ToolExecutor ToolExecutor
@@ -112,6 +116,10 @@ type runContext struct {
 	ManifestSHA256  string
 	Manifest        *compiler.Manifest
 	CancelRequested bool
+	// SnapshotID/SnapshotSHA256 are the frozen execution snapshot the approval
+	// proposal records as its data/source version.
+	SnapshotID     string
+	SnapshotSHA256 string
 }
 
 // capabilitySpec is one resolved capability. Exactly one of Profile/Tool/
@@ -166,7 +174,7 @@ func (s *Service) Invoke(ctx context.Context, runID, role string, input Input) (
 		return prepared.replay, nil
 	}
 	if prepared.awaitingApproval {
-		return connectorApprovalResult(prepared.operationID, spec), nil
+		return connectorApprovalResult(prepared.operationID, spec, prepared.approvalID), nil
 	}
 	if spec.Kind == "tool" {
 		// The grant is the whole answer: the worker executes and reports back.
@@ -228,6 +236,7 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 	run := &runContext{}
 	var (
 		cancel        sql.NullTime
+		disabled      sql.NullTime
 		snapshotID    string
 		snapshotSHA   string
 		artifactId    string
@@ -242,6 +251,7 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 		       r.budget_limit::text, r.currency,
 		       r.manifest_sha256, s.id::text, s.manifest_sha256,
 		       s.manifest_artifact_id::text, a.owner_id::text, a.state, a.object_key, a.sha256,
+		       p.disabled_at,
 		       EXISTS (
 		           SELECT 1
 		             FROM platform.run_attempts AS at
@@ -256,12 +266,13 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 		  FROM platform.runs AS r
 		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
 		  JOIN platform.artifacts AS a ON a.id = s.manifest_artifact_id
+		  JOIN platform.principals AS p ON p.id = r.owner_id
 		 WHERE r.id = $1::uuid`, runID, attemptToken,
 	).Scan(
 		&run.OwnerID, &run.Kind, &run.State, &cancel, &run.BudgetLimit, &run.Currency,
 		&run.ManifestSHA256,
 		&snapshotID, &snapshotSHA, &artifactId, &artifactOwner, &artifactState,
-		&artifactKey, &artifactSHA, &live,
+		&artifactKey, &artifactSHA, &disabled, &live,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, capFailure(404, CodeRunNotFound, "that run does not exist")
@@ -270,8 +281,16 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 		return nil, capFailure(500, CodeInternal, "the run could not be read")
 	}
 	run.ID = runID
+	run.SnapshotID = snapshotID
+	run.SnapshotSHA256 = snapshotSHA
 	if !live {
 		return nil, capFailure(403, CodeStaleAttempt, "the attempt token is not a live lease of this run")
+	}
+	if disabled.Valid {
+		// F06/T050: an approval never grants permission. A principal disabled
+		// after approval finds the same refusal on the resumed attempt.
+		return nil, capFailure(403, "permission_revoked",
+			"the run owner's permission was revoked")
 	}
 	if cancel.Valid {
 		return nil, capFailure(409, CodeRunCancelled, "the run was cancelled; no capability may start")
@@ -529,6 +548,11 @@ type preparedOperation struct {
 	replay           *Result
 	grant            map[string]any
 	awaitingApproval bool
+	approvalID       string
+	// proceed means a parked write operation whose approval was granted: the
+	// caller must dispatch now. The authorized -> dispatching CAS in
+	// beginConnectorAttempt is still the single dispatch gate.
+	proceed bool
 }
 
 func (s *Service) prepareOperation(
@@ -587,6 +611,16 @@ func (s *Service) prepareOperation(
 			return nil, capFailure(409, CodeOperationConflict,
 				"that operation id/logical key is already recorded with different parameters")
 		}
+		if existing.State == "authorized" && spec.Kind == ConnectorKind && spec.RiskClass == "write" {
+			// F06/T050 resume: the human approved the exact params hash and the
+			// decision flipped the parked operation to authorized. Dispatch still
+			// goes through beginConnectorAttempt's authorized -> dispatching CAS,
+			// so a second concurrent resume cannot write twice.
+			if err := tx.Commit(); err != nil {
+				return nil, capFailure(500, CodeInternal, "the approval resume could not be committed")
+			}
+			return &preparedOperation{operationID: existing.ID, proceed: true}, nil
+		}
 		replay, capErr := s.replayTx(ctx, tx, existing, input, digest)
 		if capErr != nil {
 			return nil, capErr
@@ -629,9 +663,37 @@ func (s *Service) prepareOperation(
 
 	prepared := &preparedOperation{operationID: operationID}
 	if s.connectorAwaitingApproval(spec) {
-		// F06/T048 §4: a write-risk connector never dispatches without approval.
-		// The operation is parked in awaiting_approval; T050 owns the approval
-		// row and the resume, so this ticket records the honest state and stops.
+		// F06/T050: the capability proxy, not the worker, builds the proposal and
+		// parks the operation. Both rows are written in this one transaction.
+		if s.Approvals == nil {
+			return nil, capFailure(503, "approval_unavailable",
+				"no approval service is configured; a write operation cannot be parked")
+		}
+		approval, approvalErr := s.Approvals.PrepareRecordTx(ctx, tx, approvals.PrepareRecord{
+			RunID:             run.ID,
+			OperationID:       operationID,
+			LogicalKey:        input.LogicalKey,
+			AttemptToken:      input.AttemptToken,
+			OwnerID:           run.OwnerID,
+			ParamsSHA256:      digest,
+			Params:            json.RawMessage(canonical),
+			CapabilityKind:    spec.Kind,
+			CapabilityVersion: input.CapabilityVersion,
+			RiskClass:         spec.RiskClass,
+			Target:            connectorApprovalTarget(spec),
+			DataDestination:   spec.Connector.Origin,
+			PolicySHA256:      spec.Connector.PolicySHA256,
+			ManifestSHA256:    run.ManifestSHA256,
+			SnapshotID:        run.SnapshotID,
+			SnapshotSHA256:    run.SnapshotSHA256,
+		})
+		if approvalErr != nil {
+			if typed, ok := approvals.AsError(approvalErr); ok {
+				return nil, capFailure(typed.Status, typed.Code, typed.Message)
+			}
+			return nil, capFailure(500, CodeInternal, "the approval could not be prepared")
+		}
+		prepared.approvalID = approval.ID
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE platform.operations
 			   SET state = 'awaiting_approval', updated_at = now()
@@ -766,6 +828,12 @@ func (s *Service) replayTx(
 			"connector_policy_version_id": op.CapabilityVersion,
 			"risk_class":                  "write",
 			"status":                      "awaiting_approval",
+		}
+		var approvalID string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id::text FROM platform.approvals WHERE operation_id = $1::uuid`,
+			op.ID).Scan(&approvalID); err == nil {
+			result.ApprovalID = &approvalID
 		}
 		return result, nil
 	default:

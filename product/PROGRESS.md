@@ -1150,6 +1150,29 @@ ADR 0007 D16。
 | 门禁 | `go vet ./...` exit 0；`go test ./...` 28 ok/0 FAIL/10 no-test；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 131 passed + 2 条既有 WSL2/runsc 抖动（T043，单独重跑 2 passed）；`pytest tests/f04a` 36 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
 | 边界/not_run | F02B 发布/共享版本（本票明确不做）、真实厂商 adapter、浏览器 DOM、全量 `pytest tests`/f00b/f03/f05；未 push/未关 issue #50、未改 docs/spec/contracts、迁移仅新增 0030（0001–0029 未改） |
 
+## F06 精确参数审批与安全恢复（T050，2026-11-04）
+
+T050（GitHub #51）已交付，状态 **`passed`**（范围 = 服务端从 Run/operation/策略/manifest 真实
+事实构建并封存审批提案；写风险连接器操作在 capability 代理同事务创建 pending approval 并停住；
+指定人类审批人读取/决定；精确 params hash、过期、撤权、Run 终态/取消使批准不可复用；并发相反
+决定只有一个赢家、同决定重放幂等；批准把 operation 翻到 `authorized`，旧尝试退出后经 T035 唯一
+`maybeEnqueueResumeTx` 创建恰好一个 resume，恢复的尝试仍重校验权限/预算并在
+`authorized → dispatching` CAS 后恰好派发一次；拒绝/过期为 `approval_rejected`/`approval_expired`
+且零外部写入；发布审核无法决定 Run 审批）。证据：`reports/f06/T050-approvals.md`、ADR 0007 D17。
+
+| 项 | 内容 |
+|---|---|
+| 迁移 | 新增 `0031_run_approvals.sql`：`platform.approvals`（契约列 + `UNIQUE(operation_id)`、`UNIQUE(run_id,node_key,params_sha256)`、`approvals_pending`/`approvals_run` 索引、`pending ⇔ decided_at IS NULL` CHECK）；偏差（node_key 由 logical key 节点前缀填充；不新增 operations.approval_id；无 created_at 列）写入迁移头注释/报告 §8。0001–0030 未改 |
+| approvals 服务 | 新增 `internal/approvals`：`PrepareRecordTx`（capability 同事务建提案+行）、`Prepare`（契约 prepareApproval，忽略 worker proposal）、`Get/List`（审批人或 admin 读，stranger 404，pending-first cursor）、`Decide`（Run→approval→operation 锁序；hash/审批人/过期/权限/状态/策略撤销全查；同决定幂等、相反 409；approve→operation authorized，reject/expire→operation failed）；提案 JCS 封存 `purpose=approval_proposal`，owner=审批人，经既有 artifact-content ACL 读取 |
+| capability 集成 | `capabilities.Service.Approvals`；写风险 connector 同事务建 approval + `awaiting_approval`，返回契约 `approval_id`；停住重放同 approval；`authorized` 写操作在恢复调用时 `proceed`，仍由 `authorized → dispatching` CAS 保证恰好一次；`loadAuthorizedRun` 新增 owner disabled 检查（批准不绕过当前权限），`resolveConnector` 重启策略撤销校验 |
+| waiting/resume 桥 | `applyWaitingTransitionTx` 采纳先落库的真实 approval 决定；`maybeEnqueueResumeTx` 对真实 rejected/expired approval 以 `approval_rejected`/`approval_expired` 终止 Run，T035 synthetic opaque reference 保持既有 resume 契约；cancel/终态把 pending approvals 置 invalidated；唯一 resume 创建者仍是 T035 事务 |
+| executor | `presetexec.Proposal.CheckpointID`；`runner.waitAgent` 把 `awaiting_approval` 转为 `waiting_approval` + `checkpoint_id=capability:<operation_id>` + `approval_required`，提交 waiting result 后 ConfirmExit；agent 模型/工具两处不再失败 Run；supervisor client 透传 checkpoint |
+| HTTP/页面 | `POST /internal/v1/runs/{run_id}/approvals`（worker mTLS）、`GET /api/v1/approvals`、`GET /api/v1/approvals/{id}`、`POST /api/v1/approvals/{id}/decision`（Idempotency-Key 必需）；`/approvals` 页面展示真实目标/方法/路径/canonical params/去向/来源版本/过期/hash，批准/拒绝无默认选择，明确“批准不赋予额外权限”“拒绝/取消不撤销外部写入”；`/runs` 导航新增审批入口 |
+| 真实栈 | 真实 PG（0001–0031）、编译 `cmd/api`、真实 mTLS、对象字节、真实 admin connector registry + loopback HTTP；`test_t050_approval.py` 15 用例（提案/ACL/list、内部 prepare 幂等、三种顺序各 1 resume + 恰好 1 次出站、reject、expire、换参数/错 hash、并发相反决定+幂等重放、撤权、预算 0、批准后撤策略、取消失效、真实 publication_reviews 行 404）+ `test_t050_pages.py` 3 用例通过 |
+| 回归 | `tests/f03` T035 migration/waiting/resume/resume_refusals/pages 与 T036 cancel/unknown 全绿（T035 迁移尾部测试改为“连续链 + 本票行按 version”，不钉死 0026；synthetic rejected/expired resume 契约未改）；`go test ./...` 全 ok；`tests/tooling` 21 passed |
+| 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 151 passed；`pytest tests/f03` 目标集全绿；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
+| 边界/not_run | 自动过期 sweeper、`approval.required` 持久事件、真实浏览器 DOM、service-account 审批人真实栈路径、agent→connector 写策略消费、真实厂商连接器、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #51、未改 docs/spec/contracts、迁移仅新增 0031（0001–0030 未改） |
+
 ## 记录模板
 
 ```text

@@ -363,11 +363,12 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			params["response_schema"] = responseSchema
 		}
 		logicalKey := fmt.Sprintf("agent:%s:model:%d", node.ID, turn)
+		operationID := deterministicOperationID(r.lease.RunID, logicalKey)
 		result, invokeErr := r.deps.Client.InvokeCapability(
 			ctx, r.lease.RunID, r.lease.AttemptToken, capabilities.Input{
 				RunID:             r.lease.RunID,
 				AttemptToken:      r.lease.AttemptToken,
-				OperationID:       deterministicOperationID(r.lease.RunID, logicalKey),
+				OperationID:       operationID,
 				LogicalKey:        logicalKey,
 				CapabilityVersion: config.ModelProfileVersion,
 				CapabilityKind:    "model",
@@ -391,8 +392,10 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			return nil, r.failAgent(ctx, run, code,
 				"the replayed agent model operation is recorded as failed"), true
 		case "awaiting_approval":
-			return nil, r.failAgent(ctx, run, CodeAgentAwaitingApproval,
-				"the agent model call is awaiting approval; this build has no approval writer"), true
+			// F06/T050: a write-risk capability parks the Run. The executor stops
+			// the loop, proposes the stable waiting result and exits; the human
+			// decision and the single resume job belong to the platform.
+			return nil, r.waitAgent(ctx, run, operationID), true
 		case "unknown":
 			return nil, r.failAgent(ctx, run, CodeAgentUnknown,
 				"the agent model call has an unknown provider outcome and must be reconciled"), true
@@ -557,6 +560,42 @@ func (r *runner) failAgent(
 		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
 }
 
+// waitAgent parks the attempt for a human approval instead of failing the Run.
+//
+// The proposal is the F03/T035 waiting shape: suggested_state=waiting_approval,
+// the stable synthetic checkpoint `capability:<operation_id>` (the same logical
+// capability call the resumed attempt re-enters) and error_code=approval_required.
+// The executor then certifies its exit; only after that fact may the single
+// resume job exist. Nothing here reports success.
+func (r *runner) waitAgent(
+	ctx context.Context, run *linearRun, operationID string,
+) executionOutcome {
+	proposal := Proposal{
+		EventID:        uuid.NewString(),
+		SuggestedState: "waiting_approval",
+		CheckpointID:   "capability:" + operationID,
+		ErrorCode:      "approval_required",
+	}
+	if err := r.deps.Client.SubmitResult(
+		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
+	); err != nil {
+		return r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+			"the approval waiting result was refused: "+err.Error())
+	}
+	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
+	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
+		return executionOutcome{outcome: "error", code: CodeAgentCapabilityFailed,
+			err:     "the approval exit confirmation was refused: " + err.Error(),
+			sandbox: sandboxReportOf(run.outcome)}
+	}
+	return executionOutcome{
+		outcome:  "waiting_approval",
+		code:     "approval_required",
+		runState: r.readRunState(ctx),
+		sandbox:  sandboxReportOf(run.outcome),
+	}
+}
+
 // readAgentModelData decodes the platform's validated model projection.
 func readAgentModelData(data map[string]any) (string, map[string]any, []agentToolCall, error) {
 	if data == nil {
@@ -679,8 +718,7 @@ func (r *runner) executeAgentTool(
 			"the replayed tool operation is recorded as failed")
 		return "", nil, errors.New("tool operation failed"), &outcome
 	case "awaiting_approval":
-		outcome := r.failAgent(ctx, run, CodeAgentAwaitingApproval,
-			"the agent tool call is awaiting approval; this build has no approval writer")
+		outcome := r.waitAgent(ctx, run, operationID)
 		return "", nil, errors.New("tool awaiting approval"), &outcome
 	case "unknown":
 		outcome := r.failAgent(ctx, run, CodeAgentUnknown,
