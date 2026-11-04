@@ -93,7 +93,7 @@ def test_a_succeeded_csv_sales_case_yields_a_passed_report(t056_stack) -> None:
         "total": "250.00", "regions": {"东区": "200.00", "西区": "50.00"}, "order_count": 3,
     }}, content
 
-    # --- the per-case results read (non-contract, ADR 0013) ------------------
+    # --- the per-case results read (non-contract, ADR 0015) ------------------
     first = t056.get_cases(owner.creator, report["id"])
     assert first.status == 200, first.text
     body = first.json

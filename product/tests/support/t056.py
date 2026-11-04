@@ -468,7 +468,7 @@ def run_evaluation(
 
 
 # ---------------------------------------------------------------------------
-# per-case results read (non-contract, ADR 0013)
+# per-case results read (non-contract, ADR 0015)
 # ---------------------------------------------------------------------------
 def cases_path(report_id: str) -> str:
     return f"/api/v1/evaluation-reports/{report_id}/cases"

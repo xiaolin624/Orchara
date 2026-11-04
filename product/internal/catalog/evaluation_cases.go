@@ -6,7 +6,7 @@ package catalog
 //
 // The contract's Report carries only four fields and has no place for per-case
 // detail, so the sealed report artifact is the source of truth. This read is the
-// documented non-contract surface (ADR 0013) that parses that sealed document and
+// documented non-contract surface (ADR 0015) that parses that sealed document and
 // joins it with the real artifacts of each case's platform run:
 //
 //   - the report bytes are read from the object store and re-verified against the

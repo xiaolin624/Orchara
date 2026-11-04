@@ -5,7 +5,7 @@
   @ `f1a5257`；合并提交 `<MERGE_SHA>`。
 - 状态：**`passed`**（本票范围 = 案例按内容绑定调用方 CSV/XLSX 为 run 的
   `task_input`、真实销售工具 succeeded 案例、坏输入/超时案例的定位期望、
-  非契约逐例读取 + ADR 0013、逐例页面、独立 Decimal 真值与守卫）。
+  非契约逐例读取 + ADR 0015、逐例页面、独立 Decimal 真值与守卫）。
   真实 PostgreSQL 16.4、真实编译二进制、真实 HTTP/mTLS、真实封存对象字节、
   真实 `cmd/maintenance run` 双池、真实 `cmd/supervisor exec --once` + WSL2/runsc
   Python 3.12 沙箱；无 mock、无跳过。
@@ -63,7 +63,7 @@
 - 用**内容**而不是 artifact id 绑定：已提交数据集不嵌入易变 id；评测 owner 自己
   上传的 ready `task_input` artifact 才可解析。
 - `expected_failure.error_code` 必须是稳定业务码（小写/数字/下划线，≤64）；
-  契约没有“run error code”断言种类，故该期望是文档化的非契约拼写（ADR 0013）。
+  契约没有“run error code”断言种类，故该期望是文档化的非契约拼写（ADR 0015）。
 
 ### 1.2 独立 checker 扩展：`failure_reason`（`internal/evaluation/assertions.go`）
 
@@ -95,7 +95,7 @@ run 时：
 与成功产物相同的 `Register` 路径登记（`relation='log'/'artifact'`），于是坏输入
 案例的“实际附件”是真实可下载的平台 artifact。字节、准入与拒绝语义不变。
 
-### 1.5 非契约逐例读取（ADR 0013）
+### 1.5 非契约逐例读取（ADR 0015）
 
 `GET /api/v1/evaluation-reports/{report_id}/cases`（`internal/catalog/evaluation_cases.go`
 + `internal/api/evaluation_cases.go` + `server.go`）：
@@ -144,7 +144,7 @@ SHA-256 引用的 CSV/XLSX），页面读取当前 draft revision 并通过 `eva
 | 2. 缺列/重复/负值/公式/超时/超限有预期与定位 | **proven** | `test_t056_bad_inputs.py::test_bad_input_cases_pass_only_for_their_expected_located_failure`：5 个案例真实 run 分别 `failed(missing_column/duplicate_order_id/negative_amount/formula_not_supported/row_limit_exceeded)`，`failure_reason` expected=actual 且 passed；逐例 `diagnostics` 附件含同码与 location（超限为文件级无 location）；`...test_a_tool_timeout_is_a_passed_case_with_the_expected_failure`：20 MiB 输入在 2 s 沙箱超时下真实 `failed(tool_timeout)`（解析耗时 >4 s，裕量记录见 §3） |
 | 3. 真值不由被测工具产生 | **proven** | `test_t056_fixtures.py::test_the_reference_calculator_reproduces_the_committed_expected_table`（独立计算器复算 expect 表）、`...test_the_committed_dataset_assertions_agree_with_the_expected_table`、`...test_the_reference_calculator_rejects_the_bad_inputs_for_their_declared_reason`、`...test_the_reference_module_does_not_import_or_call_the_tool`（AST + 子进程 `sys.modules` 守卫） |
 | 4. 真实端到端入口 + 失败/授权/重试边界，无单层 mock | **proven** | 全部 T056 e2e 走真实 REST 提交 → 真实 background job → 真实 maintenance 双池 → 真实 supervisor/runsc 沙箱 → 真实封存报告 → 真实 completion guard；授权：`test_...csv...` 中非 owner 404、admin 200、API key `application:read` 404、无 scope 403；失败：`test_a_missing_fixture_blocks_the_case_and_never_passes`（逐例 `blocked/task_input_unavailable`、未创建 run、报告 `not_run`）、`test_a_malformed_reserved_binding_is_refused_at_submit_time`（422 定位） |
-| 5. 版本/输入 hash/命令/原始结果/profile，stub/real 分报，缺条件 blocked，未跑 not_run | **proven** | 本报告 §3 贴原始门禁输出；数据集/期望表/输入 sha256 均在仓库与报告中；环境 profile、stub/real 边界、not_run 清单见 §4；超时案例的确定性裕量与测试部署配额容量调整在本报告与 ADR 0013 记录 |
+| 5. 版本/输入 hash/命令/原始结果/profile，stub/real 分报，缺条件 blocked，未跑 not_run | **proven** | 本报告 §3 贴原始门禁输出；数据集/期望表/输入 sha256 均在仓库与报告中；环境 profile、stub/real 边界、not_run 清单见 §4；超时案例的确定性裕量与测试部署配额容量调整在本报告与 ADR 0015 记录 |
 
 ## 3. 门禁命令与原始输出
 
@@ -204,8 +204,8 @@ no drift: spec copy and contract snapshot match the manifest
 ## 5. 已知限制与契约债务
 
 1. `expected_failure` 是契约断言词汇之外的非契约拼写（`input` 允许额外成员）：
-   案例契约没有“run error code”断言种类。ADR 0013 记录；未来契约修订应吸收它。
-2. `GET /evaluation-reports/{id}/cases` 是非契约读（ADR 0013），与 ADR 0005/0011
+   案例契约没有“run error code”断言种类。ADR 0015 记录；未来契约修订应吸收它。
+2. `GET /evaluation-reports/{id}/cases` 是非契约读（ADR 0015），与 ADR 0005/0011
    的桥先例一致；公共契约未改，`sync_spec --check` 干净。
 3. `task_input` 绑定按内容解析：同内容多次上传时取最早 artifact，绑定 id 写入
    facts；内容不同即 `task_input_unavailable`，绝不回退到“任意 CSV”。
