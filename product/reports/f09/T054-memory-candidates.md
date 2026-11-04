@@ -218,6 +218,7 @@ $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l . ; python tools/sync
 | Mem0 对照写入/映射 | T067（#67）；未运行，不声称采用 |
 | 记忆共享/授权（`policy.ResourceTypes` 扩展） | 本票不扩展；owner-only + 管理员只看自己，债务记录在 ADR 0008 §9 |
 | 真实 worker 自动抽取器 | 真实内部端点、真实 worker 证书、真实 attempt 被调用；抽取策略本身属 F04A agent 循环，本票不冒充 |
+| 全量 `pytest tests/f01`（38 个文件） | 启动后 >1 小时未完成（CPU 时间仅 ~55s，疑有等待型用例），按“不把未完成运行写成通过”的规则终止；与记忆边界直接相关的 `tests/f01/test_t020_personal_boundary.py` 在合并前后各跑一次均 2 passed（9.68s / 33.48s）。全量 f01 由 orchestrator 在合并后运行 |
 | 全量 `pytest tests`（约 67 分钟） | BRIEF §3 明令不跑；由 orchestrator 合并后运行 |
 
 ## 7. 下一票接口
