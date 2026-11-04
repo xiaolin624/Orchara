@@ -486,7 +486,7 @@ func (s *Service) CreateDocument(
 		); err != nil {
 			return Document{}, fmt.Errorf("retrying the document: %w", err)
 		}
-		indexID, indexVersion, err := insertIndexVersionTx(
+		indexID, _, err := insertIndexVersionTx(
 			ctx, tx, existing.ID, nextRevision, modelRevision, dimension, parser.Version(),
 		)
 		if err != nil {
@@ -500,7 +500,6 @@ func (s *Service) CreateDocument(
 		if err := tx.Commit(); err != nil {
 			return Document{}, fmt.Errorf("committing the retried document: %w", err)
 		}
-		_ = indexVersion
 		existing.Revision = nextRevision
 		existing.State = StateScanning
 		existing.ErrorCode = nil
