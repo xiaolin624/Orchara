@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/capabilities"
+	agentcontext "orchara/platform/internal/context"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
 	"orchara/platform/internal/uuid"
@@ -203,6 +204,24 @@ type InputSource interface {
 	Inputs(ctx context.Context, runID string) ([]InputArtifact, error)
 }
 
+// RunScope is the trusted owner/application identity of one run. It is the
+// authorization scope of personal-memory recall: an agent can only ever recall
+// the run owner's memories for the run's own application. It is read from the
+// database identity (runs.owner_id + the frozen execution snapshot), never from
+// the sealed manifest or a request body.
+type RunScope struct {
+	OwnerID       string
+	ApplicationID string
+}
+
+// RunIdentity is the optional trusted read-only identity source a configured
+// Memory source is scoped by. A process that wires Memory without RunIdentity
+// recalls nothing: the empty scope is refused by the recall source and the trace
+// reports unavailable, which is the honest outcome rather than guessing a scope.
+type RunIdentity interface {
+	RunScope(ctx context.Context, runID string) (RunScope, error)
+}
+
 // Sandbox is the execution unit. The real implementation is *sandbox.Executor.
 type Sandbox interface {
 	Run(ctx context.Context, request sandbox.Request, control sandbox.Control) (sandbox.Outcome, error)
@@ -291,9 +310,16 @@ type Deps struct {
 	Sandbox Sandbox
 	// Facts is the trusted read-only capability catalog. Agent nodes require it;
 	// the T042 python chain does not.
-	Facts   Facts
-	Options Options
-	Logger  *log.Logger
+	Facts Facts
+	// Memory is the F09 confirmed-memory source of the agent context. Nil means
+	// no source is wired and the trace reports memory_state=not_run.
+	Memory agentcontext.MemorySource
+	// RunIdentity scopes Memory to the run owner+application. It is required for
+	// a real recall; without it the source receives an empty scope and recalls
+	// nothing.
+	RunIdentity RunIdentity
+	Options     Options
+	Logger      *log.Logger
 }
 
 // runner owns one execution's mutable state.

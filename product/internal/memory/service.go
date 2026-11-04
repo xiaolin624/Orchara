@@ -292,10 +292,18 @@ func (s *Service) discardObject(key string) {
 // recorded sha256; a mismatch or a missing object fails closed with 503, never
 // with empty text.
 func (s *Service) readBody(key, digest string) (string, error) {
-	if s.Objects == nil {
+	return readSealedBody(s.Objects, key, digest)
+}
+
+// readSealedBody is the shared body read of the write-side service and the
+// read-only recall source: open one sealed object, bound the read, and verify the
+// bytes against the recorded digest. Nothing here can return empty text for a
+// missing or corrupt object.
+func readSealedBody(objects *objectstore.Store, key, digest string) (string, error) {
+	if objects == nil {
 		return "", failure(503, CodeObjectStoreUnavailable, "the object store is not configured")
 	}
-	reader, _, err := s.Objects.Open(key)
+	reader, _, err := objects.Open(key)
 	if err != nil {
 		return "", failure(503, CodeObjectStoreUnavailable, "the memory body could not be read")
 	}
