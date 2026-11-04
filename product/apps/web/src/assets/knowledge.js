@@ -371,6 +371,162 @@ function describeIngestion(document, diagnostics) {
   return { states: doc, diagnostics: diag, text: lines.join('\n') };
 }
 
+/*
+ * F10/T064: the grounded answer view.
+ *
+ * POST /api/v1/knowledge-bases/{id}/answer returns the answer only when every
+ * citation came from this retrieval and was readable at assembly time. The
+ * outcomes are distinct and must not be collapsed in the page:
+ *
+ *   answered               -> answer + citations (each opens the citation route)
+ *   no_results             -> empty answer, NOT an error
+ *   answer_without_citation-> refused: the generated answer cited nothing
+ *   citation_not_found     -> refused: a citation is not in this retrieval
+ *   citation_unreadable    -> refused: a citation is no longer readable now
+ *
+ * A citation is only displayed as a source when its provenance agrees with the
+ * returned chunk AND its chunk id is in the answer's own retrieval set. Opening a
+ * citation always re-reads it; a 404 is shown as "unavailable", never as the
+ * answer's cached citation text.
+ */
+const ANSWER_OUTCOME_TEXT = Object.freeze({
+  answered: '已回答：引用已通过服务端校验（来自本次检索且当前可读）',
+  no_results: '没有检索到可读资料：返回空答案（不是错误）',
+  answer_without_citation: '回答被拒绝：生成结果没有引用任何片段',
+  citation_not_found: '回答被拒绝：引用不属于本次检索',
+  citation_unreadable: '回答被拒绝：引用在返回前已不可读（已撤销或版本变化）',
+});
+
+function knowledgeAnswerPath(baseID) {
+  return knowledgeBasePath(baseID) + '/answer';
+}
+
+/** POST /answer body: the same {query, top_k} bounds as the retrieval body. */
+function buildAnswerBody(query, topK) {
+  return buildRetrievalBody(query, topK);
+}
+
+function answerOutcomeText(outcome) {
+  const key = String(outcome || '');
+  return ANSWER_OUTCOME_TEXT[key] || (key || '未知结果');
+}
+
+/** The generation label is always shown; a stub is never presented as a model. */
+function describeAnswerGeneration(generation) {
+  const value = generation || {};
+  const stub = value.stub === true;
+  const version = String(value.version || '');
+  const kind = String(value.kind || '');
+  const modelProvider = String(value.model_provider || '');
+  let text;
+  if (stub) {
+    text = '生成方式：抽取式 stub' + (version ? '（' + version + '）' : '')
+      + '；未配置模型 provider';
+  } else {
+    text = '生成方式：' + (kind || '未知') + (version ? '（' + version + '）' : '');
+  }
+  return {
+    kind: kind,
+    version: version,
+    stub: stub,
+    modelProvider: modelProvider,
+    text: text,
+  };
+}
+
+/** The retrieval the answer is grounded in: its chunk-id set and versions. */
+function describeAnswerRetrieval(retrieval) {
+  const value = retrieval || {};
+  const chunkIds = Array.isArray(value.chunk_ids) ? value.chunk_ids.map(String) : [];
+  const revision = String(value.embedding_model_revision || '');
+  const topK = Number(value.top_k || 0);
+  const aclEpoch = Number(value.acl_epoch || 0);
+  return {
+    embeddingModelRevision: revision,
+    topK: topK,
+    aclEpoch: aclEpoch,
+    chunkIds: chunkIds,
+    chunkCount: chunkIds.length,
+    text: '本次检索：' + chunkIds.length + ' 个片段 · embedding=' + revision
+      + ' · top_k=' + topK + ' · acl_epoch=' + aclEpoch,
+  };
+}
+
+/**
+ * One answer citation. It keeps the same citation-consistency rule as a
+ * retrieval chunk and adds the retrieval-membership rule of the answer contract:
+ * a chunk id outside this answer's retrieval is never presented as its source.
+ */
+function describeAnswerCitation(item, allowedChunkIDs) {
+  const chunk = describeChunk(item);
+  let allowed = null;
+  if (allowedChunkIDs && typeof allowedChunkIDs.has === 'function') {
+    allowed = allowedChunkIDs;
+  } else if (Array.isArray(allowedChunkIDs)) {
+    allowed = new Set(allowedChunkIDs.map((value) => String(value)));
+  }
+  const inThisRetrieval = allowed ? allowed.has(chunk.chunkId) : true;
+  const citationOk = chunk.citationOk && inThisRetrieval;
+  let citationText;
+  if (!inThisRetrieval) {
+    citationText = '引用不属于本次检索：不展示为该片段的来源';
+  } else if (!chunk.citationOk) {
+    citationText = '引用不一致：不展示为该片段的来源';
+  } else {
+    citationText = chunk.citationText;
+  }
+  return {
+    chunkId: chunk.chunkId,
+    documentId: chunk.documentId,
+    documentRevision: chunk.documentRevision,
+    chunkNo: chunk.chunkNo,
+    score: chunk.score,
+    text: chunk.text,
+    spanText: chunk.spanText,
+    citationOk: citationOk,
+    inThisRetrieval: inThisRetrieval,
+    citationText: citationText,
+  };
+}
+
+/** The answer envelope projected for the page (no answer body on no_results). */
+function describeAnswer(payload) {
+  const value = payload || {};
+  const outcome = String(value.outcome || '');
+  const answer = value.answer || {};
+  const retrieval = describeAnswerRetrieval(value.retrieval);
+  const allowed = new Set(retrieval.chunkIds);
+  const citations = Array.isArray(answer.citations)
+    ? answer.citations.map((item) => describeAnswerCitation(item, allowed))
+    : [];
+  return {
+    outcome: outcome,
+    outcomeText: answerOutcomeText(outcome),
+    empty: outcome === 'no_results',
+    text: String(answer.text || ''),
+    generation: describeAnswerGeneration(answer.generation),
+    retrieval: retrieval,
+    citations: citations,
+    citationsOk: citations.every((citation) => citation.citationOk),
+  };
+}
+
+/** A refused answer keeps its own code, status and message for the page. */
+function describeAnswerRefusal(error) {
+  const value = error || {};
+  const code = String(value.code || '');
+  const details = value.details || {};
+  const outcome = String(details.outcome || code);
+  return {
+    code: code,
+    status: Number(value.status || 0),
+    message: String(value.message || ''),
+    outcome: outcome,
+    outcomeText: answerOutcomeText(outcome),
+    chunkID: details.chunk_id ? String(details.chunk_id) : '',
+  };
+}
+
 function describeFailure(error) {
   if (!error) {
     return '未知错误';

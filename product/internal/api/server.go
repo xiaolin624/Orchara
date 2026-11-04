@@ -123,6 +123,9 @@ type Deps struct {
 	// deterministic local embedder recorded as local-hash-v1). A configured real
 	// provider without an adapter fails closed, never as a silent stub.
 	Embedder *embedding.Service
+	// Answerer is the F10/T064 labelled answer generator. Nil means the
+	// extractive stub wired by knowledge.New (no model provider exists here).
+	Answerer knowledge.AnswerGenerator
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -193,6 +196,10 @@ func New(deps Deps) *Server {
 		embedder = embedding.FromEnv()
 	}
 	jobsController := background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier)
+	knowledgeService := knowledge.New(deps.Service.DB, deps.Objects, embedder)
+	if deps.Answerer != nil {
+		knowledgeService.Answerer = deps.Answerer
+	}
 	return &Server{
 		service:        deps.Service,
 		policy:         authorizer,
@@ -203,7 +210,7 @@ func New(deps Deps) *Server {
 		evaluationRuns: execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
 		runArtifacts:   execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		userArtifacts:  artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		knowledge:      knowledge.New(deps.Service.DB, deps.Objects, embedder),
+		knowledge:      knowledgeService,
 		toolRuns:       toolruns.New(deps.Service.DB, notifier),
 		toolVersions:   toolversions.New(deps.Service.DB),
 		models:         modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
@@ -404,6 +411,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}", s.handleGetKnowledgeDocument)
 	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}/diagnostics", s.handleKnowledgeDocumentDiagnostics)
 	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/retrieval-queries", s.handleKnowledgeRetrievalQuery)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/answer", s.handleKnowledgeAnswer)
 	mux.HandleFunc("GET /api/v1/knowledge-citations/{chunk_id}", s.handleGetKnowledgeCitation)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
