@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 
 from support import t027, t029, t033, t041, t043, t054
-from support import stack as st
 
 
 # ---------------------------------------------------------------------------
