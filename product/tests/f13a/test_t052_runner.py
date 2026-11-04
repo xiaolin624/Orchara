@@ -7,10 +7,14 @@ terminal state. The report the completion guard records is then read back from
 its sealed artifact and from PostgreSQL.
 
 The positive path here is a run that really reaches a terminal state and really
-has no side effects: a predefined ``cancel`` interaction. A *succeeded* run of a
-tool-bearing application needs a caller CSV bound as a ``task_input`` artifact,
-which this slice cannot express (a case input cannot name artifacts); that is
-recorded as the #57 boundary in the report, not faked here.
+has no side effects: a predefined ``cancel`` interaction. **T062 superseded the
+original expectation that this is a pass**: a cancelled run never finished, so
+the case must be a refusal (``failed``/``run_cancelled``) and the report must not
+be ``passed``. T062's suite proves the guard still accepts a legitimate pass over
+a *completed* run. A *succeeded* run of a tool-bearing application needs a caller
+CSV bound as a ``task_input`` artifact, which this slice cannot express (a case
+input cannot name artifacts); that is recorded as the #57 boundary in the report,
+not faked here.
 """
 
 from __future__ import annotations
@@ -211,9 +215,13 @@ def test_a_predefined_cancel_is_a_real_terminal_run(t052_stack, tmp_path: Path) 
     assert evaluation["state"] == "succeeded", evaluation
     report = t052.report_row(t052_stack.dbname, evaluation["report_id"])
     document = t052.report_document(t052_stack, report["result_artifact_id"])
-    assert report["status"] == "passed", (report, document)
+    # T062: a cancelled run never finished. The assertion outcomes are recorded
+    # as evidence, but the case verdict is a refusal and the report cannot pass.
+    assert report["status"] == "failed", (report, document)
     case = document["cases"][0]
-    assert case["status"] == "passed", case
+    assert case["status"] == "failed", case
+    assert case["verdict"] == "failed", case
+    assert case["reason_code"] == "run_cancelled", case
     assert case["facts"]["run_state"] == "cancelled", case["facts"]
     assert all(outcome["passed"] for outcome in case["assertions"]), case["assertions"]
     run_id = t052.case_run_rows(t052_stack.dbname, evaluation_id)[0]["run_id"]
