@@ -103,6 +103,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 
 | T053 | F15A | 在候选 S3 上验证封存、匿名拒绝和删除 | **blocked** | `reports/f15a/T053-s3-probe.md`（探针与判别证明真实执行并通过；本机无候选 S3 端点 → 真实候选运行 exit 2 `blocked`，不伪造通过）、`probes/f15a_objectstore/`（`object_store_probe.py` 十条断言 + stdlib SigV4 + 环境凭据、`fixtures/{compliant,violating}_server.py` 真实 HTTP 判别夹具、`run_evidence.py`、`localfs_probe/main.go` 真实 `internal/objectstore` 类比）、`tests/f15a/`（36 passed：AWS SigV4 向量 8 + 配置失败 4 + 判别矩阵 13 + 边界常量 4 + 本地 FS 2 + 证据诚实性 5）、`reports/f15a/`（`candidate-absent`/`candidate-not-configured` blocked、`fixture-compliant` passed、`fixture-violating-all` 9 failed、逐条违规 9 份、503 重试、`local-fs-analogue`、`runs.json`、`environment-profile.json`）、`docs/adr/0008-f15a-object-store-compatibility.md`；`go build/vet/test`（29 ok / 0 FAIL / 11 no-test）、`gofmt -l` 空、`pytest tests/tooling` 21 passed、`sync_spec --check` no drift；not_run：版本化（夹具未启用）、备份/恢复（F15B）、真实候选 IAM/桶策略与平台 S3 后端接入；无迁移/契约改动 |
 | T055 | F10 | 上传文本资料后检索到可追溯片段 | passed | `reports/f10/T055-knowledge-ingest.md`、`db/migrations/0034_knowledge.sql`、`internal/knowledge/`、`internal/embedding/`、`internal/background/handlers/document_ingest.go`、`internal/background/document_ingest.go`（完成守卫）、`internal/api/knowledge.go`、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/t055.py`、`tests/f10/`（20 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；pgvector 不可安装 → `double precision[]`/384 维（T064/T067），本地 `local-hash-v1` embedding（真实 provider blocked），非契约检索/引用/诊断面见 ADR 0010 |
+| T064 | F10 | 回答只引用本次检索且当前可读的资料 | passed | `reports/f10/T064-grounded-citations.md`、`docs/adr/0012-f10-grounded-answers.md`、`internal/knowledge/answer.go`（`Answer` + 带标签抽取式 stub `extractive-stub/1` + `validateAnswerDraft` + 引用返回前 `GetChunk` 复检 + dev-stub 故障约定）、`internal/knowledge/service.go`（检索/引用 SQL 硬化 `a.owner_id = kb.owner_id`）、`internal/api/knowledge.go`（非契约 `POST /knowledge-bases/{id}/answer`：200 answered/no_results、422 answer_without_citation/citation_not_found、409 citation_unreadable）、`internal/api/server.go`、`cmd/api/main.go`（`Answerer` 装配）、`apps/web/src/{knowledge.html,assets/knowledge.js}`（问答视图 + 引用点击重校验 + 撤销后显示不可用）、`tests/support/t064.py`、`tests/f10/{test_t064_answer.py,test_t064_pages.py}`（外加 Go 单测）；真实 PG 16.4 + 编译二进制 + 真实 HTTP + 真实封存字节 + 真实 maintenance 摄取 + 第二个真实 API 进程（故障约定）；真实模型生成 blocked（无凭据/adapter，生成=stub），无迁移、未改契约/规格 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -1290,6 +1291,19 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 真实栈 | `tests/f10/` 20 用例：迁移链/约束/零授权、KB CRUD/游标/owner+admin 404/CSRF/API key scope、txt+md 上传→ready→检索→citation 独立真值（源 hash/rune 切片/行号/body 字节）、非当前 revision 与 tombstone 过滤、空解析/非法 UTF-8 永不 ready、可重试失败→重试成功、租约丢失→恢复；页面结构 + Node 执行 `knowledge.js` |
 | 门禁 | `pytest tests/f10 -q` **20 passed**；`go build ./...`/`go vet ./...`/`go test ./...` exit 0；`gofmt -l .` 空；`sync_spec.py --check` no drift；`tests/f00b` 135 passed；f05 合并跑出现 T028 隔离用例环境抖动，单文件复跑 10 passed（见报告 §3） |
 | 边界/not_run | 真实 embedding provider（无凭据/adapter，blocked，HTTP/handler 均 fail closed）；精确扫描性能/规模（not_run，T064/T067）；浏览器 DOM（not_run，与既有页面票同一边界）；CSV/XLSX（T059）、PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索缓存（T067，本票不加表）；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F10/T064 回答只引用本次检索且当前可读的资料（2026-11-04）
+
+| 项 | 内容 |
+|---|---|
+| 回答面 | 非契约 `POST /api/v1/knowledge-bases/{id}/answer`（ADR 0012 D1）：owner-only + CSRF + `application:read`；200 `answered`（含 `generation` 标签、逐引用 provenance、`retrieval.chunk_ids`）、200 `no_results`（空答案不是错误）、422 `answer_without_citation`、422 `citation_not_found`、409 `citation_unreadable`；拒绝不返回答案体/引用 |
+| 生成 | 本环境无模型 provider（无凭据/构建无 adapter）→ 带标签的抽取式 stub `extractive-stub/1`：从本次检索前 3 个片段逐字摘录，确定性，引用=使用片段；`generation.stub=true`/`model_provider=not_configured`；真实模型生成 **blocked**。dev-stub 故障约定 `ORCHARA_KNOWLEDGE_ANSWER_FAULTS`（`uncited`/`foreign-chunk`/`slow=`）只允许 stub profile，仅用于端到端观察拒绝路径 |
+| 引用校验 | 草稿不可信：无引用→拒绝；每个 cited chunk id 必须 ∈ 本次 `Query` 返回集合；每个引用返回前重新 `GetChunk`（owner ACL、KB/doc tombstone、`state=ready`、`active_revision=revision`、`chunk.document_revision=revision`、body artifact ready/未删/同 owner），任一不满足或复读不一致→`citation_unreadable`；provenance 只从服务端检索行投影 |
+| ACL 硬化 | `Query`/`GetChunk` 增加 `a.owner_id = kb.owner_id`：伪造的 chunk 行即使指向真实他人封存字节，也不进入检索候选、citation 端点 404、回答引用不含它（测试插入真实伪造行验证） |
+| 页面 | `/knowledge` 第 5 区块：提问、显示 stub 生成方式、答案/检索元数据/引用列表；点击引用重新 `GET /knowledge-citations/{id}`，撤销后显示“引用不可用”且不回放旧正文；四种结果独立文案；仅 `textContent`，无浏览器存储 |
+| 真实栈 | `tests/f10/test_t064_answer.py` 10 用例 + `test_t064_pages.py` 3 用例 + Go 单测：真实 PG 16.4（迁移链 0001→0035）、编译 `cmd/api`、真实 HTTP、真实封存字节、真实 `document_ingest` maintenance、第二个真实 API 进程（故障约定）、撤销竞态（`slow=5s` + 日志检查点，≥5s 裕量）、独立真值（源 sha256/rune 切片/行号 + 独立检索集合比对）、A/B/admin、CSRF/scope |
+| 门禁 | `pytest tests/f10 -q` 两次背靠背 33 passed（341.33s / 311.88s）；merge 后复跑 33 passed；`go build ./...`/`go vet ./...`/`go test ./...` exit 0；`gofmt -l` 空；`pytest tests/tooling -q` 21 passed；`sync_spec.py --check` no drift（曾因门禁日志写在仓库根产生 1 条 upstream_new，日志移出仓库后复检 no drift） |
+| 边界/not_run | 真实模型生成（blocked）；回答不持久化（无迁移）；检索缓存/规模（T067）、版本重建/激活（T061）、删除治理（F07/T058）、CSV/XLSX（T059）、PDF（T060）、浏览器 DOM（not_run）、全量 `pytest tests`（orchestrator）；未 push/未关 issue、未改 docs/spec/contracts |
 
 ## 记录模板
 
