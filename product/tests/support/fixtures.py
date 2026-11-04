@@ -485,12 +485,13 @@ __all__ = [
     "t030_stack",
     "t032_stack",
     "t033_stack",
+    "t055_stack",
+    "t059_stack",
 ]
 
 
-@pytest.fixture
-def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
-    """A T028-shaped stack for the F10 knowledge ingestion/retrieval path.
+def _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server):
+    """A T028-shaped stack shared by the F10 knowledge tickets (T055/T059).
 
     It needs real PostgreSQL (already migrated), the compiled API with the real
     object store and signed links, the internal mTLS listener (the ingestion
@@ -521,3 +522,15 @@ def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.
     )
     f00b.wait_for_internal(stack)
     return stack
+
+
+@pytest.fixture
+def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The F10/T055 real stack (txt/md ingestion and retrieval)."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)
+
+
+@pytest.fixture
+def t059_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The same real stack for the F10/T059 tabular ingestion path."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)

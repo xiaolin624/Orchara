@@ -450,6 +450,12 @@ func archiveLimitReason(entries int, uncompressed uint64) string {
 	return ""
 }
 
+// SafeArchivePath reports whether name is a safe archive entry path. It is the
+// exact predicate admission uses for XLSX/zip entries, exported so a content
+// parser that opens the same archive applies the same rule instead of inventing
+// a second one.
+func SafeArchivePath(name string) bool { return safeArchivePath(name) }
+
 // safeArchivePath rejects empty names, absolute paths, backslashes and any
 // traversal segment. A trailing "/" is a directory entry (some XLSX writers
 // emit them) and is allowed; an XLSX is opened by parsers, never extracted here,

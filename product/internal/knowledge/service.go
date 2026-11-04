@@ -68,7 +68,7 @@ var (
 	// not activated it yet.
 	ErrArtifactNotReady = errors.New("source artifact is not ready")
 	// ErrUnsupportedInput is a 422: no parser is registered for the source media
-	// type in this build (CSV/XLSX -> T059, PDF -> T060).
+	// type in this build (PDF -> T060; CSV/XLSX are registered by T059).
 	ErrUnsupportedInput = errors.New("this source format is not supported yet")
 	// ErrEmbeddingUnavailable is a 503: the real embedding provider path was
 	// configured but cannot produce vectors in this deployment.
@@ -128,19 +128,41 @@ type ChunkView struct {
 // decoded source, the parser/chunker revisions and the embedding model revision.
 // A citation therefore resolves to one unambiguous substring of one immutable
 // artifact revision, even after a later document revision exists.
+//
+// The row fields are the tabular extension (T059). They are zero/empty for
+// txt/md and byte-for-byte absent there (omitempty), so existing citations keep
+// their shape:
+//   - RowStart/RowEnd are the 1-based inclusive source row range. For CSV this
+//     is the logical record number (header = row 1); for XLSX it is the
+//     worksheet's own row number.
+//   - HeaderRow is the header row's number, RowCount the number of data rows in
+//     the chunk (a worksheet range may contain empty rows, so it can be smaller
+//     than RowEnd-RowStart+1).
+//   - SheetName is set for XLSX only; Columns repeats the header values when they
+//     are small enough (ColumnsOmitted says they were not repeated).
+//   - TextRender names what Span indexes (source_utf8 for CSV, the sheet
+//     rendering for XLSX).
 type Citation struct {
-	DocumentID             string `json:"document_id"`
-	DocumentRevision       int64  `json:"document_revision"`
-	ChunkNo                int    `json:"chunk_no"`
-	Span                   Span   `json:"span"`
-	OffsetUnit             string `json:"offset_unit"`
-	SourceArtifactID       string `json:"source_artifact_id"`
-	SourceSHA256           string `json:"source_sha256"`
-	SourceMediaType        string `json:"source_media_type"`
-	TextNormalization      string `json:"text_normalization"`
-	ParserVersion          string `json:"parser_version"`
-	ChunkerVersion         string `json:"chunker_version"`
-	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	DocumentID             string   `json:"document_id"`
+	DocumentRevision       int64    `json:"document_revision"`
+	ChunkNo                int      `json:"chunk_no"`
+	Span                   Span     `json:"span"`
+	OffsetUnit             string   `json:"offset_unit"`
+	SourceArtifactID       string   `json:"source_artifact_id"`
+	SourceSHA256           string   `json:"source_sha256"`
+	SourceMediaType        string   `json:"source_media_type"`
+	TextNormalization      string   `json:"text_normalization"`
+	TextRender             string   `json:"text_render,omitempty"`
+	ParserVersion          string   `json:"parser_version"`
+	ChunkerVersion         string   `json:"chunker_version"`
+	EmbeddingModelRevision string   `json:"embedding_model_revision"`
+	RowStart               int      `json:"row_start,omitempty"`
+	RowEnd                 int      `json:"row_end,omitempty"`
+	RowCount               int      `json:"row_count,omitempty"`
+	HeaderRow              int      `json:"header_row,omitempty"`
+	SheetName              string   `json:"sheet_name,omitempty"`
+	Columns                []string `json:"columns,omitempty"`
+	ColumnsOmitted         bool     `json:"columns_omitted,omitempty"`
 }
 
 // ChunkRow is one staged chunk the handler writes before activation.
@@ -552,6 +574,14 @@ func (s *Service) GetDocument(ctx context.Context, ownerID, documentID string) (
 // in-progress ingestion diagnosable on the page. The contract's
 // KnowledgeDocument has no room for these fields (additionalProperties:false),
 // so they live on GET /api/v1/knowledge-documents/{id}/diagnostics.
+//
+// Detail is derived on read, not stored: when a document failed with a content
+// refusal whose location this build can re-derive (the recorded parser revision
+// is still the registered one and the sealed source is still readable), the
+// same bytes are parsed again and the location is returned. The durable fact is
+// the recorded error code; the location is a projection of it. That keeps a
+// single knowledge-state authority (the document row) without a second failure
+// write path (ADR 0012).
 type Diagnostics struct {
 	DocumentID             string
 	State                  string
@@ -561,6 +591,7 @@ type Diagnostics struct {
 	ChunkerVersion         *string
 	EmbeddingModelRevision *string
 	ErrorCode              *string
+	Detail                 *ParseDetail
 	ChunkCount             int
 	BackgroundJobID        *string
 	BackgroundJobState     *string
@@ -633,7 +664,63 @@ func (s *Service) DocumentDiagnostics(
 		diagnostics.BackgroundJobCode = nullStringPointer(jobCode)
 		diagnostics.BackgroundJobAttempts = attempts
 	}
+	diagnostics.Detail = s.deriveParseFailure(ctx, document)
 	return diagnostics, nil
+}
+
+// deriveParseFailure re-derives the safe location of a content refusal.
+//
+// It never writes anything and never becomes an authority: the document row's
+// error_code stays the durable fact, and a document that failed for an
+// infrastructure reason (or whose source bytes are gone) simply has no detail.
+// The recorded parser revision must still name the registered parser, so a later
+// build cannot attribute an old failure to new parsing rules.
+func (s *Service) deriveParseFailure(ctx context.Context, document Document) *ParseDetail {
+	if document.State != StateFailed || document.ErrorCode == nil ||
+		!IsParseFailureCode(*document.ErrorCode) {
+		return nil
+	}
+	var (
+		objectKey     string
+		mediaType     string
+		artifactState string
+		deleted       sql.NullTime
+		recorded      sql.NullString
+	)
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT a.object_key, a.media_type, a.state, a.deleted_at, d.parser_version
+		  FROM platform.knowledge_documents AS d
+		  JOIN platform.artifacts AS a ON a.id = d.source_artifact_id
+		 WHERE d.id = $1::uuid`, document.ID,
+	).Scan(&objectKey, &mediaType, &artifactState, &deleted, &recorded)
+	if err != nil || deleted.Valid || artifactState != "ready" || !recorded.Valid {
+		return nil
+	}
+	parser, ok := ParserFor(mediaType)
+	if !ok || parser.Version() != recorded.String || s.Objects == nil {
+		return nil
+	}
+	reader, _, err := s.Objects.Open(objectKey)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = reader.Close() }()
+	content, err := io.ReadAll(io.LimitReader(reader, objectstore.MaxObjectBytes+1))
+	if err != nil || int64(len(content)) > objectstore.MaxObjectBytes {
+		return nil
+	}
+	_, parseErr := parser.Parse(content)
+	if parseErr == nil {
+		// The bytes parse cleanly now; do not invent a location that disagrees
+		// with the recorded failure.
+		return nil
+	}
+	typed, ok := asParseError(parseErr)
+	if !ok || typed.FailureCode != *document.ErrorCode {
+		return nil
+	}
+	detail := typed.Location
+	return &detail
 }
 
 func nullStringPointer(value sql.NullString) *string {
