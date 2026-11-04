@@ -298,8 +298,19 @@ def test_cancel_stops_the_chain_without_a_success_or_node_result(t033_stack) -> 
     sandbox = report.get("sandbox")
     if sandbox and sandbox.get("started"):
         assert sandbox["cancelled"] is True, report
-    state = t033.run_state_row(t033_stack.dbname, run["id"])
-    assert state["state"] in {"cancelled", "recovery_pending", "running"}, state
+    state = t033.wait_run_state(
+        t033_stack.dbname,
+        run["id"],
+        {"cancelled", "recovery_pending", "failed", "needs_reconciliation"},
+        timeout=30.0,
+    )
+    # A confirmed cancel is the documented terminal outcome (EXECUTION §6): all
+    # controlled units have exited and there is no unknown write, so the Run must
+    # not be left `running` (or parked for recovery) after the supervisor exits.
+    assert state["state"] == "cancelled", state
+    assert state["cancel_requested_at"] is not None, state
+    assert state["error_code"] is None, state
+    assert state["finished_at"] is not None, state
     assert state["output_artifact_id"] is None, "a cancelled run must not publish a result"
     assert t042.node_result_rows(t033_stack.dbname, run["id"]) == []
     events = t042.node_events(t033_stack.dbname, run["id"])
