@@ -11,7 +11,8 @@
 
 本轮已交付范围：**D00 + P01–P05 + F00 + F01**，以及本分支的 **F00B（T022/T024 passed；
 T026 partial）**、**F02A（T023/T025 partial；T027 passed）**、**F05（T028、T030、T033、T037
-passed）** 与 **F03（T029、T031、T032、T034、T035、T036、T038 passed）**；其余票保持 open。
+passed）**、**F03（T029、T031、T032、T034、T035、T036、T038 passed）** 与
+**F15A（T057 passed；#54 的 S3 探针不在本分支）**；其余票保持 open。
 **F06（T039–T051）与 F04A（T040、T042、T043、T049）已按 #40→#52 顺序交付，全部 13 个 issue
 关闭**；证据见各票报告、ADR 0007 与下方票表。批次最终门禁（2026-11-04，分支
 `feat/f06-f04a-models-and-workflow`，HEAD `b9147a8`）：`pytest tests -q` **1323 passed in
@@ -98,6 +99,9 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 
 | T039 | F06 | 管理员登记模型并查看兼容验证后才共享 | passed | `reports/f06/T039-model-registry.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`、`internal/modelregistry/{catalog,modelregistry,validate}.go`（deployer catalog 严格解析/fail closed、JCS manifest + sha256、单事务 manifest artifact + pending model、`FOR UPDATE` 验证编排、确定性 fixture 封存、Idempotency-Key 收据/回放）、`internal/api/{models.go,server.go}`（`registerModel`/`listModels`/`getModel`/`validateModel` + admin `model-endpoints`/`credential-refs` + `/models` 页面）、`internal/background/{model_validate.go,complete.go,evaluation.go}`（报告严格绑定 candidate/fixture/`platform_model_calls` 账本、`evaluation_reports` + model passed/failed 同事务；T024 直接入队 job 保持 report-only 语义）、`internal/modelproxy/{modelproxy.go}`（catalog id 与 `env:` 引用双形态）、`apps/web/src/{models.html,assets/models.js}`（登记/列表/验证/报告，Node 执行）、`tests/support/{t039.py,fixtures.py}`、`tests/f06/`（15 用例：注册/可见性/幂等/可重试失败/失败用例/终端失败/依赖就绪/页面）；真实 PG + 编译二进制 + 真实 HTTP/mTLS + 对象字节 + maintenance 双进程 + Node；`go test ./...` 23 ok/0 FAIL/9 no-test、`go vet` exit 0、`gofmt -l` 空、`sync_spec --check` no drift；not_run：真实厂商 provider adapter（本构建 real 失败为 `provider_not_configured`，已断言）、浏览器 DOM、全量 `pytest tests`（orchestrator）；无迁移（0011/0013 已够用） |
 | T040 | F04A | 在画布配置线性流程并看到服务端校验反馈 | passed | `reports/f04a/T040-canvas-and-linear-compile.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T040 追加 D4/D5）、`worker/platform_worker/compiler/{validate,graph,stub,jcs,__init__}.py`（F04A 线性子集防御性校验 + 真实 LangGraph `StateGraph` + 确定性 stub adapter；共享语料 22 例 = 16 shared + 6 f04a_only）、`internal/workflow/f04a_corpus_test.go`（Go 权威对共享语料断言同 `(verdict, code, pointer)`）、`tests/f04a/corpus/linear_f04a.json`、`apps/web/canvas/`（Vue 3.5.44 + Vue Flow 1.48.2 真实应用；`build.mjs` esbuild 0.28.2；纯模块 `lib/{dsl,sources,errors,export}.js`）、`apps/web/src/assets/canvas.{js,css}`（提交的静态产物，测试/运行不需要 npm）、`apps/web/src/{editor.html,assets/editor.js}`（画布主编辑、四类节点配置面板、工具/模型选择器、合法变量来源、错误点击跳转、`X-Manifest-SHA256`、折叠 JSON 视图；保留 ETag/412/428/调试入口）、`internal/api/server.go`（`GET /assets/canvas.{js,css}`）、`tests/f04a/`（36 用例：validate 17、graph 7、assets 5、integration 7；Node 8 模块检查；真实 PG + 编译二进制 + 真实 HTTP + P01 langgraph 1.2.4）、`go vet` exit 0、`go test ./...` 23 ok/9 no-test/0 FAIL、`gofmt -l` 空、`pytest tests/f04a tests/f02a` **140 passed**、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、生产 LangGraph worker（Go runtime 属 T042/T043）、全量 `pytest tests`（orchestrator）；无迁移/契约改动 |
+| T057 | F15A | 在干净开发环境启动并跑通销售冒烟 | passed | `reports/f15a/T057-clean-env-smoke.md`、`reports/f15a/dev-smoke-run.json`（真实执行记录：profile、版本、命令、id、状态、输入/产物 sha256、blocked/not_run）、`deploy/dev/{bringup,dev_pki,smoke,dev_http}.py` + `README.md`（可重放启动产品：建库/编译/开发 mTLS 证书/migrate/bootstrap/API/maintenance；打印它执行的原始命令）、`tests/acceptance/`（**13 passed in 41.62s**：bring-up 迁移链/bootstrap/页面、销售 Decimal 独立真值（`250.00`/东区`200.00`/西区`50.00`/3 单）、缺列与重复订单业务失败（`attempt_count=1`）、owner-only 取消 + 取消后内部 claim 204、真实 `tool_timeout` 重试到 `MaxAttempts=3` 后终态失败（`failure_class=infrastructure`、诊断 `retryable=true`）、stub 模型 profile `passed` + 封存报告 `provider=stub,stub=true`、真实页面脚本由 Node 执行）、`apps/web/src/index.html`（状态页显示 profile/stub，AC2）、`apps/web/src/assets/attachments.js`（冒烟暴露的真实缺陷：失败诊断附件仍在扫描时页面读 409；改为有界等待真实 ready，报告 §4 记录）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实 Python 子进程 + Node；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 干净；无迁移、无契约改动；blocked：`container_runtime`、`linux_isolation`（WSL 有 runsc 但 WSL 不是被接受的隔离宿主）、`model_credentials`、S3/MinIO、Redis；not_run：`cmd/supervisor exec`（沙箱）、`cmd/worker`（liveness 骨架，不领取工作）、评测 UI、浏览器 DOM |
+
+| T053 | F15A | 在候选 S3 上验证封存、匿名拒绝和删除 | **blocked** | `reports/f15a/T053-s3-probe.md`（探针与判别证明真实执行并通过；本机无候选 S3 端点 → 真实候选运行 exit 2 `blocked`，不伪造通过）、`probes/f15a_objectstore/`（`object_store_probe.py` 十条断言 + stdlib SigV4 + 环境凭据、`fixtures/{compliant,violating}_server.py` 真实 HTTP 判别夹具、`run_evidence.py`、`localfs_probe/main.go` 真实 `internal/objectstore` 类比）、`tests/f15a/`（36 passed：AWS SigV4 向量 8 + 配置失败 4 + 判别矩阵 13 + 边界常量 4 + 本地 FS 2 + 证据诚实性 5）、`reports/f15a/`（`candidate-absent`/`candidate-not-configured` blocked、`fixture-compliant` passed、`fixture-violating-all` 9 failed、逐条违规 9 份、503 重试、`local-fs-analogue`、`runs.json`、`environment-profile.json`）、`docs/adr/0008-f15a-object-store-compatibility.md`；`go build/vet/test`（29 ok / 0 FAIL / 11 no-test）、`gofmt -l` 空、`pytest tests/tooling` 21 passed、`sync_spec --check` no drift；not_run：版本化（夹具未启用）、备份/恢复（F15B）、真实候选 IAM/桶策略与平台 S3 后端接入；无迁移/契约改动 |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -966,7 +970,7 @@ python/agent 节点执行属 T042/T043）。证据：`reports/f04a/T040-canvas-a
 | T042 | F04A | 运行固定 Python 节点并查看结构数据与文件 | passed |
 | T043 | F04A | 运行受控 Agent 节点并校验最终输出 | passed | `reports/f04a/T043-agent-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T043 追加 D10）、`internal/presetexec/{plan.go,agent.go,linear.go,presetexec.go}`（3/4 节点线性计划、agent 配置校验、确定性 operation UUIDv5、模型轮次 + 固定预设工具真实沙箱 + capability-results 回报、最终输出节点 schema 二次校验、agent data/file/log 行与 node.status、heartbeat 取消/lease deadline、legacy `input#` 形状选择）、`internal/presetexec/{Facts,ModelFact,ToolFact}` + `cmd/supervisor/{client.go,exec.go}`（`InvokeCapability`/`ReportCapabilityResult` worker mTLS、只读 model/tool Facts）、`internal/modelproxy/provider.go`（dev stub 声明工具时确定性首轮工具调用，仍 `stub=true`）、`apps/web/src/{runs.html,assets/runs.js}`（Agent 面板：最终输出/轮次/工具调用 id+name/每次工具操作状态；`describeAgentNode` Node 执行）、`tests/support/t043.py`、`tests/f06/{test_t043_agent_node.py,test_t043_pages.py}`（6+3 用例，真实 PG/mTLS/对象字节/WSL2+runsc）；`go vet` exit 0、`go test ./...` 全绿、`gofmt -l` 空、`tests/f06` 62 passed、`tests/f05`、`tests/f04a` 36、`tests/tooling` 21、`sync_spec --check` no drift；not_run：真实厂商 adapter、`awaiting_approval` 真实写入（T048）、真实栈下 executor 的未知/重复工具调用 guard（服务端先拒绝，仅 Go 单测）、跨 attempt 重试真实 e2e、浏览器 DOM、全量 `pytest tests`/`tests/f00b`；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0026 | `reports/f04a/T042-python-node.md`、`docs/adr/0007-f06-f04a-model-registry-boundaries.md`（T042 追加 D8/D9）、`db/migrations/0026_run_node_outputs.sql`（per-node provenance：run/node/kind/artifact/label、PK、FK、kind CHECK、worker 权限边界）、`internal/presetexec/{plan.go,linear.go,presetexec.go}`（start→python→end 单链计划、literal/input#/node:<id># RFC6901 绑定、受限 schema 校验、固定预设工具真实沙箱执行、data/文件/日志分别登记、node.status 事件、取消/超时复用 T036 控制、legacy T033 路径逐字节保留、agent 节点 `agent_node_not_supported` 拒绝）、`internal/execution/noderesults.go`（live attempt + artifact ready/purpose 复核、insert-once provenance、owner 只读投影）、`internal/api/{noderesults.go,server.go,internal.go}`（非契约 `POST /internal/v1/runs/{id}/node-results` + owner-only `GET /api/v1/runs/{id}/node-results`）、`cmd/supervisor/{exec.go,client.go}`（`SubmitNodeStatus`/`RecordNodeResults`、DB 派生 attempt_no）、`apps/web/src/{runs.html,assets/runs.js}`（折叠“节点结果”面板：data/文件/日志、状态与“无结果 vs 失败”、日志截断、Node 纯函数）、`tests/support/t042.py`、`tests/f06/{test_t042_python_node.py,test_t042_pages.py,test_t042_migration.py}`（6+3+2 用例，真实 PG 0026 + 编译二进制 + mTLS + 对象字节 + WSL2/runsc `release-20241118.0`）；`go vet` exit 0、`go test ./...` 24 ok/0 FAIL/9 no-test、`gofmt -l` 空、`pytest tests/f05` 149 passed、`tests/f03` 203、`tests/f06` 53、`tests/tooling` 21、`sync_spec --check` no drift；not_run：浏览器 DOM、全量 `pytest tests`、全量 `tests/f00b`（brief 明令不跑）、T043 agent 真实执行、线性链独立 timeout e2e（与 legacy 共用分支，legacy 超时由 T033 覆盖）；未 push/未关 issue、未改 docs/spec/contracts/迁移 0001–0025 |
 
-| T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0008-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（19 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
+| T054 | F09 | 用户确认候选后才保存个人长期记忆 | passed | `reports/f09/T054-memory-candidates.md`、`docs/adr/0008-f09-memory.md`、`db/migrations/0033_memory_candidates.sql`、`internal/memory/{service,candidates,memories}.go`、`internal/api/memory.go`、`apps/web/src/{memories.html,assets/memories.js}`、`tests/f09/`（25 用例）、`tests/support/t054.py`；真实 PG 16.4 / 编译二进制 / 真实 mTLS / 真实 sealed 对象字节 / Node 执行页面逻辑 |
 
 P01 venv 说明：worktree 内 `.venv` 不在 git，重建因环境 TLS CA bundle 问题失败并删除空
 venv；门禁用 `ORCHARA_P01_PYTHON` 指向主 checkout 的 P01 锁定 interpreter。测试缺失时
@@ -1213,6 +1217,7 @@ invoke/resume 只回放已记录状态、零出站；owner 或该 operation 审�
 | 门禁 | `go vet ./...` exit 0；`go test ./...` exit 0；`gofmt -l internal cmd tools` 空；`pytest tests/f06` 164 passed（582.73s）；`pytest tests/f03` 目标集 21 passed；`pytest tests/tooling` 21 passed；`sync_spec --check` no drift |
 | 边界/not_run | 真实厂商连接器（无幂等键/查询回执 API，故不做同 operation 安全重试分支）、owner 以外的独立审批人核对（T050 审批人恒为 owner）、`needs_reconciliation → queued` requeue（T038 recover 仍是唯一 requeue 权威）、真实浏览器 DOM、自动重试/sweeper、全量 `pytest tests`/f00b/f01/f02a/f04a/f05；未 push/未关 issue #52、未改 docs/spec/contracts、迁移仅新增 0032（0001–0031 未改） |
 
+
 ## F09 个人长期记忆：候选确认后才保存（T054，2026-11-04）
 
 T054（GitHub #55）已交付，状态 **`passed`**（范围 = `createMemory` / `listMemories`
@@ -1230,9 +1235,28 @@ T054（GitHub #55）已交付，状态 **`passed`**（范围 = `createMemory` / 
 | 所有权 | 列表在 SQL 同一 WHERE 里过滤 owner；他人与管理员对单条候选/决定得到同一 404（不泄露存在性）；管理员列表为空而不是别人的行 |
 | 缓存 epoch | 确认/直接写入在同一事务 bump `platform.policy_epochs` 的 `memory:<owner>:<application>`（不新建表；授权器只读 `acl`，故对鉴权惰性）；T058/T063/T067 的失效 seam |
 | 页面 | `/memories` + `assets/memories.js`：候选（来源类别/应用范围/状态/过期时间/正文）+ 确认/拒绝（每次点击新 `Idempotency-Key`，无默认选择）+ 当前记忆（revision）；全部 `textContent`，无凭据/正文留存；Node 执行纯函数 |
-| 真实栈 | 真实 PG 16.4、编译 `cmd/api`、真实 mTLS worker 证书 + run live attempt、真实 supervisor claim、真实对象字节（删字节→503 失败闭合，恢复→同一行可读）、真实 cookie+CSRF 决定；`tests/f09` 19 用例 |
-| 门禁 | 见报告 §4（`pytest tests/f09` 19 passed；`go vet`/`go test`/`gofmt -l`/`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling`） |
+| 真实栈 | 真实 PG 16.4、编译 `cmd/api`、真实 mTLS worker 证书 + run live attempt、真实 supervisor claim、真实对象字节（删字节→503 失败闭合，恢复→同一行可读）、真实 cookie+CSRF 决定；`tests/f09` 25 用例 |
+| 门禁 | 见报告 §4（`pytest tests/f09` 25 passed；`go vet`/`go test`/`gofmt -l`/`sync_spec --check` 全绿；`tests/f01/test_t020_personal_boundary.py` 2 passed；`tests/tooling` 21 passed） |
 | 边界/not_run | 浏览器 DOM；后台过期清扫进程（惰性迁移 + 决定复检已生效）；记忆编辑/删除/ETag（T058）、运行时召回（T063）、Mem0（T067）；记忆共享/授权；真实 worker 自动抽取生产者（本票用真实 supervisor claim + 真实 worker mTLS 调用真实内部端点）；全量 `pytest tests`；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F15A 候选 S3 兼容探针（T053，2026-11-04）
+
+T053（GitHub #54）**候选 S3 验收 `blocked`**：本机没有候选 S3 端点（无 Docker/Compose、
+MinIO/SeaweedFS、AWS CLI、S3 端口；9000/9001/6379 关闭；`mc` 实测是 Windows NT Message
+Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒绝”的真实结论。可以真实交付并已
+执行的是部署验收**探针**及其**判别证明**：探针必须把“无候选端点”报成 exit 2 `blocked`，并且
+能逐条拒绝故意违规的本地 S3 夹具。证据：`reports/f15a/T053-s3-probe.md`、
+`reports/f15a/runs.json`、`reports/f15a/environment-profile.json`、ADR 0008。
+
+| 项 | 内容 |
+|---|---|
+| 探针 | `probes/f15a_objectstore/object_store_probe.py`：Python 3.12 标准库 only，path-style `/bucket/key`，SigV4 header + presigned query auth，`--out/--emit` JSON 证据；退出码 `0` 全通过 / `1` 真实不兼容 / `2` 配置或环境失败（含无候选）；凭据只从 `F15A_S3_*` 环境读，不进 argv/证据；`--short-ttl`/`--expiry-skew`/`--retries`/`--ca-file` |
+| 断言 | 10 条：匿名读/写/列表拒绝；越界/兄弟/绝对键与 `..` 不得逃逸 + 改路径签名 URL 被拒；runtime 不能 PUT sealed；staging 覆盖保 sealed 哈希；短 TTL 内可用/过期拒绝；HEAD Content-Length + Range 206/416 + 未过期 URL 撤销观察（`requires_proxy_download`）；删除需凭据/404/幂等/兄弟键安全；版本化观察（无则 `not_run`） |
+| 判别证明 | `fixtures/compliant_server.py`、`fixtures/violating_server.py`（真实 HTTP + 独立 SigV4 校验，`--violate <id>`/`all`/`--transient-failures`）；`tests/f15a/test_discrimination.py` 合规 9 passed + 1 not_run/exit 0、全违规 9 failed/exit 1、逐条只有对应断言 failed、503 真实重试、缺 provisioning 时 sealed 断言 blocked |
+| 本地 FS 类比 | `probes/f15a_objectstore/localfs_probe/main.go` 直接消费真实 `internal/objectstore`：键类型/遍历、staging↔sealed、跨命名空间写拒绝、HMAC TTL/操作/上限、幂等删除、20 MiB 上限；`not_s3_evidence: true`，匿名网络/版本化为 `not_run` |
+| 证据 | `reports/f15a/` 15 次真实运行：`candidate-absent`/`candidate-not-configured` exit 2 blocked；`fixture-compliant` exit 0；`fixture-violating-all` exit 1（9 failed）；`fixture-violation-<id>` ×9；`fixture-transient-retry`；`local-fs-analogue`；`runs.json` 记录命令/退出码/SHA-256，`environment-profile.json` 记录机器事实；所有 JSON 无凭据值 |
+| 门禁 | `pytest tests/f15a` **36 passed**（76.91s）、`pytest tests/tooling` 21 passed、`go build`/`go vet` exit 0、`go test ./...` 29 ok/0 FAIL/11 no-test、`gofmt -l .` 空、`sync_spec --check` no drift |
+| 边界/not_run | 真实候选 S3 运行、候选 IAM/桶策略、备份/恢复（F15B）、版本化（夹具未启用）、平台 S3 后端与代理下载实现（后续接入票）；未 push/未关 issue #54、未改 docs/spec/contracts、无迁移 |
 
 ## 记录模板
 

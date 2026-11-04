@@ -50,6 +50,12 @@
       <div class="label">依赖检查</div>
       <ul id="checks"><li>…</li></ul>
     </div>
+    <div class="card">
+      <div class="label">环境 profile</div>
+      <div class="value" id="environment-profile">…</div>
+      <div class="label" style="margin-top:.6rem">结果标记</div>
+      <div id="environment-stub" class="warn">…</div>
+    </div>
   </div>
 
   <p class="sub" style="margin-top:1.5rem" id="stamp"></p>
@@ -61,6 +67,8 @@
     const uptimeEl = document.getElementById('uptime');
     const checksEl = document.getElementById('checks');
     const stampEl = document.getElementById('stamp');
+    const profileEl = document.getElementById('environment-profile');
+    const stubEl = document.getElementById('environment-stub');
 
     function formatUptime(seconds) {
       if (typeof seconds !== 'number') return '…';
@@ -82,6 +90,15 @@
         const ready = status.status === 'ready';
         readyEl.textContent = ready ? '就绪' : '未就绪';
         readyEl.className = 'value ' + (ready ? 'ok' : 'bad');
+
+        // F15A/T057: a stub environment must be identifiable from the page itself,
+        // not only from the report. Values come from /api/status; nothing is guessed.
+        const profileName = status.profile ?? '';
+        profileEl.textContent = profileName || '未声明';
+        profileEl.className = 'value ' + (profileName ? '' : 'warn');
+        const stubResults = status.stub_results === true;
+        stubEl.textContent = stubResults ? 'stub 结果（非真实模型）' : '真实结果';
+        stubEl.className = 'value ' + (stubResults ? 'warn' : 'ok');
 
         checksEl.innerHTML = '';
         for (const [name, result] of Object.entries(status.checks ?? {})) {

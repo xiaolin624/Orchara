@@ -1,0 +1,251 @@
+{
+  "probe": "f15a-local-fs-analogue",
+  "probe_version": "1.0.0",
+  "ticket": "T053/F15A",
+  "scope": "local-filesystem",
+  "not_s3_evidence": true,
+  "status": "passed",
+  "exit_code": 0,
+  "environment": {
+    "arch": "amd64",
+    "go": "go1.27.3",
+    "os": "windows"
+  },
+  "store": {
+    "implementation": "internal/objectstore (local filesystem, HMAC links)",
+    "max_object_bytes": 20971520,
+    "root": "C:\\Users\\19677\\AppData\\Local\\Temp\\f15a-evidence-aygk84_c\\local-fs-store"
+  },
+  "assertions": [
+    {
+      "id": "key_typing_and_traversal_refused",
+      "title": "only typed 64-hex staging/sealed keys resolve; traversal and absolute paths are invalid",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "dotdot_key_refused",
+          "ok": true
+        },
+        {
+          "name": "dotdot_inside_typed_key_refused",
+          "ok": true
+        },
+        {
+          "name": "absolute_key_refused",
+          "ok": true
+        },
+        {
+          "name": "wrong_length_refused",
+          "ok": true
+        },
+        {
+          "name": "uppercase_refused",
+          "ok": true
+        },
+        {
+          "name": "delete_traversal_refused",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "valid_key_shape": "staging|\u003c64 lowercase hex\u003e or sealed|\u003c64 lowercase hex\u003e"
+      }
+    },
+    {
+      "id": "staging_sealed_separation",
+      "title": "overwriting staging cannot change sealed bytes; staging cannot be promoted by key",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "sealed_bytes_unchanged",
+          "ok": true,
+          "detail": {
+            "after": "759a1a445418c65042dddc4b68ca437b4d796eee7c19faa5edd6c787a069efd9",
+            "before": "759a1a445418c65042dddc4b68ca437b4d796eee7c19faa5edd6c787a069efd9",
+            "expected": "759a1a445418c65042dddc4b68ca437b4d796eee7c19faa5edd6c787a069efd9"
+          }
+        },
+        {
+          "name": "staging_holds_latest",
+          "ok": true,
+          "detail": {
+            "staging_sha256": "1ae75801b31297dd9f75b43d64b3355329d54e3bcb2742e5b5bf417c47edd7f9"
+          }
+        },
+        {
+          "name": "staging_cannot_move_into_sealed",
+          "ok": true
+        },
+        {
+          "name": "sealed_move_stays_sealed",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "sealed_key": "sealed/52eaa3326bd905dbeb87e83eaa9a28e51fe806ab1c8129884df3f472a305883c",
+        "staging_key": "staging/cb47651f7761447a3206048943539d1dc9d3dcf934e210561079bb95de66a88c"
+      }
+    },
+    {
+      "id": "sealed_write_boundary",
+      "title": "the local store refuses cross-namespace writes; sealed bytes are server-only",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "put_staging_refuses_sealed_key",
+          "ok": true
+        },
+        {
+          "name": "put_sealed_refuses_staging_key",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "sealed_key": "sealed/58616c23e57b6bf1b3b2c91a971d721fe57caeffb708b8f8bd92059a52db17e6",
+        "staging_key": "staging/8292a42fea98c8dc4d9974249cb1bc080b600c389f74c91a0bc43df52df48482"
+      }
+    },
+    {
+      "id": "signed_link_boundaries",
+      "title": "HMAC links expire, bind one operation and one key, and fail closed when unconfigured",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "put_link_minted_for_staging",
+          "ok": true
+        },
+        {
+          "name": "put_link_verifies",
+          "ok": true
+        },
+        {
+          "name": "put_link_cannot_be_used_as_get",
+          "ok": true
+        },
+        {
+          "name": "sealed_put_link_cannot_be_minted",
+          "ok": true
+        },
+        {
+          "name": "staging_get_link_cannot_be_minted",
+          "ok": true
+        },
+        {
+          "name": "get_link_minted_and_verified",
+          "ok": true
+        },
+        {
+          "name": "max_bytes_cannot_exceed_cap",
+          "ok": true
+        },
+        {
+          "name": "link_expires_after_ttl",
+          "ok": true
+        },
+        {
+          "name": "short_signing_key_refused",
+          "ok": true
+        },
+        {
+          "name": "unconfigured_signer_fails_closed",
+          "ok": true
+        },
+        {
+          "name": "nil_signer_fails_closed",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "signing_key_bytes": 32,
+        "ttl_seconds": 1
+      }
+    },
+    {
+      "id": "delete_idempotent_and_sibling_safe",
+      "title": "delete is idempotent and never removes a sibling object",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "delete_succeeds",
+          "ok": true
+        },
+        {
+          "name": "repeated_delete_is_idempotent",
+          "ok": true
+        },
+        {
+          "name": "deleted_key_is_not_found",
+          "ok": true
+        },
+        {
+          "name": "sibling_object_untouched",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "deleted_key": "sealed/faee9a95f2c8ba7d241fde9253bd9ee6a256c54898b5aa6f9cb564eea495947f",
+        "sibling_key": "sealed/53818ea03e917b9cd0674e8c4291083d26f8deea945d789903a7c648a0ff34af"
+      }
+    },
+    {
+      "id": "size_cap_enforced",
+      "title": "bytes over MaxObjectBytes are refused with no partial object",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "oversized_write_refused",
+          "ok": true
+        },
+        {
+          "name": "no_partial_object_left",
+          "ok": true,
+          "detail": {
+            "objects_after": 1,
+            "objects_before": 1
+          }
+        },
+        {
+          "name": "narrowed_limit_refused",
+          "ok": true
+        }
+      ],
+      "evidence": {
+        "max_object_bytes": 20971520
+      }
+    },
+    {
+      "id": "anonymous_network_boundary",
+      "title": "anonymous HTTP access is denied (S3 deployment property)",
+      "status": "not_run",
+      "reason": "the local filesystem store has no HTTP surface; this stays blocked on a candidate S3 endpoint",
+      "checks": []
+    },
+    {
+      "id": "object_versioning",
+      "title": "object versioning keeps old sealed bytes addressable",
+      "status": "not_run",
+      "reason": "the local filesystem store has no object versioning",
+      "checks": []
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "not_run": 2,
+    "passed": 6
+  },
+  "limits": [
+    "not acceptance evidence for a candidate S3 service",
+    "no HTTP surface here: anonymous access, IAM/bucket policy, TLS and presigned S3 URLs are not exercised",
+    "no object versioning, backup/restore, replication or server-side encryption in the local FS store",
+    "the local journal/rename guarantees are filesystem-specific and say nothing about an S3 implementation"
+  ],
+  "started_at": "2026-11-04T08:16:36.8813291Z",
+  "finished_at": "2026-11-04T08:16:38.1650449Z",
+  "duration_ms": 1283
+}
