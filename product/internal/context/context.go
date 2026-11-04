@@ -781,6 +781,10 @@ func loadMemory(
 		return items[left].ConfirmedAt.After(items[right].ConfirmedAt)
 	})
 
+	parts, partsErr := encodedMemoryParts(items)
+	if partsErr != nil {
+		return nil, partsErr
+	}
 	chosen := make([]bool, len(items))
 	for index := range items {
 		if items[index].Protected {
@@ -792,7 +796,7 @@ func loadMemory(
 			continue
 		}
 		chosen[index] = true
-		if memoryTokensFor(items, chosen, trace) > memoryBudget {
+		if memoryContentTokensOf(parts, chosen) > memoryBudget {
 			chosen[index] = false
 		}
 	}
@@ -802,17 +806,14 @@ func loadMemory(
 		// truncation, never a silent empty success.
 		trace.MemoryState = MemoryTruncated
 		trace.MemoryTokens = 0
-		appendMemoryTruncations(trace, items, chosen, 0)
+		appendMemoryTruncations(trace, items, parts, chosen, 0)
 		return nil, nil
 	}
-	encoded, encodeErr := encodeMemory(selected)
-	if encodeErr != nil {
-		return nil, encodeErr
-	}
+	encoded := joinMemoryParts(selectedMemoryParts(parts, chosen))
 	trace.MemoryState = MemoryIncluded
-	trace.MemoryTokens = contentTokens(encoded)
-	trace.Sources = appendMemorySources(trace.Sources, items, chosen, trace.MemoryTokens)
-	appendMemoryTruncations(trace, items, chosen, trace.MemoryTokens)
+	trace.MemoryTokens = memoryContentTokensOf(parts, chosen)
+	trace.Sources = appendMemorySources(trace.Sources, items, parts, chosen, trace.MemoryTokens)
+	appendMemoryTruncations(trace, items, parts, chosen, trace.MemoryTokens)
 	return &memoryBlock{items: selected, content: encoded}, nil
 }
 
@@ -827,39 +828,77 @@ func selectedMemoryItems(items []memoryItem, chosen []bool) []memoryItem {
 	return selected
 }
 
-// encodeMemory renders the one memory message. Only the memory id and text reach
-// the model; revision/provenance stay in the trace.
-func encodeMemory(items []memoryItem) (string, *Error) {
-	payload := make([]map[string]any, 0, len(items))
-	for _, item := range items {
-		payload = append(payload, map[string]any{"id": item.ID, "text": item.Text})
+// selectedMemoryParts returns the canonical JSON of every chosen row, in
+// relevance order.
+func selectedMemoryParts(parts []string, chosen []bool) []string {
+	selected := make([]string, 0, len(parts))
+	for index := range parts {
+		if chosen[index] {
+			selected = append(selected, parts[index])
+		}
 	}
-	encoded, err := canonical(map[string]any{"confirmed_memory": payload})
-	if err != nil {
-		return "", invalid("the confirmed memory cannot be encoded")
-	}
-	return encoded, nil
+	return selected
 }
 
-// memoryTokensFor returns the exact message token cost of one chosen set.
-func memoryTokensFor(items []memoryItem, chosen []bool, trace *Trace) int {
-	selected := selectedMemoryItems(items, chosen)
-	if len(selected) == 0 {
-		return 0
+// The encoded memory message is an object with one array: its canonical form is
+// the prefix + the canonical items joined by commas + the suffix. Building it
+// this way lets the budget arithmetic stay linear in the number of rows while the
+// string is still exactly what canonical({"confirmed_memory": [...]}) produces
+// (pinned by TestEncodedMemoryMatchesTheCanonicalDocument).
+const (
+	memoryContentPrefix = `{"confirmed_memory":[`
+	memoryContentSuffix = `]}`
+)
+
+// encodedMemoryParts canonicalises every row once. Only the memory id and text
+// reach the model; revision/provenance stay in the trace.
+func encodedMemoryParts(items []memoryItem) ([]string, *Error) {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		part, err := canonical(map[string]any{"id": item.ID, "text": item.Text})
+		if err != nil {
+			return nil, invalid("the confirmed memory cannot be encoded")
+		}
+		parts = append(parts, part)
 	}
-	encoded, err := encodeMemory(selected)
+	return parts, nil
+}
+
+func joinMemoryParts(parts []string) string {
+	return memoryContentPrefix + strings.Join(parts, ",") + memoryContentSuffix
+}
+
+// memoryContentTokensOf is the exact message token cost of one chosen set: the
+// canonical byte length drives ceil(bytes/4), plus the fixed message framing.
+func memoryContentTokensOf(parts []string, chosen []bool) int {
+	size := len(memoryContentPrefix) + len(memoryContentSuffix)
+	count := 0
+	for index := range parts {
+		if chosen[index] {
+			size += len(parts[index])
+			count++
+		}
+	}
+	if count > 1 {
+		size += count - 1
+	}
+	return MessageOverheadTokens + EstimateTokens("content") + (size+bytesPerToken-1)/bytesPerToken
+}
+
+// encodeMemory renders the one memory message for a set of rows.
+func encodeMemory(items []memoryItem) (string, *Error) {
+	parts, err := encodedMemoryParts(items)
 	if err != nil {
-		trace.MemoryState = MemoryUnavailable
-		return 0
+		return "", err
 	}
-	return contentTokens(encoded)
+	return joinMemoryParts(parts), nil
 }
 
 // appendMemorySources records one trace source per selected memory row. The
 // estimated token count is that row's marginal cost: the message cost with the
 // row minus the message cost without it, so the numbers explain the spend.
 func appendMemorySources(
-	sources []TraceSource, items []memoryItem, chosen []bool, spent int,
+	sources []TraceSource, items []memoryItem, parts []string, chosen []bool, spent int,
 ) []TraceSource {
 	for index := range items {
 		if !chosen[index] {
@@ -868,7 +907,7 @@ func appendMemorySources(
 		without := make([]bool, len(chosen))
 		copy(without, chosen)
 		without[index] = false
-		marginal := spent - memoryTokensFor(items, without, &Trace{})
+		marginal := spent - memoryContentTokensOf(parts, without)
 		if marginal < 0 {
 			marginal = 0
 		}
@@ -890,7 +929,9 @@ func appendMemorySources(
 // appendMemoryTruncations records the rows the memory budget dropped, lowest
 // relevance first (the oldest unprotected row is truncated first). Each entry
 // names the memory row and revision and the tokens it would have cost.
-func appendMemoryTruncations(trace *Trace, items []memoryItem, chosen []bool, spent int) {
+func appendMemoryTruncations(
+	trace *Trace, items []memoryItem, parts []string, chosen []bool, spent int,
+) {
 	for index := len(items) - 1; index >= 0; index-- {
 		if chosen[index] {
 			continue
@@ -898,7 +939,7 @@ func appendMemoryTruncations(trace *Trace, items []memoryItem, chosen []bool, sp
 		with := make([]bool, len(chosen))
 		copy(with, chosen)
 		with[index] = true
-		removed := memoryTokensFor(items, with, &Trace{}) - spent
+		removed := memoryContentTokensOf(parts, with) - spent
 		if removed <= 0 {
 			removed = EstimateTokens(items[index].Text)
 		}

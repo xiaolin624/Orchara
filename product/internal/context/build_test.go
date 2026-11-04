@@ -621,3 +621,35 @@ func TestMemoryIsReducedPerItemWhenTheWholeContextIsOverBudget(t *testing.T) {
 		t.Fatalf("truncated memory ids = %v, want [m-big]", ids)
 	}
 }
+
+// TestEncodedMemoryMatchesTheCanonicalDocument pins the linear encoding the
+// budget arithmetic relies on to the canonical JSON document the model receives.
+func TestEncodedMemoryMatchesTheCanonicalDocument(t *testing.T) {
+	items := []memoryItem{
+		{ID: "m1", Text: "plain text"},
+		{ID: "m2", Text: "quotes \" and \n newline and 日本語"},
+	}
+	encoded, typed := encodeMemory(items)
+	if typed != nil {
+		t.Fatalf("encodeMemory error = %v", typed)
+	}
+	payload := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, map[string]any{"id": item.ID, "text": item.Text})
+	}
+	want, err := canonical(map[string]any{"confirmed_memory": payload})
+	if err != nil {
+		t.Fatalf("canonical error = %v", err)
+	}
+	if encoded != want {
+		t.Fatalf("encoded memory differs from the canonical document:\n%s\n%s", encoded, want)
+	}
+	if got, wantTokens := contentTokens(encoded), memoryContentTokensOf(
+		[]string{
+			`{"id":"m1","text":"plain text"}`,
+			`{"id":"m2","text":"quotes \" and \n newline and 日本語"}`,
+		}, []bool{true, true},
+	); got != wantTokens {
+		t.Fatalf("memoryContentTokensOf = %d, contentTokens = %d", wantTokens, got)
+	}
+}
