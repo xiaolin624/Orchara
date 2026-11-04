@@ -353,6 +353,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
 
+	// F13A/T065: the non-contract async progress read (ADR 0016). It returns the
+	// honest per-case counters and the business-vs-infrastructure failure class,
+	// never a percentage guessed from the evaluation state. Same owner-or-admin
+	// authorization as the contract read above.
+	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}/progress",
+		s.handleGetEvaluationProgress)
+
 	// F13A/T062: the administrator-only, non-contract attribution read. It
 	// exposes the account, cancellation outcome and the snapshot/manifest/
 	// dataset/compiler/worker identity behind a report, and never a sealed object
@@ -454,6 +461,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
+	// the path so a refresh is the same shareable view; the page reads the
+	// non-contract progress surface (ADR 0016).
+	mux.HandleFunc("GET /evaluations/{evaluation_id}", s.staticPage("evaluations.html"))
+	mux.HandleFunc("GET /assets/evaluations.js",
+		s.staticPage(filepath.Join("assets", "evaluations.js")))
 	// F06/T050: the approval queue/detail page. Static, compile-time path.
 	mux.HandleFunc("GET /approvals", s.staticPage("approvals.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))

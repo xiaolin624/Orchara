@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 评测进展与报告（F13A）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 60rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    h3 { font-size: .92rem; margin: 1rem 0 .3rem; }
+    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
+    dl.facts dt { opacity: .7; }
+    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    .hint { font-size: .82rem; opacity: .7; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .explain { font-size: .88rem; margin: .55rem 0 0; }
+    .explain strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    button { margin-top: .6rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/runs">运行列表</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>评测进展与报告</h1>
+  <p class="sub">
+    本页是非契约的评测进展视图（ADR 0016）：轮询
+    <code>GET /api/v1/evaluations/{id}/progress</code> 显示<strong>已持久化的逐例计数</strong>，
+    再从契约读 <code>GET /api/v1/evaluation-reports/{id}</code> 显示不可变报告。
+    刷新不会丢状态：评测 id 在 URL 路径里，页面重新读取同一份服务端事实。
+    页面<strong>不把 state 换算成百分比</strong>，也不伪造进度条：数字只来自 runner
+    在每例结束时写入的判定。
+  </p>
+  <p id="evaluation-status" class="status" role="status" aria-live="polite">正在读取评测进展…</p>
+
+  <section id="progress-panel" class="card" hidden aria-live="polite">
+    <h2>评测进展</h2>
+    <dl class="facts">
+      <dt>evaluation id</dt><dd id="p-evaluation"></dd>
+      <dt>任务状态</dt><dd id="p-state"></dd>
+      <dt>案例计数</dt><dd id="p-counts"></dd>
+      <dt>总案例数</dt><dd id="p-total"></dd>
+      <dt>已处理案例</dt><dd id="p-completed"></dd>
+      <dt>失败案例</dt><dd id="p-failed"></dd>
+      <dt>report_id</dt><dd id="p-report-id"></dd>
+      <dt>报告状态</dt><dd id="p-report-status"></dd>
+      <dt>失败分类</dt><dd id="p-failure-class"></dd>
+      <dt>error_code</dt><dd id="p-error-code"></dd>
+      <dt>created_at</dt><dd id="p-created-at"></dd>
+      <dt>finished_at</dt><dd id="p-finished-at"></dd>
+    </dl>
+    <p id="p-note" class="explain" aria-live="polite"></p>
+  </section>
+
+  <section id="failure-class-explanation" class="card">
+    <h2>“报告失败”与“任务失败”是两件事</h2>
+    <p id="business-sentence" class="explain">
+      <strong>业务失败（报告 failed，任务 succeeded）：</strong>
+      平台完成了评测，密封报告给出的是对<strong>被评测应用</strong>的判定。
+      这表示应用的某些案例没有通过，或者案例没有被判为通过；它不是平台故障，
+      报告仍然可读、不可变。
+    </p>
+    <p id="infrastructure-sentence" class="explain">
+      <strong>设施失败（任务 failed，没有报告）：</strong>
+      评测任务没有执行完，平台没有产出任何报告，所以 <code>report_id</code> 为空。
+      这属于任务/平台侧失败，不能当成应用判定；原因码来自任务的 error_code。
+    </p>
+    <p id="not-run-sentence" class="explain">
+      <strong><code>not_run</code> 是报告状态，不是任务状态：</strong>
+      一份 <code>not_run</code> 报告表示没有任何一例产出可判定结论（例如目标类型在本构建不可执行）。
+      对应的评测任务仍然是 <code>succeeded</code>，任务失败只会表现为 <code>failed</code> 且没有报告。
+    </p>
+    <p class="hint">
+      页面只展示服务端事实：<code>failure_class=business</code> 当且仅当存在报告且报告不是 passed；
+      <code>failure_class=infrastructure</code> 当且仅当任务失败且没有报告。
+    </p>
+  </section>
+
+  <section id="report-panel" class="card" hidden aria-live="polite">
+    <h2>不可变报告</h2>
+    <dl class="facts">
+      <dt>report id</dt><dd id="report-id"></dd>
+      <dt>报告状态</dt><dd id="report-status"></dd>
+      <dt>manifest_sha256</dt><dd id="report-manifest"></dd>
+      <dt>result_artifact_id</dt><dd id="report-artifact"></dd>
+      <dt>最后读取</dt><dd id="report-read-at"></dd>
+    </dl>
+    <p id="report-immutable-note" class="hint">
+      报告创建后字节与 sha256 不再变化。再次读取同一个 report_id 必须显示完全相同的
+      id/status/manifest_sha256/result_artifact_id；页面比较两次快照，不会重写历史。
+    </p>
+    <button id="report-refresh" type="button">重新读取报告（验证不可变）</button>
+    <p id="report-refresh-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="report-empty" class="card" hidden>
+    <h2>报告</h2>
+    <p class="explain">尚无报告（report_id 为空）。任务结束后报告才会存在；设施失败不会生成报告。</p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/evaluations.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var status = document.getElementById('evaluation-status');
+      var evaluationID = evaluationIDFromPathname(window.location.pathname);
+      var pollTimer = null;
+      var reportSnapshot = '';
+
+      function setStatus(text, kind) {
+        status.textContent = text;
+        status.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function setText(id, value) {
+        var node = document.getElementById(id);
+        if (node) {
+          node.textContent = value === undefined || value === null || value === '' ? '—' : String(value);
+        }
+      }
+
+      function renderProgress(progress) {
+        var view = describeProgress(progress);
+        document.getElementById('progress-panel').hidden = false;
+        setText('p-evaluation', progress.evaluation_id);
+        setText('p-state', progress.state + '（' + view.stateText + '）');
+        setText('p-counts', view.countsText);
+        setText('p-total', progress.total_cases);
+        setText('p-completed', progress.completed_cases);
+        setText('p-failed', progress.failed_cases);
+        setText('p-report-id', view.reportIDText);
+        setText('p-report-status', view.reportStatusText);
+        setText('p-failure-class', progress.failure_class || '无');
+        setText('p-error-code', progress.error_code || '无');
+        setText('p-created-at', progress.created_at);
+        setText('p-finished-at', progress.finished_at || '（任务尚未结束）');
+        document.getElementById('p-note').textContent = view.failureSentence;
+        setStatus(view.stateText + '；' + view.countsText, shouldPollEvaluationProgress(progress) ? 'pending' : 'ok');
+      }
+
+      function renderReport(report) {
+        document.getElementById('report-panel').hidden = false;
+        document.getElementById('report-empty').hidden = true;
+        setText('report-id', report.id);
+        setText('report-status', report.status);
+        setText('report-manifest', report.manifest_sha256);
+        setText('report-artifact', report.result_artifact_id);
+        setText('report-read-at', new Date().toISOString());
+        var note = document.getElementById('report-immutable-note');
+        note.textContent = describeReport(report) + '。报告创建后不可变：重新读取只显示同一份内容。';
+      }
+
+      function showEmptyReport() {
+        document.getElementById('report-panel').hidden = true;
+        document.getElementById('report-empty').hidden = false;
+      }
+
+      async function refreshReport(reportID) {
+        var readStatus = document.getElementById('report-refresh-status');
+        try {
+          var report = await api(evaluationReportDetailPath(reportID));
+          var snapshot = reportSnapshotText(report);
+          renderReport(report);
+          if (reportSnapshot && reportHasChanged(JSON.parse(reportSnapshot), report)) {
+            readStatus.textContent = '警告：同一 report_id 的两次读取不同（报告被改写）';
+            readStatus.className = 'status bad';
+          } else {
+            readStatus.textContent = '报告与上次读取一致（不可变）';
+            readStatus.className = 'status ok';
+          }
+          reportSnapshot = snapshot;
+        } catch (error) {
+          readStatus.textContent = '读取报告失败：' + (error.code || error.message);
+          readStatus.className = 'status bad';
+        }
+      }
+
+      async function refreshProgress() {
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+        try {
+          var progress = await api(evaluationProgressPath(evaluationID));
+          renderProgress(progress);
+          if (progress.report_id) {
+            await refreshReport(progress.report_id);
+          } else {
+            showEmptyReport();
+          }
+          if (shouldPollEvaluationProgress(progress)) {
+            pollTimer = setTimeout(refreshProgress, evaluationPollDelayMS(progress));
+          }
+        } catch (error) {
+          setStatus('读取评测进展失败：' + (error.code || error.message), 'bad');
+        }
+      }
+
+      if (!evaluationID) {
+        setStatus('URL 中缺少评测 id：请使用 /evaluations/{evaluation_id}', 'bad');
+        return;
+      }
+      document.getElementById('p-evaluation').textContent = evaluationID;
+      document.getElementById('report-refresh').addEventListener('click', function () {
+        var reportID = document.getElementById('report-id').textContent;
+        if (reportID && reportID !== '—') {
+          refreshReport(reportID);
+        }
+      });
+      refreshProgress();
+    })();
+  </script>
+</body>
+</html>

@@ -755,11 +755,25 @@ func (c *Controller) guardEvaluationSuccess(
 	); err != nil {
 		return "", fmt.Errorf("recording the evaluation report: %w", err)
 	}
+	// F13A/T065: the sealed report is the final progress truth. Every case in it
+	// has a decision, and the failed cases are the report's own statuses; the
+	// live progress reports may have been interrupted by a retry, so the
+	// terminal counters are written here in the same transaction as the report.
+	caseCount := int64(len(document.Cases))
+	failedCases := int64(0)
+	for _, item := range document.Cases {
+		if item.Status == eval.VerdictFailed {
+			failedCases++
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE platform.evaluation_jobs
-		   SET state = 'succeeded', report_id = $2::uuid, error_code = NULL, finished_at = now()
+		   SET state = 'succeeded', report_id = $2::uuid, error_code = NULL, finished_at = now(),
+		       progress_total = GREATEST(progress_total, $3),
+		       progress_done = GREATEST(progress_done, $3),
+		       progress_failed = $4
 		 WHERE id = $1::uuid AND state IN ('queued', 'running')`,
-		evaluation.ID, reportID,
+		evaluation.ID, reportID, caseCount, failedCases,
 	)
 	if err != nil {
 		return "", fmt.Errorf("completing the evaluation: %w", err)

@@ -202,6 +202,19 @@ func (r *evaluationRunner) Interact(
 	)
 }
 
+// RecordCaseOutcome persists one case's decision as it is made (F13A/T065). The
+// server owns the write and re-proves the lease; a case that never created a run
+// (an unsupported target) is observable to the progress read only through this
+// call. The sealed report remains the record of truth.
+func (r *evaluationRunner) RecordCaseOutcome(
+	ctx context.Context, caseID string, ordinal int, verdict, reasonCode string,
+) error {
+	r.heartbeat(ctx)
+	return r.work.Scope.EvaluationCaseOutcome(
+		ctx, r.work.Job.ID, r.work.AttemptToken, caseID, ordinal, verdict, reasonCode,
+	)
+}
+
 // run collects every case and builds the report document.
 func (r *evaluationRunner) run(
 	ctx context.Context, dataset *evaluation.Dataset, datasetSHA string,

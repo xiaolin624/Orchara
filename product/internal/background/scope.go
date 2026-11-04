@@ -50,6 +50,14 @@ type JobScope interface {
 	// EvaluationRunInteraction performs one predefined interaction on the case
 	// run as the evaluation's owner (this build performs cancel only).
 	EvaluationRunInteraction(ctx context.Context, jobID, attemptToken, runID, interaction string) error
+	// EvaluationCaseOutcome records one case's decision through the job-scoped
+	// progress bridge (F13A/T065). The runner decides; the server persists the
+	// decision on the case row and recomputes the evaluation's counters. It is
+	// a live progress fact, never the report's verdict authority.
+	EvaluationCaseOutcome(
+		ctx context.Context, jobID, attemptToken, caseID string,
+		ordinal int, verdict, reasonCode string,
+	) error
 	// ToolBuild returns the job-scoped build binding (T037): the admitted source
 	// artifact/hash and the canonical dependency lock. The handler never reads
 	// the tool row itself.

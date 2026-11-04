@@ -140,6 +140,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 		s.handleInternalEvaluationRunFacts)
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs/{run_id}/interactions",
 		s.handleInternalEvaluationRunInteraction)
+	// F13A/T065: the runner's per-case progress report. Job-scoped and
+	// maintenance-capacity only; it persists a decision the runner already made
+	// and never a verdict the server would accept from the handler.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-progress",
+		s.handleInternalEvaluationCaseOutcome)
 
 	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
 	// capacities; heartbeat may be served by either the supervisor or the worker

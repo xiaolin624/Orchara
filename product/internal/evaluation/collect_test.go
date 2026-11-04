@@ -18,6 +18,14 @@ type stagedRunClient struct {
 	facts        Facts
 	created      int
 	interactions []string
+	outcomes     []stagedOutcome
+}
+
+type stagedOutcome struct {
+	caseID     string
+	ordinal    int
+	verdict    string
+	reasonCode string
 }
 
 func (c *stagedRunClient) CreateCaseRun(
@@ -33,6 +41,15 @@ func (c *stagedRunClient) CaseRunFacts(_ context.Context, _ string) (Facts, erro
 
 func (c *stagedRunClient) Interact(_ context.Context, _ string, interaction Interaction) error {
 	c.interactions = append(c.interactions, interaction.Kind)
+	return nil
+}
+
+func (c *stagedRunClient) RecordCaseOutcome(
+	_ context.Context, caseID string, ordinal int, verdict, reasonCode string,
+) error {
+	c.outcomes = append(c.outcomes, stagedOutcome{
+		caseID: caseID, ordinal: ordinal, verdict: verdict, reasonCode: reasonCode,
+	})
 	return nil
 }
 
@@ -151,4 +168,52 @@ type blockingRunClient struct{ stagedRunClient }
 
 func (c *blockingRunClient) CaseRunFacts(_ context.Context, _ string) (Facts, error) {
 	return Facts{RunID: "run-queued", RunState: "queued"}, nil
+}
+
+func TestCollectReportsEveryCaseDecisionWithItsOrdinal(t *testing.T) {
+	// F13A/T065: the collector is the only place that knows a case's decision,
+	// including one that never created a run. Both a normal pass and a blocked
+	// target must be reported with the dataset's ordinal so the live progress
+	// read can count them without parsing the report.
+	client := &stagedRunClient{facts: Facts{
+		RunID:              "run-1",
+		RunState:           "succeeded",
+		Effects:            map[string]int64{},
+		EffectsCollected:   true,
+		CitationsCollected: true,
+	}}
+	dataset := &Dataset{Cases: []Case{
+		{
+			CaseID:     "first",
+			Target:     Target{Kind: "debug_snapshot", ID: "frozen"},
+			Input:      json.RawMessage(`{"text":"hello"}`),
+			Assertions: []Assertion{{Kind: "run_state", ExpectedState: "succeeded"}},
+		},
+		{
+			CaseID:     "second",
+			Target:     Target{Kind: "published_version", ID: "published"},
+			Input:      json.RawMessage(`{"text":"hello"}`),
+			Assertions: []Assertion{{Kind: "run_state", ExpectedState: "succeeded"}},
+		},
+	}}
+	cases, _ := Collect(context.Background(), client, dataset, CollectOptions{
+		CaseTimeout:  time.Second,
+		PollInterval: time.Millisecond,
+	})
+	if len(cases) != 2 {
+		t.Fatalf("expected two case results, got %d", len(cases))
+	}
+	if len(client.outcomes) != 2 {
+		t.Fatalf("expected two reported outcomes, got %+v", client.outcomes)
+	}
+	if got := client.outcomes[0]; got.caseID != "first" || got.ordinal != 0 || got.verdict != VerdictPassed {
+		t.Fatalf("unexpected first outcome: %+v", got)
+	}
+	blocked := client.outcomes[1]
+	if blocked.caseID != "second" || blocked.ordinal != 1 || blocked.verdict != VerdictBlocked {
+		t.Fatalf("unexpected blocked outcome: %+v", blocked)
+	}
+	if blocked.reasonCode != ReasonUnsupportedTarget {
+		t.Fatalf("the blocked outcome must carry its reason, got %+v", blocked)
+	}
 }
