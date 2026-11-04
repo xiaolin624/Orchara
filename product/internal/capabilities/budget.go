@@ -131,6 +131,17 @@ func mapBudgetError(err error) *Error {
 	return capFailure(500, CodeInternal, "the budget ledger could not record the call")
 }
 
+// settleFailureUsage reports whether a provider answer whose projection failed
+// still proves real token consumption. A nil projection or a missing/unusable
+// usage object means the platform cannot price the call: the conservative
+// reservation must be kept for maintenance reconciliation instead of released.
+func settleFailureUsage(projection *providerProjection) (tokensIn, tokensOut int64, ok bool) {
+	if projection == nil || projection.Usage == nil {
+		return 0, 0, false
+	}
+	return projection.TokensIn, projection.TokensOut, true
+}
+
 // ReconcileRequest is the maintenance-owned settlement of a retained
 // missing-usage reservation.
 type ReconcileRequest struct {

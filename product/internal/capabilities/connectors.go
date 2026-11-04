@@ -23,6 +23,7 @@ package capabilities
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,20 @@ import (
 
 // ConnectorKind is the contract's capability_kind value for a connector call.
 const ConnectorKind = "connector"
+
+// CodeConnectorReceiptUnavailable is the stable owner-facing code of a write
+// whose request was really sent but whose receipt could not be projected,
+// sealed or committed. It is never a failure of the write: the operation is
+// marked unknown until the owner reconciles it with evidence.
+const CodeConnectorReceiptUnavailable = "connector_receipt_unavailable"
+
+// Unknown-reason codes recorded in platform.run_unknown_operations for a lost
+// connector receipt. They extend the closed safe-code allowlist in
+// internal/execution; a reason is a run fact, never free text.
+const (
+	UnknownReasonConnectorReceiptUnavailable = "connector_receipt_unavailable"
+	UnknownReasonReceiptSealFailed           = "receipt_seal_failed"
+)
 
 // resolveConnector applies the manifest allowlist, the sealed-digest match and
 // the readiness/revocation rule, then validates the invocation params against
@@ -251,10 +266,27 @@ func (s *Service) dispatchConnector(
 		}
 		return nil, mapped
 	}
+	return s.finishConnectorSuccess(ctx, run, input, spec, operationID, response)
+}
+
+// finishConnectorSuccess seals the answer of a connector call that really
+// happened. Everything after Execute is a *receipt* problem, never a failure of
+// the write: if the response cannot be projected, sealed or committed the
+// operation is marked unknown (with the T036 unresolved-write row) in one
+// transaction. The physical attempt stays dispatching, exactly like every other
+// lost-receipt path, so the call can never be resent automatically.
+func (s *Service) finishConnectorSuccess(
+	ctx context.Context,
+	run *runContext,
+	input Input,
+	spec *capabilitySpec,
+	operationID string,
+	response *connectors.Response,
+) (*Result, error) {
 	payload, receipt, err := connectorReceipt(spec, response)
 	if err != nil {
-		_ = s.failAttemptAndOperation(ctx, operationID, 1, CodeInternal)
-		return nil, capFailure(500, CodeInternal, "the connector response could not be projected")
+		return s.connectorReceiptUnknown(ctx, run, input.AttemptToken, operationID,
+			UnknownReasonConnectorReceiptUnavailable)
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -265,8 +297,8 @@ func (s *Service) dispatchConnector(
 		"receipt", "capability_receipt", receipt)
 	if capErr != nil {
 		_ = tx.Rollback()
-		_ = s.failAttemptAndOperation(ctx, operationID, 1, CodeInternal)
-		return nil, capErr
+		return s.connectorReceiptUnknown(ctx, run, input.AttemptToken, operationID,
+			UnknownReasonReceiptSealFailed)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operation_attempts
@@ -274,7 +306,9 @@ func (s *Service) dispatchConnector(
 		 WHERE operation_id = $1::uuid AND attempt_no = $2 AND state = 'dispatching'`,
 		operationID, 1, receiptArtifactID,
 	); err != nil {
-		return nil, capFailure(500, CodeInternal, "the connector attempt could not be closed")
+		_ = tx.Rollback()
+		return s.connectorReceiptUnknown(ctx, run, input.AttemptToken, operationID,
+			UnknownReasonReceiptSealFailed)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
@@ -282,10 +316,13 @@ func (s *Service) dispatchConnector(
 		       last_error_code = NULL, updated_at = now()
 		 WHERE id = $1::uuid AND state = 'dispatching'`, operationID, receiptArtifactID,
 	); err != nil {
-		return nil, capFailure(500, CodeInternal, "the connector operation could not be succeeded")
+		_ = tx.Rollback()
+		return s.connectorReceiptUnknown(ctx, run, input.AttemptToken, operationID,
+			UnknownReasonReceiptSealFailed)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, capFailure(500, CodeInternal, "the connector result could not be committed")
+		return s.connectorReceiptUnknown(ctx, run, input.AttemptToken, operationID,
+			UnknownReasonReceiptSealFailed)
 	}
 	artifact := receiptArtifactID
 	return &Result{
@@ -294,6 +331,91 @@ func (s *Service) dispatchConnector(
 		ReceiptArtifactID: &artifact,
 		Data:              payload,
 	}, nil
+}
+
+// connectorReceiptUnknown records a write whose receipt was lost after the
+// request was sent. The operation is unknown, never failed/succeeded: only the
+// owner's evidence can settle whether the remote side applied it.
+func (s *Service) connectorReceiptUnknown(
+	ctx context.Context,
+	run *runContext,
+	attemptToken, operationID, reason string,
+) (*Result, error) {
+	return s.markConnectorUnknown(ctx, run, attemptToken, operationID,
+		capFailure(500, CodeConnectorReceiptUnavailable,
+			"the connector response was received but its receipt could not be recorded"),
+		reason)
+}
+
+// resumeApprovedWriteTx re-proves a parked write's authorization immediately
+// before the authorized -> dispatching CAS. An approval is a time-bounded grant
+// over one exact params digest: it must exist, still be `approved`, still carry
+// the operation's digest and still be live by the database clock. An expired
+// approval is transitioned to `expired` and the operation failed with
+// `approval_expired` inside this transaction; any other unusable approval fails
+// closed. commitRefusal reports that the refusal transition was written and the
+// caller must commit it; a database read failure returns false so the caller
+// rolls back.
+func (s *Service) resumeApprovedWriteTx(
+	ctx context.Context, tx *sql.Tx, operationID, digest string,
+) (bool, *Error) {
+	var (
+		approvalID string
+		state      string
+		paramsSHA  string
+		expired    bool
+	)
+	err := tx.QueryRowContext(ctx, `
+		SELECT id::text, state, params_sha256, now() >= expires_at
+		  FROM platform.approvals
+		 WHERE operation_id = $1::uuid`, operationID,
+	).Scan(&approvalID, &state, &paramsSHA, &expired)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, s.failResumeRefusalTx(ctx, tx, operationID, CodeApprovalUnavailable,
+			"the write operation has no approval to resume")
+	}
+	if err != nil {
+		return false, capFailure(500, CodeInternal, "the operation approval could not be read")
+	}
+	if !strings.EqualFold(strings.TrimSpace(paramsSHA), digest) {
+		return true, s.failResumeRefusalTx(ctx, tx, operationID, approvals.CodeParamsMismatch,
+			"the approval does not carry the operation's exact params digest")
+	}
+	switch state {
+	case "approved":
+		if !expired {
+			return false, nil
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.approvals
+			   SET state = 'expired', decided_at = COALESCE(decided_at, now())
+			 WHERE id = $1::uuid AND state = 'approved'`, approvalID); err != nil {
+			return false, capFailure(500, CodeInternal, "the expired approval could not be recorded")
+		}
+		return true, s.failResumeRefusalTx(ctx, tx, operationID, approvals.CodeExpired,
+			"the approval expired before the operation could be dispatched")
+	case "expired":
+		return true, s.failResumeRefusalTx(ctx, tx, operationID, approvals.CodeExpired,
+			"the approval expired before the operation could be dispatched")
+	default:
+		// pending/rejected/invalidated: the operation can never be dispatched.
+		return true, s.failResumeRefusalTx(ctx, tx, operationID, approvals.CodeNotPending,
+			"the approval for this write operation is no longer approved")
+	}
+}
+
+// failResumeRefusalTx fails the parked operation with the stable refusal code.
+func (s *Service) failResumeRefusalTx(
+	ctx context.Context, tx *sql.Tx, operationID, code, message string,
+) *Error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.operations
+		   SET state = 'failed', last_error_code = $2, updated_at = now()
+		 WHERE id = $1::uuid AND state = 'authorized'`, operationID, code,
+	); err != nil {
+		return capFailure(500, CodeInternal, "the refused write operation could not be failed")
+	}
+	return capFailure(409, code, message)
 }
 
 // connectorReceipt builds (worker-visible data, sealed receipt). The receipt

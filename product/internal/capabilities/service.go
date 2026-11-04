@@ -644,6 +644,20 @@ func (s *Service) prepareOperation(
 			// decision flipped the parked operation to authorized. Dispatch still
 			// goes through beginConnectorAttempt's authorized -> dispatching CAS,
 			// so a second concurrent resume cannot write twice.
+			//
+			// F06/review2 P1-4: the approval is a time-bounded grant, not a
+			// permanent capability. Re-read it here, on the same transaction and
+			// with the database clock, before allowing the CAS: an approval that
+			// expired between the decision and the resume must never write.
+			commitRefusal, approvalErr := s.resumeApprovedWriteTx(ctx, tx, existing.ID, digest)
+			if approvalErr != nil {
+				if commitRefusal {
+					if err := tx.Commit(); err != nil {
+						return nil, capFailure(500, CodeInternal, "the approval refusal could not be committed")
+					}
+				}
+				return nil, approvalErr
+			}
 			if err := tx.Commit(); err != nil {
 				return nil, capFailure(500, CodeInternal, "the approval resume could not be committed")
 			}
@@ -1299,7 +1313,11 @@ func (s *Service) finishModelSuccess(
 ) (*Result, error) {
 	projection, problems := validateProviderResponse(response.Data, spec.Model)
 	if len(problems) > 0 {
-		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeProviderResponseInvalid)
+		// F06/review2 P1-5: the provider answered and may have reported real
+		// usage. A projection failure is a platform-side refusal, not proof that
+		// the call was free: settle the actual usage instead of releasing it.
+		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
+			CodeProviderResponseInvalid, projection, pricing)
 		return nil, &Error{
 			Status:  422,
 			Code:    CodeProviderResponseInvalid,
@@ -1330,7 +1348,9 @@ func (s *Service) finishModelSuccess(
 	}
 	content, err := json.Marshal(payload)
 	if err != nil {
-		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeProviderResponseInvalid)
+		// The provider answer exists; its usage must still be settled.
+		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
+			CodeProviderResponseInvalid, projection, pricing)
 		return nil, capFailure(500, CodeInternal, "the validated response could not be encoded")
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -1342,7 +1362,10 @@ func (s *Service) finishModelSuccess(
 		"receipt", "capability_receipt", content)
 	if capErr != nil {
 		_ = tx.Rollback()
-		_ = s.failAttemptAndOperation(ctx, operationID, attempt, CodeInternal)
+		// The provider answer exists; settling its usage must not depend on the
+		// receipt artifact being writable.
+		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
+			CodeInternal, projection, pricing)
 		return nil, capErr
 	}
 	// F06/T046: settle the actual usage against the price version. The charge
@@ -1464,6 +1487,103 @@ func (s *Service) resetAttemptForRetry(ctx context.Context, operationID string, 
 		return capFailure(500, CodeInternal, "the retry decision could not be committed")
 	}
 	return nil
+}
+
+// failModelAttemptAfterProvider closes a model attempt that failed after the
+// provider's answer was already received. The provider's tokens were really
+// consumed, so when its usage object parsed the actual amount is settled (charge
+// + paired release) and recorded on the failed attempt; a missing or unusable
+// usage keeps the conservative reservation as `usage_missing` for maintenance
+// reconciliation. The operation is failed with code. The reservation of a call
+// the provider answered is never silently released.
+func (s *Service) failModelAttemptAfterProvider(
+	ctx context.Context,
+	operationID string,
+	attempt int,
+	code string,
+	projection *providerProjection,
+	pricing *modelPrice,
+) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	settled := false
+	var chargedAmount string
+	var tokensIn, tokensOut int64
+	if s.Budget != nil && pricing != nil {
+		if in, out, ok := settleFailureUsage(projection); ok {
+			amount, chargeErr := budget.ActualCharge(pricing.price, in, out)
+			if chargeErr == nil {
+				result, settleErr := s.Budget.SettleTx(ctx, tx, budget.Settlement{
+					AttemptKey:   budget.AttemptKey(operationID, attempt),
+					Amount:       amount,
+					Currency:     pricing.price.Currency,
+					PriceVersion: pricing.version,
+					TokensIn:     &in,
+					TokensOut:    &out,
+				})
+				if settleErr == nil {
+					settled = true
+					chargedAmount = result.ChargedAmount
+					tokensIn, tokensOut = in, out
+				}
+			}
+		}
+	}
+	switch {
+	case settled:
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operation_attempts
+			   SET state = 'failed', error_code = $3, tokens_in = $4, tokens_out = $5,
+			       charged_amount = $6::numeric, price_version = $7,
+			       settlement_state = 'settled', finished_at = now()
+			 WHERE operation_id = $1::uuid AND attempt_no = $2`,
+			operationID, attempt, code, tokensIn, tokensOut, chargedAmount, pricing.version,
+		); err != nil {
+			return err
+		}
+	case s.Budget != nil && pricing != nil:
+		// The provider answered but its usage is missing or unusable: keep the
+		// conservative reservation instead of pretending the call was free.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operation_attempts
+			   SET state = 'failed', error_code = $3, price_version = $4,
+			       settlement_state = CASE WHEN settlement_state = 'reserved'
+			                               THEN 'usage_missing' ELSE settlement_state END,
+			       finished_at = now()
+			 WHERE operation_id = $1::uuid AND attempt_no = $2`,
+			operationID, attempt, code, pricing.version,
+		); err != nil {
+			return err
+		}
+	default:
+		// No price version means there is no meaningful charge to record; keep
+		// the plain release behaviour of a pre-dispatch failure.
+		if s.Budget != nil {
+			if _, err := s.Budget.ReleaseTx(ctx, tx, budget.AttemptKey(operationID, attempt)); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE platform.operation_attempts
+			   SET state = 'failed', error_code = $3, finished_at = now(),
+			       settlement_state = CASE WHEN settlement_state = 'reserved'
+			                               THEN 'released' ELSE settlement_state END
+			 WHERE operation_id = $1::uuid AND attempt_no = $2`, operationID, attempt, code,
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.operations
+		   SET state = 'failed', last_error_code = $2, updated_at = now()
+		 WHERE id = $1::uuid`, operationID, code); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) failAttemptAndOperation(ctx context.Context, operationID string, attempt int, code string) error {

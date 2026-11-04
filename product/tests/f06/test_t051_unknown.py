@@ -161,6 +161,63 @@ def test_a_five_hundred_after_send_is_unknown_not_failed(t051_stack, write_serve
     assert t051.connector_request_count(write_server) == 1, write_server.records
 
 
+def test_a_receipt_that_cannot_be_sealed_is_unknown_not_failed(t051_stack, write_server) -> None:
+    """P1-3 regression: a real write whose receipt cannot be persisted is unknown.
+
+    The endpoint really receives and applies the write, then answers 2xx; the API
+    process can no longer seal the receipt object. Before the fix this path ran
+    ``failAttemptAndOperation``, so the operation became ``failed`` and no
+    ``run_unknown_operations`` row existed: the Run could be failed even though
+    the remote side had applied one write. The only honest state is ``unknown``
+    with one unresolved ledger row, and owner evidence must settle it without a
+    second write.
+    """
+    owner = t041.owner(t051_stack)
+    prepared = t051.prepare_approved_write(t051_stack, write_server, owner)
+    assert write_server.records == [], "the approval path must never send"
+
+    fault = t051.ReceiptSealFault(t051_stack)
+    write_server.responder = fault.responder
+    try:
+        response = t051.invoke_capability(t051_stack, prepared["lease"], prepared)
+    finally:
+        fault.restore()
+    assert response.status == 200, response.text
+    assert response.json["state"] == t051.STATE_UNKNOWN, response.json
+
+    run_id = prepared["run"]["id"]
+    operation_id = prepared["operation_id"]
+    assert t051.connector_request_count(write_server) == 1, write_server.records
+    operation = t051.operation_row(t051_stack.dbname, run_id, operation_id)
+    assert operation["state"] == t051.STATE_UNKNOWN, operation
+    assert operation["last_error_code"] == "connector_receipt_unavailable", operation
+    assert operation["receipt_artifact_id"] is None, operation
+    assert operation["reconciliation_limitation"] == t051.LIMITATION_NO_IDEMPOTENCY, operation
+    attempts = t051.attempt_rows(t051_stack.dbname, operation_id)
+    assert len(attempts) == 1 and attempts[0]["state"] == "dispatching", attempts
+    unknown = t051.unknown_row(t051_stack.dbname, run_id, operation_id)
+    assert unknown is not None and unknown["resolved_at"] is None, unknown
+    assert unknown["reason"] == "receipt_seal_failed", unknown
+
+    # The Run parks in needs_reconciliation; the owner's evidence settles the one
+    # real write without a resend.
+    park_needs_reconciliation(
+        t051_stack, prepared["lease"], owner.creator.principal_id, success_output=True
+    )
+    assert t051.run_state(t051_stack.dbname, run_id)["state"] == t051.STATE_NEEDS_RECONCILIATION
+    evidence = t051.seed_evidence_artifact(
+        t051_stack, owner.creator.principal_id, operation_id=operation_id, run_id=run_id
+    )
+    settled = t051.reconcile(
+        owner.creator, operation_id,
+        conclusion=t051.CONCLUSION_SUCCESS, evidence_artifact_id=evidence,
+    )
+    assert settled.status == 200, settled.text
+    assert settled.json["state"] == t051.STATE_SUCCEEDED, settled.json
+    assert t051.physical_write_count(t051_stack.dbname, operation_id) == 1
+    assert t051.connector_request_count(write_server) == 1, write_server.records
+
+
 # ---------------------------------------------------------------------------
 # milestone 2: reconciliation
 # ---------------------------------------------------------------------------
