@@ -67,8 +67,8 @@ func NormalizeUploadInput(input UploadInput) (UploadInput, Format, error) {
 		return UploadInput{}, "", &ValidationError{
 			Field: "media_type",
 			Message: "media_type must be one of text/plain, text/csv, application/json or " +
-				XLSXMediaType + " (text/markdown only for purpose=knowledge; application/zip " +
-				"only for purpose=tool_source)",
+				XLSXMediaType + " (text/markdown and application/pdf only for " +
+				"purpose=knowledge; application/zip only for purpose=tool_source)",
 		}
 	}
 	if input.SizeBytes < 1 || input.SizeBytes > MaxUploadBytes {

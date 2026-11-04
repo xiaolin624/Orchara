@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -110,11 +111,32 @@ func TestUploadInputValidationIsExact(t *testing.T) {
 	}
 }
 
+// NIT-1: the refusal text must enumerate every media type this build admits.
+// application/pdf is purpose-scoped for knowledge, so a caller who sends it
+// with the wrong purpose must still see it in the list.
+func TestUploadMediaTypeRefusalNamesEveryAdmittedType(t *testing.T) {
+	_, _, err := NormalizeUploadInput(UploadInput{
+		MediaType: "application/pdf", SizeBytes: 1, Purpose: "task_input",
+	})
+	validation, ok := err.(*ValidationError)
+	if !ok {
+		t.Fatalf("error = %v, want *ValidationError", err)
+	}
+	for _, mediaType := range []string{
+		"text/plain", "text/csv", "application/json", XLSXMediaType,
+		"text/markdown", PDFMediaType, "application/zip",
+	} {
+		if !strings.Contains(validation.Message, mediaType) {
+			t.Fatalf("the media_type refusal omits %q: %s", mediaType, validation.Message)
+		}
+	}
+}
+
+// F10/T059 extends the parser registry, not the upload allowlist: a
+// purpose=knowledge upload of a CSV or an XLSX declaration was already
+// admitted before the tabular parsers existed. This test pins that fact so
+// the ticket's "no admission change" claim stays verifiable.
 func TestKnowledgeUploadsAlreadyAdmitCSVAndXLSXWithoutAnAdmissionChange(t *testing.T) {
-	// F10/T059 extends the parser registry, not the upload allowlist: a
-	// purpose=knowledge upload of a CSV or an XLSX declaration was already
-	// admitted before the tabular parsers existed. This test pins that fact so
-	// the ticket's "no admission change" claim stays verifiable.
 	for _, mediaType := range []string{"text/csv", XLSXMediaType} {
 		if _, ok := SupportedUploadMediaTypeForPurpose("knowledge", mediaType); !ok {
 			t.Fatalf("purpose=knowledge must admit %q", mediaType)
