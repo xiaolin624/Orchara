@@ -1,4 +1,4 @@
-# ADR 0018 — The asynchronous evaluation progress read
+# ADR 0019 — The asynchronous evaluation progress read
 
 - Status: Accepted (F13A/T065, issue #66)
 - Date: 2026-11-04
@@ -41,8 +41,9 @@ handler still may not touch platform tables directly.
 
 ### 1. Persist the runner's per-case decision (non-contract migration)
 
-`0039_evaluation_progress.sql` (originally `0038`; renumbered in the integration
-merge when T060/F10 took `0038_pdf_admission.sql`) adds:
+`0040_evaluation_progress.sql` (originally `0038`; renumbered in the integration
+merges when T060/F10 took `0038_pdf_admission.sql` and T061/F10 took
+`0039_index_revisions.sql`) adds:
 
 - `platform.evaluation_case_runs.verdict text` — the runner's closed decision
   vocabulary `passed|failed|blocked|not_run`. `state` keeps its meaning (the
@@ -167,8 +168,9 @@ boundary every page ticket records (no browser DOM is driven).
   report as before; if it also reads `evaluation_case_runs`, `verdict` now
   carries the runner's decision independently of the observed run state.
 - Migration numbering: the file was `0038` on the ticket branch and became
-  `0039` in the integration merge when T060/F10 took `0038`; the migration
+  `0039` in the first integration merge when T060/F10 took `0038`, then `0040`
+  in the third integration merge when T061/F10 took `0039`; the migration
   protocol says the merger renumbers rather than reusing a version. The ADR
-  itself was `0016` on the ticket branch, became `0017` when T060 took `0016`
-  and is `0018` after T056's evaluation-case-results ADR took `0017` in the
-  second integration merge.
+  itself was `0016` on the ticket branch, became `0017` when T060 took `0016`,
+  `0018` after T056's evaluation-case-results ADR took `0017`, and is `0019`
+  after T061's index-revisions ADR took `0018`.

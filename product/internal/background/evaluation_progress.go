@@ -5,7 +5,7 @@ package background
 // The contract's evaluation reads are the six-field EvaluationJob and the
 // four-field Report; neither says how far an asynchronous evaluation has got,
 // and the Report only exists once the run is over. This file is the server half
-// of the documented non-contract read (ADR 0018):
+// of the documented non-contract read (ADR 0019):
 //
 //	GET /api/v1/evaluations/{evaluation_id}/progress
 //

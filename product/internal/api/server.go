@@ -356,7 +356,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// non-contract extension: artifact ids only, owner-or-admin, 404 otherwise).
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}/cases", s.handleGetEvaluationCases)
 
-	// F13A/T065: the non-contract async progress read (ADR 0018). It returns the
+	// F13A/T065: the non-contract async progress read (ADR 0019). It returns the
 	// honest per-case counters and the business-vs-infrastructure failure class,
 	// never a percentage guessed from the evaluation state. Same owner-or-admin
 	// authorization as the contract read above.
@@ -475,7 +475,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
-	// non-contract progress surface (ADR 0018).
+	// non-contract progress surface (ADR 0019).
 	mux.HandleFunc("GET /evaluations/{evaluation_id}", s.staticPage("evaluations.html"))
 	mux.HandleFunc("GET /assets/evaluations.js",
 		s.staticPage(filepath.Join("assets", "evaluations.js")))
