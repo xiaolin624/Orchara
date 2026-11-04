@@ -1,5 +1,11 @@
 -- F13A/T065: async evaluation progress persisted by the trusted runner.
 --
+-- Migration number: this branch originally added `0038_evaluation_progress.sql`.
+-- The integration merge brought T060/F10's `0038_pdf_admission.sql`, so this file
+-- is renumbered to `0039_evaluation_progress.sql` in the merge result (the
+-- renumbering is recorded in the T065 report/PROGRESS; no statement here names
+-- its own version).
+--
 -- Baseline: contracts/database.sql defines `evaluation_jobs` and
 -- `evaluation_reports` (0013); F13A/T052's 0035 added the per-case run ledger
 -- `evaluation_case_runs` and the coarse `progress_total` / `progress_done`

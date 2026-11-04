@@ -11,7 +11,7 @@ package api
 // platform's registered read scope before the ACL runs.
 //
 // The projection never carries a sealed object key, a report body, a case input
-// or a percentage. `failure_class` is the T065 distinction (ADR 0016):
+// or a percentage. `failure_class` is the T065 distinction (ADR 0017):
 // business = a report failed/not_run while the job succeeded; infrastructure =
 // the job failed and no report exists; null = running/cancelled/passed.
 
