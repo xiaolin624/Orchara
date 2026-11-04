@@ -264,8 +264,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/api-keys/{key_id}", s.handleRevokeAPIKey)
 	// F09/T054: the real personal-memory read/write model. A service credential
 	// is refused with 403 personal_scope_forbidden on every one of them.
+	// F09/T058 adds the revisioned detail/update/delete surface; the detail read
+	// is the only strong-ETag read on a memory.
 	mux.HandleFunc("POST /api/v1/memories", s.handleCreateMemory)
 	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
+	mux.HandleFunc("GET /api/v1/memories/{memory_id}", s.handleGetMemory)
+	mux.HandleFunc("PATCH /api/v1/memories/{memory_id}", s.handleUpdateMemory)
+	mux.HandleFunc("DELETE /api/v1/memories/{memory_id}", s.handleDeleteMemory)
 	mux.HandleFunc("GET /api/v1/memory-candidates", s.handleListMemoryCandidates)
 	mux.HandleFunc("POST /api/v1/memory-candidates/{candidate_id}/decision",
 		s.handleDecideMemoryCandidate)
@@ -342,6 +347,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F13A/T056: the per-case view of one sealed report (the documented
 	// non-contract extension: artifact ids only, owner-or-admin, 404 otherwise).
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}/cases", s.handleGetEvaluationCases)
+
+	// F13A/T062: the administrator-only, non-contract attribution read. It
+	// exposes the account, cancellation outcome and the snapshot/manifest/
+	// dataset/compiler/worker identity behind a report, and never a sealed object
+	// key, a report body or another user's content (ADR 0014). Non-admins get 403
+	// before any lookup.
+	mux.HandleFunc("GET /api/v1/admin/evaluations/{evaluation_id}/attribution",
+		s.handleGetEvaluationAttribution)
 
 	// F13A/T052: the contract's evaluateDraft. The creator names a frozen draft
 	// revision and an uploaded, sealed evaluation dataset; the platform freezes

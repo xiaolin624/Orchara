@@ -4,9 +4,15 @@ package api
 //
 //	POST /api/v1/memories                              createMemory
 //	GET  /api/v1/memories                              listMemories
+//	GET  /api/v1/memories/{memory_id}                  getMemory      (strong ETag)
 //	GET  /api/v1/memory-candidates                     listMemoryCandidates
 //	POST /api/v1/memory-candidates/{id}/decision       decideMemoryCandidate
 //	POST /internal/v1/runs/{run_id}/memory-candidates  proposeMemoryCandidate
+//
+// F09/T058 adds the revisioned read/write surface: the strong ETag on the detail
+// read is the revision token a PATCH must echo, and update/delete raise the
+// revision and the memory-scope cache epoch in the same transaction so the old
+// content stops being recallable before any asynchronous cleanup.
 //
 // Every public handler refuses a service credential with 403
 // `personal_scope_forbidden` before any store code runs (the F01/T020 boundary:
@@ -158,6 +164,112 @@ func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, memoryListEnvelope[memoryView]{Items: views, NextCursor: next})
 }
 
+// handleGetMemory returns one memory plus the strong ETag a later PATCH must
+// echo. The ETag is the revision as a quoted opaque token (catalog.FormatETag),
+// the same validator the draft editor uses, and Cache-Control: no-store comes
+// from writeJSON so a stale revision can never be served from a cache.
+func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.requireHumanMemory(w, r, caller) {
+		return
+	}
+	entry, err := s.memory.Get(r.Context(), caller.PrincipalID, r.PathValue("memory_id"))
+	if !s.writeMemoryError(w, r, err) {
+		return
+	}
+	w.Header().Set("ETag", catalog.FormatETag(entry.Revision))
+	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
+}
+
+// updateMemoryRequest is the contract's updateMemory body: exactly {text,
+// confirmed}. `confirmed` is a pointer so a missing/false value is a located 422
+// instead of a silent default. The contract body has no application_id and no
+// owner: an update cannot move a memory across a scope boundary.
+type updateMemoryRequest struct {
+	Text      string `json:"text"`
+	Confirmed *bool  `json:"confirmed"`
+}
+
+// handleUpdateMemory is the optimistic-concurrency write:
+//
+//	missing If-Match          -> 428 precondition_required (details.header)
+//	stale/garbled If-Match    -> 412 precondition_failed (+ current_etag)
+//	invalid body shape        -> 422 validation_failed
+//	deleted/foreign/unknown   -> 404 resource_not_found (before the precondition)
+//	accepted                  -> 200 Memory + the new strong ETag
+//
+// The body is decoded first only for genuinely malformed JSON (the shared
+// decoder's 400); shape validation happens inside the service after visibility
+// and If-Match, so a refused precondition is never masked by a 422.
+func (s *Server) handleUpdateMemory(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.requireHumanMemory(w, r, caller) {
+		return
+	}
+	var request updateMemoryRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	// Repeated If-Match values are not the single opaque token the contract
+	// defines; treat the header as garbled rather than guessing which is meant
+	// (the same rule the draft PUT applies).
+	ifMatch := r.Header.Get("If-Match")
+	if len(r.Header.Values("If-Match")) > 1 {
+		ifMatch = "multiple-values"
+	}
+	confirmed := request.Confirmed != nil && *request.Confirmed
+	entry, err := s.memory.Update(r.Context(), caller.PrincipalID, memory.UpdateInput{
+		MemoryID:  r.PathValue("memory_id"),
+		Text:      request.Text,
+		Confirmed: confirmed,
+		IfMatch:   ifMatch,
+	})
+	if !s.writeMemoryError(w, r, err) {
+		return
+	}
+	w.Header().Set("ETag", catalog.FormatETag(entry.Revision))
+	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
+}
+
+// deletionAcceptedView is exactly the contract's DeletionAccepted. `id` is a
+// deletion_job id, not the memory id; the memory is named by `resource_id`.
+type deletionAcceptedView struct {
+	ID         string `json:"id"`
+	State      string `json:"state"`
+	ResourceID string `json:"resource_id"`
+}
+
+// handleDeleteMemory answers 202 with the deletion job. The tombstone, the
+// revision bump, the job row and the memory-scope cache-epoch bump are committed
+// before this response is written, so the next read or recall already refuses the
+// old content; physical cleanup is asynchronous F07 work and the reported
+// `pending` state says so honestly.
+func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if !s.requireHumanMemory(w, r, caller) {
+		return
+	}
+	job, err := s.memory.Delete(r.Context(), caller.PrincipalID, r.PathValue("memory_id"))
+	if !s.writeMemoryError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusAccepted, deletionAcceptedView{
+		ID:         job.ID,
+		State:      job.State,
+		ResourceID: job.ResourceID,
+	})
+}
+
 // handleListMemoryCandidates returns the owner's candidates. A pending candidate
 // past its deadline is reported as expired by the server, never left for the page
 // to infer.
@@ -288,8 +400,17 @@ func (s *Server) writeMemoryError(w http.ResponseWriter, r *http.Request, err er
 	}
 	if typed, ok := memory.AsError(err); ok {
 		var details map[string]any
+		if len(typed.Details) > 0 {
+			details = make(map[string]any, len(typed.Details)+1)
+			for key, value := range typed.Details {
+				details[key] = value
+			}
+		}
 		if typed.Field != "" {
-			details = map[string]any{"field": typed.Field}
+			if details == nil {
+				details = map[string]any{}
+			}
+			details["field"] = typed.Field
 		}
 		writeErrorWithDetails(w, r, typed.Status, typed.Code, typed.Message, details)
 		return false

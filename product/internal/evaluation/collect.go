@@ -68,6 +68,8 @@ var restStates = map[string]bool{
 const (
 	ReasonUnsupportedTarget    = "unsupported_target"
 	ReasonRunTimeout           = "run_timeout"
+	ReasonRunCancelled         = "run_cancelled"
+	ReasonRunUnfinished        = "run_unfinished"
 	ReasonAssertionFailed      = "assertion_failed"
 	ReasonRunUnavailable       = "run_unavailable"
 	ReasonCollectionRefused    = "collection_refused"
@@ -80,6 +82,25 @@ const (
 // expects (T056). It is not a contract assertion kind; it is evaluated by the
 // same checker against the run's own state and error code.
 const CheckFailureReason = KindFailureReason
+
+// CompletedRunState reports whether a run state means the case actually finished
+// executing. Only a succeeded or failed run is a completed execution; a cancelled
+// run was stopped and the two reconciliation rest states may still move, so none
+// of them can ever be the basis of a passed case.
+//
+// It is exported because the completion guard applies the same rule to a sealed
+// report: the runner's verdict and the server's acceptance must not drift.
+func CompletedRunState(state string) bool {
+	return state == "succeeded" || state == "failed"
+}
+
+// TerminalRunState reports whether the run can no longer transition. It is a
+// broader predicate than CompletedRunState: a cancelled run is terminal but not
+// completed, which is exactly the distinction an administrator needs when
+// reading a case's attribution.
+func TerminalRunState(state string) bool {
+	return state == "succeeded" || state == "failed" || state == "cancelled"
+}
 
 // Checks the collector reports having performed. The report's `checks` array
 // must never be empty, so a dataset-only or target-only refusal still names the
@@ -253,6 +274,21 @@ func collectCase(
 
 	outcomes := caseOutcomes(item, facts)
 	result.Assertions = outcomes
+	// F13A/T062: a case that did not finish can never be passed, even when every
+	// declared assertion happens to be true of the state it stopped in. The
+	// assertion outcomes stay as evidence; only the verdict changes.
+	if !CompletedRunState(facts.RunState) {
+		result.Status = VerdictFailed
+		result.Verdict = VerdictFailed
+		if facts.RunState == "cancelled" {
+			result.ReasonCode = ReasonRunCancelled
+			result.Detail = "the case's run was cancelled; a cancelled case is never passed"
+		} else {
+			result.ReasonCode = ReasonRunUnfinished
+			result.Detail = "the case's run did not finish (" + facts.RunState + "); an unfinished case is never passed"
+		}
+		return result
+	}
 	failed := 0
 	for _, outcome := range outcomes {
 		if !outcome.Passed {

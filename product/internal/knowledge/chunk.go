@@ -34,6 +34,9 @@ type Chunk struct {
 	Text string
 	// Span is the traceable source range.
 	Span Span
+	// Table is set only for a tabular chunk and carries its row range. Nil for
+	// the paragraph chunker's chunks.
+	Table *ChunkTable
 }
 
 type segment struct {

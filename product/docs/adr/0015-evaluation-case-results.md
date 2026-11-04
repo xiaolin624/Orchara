@@ -1,4 +1,4 @@
-# ADR 0013 — Evaluation case results: fixture binding and the per-case read
+# ADR 0015 — Evaluation case results: fixture binding and the per-case read
 
 - Status: Accepted (F13A/T056, issue #57)
 - Date: 2026-11-04

@@ -44,13 +44,15 @@
     <a href="/login">登录</a>
   </nav>
 
-  <h1>知识库：上传文本资料并检索到可追溯片段</h1>
+  <h1>知识库：上传文本或表格资料并检索到可追溯片段</h1>
   <p class="sub">
-    本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传 <code>txt/md</code>，
-    再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、分块、生成确定性 embedding 与
-    每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为 <strong>可检索</strong>。
-    解析为空或失败会显示具体失败码，绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档
-    版本过滤，再排序取前 K；点击引用会重新校验当前可读性后返回片段正文。
+    本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
+    <code>txt/md/csv/xlsx</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
+    分块、生成确定性 embedding 与每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为
+    <strong>可检索</strong>。CSV/XLSX 片段在引用里保留表头行与行范围（CSV 为逻辑记录行，
+    XLSX 为工作表自身的行号），单元格公式一律不执行。解析为空或失败会显示具体失败码与位置，
+    绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档版本过滤，再排序取前 K；点击引用会
+    重新校验当前可读性后返回片段正文。
   </p>
   <p class="hint">
     只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
@@ -72,10 +74,12 @@
   </section>
 
   <section class="card">
-    <h2>2. 上传 txt/md 并封存</h2>
+    <h2>2. 上传 txt/md/csv/xlsx 并封存</h2>
     <form id="upload-form" method="post">
-      <label for="knowledge-file">文件（.txt 或 .md，字节上限 20 MiB）</label>
-      <input id="knowledge-file" name="file" type="file" accept=".txt,.md,text/plain,text/markdown" required />
+      <label for="knowledge-file">文件（.txt / .md / .csv / .xlsx，字节上限 20 MiB）</label>
+      <input id="knowledge-file" name="file" type="file"
+             accept=".txt,.md,.csv,.xlsx,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+             required />
       <button id="upload-submit" type="submit">上传并封存</button>
       <p id="upload-status" class="status" role="status" aria-live="polite"></p>
     </form>
@@ -348,7 +352,7 @@
         const file = currentFile
           || (el('knowledge-file').files && el('knowledge-file').files[0]);
         if (!file) {
-          setStatus(status, '请选择 txt/md 文件', 'bad');
+          setStatus(status, '请选择 txt/md/csv/xlsx 文件', 'bad');
           return;
         }
         const media = mediaTypeForKnowledgeFile(file.name);
