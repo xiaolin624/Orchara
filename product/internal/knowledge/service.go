@@ -163,6 +163,25 @@ type Citation struct {
 	SheetName              string   `json:"sheet_name,omitempty"`
 	Columns                []string `json:"columns,omitempty"`
 	ColumnsOmitted         bool     `json:"columns_omitted,omitempty"`
+	// PDF is set only on a PDF chunk (T060). It is one additive object rather
+	// than flat fields so that a page-local offset of zero is representable and
+	// the citation of every other input family keeps its exact shape.
+	PDF *CitationPDF `json:"pdf,omitempty"`
+}
+
+// CitationPDF is the page attribution of one PDF chunk. PageStart/PageEnd are
+// 1-based inclusive page numbers (equal for the page-bounded chunker);
+// PageCharStart/PageCharEnd are rune offsets inside that page's text;
+// PageCount is the document's page count and PagesWithoutText lists the pages
+// that had no text layer, so a partial text layer is recorded honestly instead of
+// being presented as full coverage.
+type CitationPDF struct {
+	PageStart        int   `json:"page_start"`
+	PageEnd          int   `json:"page_end"`
+	PageCharStart    int   `json:"page_char_start"`
+	PageCharEnd      int   `json:"page_char_end"`
+	PageCount        int   `json:"page_count"`
+	PagesWithoutText []int `json:"pages_without_text,omitempty"`
 }
 
 // ChunkRow is one staged chunk the handler writes before activation.
@@ -187,6 +206,9 @@ type Service struct {
 	// extractive stub; a deployment may replace it, but Answer always validates
 	// the draft against its own retrieval before returning it.
 	Answerer AnswerGenerator
+	// Cache is the F10/T067 retrieval cache configuration. New wires the
+	// documented default; cmd/api overrides it from ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE.
+	Cache CacheOptions
 }
 
 // New builds the service. A nil embedder means the deployment has not configured
@@ -195,6 +217,7 @@ func New(db *sql.DB, objects *objectstore.Store, embedder *embedding.Service) *S
 	return &Service{
 		DB: db, Objects: objects, Embedder: embedder,
 		Answerer: &ExtractiveStub{},
+		Cache:    DefaultCacheOptions(),
 	}
 }
 
@@ -933,13 +956,15 @@ func trimFloat(value string) string {
 
 // QueryResult is the non-contract retrieval answer. ACLEpoch is the knowledge
 // base revision the answer was filtered against; T067 keys its cache on
-// (principal, acl_epoch, embedding revision, query, top_k) and must re-check the
-// resource tombstone even on a cache hit.
+// (principal, acl_epoch, embedding revision, query, top_k) and re-checks the
+// document/body-artifact state on every hit. Cache is the additive per-request
+// cache state (ADR 0014).
 type QueryResult struct {
 	Items                  []ChunkView
 	EmbeddingModelRevision string
 	TopK                   int
 	ACLEpoch               int64
+	Cache                  RetrievalCacheInfo
 }
 
 // Query ranks the SQL-filtered candidate set for one owner's knowledge base.
@@ -949,6 +974,11 @@ type QueryResult struct {
 // active_revision = revision, chunk.document_revision = revision, body artifact
 // ready/not-deleted, and the embedding model revision. Only the rows that
 // survive are scored. An empty result is a normal empty list.
+//
+// With the T067 cache enabled a repeated query may be answered from one stored
+// entry, but only after the key is recomputed from current state and every
+// returned chunk's document/body artifact is re-checked; a stale entry is
+// discarded and the request proceeds as a miss.
 func (s *Service) Query(
 	ctx context.Context, ownerID, baseID, query string, topK int,
 ) (QueryResult, error) {
@@ -983,6 +1013,9 @@ func (s *Service) Query(
 	if modelRevision == "" {
 		return QueryResult{}, ErrEmbeddingUnavailable
 	}
+	// The query is embedded before a cache lookup on purpose: the cache must not
+	// hide a failing/unconfigured embedding provider, and the key is defined over
+	// exactly the string that was embedded.
 	queryVector, err := s.Embedder.EmbedOne(ctx, normalized)
 	if err != nil {
 		if errors.Is(err, embedding.ErrNotConfigured) {
@@ -991,9 +1024,78 @@ func (s *Service) Query(
 		return QueryResult{}, fmt.Errorf("embedding the query: %w", err)
 	}
 
+	result := QueryResult{
+		EmbeddingModelRevision: modelRevision,
+		TopK:                   topK,
+		ACLEpoch:               base.Revision,
+		Cache: RetrievalCacheInfo{
+			Enabled:    s.Cache.Enabled,
+			TTLSeconds: int64(s.Cache.ttl().Seconds()),
+		},
+	}
+	if s.Cache.Enabled {
+		key, keyErr := s.cacheKeyFor(
+			ctx, ownerID, base, modelRevision, canonicalCacheQuery(normalized), topK,
+		)
+		if keyErr != nil {
+			// The cache key cannot be derived; the authoritative path still answers.
+			result.Cache.Discarded = true
+			result.Cache.DiscardReason = CacheDiscardUnavailable
+		} else {
+			cachedItems, cacheInfo, cacheErr := s.cachedRetrieval(ctx, key)
+			if cacheErr == nil && cacheInfo.Hit {
+				result.Items = cachedItems
+				result.Cache = cacheInfo
+				return result, nil
+			}
+			result.Cache = cacheInfo
+			if cacheErr != nil {
+				result.Cache.Discarded = true
+				result.Cache.DiscardReason = CacheDiscardUnavailable
+			}
+			ranked, rankErr := s.rankRetrieval(
+				ctx, baseID, ownerID, queryVector, modelRevision, topK,
+			)
+			if rankErr != nil {
+				return QueryResult{}, rankErr
+			}
+			result.Items = ranked.items
+			if ok, _ := shouldStoreRetrievalCache(ranked.items, ranked.skipped); ok {
+				stored, storeErr := s.storeCachedRetrieval(ctx, key, ranked.cacheItems)
+				result.Cache.Stored = storeErr == nil && stored
+			}
+			return result, nil
+		}
+	}
+	ranked, err := s.rankRetrieval(ctx, baseID, ownerID, queryVector, modelRevision, topK)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	result.Items = ranked.items
+	return result, nil
+}
+
+// rankedRetrieval is the authoritative miss result: the ranked chunks plus the
+// stored-cache projection of the same rows (built only for the returned top_k).
+type rankedRetrieval struct {
+	items      []ChunkView
+	cacheItems []retrievalCacheItem
+	// skipped counts candidates whose sealed body could not be read; a partial
+	// result is never memoized (it would mask a transient unreadable body).
+	skipped int
+}
+
+// rankRetrieval runs the T055 SQL-filter-first retrieval and ranks the surviving
+// candidates in this process. It is the only path that reads chunk bodies for a
+// query; a cache hit returns the same shape without touching the candidate set.
+func (s *Service) rankRetrieval(
+	ctx context.Context, baseID, ownerID string, queryVector []float64,
+	modelRevision string, topK int,
+) (rankedRetrieval, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.citation, kc.embedding, a.object_key
+		       kc.citation, kc.embedding, a.object_key,
+		       kc.body_artifact_id::text, coalesce(a.sha256, '')
 		  FROM platform.knowledge_chunks AS kc
 		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
 		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
@@ -1011,72 +1113,82 @@ func (s *Service) Query(
 		baseID, ownerID, modelRevision, MaxCandidates,
 	)
 	if err != nil {
-		return QueryResult{}, fmt.Errorf("reading the retrieval candidates: %w", err)
+		return rankedRetrieval{}, fmt.Errorf("reading the retrieval candidates: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	type candidate struct {
-		view      ChunkView
-		embedding []float64
-		objectKey string
+		view           ChunkView
+		embedding      []float64
+		objectKey      string
+		bodyArtifactID string
+		bodySHA256     string
 	}
 	var candidates []candidate
 	for rows.Next() {
 		var (
-			view       ChunkView
-			citation   []byte
-			vectorText sql.NullString
-			objectKey  string
+			view           ChunkView
+			citation       []byte
+			vectorText     sql.NullString
+			objectKey      string
+			bodyArtifactID string
+			bodySHA256     string
 		)
 		if err := rows.Scan(
 			&view.ChunkID, &view.DocumentID, &view.DocumentRevision, &view.ChunkNo,
-			&citation, &vectorText, &objectKey,
+			&citation, &vectorText, &objectKey, &bodyArtifactID, &bodySHA256,
 		); err != nil {
-			return QueryResult{}, fmt.Errorf("reading a retrieval candidate: %w", err)
+			return rankedRetrieval{}, fmt.Errorf("reading a retrieval candidate: %w", err)
 		}
 		view.Citation = json.RawMessage(citation)
 		view.Span = spanFromCitation(citation)
 		candidates = append(candidates, candidate{
 			view: view, embedding: parseFloatArray(vectorText.String), objectKey: objectKey,
+			bodyArtifactID: bodyArtifactID, bodySHA256: bodySHA256,
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return QueryResult{}, fmt.Errorf("reading the retrieval candidates: %w", err)
+		return rankedRetrieval{}, fmt.Errorf("reading the retrieval candidates: %w", err)
 	}
 
 	type scored struct {
-		view  ChunkView
-		score float64
+		candidate candidate
+		score     float64
 	}
 	ranked := make([]scored, 0, len(candidates))
+	skipped := 0
 	for _, item := range candidates {
 		text, err := s.readChunkText(item.objectKey)
 		if err != nil {
 			// A chunk whose sealed body is unreadable is not retrievable: skipping
-			// it is honest, and it never leaks bytes or a path.
+			// it is honest, and it never leaks bytes or a path. It also marks the
+			// result partial, so it will not be memoized.
+			skipped++
 			continue
 		}
 		item.view.Text = text
 		item.view.Score = embedding.Cosine(queryVector, item.embedding)
-		ranked = append(ranked, scored{view: item.view, score: item.view.Score})
+		ranked = append(ranked, scored{candidate: item, score: item.view.Score})
 	}
 	sort.SliceStable(ranked, func(left, right int) bool {
-		return chunkLess(ranked[left].view, ranked[right].view)
+		return chunkLess(ranked[left].candidate.view, ranked[right].candidate.view)
 	})
 	if len(ranked) > topK {
 		ranked = ranked[:topK]
 	}
-	results := make([]ChunkView, 0, len(ranked))
-	for _, item := range ranked {
-		item.view.DocumentState = StateReady
-		results = append(results, item.view)
+	result := rankedRetrieval{
+		items:      make([]ChunkView, 0, len(ranked)),
+		cacheItems: make([]retrievalCacheItem, 0, len(ranked)),
+		skipped:    skipped,
 	}
-	return QueryResult{
-		Items:                  results,
-		EmbeddingModelRevision: modelRevision,
-		TopK:                   topK,
-		ACLEpoch:               base.Revision,
-	}, nil
+	for _, item := range ranked {
+		item.candidate.view.DocumentState = StateReady
+		result.items = append(result.items, item.candidate.view)
+		result.cacheItems = append(result.cacheItems, cacheItemOf(
+			item.candidate.view, item.candidate.bodyArtifactID, item.candidate.bodySHA256,
+		))
+	}
+	return result, nil
 }
 
 // GetChunk opens one citation the owner is currently allowed to read.

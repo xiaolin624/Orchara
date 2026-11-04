@@ -46,7 +46,7 @@ import (
 // misbehave. It is deployment configuration, never a request value, it is only
 // honoured in a stub profile, and it can only cause the server to refuse — it can
 // never bypass the validation below. Value: comma-separated `uncited`,
-// `foreign-chunk`, `slow=<duration>`.
+// `foreign-chunk`, `wrong-answer`, `slow=<duration>`.
 const AnswerFaultEnv = "ORCHARA_KNOWLEDGE_ANSWER_FAULTS"
 
 const (
@@ -66,6 +66,12 @@ const (
 // AnswerFaultForeignChunkID is the fabricated chunk id the `foreign-chunk` fault
 // cites. It is a well-formed UUID so only the retrieval-set check can reject it.
 const AnswerFaultForeignChunkID = "00000000-0000-4000-8000-0000000000ff"
+
+// AnswerFaultWrongAnswerSentinel marks the text the `wrong-answer` fault returns.
+// It never appears in any ingested chunk, so a caller can attribute the failure
+// to the generation stage while the real citations stay valid (T067 RAG-failure
+// localization; ADR 0012 D2 / ADR 0014).
+const AnswerFaultWrongAnswerSentinel = "T067-WRONG-ANSWER-NOT-IN-ANY-CHUNK"
 
 // AnswerOutcome is the distinct observable state of one answer request.
 type AnswerOutcome string
@@ -92,6 +98,11 @@ type AnswerFaults struct {
 	Uncited bool
 	// ForeignChunk adds one fabricated citation to the real ones.
 	ForeignChunk bool
+	// WrongAnswers replaces the grounded answer text with a fixed claim that no
+	// retrieved chunk contains, keeping the real citations. It exists so the
+	// "wrong answer" RAG failure class can be observed and localized to the
+	// generation stage (it is still the server's citation validation, unchanged).
+	WrongAnswer bool
 	// Slow delays the draft after retrieval, which is how the revocation race
 	// (a source revoked while the answer is being generated) is exercised.
 	Slow time.Duration
@@ -176,6 +187,13 @@ func (g *ExtractiveStub) Generate(
 		cited = append(cited, chunk.ChunkID)
 	}
 	draft := AnswerDraft{Text: text.String(), CitedChunkIDs: cited}
+	if g.Faults.WrongAnswer {
+		// Keep the citations real and only replace the prose: the server's
+		// citation contract still passes, so the failure is visible as an
+		// ungrounded answer (generation), not as a citation refusal.
+		draft.Text = AnswerFaultWrongAnswerSentinel +
+			" 这是一段检索片段中不存在的结论，用于区分生成阶段失败（dev-stub 故障）。"
+	}
 	if g.Faults.Uncited {
 		draft.CitedChunkIDs = nil
 	}
@@ -234,6 +252,8 @@ func parseAnswerFaults(raw string) (AnswerFaults, error) {
 			faults.Uncited = true
 		case "foreign-chunk":
 			faults.ForeignChunk = true
+		case "wrong-answer":
+			faults.WrongAnswer = true
 		case "slow":
 			delay, err := time.ParseDuration(strings.TrimSpace(value))
 			if err != nil || delay <= 0 {
@@ -278,11 +298,15 @@ type AnswerGeneration struct {
 
 // AnswerRetrieval records the retrieval this answer is grounded in. ChunkIDs is
 // the ordered chunk-id set of that retrieval: a citation outside it is refused.
+// Cache is the T067 cache state of that retrieval; generation and citation
+// re-checking still run on every request, so a cache hit never means "reuse the
+// old answer".
 type AnswerRetrieval struct {
 	EmbeddingModelRevision string
 	TopK                   int
 	ACLEpoch               int64
 	ChunkIDs               []string
+	Cache                  RetrievalCacheInfo
 }
 
 // AnswerResult is one answer request's outcome.
@@ -369,6 +393,7 @@ func (s *Service) Answer(
 			TopK:                   retrieval.TopK,
 			ACLEpoch:               retrieval.ACLEpoch,
 			ChunkIDs:               chunkIDsOf(retrieval.Items),
+			Cache:                  retrieval.Cache,
 		},
 	}
 	if len(retrieval.Items) == 0 {

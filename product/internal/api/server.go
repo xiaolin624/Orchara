@@ -126,6 +126,11 @@ type Deps struct {
 	// Answerer is the F10/T064 labelled answer generator. Nil means the
 	// extractive stub wired by knowledge.New (no model provider exists here).
 	Answerer knowledge.AnswerGenerator
+	// RetrievalCache is the F10/T067 retrieval cache configuration. Nil means the
+	// knowledge.New default (enabled, 15 minutes); cmd/api always passes the
+	// value derived from ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE (an unknown value is a
+	// startup error there, never a silent default).
+	RetrievalCache *knowledge.CacheOptions
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -199,6 +204,9 @@ func New(deps Deps) *Server {
 	knowledgeService := knowledge.New(deps.Service.DB, deps.Objects, embedder)
 	if deps.Answerer != nil {
 		knowledgeService.Answerer = deps.Answerer
+	}
+	if deps.RetrievalCache != nil {
+		knowledgeService.Cache = *deps.RetrievalCache
 	}
 	return &Server{
 		service:        deps.Service,
