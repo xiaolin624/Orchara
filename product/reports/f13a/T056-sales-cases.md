@@ -2,7 +2,7 @@
 
 - 任务：F13A / GitHub Issue #57（票 `T056`），分支 `t/t056-sales-cases`
   （worktree `E:\orchara-worktrees\t056`）；基线 `integration/f13a-f15a-f09-f10`
-  @ `f1a5257`；合并提交 `<MERGE_SHA>`。
+  @ `f1a5257`；合并提交 `667a1ea`（合并后 ADR 重编号为 0015）。
 - 状态：**`passed`**（本票范围 = 案例按内容绑定调用方 CSV/XLSX 为 run 的
   `task_input`、真实销售工具 succeeded 案例、坏输入/超时案例的定位期望、
   非契约逐例读取 + ADR 0015、逐例页面、独立 Decimal 真值与守卫）。
@@ -36,7 +36,7 @@
    - 非契约逐例读取 `GET /evaluation-reports/{id}/cases` → 真实 HTTP（owner/admin/
      API key scope/非 owner 404/复读一致/无 object key/附件可下载）；
    - 逐例页面 + Node 执行页面逻辑；
-   - 真实销售 CSV/XLSX/frozen 案例、5 个坏输入、2s 工具超时案例 → 真实沙箱 e2e；
+   - 真实销售 CSV/XLSX/frozen 案例、5 个坏输入、1s 最低工具超时案例 → 真实沙箱 e2e；
    - 独立 Decimal 参考计算器 + 期望表 + “不得 import 被测工具”守卫。
 3. 提交按 `feat/test/docs` 分片；合并 `integration/f13a-f15a-f09-f10` 后复跑门禁；
    未 push、未动 GitHub issue、未改 `docs/spec/**` 或 `contracts/**`。
@@ -94,6 +94,9 @@ run 时：
 线性/legacy 失败路径原本上传安全 log/diagnostics 但不登记到 run。T056 让它们经
 与成功产物相同的 `Register` 路径登记（`relation='log'/'artifact'`），于是坏输入
 案例的“实际附件”是真实可下载的平台 artifact。字节、准入与拒绝语义不变。
+`internal/presetexec/linear_test.go::TestLinearChainRefusesOutputThatViolatesTheNodeSchema`
+随之收紧为“只允许登记安全失败证据（log/diagnostics 文档），工具 data/file 仍不得
+登记”，原有安全断言未放宽。
 
 ### 1.5 非契约逐例读取（ADR 0015）
 
@@ -141,7 +144,7 @@ SHA-256 引用的 CSV/XLSX），页面读取当前 draft revision 并通过 `eva
 | AC | 结论 | 证据 |
 |---|---|---|
 | 1. 正常统计与下载通过（CSV 与 XLSX） | **proven** | `test_t056_sales.py::test_a_succeeded_csv_sales_case_yields_a_passed_report` / `...xlsx...`：真实 run `succeeded`、报告 `passed`、`decimal_equals` 实际 `250.00`、`json_equals` `3`、`effect_count` 实际 `0`（真实空账本）；逐例读取返回 `summary.csv`/`summary.json`/`output`，CSV 经合同下载路由得到 `region,total\n东区,200.00\n西区,50.00\n`；XLSX 案例同样 `250.00`（两格式期望一致） |
-| 2. 缺列/重复/负值/公式/超时/超限有预期与定位 | **proven** | `test_t056_bad_inputs.py::test_bad_input_cases_pass_only_for_their_expected_located_failure`：5 个案例真实 run 分别 `failed(missing_column/duplicate_order_id/negative_amount/formula_not_supported/row_limit_exceeded)`，`failure_reason` expected=actual 且 passed；逐例 `diagnostics` 附件含同码与 location（超限为文件级无 location）；`...test_a_tool_timeout_is_a_passed_case_with_the_expected_failure`：20 MiB 输入在 2 s 沙箱超时下真实 `failed(tool_timeout)`（解析耗时 >4 s，裕量记录见 §3） |
+| 2. 缺列/重复/负值/公式/超时/超限有预期与定位 | **proven** | `test_t056_bad_inputs.py::test_bad_input_cases_pass_only_for_their_expected_located_failure`：5 个案例真实 run 分别 `failed(missing_column/duplicate_order_id/negative_amount/formula_not_supported/row_limit_exceeded)`，`failure_reason` expected=actual 且 passed；逐例 `diagnostics` 附件含同码与 location（超限为文件级无 location）；`...test_a_tool_timeout_is_a_passed_case_with_the_expected_failure`：20 MiB 输入在 1 s（部署最小值）工具超时下真实 `failed(tool_timeout)`（沙箱内解析实测 ~2.2 s，裕量见 §3.1） |
 | 3. 真值不由被测工具产生 | **proven** | `test_t056_fixtures.py::test_the_reference_calculator_reproduces_the_committed_expected_table`（独立计算器复算 expect 表）、`...test_the_committed_dataset_assertions_agree_with_the_expected_table`、`...test_the_reference_calculator_rejects_the_bad_inputs_for_their_declared_reason`、`...test_the_reference_module_does_not_import_or_call_the_tool`（AST + 子进程 `sys.modules` 守卫） |
 | 4. 真实端到端入口 + 失败/授权/重试边界，无单层 mock | **proven** | 全部 T056 e2e 走真实 REST 提交 → 真实 background job → 真实 maintenance 双池 → 真实 supervisor/runsc 沙箱 → 真实封存报告 → 真实 completion guard；授权：`test_...csv...` 中非 owner 404、admin 200、API key `application:read` 404、无 scope 403；失败：`test_a_missing_fixture_blocks_the_case_and_never_passes`（逐例 `blocked/task_input_unavailable`、未创建 run、报告 `not_run`）、`test_a_malformed_reserved_binding_is_refused_at_submit_time`（422 定位） |
 | 5. 版本/输入 hash/命令/原始结果/profile，stub/real 分报，缺条件 blocked，未跑 not_run | **proven** | 本报告 §3 贴原始门禁输出；数据集/期望表/输入 sha256 均在仓库与报告中；环境 profile、stub/real 边界、not_run 清单见 §4；超时案例的确定性裕量与测试部署配额容量调整在本报告与 ADR 0015 记录 |
@@ -155,17 +158,32 @@ WSL Ubuntu-24.04 + `runsc release-20241118.0`，python-rootfs digest
 `sha256:03c3f647…12ff5`。
 
 ```text
-$ python -m pytest tests/f13a -q          # 第 1 次
-<FIRST_RUN>
+$ python -m pytest tests/f13a -q          # 合并后第 1 次（超时界修正前）
+..........................................                               [100%]
+42 passed in 944.70s (0:15:44)
 
-$ python -m pytest tests/f13a -q          # 第 2 次（背靠背）
-<SECOND_RUN>
+$ python -m pytest tests/f13a -q          # 合并后第 2 次（超时界修正前）
+.................F........................                               [100%]
+1 failed, 41 passed in 549.06s (0:09:09)
+# 唯一失败：test_a_tool_timeout_is_a_passed_case_with_the_expected_failure
+#   观察到 empty_input（20 MiB 输入在 2 s 界内被工具正常读完，未超时）；
+#   修正为部署最小值 1 s + 对“工具正常完成”的时序 miss 有界重试（见 §3.1）。
+
+$ python -m pytest tests/f13a -q          # 修正后第 1 次
+..........................................                               [100%]
+42 passed in 701.29s (0:11:41)
+
+$ python -m pytest tests/f13a -q          # 修正后背靠背第 2 次
+..........................................                               [100%]
+42 passed in 662.96s (0:11:02)
 
 $ python -m pytest tests/f10 -q
-<F10_RUN>
+.........................................                                [100%]
+41 passed in 437.07s (0:07:17)
 
 $ go build ./... ; go vet ./... ; go test ./... ; gofmt -l .
-<GO_OUTPUT>
+build exit=0 ; vet exit=0 ; go test ./... exit=0（33 个包 ok，0 FAIL）;
+gofmt -l（空输出）
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
@@ -173,17 +191,26 @@ no drift: spec copy and contract snapshot match the manifest
 
 ### 3.1 说明
 
-- `tests/f13a` 现在包含 T052 的 16 个用例与本票的 17 个用例（共 33）。
-- 共享 WSL2/runsc 沙箱与同机并发套件会造成偶发 attempt 孤立：supervisor 在
-  API 短暂变慢时无法在租约内完成心跳，平台如实把该案例记为
-  `not_run/run_timeout`（绝不 passed）。`tests/support/t056.py` 只在**严格
-  attempt 孤立证据**（attempt 未退出且心跳/租约已过期）或配额耗尽时重试整个评测
-  （同一密封数据集，新提交），业务失败立即返回并按断言失败；测试部署把执行槽
-  容量从 2 调到 32（`seed_evaluation_capacity`，测试自有 SQL），避免一个环境孤立
-  attempt 拖死后续案例。T056 e2e 的 API 还使用 300 s 执行租约（T052 默认 30 s），
-  使一次短暂 API 抖动不再导致 supervisor 放弃 attempt；沙箱超时仍兜底。
-- 超时案例确定性：20 MiB 输入（合法表头 + 空行填充）在 Linux 沙箱内仅 CSV 解析
-  就测得 4.34 s；测试用 `ORCHARA_SANDBOX_TIMEOUT=2s`，裕量 ≥2.1×（未计沙箱启动）。
+- 合并 `integration/f13a-f15a-f09-f10` 后 `tests/f13a` 共 **42** 个用例：
+  T052 16 个 + T062 9 个（#63，已在 integration）+ 本票 17 个。
+- 共享 WSL2/runsc 沙箱与同机并发套件会造成偶发 attempt 抖动：supervisor 的一次
+  heartbeat HTTP 调用在主机瞬时繁忙时可能失败（实测 attempt 在开始后 ~2.6 s 停止
+  心跳、未提交 exit，平台按既有语义不提交结果；当前构建的 run 恢复是 F03/T038 的
+  运维命令 `cmd/admin runs sweep-leases|recover`，不是自动恢复）。平台如实把该案例
+  记为 `not_run/run_timeout`（绝不 passed）。`tests/support/t056.py` 只在**没有
+  任何断言被判定为业务失败**时重试整个评测（同一密封数据集、新提交）：
+  非 passed 的案例必须全部是 `not_run/run_timeout`，或失败事实里的 run error code
+  属于平台基础设施码且不是数据集期望的错误码；任何业务错误立即返回并按断言失败，
+  重试不可能把 stall 变成 pass。测试部署把执行槽容量从 2 调到 32
+  （`seed_evaluation_capacity`，测试自有 SQL），避免一个环境孤立 attempt 拖死后续
+  案例；T056 e2e 的 API 使用 300 s 执行租约（T052 默认 30 s），使一次短暂 API
+  抖动不再让 supervisor 放弃 attempt。
+- 超时案例确定性：20 MiB 输入（合法表头 + 空行填充）在沙箱发行版内仅 CSV 解析
+  实测 **2.18 s**（并发负载下曾测得 4.34 s）；部署超时按整秒计且最小值 1 s，
+  因此测试用 `ORCHARA_SANDBOX_TIMEOUT=1s`，沙箱内实际耗时 >1 s（含启动）。若极快
+  主机仍然完成解析，run 的失败码是 `empty_input`（工具正常结束而非被杀）——这是
+  环境时序 miss 而非产品判决，测试对该码有界重试（最多 2 次额外尝试）；任何其他
+  失败码直接断言。
 - 冻结边界集在实现跑通前提交（`frozen_boundary.json` + `inputs/frozen_boundary.csv`
   + `expected_values.json`），之后未改动；其哈希被 `registry.json`/`expected_values.json`
   钉住。
@@ -212,7 +239,14 @@ no drift: spec copy and contract snapshot match the manifest
 4. 失败证据（log/diagnostics）现在登记到 run（`run_artifacts`），T033/T042 的既有
    成功断言不受影响（日志仍不进入所有者 artifact 列表）；这是本票对 preset 工具
    路径的唯一改动。
-5. 执行槽容量与 300 s 租约只在 **T056 测试栈**调整并写入报告，不是产品默认值。
+5. 执行槽容量、300 s 租约与“环境 stall 重试”只在 **T056 测试栈**存在并写入本报告，
+   不是产品默认值；产品侧的自动 run 恢复仍属 F03/T038。
+6. **主机并发下的 heartbeat 脆弱性（已记录，未在本票修复）**：supervisor 的一次
+   heartbeat HTTP 调用失败会让预设执行器按“租约可能已丢”的语义放弃该 attempt 且
+   不提交 exit；本构建没有自动 run 恢复，于是该 run 会一直 `running`，评测按
+   case timeout 记录 `not_run/run_timeout`。这属于 F03/T033 的 supervisor/恢复
+   职责，不在 F13A/T056 的改动面内；本票只在测试侧以有界重试隔离并如实记录，
+   未伪造任何 passed。
 
 ## 6. 下一票接口
 
