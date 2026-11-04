@@ -1,14 +1,14 @@
-# ADR 0015：F10 PDF 摄取、页码引用与解析/分块候选对照
+# ADR 0016：F10 PDF 摄取、页码引用与解析/分块候选对照
 
 - 状态：已接受
 - 日期：2026-11-04
-- 编号：合并 `integration/f13a-f15a-f09-f10` 时 T062 已占用 ADR 0014，
-  本 ADR 让号为 0015。
+- 编号：合并 `integration/f13a-f15a-f09-f10` 时 T062 已占用 ADR 0014、
+  T067 已占用 ADR 0015，本 ADR 让号为 0016。
 - 相关：F10 / T060（GitHub #61，规划 ID F10.02 之后的 PDF 切片）；
   分支 `t/t060-pdf-ingest`；报告 `product/reports/f10/T060-pdf-ingest.md`；
   基础：T055（#56）的解析器缝 / chunker / citation / 完成守卫 / 非契约检索与诊断面
   （ADR 0010）、T059（#60）的表格输入族与 citation additive 字段（ADR 0013）、
-  迁移 `0034_knowledge.sql`；本票新增 `0037_pdf_admission.sql`；
+  迁移 `0034_knowledge.sql`；本票新增 `0038_pdf_admission.sql`；
   后续：#62/T061（版本重建）、#64/T064（检索规模）、#68/T067（缓存）。
   先例：ADR 0005/0007（非契约面）、ADR 0010/0013（F10 输入族扩展）。
 
@@ -38,7 +38,7 @@ hash、命令、原始结果与环境 profile。约束与既有事实：
 - 完成时的 sniff 要求内容**以** `%PDF-` 开头；只有声明、没有魔数的内容
   （文本/zip/中间含 `%PDF-`）都是 `content_type_mismatch`，不猜格式。准入只验证魔数，
   **不**解析、**不** OCR：扫描件也是合法 PDF，由解析器以 `pdf_no_text_layer` 失败。
-- 迁移 `0037_pdf_admission.sql`：`platform.artifact_admissions` 是 T028 的非契约表
+- 迁移 `0038_pdf_admission.sql`：`platform.artifact_admissions` 是 T028 的非契约表
   （0015，契约文件未定义），其 `detected_format` CHECK 词表增加 `'pdf'`。只加词表，
   声明仍按 purpose 收窄；`orchara_worker`/PUBLIC 零授权不变。
 
@@ -119,7 +119,7 @@ PDF chunk 与 txt/md/csv/xlsx 共用 owner-only ACL、SQL 先过滤后排序、�
 - 交付：普通文本 PDF 的真实用户路径（上传→封存→摄取→ready→检索→按页打开引用）；
   扫描件/无文字层/损坏/加密 PDF 都是具体失败码的可诊断 failed 文档；部分文字层如实记录
   空页；`/knowledge` 页面支持 PDF 上传与页码展示。
-- 迁移只新增 `0037_pdf_admission.sql`；`contracts/**`、`docs/spec/**` 未改，
+- 迁移只新增 `0038_pdf_admission.sql`；`contracts/**`、`docs/spec/**` 未改，
   `sync_spec --check` 保持 no drift；txt/md/csv/xlsx 的 citation 与行为不变。
 - 未做/不属于本票：OCR、加密 PDF 解密、Type0 宽度精确排版、版本重建（T061）、
   删除治理（F07/T058）、检索规模/缓存（T064/T067）、浏览器 DOM 驱动页面。

@@ -2,7 +2,7 @@
 
 ``platform.artifact_admissions.detected_format`` was a closed vocabulary until
 0015. The PDF sniff produces ``detected_format = 'pdf'``, so the finalize handler
-could not persist an accepted admission without 0037 (the real stack test proves
+could not persist an accepted admission without 0038 (the real stack test proves
 that write). This test pins the migration name, the chain continuity and the new
 closed vocabulary, plus the unchanged worker zero-grant rule.
 """
@@ -13,12 +13,12 @@ from support import stack as st
 from support.fixtures import migrated_database  # noqa: F401 - pytest fixture
 
 
-def test_the_migration_chain_is_contiguous_and_0037_extends_the_format_vocabulary(
+def test_the_migration_chain_is_contiguous_and_0038_extends_the_format_vocabulary(
     migrated_database,
 ) -> None:
     _dsn, dbname = migrated_database
     names = st.migration_chain(dbname)
-    assert names["0037"] == "0037_pdf_admission.sql"
+    assert names["0038"] == "0038_pdf_admission.sql"
     for offset, version in enumerate(sorted(names)):
         assert version == f"{offset + 1:04d}", (version, names)
 
@@ -35,7 +35,7 @@ def test_the_migration_chain_is_contiguous_and_0037_extends_the_format_vocabular
         assert code in definition, (code, definition)
 
 
-def test_worker_still_has_no_platform_privileges_after_0037(migrated_database) -> None:
+def test_worker_still_has_no_platform_privileges_after_0038(migrated_database) -> None:
     _dsn, dbname = migrated_database
     granted = st.sql(
         dbname,

@@ -4,8 +4,9 @@
   （worktree `E:\orchara-worktrees\t060`，基线 integration tip `ddaeb46`）；
   父门禁 #53–#68 集成批次。
 - 合并：`integration/f13a-f15a-f09-f10` tip `c7d7e21`（T062）已合入本分支，
-  merge commit **`9aa2982`**；T062 已占用 ADR 0014，本票 ADR 让号为 **0015**；
-  迁移 `0037` 在集成 tip 上未冲突；合并后目标门禁复跑见 §3 末尾。
+  merge commit **`9aa2982`**；T062 已占用 ADR 0014，本票当时 ADR 让号为 **0015**；
+  最终集成合并时 T067 已占用 ADR 0015 与迁移 `0037`，故本票重编号为 ADR **0016** /
+  迁移 `0038`；合并后目标门禁复跑见 §3 末尾。
 - 状态：**`passed`**（本票范围 = 在 T055 摄取链上新增 **普通文本 PDF 一种输入族**：
   `purpose=knowledge` 的 `application/pdf` 上传准入 + 魔数嗅探、逐页文本解析与页码
   citation、页内分块、无文字层/损坏/加密 PDF 的可诊断 failed 文档、部分文字层的空页
@@ -19,10 +20,10 @@
   adapter，fail closed）；浏览器 DOM 驱动页面 **not_run**（与既有页面票同一边界）；
   版本重建（#62/T061）、删除治理（F07/T058）、检索规模/缓存（#64/#68）不在本票；
   全量 `pytest tests` 按 BRIEF §3 不在本票运行（≈67 分钟，orchestrator 负责）。
-- 契约偏差：新增迁移 `0037_pdf_admission.sql`，只扩展 T028 **非契约**表
+- 契约偏差：新增迁移 `0038_pdf_admission.sql`，只扩展 T028 **非契约**表
   `platform.artifact_admissions.detected_format` 的闭合词表（+`pdf`）；
   `citation` 的 `pdf` 对象是 jsonb additive 字段；新增 Go 依赖 `rsc.io/pdf v0.1.1`
-  （BSD-3-Clause）。均记录在 ADR 0015；`docs/spec/**`、`contracts/**` 未改，
+  （BSD-3-Clause）。均记录在 ADR 0016；`docs/spec/**`、`contracts/**` 未改，
   `sync_spec --check` no drift。
 
 ## 0. 工作记录（简短）
@@ -42,9 +43,9 @@
      扫描/短文本/损坏/加密失败矩阵；ACL/撤销/重试边界；页面结构 + Node 执行 helper；
    - 对照：Go 基线 probe + Docling 隔离安装/真实运行 + PyMuPDF/pypdf/pdfminer 替代，
      冻结夹具上度量覆盖率/页码归属/块形状/墙钟/峰值 RSS，按“无收益即淘汰”给结论。
-3. 跑门禁（§3），两次连跑 `tests/f10`；写本报告/PROGRESS/ADR 0015；按 feat/test/docs
+3. 跑门禁（§3），两次连跑 `tests/f10`；写本报告/PROGRESS/ADR 0016；按 feat/test/docs
    提交；合并 integration 后复跑；未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`；
-   迁移只新增 `0037`。
+   迁移只新增 `0038`。
 
 ## 1. 交付内容
 
@@ -58,7 +59,7 @@
   `content_type_mismatch`；空内容 `empty_content`。准入**只**验魔数，不解析/不 OCR：
   扫描件也先被接收，再由解析器 `pdf_no_text_layer` 失败。字节上限沿用
   `MaxUploadBytes = 20 MiB`，未放宽。
-- 迁移 `0037_pdf_admission.sql`：`platform.artifact_admissions.detected_format` CHECK
+- 迁移 `0038_pdf_admission.sql`：`platform.artifact_admissions.detected_format` CHECK
   词表 `text,csv,json,xlsx,zip,pdf,binary,unknown`（T028 表是 0015 的非契约偏差；
   `contracts/database.sql` 未定义该表）。重复 migrate no-op；worker/PUBLIC 零授权不变。
 
@@ -76,7 +77,7 @@
 - 失败：结构损坏/解析 panic → `pdf_invalid`（part=xref/structure/page/header）；
   声明 `/Encrypt`（或 NewReader 因密码失败）→ `pdf_encrypted`（不解密）；
   非 PDF 头 → `pdf_invalid(header)`。
-- 支持边界（ADR 0015 §2）：不支持 OCR、解密、Type0/CID 精确宽度；这些不是静默错误，
+- 支持边界（ADR 0016 §2）：不支持 OCR、解密、Type0/CID 精确宽度；这些不是静默错误，
   除宽度近似外都以具体码失败。
 
 ### 1.3 分块器 `orchara-pdf-page-paragraph-chunker/1` 与 citation
@@ -202,7 +203,7 @@ decision docling-native: eliminated: no measured strict quality gain ...
 
 合并 `integration/f13a-f15a-f09-f10`（tip `c7d7e21`，含 T062；merge commit
 `9aa2982`）后复跑目标门禁（T062 只与本票的 `PROGRESS.md`/ADR 编号相交；因 T062 已占
-ADR 0014，本票 ADR 让号为 0015）：
+ADR 0014，本票当时 ADR 让号为 0015，最终集成合并重编号为 0016）：
 
 ```text
 $ python -m pytest tests/f10 -q          # merge 9aa2982 之后
@@ -236,7 +237,7 @@ $ python -m pytest tests/f05/test_t028_quarantine.py tests/f05/test_t028_upload_
 
 ## 4. 真实栈、输入与版本
 
-- 真实 PG 16.4（每个用例新建临时库，真实 `cmd/admin migrate` 0001→0037；迁移链连续，
+- 真实 PG 16.4（每个用例新建临时库，真实 `cmd/admin migrate` 0001→0038；迁移链连续，
   重跑 migrate no-op）；真实 `cmd/api` 二进制（HMAC 签名链接、文件系统 `staged/`/
   `sealed/` 字节、internal mTLS）；真实 `cmd/maintenance` 进程（work 池
   `document_ingest`，system_io 池 `artifact_finalize`，2+2 slot）。
@@ -345,7 +346,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 | 浏览器 DOM 驱动页面 | **not_run** | 只做 `GET /knowledge` 结构与 Node 执行纯 helper（与既有页面票同一边界） |
 | 版本重建/删除治理/检索规模/缓存 | **not_run / 后续** | T061、F07/T058、T064、T067 |
 | 全量 `pytest tests` | **not_run（orchestrator）** | 按 BRIEF §3；本票跑 `tests/f10` 两遍 + `tests/tooling` |
-| 直接替换生产 parser 为候选 | **不做（决策）** | ADR 0015 §6：任何候选采用都需新 parser/chunker revision + 新安全/OCR 决定 |
+| 直接替换生产 parser 为候选 | **不做（决策）** | ADR 0016 §6：任何候选采用都需新 parser/chunker revision + 新安全/OCR 决定 |
 
 ## 8. 下一票接口（复用点）
 
@@ -355,7 +356,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
   （每 chunk 重复），若未来大文档空页很多，应改为文档级事实——这是新的数据模型决定。
 - 失败诊断：`pdf_no_text_layer`/`pdf_invalid`/`pdf_encrypted` 已进 `parseFailureCodes`，
   T061 若需要持久化历史失败位置仍是新决定。
-- 迁移：`0037` 只扩非契约 `artifact_admissions` 词表；后续格式新增 detected_format 值
+- 迁移：`0038` 只扩非契约 `artifact_admissions` 词表；后续格式新增 detected_format 值
   应同样用 additive migration + purpose-scoped allowlist，而不是放宽基础 allowlist。
 - 实验入口：`probes/f10_pdf_compare/` 可重放（`run_comparison.py`、`attempt_docling.py`、
   `candidate_worker.py`）；其 dependencies 在 `probes/f10_pdf_compare/requirements.txt`
@@ -364,7 +365,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 
 ## 9. 与契约/既有票据的关系（如实）
 
-1. **迁移 0037**：只改 T028 非契约表 `platform.artifact_admissions` 的
+1. **迁移 0038**：只改 T028 非契约表 `platform.artifact_admissions` 的
    `detected_format` CHECK（+`pdf`）；`contracts/**`、`docs/spec/**` 未改，
    `sync_spec --check` no drift。
 2. **citation additive**：`pdf` 对象仅 PDF chunk 出现；txt/md/csv/xlsx citation 不变
@@ -382,7 +383,7 @@ pdfminer.six MIT、Docling MIT（其 torch 等依赖各自许可证）。
 
 ## 10. 参考
 
-- ADR：`product/docs/adr/0015-f10-pdf-ingest.md`（本票）；`0010`/`0013`（F10 基础/
+- ADR：`product/docs/adr/0016-f10-pdf-ingest.md`（本票）；`0010`/`0013`（F10 基础/
   表格族）；`0005`/`0007`（非契约面先例）。
 - 基础：`product/reports/f10/T055-knowledge-ingest.md`、
   `product/reports/f10/T059-tabular-ingest.md`。
