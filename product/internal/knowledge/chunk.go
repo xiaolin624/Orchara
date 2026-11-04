@@ -37,6 +37,9 @@ type Chunk struct {
 	// Table is set only for a tabular chunk and carries its row range. Nil for
 	// the paragraph chunker's chunks.
 	Table *ChunkTable
+	// PDF is set only for a PDF chunk and carries its page attribution. Nil for
+	// every other input family.
+	PDF *ChunkPDF
 }
 
 type segment struct {
@@ -58,8 +61,17 @@ type segment struct {
 // Empty input yields an empty slice, never a synthetic chunk.
 func ChunkText(text string) []Chunk {
 	runes := []rune(text)
-	lineStarts := lineOffsets(runes)
-	segments := paragraphSegments(runes)
+	if len(runes) == 0 {
+		return nil
+	}
+	return chunkSegments(runes, lineOffsets(runes), paragraphSegments(runes))
+}
+
+// chunkSegments packs the paragraph segments of one rune slice into chunks. It is
+// the shared engine of the plain paragraph chunker and the PDF page chunker: the
+// caller supplies the slice (the whole document, or one page) and the segments
+// inside it, so the documented span invariant is preserved for both.
+func chunkSegments(runes []rune, lineStarts []int, segments []segment) []Chunk {
 	if len(segments) == 0 {
 		return nil
 	}

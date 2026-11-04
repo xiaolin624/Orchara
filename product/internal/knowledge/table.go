@@ -84,6 +84,11 @@ var parseFailureCodes = map[string]bool{
 	FailureIngestCellLimit:           true,
 	FailureIngestColumnLimit:         true,
 	FailureIngestRowTooLarge:         true,
+	// T060 PDF refusals carry their own stable codes and a re-derivable location
+	// (page or text-layer threshold).
+	FailurePDFInvalid:     true,
+	FailurePDFEncrypted:   true,
+	FailurePDFNoTextLayer: true,
 }
 
 // IsParseFailureCode reports whether code is a content refusal whose location
@@ -185,18 +190,26 @@ type ChunkTable struct {
 // ChunkParsed dispatches a parsed document to the chunker that matches its
 // family. It is the handler's single entry point; a parser never chunks.
 func ChunkParsed(parsed Parsed) []Chunk {
-	if parsed.Table != nil {
+	switch {
+	case parsed.PDF != nil:
+		return chunkPDFPages(parsed)
+	case parsed.Table != nil:
 		return chunkTableRows(parsed)
+	default:
+		return ChunkText(parsed.Text)
 	}
-	return ChunkText(parsed.Text)
 }
 
 // ChunkerVersionFor names the chunker revision that produced parsed's chunks.
 func ChunkerVersionFor(parsed Parsed) string {
-	if parsed.Table != nil {
+	switch {
+	case parsed.PDF != nil:
+		return ChunkerVersionPDF
+	case parsed.Table != nil:
 		return ChunkerVersionTableRows
+	default:
+		return ChunkerVersion
 	}
-	return ChunkerVersion
 }
 
 // chunkTableRows packages consecutive rows into a chunk while the slice of
