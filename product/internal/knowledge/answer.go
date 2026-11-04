@@ -278,11 +278,15 @@ type AnswerGeneration struct {
 
 // AnswerRetrieval records the retrieval this answer is grounded in. ChunkIDs is
 // the ordered chunk-id set of that retrieval: a citation outside it is refused.
+// Cache is the T067 cache state of that retrieval; generation and citation
+// re-checking still run on every request, so a cache hit never means "reuse the
+// old answer".
 type AnswerRetrieval struct {
 	EmbeddingModelRevision string
 	TopK                   int
 	ACLEpoch               int64
 	ChunkIDs               []string
+	Cache                  RetrievalCacheInfo
 }
 
 // AnswerResult is one answer request's outcome.
@@ -369,6 +373,7 @@ func (s *Service) Answer(
 			TopK:                   retrieval.TopK,
 			ACLEpoch:               retrieval.ACLEpoch,
 			ChunkIDs:               chunkIDsOf(retrieval.Items),
+			Cache:                  retrieval.Cache,
 		},
 	}
 	if len(retrieval.Items) == 0 {

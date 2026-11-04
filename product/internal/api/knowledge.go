@@ -98,10 +98,35 @@ type knowledgeCitationView struct {
 	Citation         json.RawMessage `json:"citation"`
 }
 
+type retrievalCacheView struct {
+	Enabled         bool   `json:"enabled"`
+	Hit             bool   `json:"hit"`
+	Discarded       bool   `json:"discarded"`
+	DiscardReason   string `json:"discard_reason,omitempty"`
+	KeyPrefix       string `json:"key_prefix,omitempty"`
+	ValidatedChunks int    `json:"validated_chunks"`
+	Stored          bool   `json:"stored"`
+	TTLSeconds      int64  `json:"ttl_seconds"`
+}
+
+func retrievalCacheViewOf(cache knowledge.RetrievalCacheInfo) retrievalCacheView {
+	return retrievalCacheView{
+		Enabled:         cache.Enabled,
+		Hit:             cache.Hit,
+		Discarded:       cache.Discarded,
+		DiscardReason:   cache.DiscardReason,
+		KeyPrefix:       cache.KeyPrefix,
+		ValidatedChunks: cache.ValidatedChunks,
+		Stored:          cache.Stored,
+		TTLSeconds:      cache.TTLSeconds,
+	}
+}
+
 type retrievalMetadata struct {
-	EmbeddingModelRevision string `json:"embedding_model_revision"`
-	TopK                   int    `json:"top_k"`
-	ACLEpoch               int64  `json:"acl_epoch"`
+	EmbeddingModelRevision string             `json:"embedding_model_revision"`
+	TopK                   int                `json:"top_k"`
+	ACLEpoch               int64              `json:"acl_epoch"`
+	Cache                  retrievalCacheView `json:"cache"`
 }
 
 type retrievalResponse struct {
@@ -139,10 +164,11 @@ type answerView struct {
 }
 
 type answerRetrievalView struct {
-	EmbeddingModelRevision string   `json:"embedding_model_revision"`
-	TopK                   int      `json:"top_k"`
-	ACLEpoch               int64    `json:"acl_epoch"`
-	ChunkIDs               []string `json:"chunk_ids"`
+	EmbeddingModelRevision string             `json:"embedding_model_revision"`
+	TopK                   int                `json:"top_k"`
+	ACLEpoch               int64              `json:"acl_epoch"`
+	ChunkIDs               []string           `json:"chunk_ids"`
+	Cache                  retrievalCacheView `json:"cache"`
 }
 
 type answerResponse struct {
@@ -182,6 +208,7 @@ func answerResponseOf(result knowledge.AnswerResult) answerResponse {
 			TopK:                   result.Retrieval.TopK,
 			ACLEpoch:               result.Retrieval.ACLEpoch,
 			ChunkIDs:               result.Retrieval.ChunkIDs,
+			Cache:                  retrievalCacheViewOf(result.Retrieval.Cache),
 		},
 	}
 }
@@ -523,6 +550,7 @@ func (s *Server) handleKnowledgeRetrievalQuery(w http.ResponseWriter, r *http.Re
 			EmbeddingModelRevision: result.EmbeddingModelRevision,
 			TopK:                   result.TopK,
 			ACLEpoch:               result.ACLEpoch,
+			Cache:                  retrievalCacheViewOf(result.Cache),
 		},
 	})
 }
