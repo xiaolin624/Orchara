@@ -103,6 +103,7 @@ Decimal 统计 CSV/XLSX，产物与诊断经 T028 的 artifact 路径封存；�
 
 | T053 | F15A | 在候选 S3 上验证封存、匿名拒绝和删除 | **blocked** | `reports/f15a/T053-s3-probe.md`（探针与判别证明真实执行并通过；本机无候选 S3 端点 → 真实候选运行 exit 2 `blocked`，不伪造通过）、`probes/f15a_objectstore/`（`object_store_probe.py` 十条断言 + stdlib SigV4 + 环境凭据、`fixtures/{compliant,violating}_server.py` 真实 HTTP 判别夹具、`run_evidence.py`、`localfs_probe/main.go` 真实 `internal/objectstore` 类比）、`tests/f15a/`（36 passed：AWS SigV4 向量 8 + 配置失败 4 + 判别矩阵 13 + 边界常量 4 + 本地 FS 2 + 证据诚实性 5）、`reports/f15a/`（`candidate-absent`/`candidate-not-configured` blocked、`fixture-compliant` passed、`fixture-violating-all` 9 failed、逐条违规 9 份、503 重试、`local-fs-analogue`、`runs.json`、`environment-profile.json`）、`docs/adr/0008-f15a-object-store-compatibility.md`；`go build/vet/test`（29 ok / 0 FAIL / 11 no-test）、`gofmt -l` 空、`pytest tests/tooling` 21 passed、`sync_spec --check` no drift；not_run：版本化（夹具未启用）、备份/恢复（F15B）、真实候选 IAM/桶策略与平台 S3 后端接入；无迁移/契约改动 |
 | T055 | F10 | 上传文本资料后检索到可追溯片段 | passed | `reports/f10/T055-knowledge-ingest.md`、`db/migrations/0034_knowledge.sql`、`internal/knowledge/`、`internal/embedding/`、`internal/background/handlers/document_ingest.go`、`internal/background/document_ingest.go`（完成守卫）、`internal/api/knowledge.go`、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/t055.py`、`tests/f10/`（20 passed）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；pgvector 不可安装 → `double precision[]`/384 维（T064/T067），本地 `local-hash-v1` embedding（真实 provider blocked），非契约检索/引用/诊断面见 ADR 0010 |
+| T059 | F10 | 摄取 CSV/XLSX 并保留行范围和安全错误 | passed | `reports/f10/T059-tabular-ingest.md`、`docs/adr/0012-f10-tabular-ingest.md`、`internal/knowledge/{table.go,parse_csv.go,parse_xlsx.go}`（`orchara-csv-parser/1`、`orchara-xlsx-parser/1`、`orchara-table-row-batch-chunker/1`；citation additive `row_start/row_end/row_count/header_row/sheet_name/columns/columns_omitted/text_render`；公式/DTD/宏/压缩比/工作表/行/列/单元格/单行上限 → 具体 failed 码；行不拆分）、`internal/knowledge/{parse.go,chunk.go,service.go}`（注册表/Parsed.Table/诊断 `detail` 只读派生）、`internal/background/handlers/document_ingest.go`、`internal/api/knowledge.go`、`internal/artifacts/admission.go`（仅导出 `SafeArchivePath`，准入无改动）、`apps/web/src/{knowledge.html,assets/knowledge.js}`、`tests/support/{t059.py,fixtures.py}`、`tests/fixtures/f10/`（提交夹具 + 确定性生成器）、`tests/f10/`（28 passed ×2：原 20 + T059 8）；真实 PG 16.4 + 编译二进制 + 真实 HTTP/mTLS + 真实封存对象 + 真实 maintenance 双池 + Node；无迁移、无契约改动、`sync_spec` no drift；真实 provider 继承 T055 blocked |
 
 ## 本轮小结（D00 + P01–P05 + F00，共 16 票）
 
@@ -1290,6 +1291,18 @@ Compiler，不是 MinIO 客户端），因此无法产生“候选被接受/拒�
 | 真实栈 | `tests/f10/` 20 用例：迁移链/约束/零授权、KB CRUD/游标/owner+admin 404/CSRF/API key scope、txt+md 上传→ready→检索→citation 独立真值（源 hash/rune 切片/行号/body 字节）、非当前 revision 与 tombstone 过滤、空解析/非法 UTF-8 永不 ready、可重试失败→重试成功、租约丢失→恢复；页面结构 + Node 执行 `knowledge.js` |
 | 门禁 | `pytest tests/f10 -q` **20 passed**；`go build ./...`/`go vet ./...`/`go test ./...` exit 0；`gofmt -l .` 空；`sync_spec.py --check` no drift；`tests/f00b` 135 passed；f05 合并跑出现 T028 隔离用例环境抖动，单文件复跑 10 passed（见报告 §3） |
 | 边界/not_run | 真实 embedding provider（无凭据/adapter，blocked，HTTP/handler 均 fail closed）；精确扫描性能/规模（not_run，T064/T067）；浏览器 DOM（not_run，与既有页面票同一边界）；CSV/XLSX（T059）、PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索缓存（T067，本票不加表）；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F10/T059 CSV/XLSX 表格摄取与行范围（2026-11-04）
+
+| 项 | 内容 |
+|---|---|
+| 输入族 | CSV：源文本保留（单 BOM 剥离、CRLF/引号/字段内换行原样）、逻辑记录号（表头=行 1）、行批次 chunk、citation span 回切封存字节；XLSX：stdlib zip+XML 只读，工作簿顺序第一个工作表、共享字符串/富文本、工作表自身行号、`sheet_csv/1` 确定性渲染；行永不拆分，超长行失败 |
+| citation | jsonb additive 字段 `row_start/row_end/row_count/header_row/sheet_name/columns/columns_omitted/text_render`；txt/md citation 一个字节不变；无迁移、无契约改动（ADR 0012 §4） |
+| 安全/失败 | `<f>` 公式→`ingest_formula_not_supported`（sheet/row/column/cell，缓存值不使用）；DTD/实体→`ingest_dtd_not_supported`；宏→`ingest_macro_present`；路径穿越/条目 512/解压 64 MiB/压缩比 100（总量+单条目）复用 `internal/artifacts` 常量；工作表 64/数据行 10 000/列 64/单元格 640 064/单行 64 KiB；坏 CSV/坏 zip→具体码；全部 failed、business、0 chunk、检索空 |
+| 诊断 | `GET /knowledge-documents/{id}/diagnostics` 新增只读派生 `detail`：仅 failed + 解析拒绝码 + 记录 parser revision 未变 + 源 artifact 可读时，用同解析器重放同封存字节；源删/换版→null。不新增表/列/写路径，完成守卫仍是唯一状态写者（ADR 0012 §5） |
+| 真实栈 | `tests/f10/` 28 用例（T055 20 + T059 8）：CSV/XLSX 真实上传（`purpose=knowledge` 准入已存在）→ready→检索→citation 独立真值（封存字节 sha256、rune 切片、独立 Python zip+XML 行值）；10 类内容拒绝；公式重试仍失败→新 artifact 恢复 ready；csv+xlsx+txt 同 ACL/引用/撤销；页面结构 + Node 执行 `formatRowRange`/`describeFailureDetail`；夹具 2 541 B/3 297 B 已提交 + 确定性生成器 |
+| 门禁 | `pytest tests/f10 -q` **28 passed**（289.16s / 286.58s 两次连跑）；`tests/tooling + f05 t028 quarantine/upload_flow` 37 passed；`f00b t024 artifacts/t022 finalize` 22 passed；`go build ./...`/`go vet ./...` exit 0；`go test ./...` 33 ok/0 FAIL；`gofmt -l .` 空；`sync_spec --check` no drift |
+| 边界/not_run | 真实 embedding provider（继承 T055 blocked）；浏览器 DOM（not_run）；PDF（T060）、版本重建（T061）、删除治理（F07/T058）、检索规模/缓存（T064/T067）；XLSX 只读第一个工作表；全量 `pytest tests`、f05/f00b 整包 not_run（orchestrator）；未 push/未关 issue、未改 docs/spec/contracts、无迁移 |
 
 ## 记录模板
 

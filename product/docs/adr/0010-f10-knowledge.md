@@ -186,3 +186,11 @@ GET /api/v1/knowledge-documents/{document_id}/diagnostics
 - not_run / blocked（见报告 §5）：真实 embedding provider（无凭据/adapter，blocked）；
   精确扫描性能/规模基准（not_run，T064/T067）；浏览器 DOM 驱动页面（not_run，与既有页面
   票同一边界）；CSV/XLSX（T059）、PDF（T060）、版本重建（T061）、删除治理（F07/T058）。
+
+## 后续更新
+
+- 2026-11-04：T059（#60）已按 §6 的扩展点注册 CSV/XLSX 解析器
+  （`orchara-csv-parser/1`、`orchara-xlsx-parser/1`），并扩展 §3 的诊断读为只读派生的
+  `detail`（公式/上限的行列位置）；表格行范围、上限与失败码见 ADR 0012。§3 的检索/
+  引用/诊断路径与 §5 的激活边界未变。
+
