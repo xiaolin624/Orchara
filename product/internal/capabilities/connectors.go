@@ -239,6 +239,13 @@ func (s *Service) dispatchConnector(
 	response, err := s.Connectors.Execute(ctx, spec.Connector, spec.ConnectorCall)
 	if err != nil {
 		mapped := connectorFailure(err)
+		if reason, ambiguous := connectorUnknownReason(spec, mapped); ambiguous {
+			// F06/T051: the request was sent and the receipt is not trustworthy.
+			// The operation is unknown, never failed/succeeded: a later reconcile
+			// (owner evidence) is the only way to settle it, and no automatic
+			// resend ever happens.
+			return s.markConnectorUnknown(ctx, run, input.AttemptToken, operationID, mapped, reason)
+		}
 		if failErr := s.failAttemptAndOperation(ctx, operationID, 1, mapped.Code); failErr != nil {
 			return nil, capFailure(500, CodeInternal, "the failed connector attempt could not be recorded")
 		}
@@ -382,4 +389,124 @@ func connectorApprovalTarget(spec *capabilitySpec) approvals.Target {
 		target.Query = query
 	}
 	return target
+}
+
+// ReconciliationLimitationNoIdempotency is the explicit safe limitation fact
+// recorded on a connector operation before dispatch: the policy declares no
+// provider idempotency key and no query/receipt lookup, so an ambiguous outcome
+// cannot be settled by asking the provider. It is persisted (never inferred from
+// a request) and disclosed by the owner ledger/UI. The connector shape F06/T048
+// compiles has neither capability, so the fact is always recorded for connectors.
+const ReconciliationLimitationNoIdempotency = "no_idempotency_or_query_support"
+
+// connectorReconciliationLimitation is the column value for one operation. Only
+// connector calls carry a limitation; model/tool rows stay NULL.
+func connectorReconciliationLimitation(spec *capabilitySpec) any {
+	if spec != nil && spec.Kind == ConnectorKind {
+		return ReconciliationLimitationNoIdempotency
+	}
+	return nil
+}
+
+// connectorUnknownReason classifies a connector failure as the ambiguous outcome
+// of a request that may already have been applied. Only write-risk policies can
+// have an external side effect, so a read keeps its typed failure. A timeout,
+// connection loss, a 5xx after send, or a 2xx whose body cannot be validated all
+// mean "no trustworthy receipt" and become unknown instead of failed.
+func connectorUnknownReason(spec *capabilitySpec, mapped *Error) (string, bool) {
+	if spec == nil || spec.Kind != ConnectorKind || spec.RiskClass != "write" || mapped == nil {
+		return "", false
+	}
+	switch mapped.Code {
+	case "connector_timeout":
+		return "dispatch_timeout", true
+	case "connector_transport_error":
+		return "transport_error", true
+	case connectors.CodeHTTPError:
+		status, ok := mapped.Details["status"].(int)
+		if ok && status >= 500 {
+			return "receipt_missing", true
+		}
+		return "", false
+	case connectors.CodeResponseInvalid, connectors.CodeResponseTooLarge:
+		return "receipt_missing", true
+	}
+	return "", false
+}
+
+// markConnectorUnknown commits the two facts of a lost receipt in one
+// transaction: the operation becomes `unknown` (never failed/succeeded, and a
+// duplicate invoke replays this state instead of sending) and the T036 bridge
+// records the run's unresolved external write so the finalizer parks the Run in
+// needs_reconciliation. The physical attempt row is left `dispatching`: that is
+// the honest record of a request whose answer was never observed.
+func (s *Service) markConnectorUnknown(
+	ctx context.Context,
+	run *runContext,
+	attemptToken, operationID string,
+	mapped *Error,
+	reason string,
+) (*Result, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be recorded")
+	}
+	defer func() { _ = tx.Rollback() }()
+	if s.Unknowns != nil {
+		if _, bridgeErr := s.Unknowns.RecordUnknownOperationTx(
+			ctx, tx, run.ID, attemptToken, operationID, reason,
+		); bridgeErr == nil {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE platform.operations
+				   SET state = 'unknown', last_error_code = $2, updated_at = now()
+				 WHERE id = $1::uuid AND state = 'dispatching'`,
+				operationID, mapped.Code,
+			); err != nil {
+				return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be recorded")
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be committed")
+			}
+			return connectorUnknownResult(operationID, mapped), nil
+		}
+	}
+	// The bridge could not park the Run (or no bridge is wired). The write must
+	// still never be resent, so the operation is committed unknown on its own.
+	_ = tx.Rollback()
+	fallback, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be recorded")
+	}
+	defer func() { _ = fallback.Rollback() }()
+	if _, err := fallback.ExecContext(ctx, `
+		UPDATE platform.operations
+		   SET state = 'unknown', last_error_code = $2, updated_at = now()
+		 WHERE id = $1::uuid AND state = 'dispatching'`,
+		operationID, mapped.Code,
+	); err != nil {
+		return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be recorded")
+	}
+	if err := fallback.Commit(); err != nil {
+		return nil, capFailure(500, CodeInternal, "the unknown connector operation could not be committed")
+	}
+	return nil, capFailure(503, "reconciliation_unavailable",
+		"the external write outcome is unknown and could not be parked for reconciliation")
+}
+
+// connectorUnknownResult is the contract-shaped answer of a lost receipt:
+// state=unknown, never succeeded/failed, plus the stable owner-facing facts.
+func connectorUnknownResult(operationID string, mapped *Error) *Result {
+	data := map[string]any{
+		"error_code":              "operation_unknown",
+		"requires_reconciliation": true,
+		"reconciliation_status":   "pending",
+		"limitation":              ReconciliationLimitationNoIdempotency,
+	}
+	if mapped != nil {
+		data["dispatch_error_code"] = mapped.Code
+		if status, ok := mapped.Details["status"]; ok {
+			data["upstream_status"] = status
+		}
+	}
+	return &Result{OperationID: operationID, State: "unknown", Data: data}
 }
