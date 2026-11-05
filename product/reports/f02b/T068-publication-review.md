@@ -2,9 +2,10 @@
 
 - 任务：F02B / GitHub Issue #69（票 `T068`，规划 ID F02B.01–03），分支
   `t/t068-publication-review`（worktree `E:\orchara-worktrees\t068`）；基线
-  `integration/t068-t082` @ `cd8ca3c`（= `integration/f13a-f15a-f09-f10` 基线）；已合并
-  `integration/t068-t082`（合并提交 `5e882a2`，含 T069 的 `0042_deletion_foundation.sql`；
-  本票迁移因此为 `0043_publication_reviews_and_outbox.sql`，ADR 重编号为 0021）。
+  `integration/t068-t082` @ `cd8ca3c`（= `integration/f13a-f15a-f09-f10` 基线）。已合并
+  `integration/t068-t082` 两次：`5e882a2`（含 T069 的 `0042_deletion_foundation.sql`；本票迁移
+  因此为 `0043_publication_reviews_and_outbox.sql`，ADR 重编号 0021）与 `a9c12ba`
+  （含 T070 撤销；其复用本票的撤销列/outbox/`ResolveRunnableVersion`）。
 - 状态：**`passed`**（范围 = 4 个契约 operation：`submitApplication` /
   `reviewPublication` / `listPublicationReviews` / `getPublicationReview`；冻结审阅快照；
   同 hash 校验；依赖/报告可信性复查；单事务版本 + active 指针 + outbox + audit；
@@ -12,9 +13,10 @@
   真实 PostgreSQL 16.4、真实编译二进制、真实 HTTP（session+CSRF+mTLS）、真实封存对象字节、
   真实 WSL2/runsc 测试执行器、真实两池 maintenance、真实 5 类作者案例报告。无 mock、无跳过。）
 - 边界（如实）：
-  - **撤销不在本票**（T070 #71）：`application_versions.revoked_at/revoked_by/revoke_reason`
-    与 `catalog.ResolveRunnableVersion` 已就绪并被测试覆盖读路径；没有 `revokeVersion` 端点，
-    撤销后的目录隐藏/取消运行由 T070 交付。
+  - **撤销本身不在本票**（T070 #71）：`application_versions.revoked_at/revoked_by/revoke_reason`
+    与 `catalog.ResolveRunnableVersion` 由本票设计/交付；T070 已合入
+    `integration/t068-t082`（ADR 0022、`reports/f02b/T070-version-revocation.md`），复用本票
+    迁移列、outbox helper 与 `ResolveRunnableVersion`。本票报告只把撤销作为“下一票接口”描述。
   - **从已发布版本启动运行不在本票**（T074 #75）：本票只交付 `ResolveRunnableVersion`
     读判定和 frozen manifest artifact；published snapshot/Run 创建属 T074。
   - **子应用依赖的“已发布子版本”端到端**：快照/依赖复查/版本边对固定子版本有完整实现与单测
@@ -190,11 +192,21 @@ $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-15
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-16
 18 passed in 242.53s (0:04:02)
 
-# 合并 integration/t068-t082 后双跑（最终树；含真实 runner e2e 两次均通过）
+# 合并 integration/t068-t082 后双跑（最终树，第一次合并 + T069；含真实 runner e2e 两次均通过）
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-19
 18 passed in 254.04s (0:04:14)
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-20
 18 passed in 251.68s (0:04:11)
+
+# 第二次合并（T070 撤销）后的最终树双跑（含真实 runner e2e 两次均通过）
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-21
+18 passed in 261.65s (0:04:21)
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-22
+18 passed in 252.17s (0:04:12)
+
+# T070 依赖本票 API 的邻近套件（最终树，确认合并未破坏其契约）
+$ python -m pytest tests/t070 -q --basetemp=E:\orchara-tmp\t068-t070
+12 passed in 153.54s (0:02:33)
 
 # 单独真实 runner e2e（沙箱安静窗口）
 $ python -m pytest tests/f02b/test_t068_e2e.py -q --basetemp=E:\orchara-tmp\t068-14
@@ -206,7 +218,7 @@ $ python -m pytest tests/f02b/test_t068_migration.py -q --basetemp=E:\orchara-tm
 5 passed in 26.87s
 
 $ python -m pytest tests/f02a -q --basetemp=E:\orchara-tmp\t068-f02a2
-104 passed in 1086.91s (0:18:06)
+104 passed in 827.73s (0:13:47)
 
 $ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t068-tooling2
 21 passed in 5.66s
@@ -244,8 +256,10 @@ WSL2/runsc 沙箱被其它并发套件占满时，e2e 的 3 次真实重试都�
 - **partial — 模型数据目的地的真实端到端**：快照字段、读取与 Node 渲染已测试；真实可发布应用在本批
   没有模型依赖（模型 provider 适配属于后续），因此真实 e2e 的 model_destinations 为空。
   承接：模型兼容评测/适配票（F04A/F06 后续）。
-- **not_run — 撤销端点与撤销后目录隐藏/取消运行**：T070 #71。schema 字段、CHECK、
-  `ResolveRunnableVersion` 读判定已就绪并有测试覆盖“可见版本/不可见”；撤销写路径不存在。
+- **not_run（本票范围外，T070 已交付）— 撤销端点、撤销后目录隐藏/取消运行**：T070 #71 已合入
+  integration（ADR 0022、`reports/f02b/T070-version-revocation.md`），复用本票的
+  `revoked_at/revoked_by/revoke_reason`、CHECK、outbox writer 和 `ResolveRunnableVersion`；
+  本票不重复验证其撤销写路径，只验证读判定与 schema。
 - **not_run — 从已发布版本启动 Run/Request**：T074 #75（需调用 `ResolveRunnableVersion` 并复制
   frozen hash/artifact 到 published snapshot）。
 - **not_run — outbox 消费者/目录索引**：T077 #78 / T082 #83；本票只保证同事务写行，不声称索引更新。
@@ -294,10 +308,11 @@ Go 函数（`internal/catalog/publication.go` 已导出）：
   **T074 在创建 Request/Run 前必须调用**；撤销/归档/无权限分别返回
   `ErrVersionRevoked`/`ErrVersionArchived`/`ErrNotVisible`。T070 的撤销 UPDATE 后该函数立即生效。
 
-T070 建议的最小撤销事务：`UPDATE application_versions SET revoked_at=now(), revoked_by=$admin,
-revoke_reason=$reason WHERE id=$1 AND revoked_at IS NULL`（第二调用幂等 200，不重复 audit）+
-`outbox(kind='catalog_index', payload.op='revoke', previous_active_version_id=…)` + audit；
-是否需要把 `applications.active_version_id` 置 NULL 由 T070 决定并记录在 T070 报告/ADR。
+T070 已在合并后的 integration 上交付撤销端点与目录不可用语义（见
+`reports/f02b/T070-version-revocation.md`、ADR 0022），它复用本报告的 `insertOutboxTx`、
+撤销三列/CHECK 与 `ResolveRunnableVersion`。T070 的最小撤销事务遵循上段形状，并把
+`applications.active_version_id` 置 NULL（不重指），同时为受影响非终态 Run 记录取消意图；
+本票不重复实现。
 
 ## 6. 风险/评审可能关注
 
