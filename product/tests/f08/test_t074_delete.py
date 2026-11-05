@@ -9,7 +9,7 @@ compiled API, the real tombstone transaction and the real execution cancel path.
 
 from __future__ import annotations
 
-from support import f00b, f08, t069
+from support import f00b, f08, t028, t069
 from support import stack as st
 
 
@@ -76,9 +76,12 @@ def test_conversation_delete_tombstones_cancels_and_returns_the_seven_scope_job(
                       if run["state"] == "cancelled"]
     assert [run["id"] for run in cancelled_runs] == [run_id]
 
-    # T069 does not purge: the sealed request bytes are still real until T071.
+    # Post-review fix: the sealed request body is tombstoned in the same
+    # transaction as the conversation, so every artifact read entry refuses
+    # immediately. T069 still does not purge: only T071 removes the real bytes.
     still_there = f08.artifact_row(stack.dbname, sealed)
-    assert still_there["deleted_at"] is None
+    assert still_there["deleted_at"] is not None
+    assert still_there["state"] == "deleted"
     assert f08.artifact_bytes(stack, sealed) == sealed_bytes
 
     # The 202 is the contract DeletionAccepted and the job query is the contract
@@ -141,3 +144,60 @@ def test_conversation_delete_is_owner_only_and_unknown_is_the_same_404(f08_stack
     )
     assert t069.deletion_jobs(stack.dbname, resource_type=t069.RESOURCE_CONVERSATION) == []
     assert f08.conversation_row(stack.dbname, conversation_id)["deleted_at"] is None
+
+
+def test_deleted_conversation_body_is_unreadable_through_every_artifact_entry(
+    f08_stack,
+) -> None:
+    """Post-review finding [P1]: DELETE must close the body-read entries at once.
+
+    The reviewer's reproduction read the request body with 200 + full content after
+    the DELETE answered 202, because only the conversation/request rows carried the
+    tombstone. SECURITY §5 requires logical deletion to block API reads
+    immediately, so the sealed message and the attachment of the conversation must
+    be tombstoned in the same transaction (their bytes stay until T071 purges).
+    """
+    stack = f08_stack
+    owner = f08.account(stack)
+    conversation_id = f08.conversation(owner.session)
+    published = f08.publish_version(stack, owner.session)
+    attachment = f08.public_attachment(
+        stack, owner.session, b"t074 post-review deleted conversation attachment\n"
+    )
+    request = f08.request_of(
+        f08.submit_request(
+            owner.session,
+            conversation_id,
+            "post-review: delete my sealed body",
+            artifact_ids=[attachment],
+            version_id=published.version_id,
+            key=f00b.new_uuid(),
+        )
+    )
+    message_artifact = f08.request_row(stack.dbname, request["id"])["input_artifact_id"]
+    message_bytes = f08.artifact_bytes(stack, message_artifact)
+
+    # The three artifact read entries really serve the live conversation's body.
+    for entry in (t028.get_artifact, t028.download_artifact, t028.read_content):
+        assert entry(owner.session, message_artifact).status == 200, entry.__name__
+    for entry in (t028.get_artifact, t028.download_artifact, t028.read_content):
+        assert entry(owner.session, attachment).status == 200, entry.__name__
+
+    t069.deletion_of(
+        t069.delete_resource(owner.session, t069.RESOURCE_CONVERSATION, conversation_id)
+    )
+
+    # Every read entry refuses both the message body and the request attachment.
+    for artifact_id in (message_artifact, attachment):
+        for entry in (t028.get_artifact, t028.download_artifact, t028.read_content):
+            st.assert_error(
+                entry(owner.session, artifact_id),
+                404,
+                t069.ERROR_RESOURCE_NOT_FOUND,
+            )
+    for artifact_id in (message_artifact, attachment):
+        row = f08.artifact_row(stack.dbname, artifact_id)
+        assert row["deleted_at"] is not None, row
+        assert row["state"] == "deleted", row
+    # The tombstone is logical: only T071 removes the real bytes.
+    assert f08.artifact_bytes(stack, message_artifact) == message_bytes
