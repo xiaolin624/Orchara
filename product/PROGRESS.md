@@ -1909,8 +1909,8 @@ HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** �
 
 T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 因本票无 waiting `not_run`）。
 证据：`reports/f04b/T085-parallel-optional.md`；分支 `t/t085-parallel-optional`（worktree `E:\Orchara-wt\t085`），基线
-`integration/t083-t091` @ `111e2c2`，结束合并 `f21f09a`（含 T086 model node；冲突解决与 bundle 重建见报告 §7）；
-功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，合并 `982a1b0`。无迁移；未改 `docs/spec/**`、`contracts/**`。
+`integration/t083-t091` @ `111e2c2`，结束合并 `15db973`（T087/T088/T089 + 集成方对并发调度器的适配，merge `723760b`）；
+功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`、`9a302f2`（skip 事实每次 attempt 只发布一次，waiting hand-over 不发布）。无迁移；未改 `docs/spec/**`、`contracts/**`。
 
 | 交付点 | 结果 |
 |---|---|
@@ -1922,11 +1922,13 @@ T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机�
 | join-once / replay | **passed（Go 单测）**：fake `NodeOutputSource` 回放 start/choose/left/join → join 只发一条 succeeded、无新 data 行、无 sandbox、final output=复用封套；真实二次 exec 冒烟 `not_run`（无 waiting，留 T087/T091） |
 | 运行视图 / 画布提示（P1） | **passed**：run view 把 optional failed 显示为「已收敛的错误」（`state-converged`，与 failed 区分）+ 图例；画布 join 面板逐个标记 optional、列出已选 optional 并提示"只有纯读/计算错误会收敛；写/越权/预算/审批失败不降级"；`npm ci --offline && npm run build` 重建并提交 canvas bundle |
 
-门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **43 passed in 239.44s**（合并 T086 后；含本票 5 例、T083 全回归、
-T086 model-node 9 例；`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；`pytest tests/f05` **149 passed**（sandbox 修复回归）；
-`pytest tests/tooling` **21 passed**；`pytest tests/f06` **172 passed / 1 failed**（T047 的 sandbox 启动失败被旧
-executor 竞态伪装成租约丢失，修复后该用例单测重跑 **1 passed**，见报告 §6.1）；
-`go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
+门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **43 passed in 239.44s**（含 T086 合并；本票 5 例、T083 全回归、
+T086 model-node 9 例；`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；合并 T087/T088/T089 后定向复跑
+**30 passed / 1 failed in 376.48s**（`test_t085_parallel_optional`、`test_t083_condition_runtime`、`test_t087_approval_node`、
+`test_t089_callapp`、`test_t086_model_node`；唯一失败是 T089 的双 call_app 子调用创建顺序断言，并发下非契约顺序）；
+`pytest tests/f05` **149 passed**（sandbox 修复回归）；`pytest tests/tooling` **21 passed**；
+`pytest tests/f06` **172 passed / 1 failed**（T047 的 sandbox 启动失败被旧 executor 竞态伪装成租约丢失，修复后该用例单测重跑
+**1 passed**，见报告 §6.1）；`go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
 `go test -race ./internal/presetexec` **not_run**（`cgo: C compiler "gcc" not found`，原始输出见报告 §6）。
 附带修复：`internal/sandbox/executor.go`（`78d09db`）不再把"进程退出后自己的取消失败"记成租约丢失，
 真实启动失败保持原错误类型并提供确定性 Go 回归测试（T083/T085 真实栈偶发失败的根因）。
