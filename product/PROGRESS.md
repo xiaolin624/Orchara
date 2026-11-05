@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -1612,6 +1612,21 @@ T074（GitHub #75）已交付，状态 **`passed`**。证据：
 | 真实证据 | `test_t068_e2e.py`：真实两池 maintenance + 真实 WSL2/runsc 产出 5 例真实 runner 报告（1 正常+输出检查、2 输入 schema 拒绝、1 row_limit_exceeded、1 真实 sandbox_unavailable 工具失败，覆盖五类）；提交后撤销真实工具依赖 → 批准 409 `dependency_unavailable`（located `dependency_revoked`）→ 恢复 → 批准 200 → version/active/outbox/audit/version 读全部断言。其余 review 事务用例用真实 guard 接受的密封报告（passed case 绑真实 case run 行，终态种子；报告 §4 明示） |
 | 门禁 | `pytest tests/f02b` **18 passed ×6**（合并前 290.87s/242.53s；T069 合并后 254.04s/251.68s；T070 合并后 261.65s/252.17s，含真实 runner e2e）；`tests/t070` 12 passed（153.54s）、`tests/f02a` 103 passed（1170.93s；合并 T074 后 1 条旧 FK 断言更新并单测复跑通过）、`tests/tooling` 21 passed（6.43s）、`tests/f13a -k "t052 or t056 or t062"` 42 passed + 9 deselected（859.62s）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；真实 PG 16.4 / 编译二进制 / 真实 HTTP+CSRF+mTLS / sealed 字节 / Node |
 | 边界/not_run | T070 撤销端点与撤销后目录/取消；T074 从 published version 建 Run；T075/T078 child run（含子应用依赖的发布端到端 **partial**）；T077/T082 outbox 消费者/目录索引；浏览器 DOM；全量 `pytest tests`；未 push/未关 issue、未改 docs/spec/contracts |
+
+## F08 授权用途目录：投影索引、落后回退与安全重建（T077，2026-11-05）
+
+T077（GitHub #78）已交付，状态 **`passed`**。证据：
+`reports/f08/T077-capability-catalog.md`、ADR 0026。
+
+| 项 | 结果 |
+|---|---|
+| 投影 | `platform.application_catalog_entries`（契约的 version/text/hash/updated_at + 非契约 `application_id`/生成 `ts` GIN；**不建** embedding 列，pgvector 不可用，ANN 归 T064/T067）+ 单行台账 `platform.catalog_index_state`（state/epoch/rebuild_started/rebuilt_at/last_error_code/expected/indexed）；迁移 `0045_catalog_index.sql`（orchestrator 预分配 0051，合入需重编号；测试按 slug 断言） |
+| 搜索与 ACL | 非契约 `GET /api/v1/catalog/search`（`application:read`）+ `/catalog` 页面；ACL（owner 或未过期 read grant）、未归档、未撤销、同 application、manifest hash 在 SQL 内、排名/LIMIT 之前；keyset cursor `(rank,version_no,id)`；`listApplications` 契约响应零改动 |
+| 陈旧与回退 | 就绪 = 台账 `ready` **且** 活“可读未撤销未归档可索引版本数” == 活“hash 仍匹配的合法投影行数”；不一致/缺失/重建中/失败/hash 不匹配 → 授权全文回退（ACL+归档在 SQL，撤销留给逐行二次查权），`retrieval.source=fallback/stale=true/rejected_by_recheck` 如实上报；每条返回行都由另一条 SQL 重读权威 version/application 后返回 |
+| 重建/中断 | `orchara-admin catalog rebuild [--all|--version]`：先提交 `rebuilding`+新 epoch（不读版本表）→ 删陈旧行 → 逐版本一事务写 + 推进计数 → 最后 `ready`+`rebuilt_at`+投递 outbox；失败记录 `last_error_code/last_error_at`；真实 `ACCESS EXCLUSIVE` 锁 + 杀进程的中断只留 `rebuilding` 台账（epoch/start 在），搜索回退不半服务；`catalog index --version` 入队 `catalog_index` job（dedup `<version>:<manifest_sha256>`），handler 写事务内复读权威行、坏卡 business 失败 |
+| 分离 | 目录表/授权谓词/重建路径/失败台账与 `knowledge_chunks`/`knowledge_index_versions` 完全分离；真实知识行计数与身份签名在 catalog rebuild 与 incremental handler 前后逐字节不变 |
+| 测试 | `tests/f08` **35 passed ×2**（最终 merge `4dfcf37` 后 522.07s/498.01s；其中 T077 16 = 迁移 3 + 搜索/ACL 3 + 重建/分离 5 + handler 3 + 页面 2）；`tests/tooling tests/f02b/test_t068_{migration,pages}.py tests/f02a/test_t023_{migration,pages}.py tests/f02a/test_t027_migration.py` **56 passed**（356.83s）；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿；真实 PG 16.4 + 编译二进制 + 真实 HTTP + 真实 sealed manifest 字节 + 真实 admin rebuild/maintenance 进程 + Node 24 |
+| 边界/not_run | T079 路由/候选选择/澄清/控制预算、T082 交接 UI、T078 子运行、T071/T072 删除清理、T068/T070 端点（本票只发 `IndexVersionTx`/`EnqueueIndexVersionTx` 接缝，未接其事务钩子）；浏览器 DOM；中文分词/检索质量实验未运行（只做子串+simple 词项，不宣称质量）；全量 `pytest tests` 与全量 f02a/f02b 未运行（只跑相邻迁移/页面文件）；未 push/未关 issue、未改 docs/spec/contracts |
 
 ## 记录模板
 
