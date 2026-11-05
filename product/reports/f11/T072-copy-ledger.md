@@ -176,6 +176,15 @@ $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t072-21
 38 passed in 450.46s (0:07:30)
 ```
 
+诚实说明：在加入最后的 `gofmt -w` 与未被调用的 `ClearScopesTx`（T071 复用接口）后，又跑了
+一轮最终代码确认（`t072-22`）：**37 passed / 1 failed**，失败为 T069 既有
+`test_a_deleted_memory_is_not_recalled_by_a_later_agent_turn` 的真实 WSL/runsc 瞬时
+`sandbox_failed`（`heartbeat context canceled`；T069 报告 §4.1 已记录同一环境抖动）。
+隔离重跑该用例 + 全部 16 个 T072 用例（`t072-23`）**17 passed（245.21s）**。
+合并 `integration/t068-t082` @ `fa6544f` 后，最终合并树再跑整套（`t072-25`，含 T077
+带来的新迁移/代码）：**38 passed（400.70s）**。即：两轮背靠背全绿（443.55s/450.46s），
+最终代码/合并树各自全绿；唯一一次失败是已记录的 WSL 瞬时抖动且隔离重跑通过。
+
 套内细分：T069 既有 22 + T072 16（`test_t072_ledger.py` 5、`test_t072_copy_cleanup.py` 5、
 `test_t072_migration.py` 4、`test_t072_failures.py` 2）。
 
@@ -218,8 +227,24 @@ no drift: spec copy and contract snapshot match the manifest   (exit 0)
 
 ```text
 $ git merge integration/t068-t082
-见下
+Auto-merging product/PROGRESS.md
+CONFLICT (content): Merge conflict in product/cmd/admin/main.go
+Automatic merge failed; fix conflicts and then commit the result.
+
+# 冲突只在 cmd/admin/main.go 的两处命令清单：双方保留（deletion + catalog），
+# 并把错误提示合成 '... background-jobs', 'deletion', 'evaluations', 'runs',
+# 'catalog' or 'seed-sales-template'。
+# 集成 tip 已带 T077 的 0045_catalog_index.sql，与 T072 原 0045 撞号：
+#   0045_deletion_copy_ledger.sql -> 0046_deletion_copy_ledger.sql
+# 迁移名字断言同步；合并树链 0001..0046 连续（test_t072_migration 4 passed）。
+
+$ git commit --no-edit
+[merge commit 3e12f35]
 ```
+
+合并后复跑：`pytest tests/f11` 38 passed（400.70s）、`tests/tooling` 21 passed（6.62s）、
+`go build ./...`/`go vet ./...` exit 0、`go test ./...` 全 ok / 0 FAIL、`gofmt -l .` 空、
+`sync_spec --check` no drift。工作树 `git status --short` 为空（本行最后一次 docs 提交后）。
 
 ### 4.5 TDD red 记录（摘要）
 
@@ -237,9 +262,9 @@ $ git merge integration/t068-t082
 | 输入 | 版本 / SHA-256（前 16 位） |
 |---|---|
 | 基线 | `integration/t068-t082` @ `57d90df` |
-| `db/migrations/0046_deletion_copy_ledger.sql`（分配 0048；合并重编号） | `CD168C657D4180AC…` |
+| `db/migrations/0046_deletion_copy_ledger.sql`（分配 0048；起始 0045 → 合并树 0046，最终以合并器编号为准） | `CD168C657D4180AC…` |
 | `internal/deletion/ledger.go` | `A858C6AF0C919E15…` |
-| `internal/deletion/copies.go`（gofmt 后） | `71F856C056A1A363…` |
+| `internal/deletion/copies.go`（gofmt + `ClearScopesTx` 后） | `C7198C33581E76D1…` |
 | `internal/deletion/deletion.go`（tombstone 同事务追加账本） | `F465F7F4FEDCB033…` |
 | `cmd/admin/deletion.go` | `E5561C5BA150EC5C…` |
 | `cmd/maintenance/copies.go` | `2FD3C3BF97E14F1B…` |
