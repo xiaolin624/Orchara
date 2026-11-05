@@ -6,9 +6,12 @@ package api
 //
 // It is a documented non-contract extension (ADR 0017): the contract's Report has
 // no per-case detail, and the sealed report document is the product's immutable
-// per-case evidence. The read is owner-or-admin, an API key needs
-// application:read, and every non-owner gets 404 — the same answer as a missing
-// report, so a report id cannot be enumerated.
+// per-case evidence. The read is owner-only: an administrator is a non-owner and
+// receives the same 404 as a missing report, because DATA-POLICY.md's visibility
+// rule says a role never grants result-body viewing rights (the T062
+// administrator attribution read is the separate audit surface and has no
+// bodies). An API key needs application:read. Every non-owner gets 404 — the
+// same answer as a missing report, so a report id cannot be enumerated.
 //
 // The response carries artifact ids only; a caller downloads each one through the
 // existing owner-only GET /api/v1/artifacts/{artifact_id}/download. No object key
@@ -33,7 +36,7 @@ func (s *Server) handleGetEvaluationCases(w http.ResponseWriter, r *http.Request
 		return
 	}
 	results, err := s.catalog.EvaluationCaseResults(
-		r.Context(), r.PathValue("report_id"), caller.PrincipalID, caller.HasRole("admin"), s.objects,
+		r.Context(), r.PathValue("report_id"), caller.PrincipalID, s.objects,
 	)
 	switch {
 	case errors.Is(err, catalog.ErrNotVisible):

@@ -132,6 +132,24 @@ def test_accounts_are_isolated_on_reads_and_submission(t052_stack) -> None:
     assert t062.get_evaluation(admin, evaluation_a).status == 200
     assert t062.get_report(admin, report_a["id"]).status == 200
 
+    # The per-case result bodies are owner-only. An administrator is a non-owner
+    # here: the role alone does not grant result-body viewing (DATA-POLICY.md),
+    # and the administrator attribution read was built without bodies. The answer
+    # is identical to a missing report, so the route cannot enumerate report ids.
+    cases_path = f"/api/v1/evaluation-reports/{report_a['id']}/cases"
+    owner_cases = owner_a.creator.client.get(cases_path)
+    assert owner_cases.status == 200, owner_cases.text
+    assert owner_cases.json["cases"] == [], owner_cases.json
+    admin_cases = admin.client.get(cases_path)
+    missing_cases = admin.client.get(
+        f"/api/v1/evaluation-reports/{t062.new_uuid()}/cases"
+    )
+    assert admin_cases.status == 404, admin_cases.text
+    # Same status, error code and message as "missing"; only the per-request id
+    # differs (that is true of the missing case itself, not of this route).
+    assert admin_cases.json["error"]["code"] == missing_cases.json["error"]["code"]
+    assert admin_cases.json["error"]["message"] == missing_cases.json["error"]["message"]
+
     # B cannot start an evaluation for A's application: the submission route
     # answers 404 before it can compile or freeze anything.
     b_dataset = t062.upload_dataset(
