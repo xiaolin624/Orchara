@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import Decimal
 
 import pytest
 
@@ -412,7 +413,12 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
             if event["payload"]["node_id"] == node_id
             and event["payload"]["state"] == "succeeded"
         ]
-        assert len(succeeded) == 1, (node_id, succeeded)
+        # Resumed attempts re-publish the reused node's single succeeded fact (one
+        # event per attempt), but the join never fires a second time: exactly one
+        # data row above and never two succeeds in one attempt.
+        attempt_numbers = [event["payload"]["attempt_no"] for event in succeeded]
+        assert attempt_numbers == sorted(set(attempt_numbers)), (node_id, succeeded)
+        assert len(attempt_numbers) == 2, (node_id, succeeded)
 
     # The final output reads the outer join envelope by source, the inner join
     # envelope, the second approval decision and the model output.
@@ -434,7 +440,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     assert len(attempts) == 2, attempts
     assert all(attempt["attempt_no"] == 1 for attempt in attempts), attempts
     # Budget/recovery does not reset the run bounds.
-    assert t091.run_row(t033_stack.dbname, run["id"])["budget_limit"] == "1.00"
+    assert Decimal(t091.run_row(t033_stack.dbname, run["id"])["budget_limit"]) == Decimal("1.00")
     ledger = t091.usage_ledger_rows(t033_stack.dbname, run["id"])
     assert len(ledger) == 6, ledger
     assert len({row["entry_key"] for row in ledger}) == 6, ledger
@@ -531,10 +537,11 @@ def test_required_failure_fails_fast_and_never_joins(t033_stack, sandbox) -> Non
     rows = t091.node_result_rows(t033_stack.dbname, run["id"])
     for node_id in ("join2", "join1", "approve2", "summarise", "end"):
         assert [row for row in rows if row["node_id"] == node_id] == [], (node_id, rows)
-    # The second approval was never created.
+    # The second approval was never created and no second resume exists; the one
+    # consumed resume job (approve1's decision) is still a durable row.
     assert t091.approval_for_node(t033_stack.dbname, run["id"], "approve2") is None
     assert len(t091.approval_rows(t033_stack.dbname, run_id=run["id"])) == 1
-    assert t091.resume_jobs(t033_stack.dbname, run["id"]) == []
+    assert len(t091.resume_jobs(t033_stack.dbname, run["id"])) == 1
     assert t033.no_orphan_evidence()["runsc_list"] == []
 
 
