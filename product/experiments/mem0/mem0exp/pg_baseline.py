@@ -894,4 +894,11 @@ def _remaining_scope_kinds(encoded: str | None) -> list[str]:
         scopes = json.loads(encoded)
     except json.JSONDecodeError:
         return []
+    if not isinstance(scopes, list):
+        return []
+    # F11/T069 changed the product column to the contract's string scope
+    # vocabulary. The experiment reads both shapes so its measurement remains
+    # comparable with the pre-T069 committed evidence.
+    if all(isinstance(scope, str) for scope in scopes):
+        return sorted(set(scopes))
     return sorted({str(scope.get("kind")) for scope in scopes if isinstance(scope, dict)})

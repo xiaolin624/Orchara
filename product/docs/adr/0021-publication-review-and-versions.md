@@ -1,4 +1,4 @@
-# ADR 0020 — Publication review, the frozen version transaction and the author-case gate
+# ADR 0021 — Publication review, the frozen version transaction and the author-case gate
 
 - Status: Accepted (F02B/T068, issue #69)
 - Date: 2026-11-05

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
+	"orchara/platform/internal/deletion"
 	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
@@ -72,9 +74,13 @@ type Server struct {
 	// memory is the F09/T054 personal memory store (candidates + confirmed
 	// memories). Its nil-ness is not a supported state: the store is always
 	// built, and a process without an object store fails closed per request.
-	memory  *memory.Service
-	objects *objectstore.Store
-	signer  *objectstore.Signer
+	memory *memory.Service
+	// deletions is the F11/T069 shared deletion foundation: one durable job per
+	// deleted resource revision, the tombstone transaction and the affected-run
+	// cancellation fan-out. Purge execution is T071/T072's.
+	deletions *deletion.Service
+	objects   *objectstore.Store
+	signer    *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -208,29 +214,43 @@ func New(deps Deps) *Server {
 	if deps.RetrievalCache != nil {
 		knowledgeService.Cache = *deps.RetrievalCache
 	}
+	userArtifactService := artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL)
+	memoryService := memory.New(
+		deps.Service.DB, deps.Objects,
+		catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
+	)
+	// F11/T069: the one deletion foundation every resource type registers with.
+	// Cancellation is the existing F03/T036 path (Owner-only, idempotent); the
+	// foundation does not reimplement the cancel state machine.
+	deletionService := deletion.New(deps.Service.DB)
+	deletionService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
+	deletionService.Register(artifacts.NewDeletionTarget(userArtifactService))
+	deletionService.Register(memory.NewDeletionTarget(memoryService))
+	deletionService.Register(knowledge.NewDeletionTarget(knowledgeService))
 	return &Server{
-		service:        deps.Service,
-		policy:         authorizer,
-		catalog:        catalog.New(deps.Service.DB, authorizer),
-		jobs:           jobsController,
-		artifacts:      background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		execution:      executionService,
-		evaluationRuns: execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
-		runArtifacts:   execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		userArtifacts:  artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		knowledge:      knowledgeService,
-		toolRuns:       toolruns.New(deps.Service.DB, notifier),
-		toolVersions:   toolversions.New(deps.Service.DB),
-		models:         modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
-		modelRegistry:  modelRegistry,
-		capabilities:   capabilityService,
-		connectors:     deps.Connectors,
-		approvals:      approvalService,
-		preview:        newPreviewHub(),
-		memory: memory.New(
-			deps.Service.DB, deps.Objects,
-			catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
-		),
+		service:           deps.Service,
+		policy:            authorizer,
+		catalog:           catalog.New(deps.Service.DB, authorizer),
+		jobs:              jobsController,
+		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:         executionService,
+		evaluationRuns:    execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
+		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts:     userArtifactService,
+		knowledge:         knowledgeService,
+		toolRuns:          toolruns.New(deps.Service.DB, notifier),
+		toolVersions:      toolversions.New(deps.Service.DB),
+		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		modelRegistry:     modelRegistry,
+		capabilities:      capabilityService,
+		connectors:        deps.Connectors,
+		approvals:         approvalService,
+		preview:           newPreviewHub(),
+		memory:            memoryService,
+		deletions:         deletionService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -408,6 +428,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}", s.handleGetArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/download", s.handleDownloadArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/content", s.handleArtifactContent)
+	// F11/T069: the contract's deleteArtifact. The tombstone commits before the
+	// 202; physical cleanup stays T071's.
+	mux.HandleFunc("DELETE /api/v1/artifacts/{artifact_id}", s.handleDeleteArtifact)
 
 	// F05/T030: the trusted preset tool. A documented non-contract bridge over
 	// the durable background-job pipeline (T033/F04A bind tools to runs later).
@@ -463,6 +486,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/retrieval-queries", s.handleKnowledgeRetrievalQuery)
 	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/answer", s.handleKnowledgeAnswer)
 	mux.HandleFunc("GET /api/v1/knowledge-citations/{chunk_id}", s.handleGetKnowledgeCitation)
+	// F11/T069: the contract's deleteDocument; the same tombstone transaction
+	// makes retrieval, citation open and the cache hit refuse immediately.
+	mux.HandleFunc("DELETE /api/v1/knowledge-documents/{document_id}", s.handleDeleteDocument)
+
+	// F11/T069: the shared deletion job read and the conversation delete route.
+	// Conversations have no authority until F08/T074 creates them, so every
+	// conversation id is a located 404 through the same generic foundation.
+	mux.HandleFunc("DELETE /api/v1/conversations/{conversation_id}", s.handleDeleteConversation)
+	mux.HandleFunc("GET /api/v1/deletions/{deletion_id}", s.handleGetDeletion)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
@@ -497,6 +529,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F11/T069: the personal-data page that starts a delete and shows the real
+	// deletion-job state/remaining scopes. Static, compile-time paths.
+	mux.HandleFunc("GET /personal-data", s.staticPage("personal-data.html"))
+	mux.HandleFunc("GET /assets/personal-data.js",
+		s.staticPage(filepath.Join("assets", "personal-data.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).

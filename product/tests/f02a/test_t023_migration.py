@@ -158,7 +158,7 @@ def test_publication_reviews_report_id_fk_lands_with_t026(f02a_stack) -> None:
         "platform.applications",
         "platform.principals",
         "platform.evaluation_reports",
-        # F02B/T068's frozen-decision bindings (ADR 0020).
+        # F02B/T068's frozen-decision bindings (ADR 0021).
         "platform.execution_snapshots",
         "platform.evaluation_jobs",
         "platform.artifacts",

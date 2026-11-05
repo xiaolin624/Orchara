@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 个人数据（F11/T069）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 62rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 0; margin: .4rem 0 0; list-style: none; }
+    li { margin: .8rem 0; padding: .6rem .7rem; border-left: 3px solid rgba(128,128,128,.5); }
+    .row { display: grid; grid-template-columns: 9rem 1fr; gap: .2rem .9rem; font-size: .88rem; }
+    .row .label { opacity: .7; }
+    .row .value { word-break: break-word; white-space: pre-wrap; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .hint { font-size: .82rem; opacity: .7; }
+    button { padding: .4rem .9rem; font: inherit; cursor: pointer; }
+    input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/runs">运行</a>
+    <a href="/memories">个人记忆</a>
+    <a href="/knowledge">知识库</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>个人数据与删除进度（F11/T069）</h1>
+  <p class="sub">
+    删除在服务端是<strong>先 tombstone、后异步清理</strong>：请求返回 202 删除任务之前，
+    旧内容已经在同一个数据库事务里停止被下载、检索、缓存命中与恢复读取；受影响且仍可执行的
+    Run 会进入既有取消流程。物理副本由后续清理任务完成，本页如实显示任务状态与
+    <code>remaining_scopes</code>，不声称字节已删除。
+  </p>
+  <p class="hint">
+    本页只使用当前登录者自己的数据：他人的、未知的或格式错误的 id 都得到同一个 404。
+    删除任务返回的 <code>id</code> 是 deletion_job id，不是被删资源的 id。
+  </p>
+
+  <section class="card">
+    <h2>我的记忆</h2>
+    <p class="hint">删除后该记忆立即从读取、列表与模型召回中消失。</p>
+    <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
+    <ul id="memories-list"></ul>
+    <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。</p>
+  </section>
+
+  <section class="card">
+    <h2>我的知识文档</h2>
+    <p class="hint">删除文档后，检索、引用、问答与已缓存的结果都不再返回其正文。</p>
+    <p id="documents-status" class="status" role="status" aria-live="polite">正在加载知识文档…</p>
+    <ul id="documents-list"></ul>
+    <p id="documents-empty" class="hint" hidden>还没有知识文档。</p>
+  </section>
+
+  <section class="card">
+    <h2>按 id 删除文件</h2>
+    <p class="hint">
+      文件（artifact）的 id 出现在附件上传页或运行制品里。被发布/可恢复运行或应用配置引用的
+      配置 artifact 不会被删除，服务端返回 409 <code>resource_in_use</code>。
+    </p>
+    <label for="artifact-id">artifact id</label>
+    <input id="artifact-id" type="text" autocomplete="off" spellcheck="false"
+           placeholder="00000000-0000-4000-8000-000000000000" />
+    <p><button id="delete-artifact" type="button">删除这个文件</button></p>
+  </section>
+
+  <section class="card" id="deletion-card" hidden>
+    <h2>最近一次删除</h2>
+    <p class="hint">
+      删除任务状态：待处理 / 执行中 / 已完成 / 失败。只要还有 remaining scopes，
+      内容就保持不可读；失败的清理可以被后续重试，绝不会让内容重新可见。
+    </p>
+    <div id="deletion-status" class="rows"></div>
+    <p id="deletion-refresh-status" class="status" role="status" aria-live="polite"></p>
+    <button id="deletion-refresh" type="button">刷新删除进度</button>
+  </section>
+
+  <p id="action-status" class="status" role="status" aria-live="polite"></p>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/personal-data.js"></script>
+</body>
+</html>
