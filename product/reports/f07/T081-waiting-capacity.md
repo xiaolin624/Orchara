@@ -2,7 +2,8 @@
 
 - 任务：F07 / GitHub Issue #82（票 `T081`），分支 `t/t081-waiting-capacity`（worktree
   `E:\orchara-worktrees\t081`，基线 `integration/t068-t082` @ `a4e946d`，合并父代理修复提交
-  `affc12c`（T078 迁移重编号）与后续集成（T080 父预算、T071 文档）后为 `7924139`）。
+  `affc12c`（T078 迁移重编号）与后续集成（T080 父预算、T071 文档、T079 路由）后为
+  `0e62587`）。
 - 状态：**passed**。独立子执行池（`global/child_slots` cap 8 + `parent:<id>/child_slots` cap 3）、
   父轮转公平领取、child 终态自动收敛 hook（等待决议/resume、必需失败传播、父取消后重驱
   finalizer）、allocation 按 holder 恰好一次释放；全部以真实 PG 16.4、编译后的
@@ -24,7 +25,8 @@
 2. **基线缺陷**：`integration/t068-t082` @ `a4e946d` 同时存在 `0048_diagnostic_grants.sql` 与
    `0048_f07_child_runs.sql`，`internal/db.LoadFS` 对重复版本直接失败 ⇒ 任何新库 `admin migrate`
    都不可能成功。父代理在集成分支提交 `affc12c` 将 T078 迁移改为 `0049`；本分支先合并该提交
-   （merge `<merge-commit>`），再使用下一个空号 `0051`。修复只重命名、字节不变。
+   （merge `7924139`；T079 又占用 0050 后本票再重编号为 `0051`，merge `0e62587`）。
+  修复只重命名、字节不变。
 3. TDD 切片：真实栈用例先红（子 Run 被顶层池/候选择序挡住；等待父不会自动收敛），再实现
    claim 池路由/轮转/释放、hook、Reconcile，逐片转绿。
 4. 门禁、报告、PROGRESS、ADR，合并 `integration/t068-t082` 后复跑（§3）。
@@ -124,6 +126,9 @@ run1: ....................................[100%]
       36 passed in 411.33s (0:06:51)   （最终树：含 T081 6 用例 + T080 7 用例 + T075/T078/页面）
 run2: ....................................[100%]
       36 passed in 451.80s (0:07:31)   （同一最终树，背靠背第二轮）
+最终合并 T079（`0e62587`）后的同一最终树（背靠背两轮）：
+runA: 36 passed in 480.93s (0:08:00)
+runB: 36 passed in 493.23s (0:08:13)
 （T081 隔离树、合并 T080 之前：29 passed in 462.36s，0:07:42）
 ```
 
