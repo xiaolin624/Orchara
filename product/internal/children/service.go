@@ -166,11 +166,20 @@ type Service struct {
 	DB      *sql.DB
 	Catalog *catalog.Reader
 	Objects *objectstore.Store
-	// Budget is the shared decimal ledger. A child Run freezes its allowance
-	// from the tree's budget root under the same row lock a reservation takes, so
-	// parallel children can never race a recovery or each other into a second
-	// allowance.
+	// Budget is the shared decimal ledger (F07/T080). A child Run freezes its
+	// allowance from the tree's budget root under the same row lock a reservation
+	// takes, so parallel children can never race a recovery or each other into a
+	// second allowance.
 	Budget *budget.Ledger
+	// Execution is the F07/T081 state-machine seam: the child lifecycle hook
+	// resolves a parent's children wait and re-drives its finalizer through the
+	// same execution primitives the T035 bridge and the finalizer use. Nil keeps
+	// the T078 behaviour (no automatic convergence; the bridge remains).
+	Execution *execution.Service
+	// CancelRun is the T036 cancel seam the lifecycle hook uses for fail-fast and
+	// parent-cancel propagation. api.New wires it to execution.Service.Cancel, so
+	// a child is cancelled by exactly the same state machine as any other Run.
+	CancelRun func(ctx context.Context, callerID, runID string) error
 }
 
 // New builds the service. Catalog and Objects are required: a deployment without
