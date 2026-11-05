@@ -50,9 +50,9 @@ const (
 	PurgeIndexRemain     PurgeFailure = "index_rows_remain"
 	PurgeCacheRemain     PurgeFailure = "cache_rows_remain"
 	// PurgeUnsupportedTarget is a resource type this build has no copy
-	// descriptors for (a future T074 conversation job). Clearing nothing and
-	// claiming the scopes would be a lie, so every scope stays outstanding with a
-	// non-retryable code the operator can see.
+	// descriptors for (a future resource added without a purge adapter). Clearing
+	// nothing and claiming the scopes would be a lie, so every scope stays
+	// outstanding with a non-retryable code the operator can see.
 	PurgeUnsupportedTarget PurgeFailure = "unsupported_target"
 )
 
@@ -160,12 +160,17 @@ func ApplyPurgeOutcome(
 	cleared := make(map[Scope]bool, len(job.Remaining))
 	failure := PurgeOK
 
-	// A resource type this build cannot derive copy descriptors for (a future
-	// conversation job) must not have its scopes claimed as "cleared" because the
-	// derived set happens to be empty.
+	// A resource type this build cannot derive copy descriptors for must not have
+	// its scopes claimed as "cleared" because the derived set happens to be empty.
+	// The four resource types the T069 foundation registers are supported:
+	// conversation (added by F08/T074) stores its content as sealed artifacts
+	// named under object_store, and has no chunk/vector index or retrieval-cache
+	// table of its own, so those two scopes are legitimately empty for it. A
+	// future resource type with no adapter keeps every scope outstanding.
 	supported := job.ResourceType == ResourceArtifact ||
 		job.ResourceType == ResourceMemory ||
-		job.ResourceType == ResourceDocument
+		job.ResourceType == ResourceDocument ||
+		job.ResourceType == ResourceConversation
 	if !supported {
 		failure = PurgeUnsupportedTarget
 	}
