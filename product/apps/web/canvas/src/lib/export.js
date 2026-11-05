@@ -38,6 +38,9 @@ export const CONFIG_ALLOWLIST = {
   // T087: an approval node carries exactly the title and the expiry window; the
   // proposal is a bound input (definition.inputs), not a config field.
   approval: ['title', 'expires_seconds'],
+  // T089: a call_app node pins one fixed child application version; the I/O
+  // mapping lives on the node's inputs, not in config.
+  call_app: ['application_version'],
   end: [],
 };
 
