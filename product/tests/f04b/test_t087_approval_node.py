@@ -347,7 +347,8 @@ def test_a_node_approval_never_authorises_a_later_write_operation(t033_stack) ->
     owner = t033.golden_owner(t033_stack)
     policy = t087.bind_write_connector(t033_stack, owner.admin)
     _owner, _application_id, run = t087.queue_approval_run(
-        t033_stack, t087.approval_then_python_definition(), name="t087 no future write"
+        t033_stack, t087.approval_then_python_definition(),
+        owner=owner, name="t087 no future write",
     )
     lease = t087.claim_next_run(t033_stack, execution_unit_id="t087-write-unit")
 

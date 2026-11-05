@@ -735,8 +735,9 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     ]
     assert len(joins) == 1, events
 
-    data_rows = {item["node_id"]: item for item in node_results["items"] if item["kind"] == "data"}
-    assert "choose" in data_rows and "join" in data_rows, node_results["items"]
+    # `t083.node_results` returns the owner-read list of items (not the body).
+    data_rows = {item["node_id"]: item for item in node_results if item["kind"] == "data"}
+    assert "choose" in data_rows and "join" in data_rows, node_results
     contents = {
         data_rows["choose"]["artifact_id"]: condition,
         data_rows["join"]["artifact_id"]: join_document,
@@ -747,7 +748,9 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
         {
             "definition": definition,
             "events": events,
-            "nodeResults": node_results,
+            # The run-view module consumes the owner-read *body* projection
+            # (`{items:[...]}`), while `t083.node_results` returns the items list.
+            "nodeResults": {"items": node_results},
             "contents": contents,
             "run": run_body,
         },

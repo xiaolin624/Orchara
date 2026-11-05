@@ -166,12 +166,13 @@ def queue_approval_run(
     stack,
     definition: dict,
     *,
+    owner=None,
     input_value: dict | None = None,
     name: str = "t087 approval node",
     csv: bool = False,
 ):
     """Create one real debug run of the given approval definition."""
-    owner = t033.golden_owner(stack)
+    owner = owner or t033.golden_owner(stack)
     application_id = t027.application_with_definition(owner.creator, definition, name=name)
     artifact_id = t042.ready_csv(stack, owner) if csv else None
     run = t042.submit_linear_run(
@@ -198,8 +199,16 @@ def claim_next_run(
 
 
 def exec_once(stack):
-    """Run one real supervisor attempt with the finalize worker alongside."""
-    return t083.run_once(stack)
+    """Run one real supervisor attempt with the finalize worker alongside.
+
+    ``ORCHARA_OBJECT_DIR`` is the same sealed-object root the API writes, which
+    wires T083's real recovery seam: a resumed attempt re-reads completed node
+    data artifacts (re-hashing them) instead of re-executing the node. This is the
+    first real-stack scenario with a genuine wait, so the seam is exercised here.
+    """
+    return t083.run_once(
+        stack, env_extra={"ORCHARA_OBJECT_DIR": str(stack.object_dir)}
+    )
 
 
 def wait_until(predicate, *, timeout: float = 30.0, interval: float = 0.05):
