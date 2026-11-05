@@ -706,37 +706,25 @@ func (s *Service) checkManifestArtifact(
 	return nil
 }
 
-// checkInputArtifact proves the run's input artifact is still there, ready, not
-// deleted, with the recorded size and SHA-256. A deleted input means the Run may
-// not be re-executed (SECURITY.md §5 / STATE-MACHINES.md §6).
+// checkInputArtifact proves every input artifact of the run is still there, ready,
+// not deleted, with the recorded size and SHA-256. A deleted input means the Run
+// may not be re-executed (SECURITY.md §5 / STATE-MACHINES.md §6).
+//
+// F11/T076: "input" is the whole input set, not only `runs.input_artifact_id`. The
+// request path links the sealed message and every attachment with
+// `run_artifacts.relation='input'`, and the supervisor discovers a Run's inputs
+// through that relation, so a deleted attachment would otherwise be re-read by a
+// resumed worker. Every input is checked in the same order (primary first, then the
+// sorted links) before the evidence verification proceeds.
 func (s *Service) checkInputArtifact(
 	ctx context.Context, q recoveryQueryer, run *recoveryRunFacts,
 ) *RecoveryRefusal {
-	if run.InputArtifactID == "" {
-		return recoveryRefusal(RecoveryCodeInputDeleted, "the run has no input artifact")
-	}
-	facts, found, err := loadRecoveryArtifact(ctx, q, run.InputArtifactID)
+	inputIDs, err := linkedInputArtifactIDs(ctx, q, run)
 	if err != nil {
 		return recoveryRefusal(RecoveryCodeInputDeleted, "%v", err)
 	}
-	if !found {
-		return recoveryRefusal(
-			RecoveryCodeInputDeleted,
-			"the run input artifact %s no longer exists", run.InputArtifactID,
-		)
-	}
-	if facts.State != "ready" || facts.Deleted.Valid {
-		return recoveryRefusal(
-			RecoveryCodeInputDeleted,
-			"the run input artifact is not usable (state=%s deleted=%t)",
-			facts.State, facts.Deleted.Valid,
-		)
-	}
-	if !facts.SHA256.Valid || !facts.SizeBytes.Valid {
-		return recoveryRefusal(
-			RecoveryCodeInputDeleted,
-			"the run input artifact has no recorded hash/size",
-		)
+	if len(inputIDs) == 0 {
+		return recoveryRefusal(RecoveryCodeInputDeleted, "the run has no input artifact")
 	}
 	if s.Objects == nil {
 		return recoveryRefusal(
@@ -744,25 +732,50 @@ func (s *Service) checkInputArtifact(
 			"the object store is not configured (ORCHARA_OBJECT_DIR); the input bytes cannot be verified",
 		)
 	}
-	object, err := s.Objects.Hash(facts.ObjectKey)
-	if err != nil {
-		if errors.Is(err, objectstore.ErrNotExist) {
+	for _, artifactID := range inputIDs {
+		facts, found, err := loadRecoveryArtifact(ctx, q, artifactID)
+		if err != nil {
+			return recoveryRefusal(RecoveryCodeInputDeleted, "%v", err)
+		}
+		if !found {
 			return recoveryRefusal(
 				RecoveryCodeInputDeleted,
-				"the sealed input object is missing",
+				"the run input artifact %s no longer exists", artifactID,
 			)
 		}
-		return recoveryRefusal(
-			RecoveryCodeInputDeleted,
-			"the sealed input object cannot be read: %v", err,
-		)
-	}
-	if !strings.EqualFold(object.SHA256, facts.SHA256.String) || object.Size != facts.SizeBytes.Int64 {
-		return recoveryRefusal(
-			RecoveryCodeInputHashMismatch,
-			"the sealed input bytes (%d bytes, %s) do not match the recorded artifact (%d bytes, %s)",
-			object.Size, object.SHA256, facts.SizeBytes.Int64, facts.SHA256.String,
-		)
+		if facts.State != "ready" || facts.Deleted.Valid {
+			return recoveryRefusal(
+				RecoveryCodeInputDeleted,
+				"the run input artifact %s is not usable (state=%s deleted=%t)",
+				artifactID, facts.State, facts.Deleted.Valid,
+			)
+		}
+		if !facts.SHA256.Valid || !facts.SizeBytes.Valid {
+			return recoveryRefusal(
+				RecoveryCodeInputDeleted,
+				"the run input artifact %s has no recorded hash/size", artifactID,
+			)
+		}
+		object, err := s.Objects.Hash(facts.ObjectKey)
+		if err != nil {
+			if errors.Is(err, objectstore.ErrNotExist) {
+				return recoveryRefusal(
+					RecoveryCodeInputDeleted,
+					"the sealed input object of artifact %s is missing", artifactID,
+				)
+			}
+			return recoveryRefusal(
+				RecoveryCodeInputDeleted,
+				"the sealed input object of artifact %s cannot be read: %v", artifactID, err,
+			)
+		}
+		if !strings.EqualFold(object.SHA256, facts.SHA256.String) || object.Size != facts.SizeBytes.Int64 {
+			return recoveryRefusal(
+				RecoveryCodeInputHashMismatch,
+				"the sealed input bytes of artifact %s (%d bytes, %s) do not match the recorded artifact (%d bytes, %s)",
+				artifactID, object.Size, object.SHA256, facts.SizeBytes.Int64, facts.SHA256.String,
+			)
+		}
 	}
 	return nil
 }

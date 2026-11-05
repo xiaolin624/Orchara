@@ -287,7 +287,7 @@ def subapp_definition(version_id: str) -> dict:
             {
                 "id": "child",
                 "type": "call_app",
-                "inputs": {},
+                "inputs": {"source": {"ref": "input#/source"}},
                 "output_schema": {"type": "object"},
                 "config": {"application_version": version_id},
             }

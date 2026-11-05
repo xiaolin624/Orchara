@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -184,9 +185,9 @@ func loadRecoveryArtifact(
 	return facts, true, nil
 }
 
-// recheckRecoveryArtifactRows re-reads the two artifact rows inside the write
+// recheckRecoveryArtifactRows re-reads the artifact rows inside the write
 // transaction. The sealed bytes were verified before the transaction; this proves
-// neither row was deleted/rewritten in between.
+// no row was deleted/rewritten in between.
 func recheckRecoveryArtifactRows(
 	ctx context.Context, tx *sql.Tx, run *recoveryRunFacts,
 ) *RecoveryRefusal {
@@ -202,18 +203,74 @@ func recheckRecoveryArtifactRows(
 			"the frozen manifest artifact changed while the evidence was being checked",
 		)
 	}
-	input, found, err := loadRecoveryArtifact(ctx, tx, run.InputArtifactID)
+	inputIDs, err := linkedInputArtifactIDs(ctx, tx, run)
 	if err != nil {
 		return recoveryRefusal(RecoveryCodeInputDeleted, "%v", err)
 	}
-	if !found || input.State != "ready" || input.Deleted.Valid ||
-		!input.SHA256.Valid || !input.SizeBytes.Valid {
-		return recoveryRefusal(
-			RecoveryCodeInputDeleted,
-			"the run input artifact changed while the evidence was being checked",
-		)
+	if len(inputIDs) == 0 {
+		return recoveryRefusal(RecoveryCodeInputDeleted, "the run has no input artifact")
+	}
+	for _, artifactID := range inputIDs {
+		input, found, err := loadRecoveryArtifact(ctx, tx, artifactID)
+		if err != nil {
+			return recoveryRefusal(RecoveryCodeInputDeleted, "%v", err)
+		}
+		if !found || input.State != "ready" || input.Deleted.Valid ||
+			!input.SHA256.Valid || !input.SizeBytes.Valid {
+			return recoveryRefusal(
+				RecoveryCodeInputDeleted,
+				"the run input artifact %s changed while the evidence was being checked",
+				artifactID,
+			)
+		}
 	}
 	return nil
+}
+
+// linkedInputArtifactIDs returns every input artifact this Run owns: the primary
+// `runs.input_artifact_id` plus every `platform.run_artifacts` relation='input'
+// link. The request path links the sealed message *and* each attachment, and the
+// supervisor discovers a Run's inputs through that same relation, so recovery must
+// re-check all of them: an attachment deleted after the claim is input the resumed
+// worker would try to read. The primary id comes first; the rest are sorted so the
+// refusal message is deterministic.
+func linkedInputArtifactIDs(
+	ctx context.Context, q recoveryQueryer, run *recoveryRunFacts,
+) ([]string, error) {
+	seen := make(map[string]bool, 4)
+	rest := make([]string, 0, 4)
+	if primary := strings.TrimSpace(run.InputArtifactID); primary != "" {
+		seen[primary] = true
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT artifact_id::text
+		  FROM platform.run_artifacts
+		 WHERE run_id = $1::uuid AND relation = 'input'
+		 ORDER BY artifact_id`, run.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the run input links: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var artifactID string
+		if err := rows.Scan(&artifactID); err != nil {
+			return nil, fmt.Errorf("reading the run input links: %w", err)
+		}
+		artifactID = strings.TrimSpace(artifactID)
+		if artifactID != "" && !seen[artifactID] {
+			seen[artifactID] = true
+			rest = append(rest, artifactID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the run input links: %w", err)
+	}
+	sort.Strings(rest)
+	ids := make([]string, 0, len(rest)+1)
+	if primary := strings.TrimSpace(run.InputArtifactID); primary != "" {
+		ids = append(ids, primary)
+	}
+	return append(ids, rest...), nil
 }
 
 // finalizeRecoveredAttemptTx records the operator's exit proof on the old attempt

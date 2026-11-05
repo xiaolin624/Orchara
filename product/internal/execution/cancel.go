@@ -176,6 +176,9 @@ func (s *Service) Cancel(ctx context.Context, callerID, runID string) (*CancelOu
 			if err := tx.Commit(); err != nil {
 				return nil, fmt.Errorf("committing the blocked cancel transaction: %w", err)
 			}
+			// F07/T081: a parent with live children asks them to stop; the terminal
+			// hook re-drives this Run's finalizer only after the last one does.
+			s.afterCancelCommit(ctx, run.ID)
 			return &CancelOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 		}
 		unknown, err := hasUnknownOperationsTx(ctx, tx, run.ID)
@@ -192,6 +195,7 @@ func (s *Service) Cancel(ctx context.Context, callerID, runID string) (*CancelOu
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("committing the cancel transaction: %w", err)
 		}
+		s.afterCancelCommit(ctx, run.ID)
 		return &CancelOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 	}
 
@@ -207,7 +211,16 @@ func (s *Service) Cancel(ctx context.Context, callerID, runID string) (*CancelOu
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the cancelling transition: %w", err)
 	}
+	s.afterCancelCommit(ctx, run.ID)
 	return &CancelOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
+}
+
+// afterCancelCommit runs the F07/T081 lifecycle hooks outside the cancel
+// transaction: the direct children of a newly-cancelling Run are asked to stop
+// (fail-fast / user cancel), and a cancelled child reconciles its own parent.
+func (s *Service) afterCancelCommit(ctx context.Context, runID string) {
+	s.notifyParentCancelRequested(ctx, runID)
+	s.notifyChildTerminal(ctx, runID)
 }
 
 // RecordUnknownOperation stores one unresolved external write for a Run. The
@@ -352,6 +365,9 @@ func (s *Service) ResolveUnknownOperation(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the unknown-operation resolution: %w", err)
 	}
+	// F07/T081: the redrive may have terminalised this Run; a delegated child's
+	// parent is reconciled from its own post-commit transaction.
+	s.notifyChildTerminal(ctx, run.ID)
 	state, err := cancelRunState(ctx, s.DB, run.ID)
 	if err != nil {
 		return nil, err

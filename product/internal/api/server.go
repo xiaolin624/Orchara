@@ -206,6 +206,16 @@ func New(deps Deps) *Server {
 	// caller that never wires it keeps the previous finalizer behaviour.
 	childService := children.New(deps.Service.DB, catalogReader, deps.Objects)
 	executionService.ResultValidator = children.NewResultValidator(deps.Service.DB, deps.Objects)
+	// F07/T081: the child lifecycle hook. The execution service owns every Run
+	// transition; the children service owns the delegation receipts and decides
+	// when a parent's last controlled unit stopped. Both seams are the existing
+	// ones (T036 cancel, T035 resume, T031 finalizer) - no second state machine.
+	childService.Execution = executionService
+	childService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
+	executionService.Children = childService
 	catalogRefs := deps.Catalog
 	if catalogRefs == nil {
 		// The dev-stub default is deterministic and cannot fail; a nil catalog
