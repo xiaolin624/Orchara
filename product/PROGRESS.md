@@ -1905,6 +1905,28 @@ HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** �
 **not_run**：真实 410 过期、真实取消 E2E（T036 已覆盖）、浏览器 DOM/Playwright（P2，非门禁）、
 真实失败节点经 run-view 的 E2E、`pytest tests/f02a` 全量（并发争用下未取得可信结果）。
 
+## F04B/T085 并行嵌套与分支失败（GitHub #86，2026-11-06）
+
+T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 因本票无 waiting `not_run`）。
+证据：`reports/f04b/T085-parallel-optional.md`；分支 `t/t085-parallel-optional`（worktree `E:\Orchara-wt\t085`），基线
+`integration/t083-t091` @ `111e2c2`，结束合并 `b343f7b`；功能提交 `71213f0`、`3a98b3a`。无迁移；未改 `docs/spec/**`、`contracts/**`。
+
+| 交付点 | 结果 |
+|---|---|
+| 并发调度 | **passed**：`internal/presetexec/graphrun.go` 改为 ready 队列：所有前驱 settled 且可运行的节点各自一个 goroutine；结果经 channel 汇总；`graphRun` 单所有权、节点拿不可变快照。Go 单测用阻塞 barrier sandbox 证明两分支必须同时在飞（顺序执行必超时失败）；每节点独立 runsc unit（`graphSandboxUnit`）使真实栈两个 sandbox 真并发 |
+| optional 收敛 | **passed**：显式 allowlist（节点类型 `python/condition/join`（`retrieve` 预留）+ 显式错误码集合）；optional 分支的纯读/计算失败 → join 信封 `{status:"failed",error_code}`（无 value），join 仍执行一次、run 继续、end 正常封输出（错误作为数据） |
+| required fail-fast | **passed**：失败 → `cancel()` 其他在飞分支 → `drain()` 等所有节点 goroutine 返回（含 sandbox 清理）→ 未启动节点 emit `skipped` → 只提交一次 failed 结果；join 不执行、end skipped、无 final output；Go 单测用 client 钩子断言"分支停止后才提交失败" |
+| 不吞越权/未知写 | **passed**：agent/call_app、能力/权限、预算、审批、`needs_reconciliation`、`sandbox_*` 等一律不降级。真实栈：optional agent + publish 后吊销 golden model profile → run failed `model_profile_unavailable`、join/end skipped；Go 单测另覆盖 `sandbox_orphan` 不被吸收 |
+| 嵌套并行+条件 | **passed**：Go 单测 condition 内嵌 parallel region；真实栈 `choose→fork→deepA/deepB→join2→join`，两 join 各一次、15 条 node-results、外层 value=内层封套、`direct` skipped |
+| join-once / replay | **passed（Go 单测）**：fake `NodeOutputSource` 回放 start/choose/left/join → join 只发一条 succeeded、无新 data 行、无 sandbox、final output=复用封套；真实二次 exec 冒烟 `not_run`（无 waiting，留 T087/T091） |
+| 运行视图 / 画布提示（P1） | **passed**：run view 把 optional failed 显示为「已收敛的错误」（`state-converged`，与 failed 区分）+ 图例；画布 join 面板逐个标记 optional、列出已选 optional 并提示"只有纯读/计算错误会收敛；写/越权/预算/审批失败不降级"；`npm ci --offline && npm run build` 重建并提交 canvas bundle |
+
+门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **34 passed in 197.55s**（含本票 5 例与 T083 全部回归；
+`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；`tests/f06`/`tests/tooling` 见报告 §8；
+`go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
+`go test -race ./internal/presetexec` **not_run**（`cgo: C compiler "gcc" not found`，原始输出见报告 §6）。
+**not_run**：race detector、真实 resume join-once、graph 并发下的真实 waiting hand-over、浏览器 DOM/Playwright、真实厂商模型。
+
 ## 记录模板
 
 ```text

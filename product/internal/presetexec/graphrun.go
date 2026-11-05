@@ -103,10 +103,6 @@ func (g *graphRun) availableSnapshot() map[string]any {
 	return available
 }
 
-func (g *graphRun) scopeIDs() []string {
-	return append([]string(nil), g.plan.order...)
-}
-
 // takeOutEdges applies the plan's edge rule after one node succeeded.
 func (g *graphRun) takeOutEdges(node *graphNode, output map[string]any) {
 	if node.node.Type == "condition" {
@@ -847,13 +843,13 @@ func (r *runner) executeGraphNodeSegment(
 	case "join":
 		return r.executeGraphJoin(ctx, node, view)
 	case "agent":
-		output, outcome, done := r.executeGraphAgent(ctx, plan, node, view, attempt)
+		output, outcome, done := r.executeGraphAgent(ctx, plan, inputs, node, view, attempt)
 		if done {
 			return outcome, nil, true
 		}
 		return executionOutcome{}, output, false
 	case "call_app":
-		output, outcome, done := r.executeGraphCallApp(ctx, plan, node, view, attempt)
+		output, outcome, done := r.executeGraphCallApp(ctx, plan, inputs, node, view, attempt)
 		if done {
 			return outcome, nil, true
 		}
@@ -959,14 +955,14 @@ func (r *runner) executeGraphJoin(
 // presenting it as the agent of a one-node linear view. The view shares the
 // graph's upstream outputs, its sealed-node scope and the deterministic evidence.
 func (r *runner) executeGraphAgent(
-	ctx context.Context, plan *graphPlan, node *graphNode,
+	ctx context.Context, plan *graphPlan, inputs []InputArtifact, node *graphNode,
 	view *graphNodeView, attempt *graphNodeAttempt,
 ) (map[string]any, executionOutcome, bool) {
 	config, err := validateAgentNode(node.node, r.manifest)
 	if err != nil {
 		return nil, r.failGraphNodeBeforeSandbox(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
-	linearView := r.graphLinearView(plan, node.node, view)
+	linearView := r.graphLinearView(plan, inputs, node.node, view)
 	linearView.plan.agent = node.node
 	linearView.plan.agentConfig = config
 	output, outcome, done := r.runAgentNode(ctx, linearView)
@@ -982,14 +978,14 @@ func (r *runner) executeGraphAgent(
 // executeGraphCallApp runs one call_app node through the shared delegation code by
 // presenting it as the call_app of a one-node linear view.
 func (r *runner) executeGraphCallApp(
-	ctx context.Context, plan *graphPlan, node *graphNode,
+	ctx context.Context, plan *graphPlan, inputs []InputArtifact, node *graphNode,
 	view *graphNodeView, attempt *graphNodeAttempt,
 ) (map[string]any, executionOutcome, bool) {
 	config, err := validateCallAppNode(node.node)
 	if err != nil {
 		return nil, r.failGraphNodeBeforeSandbox(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
-	linearView := r.graphLinearView(plan, node.node, view)
+	linearView := r.graphLinearView(plan, inputs, node.node, view)
 	linearView.plan.callApp = node.node
 	linearView.plan.callAppConfig = config
 	output, outcome, done := r.runCallAppNode(ctx, linearView)
@@ -1006,7 +1002,7 @@ func (r *runner) executeGraphCallApp(
 // reads. It never rewrites the graph plan: it only carries the start node, the
 // upstream namespace, the sealed scope and the scheduler's skip hook.
 func (r *runner) graphLinearView(
-	plan *graphPlan, node *manifestNode, view *graphNodeView,
+	plan *graphPlan, inputs []InputArtifact, node *manifestNode, view *graphNodeView,
 ) *linearRun {
 	startNode := plan.nodes[plan.startID].node
 	return &linearRun{
@@ -1015,6 +1011,7 @@ func (r *runner) graphLinearView(
 			start:      startNode,
 			order:      []*manifestNode{startNode, node},
 		},
+		inputs:    inputs,
 		start:     view.start,
 		available: view.available,
 		scopeIDs:  append([]string(nil), plan.order...),

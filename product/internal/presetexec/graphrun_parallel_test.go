@@ -304,6 +304,42 @@ func (b *failFastSandbox) Run(
 	return successSandbox().outcome, nil
 }
 
+// deepOptionalFailureDefinition makes the optional "right" branch a two-node
+// chain so the failure happens upstream of the join source: the source itself is
+// skipped, and the error must still be attributed to that named branch result.
+//
+//	start -> left(python) -------------------> join
+//	      -> rightUp(python, failing) -> right -> join
+const deepOptionalFailureDefinition = `{
+  "dsl_version": "1.0",
+  "input_schema": {"type":"object"},
+  "output_schema": {"type":"object"},
+  "nodes": [
+    {"id":"start","type":"start","inputs":{},"config":{},"output_schema":{"type":"object"}},
+    {"id":"left","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"` + PresetToolID + `"},"output_schema":{"type":"object"}},
+    {"id":"rightUp","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"` + PresetToolID + `"},
+     "output_schema":{"type":"object","required":["never_produced"]}},
+    {"id":"right","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"` + PresetToolID + `"},"output_schema":{"type":"object"}},
+    {"id":"join","type":"join","inputs":{},
+     "config":{"fork_id":"start","mode":"all_active",
+               "required_sources":["left"],"optional_sources":["right"]},
+     "output_schema":{"type":"object"}},
+    {"id":"end","type":"end","inputs":{"results":{"ref":"node:join#/results"}},
+     "config":{},"output_schema":{"type":"object"}}
+  ],
+  "edges": [
+    {"source":"start","target":"left"},
+    {"source":"start","target":"rightUp"},
+    {"source":"rightUp","target":"right"},
+    {"source":"left","target":"join"},
+    {"source":"right","target":"join"},
+    {"source":"join","target":"end"}
+  ]
+}`
+
 // branchSandbox routes a call to a script by the node-derived sandbox unit id.
 type branchSandbox struct {
 	unitBase string
@@ -488,6 +524,38 @@ func TestGraphRunOptionalNeverSwallowsANonAllowlistedErrorCode(t *testing.T) {
 	}
 }
 
+func TestGraphRunAttributesADeepOptionalFailureToItsBranchResult(t *testing.T) {
+	box := successSandbox()
+	client, report := runGraphAttempt(t, deepOptionalFailureDefinition, `{}`, box)
+	if report.Outcome != "succeeded" || report.ErrorCode != "" {
+		t.Fatalf("report = %+v", report)
+	}
+	// left and rightUp run; right (the named join source) never runs because its
+	// branch already failed.
+	if box.calls != 2 {
+		t.Fatalf("sandbox calls = %d", box.calls)
+	}
+	observed := observedNodeStates(client)
+	if got := strings.Join(observed["rightUp"], ","); got != "pending,running,failed" {
+		t.Fatalf("failing node states = %v", observed["rightUp"])
+	}
+	if got := strings.Join(observed["right"], ","); got != "skipped" {
+		t.Fatalf("the branch source must be skipped, not run again: %v", observed["right"])
+	}
+	results := artifactData(t, client, "join")["results"].(map[string]any)
+	right, _ := results["right"].(map[string]any)
+	if right["status"] != "failed" || right["error_code"] != CodeNodeOutputInvalid {
+		t.Fatalf("a deep optional failure must land on its branch result: %v", right)
+	}
+	if _, present := right["value"]; present {
+		t.Fatalf("a skipped source must not carry a value: %v", right)
+	}
+	left, _ := results["left"].(map[string]any)
+	if left["status"] != "succeeded" {
+		t.Fatalf("left envelope = %v", left)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // required fail-fast
 // ---------------------------------------------------------------------------
@@ -546,6 +614,38 @@ func TestGraphRunRequiredFailureCancelsTheOtherBranchAndNeverJoins(t *testing.T)
 	leftStates := observed["left"]
 	if len(leftStates) < 2 || leftStates[len(leftStates)-1] != "failed" {
 		t.Fatalf("cancelled branch states = %v", leftStates)
+	}
+}
+
+func TestGraphRunAgentInsideAGraphCanCallThePresetTool(t *testing.T) {
+	// The agent's tool sandbox needs the run's linked inputs; the one-node linear
+	// view the scheduler builds must carry them.
+	document := definitionDocument(t, graphAgentDefinitionJSON)
+	document.ToolArtifacts = []manifestToolArtifact{{
+		ID: PresetToolID, ImageDigest: "sha256:" + strings.Repeat("bb", 32),
+	}}
+	lease, manifest := graphLease(t, document)
+	client := graphClient(t, lease, manifest, `{"requires_approval":true}`)
+	script := &agentScript{
+		turns: [][]any{{agentCallHint()}},
+		final: map[string]any{"text": "graph agent"},
+	}
+	client.invokeCapability = script.invoke
+	box := successSandbox()
+	report := Run(context.Background(), agentDeps(t, client, box, currentFacts()))
+	if report.Outcome != "succeeded" || report.ErrorCode != "" {
+		t.Fatalf("report = %+v", report)
+	}
+	if box.calls != 1 {
+		t.Fatalf("agent tool sandbox calls = %d", box.calls)
+	}
+	if script.modelTurns != 2 {
+		t.Fatalf("model turns = %d, want tool call + final", script.modelTurns)
+	}
+	results := artifactData(t, client, "join")["results"].(map[string]any)
+	analysis, _ := results["analysis"].(map[string]any)
+	if analysis["status"] != "succeeded" {
+		t.Fatalf("agent envelope = %v", analysis)
 	}
 }
 
