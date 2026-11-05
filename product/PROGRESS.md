@@ -1812,6 +1812,34 @@ pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修�
 `not_run`）。门禁：`pytest tests/f11` / `tests/f08` / `tests/tooling`、5 条修复测试 ×2、
 `go build/vet/test ./...`、`gofmt -l .`、`sync_spec --check`，原始输出见报告 §3。
 
+## F08 冻结路由案例并由另一用户完成销售旅程（T084 / #85，2026-11-05）
+
+- 状态：**passed**（真实 T068 发布 + 真实 supervisor 执行 + 独立真值 CSV 下载；
+  真实模型基线与浏览器 DOM 仍 `not_run`）。报告
+  `reports/f04b/T084-routing-eval.md` 与机器可读
+  `reports/f04b/T084-routing-eval.json`（`corpus.dataset_digest=9128080a…`）。
+- 语料：`tests/f08/routing/datasets/` 六单元格 34 例（frozen_test 25 / dev 9，
+  18+8 个消息模板 family 按 split 隔离），`registry.json` 逐文件 sha256+size；
+  失败即冻结漂移。附件只用 `docs/spec/examples/sales/input.csv`；provenance/license 已记录。
+- 代码：`tests/f08/routing/{corpus.py,runner.py}`、`tests/f08/test_t084_{corpus,
+  routing_eval,states,pages}.py`；`apps/web/src/assets/chat.js` 新增
+  `REQUEST_FAILURE_REASONS`/`describeRequestFailure`/`applyRequestFailure` 并由
+  `renderRequest` 渲染 `error_code`（稳定码保留 `data-error-code`），`chat.html` 增加
+  `#chat-request-error`。
+- 结果：frozen_test 25 例 decision 全对，误自动执行 **0/18**，澄清完成 **9/9**，
+  候选召回 1.0，无候选泄漏；dev 9 例 0/7、4/4、1.0。跨用户旅程 Run owner=B、
+  `summary.csv` 经 `t049.check_summary_csv`（Decimal 独立真值）通过；A 读 B 的
+  Run/产物均 404，匿名 401。队列位置/按序推进、交互过期 409 与
+  `failed/interaction_expired`、无匹配 `failed/no_matching_application` 均有真实 REST 断言。
+- stub/real 分界：路由控制模型是 dev-stub（`stub:true`）；销售应用走真实
+  `submit_publication`+`decided_review`（`publication.mode=t068_real`），其余 6 个
+  catalog 应用是真实编译 manifest + 文档化 T077 版本行（JSON 逐项标注）。
+- 边界/风险：聊天正文按原字节作为 published Run 输入，销售链 start 结点要求 JSON 对象，
+  故旅程消息是 JSON 任务文档；自然语言消息会路由成功但执行 `node_input_invalid`
+  （探针实测），属 F08↔F04B 集成缺口，未冒充通过。沙箱 heartbeat 抖动只做有界重试并逐次记录。
+- 门禁：`pytest tests/f08`、`go build/vet/test ./...`、`gofmt -l`、
+  `node --check apps/web/src/assets/chat.js`、`python tools/sync_spec.py --check`；
+  未改 `docs/spec/**` 与 `contracts/**`。
 ## F04B/T083 画布创作半：condition/join 配置与端口（GitHub #84，2026-11-05）
 
 T083 的**画布创作半**已交付，状态 **passed**（运行视图/执行语义属其它子任务）。

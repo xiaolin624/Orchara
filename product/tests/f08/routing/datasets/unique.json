@@ -1,0 +1,223 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "unique",
+  "description": "Exactly one authorized, input-complete candidate: the only automatic-dispatch cell. The attached CSV is the public sales sample (docs/spec/examples/sales/input.csv); the sales capability card is the T068 real-published card ('summarise sales', required input 'sales csv'). Every message below shares tokens only with that card (see README.md).",
+  "cases": [
+    {
+      "case_id": "rt-unique-frozen-01",
+      "category": "unique",
+      "family_id": "sales-summary-csv-en",
+      "split": "frozen_test",
+      "message": "summarise this csv",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "English paraphrase written against the fixed sales card, not sampled from user data."
+      }
+    },
+    {
+      "case_id": "rt-unique-frozen-02",
+      "category": "unique",
+      "family_id": "sales-summary-csv-en",
+      "split": "frozen_test",
+      "message": "please summarise this csv file",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-unique-frozen-01; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-unique-frozen-03",
+      "category": "unique",
+      "family_id": "sales-monthly-report-en",
+      "split": "frozen_test",
+      "message": "build a monthly report from the sales csv",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Uses the card's own examples field (monthly report / report)."
+      }
+    },
+    {
+      "case_id": "rt-unique-frozen-04",
+      "category": "unique",
+      "family_id": "sales-monthly-report-en",
+      "split": "frozen_test",
+      "message": "aggregate the sales csv into a report",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-unique-frozen-03; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-unique-frozen-05",
+      "category": "unique",
+      "family_id": "sales-digest-en",
+      "split": "frozen_test",
+      "message": "weekly digest of the sales csv",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Uses the card's examples field (weekly digest)."
+      }
+    },
+    {
+      "case_id": "rt-unique-frozen-06",
+      "category": "unique",
+      "family_id": "sales-digest-en",
+      "split": "frozen_test",
+      "message": "sales csv report",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Short paraphrase of the same family; same split."
+      }
+    },
+    {
+      "case_id": "rt-unique-dev-01",
+      "category": "unique",
+      "family_id": "sales-aggregation-en",
+      "split": "dev",
+      "message": "aggregation for this sales csv",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family, not present in frozen_test."
+      }
+    },
+    {
+      "case_id": "rt-unique-dev-02",
+      "category": "unique",
+      "family_id": "sales-aggregation-en",
+      "split": "dev",
+      "message": "summarise the sales csv",
+      "attachments": [
+        {
+          "kind": "sales_csv"
+        }
+      ],
+      "expected": {
+        "decision": "auto_dispatch",
+        "application": "sales",
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-unique-dev-01; same family, same split."
+      }
+    }
+  ]
+}

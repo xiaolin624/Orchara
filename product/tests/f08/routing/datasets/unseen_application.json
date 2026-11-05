@@ -1,0 +1,112 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "unseen_application",
+  "description": "A published application exists in the catalog but the second user holds no read grant on it. Its card matches the message, the ACL runs before the candidate LIMIT, so the candidate set is empty and the request fails exactly like a no-match: the hidden application must not leak its name, purpose, version or candidate row.",
+  "cases": [
+    {
+      "case_id": "rt-unseen-frozen-01",
+      "category": "unseen_application",
+      "family_id": "payroll-generate-zh",
+      "split": "frozen_test",
+      "message": "生成本月工资单",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Payroll card exists (owned by the publisher), no grant for the second user."
+      }
+    },
+    {
+      "case_id": "rt-unseen-frozen-02",
+      "category": "unseen_application",
+      "family_id": "payroll-generate-zh",
+      "split": "frozen_test",
+      "message": "月度工资单生成",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-unseen-frozen-01; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-unseen-frozen-03",
+      "category": "unseen_application",
+      "family_id": "payroll-calc-zh",
+      "split": "frozen_test",
+      "message": "核算员工工资",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family."
+      }
+    },
+    {
+      "case_id": "rt-unseen-frozen-04",
+      "category": "unseen_application",
+      "family_id": "payroll-monthly-zh",
+      "split": "frozen_test",
+      "message": "本月工资单帮我生成",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family."
+      }
+    },
+    {
+      "case_id": "rt-unseen-dev-01",
+      "category": "unseen_application",
+      "family_id": "payroll-salary-zh",
+      "split": "dev",
+      "message": "工资单生成",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family; distinct wording from every frozen family."
+      }
+    }
+  ]
+}
