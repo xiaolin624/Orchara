@@ -95,11 +95,11 @@ ok 9 - validation errors locate edges and carry Chinese repair hints
 PASS 9 canvas F04B module tests
 ```
 
-- `python -m pytest tests/f04b -q`：
+- `python -m pytest tests/f04b -q`（最终提交树）：
 
 ```text
 ........                                                                 [100%]
-8 passed in 30.60s
+8 passed in 37.07s
 ```
 
 - `python -m pytest tests/f04b/test_t083_canvas_validate.py -q`：
@@ -109,11 +109,11 @@ PASS 9 canvas F04B module tests
 3 passed in 29.66s
 ```
 
-- `python -m pytest tests/f04a -q`（`ORCHARA_P01_PYTHON` 指向主仓 P01 venv）：
+- `python -m pytest tests/f04a -q`（`ORCHARA_P01_PYTHON` 指向主仓 P01 venv；最终提交树）：
 
 ```text
 ....................................                                     [100%]
-36 passed in 85.31s (0:01:25)
+36 passed in 107.71s (0:01:47)
 ```
 
 - `python tools/sync_spec.py --check`：
