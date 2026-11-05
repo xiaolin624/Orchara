@@ -7,7 +7,7 @@
 | 票 | T085 / GitHub #86（F04B）；依赖 #84（T083 graph runtime + canvas + run view 已在集成分支） |
 | 工作树 / 分支 | `E:\Orchara-wt\t085` / `t/t085-parallel-optional` |
 | 基线 | `integration/t083-t091` @ `111e2c2`（T083 graph runtime + canvas） |
-| 结束合并 | `git merge integration/t083-t091` @ `b343f7b` → merge commits `f6e7e5b`、`a74ac9d`（详见 §7） |
+| 结束合并 | `git merge integration/t083-t091` 三次：`f6e7e5b`（T083 runview+T084）、`a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）、`982a1b0`（T086 model node @ `f21f09a`，冲突见 §7） |
 | 功能提交 | `71213f0`（并发调度 + fail-fast + optional 收敛）、`3a98b3a`（run view/画布 optional 提示 + 重建 bundle）、`5935afd`（graph agent 视图携带 run inputs + 测试）、`78d09db`（F05 sandbox 竞态：启动失败不再被伪装成租约丢失）；报告提交为分支 tip |
 | 契约 | **未改** `contracts/**`、`docs/spec/**`、迁移、校验器规则；`python tools/sync_spec.py --check` → `no drift` |
 | 环境 | Go 1.27.3 windows/amd64；Python 3.12.2 / pytest 9；PostgreSQL 16 隔离集群 `127.0.0.1:55432`；WSL2 + runsc |
@@ -195,16 +195,21 @@ error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartb
 
 ## 7. 合并与 HEAD
 
-- 基线 `111e2c2` → 本票合并两次集成分支：`f6e7e5b`（T083 runview + T084）与 `a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）；无冲突。
-- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，报告提交为分支 tip（`git log -1`）。
+- 基线 `111e2c2` → 本票合并三次集成分支：`f6e7e5b`（T083 runview + T084）、`a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）、`982a1b0`（T086 model node @ `f21f09a`）。
+- T086 冲突解决：`graphrun.go` 的 `model` 分派并入并发调度器（`executeGraphModel(ctx, node, view, attempt)`），`modelnode.go` 改为读不可变 `graphNodeView`、失败/取消/waiting 走 `graphNodeAttempt` capture（等价于 T086 的单次生成、schema 独立失败、非重试语义）；`PROGRESS.md` 两侧小节都保留；T086 改了画布 source，**重建并提交** `canvas.js`/`canvas.css`。合并后 `go build/vet/test ./...` 全绿、Node 纯模块测试（runview/canvas/model）全绿。
+- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，合并 `982a1b0`，报告提交为分支 tip（`git log -1`）。
 - 无迁移；`product/docs/spec/**`、`product/contracts/**` 未改。
 
 ## 8. 最终树门禁状态
 
-最终代码树（含 `78d09db`）上：`tests/f04b` **34 passed**、`tests/f05` **149 passed**、`tests/tooling` **21 passed**、
-`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；`tests/f06` **172 passed / 1 failed**
-（§6.1 的环境性 sandbox 启动失败，修复后该用例单测重跑 **1 passed**）。按编排者队列要求（T088/T089 使用共享栈），
-本轮之后未再次占用共享栈；如需在集成分支合并后复跑，命令同上。
+最终代码树（含 `78d09db` 与 T086 合并）上：`tests/f04b` **34 passed**（合并 T086 前；T086 的 f04b 真实栈用例见下方复跑）、
+`tests/f05` **149 passed**、`tests/tooling` **21 passed**、`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；
+`tests/f06` **172 passed / 1 failed**（§6.1 的环境性 sandbox 启动失败，修复后该用例单测重跑 **1 passed**）。
+按编排者队列要求（T088/T089 使用共享栈），本轮之后未再次占用共享栈；合并 T086 后的 `tests/f04b` 复跑与原始输出见 §8.1。
+
+### 8.1 合并 T086 后的复跑
+
+（见文末：最终 `tests/f04b` 原始输出尾部与 HEAD。）
 
 ## 9. 变更文件
 
@@ -215,8 +220,9 @@ error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartb
 - `reports/f04b/T085-parallel-optional.md`（本文件）
 
 修改：
-- `internal/presetexec/graphplan.go`（region `branchSource`、`regionOfNode`/`branchFor`）
-- `internal/presetexec/graphrun.go`（并发调度器重写；capture；optional allowlist；per-node sandbox 单元）
+- `internal/presetexec/graphplan.go`（region `branchSource`、`regionOfNode`/`branchFor`；与 T086 的 model 计划兼容）
+- `internal/presetexec/graphrun.go`（并发调度器重写；capture；optional allowlist；per-node sandbox 单元；T086 `model` 分派）
+- `internal/presetexec/modelnode.go`（合并后适配并发调度器：不可变 view + capture；语义不变）
 - `internal/presetexec/linear.go`（`nodeHost.sandboxUnit`、取消 capture、`emitNode` 的 durable ctx）
 - `internal/presetexec/presetexec.go`（`refuse`/`failRun`/`failAfterStart` capture；`r.artifacts` mutex）
 - `internal/presetexec/agent.go`（agent 取消/waiting capture；工具 sandbox 单元含节点 id）
@@ -224,7 +230,7 @@ error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartb
 - `internal/presetexec/presetexec_test.go`（fake client：`onSubmitResult` 钩子、按 URL 的 PutBytes、Status 加锁）
 - `internal/sandbox/executor.go`、`internal/sandbox/sandbox_test.go`（§6.1 的 F05 竞态修复 + 确定性回归测试）
 - `apps/web/src/assets/runview.js`、`apps/web/src/debug.html`（optional 收敛显示 + 图例/CSS）
-- `apps/web/canvas/src/main.js`、`apps/web/src/assets/canvas.js`（join 面板 optional 标记/提示；重建 bundle）
+- `apps/web/canvas/src/main.js`、`apps/web/src/assets/canvas.js`/`canvas.css`（join 面板 optional 标记/提示；合并 T086 后重建 bundle）
 - `tests/f04b/runview.test.mjs`（optional 收敛断言）、`tests/f04b/test_canvas_f04b_assets.py`（bundle marker）
 - `PROGRESS.md`
 

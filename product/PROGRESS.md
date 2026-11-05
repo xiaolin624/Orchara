@@ -1909,7 +1909,8 @@ HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** �
 
 T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 因本票无 waiting `not_run`）。
 证据：`reports/f04b/T085-parallel-optional.md`；分支 `t/t085-parallel-optional`（worktree `E:\Orchara-wt\t085`），基线
-`integration/t083-t091` @ `111e2c2`，结束合并 `b343f7b`；功能提交 `71213f0`、`3a98b3a`。无迁移；未改 `docs/spec/**`、`contracts/**`。
+`integration/t083-t091` @ `111e2c2`，结束合并 `f21f09a`（含 T086 model node；冲突解决与 bundle 重建见报告 §7）；
+功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，合并 `982a1b0`。无迁移；未改 `docs/spec/**`、`contracts/**`。
 
 | 交付点 | 结果 |
 |---|---|
