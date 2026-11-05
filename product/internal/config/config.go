@@ -138,6 +138,9 @@ const (
 	// F05/T037: how long one sandboxed tool build may run. The sandbox driver's
 	// own ORCHARA_SANDBOX_TIMEOUT must be at least as large.
 	EnvToolBuildTimeout = "ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT"
+	// F11/T071: how long one physical content purge attempt may run before it is
+	// reported as a retryable delete_timeout.
+	EnvDeleteContentTimeout = "ORCHARA_MAINTENANCE_DELETE_CONTENT_TIMEOUT"
 )
 
 // F00B/T026 defaults. artifact_finalize gets a dedicated system_io pool (2
@@ -158,6 +161,10 @@ const (
 	// DefaultToolBuildTimeout bounds one sandboxed build (untrusted setup.py may
 	// compile a source tree). It is a deployment knob, not a request value.
 	DefaultToolBuildTimeout = 5 * time.Minute
+	// DefaultDeleteContentTimeout bounds one physical purge attempt (F11/T071).
+	// The in-process fallback lives in internal/background; this is the
+	// maintenance deployment default, and both are two minutes.
+	DefaultDeleteContentTimeout = 2 * time.Minute
 	// maxToolRunTimeout is the deployment ceiling for both tool knobs.
 	maxToolRunTimeout = 10 * time.Minute
 
@@ -318,6 +325,8 @@ type MaintenanceConfig struct {
 	ProductRoot      string
 	ToolTimeout      time.Duration
 	ToolBuildTimeout time.Duration
+	// DeleteContentTimeout bounds one physical purge attempt (F11/T071).
+	DeleteContentTimeout time.Duration
 }
 
 // SweepConfig is everything `cmd/maintenance sweep` needs: the object store to
@@ -677,6 +686,16 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		return nil, invalid(EnvToolBuildTimeout,
 			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
 	}
+	deleteContentTimeout, err := parseHandlerDuration(
+		lookup, EnvDeleteContentTimeout, DefaultDeleteContentTimeout,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if deleteContentTimeout > maxToolRunTimeout {
+		return nil, invalid(EnvDeleteContentTimeout,
+			fmt.Sprintf("must be at most %s", maxToolRunTimeout))
+	}
 	return &MaintenanceConfig{
 		InternalURL:            strings.TrimSuffix(rawURL, "/"),
 		ClientCert:             values[EnvInternalClientCert],
@@ -695,6 +714,7 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		ProductRoot:            productRoot,
 		ToolTimeout:            toolTimeout,
 		ToolBuildTimeout:       toolBuildTimeout,
+		DeleteContentTimeout:   deleteContentTimeout,
 	}, nil
 }
 

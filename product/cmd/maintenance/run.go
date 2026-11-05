@@ -94,6 +94,9 @@ type runOptions struct {
 	toolTimeout time.Duration
 	// toolBuildTimeout bounds one sandboxed tool build (T037).
 	toolBuildTimeout time.Duration
+	// deleteContentTimeout bounds one physical content purge attempt (F11/T071).
+	// A zero value means the handler's documented default.
+	deleteContentTimeout time.Duration
 	// explicit remembers which flags the operator actually set, so "unset" uses
 	// the validated environment default instead of a zero-value guess.
 	explicit map[string]bool
@@ -225,6 +228,8 @@ func parseRunOptions(args []string) (*runOptions, error) {
 		"how long one trusted preset-tool subprocess may run (env ORCHARA_MAINTENANCE_TOOL_TIMEOUT)")
 	toolBuildTimeout := flags.Duration("tool-build-timeout", 0,
 		"how long one sandboxed tool build may run (env ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT)")
+	deleteContentTimeout := flags.Duration("delete-content-timeout", 0,
+		"how long one physical content purge attempt may run (F11/T071; default 2m)")
 	if err := flags.Parse(args); err != nil {
 		return nil, err
 	}
@@ -298,6 +303,7 @@ func parseRunOptions(args []string) (*runOptions, error) {
 	options.evaluationCaseTimeout = *evaluationCase
 	options.toolTimeout = *toolTimeout
 	options.toolBuildTimeout = *toolBuildTimeout
+	options.deleteContentTimeout = *deleteContentTimeout
 	return options, nil
 }
 
@@ -372,6 +378,17 @@ func (o *runOptions) applyConfig(cfg *config.MaintenanceConfig) error {
 	}
 	if o.toolBuildTimeout > 10*time.Minute {
 		return errors.New("--tool-build-timeout must be at most 10m")
+	}
+	// F11/T071: the purge attempt bound. Like every other handler wait it is a
+	// deployment default plus a per-process flag; a typo cannot hold a work slot
+	// for a day.
+	o.deleteContentTimeout, err = resolveDuration("delete-content-timeout",
+		o.explicit["delete-content-timeout"], o.deleteContentTimeout, cfg.DeleteContentTimeout)
+	if err != nil {
+		return err
+	}
+	if o.deleteContentTimeout > 10*time.Minute {
+		return errors.New("--delete-content-timeout must be at most 10m")
 	}
 	return nil
 }
@@ -748,6 +765,7 @@ func (r *runner) execute(parent context.Context, job *lease) (jobReport, error) 
 				ReportWaitTimeout:      r.options.reportWaitTimeout,
 				EvaluationCaseTimeout:  r.options.evaluationCaseTimeout,
 				ToolBuildTimeout:       r.options.toolBuildTimeout,
+				DeleteContentTimeout:   r.options.deleteContentTimeout,
 			},
 			Embedder: embedding.FromEnv(),
 			Tools:    r.tools,
