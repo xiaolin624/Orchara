@@ -1904,6 +1904,24 @@ agent 的 `pytest tests/f08` 并发使用共享 WSL/runsc 栈）。证据：`rep
 **not_run**：真实条件/join/skipped E2E（禁止并发 pytest，命令已给）、真实 410 过期、真实取消 E2E（T036 已覆盖）、
 浏览器 DOM/Playwright（P2，非门禁）、真实失败节点经 run-view 的 E2E。
 
+## F14/T090 冻结动态候选路由的基线（dev-stub 真实控制面）（2026-11-06）
+
+T090（GitHub #91，F14）已交付全部**不依赖模型**的必交项，状态 **`blocked`**：本机无模型
+凭据/端点/权重、无训练 GPU，同基模强提示基线与任何训练不可运行；不声称训练已运行。
+证据：`reports/f14/T090-routing-baseline.md` / `.json`、`experiments/routing_sft/freeze/
+T090-freeze.{json,md}`；分支 `t/t090-routing-baseline`（worktree `E:\Orchara-wt\t090`），
+基线 `0deeab9`，merge `integration/t083-t091`（`491cb78`）→ 合并提交 `1d94984`。
+
+| 项 | 内容 |
+|---|---|
+| 冻结清单 | 复用 T084 语料不复制：`registry_sha256=491e4f25…`、`dataset_digest=9128080a…`、逐文件 sha256；held-out=frozen_test 25 例（18 family，禁止调参）、dev 9 例仅观察；显式 `retrieval.not_used=true`（无 KB/embedding，不伪造 revision）；dev-stub 逐处标注；环境 git head/Python 3.12.2/Go 1.27.3/OS + 运行时 PG 16.4 |
+| 目录卡 | 冻结两套：T084 实际目录（sales 卡=`f02a.full_card()`，purpose `summarise sales`）与产品模板卡探针（`templates.CapabilityCard`）；逐卡 sha256、`definitions_sha256`；版本 UUID/manifest sha 由真实编译器生成，记在基线 JSON |
+| 泄漏检查 | 独立检查器 `tests/f14/routing_freeze.py`：26 family 不跨 split/单元格；跨 split 225 对消息完全/规范化重复 0；近重复阈值 0.75、实测最大 0.5、0 对；34/34 `self_created`+`not_applicable`，附件为公开样例逐字节副本 |
+| 两臂基线 | 复用 T084 runner + `t079` 真实 REST/maintenance。臂 A（复现 T084 目录）frozen 25/25、dev 9/9，accuracy 1.0、误自动执行 0、澄清 13/13、候选召回 1.0，`t084_comparison.identical=true`；臂 B（仅换产品模板 sales 卡）frozen 21/25、dev 8/9，5 个错误全部 retrieval 类（4 例工资单意图被“生成”2-gram 过度召回为 sales，1 例模板卡缺 `aggregation` 未召回），无 false auto、`payroll` 版本零泄漏 |
+| 错误分类/stop-go | `model_semantic=not_measured`（无模型）；`stop_training_fix_the_measured_layers_first`（provisional），依据 `TRAINING-EXPERIMENT.md:40/:48`、`ROUTING-MEMORY-KNOWLEDGE.md:49`；未虚增语料规模（25 < EVALUATION 建议 100，明写） |
+| 门禁 | `pytest tests/f14` 见下；`pytest tests/f08/test_t084_corpus.py` **4 passed**（T084 语料未破坏）；`python tools/sync_spec.py --check` **no drift**；未改 `product/` 生产代码、`docs/spec/**`、`contracts/**` |
+| 边界/not_run | 同基模强提示基线 `blocked`（无凭据/端点/权重/预算）；规则 vs 强提示比较 `not_run`；训练 `not_run`（无 GPU/基模）；T068 真实发布未重跑（T084 证据）；全量 `pytest tests/f08` 与浏览器 DOM、sandbox 执行 `not_run/not_used` |
+
 ## 记录模板
 
 ```text

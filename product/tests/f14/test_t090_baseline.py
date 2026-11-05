@@ -200,6 +200,10 @@ def test_the_frozen_routing_baseline_is_recorded_through_the_real_control_plane(
         "frozen_t084_catalog"]["definitions_sha256"]
     assert document["freeze"]["probe_definitions_sha256"] == manifest["catalog"][
         "product_template_card_probe"]["definitions_sha256"]
+    # Arm A must reproduce the committed T084 evidence run field for field: a
+    # legitimate routing/catalog change has to update the frozen reference and this
+    # assertion instead of silently drifting away from T084.
+    assert document["t084_comparison"]["identical"] is True, document["t084_comparison"]
     # The combined stop/go must account for every measured mismatch, and every
     # measured error must be one of the three attributable layers.
     counts = document["stop_go"]["basis"]

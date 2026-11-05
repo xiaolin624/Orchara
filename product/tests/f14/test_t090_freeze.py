@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from pathlib import Path
 
 import pytest
@@ -158,6 +159,23 @@ def test_catalog_card_definitions_are_frozen() -> None:
     # runner.FIXTURE_APPS is the same frozen definition the T084 evaluator publishes.
     for key, spec in runner.FIXTURE_APPS.items():
         assert fixtures[key] == {field: spec[field] for field in freeze.CARD_FIELDS}
+    # The evidence run's real compiler rows are embedded so the manifest answers
+    # "which version/manifest/card was measured" without a second source. The
+    # card hashes must match the frozen definitions of the same arm.
+    instances = measured["evidence_run"]
+    assert instances["available"] is True, instances
+    for arm, cards in (
+        ("frozen_t084_catalog", frozen_cards),
+        ("product_template_card_probe", probe_cards),
+    ):
+        rows = instances[arm]
+        assert set(rows) == set(cards), (arm, sorted(rows))
+        for key, row in rows.items():
+            uuid.UUID(row["application_id"])
+            uuid.UUID(row["application_version_id"])
+            assert re.fullmatch(r"[0-9a-f]{64}", row["manifest_sha256"]), (arm, key)
+            assert row["card_sha256"] == measured[arm]["cards"][key]["card_sha256"], (arm, key)
+            assert row["version_no"] >= 1, (arm, key)
 
 
 def test_retrieval_is_explicitly_not_used_not_fabricated() -> None:

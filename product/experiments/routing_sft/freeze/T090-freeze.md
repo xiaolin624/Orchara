@@ -53,10 +53,12 @@ T084 报告 catalog 也记录了这个 purpose。T090 因此冻结两套卡定�
 （RFC 8785 形状：sorted keys + compact separators + UTF-8）计算；基线报告再从
 平台 `application_versions.capability_card` 读回、重算并与本清单比对。
 
-版本 UUID / `manifest_sha256` 由真实编译器在一次性 PG 集群里生成，不能静态复现，
-因此按运行记录在 `reports/f14/T090-routing-baseline.json` 的 `catalog` /
-`card_variant_probe.catalog`（每应用 application_id、version_id、manifest_sha256、
-card_sha256）。
+版本 UUID / `manifest_sha256` 由真实编译器在一次性 PG 集群里生成，不能静态复现：
+`catalog.evidence_run` 内嵌了本次证据运行两臂的 `application_id` /
+`application_version_id` / `manifest_sha256` / `card_sha256`（明确标注 run-scoped，
+不是稳定标识）；权威记录同时保留在 `reports/f14/T090-routing-baseline.json` 的
+`catalog` / `card_variant_probe.catalog`。重新跑证据运行后需显式重新冻结（
+`python -m tests.f14.routing_freeze`），否则冻结测试会因 `evidence_run` 变化而失败。
 
 ## 3. 检索冻结：显式 `not_used`，不伪造 revision
 

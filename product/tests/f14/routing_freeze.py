@@ -407,6 +407,48 @@ def fixture_card_definitions() -> dict[str, dict]:
     }
 
 
+def evidence_run_instances() -> dict:
+    """The catalog rows the evidence run actually got from the real compiler.
+
+    Version UUIDs and manifest sha256 are created inside a throwaway PostgreSQL
+    cluster, so they cannot be reproduced statically; embedding the run's rows here
+    keeps the freeze manifest self-contained while the note states their nature.
+    ``python -m tests.f14.routing_freeze`` re-reads the report, so a new evidence run
+    requires an explicit re-freeze.
+    """
+    if not T090_REPORT.exists():
+        return {"available": False, "reason": "reports/f14/T090-routing-baseline.json is missing"}
+    report = json.loads(T090_REPORT.read_text(encoding="utf-8"))
+
+    def _rows(catalog: dict[str, dict]) -> dict[str, dict]:
+        return {
+            key: {
+                "application_id": row["application_id"],
+                "application_version_id": row["version_id"],
+                "version_no": row["version_no"],
+                "manifest_sha256": row["manifest_sha256"],
+                "card_sha256": row["card_sha256"],
+                "purpose": row["purpose"],
+                "publication": row["publication"],
+            }
+            for key, row in sorted(catalog.items())
+        }
+
+    return {
+        "available": True,
+        "source": _relative(T090_REPORT),
+        "generated_at": report.get("generated_at"),
+        "git_head": report.get("environment", {}).get("git_head"),
+        "note": (
+            "these rows are the evidence run's real compiler output in a throwaway "
+            "cluster (run-scoped UUIDs and manifest hashes); they document the catalog "
+            "the baseline measured and must not be read as stable identifiers"
+        ),
+        "frozen_t084_catalog": _rows(report["catalog"]),
+        "product_template_card_probe": _rows(report["card_variant_probe"]["catalog"]),
+    }
+
+
 def catalog_facts() -> dict:
     """Both frozen catalog card sets the baseline measures.
 
@@ -463,12 +505,12 @@ def catalog_facts() -> dict:
             "recorded_in": _relative(T090_REPORT),
             "note": (
                 "application/version UUIDs and manifest sha256 are created by the real "
-                "compiler inside a throwaway PostgreSQL cluster, so they are recorded "
-                "per run in the baseline report rather than frozen here; the card "
-                "content above is the frozen definition and each arm's report "
-                "card_sha256 must equal these values"
+                "compiler inside a throwaway PostgreSQL cluster, so the authoritative "
+                "record is the baseline report's catalog; `evidence_run` below embeds "
+                "that run's rows with the same caveat"
             ),
         },
+        "evidence_run": evidence_run_instances(),
     }
 
 
