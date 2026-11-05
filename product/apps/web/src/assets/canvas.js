@@ -19232,17 +19232,19 @@ Edge: ${id2}`,
   });
 
   // src/lib/dsl.js
-  var NODE_TYPES = ["start", "python", "agent", "condition", "join", "end"];
+  var NODE_TYPES = ["start", "python", "agent", "model", "condition", "join", "end"];
   var NODE_LABELS = {
     start: "开始",
     python: "Python 工具",
     agent: "Agent",
+    model: "模型",
     condition: "条件分支",
     join: "并行汇合",
     end: "结束"
   };
-  var REPEATABLE_NODE_TYPES = ["python", "agent", "condition", "join"];
+  var REPEATABLE_NODE_TYPES = ["python", "agent", "model", "condition", "join"];
   var CONDITION_OPS = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "exists"];
+  var MODEL_RESPONSE_MODES = ["json", "text"];
   function emptySchema() {
     return { type: "object", properties: {} };
   }
@@ -19293,6 +19295,12 @@ Edge: ${id2}`,
         subapp_versions: [],
         tool_versions: []
       };
+    } else if (type === "model") {
+      base.config = {
+        model_profile_version: "",
+        prompt_template: "",
+        response_mode: "json"
+      };
     } else if (type === "condition") {
       base.config = {
         join_id: "",
@@ -19332,6 +19340,7 @@ Edge: ${id2}`,
     start: { x: 40, y: 160 },
     python: { x: 280, y: 160 },
     agent: { x: 520, y: 160 },
+    model: { x: 400, y: 320 },
     condition: { x: 280, y: 320 },
     join: { x: 600, y: 320 },
     end: { x: 760, y: 160 }
@@ -20555,6 +20564,8 @@ Edge: ${id2}`,
       "subapp_versions",
       "max_turns"
     ],
+    // F04B/T086: the response schema is node.output_schema, never a config key.
+    model: ["model_profile_version", "prompt_template", "response_mode"],
     condition: ["join_id", "default_port", "cases"],
     join: ["mode", "fork_id", "required_sources", "optional_sources"],
     end: []
@@ -20912,10 +20923,10 @@ Edge: ${id2}`,
       ])
     ];
   }
-  function renderOutputSchemaEditor(definition, state, node) {
+  function renderOutputSchemaEditor(definition, state, node, title) {
     const text = JSON.stringify(node.output_schema || emptySchemaWithId(), null, 2);
     return [
-      h("h3", {}, "输出 Schema"),
+      h("h3", {}, title || "输出 Schema"),
       h("textarea", {
         class: "schema-json",
         spellcheck: "false",
@@ -21160,6 +21171,73 @@ Edge: ${id2}`,
       h("p", { class: "hint" }, "subapp_versions 固定为空数组（本票不提供子应用调用入口）。"),
       ...renderMappingEditor(definition, state, node),
       ...renderOutputSchemaEditor(definition, state, node)
+    ];
+  }
+  function renderModelPanel(definition, state, node) {
+    const models = state.models.filter((model) => model.validation_state === "passed");
+    const config = node.config && typeof node.config === "object" ? node.config : {};
+    const template = typeof config.prompt_template === "string" ? config.prompt_template : "";
+    const boundNames = Object.keys(node.inputs && typeof node.inputs === "object" ? node.inputs : {}).sort();
+    const insertVariable = (name) => {
+      const current = typeof node.config.prompt_template === "string" ? node.config.prompt_template : "";
+      node.config = { ...node.config, prompt_template: current + "{{" + name + "}}" };
+      commit(state);
+    };
+    return [
+      h("h3", {}, "模型 Profile（固定版本，不接受 latest）"),
+      h("p", { class: "hint" }, "只列出 validation_state=passed 的模型（GET /api/v1/models）。"),
+      h("select", {
+        "data-field": "config.model_profile_version",
+        value: config.model_profile_version || "",
+        onChange: (event) => {
+          node.config = { ...node.config, model_profile_version: event.target.value };
+          commit(state);
+        }
+      }, [
+        h("option", { value: "" }, state.catalogsState === "loading" ? "正在加载模型…" : "— 选择模型 —"),
+        ...models.map((model) => h(
+          "option",
+          { value: model.id },
+          (model.name || model.id) + " [" + (model.validation_state || "unknown") + "]"
+        ))
+      ]),
+      state.catalogsError ? h("p", { class: "error-text" }, state.catalogsError) : null,
+      h("label", { class: "field-label" }, "prompt_template（只允许 {{name}} 取已绑定输入）"),
+      h("textarea", {
+        "data-field": "config.prompt_template",
+        value: template,
+        onInput: (event) => {
+          node.config = { ...node.config, prompt_template: event.target.value };
+          commit(state);
+        }
+      }),
+      h("div", { class: "variable-inserts" }, [
+        h("span", { class: "hint" }, "插入变量："),
+        ...boundNames.map((name) => h("button", {
+          type: "button",
+          class: "chip",
+          "data-insert-variable": name,
+          onClick: () => insertVariable(name)
+        }, "{{" + name + "}}")),
+        boundNames.length === 0 ? h("span", { class: "hint" }, "先在下方输入映射里绑定输入，模板才能引用 {{name}}。") : null
+      ]),
+      h(
+        "p",
+        { class: "hint" },
+        "模板只做 {{name}} 替换：属性链/表达式/未绑定变量会被执行器拒绝为 node_prompt_invalid；对象与数组按 JSON 渲染。"
+      ),
+      h("label", { class: "field-label" }, "response_mode"),
+      h("select", {
+        "data-field": "config.response_mode",
+        value: config.response_mode || "json",
+        onChange: (event) => {
+          node.config = { ...node.config, response_mode: event.target.value };
+          commit(state);
+        }
+      }, MODEL_RESPONSE_MODES.map((mode) => h("option", { value: mode }, mode))),
+      // The response schema IS the node's output_schema; it is not a config key.
+      ...renderOutputSchemaEditor(definition, state, node, "响应 Schema（= node.output_schema）"),
+      ...renderMappingEditor(definition, state, node)
     ];
   }
   function caseValueText(value) {
@@ -21911,6 +21989,7 @@ Edge: ${id2}`,
             selected && selected.type === "start" ? renderStartPanel(state.definition, state, selected) : null,
             selected && selected.type === "python" ? renderPythonPanel(state.definition, state, selected) : null,
             selected && selected.type === "agent" ? renderAgentPanel(state.definition, state, selected) : null,
+            selected && selected.type === "model" ? renderModelPanel(state.definition, state, selected) : null,
             selected && selected.type === "condition" ? renderConditionPanel(state.definition, state, selected) : null,
             selected && selected.type === "join" ? renderJoinPanel(state.definition, state, selected) : null,
             selected && selected.type === "end" ? renderEndPanel(state.definition, state, selected) : null,

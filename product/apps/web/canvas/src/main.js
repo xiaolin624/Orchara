@@ -1,11 +1,15 @@
 /*
  * F04B/T083 canvas: a real Vue 3 + Vue Flow app bundled to a committed asset.
  *
- * The canvas authors a DAG of start/python/agent/condition/join/end nodes. A
- * condition node fans out through named ports; a plain node may fan out only
+ * The canvas authors a DAG of start/python/agent/model/condition/join/end nodes.
+ * A condition node fans out through named ports; a plain node may fan out only
  * when a join declares it as its fork; only a join may merge several inputs.
  * Illegal connections are refused with an explanation, and everything the
  * server reports is located (node field or edge) instead of a bare 422.
+ *
+ * F04B/T086 adds the model panel: a fixed (never latest) passed profile, a strict
+ * {{name}} prompt over bound inputs, the text/json response mode and the node's
+ * output_schema as the response schema (there is no response_schema config key).
  *
  * The page owns save; this app owns graph editing, the config panels, the
  * validate call (POST /applications/{id}/validate) and export. Pure logic lives
@@ -24,6 +28,7 @@ import './canvas.css';
 import {
   CONDITION_OPS,
   JOIN_MODES,
+  MODEL_RESPONSE_MODES,
   NODE_LABELS,
   NODE_TYPES,
   REPEATABLE_NODE_TYPES,
@@ -251,10 +256,10 @@ function renderMappingEditor(definition, state, node) {
   ];
 }
 
-function renderOutputSchemaEditor(definition, state, node) {
+function renderOutputSchemaEditor(definition, state, node, title) {
   const text = JSON.stringify(node.output_schema || emptySchemaWithId(), null, 2);
   return [
-    h('h3', {}, '输出 Schema'),
+    h('h3', {}, title || '输出 Schema'),
     h('textarea', {
       class: 'schema-json',
       spellcheck: 'false',
@@ -489,6 +494,78 @@ function renderAgentPanel(definition, state, node) {
     h('p', { class: 'hint' }, 'subapp_versions 固定为空数组（本票不提供子应用调用入口）。'),
     ...renderMappingEditor(definition, state, node),
     ...renderOutputSchemaEditor(definition, state, node),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// F04B/T086: model panel — one controlled generation
+// ---------------------------------------------------------------------------
+
+function renderModelPanel(definition, state, node) {
+  // Only a passed profile is usable. A non-admin GET /api/v1/models already hides
+  // pending/failed/revoked profiles; the filter keeps the rule explicit and the
+  // server re-proves the fixed version on invoke (never "latest").
+  const models = state.models.filter((model) => model.validation_state === 'passed');
+  const config = node.config && typeof node.config === 'object' ? node.config : {};
+  const template = typeof config.prompt_template === 'string' ? config.prompt_template : '';
+  const boundNames = Object.keys(node.inputs && typeof node.inputs === 'object' ? node.inputs : {}).sort();
+  const insertVariable = (name) => {
+    const current = typeof node.config.prompt_template === 'string' ? node.config.prompt_template : '';
+    node.config = { ...node.config, prompt_template: current + '{{' + name + '}}' };
+    commit(state);
+  };
+  return [
+    h('h3', {}, '模型 Profile（固定版本，不接受 latest）'),
+    h('p', { class: 'hint' }, '只列出 validation_state=passed 的模型（GET /api/v1/models）。'),
+    h('select', {
+      'data-field': 'config.model_profile_version',
+      value: config.model_profile_version || '',
+      onChange: (event) => {
+        node.config = { ...node.config, model_profile_version: event.target.value };
+        commit(state);
+      },
+    }, [
+      h('option', { value: '' }, state.catalogsState === 'loading' ? '正在加载模型…' : '— 选择模型 —'),
+      ...models.map((model) => h('option', { value: model.id },
+        (model.name || model.id) + ' [' + (model.validation_state || 'unknown') + ']')),
+    ]),
+    state.catalogsError ? h('p', { class: 'error-text' }, state.catalogsError) : null,
+    h('label', { class: 'field-label' }, 'prompt_template（只允许 {{name}} 取已绑定输入）'),
+    h('textarea', {
+      'data-field': 'config.prompt_template',
+      value: template,
+      onInput: (event) => {
+        node.config = { ...node.config, prompt_template: event.target.value };
+        commit(state);
+      },
+    }),
+    h('div', { class: 'variable-inserts' }, [
+      h('span', { class: 'hint' }, '插入变量：'),
+      ...boundNames.map((name) => h('button', {
+        type: 'button',
+        class: 'chip',
+        'data-insert-variable': name,
+        onClick: () => insertVariable(name),
+      }, '{{' + name + '}}')),
+      boundNames.length === 0
+        ? h('span', { class: 'hint' }, '先在下方输入映射里绑定输入，模板才能引用 {{name}}。')
+        : null,
+    ]),
+    h('p', { class: 'hint' },
+      '模板只做 {{name}} 替换：属性链/表达式/未绑定变量会被执行器拒绝为 node_prompt_invalid；'
+      + '对象与数组按 JSON 渲染。'),
+    h('label', { class: 'field-label' }, 'response_mode'),
+    h('select', {
+      'data-field': 'config.response_mode',
+      value: config.response_mode || 'json',
+      onChange: (event) => {
+        node.config = { ...node.config, response_mode: event.target.value };
+        commit(state);
+      },
+    }, MODEL_RESPONSE_MODES.map((mode) => h('option', { value: mode }, mode))),
+    // The response schema IS the node's output_schema; it is not a config key.
+    ...renderOutputSchemaEditor(definition, state, node, '响应 Schema（= node.output_schema）'),
+    ...renderMappingEditor(definition, state, node),
   ];
 }
 
@@ -1280,6 +1357,7 @@ function renderApp(state) {
               selected && selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
               selected && selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
               selected && selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'model' ? renderModelPanel(state.definition, state, selected) : null,
               selected && selected.type === 'condition' ? renderConditionPanel(state.definition, state, selected) : null,
               selected && selected.type === 'join' ? renderJoinPanel(state.definition, state, selected) : null,
               selected && selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
