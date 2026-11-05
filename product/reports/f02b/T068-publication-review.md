@@ -233,7 +233,7 @@ $ python -m pytest tests/f02a -q --basetemp=E:\orchara-tmp\t068-f02a2
 # T074 合并前）。
 
 $ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t068-tooling2
-21 passed in 5.66s
+21 passed in 6.43s
 
 $ python -m pytest tests/f13a -q -k "t052 or t056 or t062" --basetemp=E:\orchara-tmp\t068-f13a2
 42 passed, 9 deselected in 859.62s (0:14:19)
