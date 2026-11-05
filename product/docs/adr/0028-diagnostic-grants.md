@@ -8,9 +8,9 @@
   non-contract response headers/fields on a frozen contract), ADR 0017 (an
   administrator is not automatically a content reader)
 - Numbering: the orchestrator reserved 0028 for this ticket (0025–0027 belong to
-  the concurrent F11 tickets). `db/migrations/0045_diagnostic_grants.sql` is the
-  next free number **in this worktree** (0044 is the merged tail); the merger
-  renumbers it by name, as BRIEF §5 requires.
+  the concurrent F11 tickets). `db/migrations/0046_diagnostic_grants.sql` is the
+  next free number on this branch after T077's merge took `0045` (the merger
+  renumbers by name, as BRIEF §5 requires).
 
 ## Context
 
@@ -46,7 +46,7 @@ own audit record, not a relaxation of the owner-only paths.
 
 ### 1. The grant table is the contract table plus one snapshot column
 
-`0045_diagnostic_grants.sql` creates the contract table with:
+`0046_diagnostic_grants.sql` creates the contract table with:
 
 | column | meaning |
 |---|---|

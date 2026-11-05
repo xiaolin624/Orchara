@@ -2,8 +2,8 @@
 
 - 任务：F11 / GitHub Issue #74（票 `T073`，规划 ID F11.03/F11.04）；分支
   `t/t073-diagnostic-grants`（worktree `E:\orchara-worktrees\t073`）；父批次
-  `integration/t068-t082`；基线 `57d90df`（并入 T068 后集成 tip `0fcf8ec`）；
-  合并提交 **`a1ffd60`**（`git merge integration/t068-t082`，无冲突）。
+  `integration/t068-t082`；基线 `57d90df`（并入 T068/T077 后集成 tip `fa6544f`）；
+  合并提交 **`2ee1caa`**（`git merge integration/t068-t082`，无冲突）。
 - 状态：**`passed`**（六条验收全部由已执行的真实栈测试证明；仅“OTel 默认无正文”
   这条观测行标 **`partial`**：仓库没有任何 tracer/metrics SDK，不能伪造 tracer，
   结构性保证见 ADR 0028 §6）。
@@ -48,13 +48,14 @@
      完成，首次执行即绿；其余四个切片均有真实红阶段）。
 4. 迁移编号：任务提示预留 `0049`，但本 worktree 的迁移尾是 `0044`，BRIEF §5 与
    `stack.migration_chain` 要求**无空洞**，因此使用本 worktree 下一个空位
-   **`0045_diagnostic_grants.sql`**（按 `_diagnostic_grants.sql` 名字断言，合并时由
+   **`0046_diagnostic_grants.sql`**（合并 T077 后 `0045` 已被 `0045_catalog_index.sql`
+   占据，本分支用下一个空位 0046；按 `_diagnostic_grants.sql` 名字断言，合并时由
    merger 重编号）；ADR 使用预留的 **0028**（0025–0027 属并行票）。
 5. 未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`；合并后工作树干净。
 
 ## 1. 交付内容
 
-### 1.1 迁移 `0045_diagnostic_grants.sql`
+### 1.1 迁移 `0046_diagnostic_grants.sql`
 
 - 契约表 `platform.diagnostic_grants(id, owner_id → users(principal_id),
   grantee_id → principals, run_id → runs, purposes text[], expires_at, revoked_at)`
@@ -65,7 +66,7 @@
   `diagnostic_grants_live(grantee_id, run_id) WHERE revoked_at IS NULL` 与
   `diagnostic_grants_owner(owner_id, created_at DESC)`。每个列/表都有归属说明注释。
 - 无 training/consent 列、触发器或外键；表只承载诊断授权。重复 `admin migrate` no-op，
-  新库 0001..0045 连续；`orchara_worker`/PUBLIC 对 `platform` 零权限。
+  新库 0001..0046 连续；`orchara_worker`/PUBLIC 对 `platform` 零权限。
 
 ### 1.2 `internal/audit.RecordContentRead`：唯一 typed 审计写入器
 
@@ -164,7 +165,7 @@
 | 7 | 端到端入口实际演示；失败、当前授权与重试/恢复边界有断言 | **passed**：全部用例走编译 `cmd/api` + 真实 HTTP/CSRF；失败 = 缺失密封字节（failed 审计）+ 对象/运行过期拒绝；当前授权 = `grant ∧ NOT revoked ∧ NOT expired ∧ NOT run.deleted ∧ purpose ∈ ∧ object ∈ ∧ ready`；重试 = 撤销重复 DELETE 幂等 204、读取重复拒绝；恢复/复活路径不在本票（T076） |
 | 8 | 记录版本/输入/hash/命令/原始结果/环境；stub/real 分报 | **passed**：见 §3 的原始命令与 §4 的版本/环境；本票不使用 stub（tool capability 路径无模型 provider，属真实受控能力；诊断读取的是真实 sealed 字节）；未运行项见 §4 |
 
-## 3. 门禁与原始输出（合并 `a1ffd60` 后）
+## 3. 门禁与原始输出（最终合并 `2ee1caa` 后）
 
 环境：Windows PowerShell，`$env:PATH=E:\orchara-toolchains\go\bin;…`，
 `GOCACHE=E:\orchara-toolchains\gocache`，`GOMODCACHE=E:\orchara-toolchains\gomodcache`；
@@ -172,14 +173,14 @@ PostgreSQL 16.4 `127.0.0.1:55432`；Node v24.13.0；Go 1.27.3。所有 pytest �
 `--basetemp=E:\orchara-tmp\t073-NN`。
 
 ```text
-python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t073-16
-42 passed in 418.85s (0:06:58)
+python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t073-21
+42 passed in 394.89s (0:06:34)
 
-python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t073-17
-42 passed in 470.10s (0:07:50)
+python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t073-22
+42 passed in 454.91s (0:07:34)
 
-python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t073-18
-21 passed in 6.29s
+python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t073-23
+21 passed in 5.40s
 
 go build ./...                    -> exit 0
 go vet ./...                      -> exit 0
@@ -188,6 +189,12 @@ gofmt -l .                        -> (empty; "gofmt clean")
 python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot match the manifest" (exit 0)
 go test ./internal/audit ./internal/diagnostics -> ok (unit: content-read fail-closed matrix + grant validation matrix)
 ```
+
+一次真实环境瞬态（T069 报告同型，非本票代码）：`--basetemp=t073-19` 的全量 f11 中
+`test_t069_recall.py::test_a_deleted_memory_is_not_recalled_by_a_later_agent_turn` 的
+真实 WSL2/runsc supervisor 以 `sandbox_failed`/`heartbeat context canceled` 退出
+（41 passed / 1 failed）。隔离重跑该用例通过（`1 passed in 26.61s`，t073-20），随后
+`t073-21`/`t073-22` 两次背靠背全量 **42 passed**；未修改或放宽任何断言。
 
 红阶段原始失败（TDD 证据，保留在会话输出中）：
 `POST /api/v1/diagnostic-grants` 首次 `404 page not found`；content 首次
@@ -231,4 +238,6 @@ go test ./internal/audit ./internal/diagnostics -> ok (unit: content-read fail-c
   扩展、typed 审计、默认元数据、日志/错误/trace 边界、无 training 捆绑、编号说明）。
 - 提交：`90fba13 test(f11): T073 scoped diagnostic grant acceptance suite`；
   `a84a2db feat(f11): T073 scoped diagnostic grants and audited content door`；
-  merge `a1ffd60`；docs commit 见本条之后的 `docs(f11)`。
+  `ab538ab docs(f11): T073 report, ADR 0028 and progress row`；
+  最终 merge `2ee1caa`（含 T077 的 `fa6544f` 分支点）；本次门禁数字/编号更新随后的
+  `docs(f11)` 提交。未 push；分支与工作树留给 orchestrator 合并。
