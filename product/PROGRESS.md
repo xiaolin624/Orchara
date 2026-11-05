@@ -1760,6 +1760,39 @@ T075 的 row/section 与 T073 的 row/报告已按事实统一为 `partial`（�
 `tests/f08` 65、`tests/f07` 36、`tests/t070` 12 全 passed；`go build/vet/test ./...`、
 `gofmt -l`、`sync_spec --check` 全绿；`git merge integration/t068-t082` 为 Already up to date。
 
+## 批次完成记录：#69–#83 / T068–T082（2026-11-05）
+
+本批 15 票（T068–T082，GitHub #69–#83）全部合入 `integration/t068-t082`（基线
+`integration/f13a-f15a-f09-f10` @ `cd8ca3c`），最终 tip **`4fb29bf`**。按票合并顺序：
+T069 → T070（含 T068 基线）→ T074 → T075 → T068 → T077 → T072 → T071 → T073 → T078 →
+T080 → T079 → T081 → T076 → T082，其后为评审修复合并（`4fb29bf`）与本记录。
+
+**架构落点**：发布/撤销（F02B）、删除治理 7-scope 与 copy/backup 账本（F11）、会话/请求队列、
+授权目录、路由与交接（F08）、固定子应用、子运行、父预算与等待容量（F07）。迁移链
+`0042_deletion_foundation` → `0052_handoff_scope_bounds` 连续（0001..0052），重复 migrate no-op；
+`docs/spec/**` 与 `contracts/**` 未改，`sync_spec --check` no drift。
+
+**独立验证**（`69154c5`，docs-only 增量为 `d94af24`；复核后最终 tip `4fb29bf` 上
+`tests/f02b`+`tests/t070` 32 passed 复跑确认）：迁移 52 条连续无重复、二次 migrate no-op；
+`tests/f02b` 18、`tests/t070` 12、`tests/f11` 81、`tests/f08` 65、`tests/f07` 36、
+`tests/tooling` 21 全 passed；`go build/vet/test`、`gofmt -l`、`sync_spec --check` 干净。
+1 个 Go 测试因本机无符号链接而 `t.Skipf`（环境限制，不计为通过）。
+
+**两轴代码复核**（`cd8ca3c..69154c5`，15 票）：P1 0、P2 3、P3 8，全部在
+`t/review-fixes` 修复并有回归测试（合并 `4fb29bf`，报告
+`reports/review/REVIEW-FIXES.md`）：审批的冻结依赖复查改为 `FOR KEY SHARE` 锁带确定的
+approve×revoke 线性化；真实 runner e2e 只对"无 WSL2/runsc"跳过、产品 `run_timeout` 一律失败；
+PROGRESS 的 T073/T075 状态与 ADR 编号已对齐；删除 fan-out/copy 计数错误不再吞掉；诊断
+内容门在读取时复检管理员角色；交接作用域先于存在性读取；目录分页 SQL 去重；0048 补零授权
+REVOKE；0050 注释改指 ADR 0029。
+
+**诚实边界（本批结束仍为 partial/not_run，均已在各票报告写明）**：
+T073/T076 的 OTel/metrics/trace 导出（本构建无 SDK）；T075 的 F04A Vue 画布 `call_app`
+调色板（票面允许 editor-surface 替代，`not_run`）；T078 对含子应用的**真实 WSL2/runsc 五类
+评测报告**未跑（发布闭环用 T068 已验证的评审夹具）；各票浏览器 DOM 未驱动；全量
+`pytest tests`（>60 分钟）未作为单次门禁运行，以逐套件证据为准。T069 的 conversation scope
+由 T074 建表后闭环并测试。
+
 ## 记录模板
 
 ```text
