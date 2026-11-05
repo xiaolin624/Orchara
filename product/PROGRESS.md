@@ -1881,28 +1881,29 @@ T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半�
 
 ## F04B/T083 运行视图半：调试页节点状态表（condition 端口 / skipped / join）（2026-11-05）
 
-T083（GitHub #84）运行视图半已交付，状态 **`partial`**：页面、纯函数、页面结构与 DOM 测试、真实线性 Run 的
-HTTP E2E 通过；**真实条件/join/skipped 执行 E2E `not_run`**（合并运行时后测试就绪，但编排者要求避免与另一个
-agent 的 `pytest tests/f08` 并发使用共享 WSL/runsc 栈）。证据：`reports/f04b/T083-runview.md`；分支
-`t/t083-runview`（worktree `E:\Orchara-wt\t083-runview`），基线 `ea56392`，结束合并集成分支 `111e2c2`
-→ 合并提交 **`a050e2f`**。
+T083（GitHub #84）运行视图半已交付，状态 **`passed`**：页面、纯函数、页面结构与 DOM 测试、真实线性 Run 的
+HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** 全部通过（`pytest tests/f04b/test_t083_runview.py`
+**7 passed in 42.69s**，全局 pytest 锁下真实 PG/API/mTLS/supervisor/runsc）。证据：`reports/f04b/T083-runview.md`；
+分支 `t/t083-runview`（worktree `E:\Orchara-wt\t083-runview`），基线 `ea56392`，结束合并集成分支 `111e2c2`
+→ 合并提交 **`a050e2f`**，随后 fast-forward 到 `491cb78`（含 run-view 合并 `c21d45e` 与 T084）。
 
 | 交付点 | 结果 |
 |---|---|
 | 节点状态表 | **passed**：`apps/web/src/assets/runview.js` 新纯函数 `aggregateNodeStates`（attempt 优先 + 状态秩、乱序/重放幂等、skipped 独立）/`buildRunViewModel`（拓扑序、每节点一行、attempt、错误码、定义外节点追加）；`debug.html` 表格 6 列 |
-| condition 端口 / join 信封 | **passed（渲染层）**：条件 data artifact `{port,matched_case}` → “端口 yes（第 1 个 case/默认分支）”；join 信封按 required+optional 顺序显示 `source=status/value 摘要(<details>)/error_code`；真实条件 Run E2E `not_run`（同上） |
-| skipped 视觉 | **passed（渲染层）**：`state-skipped`（灰/⏭/降透明）vs `state-failed`（红/✕/加粗）+ 图例；真实 skipped 事件 E2E `not_run` |
+| condition 端口 / join 信封 | **passed**：条件 data artifact `{port,matched_case}` → “端口 yes（第 1 个 case/默认分支）”；join 信封按 required+optional 顺序显示 `source=status/value 摘要(<details>)/error_code`；**真实条件 Run E2E**：`port=yes/matched_case=0`、`left:succeeded(value)/right:skipped`、`left=成功`/`right=已跳过`、join `succeeded` 恰一次 |
+| skipped 视觉 | **passed**：`state-skipped`（灰/⏭/降透明）vs `state-failed`（红/✕/加粗）+ 图例；**真实 E2E** 的 owner-only SSE 回放中 `right=skipped` 且 `left` 无 skipped |
 | run 失败/取消 | **passed**：`formatRunError`（state/稳定码/severity/已知码提示；202 永不写成 stopped）；取消按钮 `POST /runs/{id}/cancel` + CSRF，DOM harness 断言 202 意图文案与终态禁用；`/runs` 链接 |
 | 断线/410 | **partial**：复用既有 `runs.js` SSE（`Last-Event-ID` 续传/去重/410 snapshot 文案），仅加可选 `onEvent` 钩子；事件缺失时表格用持久 node-results 并标注“由节点结果推断/无状态事件”，不伪造历史；真实 410 过期 E2E `not_run` |
 | 数据面 | **非契约**：`node.status` 契约事件 + condition/join **node data artifact** 约定；读取链 `node-results`(非契约) → `artifacts/{id}/content`(契约)。未改 OpenAPI/`contracts/**`/`docs/spec/**`；新增仅 `GET /assets/runview.js` 静态路由 |
 
 门禁：`node --check`（debug/runview/runs）exit 0；`node tests/f04b/runview.test.mjs` **PASS 6**；
-`pytest tests/f04b` 合并前 **6 passed, 1 skipped in 46.34s**（含真实线性 start→python→end Run 的 HTTP E2E，
-真实 PG/API/mTLS/supervisor/runsc；1 skip = 条件 E2E，当时运行时未合入）；`sync_spec --check` no drift；
-`go build ./...`、`go test ./internal/api`、`gofmt -l internal cmd tools` 干净；相关页面回归
-`tests/f06/test_t044_pages.py` 4 passed、`tests/f03` 三个页面模块 14 passed。合并 `111e2c2` 后 fast/Go 门禁复跑全绿。
-**not_run**：真实条件/join/skipped E2E（禁止并发 pytest，命令已给）、真实 410 过期、真实取消 E2E（T036 已覆盖）、
-浏览器 DOM/Playwright（P2，非门禁）、真实失败节点经 run-view 的 E2E。
+合并前 `pytest tests/f04b` **6 passed, 1 skipped in 46.34s**（含真实线性 start→python→end Run 的 HTTP E2E；
+1 skip = 条件 E2E，当时运行时未合入）；**合并后**（`491cb78`，全局 pytest 锁）
+`pytest tests/f04b/test_t083_runview.py -q -rs` **7 passed in 42.69s**（含真实条件/join/skipped E2E）；
+`sync_spec --check` no drift；`go build ./...`、`go test ./internal/api`、`gofmt -l internal cmd tools` 干净；
+相关页面回归 `tests/f06/test_t044_pages.py` 4 passed、`tests/f03` 三个页面模块 14 passed。
+**not_run**：真实 410 过期、真实取消 E2E（T036 已覆盖）、浏览器 DOM/Playwright（P2，非门禁）、
+真实失败节点经 run-view 的 E2E、`pytest tests/f02a` 全量（并发争用下未取得可信结果）。
 
 ## F14/T090 冻结动态候选路由的基线（dev-stub 真实控制面）（2026-11-06）
 
