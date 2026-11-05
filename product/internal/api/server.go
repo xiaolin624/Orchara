@@ -324,6 +324,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
+	// F02B/T070: administrator revocation of one published version and the
+	// non-contract run-entry guard (ADR 0022). Revocation is admin-only over a
+	// cookie session + CSRF; the guard is the authoritative live-database answer a
+	// stale catalog index cannot bypass, and T074 calls the same Go function.
+	mux.HandleFunc("POST /api/v1/versions/{version_id}/revoke", s.handleRevokeVersion)
+	mux.HandleFunc("GET /api/v1/versions/{version_id}/runnable", s.handleResolveRunnableVersion)
+
 	// F02B/T068: publication review. submit/decision are idempotent state-changing
 	// POSTs (cookie sessions need CSRF; an API key needs application:write for a
 	// submission and the admin role for a decision, which an API key never has).
@@ -512,6 +519,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F02B/T070: the administrator's version/revocation page for one application.
+	mux.HandleFunc("GET /apps/{application_id}/versions", s.staticPage("versions.html"))
+	mux.HandleFunc("GET /assets/versions.js", s.staticPage(filepath.Join("assets", "versions.js")))
 	// F13A/T056: the creator evaluation page. The application id comes from the
 	// path; the page never invents one. Its helpers are served as a separate
 	// asset so the Node page test executes the same bytes a browser receives.

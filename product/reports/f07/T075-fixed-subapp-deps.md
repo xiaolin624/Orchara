@@ -48,7 +48,7 @@
    - 页面用例（先写 `tests/f07/test_t075_pages.py` 红）→ 实现 editor 面板与纯函数 → 3 passed；
    - 既有 `tests/f02a`（含 `call_app` 撤销/归档/外部/循环覆盖）回归；`test_t025_dependencies`
      依赖 `seed_published_version` 现在带冻结 `definition`。
-5. 跑门禁、写 ADR 0022、本报告与 PROGRESS 行；合并 `integration/t068-t082` 后复跑。
+5. 跑门禁、写 ADR 0023、本报告与 PROGRESS 行；合并 `integration/t068-t082` 后复跑。
 
 ## 1. 交付
 
@@ -78,7 +78,7 @@
 | 节点声明了子版本不产出的输出 | `io_output_unknown_field` | `/nodes/<i>/output_schema/properties/<field>` |
 | 节点输出类型子版本无法产出 | `io_output_type_mismatch` | `/nodes/<i>/output_schema/properties/<field>` |
 
-规则要点（ADR 0022 §1）：类型兼容 = 同名类型 + `integer → number` 放宽；字面量按 JSON 值类型
+规则要点（ADR 0023 §1）：类型兼容 = 同名类型 + `integer → number` 放宽；字面量按 JSON 值类型
 （整数/小数的区分用 `math.Trunc`）；`ref` 的静态类型来自 `input_schema` 或上游节点 `output_schema`
 的 JSON Pointer 解析，无法静态判定的绑定不报错（只报可证明的错误）。子输入 schema 显式
 `additionalProperties: true|{schema}` 时允许多余映射字段；输出侧不允许子版本未声明的字段
@@ -286,7 +286,7 @@ python tools/sync_spec.py --check                         -> no drift
 |---|---|---|
 | 未发布/撤销/循环子版本拒绝（三码可区分、定位正确） | 通过（撤销=真实 revoked_at 行；未发布=真实缺行；循环=真实 `version_dependencies` 环） | `test_unpublished_revoked_and_archived_child_versions_are_distinguishable`、`test_a_real_dependency_cycle_and_a_self_call_are_refused`；既有 `tests/f02a/test_t025_dependencies.py` 回归 |
 | 映射不兼容被定位（code + JSON pointer，编辑器高亮） | 通过 | `test_mapping_errors_are_located_at_the_offending_field`、`test_an_incompatible_output_declaration_is_located`；面板 Node 用例的 `callAppValidationModel` |
-| 父发布后子最新版不替旧引用 | **partial**：冻结/解析层已证明（manifest 字节、sha、`subapp_versions`、版本读在子 v2 后不变；改为引用 v2 立即失败）；“父版本真的发布”与“发布事务写边”因 T078 运行时不支持 `call_app` 而无法执行（无 passed 五类报告 ⇒ 无发布路径） | `test_a_newer_child_version_never_replaces_the_pinned_reference`；§1.4 的代码锚点 + Go 依赖集测试；ADR 0022 §4 |
+| 父发布后子最新版不替旧引用 | **partial**：冻结/解析层已证明（manifest 字节、sha、`subapp_versions`、版本读在子 v2 后不变；改为引用 v2 立即失败）；“父版本真的发布”与“发布事务写边”因 T078 运行时不支持 `call_app` 而无法执行（无 passed 五类报告 ⇒ 无发布路径） | `test_a_newer_child_version_never_replaces_the_pinned_reference`；§1.4 的代码锚点 + Go 依赖集测试；ADR 0023 §4 |
 | 深度/次数限制按真实闭包执行 | 通过 | `test_child_depth_is_enforced_over_the_real_version_closure`、`test_child_call_count_is_enforced_over_the_declared_references`、Go `TestChildDepthIsMeasuredOverTheRealClosure`/`TestChildCallCountIsTheDeclaredFixedReferenceCount` |
 | 创作台选固定子应用、声明 I/O 并看到定位错误 | 部分为 true：编辑器面板（真实页面代码 + Node 执行 + 真实 HTTP 端点）已交付；F04A Vue 画布 palette 未加第五种节点 | `tests/f07/test_t075_pages.py`；§1.5；`not_run` 列表 |
 | 运行时执行 `call_app` 不在本票（T078） | 遵守：`presetexec` 仍拒绝，新增回归断言 | `internal/presetexec/plan_test.go` call_app 用例 |
@@ -320,6 +320,6 @@ python tools/sync_spec.py --check                         -> no drift
 
 ## 7. 参考
 
-- ADR：[0022 — Fixed sub-application delegation at publication time](docs/adr/0022-f07-fixed-subapp-delegation.md)
+- ADR：[0023 — Fixed sub-application delegation at publication time](docs/adr/0023-f07-fixed-subapp-delegation.md)
 - 规格：spec ADR 0011、`WORKFLOW-SPEC.md` §2/§3、`COMPILER-CONTRACT.md:35`、EXECUTION.md:70/72/78。
 - 依赖：T068 发布器（`internal/catalog/publication.go`）、T070 撤销端点（未来）、T078 子运行。

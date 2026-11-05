@@ -375,18 +375,20 @@ def seed_published_version(
         f"{_literal(manifest_sha)}, {_literal(report_id)}::uuid, 'approved', "
         f"{_literal(owner_id)}::uuid, now())",
     )
+    # F02B/T070: the 0042 CHECK moves revoked_at/revoked_by/revoke_reason
+    # together, so a seeded revoked row must carry all three (a revoked_at-only
+    # row is refused by the database, exactly like a half revocation in code).
     sql_utf8(
         dbname,
         "INSERT INTO platform.application_versions "
         "(id, application_id, version_no, review_id, manifest, manifest_sha256, "
         " manifest_artifact_id, capability_card, compiler_version, worker_image_digest, "
-        " state_schema_version, revoked_at, revoke_reason) VALUES ("
+        " state_schema_version, revoked_at, revoked_by, revoke_reason) VALUES ("
         f"{_literal(version_id)}::uuid, {_literal(application_id)}::uuid, {int(version_no)}, "
         f"{_literal(review_id)}::uuid, " + _jsonb(manifest) + ", "
         f"{_literal(manifest_sha)}, {_literal(artifact)}::uuid, '{{}}'::jsonb, "
         "'orchara-compiler/1.0.0', " + _literal(WORKER_IMAGE_DIGEST) + ", 'orchara-state/1.0', "
-        # T068's revoke shape requires a reason whenever revoked_at is set.
-        f"{'now(), ' + _literal('t025 revoked fixture') if revoked else 'NULL, NULL'})",
+        + ("now(), " + _literal(owner_id) + "::uuid, 'seeded revoked version')" if revoked else "NULL, NULL, NULL)"),
     )
     return version_id
 

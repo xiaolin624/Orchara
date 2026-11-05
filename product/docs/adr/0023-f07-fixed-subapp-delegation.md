@@ -1,11 +1,11 @@
-# ADR 0022 — Fixed sub-application delegation at publication time
+# ADR 0023 — Fixed sub-application delegation at publication time
 
 - Status: Accepted (F07/T075, issue #76)
 - Date: 2026-11-05
-- Number: `0022` because `0020` was already taken on the integration branch
+- Number: `0023` because `0020`/`0022` were already taken on the integration branch
   (T069's deletion foundation) and the merger renumbers collisions; this file is
   the next free product ADR number on `integration/t068-t082` at the time of
-  writing.
+  writing (0021 = T068, 0022 = T070).
 - Extends: spec ADR 0011 (explicit versioned sub-application delegation), ADR
   0004 (F00B/F02A dependency vocabulary), product ADR 0004 (dependency error
   codes and the validate contract)
