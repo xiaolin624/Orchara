@@ -12,19 +12,20 @@
  * where a connection is illegal and how to repair it.
  */
 
-export const NODE_TYPES = ['start', 'python', 'agent', 'condition', 'join', 'end'];
+export const NODE_TYPES = ['start', 'python', 'agent', 'call_app', 'condition', 'join', 'end'];
 
 export const NODE_LABELS = {
   start: '开始',
   python: 'Python 工具',
   agent: 'Agent',
+  call_app: '子应用调用',
   condition: '条件分支',
   join: '并行汇合',
   end: '结束',
 };
 
 /** Types the palette may add more than once; start and end stay unique. */
-export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'condition', 'join'];
+export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'call_app', 'condition', 'join'];
 
 /** The comparison vocabulary of a condition case (workflow.schema.json). */
 export const CONDITION_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'exists'];
@@ -85,6 +86,10 @@ export function defaultNode(type, id) {
       subapp_versions: [],
       tool_versions: [],
     };
+  } else if (type === 'call_app') {
+    // F04B/T089: a fixed published child version only. The mapping and the
+    // parent output_schema are authored in the panel once a version is picked.
+    base.config = { application_version: '' };
   } else if (type === 'condition') {
     base.config = {
       join_id: '',
@@ -126,6 +131,7 @@ export const DEFAULT_POSITIONS = {
   start: { x: 40, y: 160 },
   python: { x: 280, y: 160 },
   agent: { x: 520, y: 160 },
+  call_app: { x: 520, y: 420 },
   condition: { x: 280, y: 320 },
   join: { x: 600, y: 320 },
   end: { x: 760, y: 160 },

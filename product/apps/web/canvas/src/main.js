@@ -44,6 +44,15 @@ import {
 import { legalSources, sourceGroups, sourceType } from './lib/sources.js';
 import { mapValidationErrors } from './lib/errors.js';
 import { exportFilename, exportPayload } from './lib/export.js';
+import {
+  CALL_APP_BINDING_MODES,
+  callAppApplicationOptions,
+  callAppChildSchemas,
+  callAppInputRows,
+  callAppOutputSchemaFor,
+  callAppProblems,
+  callAppVersionOptions,
+} from './lib/callapp.js';
 
 const SCHEMA_TYPES = ['string', 'integer', 'number', 'boolean', 'object', 'array'];
 
@@ -768,6 +777,368 @@ function renderJoinPanel(definition, state, node) {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// F04B/T089: call_app panel (fixed published child version + explicit mapping)
+// ---------------------------------------------------------------------------
+
+function callAppPanelOf(state, nodeId) {
+  if (!state.callApp.byNode[nodeId]) {
+    state.callApp.byNode[nodeId] = {
+      applicationId: '',
+      versions: [],
+      loading: false,
+      versionView: null,
+      schemas: null,
+      error: '',
+    };
+  }
+  return state.callApp.byNode[nodeId];
+}
+
+function globalApi() {
+  return typeof window !== 'undefined' ? window.apiFull : undefined;
+}
+
+async function loadCallAppApplications(state) {
+  const api = globalApi();
+  if (typeof api !== 'function') {
+    state.callApp.state = 'error';
+    state.callApp.error = '页面 API 助手不可用，子应用选择器为空。';
+    return;
+  }
+  try {
+    const result = await api('/api/v1/applications?limit=100');
+    state.callApp.applications = callAppApplicationOptions(result.payload);
+    state.callApp.state = 'ready';
+  } catch (error) {
+    state.callApp.state = 'error';
+    state.callApp.error = '加载可调用应用失败 [' + (error.code || 'error') + '] ' + error.message;
+  }
+}
+
+async function loadCallAppVersions(state, node, applicationId) {
+  const panel = callAppPanelOf(state, node.id);
+  panel.applicationId = applicationId;
+  panel.versions = [];
+  panel.error = '';
+  if (!applicationId) {
+    return;
+  }
+  const api = globalApi();
+  if (typeof api !== 'function') {
+    return;
+  }
+  panel.loading = true;
+  try {
+    const result = await api(
+      '/api/v1/applications/' + encodeURIComponent(applicationId) + '/versions?limit=100',
+    );
+    panel.versions = callAppVersionOptions(result.payload);
+    if (panel.versions.length === 0) {
+      panel.error = '这个应用还没有已发布版本，不能作为固定子应用。';
+    }
+  } catch (error) {
+    panel.error = '加载版本失败 [' + (error.code || 'error') + '] ' + error.message;
+  } finally {
+    panel.loading = false;
+  }
+}
+
+/** Load the frozen manifest of a node's pinned version (schemas for the rows). */
+async function ensureCallAppPinned(state, node) {
+  if (!node || node.type !== 'call_app') {
+    return;
+  }
+  const panel = callAppPanelOf(state, node.id);
+  const versionId = node.config && typeof node.config.application_version === 'string'
+    ? node.config.application_version
+    : '';
+  if (!versionId || (panel.versionView && panel.versionView.id === versionId)) {
+    return;
+  }
+  const api = globalApi();
+  if (typeof api !== 'function') {
+    return;
+  }
+  panel.loading = true;
+  panel.error = '';
+  try {
+    const result = await api('/api/v1/versions/' + encodeURIComponent(versionId));
+    panel.versionView = result.payload;
+    panel.schemas = callAppChildSchemas(result.payload);
+    const applicationId = result.payload && typeof result.payload.application_id === 'string'
+      ? result.payload.application_id
+      : '';
+    if (applicationId && applicationId !== panel.applicationId) {
+      await loadCallAppVersions(state, node, applicationId);
+    }
+  } catch (error) {
+    panel.error = '读取固定版本失败 [' + (error.code || 'error') + '] ' + error.message;
+  } finally {
+    panel.loading = false;
+  }
+}
+
+/** Kick the pinned-version load when the selected node is a call_app. */
+function ensureCallAppForSelection(state, nodeId) {
+  const node = state.definition.nodes.find((item) => item.id === nodeId);
+  if (node && node.type === 'call_app') {
+    ensureCallAppPinned(state, node).catch(() => {});
+  }
+}
+
+function selectCallAppVersion(state, node, versionId) {
+  const panel = callAppPanelOf(state, node.id);
+  const entry = panel.versions.find((candidate) => candidate.id === versionId);
+  panel.versionView = entry ? entry.version : null;
+  panel.schemas = entry ? callAppChildSchemas(entry.version) : null;
+  node.config = { ...node.config, application_version: versionId };
+  const declared = node.output_schema && node.output_schema.properties
+    ? Object.keys(node.output_schema.properties).length
+    : 0;
+  if (entry && panel.schemas && declared === 0) {
+    // Default the parent declaration to the child's frozen output schema; it
+    // stays editable (a refinement, never a widening).
+    node.output_schema = callAppOutputSchemaFor(entry.version);
+  }
+  commit(state);
+}
+
+function defaultLiteralFor(type) {
+  switch (type) {
+    case 'integer':
+    case 'number':
+      return 0;
+    case 'boolean':
+      return false;
+    case 'array':
+      return [];
+    case 'object':
+      return {};
+    default:
+      return '';
+  }
+}
+
+function callAppRefValue(mode, value) {
+  if (mode === 'input') {
+    return 'input#' + (value || '');
+  }
+  if (mode === 'node') {
+    return 'node:' + (value || '');
+  }
+  return '';
+}
+
+/** A source selector restricted to the binding mode (input# or node:). */
+function renderCallAppSourceSelect(definition, nodeId, mode, value, onChange, fieldName) {
+  const prefix = mode === 'input' ? 'input#' : 'node:';
+  const groups = sourceGroups(definition, nodeId)
+    .map((group) => ({
+      ...group,
+      options: group.options.filter((entry) => entry.ref.startsWith(prefix)),
+    }))
+    .filter((group) => group.options.length > 0);
+  const options = [h('option', { value: '' }, mode === 'input'
+    ? '— 选择应用输入 —'
+    : '— 选择上游节点字段 —')];
+  for (const group of groups) {
+    options.push(h('optgroup', { label: group.label }, group.options.map((entry) =>
+      h('option', { value: entry.ref }, entry.label + ' (' + entry.type + ')'))));
+  }
+  if (value && !groups.some((group) => group.options.some((entry) => entry.ref === value))) {
+    options.push(h('option', { value, disabled: true }, value + '（不可用）'));
+  }
+  return h('select', {
+    value: value || '',
+    'data-field': fieldName,
+    onChange: (event) => onChange(event.target.value),
+  }, options);
+}
+
+function setCallAppInputBinding(state, node, field, binding) {
+  const next = clone(node.inputs || {});
+  if (binding === null) {
+    delete next[field];
+  } else {
+    next[field] = binding;
+  }
+  node.inputs = next;
+  commit(state);
+}
+
+function renderCallAppInputRow(definition, state, node, row, problems) {
+  const fieldProblems = problems.filter((problem) => problem.field === 'inputs.' + row.field);
+  const draftKey = node.id + '.literal.' + row.field;
+  const draft = state.callApp.drafts[draftKey];
+  const text = draft !== undefined ? draft : row.value;
+  const onMode = (mode) => {
+    delete state.callApp.drafts[draftKey];
+    if (mode === 'none') {
+      setCallAppInputBinding(state, node, row.field, null);
+      return;
+    }
+    if (mode === 'literal') {
+      setCallAppInputBinding(state, node, row.field, { literal: defaultLiteralFor(row.type) });
+      return;
+    }
+    setCallAppInputBinding(state, node, row.field, { ref: '' });
+  };
+  let valueEditor;
+  if (row.mode === 'input' || row.mode === 'node') {
+    valueEditor = renderCallAppSourceSelect(
+      definition,
+      node.id,
+      row.mode,
+      callAppRefValue(row.mode, row.value),
+      (ref) => {
+        if (!ref) {
+          setCallAppInputBinding(state, node, row.field, null);
+          return;
+        }
+        setCallAppInputBinding(state, node, row.field, { ref });
+      },
+      'callApp.' + node.id + '.inputs.' + row.field + '.value',
+    );
+  } else if (row.mode === 'literal') {
+    valueEditor = h('input', {
+      type: 'text',
+      value: text,
+      placeholder: row.type === 'string' ? '"eu"' : 'JSON 值',
+      'data-field': 'callApp.' + node.id + '.inputs.' + row.field + '.literal',
+      onInput: (event) => {
+        const raw = event.target.value;
+        state.callApp.drafts[draftKey] = raw;
+        try {
+          const parsed = JSON.parse(raw);
+          setCallAppInputBinding(state, node, row.field, { literal: parsed });
+        } catch (error) {
+          state.status = '子输入 ' + row.field + ' 的字面量不是合法 JSON：' + error.message;
+          state.statusKind = 'bad';
+        }
+      },
+    });
+  } else {
+    valueEditor = h('span', { class: 'hint' }, '未映射');
+  }
+  return h('div', { class: 'callapp-row', key: 'callapp-' + row.field }, [
+    h('div', { class: 'callapp-row-head' }, [
+      h('code', { class: 'mapping-name' }, row.field),
+      h('span', { class: 'type-chip' }, row.type + (row.required ? ' · 子应用必填' : '')),
+    ]),
+    h('div', { class: 'callapp-row-fields' }, [
+      h('select', {
+        value: row.mode,
+        'data-field': 'callApp.' + node.id + '.inputs.' + row.field + '.mode',
+        onChange: (event) => onMode(event.target.value),
+      }, CALL_APP_BINDING_MODES.map((mode) => h('option', { value: mode }, ({
+        none: '不映射',
+        input: '应用输入',
+        literal: '字面量 JSON',
+        node: '节点输出',
+      })[mode]))),
+      valueEditor,
+    ]),
+    ...fieldProblems.map((problem) => h('p', {
+      class: 'error-text',
+      'data-field': 'callApp.problem.' + row.field,
+    }, '[' + problem.code + '] ' + problem.message)),
+  ]);
+}
+
+function renderCallAppPanel(definition, state, node) {
+  const panel = callAppPanelOf(state, node.id);
+  const config = node.config || {};
+  const versionId = typeof config.application_version === 'string' ? config.application_version : '';
+  const schemas = panel.schemas;
+  const problems = callAppProblems(node, definition, schemas);
+  const inputRows = schemas ? callAppInputRows(schemas.inputSchema, node.inputs) : [];
+  const applications = state.callApp.applications;
+  const versionOptions = [...panel.versions];
+  if (versionId && !versionOptions.some((entry) => entry.id === versionId)) {
+    versionOptions.push({ id: versionId, label: '当前固定版本 ' + versionId.slice(0, 8) + '…（列表外）' });
+  }
+  const pinnedView = panel.versionView;
+  return [
+    h('h3', {}, '固定子版本'),
+    h('p', { class: 'hint' },
+      '只列出服务端允许当前用户读取的应用与已发布版本；节点固定一个版本 id，不接受 latest，'
+      + '也不存在“跟随最新版本”。'),
+    h('label', { class: 'field-label' }, '子应用'),
+    h('select', {
+      'data-field': 'callApp.application',
+      value: panel.applicationId,
+      onChange: (event) => {
+        loadCallAppVersions(state, node, event.target.value)
+          .then(() => commit(state))
+          .catch(() => {});
+      },
+    }, [
+      h('option', { value: '' }, state.callApp.state === 'loading'
+        ? '正在加载可调用应用…'
+        : (applications.length ? '— 选择可调用应用 —' : '没有可调用的应用')),
+      ...applications.map((entry) => h('option', { value: entry.id },
+        entry.name + ' · ' + entry.id.slice(0, 8))),
+    ]),
+    state.callApp.error ? h('p', { class: 'error-text' }, state.callApp.error) : null,
+    h('label', { class: 'field-label' }, '已发布版本'),
+    h('select', {
+      'data-field': 'config.application_version',
+      value: versionId,
+      onChange: (event) => selectCallAppVersion(state, node, event.target.value),
+    }, [
+      h('option', { value: '' }, panel.loading ? '正在加载版本…' : '— 选择固定版本 —'),
+      ...versionOptions.map((entry) => h('option', { value: entry.id }, entry.label)),
+    ]),
+    panel.error ? h('p', { class: 'error-text' }, panel.error) : null,
+    versionId
+      ? h('div', { class: 'schema-preview' }, [
+          h('h4', {}, '固定版本事实'),
+          h('p', { class: 'hint', 'data-field': 'callApp.version' },
+            'version id: ' + versionId
+            + (pinnedView && pinnedView.manifest_sha256
+              ? ' · manifest sha256: ' + pinnedView.manifest_sha256
+              : (panel.loading ? ' · 正在读取冻结 manifest…' : ''))),
+        ])
+      : null,
+    h('h3', {}, '输入映射（显式、最少字段）'),
+    h('p', { class: 'hint' },
+      '输入名来自子版本冻结的 input_schema；每个输入绑定字面量、应用输入或上游节点输出，'
+      + '平台不会自动补父聊天历史/个人记忆。'),
+    ...(schemas
+      ? (inputRows.length
+        ? inputRows.map((row) => renderCallAppInputRow(definition, state, node, row, problems))
+        : [h('p', { class: 'hint' }, '该子版本没有声明输入字段。')])
+      : [h('p', { class: 'hint' }, versionId
+        ? '正在读取子版本的冻结 Schema…'
+        : '选择固定版本后这里显示子版本的输入字段与映射。')]),
+    h('h3', {}, '输出 Schema'),
+    h('pre', { class: 'schema-json readonly', 'data-field': 'callApp.childOutputSchema' },
+      schemas ? JSON.stringify(schemas.outputSchema, null, 2) : '（尚未选择固定版本）'),
+    h('p', { class: 'hint' }, '以上是子版本冻结的输出 Schema（只读）；父节点输出可编辑，默认取子版本 Schema。'),
+    schemas
+      ? h('button', {
+          type: 'button',
+          'data-field': 'callApp.useChildOutputSchema',
+          onClick: () => {
+            node.output_schema = callAppOutputSchemaFor(panel.versionView);
+            commit(state);
+          },
+        }, '使用子版本输出 Schema')
+      : null,
+    ...renderOutputSchemaEditor(definition, state, node),
+    problems.length
+      ? h('div', { class: 'errors', 'data-field': 'callApp.problems' },
+          problems.map((problem, index) => h('p', {
+            class: 'error-text',
+            key: 'callapp-problem-' + index,
+            'data-field': 'callApp.problem.' + index,
+          }, '[' + problem.code + '] ' + problem.message)))
+      : h('p', { class: 'hint', 'data-field': 'callApp.problems.ok' },
+          '映射与输出声明在本地检查通过；服务端校验仍是权威。'),
+  ];
+}
+
 function renderEdgePanel(state, edge, index) {
   const definition = state.definition;
   const sourceNode = definition.nodes.find((node) => node.id === edge.source);
@@ -904,6 +1275,7 @@ function focusError(state, error) {
   state.selectedEdgeId = '';
   state.status = '[' + error.code + '] ' + error.message;
   state.statusKind = 'bad';
+  ensureCallAppForSelection(state, error.nodeId);
   nextTick(() => {
     const element = fieldElement(state.root, error.field);
     if (element && typeof element.focus === 'function') {
@@ -1176,6 +1548,7 @@ function renderApp(state) {
             state.selectedEdgeId = '';
             state.status = '已添加 ' + NODE_LABELS[type] + '（' + result.node.id + '）。';
             state.statusKind = 'ok';
+            ensureCallAppForSelection(state, result.node.id);
           },
         }, '+ ' + NODE_LABELS[type]))),
       h('div', { class: 'toolbar-actions' }, [
@@ -1237,6 +1610,7 @@ function renderApp(state) {
             state.selectedId = node.id;
             state.selectedEdgeId = '';
             state.highlightedEdgeId = '';
+            ensureCallAppForSelection(state, node.id);
           },
           'onEdgeClick': ({ edge }) => {
             state.selectedEdgeId = edge.id;
@@ -1280,6 +1654,7 @@ function renderApp(state) {
               selected && selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
               selected && selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
               selected && selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'call_app' ? renderCallAppPanel(state.definition, state, selected) : null,
               selected && selected.type === 'condition' ? renderConditionPanel(state.definition, state, selected) : null,
               selected && selected.type === 'join' ? renderJoinPanel(state.definition, state, selected) : null,
               selected && selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
@@ -1353,6 +1728,13 @@ function initialState(root, options) {
     models: [],
     catalogsState: 'loading',
     catalogsError: '',
+    callApp: {
+      applications: [],
+      state: 'loading',
+      error: '',
+      byNode: {},
+      drafts: {},
+    },
     schemaDrafts: {},
     inputDrafts: {},
     schemaText: {},
@@ -1371,6 +1753,7 @@ export function mount(root, options) {
   app.mount(root);
   emitChange(state);
   loadCatalogs(state);
+  loadCallAppApplications(state);
 
   const onKeydown = (event) => {
     const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '';
@@ -1418,6 +1801,7 @@ export function mount(root, options) {
       state.schemaText = {};
       state.status = '已加载服务器草稿。';
       state.statusKind = 'ok';
+      ensureCallAppForSelection(state, state.selectedId);
     },
     getDraft() {
       return { definition: clone(state.definition), layout: clone(state.layout) };

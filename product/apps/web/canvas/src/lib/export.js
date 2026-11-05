@@ -30,6 +30,7 @@ export const CONFIG_ALLOWLIST = {
   ],
   condition: ['join_id', 'default_port', 'cases'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
+  call_app: ['application_version'],
   end: [],
 };
 
