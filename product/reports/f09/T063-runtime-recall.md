@@ -365,6 +365,12 @@ $ python -m pytest tests/tooling -q
 
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
+
+$ git merge integration/f13a-f15a-f09-f10
+Already up to date.   # 集成 tip 仍是 8ad3bcc（= 本分支基线），无合并提交，工作树不变
+
+$ python -m pytest tests/f09 -q          # 合并结果树复跑（独立 TMP/TEMP）
+69 passed in 477.18s
 ```
 
 确定性（BRIEF §6.1）：新用例不依赖墙钟窗口（记忆序由 PG 存储的 `confirmed_at`/`id` 决定，
