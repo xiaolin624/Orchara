@@ -47,13 +47,17 @@ type planBinding struct {
 type linearPlan struct {
 	definition *manifestDefinition
 	start      *manifestNode
-	python     *manifestNode
-	// agent is nil for the T042 three-node chain and set for the T043
-	// four-node start -> python -> agent -> end chain.
+	// python is nil for a pure delegation chain (start -> call_app -> end) and
+	// for the identity chain (start -> end) a delegated child may use.
+	python *manifestNode
+	// agent is nil unless the chain carries the controlled agent node.
 	agent       *manifestNode
 	agentConfig *agentConfig
-	end         *manifestNode
-	// order is the execution order: start, python, [agent], end.
+	// callApp is nil unless the chain pins one fixed child application version.
+	callApp       *manifestNode
+	callAppConfig *callAppConfig
+	end           *manifestNode
+	// order is the execution order: start, [python], [agent], [callApp], end.
 	order []*manifestNode
 }
 
@@ -65,13 +69,27 @@ type planError struct {
 
 func (e *planError) Error() string { return e.message }
 
-// buildLinearPlan parses the sealed definition and proves it is exactly one
-// start -> python -> [agent] -> end chain naming the fixed preset tool.
+// buildLinearPlan parses the sealed definition and proves it is one linear chain
+// over the node types this executor speaks:
 //
-// The three-node chain is the T042 python debug path. The four-node chain is the
-// T043 controlled-agent path: the one agent node must sit between the python
-// node and end, and its config must name a model profile and tool versions the
-// sealed manifest can execute (see validateAgentNode).
+//	start -> [python] -> [agent] -> [call_app] -> end
+//
+// Supported shapes (each exactly one chain, in this relative order):
+//
+//	start -> python -> end                     the T042 python debug path
+//	start -> python -> agent -> end            the T043 controlled-agent path
+//	start -> end                               the identity path (a delegated
+//	                                           child that only validates and
+//	                                           echoes its mapped input)
+//	start -> call_app -> end                   a pure delegation parent
+//	start -> python -> call_app -> end         the workbench's call_app chain
+//
+// A python node is required when an agent node is present, and a call_app chain
+// may also carry the python node. Every other node type, duplicate node, branch
+// or extra edge is a deterministic `tool_unsupported_graph` refusal before any
+// work happens; `model`/`retrieve`/`condition`/`approval`/`join` stay
+// unsupported. `call_app` is validated by validateCallAppNode, the agent by
+// validateAgentNode.
 func buildLinearPlan(manifest *manifestDocument) (*linearPlan, error) {
 	if manifest == nil {
 		return nil, &planError{code: CodeToolUnsupportedGraph,
@@ -83,7 +101,7 @@ func buildLinearPlan(manifest *manifestDocument) (*linearPlan, error) {
 			message: "the sealed definition carries no nodes"}
 	}
 	byID := make(map[string]*manifestNode, len(definition.Nodes))
-	var start, end, python, agent *manifestNode
+	var start, end, python, agent, callApp *manifestNode
 	for index := range definition.Nodes {
 		node := &definition.Nodes[index]
 		if node.ID == "" {
@@ -120,52 +138,84 @@ func buildLinearPlan(manifest *manifestDocument) (*linearPlan, error) {
 					message: "the sealed definition has more than one agent node; this executor runs one"}
 			}
 			agent = node
+		case "call_app":
+			if callApp != nil {
+				return nil, &planError{code: CodeToolUnsupportedGraph,
+					message: "the sealed definition has more than one call_app node; this executor runs one per chain"}
+			}
+			callApp = node
 		default:
 			return nil, &planError{code: CodeToolUnsupportedGraph,
 				message: "the sealed definition contains a " + node.Type +
-					" node; this executor runs exactly start, python, [agent] and end"}
+					" node; this executor runs start, python, agent, call_app and end"}
 		}
 	}
-	if start == nil || end == nil || python == nil {
+	if start == nil || end == nil {
 		return nil, &planError{code: CodeToolUnsupportedGraph,
-			message: "the sealed definition must contain exactly one start, one python and one end node"}
+			message: "the sealed definition must contain exactly one start and one end node"}
 	}
-	if len(definition.Nodes) != 3 && len(definition.Nodes) != 4 {
+	if agent != nil && callApp != nil {
 		return nil, &planError{code: CodeToolUnsupportedGraph,
-			message: fmt.Sprintf("the sealed definition has %d nodes; this executor runs three or four",
-				len(definition.Nodes))}
+			message: "one chain does not run both an agent and a call_app node; split the work into two nodes"}
 	}
-	if len(definition.Nodes) == 4 && agent == nil {
+	if python == nil && agent == nil && callApp == nil && len(definition.Nodes) != 2 {
 		return nil, &planError{code: CodeToolUnsupportedGraph,
-			message: "a four-node chain must contain exactly one agent node between python and end"}
+			message: "a chain without python/agent/call_app must be exactly start -> end"}
 	}
-	if len(definition.Nodes) == 3 && agent != nil {
-		return nil, &planError{code: CodeToolUnsupportedGraph,
-			message: "an agent node requires the four-node start -> python -> agent -> end chain"}
-	}
+
 	// The python node must name the one fixed preset tool. This is checked
 	// before the chain shape so a graph naming another tool gets the tool code.
-	var toolConfig struct {
-		ToolVersion string `json:"tool_version"`
+	if python != nil {
+		var toolConfig struct {
+			ToolVersion string `json:"tool_version"`
+		}
+		if err := json.Unmarshal(python.Config, &toolConfig); err != nil {
+			return nil, &planError{code: CodeToolUnsupportedGraph,
+				message: "the python node has no readable tool_version"}
+		}
+		if toolConfig.ToolVersion != PresetToolID {
+			return nil, &planError{code: CodeToolUnsupportedTool,
+				message: "the python node references tool " + toolConfig.ToolVersion + ", not the fixed preset"}
+		}
 	}
-	if err := json.Unmarshal(python.Config, &toolConfig); err != nil {
-		return nil, &planError{code: CodeToolUnsupportedGraph,
-			message: "the python node has no readable tool_version"}
+
+	plan := &linearPlan{definition: definition, start: start, end: end}
+	plan.order = append(plan.order, start)
+	if python != nil {
+		plan.python = python
+		plan.order = append(plan.order, python)
 	}
-	if toolConfig.ToolVersion != PresetToolID {
-		return nil, &planError{code: CodeToolUnsupportedTool,
-			message: "the python node references tool " + toolConfig.ToolVersion + ", not the fixed preset"}
-	}
-	// The chain edges, in either order. A three-node chain has exactly two; a
-	// four-node chain has exactly three.
-	wantEdges := 2
 	if agent != nil {
-		wantEdges = 3
+		config, err := validateAgentNode(agent, manifest)
+		if err != nil {
+			return nil, err
+		}
+		plan.agent = agent
+		plan.agentConfig = config
+		plan.order = append(plan.order, agent)
 	}
+	if callApp != nil {
+		config, err := validateCallAppNode(callApp)
+		if err != nil {
+			return nil, err
+		}
+		plan.callApp = callApp
+		plan.callAppConfig = config
+		plan.order = append(plan.order, callApp)
+	}
+	plan.order = append(plan.order, end)
+
+	// The chain edges: exactly the adjacent pairs of the proven order, no
+	// duplicate and no extra shortcut.
+	wantEdges := len(plan.order) - 1
 	if len(definition.Edges) != wantEdges {
 		return nil, &planError{code: CodeToolUnsupportedGraph,
 			message: fmt.Sprintf("the sealed definition has %d edges; the chain requires exactly %d",
 				len(definition.Edges), wantEdges)}
+	}
+	legal := make(map[string]bool, wantEdges)
+	for index := 0; index+1 < len(plan.order); index++ {
+		legal[plan.order[index].ID+"\x00"+plan.order[index+1].ID] = true
 	}
 	seen := make(map[string]bool, wantEdges)
 	for _, edge := range definition.Edges {
@@ -175,34 +225,11 @@ func buildLinearPlan(manifest *manifestDocument) (*linearPlan, error) {
 				message: "the sealed definition repeats edge " + edge.Source + "->" + edge.Target}
 		}
 		seen[key] = true
-		legal := (edge.Source == start.ID && edge.Target == python.ID) ||
-			(edge.Source == python.ID && edge.Target == end.ID)
-		if agent != nil {
-			legal = (edge.Source == start.ID && edge.Target == python.ID) ||
-				(edge.Source == python.ID && edge.Target == agent.ID) ||
-				(edge.Source == agent.ID && edge.Target == end.ID)
-		}
-		if !legal {
+		if !legal[key] {
 			return nil, &planError{code: CodeToolUnsupportedGraph,
 				message: "the sealed definition is not a single chain: " +
 					edge.Source + "->" + edge.Target}
 		}
-	}
-	plan := &linearPlan{
-		definition: definition,
-		start:      start,
-		python:     python,
-		end:        end,
-		order:      []*manifestNode{start, python, end},
-	}
-	if agent != nil {
-		config, err := validateAgentNode(agent, manifest)
-		if err != nil {
-			return nil, err
-		}
-		plan.agent = agent
-		plan.agentConfig = config
-		plan.order = []*manifestNode{start, python, agent, end}
 	}
 	return plan, nil
 }

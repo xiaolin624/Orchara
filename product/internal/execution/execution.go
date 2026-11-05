@@ -290,6 +290,10 @@ type Service struct {
 	// Logger receives request-independent event diagnostics (worker
 	// local_sequence gaps/repeats). Nil drops them; it never receives credentials.
 	Logger *log.Logger
+	// ResultValidator is the optional F07/T078 frozen-result-schema gate. Nil
+	// keeps the previous finalizer behaviour (no child Run can exist in that
+	// deployment, so no result needs the check).
+	ResultValidator RunResultValidator
 }
 
 // New builds the service. Objects and Signer may be nil: a claim then fails

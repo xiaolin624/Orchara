@@ -11,11 +11,14 @@
   `0042_deletion_foundation`（T069）+ `0043_publication_reviews_and_outbox`（T068），
   ADR `0020`（T069）/`0021`（T068）/`0022`（T070）/`0023`（本票）。合并树上重跑全部门禁
   （§3.7）：`tests/f07` 12 passed ×2、`tests/f02a` **104 passed / 0 failed**、`tests/tooling` 21 passed。
-- 状态：**`partial`**。范围内已真实交付并验证：`call_app` 的 I/O 映射/类型校验（新 5 个定位码）、
-  `policy.max_child_calls`/`max_child_depth` 对真实 `platform.version_dependencies` 闭包的检查、
-  撤销/未发布/循环三类拒绝的区分、创作台 `call_app` 面板（真实 catalog/version 读 + 保存 + 校验 +
-  节点高亮）。**未闭环**：真实发布事务写入 `version_dependencies` 并给出“父发布后子最新版不替旧引用”
-  的端到端断言——见 §1.4 的具体阻塞（T078 #79）。
+- 状态：**passed**（2026-11-05 由 T078 #79 闭环）。范围内已真实交付并验证：`call_app` 的
+  I/O 映射/类型校验（新 5 个定位码）、`policy.max_child_calls`/`max_child_depth` 对真实
+  `platform.version_dependencies` 闭包的检查、撤销/未发布/循环三类拒绝的区分、创作台 `call_app`
+  面板（真实 catalog/version 读 + 保存 + 校验 + 节点高亮）。原 **partial** 的发布事务闭环已由
+  T078 补上：真实 `submitApplication` → 管理员 approve 创建父版本并把固定子版本写进
+  `version_dependencies`；之后发布更严格的新子版本，父版本行/`manifest` 字节/边均不变，切到新子版本
+  被 `io_mapping_missing_field` 拒绝（证据见 §1.4 与 `tests/f07/test_t078_child_runs.py::
+  test_real_publication_pins_the_child_and_closes_t075`）。
 - 边界（如实）：父版本固定的是**子版本 id**（`call_app.config.application_version`,
   `agent.subapp_versions`），闭包由 `platform.version_dependencies` 与之上的冻结 manifest 表达；
   子运行执行/`spawnChild`/预算/等待属 T078/T080/T081，本票**不实现**；`internal/presetexec` 对
@@ -106,10 +109,22 @@
   `TestCollectDependencyRefsLocatesEveryConfigField` 证明：`call_app.application_version` 与
   `agent.subapp_versions[]` 都作为 `subapp` 引用进入闭包，最后由 `compiler.Build` 归一化排序去重。
   没有任何 SQL 更新既有 `application_versions`/`version_dependencies` 行（全仓仅两处 INSERT）。
-- **端到端未执行（partial，owner T078 #79）**：真实 `submitApplication` → 审核 → approve 要求一份
-  通过的五类作者案例报告；`internal/presetexec` 目前拒绝 `call_app`（`plan.go:123-127`）与非空
-  `agent.subapp_versions`（`agent.go:154-157`），所以含固定子应用的定义**无法**产生 passed 报告，
-  也就没有任何 API 路径能发布带依赖的父版本。本票不实现子运行（T078），也不伪造报告。
+- **端到端已由 T078 #79 补齐（原 partial 的 closure）**：T078 让 `internal/presetexec` 执行
+  `call_app`/`agent.subapp_versions`，并用真实的 `submitApplication` → 管理员 approve 事务发布
+  带固定子依赖的父版本（`tests/f07/test_t078_child_runs.py::
+  test_real_publication_pins_the_child_and_closes_t075`）：
+  1. 子应用 v1（真实 validate 字节 → 真实发布事务）→ 父应用引用 v1（真实发布事务）；
+  2. 父版本 `manifest.subapp_versions == [v1]`、`version_dependencies == [v1]`、冻结 manifest 字节
+     与 sha 一致；
+  3. 之后发布**更严格**的子 v2（input 新增必填 `region`）；父版本行、冻结字节、依赖边逐字节/逐行
+     不变，`GET /versions/{parent_v1}` 仍返回原 sha；
+  4. 把父草稿改为引用 v2 → validate 返回 `io_mapping_missing_field`（`/nodes/1/inputs/region`），
+     证明固定引用不会被“最新版”替换；
+  5. 真实发布的 v1 可直接被 `spawnChild` 解析并创建 child Run（T078 用例）。
+  该用例使用的五类报告是 T068 已验证的报告 fixture：evaluation/case/run/snapshot 均为真实行，
+  每个 passed case 的 Run 终态是种子（T068 报告明示其 review 事务 fixtures 如此）。**真实
+  WSL2/runsc 产出该五类报告仍未执行**：`call_app` 父运行在子任务终态后恢复依赖 T081 的自动 hook
+  （T078 只用既有 T035 bridge 驱动恢复），因此“真实沙箱五类评测”保持 `not_run`，见 §5。
 - 因此 T075 的真实栈测试把版本行物化为**发布器的存储形状**：真实 `POST /validate` → 真实
   canonical manifest 字节（对象存储 + sha256 复算）→ `application_versions` 行 → 按 manifest 自己的
   `subapp_versions` 写边（`tests/support/t075.py:seal_version`，返回记录带
@@ -308,15 +323,16 @@ T070 合并后 `ListVersions`/`GetVersion` 已过滤撤销版本，创作台版�
 |---|---|---|
 | 未发布/撤销/循环子版本拒绝（三码可区分、定位正确） | 通过（撤销=真实 revoked_at 行；未发布=真实缺行；循环=真实 `version_dependencies` 环） | `test_unpublished_revoked_and_archived_child_versions_are_distinguishable`、`test_a_real_dependency_cycle_and_a_self_call_are_refused`；既有 `tests/f02a/test_t025_dependencies.py` 回归 |
 | 映射不兼容被定位（code + JSON pointer，编辑器高亮） | 通过 | `test_mapping_errors_are_located_at_the_offending_field`、`test_an_incompatible_output_declaration_is_located`；面板 Node 用例的 `callAppValidationModel` |
-| 父发布后子最新版不替旧引用 | **partial**：冻结/解析层已证明（manifest 字节、sha、`subapp_versions`、版本读在子 v2 后不变；改为引用 v2 立即失败）；“父版本真的发布”与“发布事务写边”因 T078 运行时不支持 `call_app` 而无法执行（无 passed 五类报告 ⇒ 无发布路径） | `test_a_newer_child_version_never_replaces_the_pinned_reference`；§1.4 的代码锚点 + Go 依赖集测试；ADR 0023 §4 |
+| 父发布后子最新版不替旧引用 | **passed**（T078 #79 闭环）：真实发布事务创建父版本并写 `version_dependencies`；之后发布更严格子 v2，父版本行/冻结字节/边不变，切到 v2 被 `io_mapping_missing_field` 拒绝 | `test_a_newer_child_version_never_replaces_the_pinned_reference`（冻结/解析层）；`tests/f07/test_t078_child_runs.py::test_real_publication_pins_the_child_and_closes_t075`（真实发布事务 + v2 + 切换拒绝）；§1.4；ADR 0023 §4 + T078 ADR 0025 |
 | 深度/次数限制按真实闭包执行 | 通过 | `test_child_depth_is_enforced_over_the_real_version_closure`、`test_child_call_count_is_enforced_over_the_declared_references`、Go `TestChildDepthIsMeasuredOverTheRealClosure`/`TestChildCallCountIsTheDeclaredFixedReferenceCount` |
 | 创作台选固定子应用、声明 I/O 并看到定位错误 | 部分为 true：编辑器面板（真实页面代码 + Node 执行 + 真实 HTTP 端点）已交付；F04A Vue 画布 palette 未加第五种节点 | `tests/f07/test_t075_pages.py`；§1.5；`not_run` 列表 |
 | 运行时执行 `call_app` 不在本票（T078） | 遵守：`presetexec` 仍拒绝，新增回归断言 | `internal/presetexec/plan_test.go` call_app 用例 |
 
 ## 5. `not_run` / 未闭环
 
-1. **真实发布事务对依赖版本写边**（owner T078 #79）：无 API 路径可发布含 `call_app` 的版本（五类报告
-   需要能执行该图）。本票以真实封印字节的发布器形状 fixture 覆盖读侧，不声称发布成功。
+1. ~~真实发布事务对依赖版本写边~~：**已由 T078 #79 闭环**，见 §1.4 与
+   `test_real_publication_pins_the_child_and_closes_t075`。仍 `not_run` 的只剩“真实 WSL2/runsc
+   产出该五类报告”（依赖 T081 的 child 终态恢复 hook；T078 报告如实记录）。
 2. **F04A Vue 画布 bundle 的 `call_app` 节点/palette**：画布是已交付的线性四节点特性，其 committed
    契约与 `linearChainProblems`/`addNode` 只允许四种节点；重建需改 F04A 的模型与页面测试，且画布
    主应用只能被浏览器执行（Node 只测 `lib/*.js`）。本票选择编辑器自有面板并在 §1.5/§5.2 明示。

@@ -26,19 +26,31 @@ from .agent import (
     run_agent,
     stream_agent,
 )
+from .delegate import (
+    ChildApp,
+    DelegateTransport,
+    DelegateTransportError,
+    HTTPDelegateTransport,
+    PublishedAppDelegate,
+)
 from .schema import validate_value
 
 __all__ = [
     "CapabilityTransport",
+    "ChildApp",
     "DeclaredTool",
+    "DelegateTransport",
+    "DelegateTransportError",
     "ExecutedCall",
     "Generation",
+    "HTTPDelegateTransport",
     "ModelAdapter",
     "NodeOutcome",
     "PlatformCapabilityError",
     "PlatformChatModel",
     "PlatformError",
     "PlatformValidationError",
+    "PublishedAppDelegate",
     "StreamingCapabilityTransport",
     "StreamingModelAdapter",
     "ToolCall",
