@@ -23,7 +23,7 @@ from support import f00b, t025, t033, t042, t055, t064, t083, t088
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
-    t055_stack,
+    t033_stack,
 )
 
 QUERY = "华北地区十月的销售额是多少"
@@ -71,8 +71,8 @@ def item_key_set(item: dict) -> set[str]:
 # ---------------------------------------------------------------------------
 # 1. real citations, doc/version/span preserved, downstream step opens them
 # ---------------------------------------------------------------------------
-def test_retrieve_returns_real_citations_and_passes_them_downstream(t055_stack) -> None:
-    stack = t055_stack
+def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) -> None:
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     base_id, document_id = t088.ready_knowledge_base(
@@ -179,8 +179,8 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t055_stack) 
 # ---------------------------------------------------------------------------
 # 2. no results is a succeeded node with empty items, never an error
 # ---------------------------------------------------------------------------
-def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t055_stack) -> None:
-    stack = t055_stack
+def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t033_stack) -> None:
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     # A real, owner-visible knowledge base with no ingested document: the SQL
@@ -213,8 +213,8 @@ def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t055_s
 # ---------------------------------------------------------------------------
 # 3. ACL: a foreign knowledge base is excluded silently; all-foreign is empty
 # ---------------------------------------------------------------------------
-def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t055_stack) -> None:
-    stack = t055_stack
+def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t033_stack) -> None:
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     bob = make_user(stack, admin, "t088.bob")
@@ -271,8 +271,8 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t055_stack) -
 # ---------------------------------------------------------------------------
 # 4. the internal route itself: owner from the DB, ACL counters, role/token
 # ---------------------------------------------------------------------------
-def test_the_internal_route_derives_the_owner_and_counts_the_acl(t055_stack) -> None:
-    stack = t055_stack
+def test_the_internal_route_derives_the_owner_and_counts_the_acl(t033_stack) -> None:
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     bob = make_user(stack, admin, "t088.bob")
@@ -359,9 +359,9 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t055_stack) -> 
 # 5. revoked/deleted knowledge: no results now, old citations are unavailable
 # ---------------------------------------------------------------------------
 def test_revoked_knowledge_returns_nothing_and_the_old_citation_is_unavailable(
-    t055_stack,
+    t033_stack,
 ) -> None:
-    stack = t055_stack
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     base_id, document_id = t088.ready_knowledge_base(
@@ -400,8 +400,8 @@ def test_revoked_knowledge_returns_nothing_and_the_old_citation_is_unavailable(
 # ---------------------------------------------------------------------------
 # 6. two parallel retrieve nodes never cross their results
 # ---------------------------------------------------------------------------
-def test_two_parallel_retrieve_nodes_keep_their_own_documents(t055_stack) -> None:
-    stack = t055_stack
+def test_two_parallel_retrieve_nodes_keep_their_own_documents(t033_stack) -> None:
+    stack = t033_stack
     admin = f00b.admin_session(stack)
     alice = make_user(stack, admin, "t088.alice")
     left_base, left_document = t088.ready_knowledge_base(

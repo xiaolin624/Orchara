@@ -91,6 +91,13 @@ def _input_schema(fields: tuple[str, ...]) -> dict:
     }
 
 
+def _knowledge_base_ids(value) -> list[str]:
+    """Accept one UUID or an iterable of UUIDs (a bare string is one id, not chars)."""
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value]
+
+
 def retrieve_node(
     node_id: str,
     knowledge_base_ids,
@@ -102,7 +109,10 @@ def retrieve_node(
         "id": node_id,
         "type": "retrieve",
         "inputs": {"query": {"ref": "input#/" + input_field}},
-        "config": {"knowledge_base_ids": list(knowledge_base_ids), "top_k": top_k},
+        "config": {
+            "knowledge_base_ids": _knowledge_base_ids(knowledge_base_ids),
+            "top_k": top_k,
+        },
         "output_schema": dict(RETRIEVE_OUTPUT_SCHEMA),
     }
 
