@@ -551,8 +551,107 @@ process.stdout.write(JSON.stringify({
 """
 
 
+def _run_runview_harness(
+    node: str, tmp_path: Path, payload: dict,
+) -> dict:
+    harness = RUNTIME_HARNESS.replace("__RUNVIEW__", json.dumps(str(RUNVIEW_JS)))
+    script = tmp_path / "runview-runtime-harness.js"
+    script.write_text(harness, encoding="utf-8")
+    payload_file = tmp_path / "runview-runtime-input.json"
+    payload_file.write_text(json.dumps(payload), encoding="utf-8")
+    completed = _run_node(node, str(script), str(payload_file))
+    assert completed.returncode == 0, (
+        f"--- stdout ---\n{completed.stdout}\n--- stderr ---\n{completed.stderr}"
+    )
+    return json.loads(completed.stdout)
+
+
+def _owner_reads(t033_stack, owner, run_id: str) -> tuple[dict, dict, dict]:
+    """The real owner HTTP reads plus the committed node.status events."""
+    from support import t027, t042
+
+    detail = t027.get_run(owner.creator, run_id)
+    assert detail.status == 200, detail.text
+    results = t042.node_results(owner.creator, run_id)
+    assert results.status == 200, results.text
+    contents: dict[str, object] = {}
+    for item in results.json["items"]:
+        if item["kind"] != "data":
+            continue
+        content = t042.content_of(owner.creator, item["artifact_id"])
+        assert content.status == 200, content.text
+        try:
+            contents[item["artifact_id"]] = json.loads(content.raw)
+        except ValueError:
+            contents[item["artifact_id"]] = content.raw.decode("utf-8", "replace")
+    events = [
+        {"seq": row["seq"], "type": "node.status", "payload": row["payload"]}
+        for row in t042.node_events(t033_stack.dbname, run_id)
+    ]
+    return detail.json, results.json, {"contents": contents, "events": events}
+
+
+def test_the_real_linear_run_view_shows_committed_states_and_the_data_artifact(
+    t033_stack, node_binary_fixture: str, tmp_path: Path,
+) -> None:
+    """The real HTTP data path the run view uses, on the runtime that exists today.
+
+    This is the linear start -> python -> end run (F04A's executor): it proves the
+    page module reads a real owner-only node-results projection, a real data
+    artifact and the real committed node.status payloads over HTTP. The condition
+    / port / join E2E below is the graph-runtime part and stays gated.
+    """
+    from support import t027, t033, t042
+
+    if not t033.sandbox_available():
+        pytest.skip(
+            "WSL2/runsc is unavailable: `wsl -d Ubuntu-24.04 -u root -e bash -lc "
+            "'runsc --version'` failed; the real python node cannot execute"
+        )
+    definition = t042.linear_definition()
+    owner = t033.golden_owner(t033_stack)
+    application_id = t042.application_for(owner, definition=definition, name="t083 linear view")
+    csv_id = t042.ready_csv(t033_stack, owner)
+    run = t042.submit_linear_run(
+        owner, application_id, artifact_id=csv_id, input_value={"source": "t083"},
+    )
+    completed, report = t042.run_linear_once(t033_stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["status"] == "executed", report
+    assert report["outcome"] == "succeeded", report
+    assert report["run_state"] == "succeeded", report
+    t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+
+    run_body, node_results, extra = _owner_reads(t033_stack, owner, run["id"])
+    data_rows = {item["node_id"]: item for item in node_results["items"] if item["kind"] == "data"}
+    assert "stats" in data_rows, node_results["items"]
+    assert extra["contents"][data_rows["stats"]["artifact_id"]], extra["contents"]
+    model = _run_runview_harness(
+        node_binary_fixture,
+        tmp_path,
+        {
+            "definition": definition,
+            "events": extra["events"],
+            "nodeResults": node_results,
+            "contents": extra["contents"],
+            "run": run_body,
+        },
+    )
+    rows = {row["nodeId"]: row for row in model["rows"]}
+    assert [row["nodeId"] for row in model["rows"]] == ["start", "stats", "end"], model["rows"]
+    assert rows["start"]["state"] == "succeeded", rows["start"]
+    assert rows["stats"]["state"] == "succeeded", rows["stats"]
+    assert rows["end"]["state"] == "succeeded", rows["end"]
+    assert rows["stats"]["artifactId"] == data_rows["stats"]["artifact_id"], rows["stats"]
+    assert rows["stats"]["failed"] is False, rows["stats"]
+    assert model["counts"]["succeeded"] == 3, model["counts"]
+    assert model["counts"]["skipped"] == 0, model["counts"]
+    assert model["error"]["severity"] == "ok", model["error"]
+
+
+
 def _condition_definition() -> dict:
-    from support import t025, t027, t042
+    from support import t027, t042
 
     return {
         "dsl_version": "1.0",
@@ -635,7 +734,7 @@ def _condition_definition() -> dict:
 def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     t033_stack, node_binary_fixture: str, tmp_path: Path,
 ) -> None:
-    from support import t033, t042, t027
+    from support import t033, t042
 
     definition = _condition_definition()
     owner = t033.minimal_owner(t033_stack)
@@ -653,33 +752,21 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert report["run_state"] == "succeeded", report
     t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
 
-    # Real owner HTTP reads: the Run snapshot, the node-results projection and
-    # the data artifact contents the page consumes.
-    detail = t027.get_run(owner.creator, run["id"])
-    assert detail.status == 200, detail.text
-    run_body = detail.json
+    # Real owner HTTP reads plus the committed node.status events (what SSE
+    # replays); the condition/join artifacts are the page's data surface.
+    run_body, results, extra = _owner_reads(t033_stack, owner, run["id"])
     assert run_body["state"] == "succeeded", run_body
-    results = t042.node_results(owner.creator, run["id"])
-    assert results.status == 200, results.text
-    items = results.json["items"]
+    items = results["items"]
     data_rows = {item["node_id"]: item for item in items if item["kind"] == "data"}
     assert "choose" in data_rows, items
     assert "join" in data_rows, items
-    contents: dict[str, object] = {}
-    for node_id in ("choose", "join"):
-        content = t042.content_of(owner.creator, data_rows[node_id]["artifact_id"])
-        assert content.status == 200, content.text
-        contents[data_rows[node_id]["artifact_id"]] = json.loads(content.raw)
+    contents = extra["contents"]
     assert contents[data_rows["choose"]["artifact_id"]] == {"port": "yes", "matched_case": 0}
     envelope = contents[data_rows["join"]["artifact_id"]]
     assert envelope["results"]["left"]["status"] == "succeeded", envelope
     assert envelope["results"]["right"]["status"] == "skipped", envelope
 
-    # The committed node.status events (exactly what SSE replays).
-    events = [
-        {"seq": row["seq"], "type": "node.status", "payload": row["payload"]}
-        for row in t042.node_events(t033_stack.dbname, run["id"])
-    ]
+    events = extra["events"]
     statuses = {(row["payload"]["node_id"], row["payload"]["state"]) for row in events}
     assert ("right", "skipped") in statuses, statuses
     assert ("left", "succeeded") in statuses, statuses
@@ -691,25 +778,17 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert len(joins) == 1, events
 
     # Drive the real page module with the real HTTP payloads.
-    harness = RUNTIME_HARNESS.replace("__RUNVIEW__", json.dumps(str(RUNVIEW_JS)))
-    script = tmp_path / "runview-runtime-harness.js"
-    script.write_text(harness, encoding="utf-8")
-    payload = tmp_path / "runview-runtime-input.json"
-    payload.write_text(
-        json.dumps(
-            {
-                "definition": definition,
-                "events": events,
-                "nodeResults": results.json,
-                "contents": contents,
-                "run": run_body,
-            }
-        ),
-        encoding="utf-8",
+    model = _run_runview_harness(
+        node_binary_fixture,
+        tmp_path,
+        {
+            "definition": definition,
+            "events": events,
+            "nodeResults": results,
+            "contents": contents,
+            "run": run_body,
+        },
     )
-    completed = _run_node(node_binary_fixture, str(script), str(payload))
-    assert completed.returncode == 0, completed.stderr
-    model = json.loads(completed.stdout)
     rows = {row["nodeId"]: row for row in model["rows"]}
     assert rows["choose"]["branchPort"] == "yes", rows["choose"]
     assert rows["choose"]["matchedCase"] == 0, rows["choose"]
