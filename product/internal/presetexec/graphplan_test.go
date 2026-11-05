@@ -352,11 +352,10 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
-	// F04B/T086: `model` is executable now; the remaining per-type refusals keep
-	// their own stable codes until T087 (approval) and T088 (retrieve) replace them.
+	// F04B/T086 made `model` executable and F04B/T087 made `approval` executable;
+	// only `retrieve` keeps its per-type refusal until T088 replaces it.
 	cases := map[string]string{
 		"retrieve": "node_unsupported_retrieve",
-		"approval": "node_unsupported_approval",
 		"mystery":  "tool_unsupported_graph",
 	}
 	for nodeType, want := range cases {

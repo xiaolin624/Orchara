@@ -57,6 +57,9 @@ function describeApproval(approval) {
     paramsSHA256: String(value.params_sha256 || ''),
     paramsHashShort: String(value.params_sha256 || '').slice(0, 12),
     expiresAt: String(value.expires_at || ''),
+    // Filled from the sealed proposal once the detail is loaded; the contract
+    // Approval itself has no kind/title field.
+    proposalKind: '',
   };
 }
 
@@ -89,18 +92,66 @@ function proposalSourcesText(proposal) {
   return lines.join('\n');
 }
 
+// F04B/T087: a node approval is a business decision, not a capability proposal.
+// The sealed node document carries the node identity, its display title and the
+// definition node list; the page renders those real facts through the same
+// artifact-content ACL as a capability proposal.
+function nodeProposalSourcesText(proposal) {
+  const value = proposal || {};
+  const lines = [];
+  if (value.node_id) {
+    lines.push('approval node ' + value.node_id + ' (' + String(value.node_key || '') + ')');
+  }
+  if (Array.isArray(value.definition_nodes) && value.definition_nodes.length > 0) {
+    lines.push('definition nodes ' + value.definition_nodes.join(', '));
+  }
+  if (value.snapshot_id) lines.push('execution_snapshot ' + value.snapshot_id);
+  if (value.snapshot_sha256) lines.push('snapshot_sha256 ' + value.snapshot_sha256);
+  if (value.manifest_sha256) lines.push('manifest_sha256 ' + value.manifest_sha256);
+  return lines.join('\n');
+}
+
 /**
  * The page's one rendering of the sealed server proposal. Only facts the server
- * wrote are exposed; a missing member renders empty rather than a guess.
+ * wrote are exposed; a missing member renders empty rather than a guess. A node
+ * approval (kind=node_approval) renders its title/node/business-decision copy; a
+ * capability proposal keeps exactly the T050 rendering.
  */
 function describeProposal(proposal) {
   const value = proposal || {};
+  const kind = String(value.kind || '');
+  if (kind === 'node_approval') {
+    const title = String(value.title || '');
+    return {
+      kind: kind,
+      title: title,
+      nodeID: String(value.node_id || ''),
+      nodeKey: String(value.node_key || ''),
+      runID: String(value.run_id || ''),
+      operationID: '',
+      logicalKey: '',
+      targetText: '人工审批 · ' + (title || '未命名审批') + '（' + String(value.node_key || '') + '）',
+      queryText: '',
+      pathPrefix: '',
+      method: '',
+      paramsText: value.proposal === undefined ? '' : JSON.stringify(value.proposal, null, 2),
+      paramsSHA256: String(value.params_sha256 || ''),
+      destinationText: '业务决定（不授权后续外部写）',
+      riskText: '业务审批',
+      sourcesText: nodeProposalSourcesText(value),
+      expiresAt: String(value.expires_at || ''),
+      approvalVersion: Number(value.approval_version || 0),
+    };
+  }
   const target = value.target || {};
   return {
+    kind: kind,
+    title: '',
+    nodeID: '',
+    nodeKey: String(value.node_key || ''),
     runID: String(value.run_id || ''),
     operationID: String(value.operation_id || ''),
     logicalKey: String(value.logical_key || ''),
-    nodeKey: String(value.node_key || ''),
     targetText: proposalTargetText(target),
     queryText: proposalQueryText(target),
     pathPrefix: String(target.path_prefix || ''),
@@ -131,7 +182,14 @@ function decisionPayload(decision, paramsSHA256) {
   return { decision: decision, params_sha256: hash };
 }
 
-function decisionConfirmationText(decision) {
+function decisionConfirmationText(decision, kind) {
+  if (String(kind || '') === 'node_approval') {
+    if (decision === 'approve') {
+      return '批准只是业务决定：恢复后继续本次运行，但不会授权任何后续外部写工具；'
+        + '后续写操作仍需要各自的 operation 审批。';
+    }
+    return '拒绝会让等待中的 Run 以 approval_rejected 失败。拒绝不会撤销已经发生的外部写入。';
+  }
   if (decision === 'approve') {
     return '批准只允许这次操作继续：恢复后的尝试仍会重新校验权限与预算，最多派发一次。' +
       '批准不会赋予额外权限，也不能撤销已经发生的外部写入。';
@@ -204,6 +262,7 @@ async function loadApprovalDetail(approvalID) {
       throw new Error('提案读取失败：' + text.slice(0, 200));
     }
     const proposal = describeProposal(JSON.parse(text));
+    displayedApproval.proposalKind = proposal.kind;
     document.getElementById('detail-target').textContent =
       proposal.targetText + (proposal.queryText ? '?' + proposal.queryText : '');
     document.getElementById('detail-params').textContent = proposal.paramsText;
@@ -227,7 +286,7 @@ async function loadApprovalDetail(approvalID) {
 
 async function decideApproval(decision) {
   if (!displayedApproval) return;
-  if (!window.confirm(decisionConfirmationText(decision))) return;
+  if (!window.confirm(decisionConfirmationText(decision, displayedApproval.proposalKind))) return;
   const status = document.getElementById('decision-status');
   const button = document.getElementById(
     decision === 'approve' ? 'approve-button' : 'reject-button',

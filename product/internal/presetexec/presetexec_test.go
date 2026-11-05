@@ -78,6 +78,30 @@ type fakeClient struct {
 	childResult   func(childRunID string) (*ChildResult, error)
 	spawnRequests []SpawnChildRequest
 	childReads    []string
+
+	// scripted approval seam (T087 approval-node tests)
+	nodeApprovalScript   []*NodeApproval
+	nodeApprovalErr      error
+	nodeApprovalRequests []NodeApprovalRequest
+}
+
+// PrepareNodeApproval implements Client: the executor asks the platform for the
+// one server-built approval; the scripted answer is the platform's row.
+func (f *fakeClient) PrepareNodeApproval(
+	_ context.Context, _ string, _ string, request NodeApprovalRequest,
+) (*NodeApproval, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodeApprovalRequests = append(f.nodeApprovalRequests, request)
+	if f.nodeApprovalErr != nil {
+		return nil, f.nodeApprovalErr
+	}
+	if len(f.nodeApprovalScript) == 0 {
+		return nil, errors.New("no scripted node approval")
+	}
+	next := f.nodeApprovalScript[0]
+	f.nodeApprovalScript = f.nodeApprovalScript[1:]
+	return next, nil
 }
 
 // SpawnChild implements Client: the executor never creates a Run itself.

@@ -80,16 +80,18 @@ func (s *Service) List(ctx context.Context, callerID string, limit int, cursor s
 	for rows.Next() {
 		var (
 			approval    Approval
+			operation   sql.NullString
 			decidedAt   sql.NullTime
 			pendingRank int
 		)
 		if err := rows.Scan(
 			&approval.ID, &approval.RunID, &approval.State, &approval.ProposalArtifactID,
 			&approval.ParamsSHA256, &approval.ExpiresAt, &approval.ApproverID,
-			&approval.OperationID, &decidedAt, &pendingRank,
+			&operation, &approval.NodeKey, &decidedAt, &pendingRank,
 		); err != nil {
 			return nil, "", fmt.Errorf("scanning the approval list: %w", err)
 		}
+		approval.OperationID = operation.String
 		if decidedAt.Valid {
 			value := decidedAt.Time
 			approval.DecidedAt = &value
@@ -155,6 +157,7 @@ func decodeCursor(cursor string) (int, time.Time, string, error) {
 func loadApproval(ctx context.Context, db *sql.DB, approvalID string) (*Approval, error) {
 	var (
 		approval  Approval
+		operation sql.NullString
 		decidedAt sql.NullTime
 	)
 	err := db.QueryRowContext(ctx, `
@@ -162,7 +165,7 @@ func loadApproval(ctx context.Context, db *sql.DB, approvalID string) (*Approval
 	).Scan(
 		&approval.ID, &approval.RunID, &approval.State, &approval.ProposalArtifactID,
 		&approval.ParamsSHA256, &approval.ExpiresAt, &approval.ApproverID,
-		&approval.OperationID, &decidedAt,
+		&operation, &approval.NodeKey, &decidedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -170,6 +173,7 @@ func loadApproval(ctx context.Context, db *sql.DB, approvalID string) (*Approval
 	if err != nil {
 		return nil, err
 	}
+	approval.OperationID = operation.String
 	if decidedAt.Valid {
 		value := decidedAt.Time
 		approval.DecidedAt = &value

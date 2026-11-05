@@ -19232,7 +19232,16 @@ Edge: ${id2}`,
   });
 
   // src/lib/dsl.js
-  var NODE_TYPES = ["start", "python", "agent", "model", "condition", "join", "end"];
+  var NODE_TYPES = [
+    "start",
+    "python",
+    "agent",
+    "model",
+    "condition",
+    "join",
+    "approval",
+    "end"
+  ];
   var NODE_LABELS = {
     start: "开始",
     python: "Python 工具",
@@ -19240,9 +19249,17 @@ Edge: ${id2}`,
     model: "模型",
     condition: "条件分支",
     join: "并行汇合",
+    approval: "人工审批",
     end: "结束"
   };
-  var REPEATABLE_NODE_TYPES = ["python", "agent", "model", "condition", "join"];
+  var REPEATABLE_NODE_TYPES = [
+    "python",
+    "agent",
+    "model",
+    "condition",
+    "join",
+    "approval"
+  ];
   var CONDITION_OPS = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "exists"];
   var MODEL_RESPONSE_MODES = ["json", "text"];
   function emptySchema() {
@@ -19314,6 +19331,9 @@ Edge: ${id2}`,
         required_sources: [],
         optional_sources: []
       };
+    } else if (type === "approval") {
+      base.inputs = { proposal: { literal: {} } };
+      base.config = { title: "", expires_seconds: 3600 };
     }
     return base;
   }
@@ -19343,6 +19363,7 @@ Edge: ${id2}`,
     model: { x: 400, y: 320 },
     condition: { x: 280, y: 320 },
     join: { x: 600, y: 320 },
+    approval: { x: 420, y: 440 },
     end: { x: 760, y: 160 }
   };
   function defaultLayout(definition) {
@@ -20568,6 +20589,9 @@ Edge: ${id2}`,
     model: ["model_profile_version", "prompt_template", "response_mode"],
     condition: ["join_id", "default_port", "cases"],
     join: ["mode", "fork_id", "required_sources", "optional_sources"],
+    // T087: an approval node carries exactly the title and the expiry window; the
+    // proposal is a bound input (definition.inputs), not a config field.
+    approval: ["title", "expires_seconds"],
     end: []
   };
   var TOP_LEVEL_KEYS = ["dsl_version", "input_schema", "output_schema", "nodes", "edges", "policy"];
@@ -21517,6 +21541,105 @@ Edge: ${id2}`,
       }, "直接前驱：" + (predecessors.length ? predecessors.join("、") : "（无）") + "；未覆盖：" + (missing.length ? missing.join("、") : "无") + "；多余：" + (extra.length ? extra.join("、") : "无"))
     ];
   }
+  function renderApprovalPanel(definition, state, node) {
+    const config = node.config || {};
+    const inputs = node.inputs && typeof node.inputs === "object" ? node.inputs : {};
+    const binding = inputs.proposal && typeof inputs.proposal === "object" ? inputs.proposal : {};
+    const boundRef = typeof binding.ref === "string" ? binding.ref : "";
+    const literal = binding.literal !== void 0 ? JSON.stringify(binding.literal, null, 2) : "";
+    const draftKey = node.id + ".proposalLiteral";
+    const literalValue = Object.prototype.hasOwnProperty.call(state.proposalDrafts, draftKey) ? state.proposalDrafts[draftKey] : literal;
+    return [
+      h("h3", {}, "人工审批"),
+      h(
+        "p",
+        { class: "hint", "data-field": "approval.boundary" },
+        "审批只代表业务决定，不授权后续外部写：恢复后继续本次运行，但后面的写工具仍需各自的 operation 审批（服务端能力代理逐次校验）。"
+      ),
+      h("label", { class: "field-label" }, "标题 title（必填，最多 200 字符）"),
+      h("input", {
+        type: "text",
+        maxlength: 200,
+        "data-field": "config.title",
+        value: config.title || "",
+        onInput: (event) => {
+          const value = String(event.target.value || "").trim();
+          node.config = { ...node.config, title: value };
+          commit(state);
+        }
+      }),
+      h("p", { class: "hint" }, "标题为空时发布校验会拒绝该节点。"),
+      h("label", { class: "field-label" }, "有效期 expires_seconds（60..86400 秒）"),
+      h("input", {
+        type: "number",
+        min: 60,
+        max: 86400,
+        "data-field": "config.expires_seconds",
+        value: config.expires_seconds === void 0 ? 3600 : config.expires_seconds,
+        onInput: (event) => {
+          node.config = { ...node.config, expires_seconds: Number(event.target.value) };
+          commit(state);
+        }
+      }),
+      h("h3", {}, "审批提议（proposal 输入，JSON 对象）"),
+      h(
+        "p",
+        { class: "hint" },
+        "提议由使用者审批时原样展示；可以绑定一个合法上游对象，或直接编写字面量对象。"
+      ),
+      h("label", { class: "field-label" }, "来源绑定（proposal ref）"),
+      renderSourceSelect(
+        definition,
+        node.id,
+        boundRef,
+        (ref2) => {
+          const next = clone3(node.inputs || {});
+          if (ref2) {
+            next.proposal = { ref: ref2 };
+          } else if (!Object.prototype.hasOwnProperty.call(next, "proposal") || next.proposal.literal === void 0) {
+            next.proposal = { literal: {} };
+          }
+          node.inputs = next;
+          delete state.proposalDrafts[draftKey];
+          commit(state);
+        },
+        "inputs.proposal.ref"
+      ),
+      h("label", { class: "field-label" }, boundRef ? "字面量（设置会清除来源绑定）" : "字面量 proposal（JSON 对象）"),
+      h("textarea", {
+        rows: 6,
+        "data-field": "inputs.proposal.literal",
+        value: literalValue,
+        onInput: (event) => {
+          const text = String(event.target.value || "");
+          state.proposalDrafts[draftKey] = text;
+          let parsed;
+          try {
+            parsed = JSON.parse(text);
+          } catch (error) {
+            state.status = "proposal 字面量不是合法 JSON：" + (error && error.message ? error.message : "解析失败");
+            state.statusKind = "bad";
+            return;
+          }
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            state.status = "proposal 字面量必须是 JSON 对象（不是数组或标量）。";
+            state.statusKind = "bad";
+            return;
+          }
+          node.inputs = { ...node.inputs || {}, proposal: { literal: parsed } };
+          state.status = "已更新 proposal 字面量。";
+          state.statusKind = "ok";
+          refreshLocalProblems(state);
+          emitChange(state);
+        }
+      }),
+      h(
+        "p",
+        { class: "hint", "data-field": "inputs.proposal.kind" },
+        boundRef ? "当前为来源绑定：" + boundRef : binding.literal !== void 0 ? "当前为字面量对象。" : "尚未设置 proposal 输入。"
+      )
+    ];
+  }
   function renderEdgePanel(state, edge, index) {
     const definition = state.definition;
     const sourceNode = definition.nodes.find((node) => node.id === edge.source);
@@ -21992,6 +22115,7 @@ Edge: ${id2}`,
             selected && selected.type === "model" ? renderModelPanel(state.definition, state, selected) : null,
             selected && selected.type === "condition" ? renderConditionPanel(state.definition, state, selected) : null,
             selected && selected.type === "join" ? renderJoinPanel(state.definition, state, selected) : null,
+            selected && selected.type === "approval" ? renderApprovalPanel(state.definition, state, selected) : null,
             selected && selected.type === "end" ? renderEndPanel(state.definition, state, selected) : null,
             selected && !NODE_TYPES.includes(selected.type) ? [h(
               "p",
@@ -22065,6 +22189,7 @@ Edge: ${id2}`,
       schemaText: {},
       schemaErrors: {},
       caseValueDrafts: {},
+      proposalDrafts: {},
       lastExportDropped: []
     };
   }

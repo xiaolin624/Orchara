@@ -46,9 +46,9 @@ import (
 )
 
 // Graph-path refusal codes. The region codes are the validator's frozen
-// vocabulary; the unsupported-node codes are this build's per-type refusals until
-// T087 (approval) and T088 (retrieve) replace them. F04B/T086 made `model`
-// executable, so its old `node_unsupported_model` refusal is gone.
+// vocabulary; the remaining per-type refusal is `retrieve` until T088 replaces
+// it. F04B/T086 made `model` executable and F04B/T087 made `approval`
+// executable, so their old `node_unsupported_*` refusals are gone.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -65,7 +65,6 @@ const (
 	CodeMissingValue  = "missing_value"
 
 	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
-	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
 	// take part in the configured operator. It is a run-time refusal because the
@@ -85,6 +84,7 @@ var graphNodeTypes = map[string]bool{
 	"call_app":  true,
 	"condition": true,
 	"join":      true,
+	"approval":  true,
 	"model":     true,
 }
 
@@ -113,6 +113,7 @@ type graphNode struct {
 	outgoing  []*planEdge
 	condition *conditionConfig
 	join      *joinConfig
+	approval  *approvalConfig
 	model     *modelNodeConfig
 }
 
@@ -155,16 +156,15 @@ func planRefusal(code, message string) *planError {
 
 // hasGraphConstructs reports whether the sealed definition carries a construct
 // only the graph plan can execute. The legacy and linear paths keep their exact
-// previous selection for every other definition. F04B/T086 adds `model` (one
-// controlled generation, no branch); T087/T088 will add approval/retrieve the
-// same way.
+// previous selection for every other definition. F04B/T086 added `model` (one
+// controlled generation, no branch) and T087 added `approval` (a human wait).
 func hasGraphConstructs(manifest *manifestDocument) bool {
 	if manifest == nil {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
 		switch node.Type {
-		case "condition", "join", "model":
+		case "condition", "join", "model", "approval":
 			return true
 		}
 	}
@@ -211,11 +211,9 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		switch node.Type {
 		case "retrieve":
 			code = CodeNodeUnsupportedRetrieve
-		case "approval":
-			code = CodeNodeUnsupportedApproval
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition and join",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join and approval",
 			index, node.Type))
 	}
 
@@ -306,6 +304,13 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.join = config
+		case "approval":
+			config, err := parseApprovalConfig(node)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.approval = config
 		case "model":
 			// F04B/T086: the publish validator already checked the closed config
 			// set; the executor re-proves it on the frozen bytes, before any node

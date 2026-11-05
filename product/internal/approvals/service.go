@@ -84,6 +84,11 @@ func AsError(err error) (*Error, bool) {
 // Approval is the contract's public projection plus the fields the service needs
 // to answer idempotently. `ProposalArtifactID` is the sealed proposal; the
 // proposal bytes are not part of this struct.
+//
+// `OperationID` is empty for a T087 node approval (`approvals.operation_id IS
+// NULL`): the node approval is a business decision, not a parked capability
+// operation. `NodeKey` is `node:<node_id>` for it and the logical-key node prefix
+// for a capability approval.
 type Approval struct {
 	ID                 string
 	RunID              string
@@ -93,6 +98,7 @@ type Approval struct {
 	ExpiresAt          time.Time
 	ApproverID         string
 	OperationID        string
+	NodeKey            string
 	DecidedAt          *time.Time
 }
 
@@ -220,12 +226,13 @@ func validateDecision(decision string) (string, error) {
 func approvalFromRow(row *sql.Row) (*Approval, error) {
 	var (
 		approval  Approval
+		operation sql.NullString
 		decidedAt sql.NullTime
 	)
 	err := row.Scan(
 		&approval.ID, &approval.RunID, &approval.State, &approval.ProposalArtifactID,
 		&approval.ParamsSHA256, &approval.ExpiresAt, &approval.ApproverID,
-		&approval.OperationID, &decidedAt,
+		&operation, &approval.NodeKey, &decidedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -233,6 +240,7 @@ func approvalFromRow(row *sql.Row) (*Approval, error) {
 	if err != nil {
 		return nil, err
 	}
+	approval.OperationID = operation.String
 	if decidedAt.Valid {
 		value := decidedAt.Time
 		approval.DecidedAt = &value
@@ -242,7 +250,7 @@ func approvalFromRow(row *sql.Row) (*Approval, error) {
 
 const approvalColumns = `
 	id::text, run_id::text, state, proposal_artifact_id::text, params_sha256,
-	expires_at, approver_id::text, operation_id::text, decided_at`
+	expires_at, approver_id::text, operation_id::text, node_key, decided_at`
 
 // loadApprovalTx reads (and optionally locks) one approval.
 func loadApprovalTx(ctx context.Context, tx *sql.Tx, approvalID string, lock bool) (*Approval, error) {

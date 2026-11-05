@@ -323,6 +323,13 @@ button.link.danger {
   border-style: double;
 }
 
+/* F04B/T087: the human approval node is a business wait, rendered distinctly. */
+.orchara-node-approval {
+  border-color: #a21caf;
+  border-style: solid;
+  background-image: linear-gradient(180deg, rgba(162, 28, 175, 0.08), transparent);
+}
+
 .orchara-handle {
   width: 9px;
   height: 9px;

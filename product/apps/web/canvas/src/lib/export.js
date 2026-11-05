@@ -32,6 +32,9 @@ export const CONFIG_ALLOWLIST = {
   model: ['model_profile_version', 'prompt_template', 'response_mode'],
   condition: ['join_id', 'default_port', 'cases'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
+  // T087: an approval node carries exactly the title and the expiry window; the
+  // proposal is a bound input (definition.inputs), not a config field.
+  approval: ['title', 'expires_seconds'],
   end: [],
 };
 

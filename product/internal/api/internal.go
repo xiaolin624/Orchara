@@ -200,6 +200,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// F06/T050: the contract prepareApproval. Worker-only; the server builds the
 	// proposal from the operation/policy rows and never copies the worker text.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/approvals", s.handleInternalPrepareApproval)
+	// F04B/T087: the human approval node's server-built record. Worker-only and
+	// non-contract: the server proves the node from the sealed definition and
+	// seals the proposal; this endpoint creates no operation and grants nothing.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-approvals",
+		s.handleInternalPrepareNodeApproval)
 	// F06/T046: maintenance-only reconciliation of a retained missing-usage
 	// budget reservation. Non-contract, like capability-results.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-settlements", s.handleInternalCapabilitySettlement)

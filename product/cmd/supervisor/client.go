@@ -493,6 +493,59 @@ func (c *supClient) ReportCapabilityResult(
 	return response.result(), nil
 }
 
+// PrepareNodeApproval implements presetexec.Client on the worker mTLS capacity:
+// one F04B/T087 business approval for one node, prepared (or replayed) by the
+// platform from the run's sealed definition. The executor supplies no decision.
+func (c *supClient) PrepareNodeApproval(
+	ctx context.Context, runID, attemptToken string, request presetexec.NodeApprovalRequest,
+) (*presetexec.NodeApproval, error) {
+	body := map[string]any{
+		"attempt_token":   attemptToken,
+		"node_id":         request.NodeID,
+		"title":           request.Title,
+		"expires_seconds": request.ExpiresSeconds,
+		"proposal":        request.Proposal,
+	}
+	var payload struct {
+		ID                 string  `json:"id"`
+		State              string  `json:"state"`
+		ExpiresAt          string  `json:"expires_at"`
+		ParamsSHA256       string  `json:"params_sha256"`
+		ProposalArtifactID string  `json:"proposal_artifact_id"`
+		DecidedAt          *string `json:"decided_at"`
+	}
+	status, err := c.post(ctx, c.worker, workerRole,
+		runPath(runID, "/node-approvals"), body, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusCreated {
+		return nil, fmt.Errorf("node-approvals returned unexpected status %d", status)
+	}
+	if payload.ID == "" || payload.State == "" {
+		return nil, errors.New("node-approvals response is missing its approval identity")
+	}
+	expiresAt, err := time.Parse(time.RFC3339, payload.ExpiresAt)
+	if err != nil {
+		return nil, errors.New("node-approvals response carries an invalid expires_at")
+	}
+	approval := &presetexec.NodeApproval{
+		ID:                 payload.ID,
+		State:              payload.State,
+		ParamsSHA256:       payload.ParamsSHA256,
+		ProposalArtifactID: payload.ProposalArtifactID,
+		ExpiresAt:          expiresAt,
+	}
+	if payload.DecidedAt != nil {
+		decided, err := time.Parse(time.RFC3339, *payload.DecidedAt)
+		if err != nil {
+			return nil, errors.New("node-approvals response carries an invalid decided_at")
+		}
+		approval.DecidedAt = &decided
+	}
+	return approval, nil
+}
+
 // childRunPayload is the contract Run subset spawnChild answers with.
 type childRunPayload struct {
 	ID                   string  `json:"id"`
