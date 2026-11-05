@@ -183,7 +183,7 @@ $ python -m pytest tests/f08/test_t084_corpus.py tests/f08/test_t084_states.py -
 门禁（完整套件）原始输出尾部：
 
 ```text
-$ python -m pytest tests/f08 -q          # 合并 integration/t083-t091 (08af658) 之后
+$ python -m pytest tests/f08 -q          # 合并 08af658 之后的完整套件（本次实际跑完的完整套件）
 ........................................................................ [ 91%]
 .......                                                                  [100%]
 79 passed in 948.05s (0:15:48)
@@ -199,8 +199,15 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 ```
 
-`docs/spec/**`、`contracts/**` 未改；`product/PROGRESS.md` 的合并冲突保留 T083 与 T084
-两个小节。
+结束前两次合并集成分支：`08af658`（T083 画布创作，仅 `PROGRESS.md` 冲突，保留两票小节）
+与 `111e2c2`（T083 图运行/condition 分支，无冲突）。第一次合并后完整 `tests/f08` 为
+**79 passed 948.05s**（原始 tail 如上）；第二次合并后 Go/静态门禁复跑全绿
+（`build_exit=0`、`vet_exit=0`、`test_exit=0`、`gofmt` 空、`sync_spec` no drift、
+`node --check` exit 0）。但**最终合并树上的完整 `tests/f08` 与按文件 T084 复跑均为
+`not_run`**：两次运行都在共享 WSL/runsc 状态根争用下长时间低 CPU 等待，被编排者终止
+（非代码失败；按文件套件只跑到 4 个点、无汇总行，因此不写成通过）。最终树上确实完成的
+门禁只有 Go/静态/`node --check` 与语料 freeze 校验；不把未完成的运行冒充为通过。
+`docs/spec/**`、`contracts/**` 未改。
 
 ## 6. 未运行 / 边界（not_run，不用 0 冒充）
 
@@ -211,6 +218,7 @@ no drift: spec copy and contract snapshot match the manifest
 | 请求级 SSE | `not_run` | 产品明确是 REST + 800ms 轮询；Run 事件 SSE 属 T032 |
 | 自然语言消息驱动的 published Run 成功执行 | `not_run`（探针证实会 `node_input_invalid`） | 执行入口把聊天正文当 Run 输入；销售链 start 节点要求 JSON 对象。F04B/T083 范围 |
 | 规模/统计充分性（60/100 例） | 不声称 | 34 例是起步规模；EVALUATION 明确“不等于统计充分” |
+| 最终合并树上的完整 `tests/f08` 与按文件 T084 复跑 | `not_run` | 两次最终树运行在共享 WSL/runsc 状态根争用下被编排者终止（低 CPU 长时间等待，非代码失败）；同树 Go/静态门禁全绿；第一次合并树上的完整套件 79 passed 948.05s 与按文件套件记录在上文 |
 
 ## 7. 风险与后续
 
