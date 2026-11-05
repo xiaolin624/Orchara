@@ -636,6 +636,65 @@ func stringOrEmpty(value *string) string {
 	return *value
 }
 
+// retrievePayload is the non-contract internal retrieval answer.
+type retrievePayload struct {
+	Items []struct {
+		ChunkID          string          `json:"chunk_id"`
+		DocumentID       string          `json:"document_id"`
+		DocumentRevision int64           `json:"document_revision"`
+		DocumentState    string          `json:"document_state"`
+		ChunkNo          int             `json:"chunk_no"`
+		Span             json.RawMessage `json:"span"`
+		Text             string          `json:"text"`
+		Score            float64         `json:"score"`
+		Citation         json.RawMessage `json:"citation"`
+	} `json:"items"`
+	Requested  int `json:"requested"`
+	Authorized int `json:"authorized"`
+}
+
+// Retrieve implements presetexec.Client: F04B/T088's knowledge retrieval through
+// the non-contract internal route. The worker capacity is the same one the
+// artifact/capability routes use, and the attempt token in the body is the only
+// run identity the server trusts (it derives the owner from the database).
+func (c *supClient) Retrieve(
+	ctx context.Context, runID, attemptToken string, request presetexec.RetrieveRequest,
+) (*presetexec.RetrieveResult, error) {
+	body := map[string]any{
+		"attempt_token":      attemptToken,
+		"knowledge_base_ids": request.KnowledgeBaseIDs,
+		"query":              request.Query,
+		"top_k":              request.TopK,
+	}
+	var payload retrievePayload
+	status, err := c.post(ctx, c.worker, workerRole, runPath(runID, "/retrieval"), body, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("retrieval returned unexpected status %d", status)
+	}
+	result := &presetexec.RetrieveResult{
+		Items:      make([]presetexec.RetrievedItem, 0, len(payload.Items)),
+		Requested:  payload.Requested,
+		Authorized: payload.Authorized,
+	}
+	for _, item := range payload.Items {
+		result.Items = append(result.Items, presetexec.RetrievedItem{
+			ChunkID:          item.ChunkID,
+			DocumentID:       item.DocumentID,
+			DocumentRevision: item.DocumentRevision,
+			DocumentState:    item.DocumentState,
+			ChunkNo:          item.ChunkNo,
+			Span:             item.Span,
+			Text:             item.Text,
+			Score:            item.Score,
+			Citation:         item.Citation,
+		})
+	}
+	return result, nil
+}
+
 // validateSignedURL keeps bytes moving only to HTTP(S) links the server minted.
 func validateSignedURL(link string) error {
 	parsed, err := url.Parse(link)

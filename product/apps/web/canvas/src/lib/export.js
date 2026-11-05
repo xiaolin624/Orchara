@@ -31,6 +31,9 @@ export const CONFIG_ALLOWLIST = {
   // F04B/T086: the response schema is node.output_schema, never a config key.
   model: ['model_profile_version', 'prompt_template', 'response_mode'],
   condition: ['join_id', 'default_port', 'cases'],
+  // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
+  // query is an input binding and any inline query is dropped as unknown_config_key.
+  retrieve: ['knowledge_base_ids', 'top_k'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
   // T087: an approval node carries exactly the title and the expiry window; the
   // proposal is a bound input (definition.inputs), not a config field.

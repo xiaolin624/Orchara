@@ -327,9 +327,9 @@ func TestGraphRunUnsupportedNodeTypeKeepsItsOwnRefusalCode(t *testing.T) {
 	document := definitionDocument(t, flatConditionDefinition)
 	for index := range document.Definition.Nodes {
 		if document.Definition.Nodes[index].ID == "left" {
-			// F04B/T086 runs model nodes; retrieve keeps its per-type refusal until
-			// T088 replaces it.
-			document.Definition.Nodes[index].Type = "retrieve"
+			// F04B/T086 runs model, T087 approval and T088 retrieve nodes;
+			// an unknown type is the only one left with a plan refusal.
+			document.Definition.Nodes[index].Type = "mystery"
 			document.Definition.Nodes[index].Config = json.RawMessage(`{}`)
 		}
 	}
@@ -337,7 +337,7 @@ func TestGraphRunUnsupportedNodeTypeKeepsItsOwnRefusalCode(t *testing.T) {
 	client := graphClient(t, lease, manifest, `{"requires_approval":true}`)
 	report := Run(context.Background(),
 		baseDeps(t, client, &fakeInputs{inputs: client.inputs}, successSandbox()))
-	if report.Outcome != "refused" || report.ErrorCode != CodeNodeUnsupportedRetrieve {
+	if report.Outcome != "refused" || report.ErrorCode != CodeToolUnsupportedGraph {
 		t.Fatalf("report = %+v", report)
 	}
 	if len(client.nodeEvents) != 0 {

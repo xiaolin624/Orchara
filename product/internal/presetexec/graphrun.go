@@ -225,6 +225,8 @@ func (r *runner) executeGraphNode(
 		// F04B/T086: one controlled generation; the platform validates the output
 		// against node.output_schema and a schema failure is independent.
 		return r.executeGraphModel(ctx, run, node)
+	case "retrieve":
+		return r.executeGraphRetrieve(ctx, run, node)
 	case "end":
 		return r.executeEndNode(ctx, run.plan.definition, node.node,
 			run.available(), run.last, run.report), nil, true

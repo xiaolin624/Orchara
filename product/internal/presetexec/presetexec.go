@@ -273,6 +273,13 @@ type Client interface {
 	PrepareNodeApproval(
 		ctx context.Context, runID, attemptToken string, request NodeApprovalRequest,
 	) (*NodeApproval, error)
+	// Retrieve runs one F04B/T088 knowledge retrieval through the non-contract
+	// internal mTLS route. The server derives the run owner from the database and
+	// applies each knowledge base's ACL before ranking; the executor never sees a
+	// knowledge service, an embedding or an object key.
+	Retrieve(
+		ctx context.Context, runID, attemptToken string, request RetrieveRequest,
+	) (*RetrieveResult, error)
 }
 
 // InputSource resolves the run's linked input artifacts. The supervisor's

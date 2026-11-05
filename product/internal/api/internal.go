@@ -189,6 +189,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// service, and only artifacts already registered through the routes above
 	// can be named.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-results", s.handleInternalRunNodeResults)
+	// F04B/T088: the graph retrieve node's ACL-checked knowledge retrieval
+	// (non-contract). Worker-capacity only; the run owner is derived from the
+	// live attempt (runs.owner_id), never from the body, and the knowledge
+	// service applies each base's ACL before ranking.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/retrieval", s.handleInternalRunRetrieval)
 
 	// F06/T041: the run-scoped controlled-capability protocol. Worker-only: a
 	// supervisor or maintenance certificate is refused, and the attempt token in

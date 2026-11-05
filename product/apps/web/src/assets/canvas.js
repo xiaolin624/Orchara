@@ -19237,6 +19237,7 @@ Edge: ${id2}`,
     "python",
     "agent",
     "model",
+    "retrieve",
     "condition",
     "join",
     "approval",
@@ -19247,6 +19248,7 @@ Edge: ${id2}`,
     python: "Python 工具",
     agent: "Agent",
     model: "模型",
+    retrieve: "知识检索",
     condition: "条件分支",
     join: "并行汇合",
     approval: "人工审批",
@@ -19256,6 +19258,7 @@ Edge: ${id2}`,
     "python",
     "agent",
     "model",
+    "retrieve",
     "condition",
     "join",
     "approval"
@@ -19264,6 +19267,71 @@ Edge: ${id2}`,
   var MODEL_RESPONSE_MODES = ["json", "text"];
   function emptySchema() {
     return { type: "object", properties: {} };
+  }
+  function retrieveOutputSchema() {
+    const span = {
+      type: "object",
+      properties: {
+        start_char: { type: "integer" },
+        end_char: { type: "integer" },
+        start_line: { type: "integer" },
+        end_line: { type: "integer" }
+      },
+      required: ["start_char", "end_char", "start_line", "end_line"],
+      additionalProperties: false
+    };
+    return {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              chunk_id: { type: "string" },
+              document_id: { type: "string" },
+              document_revision: { type: "integer" },
+              document_state: { type: "string" },
+              chunk_no: { type: "integer" },
+              span,
+              text: { type: "string" },
+              score: { type: "number" },
+              citation: { type: "object" }
+            },
+            required: [
+              "chunk_id",
+              "document_id",
+              "document_revision",
+              "document_state",
+              "chunk_no",
+              "span",
+              "text",
+              "score",
+              "citation"
+            ],
+            additionalProperties: false
+          }
+        },
+        citations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              chunk_id: { type: "string" },
+              document_id: { type: "string" },
+              document_revision: { type: "integer" },
+              span,
+              text: { type: "string" }
+            },
+            required: ["chunk_id", "document_id", "document_revision", "span", "text"],
+            additionalProperties: false
+          }
+        },
+        count: { type: "integer" }
+      },
+      required: ["items", "citations", "count"],
+      additionalProperties: false
+    };
   }
   function defaultPolicy() {
     return {
@@ -19324,6 +19392,8 @@ Edge: ${id2}`,
         default_port: "no",
         cases: [{ input: "", op: "eq", value: true, port: "yes" }]
       };
+    } else if (type === "retrieve") {
+      base.config = { knowledge_base_ids: [], top_k: 5 };
     } else if (type === "join") {
       base.config = {
         mode: "all_active",
@@ -19361,6 +19431,7 @@ Edge: ${id2}`,
     python: { x: 280, y: 160 },
     agent: { x: 520, y: 160 },
     model: { x: 400, y: 320 },
+    retrieve: { x: 280, y: 240 },
     condition: { x: 280, y: 320 },
     join: { x: 600, y: 320 },
     approval: { x: 420, y: 440 },
@@ -20588,6 +20659,9 @@ Edge: ${id2}`,
     // F04B/T086: the response schema is node.output_schema, never a config key.
     model: ["model_profile_version", "prompt_template", "response_mode"],
     condition: ["join_id", "default_port", "cases"],
+    // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
+    // query is an input binding and any inline query is dropped as unknown_config_key.
+    retrieve: ["knowledge_base_ids", "top_k"],
     join: ["mode", "fork_id", "required_sources", "optional_sources"],
     // T087: an approval node carries exactly the title and the expiry window; the
     // proposal is a bound input (definition.inputs), not a config field.
@@ -21195,6 +21269,90 @@ Edge: ${id2}`,
       h("p", { class: "hint" }, "subapp_versions 固定为空数组（本票不提供子应用调用入口）。"),
       ...renderMappingEditor(definition, state, node),
       ...renderOutputSchemaEditor(definition, state, node)
+    ];
+  }
+  function updateRetrieveConfig(state, node, patch) {
+    node.config = { ...node.config || {}, ...patch };
+    commit(state);
+  }
+  function renderRetrievePanel(definition, state, node) {
+    const config = node.config || {};
+    const bases = Array.isArray(state.knowledgeBases) ? state.knowledgeBases : [];
+    const selectedBases = Array.isArray(config.knowledge_base_ids) ? config.knowledge_base_ids : [];
+    const knownBases = new Set(bases.map((base) => base.id));
+    const missingBases = selectedBases.filter((id2) => !knownBases.has(id2));
+    const queryRef = node.inputs && node.inputs.query && node.inputs.query.ref ? node.inputs.query.ref : "";
+    return [
+      h("h3", {}, "知识库"),
+      h(
+        "p",
+        { class: "hint" },
+        "只列出当前账号可见的知识库（GET /api/v1/knowledge-bases）；运行时仍按 owner ACL 重新过滤，看不见的知识库会被静默排除，不会泄露它是否存在。"
+      ),
+      h("select", {
+        multiple: true,
+        size: Math.min(6, Math.max(2, bases.length)),
+        "data-field": "config.knowledge_base_ids",
+        onChange: (event) => {
+          const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+          updateRetrieveConfig(state, node, { knowledge_base_ids: values });
+        }
+      }, bases.map((base) => h("option", {
+        value: base.id,
+        selected: selectedBases.includes(base.id)
+      }, (base.name || base.id) + " · " + base.id))),
+      missingBases.length ? h(
+        "p",
+        { class: "hint", "data-field": "config.knowledge_base_ids.stale" },
+        "已选但当前不可见的知识库会保留：" + missingBases.join("、") + "。运行时会按 ACL 排除，不会出现在结果里。"
+      ) : null,
+      h("label", { class: "field-label" }, "top_k（1–20）"),
+      h("input", {
+        type: "number",
+        min: 1,
+        max: 20,
+        "data-field": "config.top_k",
+        value: config.top_k === void 0 ? 5 : config.top_k,
+        onInput: (event) => {
+          updateRetrieveConfig(state, node, { top_k: Number(event.target.value) });
+        }
+      }),
+      h("h3", {}, "query 输入"),
+      h(
+        "p",
+        { class: "hint" },
+        "retrieve 没有 query 配置：必须把一个字符串来源绑定到输入名 query（应用输入或合法上游字段）。没有绑定或类型不是 string 时，服务端执行以 node_input_invalid 失败。"
+      ),
+      h("div", { class: "mapping-row" }, [
+        h("code", { class: "mapping-name" }, "query"),
+        renderSourceSelect(definition, node.id, queryRef, (ref2) => {
+          const next = clone3(node.inputs || {});
+          if (ref2) {
+            next.query = { ref: ref2 };
+          } else {
+            delete next.query;
+          }
+          node.inputs = next;
+          commit(state);
+        }, "inputs.query"),
+        h("span", { class: "type-chip" }, queryRef ? sourceType(definition, queryRef) : "未绑定")
+      ]),
+      ...renderOutputSchemaEditor(definition, state, node),
+      h(
+        "p",
+        { class: "hint" },
+        "输出模板固定为 items/citations/count：items 保留完整平台字段与 citation JSON，citations 是文档/版本/span/短摘要投影。填入模板后，下游才能选择 node:<id>#/citations、#/items 与 #/count。"
+      ),
+      h("button", {
+        type: "button",
+        "data-field": "output_schema.template",
+        onClick: () => {
+          node.output_schema = retrieveOutputSchema();
+          delete state.schemaText[node.id];
+          state.schemaErrors[node.id] = "";
+          commit(state);
+        }
+      }, "填入 retrieve 输出模板")
     ];
   }
   function renderModelPanel(definition, state, node) {
@@ -21869,20 +22027,22 @@ Edge: ${id2}`,
     const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
     if (typeof globalApi !== "function") {
       state.catalogsState = "error";
-      state.catalogsError = "页面 API 助手不可用，工具/模型选择器为空。";
+      state.catalogsError = "页面 API 助手不可用，工具/模型/知识库选择器为空。";
       return;
     }
     try {
-      const [tools, models] = await Promise.all([
+      const [tools, models, knowledgeBases] = await Promise.all([
         globalApi("/api/v1/tools?limit=100"),
-        globalApi("/api/v1/models?limit=100")
+        globalApi("/api/v1/models?limit=100"),
+        globalApi("/api/v1/knowledge-bases?limit=100")
       ]);
       state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
       state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
+      state.knowledgeBases = Array.isArray(knowledgeBases.payload && knowledgeBases.payload.items) ? knowledgeBases.payload.items : [];
       state.catalogsState = "ready";
     } catch (error) {
       state.catalogsState = "error";
-      state.catalogsError = "加载工具/模型目录失败 [" + (error.code || "error") + "] " + error.message;
+      state.catalogsError = "加载工具/模型/知识库目录失败 [" + (error.code || "error") + "] " + error.message;
     }
   }
   function syncGraphConfigs(state) {
@@ -22113,6 +22273,7 @@ Edge: ${id2}`,
             selected && selected.type === "python" ? renderPythonPanel(state.definition, state, selected) : null,
             selected && selected.type === "agent" ? renderAgentPanel(state.definition, state, selected) : null,
             selected && selected.type === "model" ? renderModelPanel(state.definition, state, selected) : null,
+            selected && selected.type === "retrieve" ? renderRetrievePanel(state.definition, state, selected) : null,
             selected && selected.type === "condition" ? renderConditionPanel(state.definition, state, selected) : null,
             selected && selected.type === "join" ? renderJoinPanel(state.definition, state, selected) : null,
             selected && selected.type === "approval" ? renderApprovalPanel(state.definition, state, selected) : null,
@@ -22182,6 +22343,7 @@ Edge: ${id2}`,
       manifestHash: "",
       tools: [],
       models: [],
+      knowledgeBases: [],
       catalogsState: "loading",
       catalogsError: "",
       schemaDrafts: {},
