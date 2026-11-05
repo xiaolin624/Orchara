@@ -290,6 +290,12 @@ type graphScheduler struct {
 
 	optionalFailures map[string]map[string]string
 	endOutcome       *executionOutcome
+	// skipsEmitted records the skipped facts already sent. Skips are decided the
+	// moment a branch is known to be unselected, but they are only emitted when the
+	// attempt reaches a verdict: a waiting hand-over leaves them for the resumed
+	// attempt, which is what keeps a resumed run's node.status sequences stable
+	// (the same skip is not published once per attempt).
+	skipsEmitted map[string]bool
 }
 
 // executeGraph runs the proven graph concurrently.
@@ -314,6 +320,7 @@ func (r *runner) executeGraph(ctx context.Context, plan *graphPlan) executionOut
 		results:          make(chan graphNodeResult, len(plan.nodes)),
 		evidenceIndex:    -1,
 		optionalFailures: map[string]map[string]string{},
+		skipsEmitted:     map[string]bool{},
 	}
 	return scheduler.schedule()
 }
@@ -326,6 +333,7 @@ func (s *graphScheduler) schedule() executionOutcome {
 		}
 		if s.settledAll() {
 			if s.endOutcome != nil {
+				s.emitPendingSkips()
 				return *s.endOutcome
 			}
 			return s.failRunState(CodeInvalidActivation,
@@ -369,6 +377,13 @@ func (s *graphScheduler) launchReady() (executionOutcome, bool) {
 				s.runner.emitNode(s.base, id, "succeeded")
 				s.settleSucceeded(node, output, &graphNodeAttempt{})
 				continue
+			}
+			if id == s.plan.endID {
+				// The end node seals the run result itself (succeeded + confirmed
+				// exit), and the server refuses node.status facts after that. The end
+				// is only ready once every other node settled, so every skip of this
+				// attempt is known now: publish them before the end commits.
+				s.emitPendingSkips()
 			}
 			s.launch(node)
 		}
@@ -447,10 +462,24 @@ func (s *graphScheduler) settledAll() bool {
 	return true
 }
 
-// settleSkipped records a node the activation rule left unselected.
+// settleSkipped records a node the activation rule left unselected. The skipped
+// fact is emitted when the attempt reaches its verdict (see emitPendingSkips), so
+// a waiting hand-over does not publish a skip that the resumed attempt would
+// publish again.
 func (s *graphScheduler) settleSkipped(id string) {
 	s.run.state[id] = "skipped"
-	s.runner.emitNode(s.base, id, "skipped")
+}
+
+// emitPendingSkips publishes every skipped fact of this attempt once, in
+// topological order.
+func (s *graphScheduler) emitPendingSkips() {
+	for _, id := range s.plan.order {
+		if s.run.state[id] != "skipped" || s.skipsEmitted[id] {
+			continue
+		}
+		s.skipsEmitted[id] = true
+		s.runner.emitNode(s.base, id, "skipped")
+	}
 }
 
 // settleSucceeded publishes one succeeded node's output and takes its edges.
@@ -600,10 +629,17 @@ func (s *graphScheduler) absorbOptionalFailure(
 // stopAndCommit cancels the in-flight branches, waits until every node goroutine
 // has returned (including the sandbox cleanup proof), emits the skips that the
 // failure caused and finally commits the node's terminal decision once.
+//
+// A waiting hand-over is not a failure: the nodes that never started stay
+// unsettled (they run on the resumed attempt), exactly like the linear waiting
+// path. Only a failed or cancelled attempt skips its remaining nodes.
 func (s *graphScheduler) stopAndCommit(attempt *graphNodeAttempt) executionOutcome {
 	s.cancel()
 	s.drain()
-	s.skipUnsettled()
+	if attempt.kind != graphAttemptWaiting {
+		s.skipUnsettled()
+		s.emitPendingSkips()
+	}
 	switch attempt.kind {
 	case graphAttemptCancelled:
 		return s.commitCancelled(attempt)
@@ -620,6 +656,7 @@ func (s *graphScheduler) stopForCommittedTerminal(terminal *executionOutcome) (e
 	s.cancel()
 	s.drain()
 	s.skipUnsettled()
+	s.emitPendingSkips()
 	return *terminal, true
 }
 
@@ -644,14 +681,14 @@ func (s *graphScheduler) drain() {
 	}
 }
 
-// skipUnsettled emits the skipped fact for every node that never started.
+// skipUnsettled marks the nodes that never started as skipped; the facts are
+// published by emitPendingSkips in topological order.
 func (s *graphScheduler) skipUnsettled() {
 	for _, id := range s.plan.order {
 		if s.run.state[id] != "" {
 			continue
 		}
 		s.run.state[id] = "skipped"
-		s.runner.emitNode(s.base, id, "skipped")
 	}
 }
 
