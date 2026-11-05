@@ -1915,3 +1915,21 @@ observed result (stub / real 分开):
 remaining blockers + independent next tasks:
 spec changes + reason:
 ```
+
+## F04B/T086 模型节点：单次受控生成与结构输出校验（2026-11-06）
+
+T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。证据：`reports/f04b/T086-model-node.md`；分支 `t/t086-model-node`（worktree `E:\Orchara-wt\t086`）。
+
+| 交付点 | 结果 |
+|---|---|
+| graph 路径 model 节点 | **passed**：`hasGraphConstructs` 纳入 `model`；`graphNodeTypes` + `parseModelConfig` 复验闭集 config（多键/缺键/非 UUID/非法 response_mode → `bad_config`）；移除 `node_unsupported_model` |
+| 一次受控生成 | **passed**：一次 `InvokeCapability(kind=model)`（`task=model`、`messages`，json 模式 `response_schema=node.output_schema`），无 tools/循环/隐藏重试；真实栈 `platform.operations` 恰 1 条、`operation_attempts` 恰 1 条 |
+| prompt 严格 `{{name}}` | **passed**：只替换已绑定输入；属性链/表达式/未绑定/不配对 → `node_prompt_invalid` 定位 `/nodes/<i>/config/prompt_template`，零 operation；真实栈证明 run 的其它授权输入不进入 prompt |
+| 输出与 Schema 失败独立 | **passed**：text `{text}` / json `structured` 都由平台按 `node.output_schema` 复验；失败 → `node_output_invalid`、无 data artifact、end skipped、run failed、不重试 |
+| 固定 profile | **passed**：执行前 `Facts.ModelProfile` 复验 passed/未撤销（`model_profile_unavailable`，零 operation）；真实栈中途撤销 profile 用例通过；已撤销 profile 的新草稿在 validate/debug 提交被 `dependency_revoked`/422 拒绝 |
+| 预算/usage | **passed（ledger）**：`usage_ledger` 三行（reserve/release/charge，零价 dev stub 金额 0）；`usage.updated` SSE 事件本构建无 emitter → `not_run` |
+| 恢复接缝 | **passed（接口+Go 单测）**：已完成 model 节点 data 复用、0 次 capability 调用；真实 resume 场景留 T087/T091 |
+| 画布 | **passed**：`model` palette/panel（固定 profile、prompt 编辑+插入变量、response_mode、响应 Schema=output_schema）、导出白名单 `model_profile_version,prompt_template,response_mode`；bundle 已重建提交 |
+| 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。
