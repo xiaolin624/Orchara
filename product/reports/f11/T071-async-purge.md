@@ -62,10 +62,12 @@
    `tests/support/stack.py:migration_chain` 要求**版本从 0001 连续无空洞**；0044–0046
    是并行票的号段，本分支若直接用 0047 会让**所有** migration 测试在本分支失败。
    按 BRIEF §5「号码全局、冲突由 merger 重编号」的规则，本票先取 `0044`；收尾合并
-   集成 tip 时 T074 已占 `0044_conversations_and_requests.sql`，故在合并提交
-   `6952e25` 中把本票迁移重编号为 **`0045_deletion_purge_paths.sql`**（按名字断言，
-   不按号码）。合并后全局预期空位为 `0047`（T072/T073 占 0045/0046），
-   **merger 需再次重编号**。
+   T074 的集成 tip 时 0044 被 `0044_conversations_and_requests.sql` 占用，故在合并
+   提交 `6952e25` 中重编号为 `0045`；随后集成 tip 又并入 T077，其
+   `0045_catalog_index.sql` 占用 0045，故在第二次合并提交 **`8295321`** 中再重编号为
+   **`0046_deletion_purge_paths.sql`**（按名字断言，不按号码）。分支最终链
+   `0001..0046` 连续；合并后全局空位预期为 `0047`（T072/T073 合并后由 merger 统一
+   重编号到全局号码）。
 4. 行为变化：`cmd/maintenance sweep` 现在会删除**可证明无引用且足够旧**的 sealed 对象
    （此前只计数）；`tests/f00b/test_t026_sweep.py` 的注释已同步更新（断言值不变：它
    写的是刚创建的 sealed 孤儿，仍落在 10 分钟 grace 内，`sealed_deferred` 仍为 1）。
@@ -174,7 +176,7 @@
 - 回归：被 artifact/run/chunk/memory 引用的旧 sealed 全部存活；年轻无引用者存活；
   旧的无引用 sealed 与旧 staging 孤儿被删；真实 mtime 由 `os.utime` 设置。
 
-### 1.5 迁移 `0045_deletion_purge_paths.sql`（合并时由 0044 重编号）
+### 1.5 迁移 `0046_deletion_purge_paths.sql`（合并时由 0044 重编号）
 
 - 只加一条 `CREATE INDEX IF NOT EXISTS knowledge_retrieval_cache_items ON
   platform.knowledge_retrieval_cache USING gin (items jsonb_ops)`：purge 用 JSONB
@@ -246,24 +248,24 @@
 Python 3.12.2；Node v24.13.0；PostgreSQL **16.4**（`tools/pg_dev.py status` →
 running, port 55432）。
 
-### 4.1 本票套件（`--basetemp` 隔离，最终合并树背靠背两轮）
+### 4.1 本票套件（`--basetemp` 隔离，最终 T077 合并树背靠背两轮）
 
 ```text
-$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t071-run6
+$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t071-run8
 ................................                                         [100%]
-32 passed in 369.96s (0:06:09)
+32 passed in 348.53s (0:05:48)
 
-$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t071-run7
+$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t071-run9
 ................................                                         [100%]
-32 passed in 345.96s (0:05:45)
+32 passed in 334.38s (0:05:34)
 ```
 
 套内细分：T069 既有 22 + T071 新增 10（`test_t071_migration.py` 3、
 `test_t071_purge.py` 3、`test_t071_failure.py` 2、`test_t071_orphans.py` 1、
-`test_t071_conversation.py` 1）。合并前同一 T071 代码树（无 conversation 用例）也跑过
-31 passed 两轮（`t071-run3` 271.25s / `t071-run4` 291.49s）与 31 passed 两轮
-（`t071-run1` 317.85s / `t071-run2` 257.03s）；合并集成 tip 后的首轮为
-`t071-run5` 31 passed（391.92s，当时 conversation 用例尚未加入）。
+`test_t071_conversation.py` 1）。合并过程中的其余绿轮：T074 合并树 32 passed ×2
+（`run6` 369.96s / `run7` 345.96s）；单个 T074 合并前树 31 passed ×2（`run3`
+271.25s / `run4` 291.49s）与 31 passed ×2（`run1` 317.85s / `run2` 257.03s）；
+T074 合并后首轮 `run5` 31 passed（391.92s，conversation 用例尚未加入）。
 
 红阶段（TDD 记录）：迁移测试 `assert len(versions) == 1` 失败（无迁移）、
 GIN 索引 `[]`、artifact purge 在 `delete_content_job` 处 `AssertionError: []`
@@ -274,18 +276,18 @@ GIN 索引 `[]`、artifact purge 在 `delete_content_job` 处 `AssertionError: [
 ```text
 $ python -m pytest tests/f00b/test_t026_sweep.py tests/f00b/test_t026_migration.py \
     tests/f10/test_t067_cache.py tests/f10/test_t067_migration.py tests/tooling -q \
-    --basetemp=E:\orchara-tmp\t071-neigh1
+    --basetemp=E:\orchara-tmp\t071-neigh4
 .........................................                                [100%]
-41 passed in 203.13s (0:03:23)
+41 passed in 249.97s (0:04:09)
 
 $ python -m pytest tests/f05/test_t028_authz.py tests/f05/test_t028_migration.py \
     tests/f05/test_t028_pages.py tests/f05/test_t028_quarantine.py tests/f05/test_t028_race.py \
     tests/f05/test_t028_upload_flow.py tests/f05/test_t033_endpoints.py \
     tests/f05/test_t033_migration.py tests/f05/test_t033_pages.py \
     tests/f05/test_t030_tool_run_migration.py tests/f05/test_t030_tool_run_flow.py -q \
-    --basetemp=E:\orchara-tmp\t071-neigh3
+    --basetemp=E:\orchara-tmp\t071-neigh5
 .........................................................                [100%]
-57 passed in 625.28s (0:10:25)
+57 passed in 621.62s (0:10:21)
 ```
 
 诚实说明（**集成树既有回归，非 T071 行为**）：第一次合并树运行（`071-neigh2`）为
@@ -295,8 +297,9 @@ $ python -m pytest tests/f05/test_t028_authz.py tests/f05/test_t028_migration.py
 本分支做了**测试-only 兼容修复**（同一 change 更新受影响断言）：保留 0015 链位置与
 `artifact_admissions` 断言，把“0015 不得夹带删除模型”收窄为仍成立的
 `deletion_scopes` 不存在（T069 选择 job-row JSON 列，未建该表），并在注释中写明
-conversations/requests 属 T074 的 0044。修复后该文件 4 passed，完整 f05 子集
-`071-neigh3` **57 passed**（625.28s）。T071 没有改动 f05 的产品代码。
+conversations/requests 属 T074 的 0044。修复后该文件 4 passed，完整 f05 子集在
+T074 合并树 `071-neigh3` 为 **57 passed**（625.28s），最终 T077 合并树 `071-neigh5`
+再跑为 **57 passed**（621.62s）。T071 没有改动 f05 的产品代码。
 
 ### 4.3 Go / 格式 / 契约
 
@@ -318,33 +321,46 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest   (exit 0)
 ```
 
-### 4.4 合并（BRIEF §7.6）
+### 4.4 合并（BRIEF §7.6，两次集成 tip 前进后各合并一次）
+
+第一次（T074/T075 已并入，tip `57d90df`）：
 
 ```text
 $ git merge integration/t068-t082
-（集成 tip 已从 afeba90 前进到 57d90df，含 T074/T075）
 Auto-merging product/internal/api/server.go
 CONFLICT (content): Merge conflict in product/internal/api/server.go
-Automatic merge failed; fix conflicts and then commit the result.
-
-# 解决：server.go 同时保留 T074 的 conversation Target 注册与 T071 的 PurgeEnqueue；
-# 合并提交 6952e25。T074 已占 0044_conversations_and_requests.sql，故本票迁移
-# 由 0044 重编号为 0045_deletion_purge_paths.sql（按名字断言，无代码依赖号码）。
+# 解决：server.go 同时保留 T074 的 conversation Target 注册与 T071 的 PurgeEnqueue。
 $ git log --oneline -1
 6952e25 Merge branch 'integration/t068-t082' into t/t071-async-purge
 ```
 
-合并后重跑：`pytest tests/f11` **32 passed ×2**（§4.1 run6/run7）；`go build/vet/test`、
-`gofmt -l`、`sync_spec --check` 全绿（§4.3）。工作树在最终 docs 提交后 `git status
---short` 为空。
+第二次（T077 又并入，最终 tip `fa6544f`）：
+
+```text
+$ git merge integration/t068-t082
+CONFLICT (content): Merge conflict in product/PROGRESS.md
+CONFLICT (content): Merge conflict in product/internal/background/handlers/artifact_finalize.go
+CONFLICT (content): Merge conflict in product/internal/background/job.go
+# 解决：Registry 同时保留 DeleteContent 与 CatalogIndex；retry table 同时保留
+# KindDeleteContent 与 KindCatalogIndex；PROGRESS 两票 section 都保留。
+# T077 已占 0045_catalog_index.sql，故本票迁移再由 0045 重编号为
+# 0046_deletion_purge_paths.sql（按名字断言，无代码依赖号码）。
+$ git log --oneline -1
+8295321 Merge branch 'integration/t068-t082' into t/t071-async-purge
+```
+
+最终树重跑：`pytest tests/f11` **32 passed ×2**（§4.1 run8/run9）、
+`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿（§4.3）。工作树在最终
+docs 提交后 `git status --short` 为空。
 
 ## 5. 输入与版本
 
 | 输入 | 版本 / SHA-256（前 16 位） |
 |---|---|
 | 基线 | `integration/t068-t082` @ `afeba90` |
-| 收尾合并 | `6952e25`（merge `integration/t068-t082` @ `57d90df`，含 T074/T075） |
-| `db/migrations/0045_deletion_purge_paths.sql`（合并时由 0044 重编号；merger 再重编号） | `CEAD1505DACE006B…` |
+| 收尾合并 1 | `6952e25`（merge `integration/t068-t082` @ `57d90df`，含 T074/T075） |
+| 收尾合并 2（最终） | `8295321`（merge `integration/t068-t082` @ `fa6544f`，含 T077） |
+| `db/migrations/0046_deletion_purge_paths.sql`（合并时 0044→0045→0046；merger 再重编号） | `CEAD1505DACE006B…` |
 | `internal/deletion/purge.go` | `4B2C76CDAC9A43E2…` |
 | `internal/background/delete_content.go` | `7542DB4B7F4A7777…` |
 | `internal/background/handlers/delete_content.go` | `8DB977DDA9AE1A48…` |
