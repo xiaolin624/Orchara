@@ -38,6 +38,10 @@ type claimCandidate struct {
 	Revision        int64
 	MaxActiveMS     sql.NullInt64
 	ActiveElapsedMS int64
+	// ParentRunID is set for a delegated child Run (F07/T078/T081). It selects
+	// the independent child pool and the per-parent cap instead of the Python
+	// execution-slot pool.
+	ParentRunID string
 }
 
 // artifactFacts is the sealed-object identity the lease links are minted from.
@@ -96,6 +100,19 @@ type attemptFacts struct {
 // about; SKIP LOCKED is what makes concurrent supervisors choose different jobs
 // instead of queueing behind the same one. The snapshot is immutable and never
 // locked for update.
+//
+// F07/T081 adds two properties to the same query, without a second queue:
+//
+//   - **pool routing.** A child Run's candidate joins the global/child_slots
+//     counter (and, when it exists, its parent's counter) and is skipped while
+//     that pool is full. A top-level candidate joins global/execution_slots. The
+//     two joins are mutually exclusive through the CASE on parent_run_id, so a
+//     saturated Python pool can never hide a runnable child and vice versa.
+//   - **fair claiming.** Candidates are ordered by the *parent's*
+//     last_child_claim_at (NULL => '-infinity') before the job age. A parent that
+//     just had one child claimed sorts behind every parent that has not, so one
+//     parent with many queued children cannot monopolise the child pool. A
+//     top-level candidate has no parent and keeps the historical FIFO order.
 func selectClaimCandidateTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -105,23 +122,39 @@ func selectClaimCandidateTx(
 		candidate claimCandidate
 		resume    sql.NullString
 		manifest  []byte
+		parentID  sql.NullString
 	)
 	err := tx.QueryRowContext(ctx, `
 		SELECT j.id::text, j.run_id::text, j.kind, j.resume_artifact_id::text,
 		       r.execution_snapshot_id::text, s.manifest, s.manifest_sha256,
 		       s.manifest_artifact_id::text, r.input_artifact_id::text,
 		       r.manifest_sha256, r.budget_limit::text, r.currency,
-		       r.revision, r.max_active_ms, r.active_elapsed_ms
+		       r.revision, r.max_active_ms, r.active_elapsed_ms,
+		       r.parent_run_id::text
 		  FROM platform.jobs AS j
 		  JOIN platform.runs AS r ON r.id = j.run_id
 		  JOIN platform.principals AS p ON p.id = r.owner_id AND p.disabled_at IS NULL
 		  JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id
+		  LEFT JOIN platform.runs AS parent ON parent.id = r.parent_run_id
+		  LEFT JOIN platform.quota_counters AS qc
+		         ON qc.scope = 'global'
+		        AND qc.dimension = CASE
+		                WHEN r.parent_run_id IS NULL THEN 'execution_slots'
+		                ELSE 'child_slots'
+		            END
+		  LEFT JOIN platform.quota_counters AS pq
+		         ON r.parent_run_id IS NOT NULL
+		        AND pq.scope = 'parent:' || r.parent_run_id::text
+		        AND pq.dimension = 'child_slots'
 		 WHERE j.state = 'ready'
 		   AND j.available_at <= now()
 		   AND r.state = 'queued'
 		   AND r.deleted_at IS NULL
 		   AND s.compiler_version = ANY($1::text[])
-		 ORDER BY j.available_at, j.id
+		   AND (qc.used IS NULL OR qc.used < qc.capacity)
+		   AND (pq.used IS NULL OR pq.used < pq.capacity)
+		 ORDER BY COALESCE(parent.last_child_claim_at, '-infinity'::timestamptz),
+		          j.available_at, j.id
 		 LIMIT 1
 		   FOR UPDATE OF j, r SKIP LOCKED`,
 		supportedCompilers,
@@ -131,6 +164,7 @@ func selectClaimCandidateTx(
 		&candidate.ManifestArtifactID, &candidate.InputArtifactID,
 		&candidate.RunManifestSHA256, &candidate.BudgetLimit, &candidate.Currency,
 		&candidate.Revision, &candidate.MaxActiveMS, &candidate.ActiveElapsedMS,
+		&parentID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -140,61 +174,95 @@ func selectClaimCandidateTx(
 	}
 	candidate.ResumeArtifactID = resume
 	candidate.Manifest = manifest
+	candidate.ParentRunID = parentID.String
 	return &candidate, nil
 }
 
-// lockQuotaCounterTx reads the one seeded counter under a row lock. A missing
-// row is a deployment defect, not a zero capacity: the claim fails closed with
-// a 503 instead of silently refusing every piece of work.
-func lockQuotaCounterTx(ctx context.Context, tx *sql.Tx) (used, capacity int, err error) {
+// lockQuotaCounterScopedTx reads one counter under a row lock. A missing row is
+// a deployment defect, not a zero capacity: the claim fails closed with a 503
+// instead of silently refusing every piece of work. The caller holds the row
+// lock until commit, so the capacity it read cannot change under it.
+func lockQuotaCounterScopedTx(
+	ctx context.Context, tx *sql.Tx, scope, dimension string,
+) (used, capacity int, err error) {
 	err = tx.QueryRowContext(ctx, `
 		SELECT used, capacity
 		  FROM platform.quota_counters
 		 WHERE scope = $1 AND dimension = $2
 		 FOR UPDATE`,
-		quotaScope, quotaDimension,
+		scope, dimension,
 	).Scan(&used, &capacity)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, 0, ErrQuotaUnavailable
 	}
 	if err != nil {
-		return 0, 0, fmt.Errorf("reading the execution quota counter: %w", err)
+		return 0, 0, fmt.Errorf("reading the %s/%s quota counter: %w", scope, dimension, err)
 	}
 	return used, capacity, nil
 }
 
-// takeQuotaSlotTx increments `used` only while it is below `capacity`. The
+// lockQuotaCounterTx is the top-level (Python execution-slot) shorthand.
+func lockQuotaCounterTx(ctx context.Context, tx *sql.Tx) (used, capacity int, err error) {
+	return lockQuotaCounterScopedTx(ctx, tx, quotaScope, quotaDimension)
+}
+
+// ensureQuotaCounterTx creates one lazily-owned counter (the per-parent child
+// cap) at its documented capacity. ON CONFLICT DO NOTHING makes it exactly one
+// row per scope: a second claim never rewrites the capacity.
+func ensureQuotaCounterTx(
+	ctx context.Context, tx *sql.Tx, scope, dimension string, capacity int,
+) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO platform.quota_counters (scope, dimension, used, capacity)
+		VALUES ($1, $2, 0, $3)
+		ON CONFLICT (scope, dimension) DO NOTHING`,
+		scope, dimension, capacity,
+	); err != nil {
+		return fmt.Errorf("creating the %s/%s quota counter: %w", scope, dimension, err)
+	}
+	return nil
+}
+
+// takeQuotaSlotScopedTx increments `used` only while it is below `capacity`. The
 // UPDATE's own predicate is the atomic check: two supervisors can race here,
 // and exactly one of the "last slot" updates affects a row.
-func takeQuotaSlotTx(ctx context.Context, tx *sql.Tx) error {
+func takeQuotaSlotScopedTx(ctx context.Context, tx *sql.Tx, scope, dimension string) error {
 	var used int
 	err := tx.QueryRowContext(ctx, `
 		UPDATE platform.quota_counters
 		   SET used = used + 1
 		 WHERE scope = $1 AND dimension = $2 AND used < capacity
 		RETURNING used`,
-		quotaScope, quotaDimension,
+		scope, dimension,
 	).Scan(&used)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errNotEnoughCapacity
 	}
 	if err != nil {
-		return fmt.Errorf("taking an execution quota slot: %w", err)
+		return fmt.Errorf("taking a %s/%s quota slot: %w", scope, dimension, err)
 	}
 	return nil
+}
+
+// takeQuotaSlotTx is the top-level (Python execution-slot) shorthand.
+func takeQuotaSlotTx(ctx context.Context, tx *sql.Tx) error {
+	return takeQuotaSlotScopedTx(ctx, tx, quotaScope, quotaDimension)
 }
 
 // errNotEnoughCapacity is an internal outcome, not an error the HTTP layer
 // reports: the claim answers 204 and nothing changed.
 var errNotEnoughCapacity = errors.New("no execution capacity")
 
-// takeAllocationTx takes (or re-arms) the allocation for holderKey.
+// takeAllocationScopedTx takes (or re-arms) the allocation for holderKey in one
+// pool.
 //
 // The contract's UNIQUE(scope,dimension,holder_key) means a job that exits and
 // is claimed again cannot insert a second row: the released row is re-armed in
 // place. The WHERE clause refuses to re-arm a row that is still live, which
 // would mean a ready job already holds a slot (an invariant violation).
-func takeAllocationTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
+func takeAllocationScopedTx(
+	ctx context.Context, tx *sql.Tx, scope, dimension, holderKey string,
+) error {
 	token := uuid.NewString()
 	var id string
 	err := tx.QueryRowContext(ctx, `
@@ -204,13 +272,34 @@ func takeAllocationTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
 		DO UPDATE SET released_at = NULL
 		 WHERE platform.quota_allocations.released_at IS NOT NULL
 		RETURNING id::text`,
-		token, quotaScope, quotaDimension, holderKey,
+		token, scope, dimension, holderKey,
 	).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrAllocationConflict
 	}
 	if err != nil {
-		return fmt.Errorf("taking an execution quota allocation: %w", err)
+		return fmt.Errorf("taking a %s/%s quota allocation: %w", scope, dimension, err)
+	}
+	return nil
+}
+
+// takeAllocationTx is the top-level (Python execution-slot) shorthand.
+func takeAllocationTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
+	return takeAllocationScopedTx(ctx, tx, quotaScope, quotaDimension, holderKey)
+}
+
+// markParentChildClaimedTx records the fair-claiming rotation fact on the parent
+// Run: this parent just consumed one child-pool claim, so its remaining queued
+// children go behind every parent that has not. The child Run row is never the
+// carrier of this fact.
+func markParentChildClaimedTx(ctx context.Context, tx *sql.Tx, parentRunID string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.runs
+		   SET last_child_claim_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`,
+		parentRunID,
+	); err != nil {
+		return fmt.Errorf("recording the child-claim rotation: %w", err)
 	}
 	return nil
 }
@@ -985,60 +1074,93 @@ func revokeAttemptTx(ctx context.Context, tx *sql.Tx, token string) error {
 	return nil
 }
 
-// releaseAllocationOnceTx releases the holder's slot exactly once. A row whose
-// released_at is already set is the successful no-op of a repeated finalize; a
-// missing row is an invariant violation. The counter decrement only runs with
-// the release, so concurrent/duplicate finalizers cannot decrement twice.
+// allocationRow is one locked quota allocation row of a holder.
+type allocationRow struct {
+	Scope      string
+	Dimension  string
+	ReleasedAt sql.NullTime
+}
+
+// releaseAllocationOnceTx releases **every** allocation row of one holder exactly
+// once, whichever pool(s) it occupies. F07/T081 made this generic because a
+// delegated child attempt holds two rows (global/child_slots and
+// parent:<parent_run_id>/child_slots) while a top-level attempt holds one
+// (global/execution_slots). Each row's own scope/dimension selects the counter to
+// decrement, so no second release system exists.
+//
+// A row whose released_at is already set is the successful no-op of a repeated
+// finalize; a missing row is an invariant violation. The counter decrement only
+// runs with the release, so concurrent/duplicate finalizers cannot decrement
+// twice. Rows are locked in (scope, dimension) order so two releases that share
+// two counters can never deadlock.
 func releaseAllocationOnceTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
-	var released sql.NullTime
-	err := tx.QueryRowContext(ctx, `
-		SELECT released_at
+	rows, err := tx.QueryContext(ctx, `
+		SELECT scope, dimension, released_at
 		  FROM platform.quota_allocations
-		 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
+		 WHERE holder_key = $1
+		 ORDER BY scope, dimension
 		 FOR UPDATE`,
-		quotaScope, quotaDimension, holderKey,
-	).Scan(&released)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrAllocationConflict
-	}
-	if err != nil {
-		return fmt.Errorf("reading the execution quota allocation: %w", err)
-	}
-	if released.Valid {
-		return nil
-	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE platform.quota_allocations
-		   SET released_at = now()
-		 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
-		   AND released_at IS NULL`,
-		quotaScope, quotaDimension, holderKey,
+		holderKey,
 	)
 	if err != nil {
-		return fmt.Errorf("releasing the execution quota allocation: %w", err)
+		return fmt.Errorf("reading the quota allocations of %s: %w", holderKey, err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("releasing the execution quota allocation: %w", err)
+	var held []allocationRow
+	for rows.Next() {
+		var row allocationRow
+		if err := rows.Scan(&row.Scope, &row.Dimension, &row.ReleasedAt); err != nil {
+			rows.Close()
+			return fmt.Errorf("reading the quota allocations of %s: %w", holderKey, err)
+		}
+		held = append(held, row)
 	}
-	if affected != 1 {
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("reading the quota allocations of %s: %w", holderKey, err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("reading the quota allocations of %s: %w", holderKey, err)
+	}
+	if len(held) == 0 {
 		return ErrAllocationConflict
 	}
-	result, err = tx.ExecContext(ctx, `
-		UPDATE platform.quota_counters
-		   SET used = used - 1
-		 WHERE scope = $1 AND dimension = $2 AND used > 0`,
-		quotaScope, quotaDimension,
-	)
-	if err != nil {
-		return fmt.Errorf("decrementing the execution quota counter: %w", err)
-	}
-	affected, err = result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("decrementing the execution quota counter: %w", err)
-	}
-	if affected != 1 {
-		return ErrAllocationConflict
+	for _, row := range held {
+		if row.ReleasedAt.Valid {
+			continue
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE platform.quota_allocations
+			   SET released_at = now()
+			 WHERE scope = $1 AND dimension = $2 AND holder_key = $3
+			   AND released_at IS NULL`,
+			row.Scope, row.Dimension, holderKey,
+		)
+		if err != nil {
+			return fmt.Errorf("releasing the %s/%s quota allocation: %w", row.Scope, row.Dimension, err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("releasing the %s/%s quota allocation: %w", row.Scope, row.Dimension, err)
+		}
+		if affected != 1 {
+			return ErrAllocationConflict
+		}
+		result, err = tx.ExecContext(ctx, `
+			UPDATE platform.quota_counters
+			   SET used = used - 1
+			 WHERE scope = $1 AND dimension = $2 AND used > 0`,
+			row.Scope, row.Dimension,
+		)
+		if err != nil {
+			return fmt.Errorf("decrementing the %s/%s quota counter: %w", row.Scope, row.Dimension, err)
+		}
+		affected, err = result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("decrementing the %s/%s quota counter: %w", row.Scope, row.Dimension, err)
+		}
+		if affected != 1 {
+			return ErrAllocationConflict
+		}
 	}
 	return nil
 }

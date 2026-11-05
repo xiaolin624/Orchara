@@ -42,6 +42,7 @@
 package execution
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -83,10 +84,22 @@ const (
 	maxErrorCode = 128
 )
 
-// Quota coordinates. Migration 0016 seeds exactly this counter.
+// Quota coordinates. Migration 0016 seeds exactly the execution counter;
+// migration 0050 (F07/T081) seeds the independent child pool. A delegated child
+// Run's attempt takes a child-pool slot instead of a Python execution slot, so a
+// parent parked in waiting_children (which already released its own slot on exit)
+// cannot starve its child. The per-parent counter is created lazily by the first
+// child claim of that parent (one row per direct parent Run, capacity 3).
 const (
 	quotaScope     = "global"
 	quotaDimension = "execution_slots"
+
+	childQuotaScope     = "global"
+	childQuotaDimension = "child_slots"
+	childQuotaCapacity  = 8
+	// parentQuotaScopePrefix + the direct parent Run id names the per-parent cap.
+	parentQuotaScopePrefix = "parent:"
+	parentQuotaCapacity    = 3
 )
 
 // Typed errors the HTTP layer maps to contract codes. Callers use errors.Is.
@@ -294,6 +307,64 @@ type Service struct {
 	// keeps the previous finalizer behaviour (no child Run can exist in that
 	// deployment, so no result needs the check).
 	ResultValidator RunResultValidator
+	// Children is the optional F07/T081 child lifecycle seam. It is wired to the
+	// children service by api.New. Nil keeps every F03/F04 path unchanged: no
+	// child Run exists, so the terminal/cancel hooks cannot fire. The hooks run in
+	// their own idempotent transactions *after* the committing transaction, never
+	// inside finalizeRunTx: locking a parent from a child's finalizer would invert
+	// the spawn lock order (parent -> child) and risk a deadlock.
+	Children ChildLifecycle
+}
+
+// ChildLifecycle is the F07/T081 hook surface. It is implemented by the children
+// service and deliberately lives on the lifecycle edge rather than in SQL here:
+// the child's own Run row stays the only terminal authority, and the hook is
+// safe to replay from any observation point (post-commit call, maintenance
+// reconcile, or a test that seeds a crash state).
+type ChildLifecycle interface {
+	// OnChildTerminal reconciles one child Run's parent: it propagates a required
+	// branch's cancel to live siblings, and once no controlled unit is live it
+	// resolves the parent's children wait (or re-drives a cancelling parent's
+	// finalizer). A non-terminal/missing/undelegated Run is a no-op.
+	OnChildTerminal(ctx context.Context, childRunID string) error
+	// OnParentCancelRequested asks the lifecycle to record the cancel intent on
+	// every live direct child of a Run that just entered cancelling.
+	OnParentCancelRequested(ctx context.Context, parentRunID string) error
+	// Reconcile is the crash-recovery driver: it finds terminal children whose
+	// parent still needs reconciling and replays OnChildTerminal. It is bounded
+	// and idempotent; the claim path calls it before claiming so an API restart
+	// between a child's terminal commit and its hook cannot strand a parent.
+	Reconcile(ctx context.Context) error
+}
+
+// Child lifecycle hook diagnostics. A hook failure never changes the committed
+// Run outcome (the terminal fact is already durable); it is logged and the
+// bounded claim-time Reconcile re-drives it.
+func (s *Service) notifyChildTerminal(ctx context.Context, runID string) {
+	if s.Children == nil {
+		return
+	}
+	if err := s.Children.OnChildTerminal(ctx, runID); err != nil && s.Logger != nil {
+		s.Logger.Printf("child terminal hook for %s: %v", runID, err)
+	}
+}
+
+func (s *Service) notifyParentCancelRequested(ctx context.Context, runID string) {
+	if s.Children == nil {
+		return
+	}
+	if err := s.Children.OnParentCancelRequested(ctx, runID); err != nil && s.Logger != nil {
+		s.Logger.Printf("parent cancel hook for %s: %v", runID, err)
+	}
+}
+
+func (s *Service) reconcileChildLifecycle(ctx context.Context) {
+	if s.Children == nil {
+		return
+	}
+	if err := s.Children.Reconcile(ctx); err != nil && s.Logger != nil {
+		s.Logger.Printf("child lifecycle reconcile: %v", err)
+	}
 }
 
 // New builds the service. Objects and Signer may be nil: a claim then fails

@@ -164,6 +164,15 @@ type Service struct {
 	DB      *sql.DB
 	Catalog *catalog.Reader
 	Objects *objectstore.Store
+	// Execution is the F07/T081 state-machine seam: the child lifecycle hook
+	// resolves a parent's children wait and re-drives its finalizer through the
+	// same execution primitives the T035 bridge and the finalizer use. Nil keeps
+	// the T078 behaviour (no automatic convergence; the bridge remains).
+	Execution *execution.Service
+	// CancelRun is the T036 cancel seam the lifecycle hook uses for fail-fast and
+	// parent-cancel propagation. api.New wires it to execution.Service.Cancel, so
+	// a child is cancelled by exactly the same state machine as any other Run.
+	CancelRun func(ctx context.Context, callerID, runID string) error
 }
 
 // New builds the service. Catalog and Objects are required: a deployment without
