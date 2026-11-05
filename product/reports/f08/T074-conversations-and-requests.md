@@ -149,9 +149,13 @@ $ python -m pytest tests/f02a/test_t027_debug.py tests/f02a/test_t027_idempotenc
 13 passed in 151.72s (0:02:31)
 
 # 最终 merge commit 7138ae9 之后（合并带入 T068 0043 + T068/T070 套件与真实撤销 guard）
-$ python -m pytest tests/f08 -q --basetemp=E:\orchara-tmp\t074-merged
+$ python -m pytest tests/f08 -q --basetemp=E:\orchara-tmp\t074-post1
 ...................                                                      [100%]
-19 passed in 168.67s (0:02:48)
+19 passed in 201.09s (0:03:21)
+
+$ python -m pytest tests/f08 -q --basetemp=E:\orchara-tmp\t074-post2
+...................                                                      [100%]
+19 passed in 183.13s (0:03:03)
 
 $ python -m pytest tests/t070 -q --basetemp=E:\orchara-tmp\t074-t070b
 ............                                                             [100%]
