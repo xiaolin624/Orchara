@@ -5,9 +5,9 @@
 | 票 | T083 / GitHub #84（F04B 运行视图半）；运行时半分见 `reports/f04b/T083-condition-branching.md`，画布创作半分为 `t/t083-canvas` |
 | 工作树 / 分支 | `E:\Orchara-wt\t083-runview` / `t/t083-runview` |
 | 基线 | `integration/t083-t091` @ `ea56392` |
-| 结束时合并 | `integration/t083-t091` @ `111e2c2`（含 T083 graph runtime + canvas），合并提交 **`a050e2f`** |
+| 结束时合并 | `integration/t083-t091` @ `111e2c2`（含 T083 graph runtime + canvas），合并提交 **`a050e2f`**；随后再合并 `integration/t083-t091` @ `491cb78`（fast-forward，含 runview 合并 `c21d45e` 与 T084） |
 | 本半代码提交 | **`30be9ff`**（功能+测试；期间 `57920b8…30be9ff` 5 个提交）；合并集成分支 `a050e2f`；报告随分支 tip 提交（`git log -1 t/t083-runview`） |
-| 状态 | **`partial`**：页面 + 纯函数 + 页面结构/DOM 测试 + 真实线性 Run 的 HTTP E2E 通过；**条件/join/skipped 的真实执行 E2E `not_run`**（原因见 §7，测试已就绪且 `skipif` 在合并后为假） |
+| 状态 | **`passed`（运行视图半）**：页面 + 纯函数 + 页面结构/DOM 测试 + **真实线性 Run HTTP E2E** + **真实条件/join/skipped 执行 E2E** 全部通过（合并运行时后 `pytest tests/f04b/test_t083_runview.py` **7 passed**）；边界 `not_run` 见 §7（浏览器 DOM、真实 410 过期、真实取消、真实失败节点经 run-view、f02a 全量） |
 | 契约 | **未改** `contracts/**`、`docs/spec/**`、OpenAPI。条件端口 / join 结果使用既有**非契约 node data artifact** 约定（§2） |
 
 本半交付的是**从画布进入的调试页**（`/apps/{id}/debug`）上的“节点状态”表：用已有提交路径创建 debug Run
@@ -21,9 +21,9 @@ status 与 value 摘要，未选分支显示 `skipped`（与 `failed` 视觉区�
 |---|---|---|---|
 | 1 | 用当前草稿 revision 创建 debug Run（复用 `debug.js` 现有提交路径：`POST .../debug-runs` + `Idempotency-Key` + 输入 JSON/附件 id） | **passed** | 未新增提交路径；`debug.js` 提交成功后启动 run view。真实线性 Run E2E 走同一路径（`tests/f04b/test_t083_runview.py::test_the_real_linear_run_view_...`） |
 | 2 | 节点状态表（节点 id/类型/状态/attempt/错误码，按定义/拓扑序），不是事件流水 | **passed** | `buildRunViewModel`（拓扑序 Kahn，定义索引破平；节点只增不减）+ `debug.html` 表格；`runview.test.mjs` 6 条 + DOM harness 断言 6 行与 `attempt`/错误码 |
-| 3 | 条件节点行显示选中端口（读条件 data artifact 的 `port`/`matched_case`） | **passed（渲染层）** / 真实条件 Run `not_run` | 用 P05 `branch-approval` 真实定义 + 真实形状 artifact 的单测（`端口 no（默认分支）`、`第 1 个 case`）；DOM harness 断言页面单元格。真实条件执行 E2E §7 |
-| 4 | join 行显示每个 source 的 `status` 与 value 摘要（截断、可展开） | **passed（渲染层）** / 真实 join Run `not_run` | 单测：顺序取 `required_sources`+`optional_sources`，`approve=已跳过`、`direct=成功`、值摘要 ≤120 字符、完整值在 `<details>`；`error_code` 显示在 source 行。真实执行 E2E §7 |
-| 5 | 未选分支显示 `skipped`（来自 SSE），与 `failed` 视觉区分 | **passed（渲染/聚合层）** / 真实 skipped 事件 `not_run` | `aggregateNodeStates` 对重复/乱序/重放事件保持 `skipped`，`state-skipped` vs `state-failed` 类与图例；DOM harness 断言 badge 文案“已跳过”、无 `state-failed`；真实事件 E2E §7 |
+| 3 | 条件节点行显示选中端口（读条件 data artifact 的 `port`/`matched_case`） | **passed** | 单测（P05 `branch-approval` 真实定义 + 真实形状 artifact：`端口 no（默认分支）`、`第 1 个 case`）；DOM harness 断言页面单元格；**真实条件 Run E2E**：`port=yes / matched_case=0`（真实 runsc 执行，§5） |
+| 4 | join 行显示每个 source 的 `status` 与 value 摘要（截断、可展开） | **passed** | 单测：顺序取 `required_sources`+`optional_sources`、值摘要 ≤120 字符、完整值在 `<details>`；**真实 join E2E**：信封 `left:succeeded(value)/right:skipped`、`left=成功`/`right=已跳过`、join `succeeded` 恰一次（§5） |
+| 5 | 未选分支显示 `skipped`（来自 SSE），与 `failed` 视觉区分 | **passed** | `aggregateNodeStates` 对重复/乱序/重放事件保持 `skipped`，`state-skipped` vs `state-failed` 类与图例；DOM harness 断言 badge 文案“已跳过”；**真实 E2E**：SSE 回放中 `right=skipped` 且无 `left=skipped`（§5） |
 | 6 | 运行终态显示 state + `error_code`；取消按钮（`POST /runs/{id}/cancel`，202 仅表意图）与 `/runs` 链接 | **passed** | `formatRunError`（稳定码 + 人话 + 已知码提示；202 永不写成 stopped）；DOM harness 断言 `POST` + CSRF 头来源 + “已接受取消意图” + `cancelling` 可再次请求 + 终态禁用按钮；`/runs` 链接在 HTML |
 | 7 | 断线重连 `Last-Event-ID`；410 显示既有快照/说明，不伪造历史 | **partial** | 页面复用 `runs.js` 既有 SSE 消费器（`Last-Event-ID` 续传、seq 去重、410 snapshot URL 文案），本次仅给 `beginRunTimeline` 增加可选 `onEvent` 钩子。表格在 410/事件缺失时只用持久 node-results 推断并标注「由节点结果推断」；**未跑**真实 410 窗口过期 E2E（见 §7） |
 
@@ -101,9 +101,9 @@ CSS 区分 `state-skipped`（灰、⏭、降透明）与 `state-failed`（红、
   - **真实线性 Run 的 HTTP E2E**（已执行）：真实 PG + 编译 API + mTLS + supervisor + WSL2/runsc 的
     `start → python(stats) → end`；断言 owner HTTP 读到的 run/node-results/data artifact 经真实 runview.js 渲染为
     3 行 succeeded、`stats.artifactId` 等于真实 data artifact、`formatRunError` 为 ok；
-  - **真实条件分支 E2E**（已写好，当前 `not_run`，见 §7）：复用 `tests/support/t083.py` 的
-    `branch_definition()`/`queue_graph_run`/`run_once`/`node_data_document`/SSE 回放，断言 `port=yes/matched_case=0`、
-    `right skipped`、join 信封、`left=成功`/`right=已跳过`、join `succeeded` 恰好一次。
+  - **真实条件/join/skipped 执行 E2E**（已执行，见 §5）：复用 `tests/support/t083.py` 的
+    `branch_definition()`/`queue_graph_run`/`run_once`/`node_data_document`/真实 owner-only SSE 回放，断言
+    `port=yes/matched_case=0`、`right skipped`、join 信封、`left=成功`/`right=已跳过`、join `succeeded` 恰好一次。
 
 ## 5. 门禁（真实命令与原始输出尾部）
 
@@ -150,9 +150,23 @@ exit=0
 ```
 
 合并 `integration/t083-t091`（运行时分 + 画布分，tip `111e2c2`）后复跑上述 fast/Go 门禁：全部同上（`graphplan.go`
-已存在，条件 E2E 的 `skipif` 变为假）。合并后**未**再启动 pytest —— 收到编排者“另一个 agent 的 `pytest tests/f08`
-正在使用共享 WSL/runsc 栈，请不要并发启动 pytest”的指示；条件 E2E 因此在本次交付中记为 `not_run`（§7），
-可以随时在空闲栈上直接执行（无 skip）。
+已存在，条件 E2E 的 `skipif` 变为假）。随后再 fast-forward 到集成分支 @ `491cb78`（含 T083 run-view 合并
+`c21d45e` 与 T084），在**全局 pytest 锁**下执行运行视图文件（真实栈；`t083.node_results` 返回 item 列表的测试
+适配已修正）：
+
+```text
+$ python -m pytest tests/f04b/test_t083_runview.py -q -rs     # 全局锁持有期间；7 tests，真实 PG/API/mTLS/supervisor/runsc
+.......                                                                  [100%]
+7 passed in 42.69s
+PYTEST_EXIT=0
+```
+
+其中 `test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch` 是**真实条件/join/skipped 执行
+E2E**：`t083.branch_definition()`（start→choose→left/right(python)→join→end）投递 debug run、supervisor 在
+runsc 执行，owner HTTP 读到条件 `{"port":"yes","matched_case":0}`、join 信封
+`left:succeeded(value)/right:skipped`，owner-only SSE 回放里 `right=skipped`、`left` 无 skipped、join `succeeded`
+恰一次；真实 runview.js 字节渲染出 `端口 yes（第 1 个 case）`、`right` 行 `已跳过`、`left=成功`/`right=已跳过`、
+计数 `skipped=1`。真实线性 Run（start→python→end）的 HTTP E2E 同样在该文件的 6 条内通过。
 
 其他回归（本次改动前后相关页面套件，均在无并发时单跑）：
 
@@ -168,32 +182,29 @@ $ python -m pytest tests/f03/test_t029_pages.py tests/f03/test_t031_pages.py tes
 
 ## 6. 环境与合并
 
-- 分支 / HEAD：`t/t083-runview`；代码提交 **`30be9ff`**，合并提交 **`a050e2f`**，报告提交为分支 tip（`git log -1`）。
-- 合并：`git merge integration/t083-t091` 唯一冲突 `product/tests/f04b/conftest.py`（add/add，双方各自新增）；
-  采用集成分支版本（其中包含 worker 路径与 f04b 说明），保留本半的 `runview.test.mjs` / `test_t083_runview.py`；
-  合并后树干净。
+- 分支 / HEAD：`t/t083-runview`；代码提交 **`30be9ff`**，合并提交 **`a050e2f`**；随后 `git merge integration/t083-t091`
+  @ `491cb78`（fast-forward，无冲突）；报告与测试适配随分支 tip 提交（`git log -1`）。
+- 首次合并（`111e2c2`）唯一冲突 `product/tests/f04b/conftest.py`（add/add，双方各自新增）；采用集成分支版本
+  （其中包含 worker 路径与 f04b 说明），保留本半的 `runview.test.mjs` / `test_t083_runview.py`；合并后树干净。
+- 已知测试适配：`tests/support/t083.py::node_results` 返回 `body["items"]`（list），条件 E2E 里按页面
+  `node-results` 形状包成 `{"items": items}` 再传给 harness；这是测试接线修正，不是运行时缺陷（真实 run 在
+  该断言之前已 succeeded）。
 - 无迁移、无 `contracts/**`/`docs/spec/**` 改动、`sync_spec --check` no drift。
 
 ## 7. 边界 / not_run / 风险
 
 **not_run（明确）**
 
-1. **真实条件/join/skipped 执行 E2E**：测试 `test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch`
-   已写好并在运行时合入后具备执行条件，但按编排者要求（`pytest tests/f08` 正在占用共享 WSL/runsc 栈，禁止并发
-   pytest）本次未运行。运行命令（空闲栈上）：
-   `python -m pytest tests/f04b/test_t083_runview.py -q`；预期无 skip。作为替代证据：同一渲染路径已用真实 P05
-   定义 + 真实 artifact 形状（单测）与实时 DOM harness 覆盖；运行时半的同类真实执行证据在
-   `reports/f04b/T083-condition-branching.md`（真实 runsc）。
-2. **真实 410 保留窗口过期 E2E**：需要短 retention 栈并真实过期事件；页面 SSE 410 处理复用既有 T032 客户端
+1. **真实 410 保留窗口过期 E2E**：需要短 retention 栈并真实过期事件；页面 SSE 410 处理复用既有 T032 客户端
    （未改语义），表格回退逻辑用 410 场景的等价数据在单测/DOM harness 中断言“由节点结果推断/无状态事件”，
    未跑真实过期。
-3. **真实取消 E2E**：取消按钮的请求形状/202 意图语义/DOM 状态已测；真实 `POST /runs/{id}/cancel` 的终态提交
+2. **真实取消 E2E**：取消按钮的请求形状/202 意图语义/DOM 状态已测；真实 `POST /runs/{id}/cancel` 的终态提交
    由 T036 既有真实测试覆盖，本半未重复。
-4. **浏览器 DOM（Playwright）**：P2 可选、非门禁，未驱动；页面真实字节由 Node + 最小 DOM shim 执行
+3. **浏览器 DOM（Playwright）**：P2 可选、非门禁，未驱动；页面真实字节由 Node + 最小 DOM shim 执行
    （仓库既有页面测试惯例）。
-5. **真实失败节点 E2E**：`state=failed` 行显示 run `error_code` 的单测/页面测试已覆盖；真实失败 run 经 run-view
+4. **真实失败节点 E2E**：`state=failed` 行显示 run `error_code` 的单测/页面测试已覆盖；真实失败 run 经 run-view
    未跑（`status` 事件不含 error_code 的契约缺口见风险 1）。
-6. **`pytest tests/f02a` 全量**：并发争用下多次被中断，未取得可信结果；不做通过声明。
+5. **`pytest tests/f02a` 全量**：并发争用下多次被中断，未取得可信结果；不做通过声明。
 
 **风险 / 设计取舍**
 
