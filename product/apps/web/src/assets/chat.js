@@ -48,6 +48,10 @@ function requestCancelPath(requestID) {
   return requestPath(requestID) + '/cancel';
 }
 
+function requestReplyPath(requestID) {
+  return requestPath(requestID) + '/reply';
+}
+
 function artifactContentPath(artifactID) {
   return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/content';
 }
@@ -100,26 +104,128 @@ function describeQueue(items, activeID) {
   };
 }
 
-/** Pending interaction projection; `visible:false` means there is nothing to answer. */
+/**
+ * Pending interaction projection; `visible:false` means there is nothing to answer.
+ *
+ * The proposal is the sealed server projection (question / candidates / missing
+ * fields). Candidates are ordinals only: the page never invents or displays an
+ * uncalibrated model number as if it were a calibrated likelihood.
+ */
 function describeInteraction(interaction) {
   if (!interaction) {
-    return { visible: false, kind: '', prompt: '', candidates: [], expiresAt: '', closed: true };
+    return {
+      visible: false, kind: '', prompt: '', candidates: [], missingFields: [],
+      expiresAt: '', closed: true, ordinalOnly: true,
+    };
   }
   const proposal = interaction.proposal || {};
   const candidates = Array.isArray(proposal.candidates)
-    ? proposal.candidates.map((candidate) => ({
+    ? proposal.candidates.map((candidate, index) => ({
         id: candidate.application_version_id || candidate.id || '',
-        label: candidate.label || candidate.name || candidate.version_no || '',
+        label: candidate.label || candidate.name || candidate.application_name ||
+          candidate.version_no || '',
+        rank: Number.isInteger(candidate.rank) ? candidate.rank : index + 1,
+        purpose: candidate.purpose || '',
+        requiredInputs: Array.isArray(candidate.required_inputs)
+          ? candidate.required_inputs
+          : [],
+        versionNo: Number.isInteger(candidate.version_no) ? candidate.version_no : 0,
       }))
+    : [];
+  const candidate = proposal.candidate || null;
+  const missingFields = Array.isArray(proposal.missing_fields)
+    ? proposal.missing_fields
     : [];
   return {
     visible: true,
     kind: interaction.kind || '',
     prompt: proposal.question || proposal.prompt || '',
     candidates: candidates,
+    candidate: candidate
+      ? {
+          id: candidate.application_version_id || '',
+          label: candidate.application_name || candidate.purpose || '',
+          rank: Number.isInteger(candidate.rank) ? candidate.rank : 0,
+        }
+      : null,
+    missingFields: missingFields,
     expiresAt: interaction.expires_at || '',
     closed: false,
+    ordinalOnly: true,
   };
+}
+
+/** Candidate list lines: ordinal, application name, version number, purpose. */
+function candidateLines(interaction) {
+  const described = describeInteraction(interaction);
+  return described.candidates.map((candidate) => {
+    const rank = candidate.rank > 0 ? candidate.rank : 1;
+    const name = candidate.label || '未命名应用';
+    const version = candidate.versionNo > 0 ? ' v' + candidate.versionNo : '';
+    const purpose = candidate.purpose ? ' · ' + candidate.purpose : '';
+    return { id: candidate.id, rank: rank, text: '候选 ' + rank + '：' + name + version + purpose };
+  });
+}
+
+/** The response mode: a candidate list needs a choice, otherwise an answer. */
+function interactionMode(interaction) {
+  const described = describeInteraction(interaction);
+  if (!described.visible) {
+    return 'none';
+  }
+  return described.candidates.length > 0 ? 'selection' : 'input';
+}
+
+/**
+ * Build the exact InteractionReply body. The contract requires at least one of
+ * message / candidate_version_id / artifact_ids; the page refuses locally with the
+ * same rule the server enforces.
+ */
+function interactionReplyBody(interactionID, message, candidateVersionID, artifactIDs) {
+  if (!UUID_PATTERN.test(String(interactionID || ''))) {
+    throw pageFailure('interaction_id', '缺少有效的 interaction_id');
+  }
+  const body = { interaction_id: String(interactionID) };
+  const text = String(message === undefined || message === null ? '' : message);
+  if (text.length > 32000) {
+    throw pageFailure('message', '补充说明最多 32000 字');
+  }
+  if (text.length > 0) {
+    body.message = text;
+  }
+  const candidate = String(candidateVersionID || '').trim();
+  if (candidate) {
+    if (!UUID_PATTERN.test(candidate)) {
+      throw pageFailure('candidate_version_id', '候选版本 id 必须是 UUID');
+    }
+    body.candidate_version_id = candidate;
+  }
+  const rawArtifacts = Array.isArray(artifactIDs) ? artifactIDs : [];
+  if (rawArtifacts.length > 5) {
+    throw pageFailure('artifact_ids', '最多 5 个附件');
+  }
+  const artifacts = Array.from(new Set(rawArtifacts));
+  for (const id of artifacts) {
+    if (!UUID_PATTERN.test(String(id))) {
+      throw pageFailure('artifact_ids', '附件 id 必须是 UUID');
+    }
+  }
+  if (artifacts.length > 0) {
+    body.artifact_ids = artifacts;
+  }
+  if (!body.message && !body.candidate_version_id && !body.artifact_ids) {
+    throw pageFailure('interaction_id', '请选择候选或补充信息后再提交');
+  }
+  return body;
+}
+
+/** One reply attempt owns one key; a retry reuses the same object/key. */
+function newInteractionAttempt(body) {
+  return { key: crypto.randomUUID(), body: body };
+}
+
+function interactionReplyHeaders(attempt) {
+  return { 'Idempotency-Key': attempt.key };
 }
 
 /** The confirmed handover summary, as the user sees it before submitting. */
@@ -306,6 +412,8 @@ function initChat() {
   let attachmentIDs = [];
   let pollTimer = null;
   let pendingAttempt = null;
+  let currentInteraction = null;
+  let currentInteractionAttempt = null;
 
   const conversationStatus = document.getElementById('conversation-status');
   const submitStatus = document.getElementById('chat-submit-status');
@@ -429,11 +537,61 @@ function initChat() {
     }
   }
 
+  function renderInteraction(interaction) {
+    if (!currentInteraction ||
+        (interaction && currentInteraction.interaction_id !== interaction.interaction_id)) {
+      currentInteractionAttempt = null;
+    }
+    currentInteraction = interaction || null;
+    const described = describeInteraction(interaction);
+    const interactionPanel = document.getElementById('interaction-panel');
+    if (!interactionPanel) {
+      return;
+    }
+    interactionPanel.hidden = !described.visible;
+    if (!described.visible) {
+      currentInteractionAttempt = null;
+      return;
+    }
+    document.getElementById('interaction-prompt').textContent = described.prompt ||
+      (described.kind === 'selection' ? '请选择一个应用继续。' : '请补充缺少的信息。');
+    const missing = described.missingFields.length > 0
+      ? '缺少：' + described.missingFields.join('、')
+      : '';
+    document.getElementById('interaction-missing').textContent = missing;
+    document.getElementById('interaction-expires').textContent = described.expiresAt
+      ? '请在 ' + described.expiresAt + ' 前答复；过期后需要重新提交需求。'
+      : '过期后需要重新提交需求，旧答复不会复活任务。';
+    const list = document.getElementById('interaction-candidates');
+    list.replaceChildren();
+    for (const line of candidateLines(interaction)) {
+      const item = document.createElement('li');
+      const label = document.createElement('label');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'interaction-candidate';
+      radio.value = line.id;
+      label.appendChild(radio);
+      label.appendChild(document.createTextNode(' ' + line.text));
+      item.appendChild(label);
+      list.appendChild(item);
+    }
+    const mode = interactionMode(interaction);
+    document.getElementById('interaction-candidates').hidden = mode !== 'selection';
+    document.getElementById('interaction-select').hidden = mode !== 'selection';
+  }
+
+  function chosenCandidateID() {
+    const checked = document.querySelector('input[name="interaction-candidate"]:checked');
+    return checked ? checked.value : '';
+  }
+
   function renderRequest(request, facts, run) {
     currentRequestID = request.id;
     document.getElementById('request-panel').hidden = false;
     document.getElementById('chat-request-id').textContent = request.id;
     document.getElementById('chat-request-state').textContent = describeRequestState(request.state);
+    renderInteraction(request.interaction);
     const handling = describeHandling(
       request,
       run || null,
@@ -654,6 +812,62 @@ function initChat() {
         return;
       }
       setStatus(submitStatus, '取消失败 [' + error.code + '] ' + error.message, 'bad');
+    }
+  });
+
+  document.getElementById('interaction-reply').addEventListener('click', async () => {
+    const interactionStatus = document.getElementById('interaction-status');
+    if (!currentRequestID || !currentInteraction) {
+      return;
+    }
+    const mode = interactionMode(currentInteraction);
+    const candidate = mode === 'selection' ? chosenCandidateID() : '';
+    if (mode === 'selection' && !candidate) {
+      setStatus(interactionStatus, '请先选择一个候选应用。', 'bad');
+      return;
+    }
+    let body;
+    try {
+      body = interactionReplyBody(
+        currentInteraction.interaction_id,
+        document.getElementById('interaction-message').value,
+        candidate,
+        [],
+      );
+    } catch (error) {
+      setStatus(interactionStatus, '无法答复 [' + error.code + '] ' + error.message, 'bad');
+      return;
+    }
+    if (!currentInteractionAttempt ||
+        JSON.stringify(currentInteractionAttempt.body) !== JSON.stringify(body)) {
+      currentInteractionAttempt = newInteractionAttempt(body);
+    }
+    try {
+      const csrfToken = await csrf();
+      setStatus(interactionStatus, '正在提交答复…', 'pending');
+      const result = await apiFull(requestReplyPath(currentRequestID), {
+        method: 'POST',
+        body: currentInteractionAttempt.body,
+        csrf: csrfToken,
+        headers: interactionReplyHeaders(currentInteractionAttempt),
+      });
+      currentInteractionAttempt = null;
+      renderRequest(result.payload, requestFacts(result.headers), null);
+      setStatus(interactionStatus, '答复已提交，正在继续选择应用。', 'ok');
+      await loadMessages();
+      await refreshQueue();
+      poll(0);
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      // Keep currentInteractionAttempt: a retry reuses the same Idempotency-Key.
+      const note = error.code === 'interaction_closed'
+        ? '该确认已过期或已结束；请重新提交需求，旧答复不会复活任务。'
+        : '答复失败 [' + error.code + '] ' + error.message;
+      setStatus(interactionStatus, note, 'bad');
+      poll(0);
     }
   });
 

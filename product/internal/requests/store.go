@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"orchara/platform/internal/uuid"
@@ -85,11 +86,11 @@ func earliestUnfinishedTx(ctx context.Context, tx *sql.Tx, conversationID string
 	return &candidate, nil
 }
 
-// expireInteractionsTx lazily expires pending interactions whose deadline passed
+// ExpireInteractionsTx lazily expires pending interactions whose deadline passed
 // and fails their requests with the stable `interaction_expired` code, so the
 // slot they held is released without a background timer. It is the one expiry
 // path; T079's reply path reports the same outcome deterministically.
-func (s *Service) expireInteractionsTx(ctx context.Context, tx *sql.Tx, conversationID string) error {
+func (s *Service) ExpireInteractionsTx(ctx context.Context, tx *sql.Tx, conversationID string) error {
 	if _, err := tx.ExecContext(ctx, `
 		WITH expired AS (
 		    UPDATE platform.interactions AS i
@@ -131,7 +132,7 @@ func (s *Service) AdvanceConversationQueueTx(
 	if !uuid.Valid(conversationID) {
 		return "", errors.New("a conversation id is required")
 	}
-	if err := s.expireInteractionsTx(ctx, tx, conversationID); err != nil {
+	if err := s.ExpireInteractionsTx(ctx, tx, conversationID); err != nil {
 		return "", err
 	}
 	for attempt := 0; attempt < 20; attempt++ {
@@ -156,7 +157,7 @@ func (s *Service) AdvanceConversationQueueTx(
 			return "", nil
 		}
 		if candidate.RequestedVersionID.Valid && candidate.RequestedVersionID.String != "" {
-			if _, err := s.dispatchVersionTx(ctx, tx, candidate.OwnerID, candidate.ID,
+			if _, err := s.DispatchVersionTx(ctx, tx, candidate.OwnerID, candidate.ID,
 				conversationID, candidate.RequestedVersionID.String); err != nil {
 				var refusal *Error
 				if errors.As(err, &refusal) && refusal.Status == 409 {
@@ -216,7 +217,7 @@ func (s *Service) queuePositionTx(
 }
 
 // readRequestTx reads the contract Request projection inside a transaction.
-func readRequestTx(ctx context.Context, tx *sql.Tx, requestID string) (*Request, error) {
+func (s *Service) readRequestTx(ctx context.Context, tx *sql.Tx, requestID string) (*Request, error) {
 	request, err := scanRequest(tx.QueryRowContext(ctx, `
 		SELECT r.id::text, r.conversation_id::text, r.state, r.revision, r.error_code,
 		       coalesce(r.requested_version_id::text, ''), r.created_at, u.id::text
@@ -226,7 +227,7 @@ func readRequestTx(ctx context.Context, tx *sql.Tx, requestID string) (*Request,
 	if err != nil {
 		return nil, err
 	}
-	interaction, err := readPendingInteraction(ctx, tx, requestID)
+	interaction, err := s.readPendingInteraction(ctx, tx, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -254,11 +255,13 @@ func scanRequest(row *sql.Row) (*Request, error) {
 	return &request, nil
 }
 
-func readPendingInteraction(ctx context.Context, q rowQuerier, requestID string) (*InteractionView, error) {
+func (s *Service) readPendingInteraction(
+	ctx context.Context, q rowQuerier, requestID string,
+) (*InteractionView, error) {
 	var (
-		view      InteractionView
-		expiresAt time.Time
-		proposal  sql.NullString
+		view       InteractionView
+		expiresAt  time.Time
+		proposalID sql.NullString
 	)
 	err := q.QueryRowContext(ctx, `
 		SELECT id::text, correlation_id::text, kind, expires_at, proposal_artifact_id::text
@@ -266,7 +269,7 @@ func readPendingInteraction(ctx context.Context, q rowQuerier, requestID string)
 		 WHERE request_id = $1::uuid AND state = 'pending'
 		 ORDER BY created_at DESC, id DESC
 		 LIMIT 1`, requestID,
-	).Scan(&view.InteractionID, &view.CorrelationID, &view.Kind, &expiresAt, &proposal)
+	).Scan(&view.InteractionID, &view.CorrelationID, &view.Kind, &expiresAt, &proposalID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -274,14 +277,73 @@ func readPendingInteraction(ctx context.Context, q rowQuerier, requestID string)
 		return nil, fmt.Errorf("reading the pending interaction: %w", err)
 	}
 	view.ExpiresAt = expiresAt.UTC().Format(time.RFC3339Nano)
-	if proposal.Valid && proposal.String != "" {
-		encoded, err := json.Marshal(map[string]any{"proposal_artifact_id": proposal.String})
+	if proposalID.Valid && proposalID.String != "" {
+		// F08/T079: the interaction proposal (question/candidates/missing fields)
+		// is the sealed artifact. It is projected into Request.interaction.proposal,
+		// the one open object of the contract Request schema, so the page never
+		// needs an object key or a second endpoint. A missing/unreadable proposal
+		// degrades to its id, never to invented candidates.
+		proposal, err := s.readProposal(ctx, proposalID.String)
 		if err != nil {
-			return nil, fmt.Errorf("encoding the interaction proposal: %w", err)
+			return nil, err
 		}
-		view.Proposal = json.RawMessage(encoded)
+		if proposal == nil {
+			encoded, err := json.Marshal(map[string]any{"proposal_artifact_id": proposalID.String})
+			if err != nil {
+				return nil, fmt.Errorf("encoding the interaction proposal: %w", err)
+			}
+			view.Proposal = json.RawMessage(encoded)
+		} else {
+			view.Proposal = proposal
+		}
 	}
 	return &view, nil
+}
+
+// maxProposalBytes bounds an interaction proposal read. The proposal is a small
+// six-field projection; anything larger is not one and is not served as JSON.
+const maxProposalBytes = 1 << 20
+
+// readProposal reads one sealed interaction proposal artifact. A nil result means
+// the artifact is missing, deleted or unreadable; the caller then exposes only the
+// artifact id instead of a fabricated proposal.
+func (s *Service) readProposal(ctx context.Context, artifactID string) (json.RawMessage, error) {
+	if s.Objects == nil {
+		return nil, nil
+	}
+	var (
+		objectKey string
+		state     string
+		deleted   sql.NullTime
+		size      sql.NullInt64
+	)
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT object_key, state, deleted_at, size_bytes
+		  FROM platform.artifacts WHERE id = $1::uuid`, artifactID,
+	).Scan(&objectKey, &state, &deleted, &size)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the interaction proposal artifact: %w", err)
+	}
+	if deleted.Valid || state != "ready" || !size.Valid || size.Int64 <= 0 || size.Int64 > maxProposalBytes {
+		return nil, nil
+	}
+	reader, _, err := s.Objects.Open(objectKey)
+	if err != nil {
+		return nil, nil
+	}
+	defer func() { _ = reader.Close() }()
+	content, err := io.ReadAll(io.LimitReader(reader, maxProposalBytes+1))
+	if err != nil || int64(len(content)) > maxProposalBytes {
+		return nil, nil
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil || value == nil {
+		return nil, nil
+	}
+	return json.RawMessage(content), nil
 }
 
 // RequestFacts are the documented non-contract headers a single-request read
@@ -375,7 +437,7 @@ func (s *Service) readRequestForOwner(
 	}
 	request.ErrorCode = nullableString(errorCode)
 	request.RunID = nullableString(runID)
-	interaction, err := readPendingInteraction(ctx, s.DB, id)
+	interaction, err := s.readPendingInteraction(ctx, s.DB, id)
 	if err != nil {
 		return nil, nil, err
 	}

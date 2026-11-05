@@ -87,7 +87,7 @@ func (s *Service) Cancel(ctx context.Context, callerID, requestID string) (*Requ
 	case StateCancelled:
 		// Repeated cancel: the terminal state is authoritative; no new event, no
 		// second queue advance (already done by the first cancel).
-		request, err := readRequestTx(ctx, tx, id)
+		request, err := s.readRequestTx(ctx, tx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +121,7 @@ func (s *Service) Cancel(ctx context.Context, callerID, requestID string) (*Requ
 		if _, err := s.AdvanceConversationQueueTx(ctx, tx, conversationID); err != nil {
 			return nil, err
 		}
-		request, err := readRequestTx(ctx, tx, id)
+		request, err := s.readRequestTx(ctx, tx, id)
 		if err != nil {
 			return nil, err
 		}

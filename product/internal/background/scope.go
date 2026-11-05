@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"orchara/platform/internal/evaluation"
@@ -68,11 +69,37 @@ type JobScope interface {
 	// document/revision and the exact source artifact/hash/media type to parse.
 	// The handler never reads the document row itself.
 	DocumentIngest(ctx context.Context, jobID, attemptToken string) (DocumentIngestBinding, error)
+	// Route executes exactly one routing round for this `route_request` job. The
+	// server owns the candidate query, the governed control-model call, the
+	// validation of the model's suggestion and every write; the handler supplies
+	// only its lease proof. The call is idempotent: a retried job finds the
+	// original interaction/Run instead of creating a second one.
+	Route(ctx context.Context, jobID, attemptToken string) (RouteResult, error)
 	// FetchURL reads a signed GET link into memory, capped at maxBytes.
 	FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, error)
 	// PutURL writes body to a signed PUT link.
 	PutURL(ctx context.Context, url string, body []byte) error
 }
+
+// RouteResult is one routing round's answer. It is a projection, not an authority:
+// the handler only reports the job outcome, and the request state is read back by
+// the user through the contract.
+type RouteResult struct {
+	RequestID     string
+	State         string
+	Result        string
+	ErrorCode     string
+	InteractionID string
+	CorrelationID string
+	RunID         string
+	ControlCalls  int
+}
+
+// ErrRouteTransient marks a retryable route_request failure (the control model is
+// temporarily unavailable). The handler maps it to transient_internal, so the job
+// retry table bounds the retry; a deterministic refusal is committed on the
+// request by the server and reported as a normal success.
+var ErrRouteTransient = errors.New("the routing control model failed transiently")
 
 // UploadRequest is the handler half of createBackgroundUpload.
 type UploadRequest struct {
