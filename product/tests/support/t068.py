@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -336,45 +337,79 @@ def run_adaptive_evaluation(stack, owner, cases: list[dict], *, log_path: Path) 
         t026.stop_process(process, handle, log_path)
 
 
-class SharedSandboxStall(RuntimeError):
-    """The shared WSL2/runsc sandbox did not progress within the retry budget.
+class SandboxEnvironmentUnavailable(RuntimeError):
+    """The host has no WSL2/runsc runtime at all.
 
-    Several integration suites share one sandbox on this host. When an attempt is
-    abandoned before the sandbox starts, the product correctly records
-    ``run_timeout``/``not_run``; the genuine-runner test reports that environment
-    condition as skipped instead of pretending a verdict was produced.
+    This is the only condition the genuine-runner test may turn into a skip. It is
+    decided by the pre-flight probe (:func:`genuine_sandbox_present`), never by a
+    verdict the product recorded: a supervisor that starts too slowly records
+    ``run_timeout``/``not_run`` exactly like a missing runtime used to, and a
+    product-recorded timeout must fail the test instead of skipping it.
     """
+
+
+VERDICT_PASSED = "passed"
+VERDICT_ENVIRONMENT_ABSENT = "environment_absent"
+VERDICT_PRODUCT_FAILURE = "product_failure"
+
+
+def classify_genuine_outcome(report_status: str, *, sandbox_present: bool) -> str:
+    """Decide pass / skip / fail for one genuine-runner outcome.
+
+    A non-passed report is a *product* outcome — a slow or absent supervisor
+    records ``run_timeout`` — and only the pre-flight environment probe that found
+    no WSL2/runsc at all may make it the skippable environment absence. The test
+    over this classifier pins that distinction.
+    """
+    if report_status == "passed":
+        return VERDICT_PASSED
+    if not sandbox_present:
+        return VERDICT_ENVIRONMENT_ABSENT
+    return VERDICT_PRODUCT_FAILURE
+
+
+def genuine_sandbox_present() -> bool:
+    """Pre-flight: WSL2 exists on the host and its guest has runsc installed."""
+    return shutil.which("wsl") is not None and t052.sandbox_available()
 
 
 def _genuine_outcome(stack, owner, cases: list[dict], *, log_path: Path, attempts: int = 3) -> dict:
-    """Run the genuine evaluation, retrying only a documented environment stall.
+    """Run the genuine evaluation, never laundering a product verdict into a skip.
 
-    The host runs several suites against one shared WSL2/runsc sandbox; an
-    attempt can be abandoned while the lease holder is still starting the
-    sandbox, and the product then correctly records ``run_timeout``/``not_run``.
-    That is an environment stall, never a case verdict, so the evaluation is
-    re-submitted. Any other non-passed verdict is returned for the test to assert.
+    A missing WSL2/runsc runtime is probed before the run and is the only
+    condition that may skip. A product-recorded non-passed report (a supervisor
+    started too slowly and the product wrote ``run_timeout``/``not_run``) is a
+    **failure**: it is retried only to absorb contention on the shared sandbox and
+    the retry budget ends in an AssertionError, never in ``pytest.skip``.
     """
+    if not genuine_sandbox_present():
+        raise SandboxEnvironmentUnavailable(
+            "WSL2/runsc is not installed on this host: "
+            "`wsl -d Ubuntu-24.04 -u root -e bash -lc 'runsc --version'` failed"
+        )
     last: dict = {}
     for attempt in range(1, attempts + 1):
         last = run_adaptive_evaluation(stack, owner, cases, log_path=log_path)
-        if last["report"]["status"] == "passed":
-            return last
-        stalled = any(
-            case.get("reason_code") == "run_timeout"
-            or (case.get("facts") or {}).get("run_state") in {"running", "queued"}
-            for case in last["sealed"].get("cases", [])
+        verdict = classify_genuine_outcome(
+            last["report"]["status"], sandbox_present=True
         )
-        print(f"T068: genuine evaluation attempt {attempt} did not pass; stalled={stalled}")
-        if not stalled:
+        if verdict == VERDICT_PASSED:
             return last
-    raise SharedSandboxStall(
-        "the shared WSL2/runsc sandbox did not start a run within the retry budget "
-        f"({attempts} evaluations); last evidence: "
-        + ", ".join(
-            f"{case.get('id')}={case.get('reason_code') or case.get('status')}"
-            for case in last.get("sealed", {}).get("cases", [])
+        print(
+            f"T068: genuine evaluation attempt {attempt}/{attempts} recorded a product "
+            f"failure {last['report']['status']!r}: " + _case_evidence(last)
         )
+    raise AssertionError(
+        "the genuine evaluation recorded a product failure "
+        f"({last['report']['status']!r}) on all {attempts} attempts; this is not a "
+        f"missing environment (WSL2/runsc is installed): {_case_evidence(last)}"
+    )
+
+
+def _case_evidence(outcome: dict) -> str:
+    return ", ".join(
+        f"{case.get('id')}={case.get('reason_code') or case.get('status')}"
+        for case in outcome.get("sealed", {}).get("cases", [])
     )
 
 

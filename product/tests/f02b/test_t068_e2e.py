@@ -41,8 +41,12 @@ def test_a_genuine_five_category_report_is_reviewed_and_published(
         report = t068.genuine_sales_report(
             t068_stack, login="t068-e2e", log_path=tmp_path / "pools.log"
         )
-    except t068.SharedSandboxStall as stall:
-        pytest.skip(f"genuine runner evidence needs the shared WSL2/runsc sandbox: {stall}")
+    except t068.SandboxEnvironmentUnavailable as unavailable:
+        # Only a pre-flight "no WSL2/runsc at all" may skip. A product-recorded
+        # timeout while the runtime exists is retried to absorb shared-sandbox
+        # contention and ends in a hard failure, never a skip (see the classifier
+        # test below).
+        pytest.skip(f"the genuine runner needs WSL2/runsc, which is not installed: {unavailable}")
     sealed = {case["id"]: case for case in report["sealed"]["cases"]}
     assert report["sealed"]["status"] == "passed", report["sealed"]["status"]
     assert sealed["sales-happy-csv"]["facts"]["run_state"] == "succeeded"
@@ -121,3 +125,24 @@ def test_a_genuine_five_category_report_is_reviewed_and_published(
     assert fetched.status == 200, fetched.text
     assert fetched.json["manifest_sha256"] == manifest_sha, fetched.text
     assert uuid.UUID(fetched.json["id"]), fetched.text
+
+
+def test_the_runner_classifier_never_skips_a_product_recorded_timeout() -> None:
+    """Only a pre-flight "no WSL2/runsc at all" may skip the genuine e2e.
+
+    A supervisor/runner timeout is recorded by the product as a failed report
+    whose cases carry ``run_timeout``; with the runtime present that is a product
+    failure (retried to absorb shared-sandbox contention, then asserted, never
+    skipped). The classifier is the one place that rule lives, and the e2e only
+    catches the exception the pre-flight probe raises.
+    """
+    assert t068.classify_genuine_outcome("passed", sandbox_present=True) == "passed"
+    assert (
+        t068.classify_genuine_outcome("failed", sandbox_present=True)
+        == t068.VERDICT_PRODUCT_FAILURE
+    )
+    assert (
+        t068.classify_genuine_outcome("failed", sandbox_present=False)
+        == t068.VERDICT_ENVIRONMENT_ABSENT
+    )
+    assert t068.classify_genuine_outcome("passed", sandbox_present=False) == "passed"

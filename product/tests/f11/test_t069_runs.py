@@ -107,3 +107,48 @@ def test_a_parked_runs_deleted_input_makes_recovery_refuse(t069_stack, tmp_path)
     assert completed.returncode == 1, completed.stdout + completed.stderr
     t038.assert_refused(refusal, t038.CODE_INPUT_DELETED)
     assert t069.run_rows(stack.dbname, run_id)["state"] == "recovery_pending"
+
+
+def test_a_failed_cancellation_fanout_is_recorded_instead_of_swallowed(
+    t069_stack,
+) -> None:
+    """T069 AC4: a post-commit fan-out failure stays visible on the job.
+
+    The failure is a real database error: a trigger refuses the "clean" job touch
+    the fan-out writes after a successful cancellation. The tombstone has already
+    committed, so the delete still answers 202 and the Run is really cancelled,
+    but the job must carry ``run_cancel_incomplete`` rather than read as a clean
+    delete.
+    """
+    stack = t069_stack
+    owner = t069.owner(stack)
+    run = t029.queued_run(stack, owner)
+    produced = t031.seed_output_artifact(stack, owner.creator.principal_id)
+    t031.link_output(stack.dbname, run["id"], produced)
+
+    st.sql(stack.dbname, """
+        CREATE OR REPLACE FUNCTION platform.t069_fail_clean_cancel() RETURNS trigger AS $$
+        BEGIN
+            RAISE EXCEPTION 'injected: clean cancellation fan-out touch';
+        END
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER t069_fail_clean_cancel BEFORE UPDATE ON platform.deletion_jobs
+            FOR EACH ROW WHEN (NEW.error_code IS NULL)
+            EXECUTE FUNCTION platform.t069_fail_clean_cancel();
+    """)
+    try:
+        job = t069.deletion_of(
+            t069.delete_resource(owner.creator, t069.RESOURCE_ARTIFACT, produced)
+        )
+    finally:
+        st.sql(stack.dbname, """
+            DROP TRIGGER IF EXISTS t069_fail_clean_cancel ON platform.deletion_jobs;
+            DROP FUNCTION IF EXISTS platform.t069_fail_clean_cancel();
+        """)
+
+    stored = t069.deletion_job(stack.dbname, job["id"])
+    assert stored["error_code"] == "run_cancel_incomplete", stored
+    # The deletion itself stands and the real T036 cancel ran; only recording it
+    # failed, and that is what the job row now exposes.
+    assert t069.artifact_row(stack.dbname, produced)["deleted_at"] is not None
+    assert t069.run_rows(stack.dbname, run["id"])["state"] == "cancelled"

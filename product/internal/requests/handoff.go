@@ -428,8 +428,9 @@ func (s *Service) HandoffPreview(
 // Order matters: the source Runs are authorised first (T074's located
 // handoff_source_unknown), then the artifact scope is checked against exactly what
 // the user selected for the new request plus the source Runs' produced artifacts,
-// and only then the summary is compared to the server preview. A hand-written
-// transcript can therefore never be submitted as a "confirmed" minimal handover.
+// and only an allowed set is read back as metadata. The summary is compared last.
+// A hand-written transcript can therefore never be submitted as a "confirmed"
+// minimal handover.
 func (s *Service) verifyHandoffScope(
 	ctx context.Context, callerID, conversationID string, handoff *HandoffInput,
 	requestArtifactIDs []string,
@@ -450,10 +451,9 @@ func (s *Service) verifyHandoffScope(
 	if err != nil {
 		return "", err
 	}
-	artifacts, err := s.handoffArtifactFacts(ctx, handoff.ArtifactIDs)
-	if err != nil {
-		return "", err
-	}
+	// The allowed scope needs only ids. Check it before any artifact metadata is
+	// read, so a foreign/unknown id is always the located 422 and never an
+	// existence oracle (a disappeared id used to reach a 500 first).
 	allowed, err := s.allowedHandoffArtifacts(ctx, handoff.SourceRunIDs, requestArtifactIDs)
 	if err != nil {
 		return "", err
@@ -468,6 +468,10 @@ func (s *Service) verifyHandoffScope(
 		return "", failureWithDetails(422, CodeHandoffScopeExceeded,
 			"the handover includes artifacts that are neither produced by the source Runs nor explicitly attached to this request",
 			map[string]any{"field": "handoff.artifact_ids", "artifact_ids": outside})
+	}
+	artifacts, err := s.handoffArtifactFacts(ctx, handoff.ArtifactIDs)
+	if err != nil {
+		return "", err
 	}
 	if buildHandoffSummary(runs, artifacts) != handoff.Summary {
 		return "", handoffSummaryMismatch()

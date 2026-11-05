@@ -4,9 +4,11 @@
   `t/t073-diagnostic-grants`（worktree `E:\orchara-worktrees\t073`）；父批次
   `integration/t068-t082`；基线 `57d90df`（并入 T068/T077 后集成 tip `fa6544f`）；
   合并提交 **`2ee1caa`**（`git merge integration/t068-t082`，无冲突）。
-- 状态：**`passed`**（六条验收全部由已执行的真实栈测试证明；仅“OTel 默认无正文”
-  这条观测行标 **`partial`**：仓库没有任何 tracer/metrics SDK，不能伪造 tracer，
-  结构性保证见 ADR 0028 §6）。
+- 状态：**`partial`**（AC1–AC3、AC5–AC8 与 AC4 的“错误/审计不带正文”由已执行的
+  真实栈测试证明；**AC4 的“追踪/OTel 默认无正文”为 `partial`**：本构建没有任何
+  tracer/metrics SDK，不能运行一条 trace 来断言其内容，也没有 owning 后续票；
+  结构性保证（十字段审计白名单、请求日志无 query、真实 API/maintenance 日志与全审计
+  哨兵扫描）见 ADR 0028 §6。不伪造 tracer，不把结构性保证写成 trace 通过）。
 - 边界（如实）：本票交付授权表/对象快照/用途/期限、契约 `grantDiagnostics` 与
   `revokeDiagnostics`、非契约元数据列表与受审计正文门、管理员默认只见元数据、
   每次读取的 typed 审计与 operation/attempt 关联、日志/错误/审计脱敏、页面授权管理。
@@ -203,10 +205,11 @@ go test ./internal/audit ./internal/diagnostics -> ok (unit: content-read fail-c
 
 ## 4. not_run / partial / blocked
 
-- **partial**：OTel/trace “默认无正文”。原因：全仓无 OpenTelemetry/tracer/span/metrics
-  依赖与实现，无法运行一个“trace”来断言其内容；不添加依赖、不伪造 tracer。结构性
-  替代：typed 审计白名单 + 请求日志不含 query/body/header + 真实日志/审计 sentinel 扫描；
-  交付边界记录在 ADR 0028 §6。metrics 同理：当前没有任何 metrics 标签，故
+- **partial**：OTel/trace “默认无正文”（AC4 的观测行）。原因：本构建全仓无
+  OpenTelemetry/tracer/span/metrics 依赖与实现，无法运行一个“trace”来断言其内容；
+  没有 owning 后续票承接，故整票状态按 AC4 记 `partial`，不添加依赖、不伪造 tracer。
+  结构性替代：typed 审计白名单 + 请求日志不含 query/body/header + 真实日志/审计 sentinel
+  扫描；交付边界记录在 ADR 0028 §6。metrics 同理：当前没有任何 metrics 标签，故
   “避免高基数 user/run 标签”由“没有标签”满足；接入时必须沿用。
 - **not_run**：物理清理/对象/索引/缓存 purge（**T071**）——本票用“删除 sealed 字节”
   模拟 T071 的 object_store 终态并在报告中如实标注；checkpoint/摘要/临时沙箱/第三方/

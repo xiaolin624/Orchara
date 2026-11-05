@@ -133,6 +133,21 @@ func (s *Service) ReadContent(
 		return nil, cause
 	}
 
+	// The door is admin+grantee (ADR 0028 §3), not "whoever the grant once
+	// named": the live role binding is re-checked here so a demoted grantee
+	// cannot keep reading under an outstanding grant until it expires.
+	var holdsAdmin bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM platform.role_bindings
+		                WHERE principal_id = $1::uuid AND role = 'admin')`, caller).
+		Scan(&holdsAdmin)
+	if err != nil {
+		return nil, fmt.Errorf("re-checking the diagnostic reader role: %w", err)
+	}
+	if !holdsAdmin {
+		return refuse("diagnostic_grantee_not_admin", ErrCallerNotAdmin)
+	}
+
 	// Order is deliberate and documented in ADR 0028: a revoked grant is terminal,
 	// an expired grant is refused before any row is touched, and a tombstoned run
 	// outlives every other check because a grant must never be a resurrection path.

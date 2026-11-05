@@ -353,6 +353,29 @@ func (r *Reader) countValidEntries(
 	return count, nil
 }
 
+// catalogSearchPageSQL builds the page tail shared by the projection search and
+// the authoritative fallback: the ordinal-priority rank expression, the keyset
+// cursor predicate and the total order. The two paths deliberately differ in
+// their FROM/WHERE authority predicates — that distinction stays visible in each
+// caller — but a pagination or ranking rule must have exactly one home. Only the
+// rank expression's text-query parameter differs (the projection binds the query
+// at $2, the fallback at $3); the cursor ($4,$5,$6) and LIMIT ($7) positions are
+// the same in both statements.
+func catalogSearchPageSQL(patternParam string) (rank, cursor, order string) {
+	rank = fmt.Sprintf(
+		`(CASE WHEN v.capability_card->>'purpose' ILIKE %s ESCAPE '\'
+		                  THEN 0 ELSE 1 END)`, patternParam)
+	cursor = fmt.Sprintf(`(
+		        $4::integer IS NULL
+		        OR %s > $4
+		        OR (%s = $4
+		            AND (v.version_no, v.id) < ($5::bigint, $6::uuid))
+		       )`, rank, rank)
+	order = `ORDER BY rank ASC, v.version_no DESC, v.id DESC
+		 LIMIT $7`
+	return rank, cursor, order
+}
+
 // searchProjection answers a page from the projection. The query already joins
 // the authority so ACL, revocation, archive, owning-application and manifest-hash
 // checks all run before ORDER BY/LIMIT.
@@ -363,10 +386,10 @@ func (r *Reader) searchProjection(
 	limit int,
 	now time.Time,
 ) ([]searchCandidate, error) {
+	rank, cursor, order := catalogSearchPageSQL("$2")
 	rows, err := r.DB.QueryContext(ctx, `
 		SELECT v.id::text, v.version_no,
-		       CASE WHEN v.capability_card->>'purpose' ILIKE $2 ESCAPE '\'
-		            THEN 0 ELSE 1 END AS rank
+		       `+rank+` AS rank
 		  FROM platform.application_catalog_entries AS e
 		  JOIN platform.application_versions AS v ON v.id = e.application_version_id
 		  JOIN platform.applications AS a ON a.id = v.application_id
@@ -379,16 +402,8 @@ func (r *Reader) searchProjection(
 		   AND (e.search_text ILIKE $2 ESCAPE '\'
 		        OR e.ts @@ plainto_tsquery('simple', $1))
 		   AND `+applicationReadPredicate(3, 8, 9, 10)+`
-		   AND (
-		        $4::integer IS NULL
-		        OR (CASE WHEN v.capability_card->>'purpose' ILIKE $2 ESCAPE '\'
-		                  THEN 0 ELSE 1 END) > $4
-		        OR ((CASE WHEN v.capability_card->>'purpose' ILIKE $2 ESCAPE '\'
-		                   THEN 0 ELSE 1 END) = $4
-		            AND (v.version_no, v.id) < ($5::bigint, $6::uuid))
-		       )
-		 ORDER BY rank ASC, v.version_no DESC, v.id DESC
-		 LIMIT $7`,
+		   AND `+cursor+`
+		 `+order,
 		query, pattern, principalID, cursorRank, cursorNo, cursorID, limit+1,
 		now.UTC(), policy.ResourceApplication, policy.ActionRead,
 	)
@@ -411,10 +426,10 @@ func (r *Reader) searchAuthorizedFallback(
 	limit int,
 	now time.Time,
 ) ([]searchCandidate, error) {
+	rank, cursor, order := catalogSearchPageSQL("$3")
 	rows, err := r.DB.QueryContext(ctx, `
 		SELECT v.id::text, v.version_no,
-		       CASE WHEN v.capability_card->>'purpose' ILIKE $3 ESCAPE '\'
-		            THEN 0 ELSE 1 END AS rank
+		       `+rank+` AS rank
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
 		 WHERE a.archived_at IS NULL
@@ -424,16 +439,8 @@ func (r *Reader) searchAuthorizedFallback(
 		        OR to_tsvector('simple', v.capability_card::text)
 		           @@ plainto_tsquery('simple', $2))
 		   AND `+applicationReadPredicate(1, 8, 9, 10)+`
-		   AND (
-		        $4::integer IS NULL
-		        OR (CASE WHEN v.capability_card->>'purpose' ILIKE $3 ESCAPE '\'
-		                  THEN 0 ELSE 1 END) > $4
-		        OR ((CASE WHEN v.capability_card->>'purpose' ILIKE $3 ESCAPE '\'
-		                   THEN 0 ELSE 1 END) = $4
-		            AND (v.version_no, v.id) < ($5::bigint, $6::uuid))
-		       )
-		 ORDER BY rank ASC, v.version_no DESC, v.id DESC
-		 LIMIT $7`,
+		   AND `+cursor+`
+		 `+order,
 		principalID, query, pattern, cursorRank, cursorNo, cursorID, limit+1,
 		now.UTC(), policy.ResourceApplication, policy.ActionRead,
 	)

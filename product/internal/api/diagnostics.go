@@ -273,6 +273,12 @@ func (s *Server) writeDiagnosticFailure(w http.ResponseWriter, r *http.Request, 
 	case errors.Is(err, diagnostics.ErrGranteeNotAdmin):
 		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			"the grantee must be an administrator", map[string]any{"field": "grantee_id"})
+	case errors.Is(err, diagnostics.ErrCallerNotAdmin):
+		// The grant was created for an administrator, but the live role (not the
+		// grant) is the authority at the content door (ADR 0028 §3). A removed
+		// role therefore ends access immediately, before the grant expires.
+		writeError(w, r, http.StatusForbidden, "diagnostic_grantee_not_admin",
+			"the diagnostic grantee must still hold the administrator role")
 	case errors.Is(err, diagnostics.ErrRunNotGrantable):
 		writeError(w, r, http.StatusNotFound, "resource_not_found",
 			"that run cannot be granted")

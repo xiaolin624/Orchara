@@ -959,11 +959,14 @@ func (r *Reader) approvePublicationReview(
 		return nil, &ApplicationArchivedError{}
 	}
 
-	// The dependency closure is re-read inside this transaction: a revocation
-	// committed before this point is visible to the recheck and fails the
-	// approval; a revocation attempted concurrently blocks on the row locks held
-	// by the publication writes and sees the committed version afterwards.
-	located, err := recheckFrozenDependencies(ctx, tx, verified.Manifest)
+	// The dependency closure is re-read inside this transaction, and the pinned
+	// sub-application version rows are locked FOR KEY SHARE by that same read. A
+	// revocation committed before this point is visible to the recheck and fails
+	// the approval; a concurrent revoke (FOR UPDATE on the version row) waits for
+	// this approval to commit instead of committing between the recheck and the
+	// version_dependencies insert below. spawnChild still re-resolves every child
+	// through ResolveRunnableVersionTx, so a later revocation can never execute.
+	located, err := recheckFrozenDependencies(ctx, tx, verified.Manifest, true)
 	if err != nil {
 		return nil, err
 	}

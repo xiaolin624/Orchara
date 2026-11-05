@@ -519,8 +519,11 @@ func (cleaner *CopyCleaner) processJob(
 				failedScope, failureCode, failureReason = scope, failure, "sandbox_temp_remove_failed"
 			}
 		case ScopeThirdPartyHistory:
-			transactionOutcomes = append(transactionOutcomes,
-				cleaner.thirdPartyOutcomes(ctx, locked, runIDs, thirdParty)...)
+			thirdPartyOutcomes, failure := cleaner.thirdPartyOutcomes(ctx, locked, runIDs, thirdParty)
+			transactionOutcomes = append(transactionOutcomes, thirdPartyOutcomes...)
+			if failure != "" {
+				failedScope, failureCode, failureReason = scope, failure, "third_party_copy_check_failed"
+			}
 		case ScopeBackupCatalog:
 			transactionOutcomes = append(transactionOutcomes,
 				cleaner.backupCatalogOutcomes(locked, runIDs)...)
@@ -961,9 +964,14 @@ func workspaceBytes(root string) int64 {
 // declaration. The default deployment has no third-party memory component
 // (T066's committed decision is do_not_adopt), so the class is absent with a
 // reason; a configured component is external and not erased by the platform.
+//
+// A failed model-call check is a failed check, not evidence that there was
+// nothing to look for: it is returned as a failure code so the vendor class is
+// recorded `failed` and the job keeps the scope (the same visibility rule the
+// other copy classes follow).
 func (cleaner *CopyCleaner) thirdPartyOutcomes(
 	ctx context.Context, job *copyJob, runIDs []string, components []string,
-) []CopyClassOutcome {
+) ([]CopyClassOutcome, string) {
 	key, _ := scopeKeyOf(ScopeThirdPartyHistory, CopyThirdParty,
 		map[string]any{"job": job.ID, "components": components})
 	outcome := CopyClassOutcome{
@@ -982,16 +990,33 @@ func (cleaner *CopyCleaner) thirdPartyOutcomes(
 		map[string]any{"job": job.ID, "runs": runIDs})
 	vendor := CopyClassOutcome{
 		Scope: ScopeThirdPartyHistory, CopyClass: CopyVendor, ScopeKey: vendorKey,
-		Outcome: "absent", Reason: "no_external_model_path",
 		Record: map[string]any{"runs": runIDs},
 	}
-	if calls, err := cleaner.modelCallCount(ctx, runIDs); err == nil && calls > 0 {
-		vendor.Outcome = "external"
-		vendor.Reason = "model_provider_may_retain_prompts"
+	calls, countErr := cleaner.modelCallCount(ctx, runIDs)
+	vendor.Outcome, vendor.Reason = modelCallCopyOutcome(calls, countErr)
+	if countErr != nil {
+		vendor.FailureErr = "copy_vendor_count_failed"
+		return append(outcomes, vendor), "copy_vendor_count_failed"
+	}
+	if calls > 0 {
 		vendor.Record["model_calls"] = float64(calls)
 	}
 	outcomes = append(outcomes, vendor)
-	return outcomes
+	return outcomes, ""
+}
+
+// modelCallCopyOutcome classifies the vendor-copy check from the model-call count.
+// The error branch is what keeps "the query failed" distinguishable from "the
+// path does not exist": both used to collapse into `absent`.
+func modelCallCopyOutcome(calls int, countErr error) (outcome, reason string) {
+	switch {
+	case countErr != nil:
+		return "failed", "model_call_count_failed"
+	case calls > 0:
+		return "external", "model_provider_may_retain_prompts"
+	default:
+		return "absent", "no_external_model_path"
+	}
 }
 
 func (cleaner *CopyCleaner) modelCallCount(ctx context.Context, runIDs []string) (int, error) {

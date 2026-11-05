@@ -96,8 +96,11 @@ is admin+grantee only and streams the sealed object as an attachment (never a
 signed URL: `API.md`/SECURITY require immediate revocation, and a minted link
 outlives the grant). One transaction re-checks, in this order:
 
-1. the grant row exists and the caller is the named grantee (else 404, no grant
-   oracle);
+1. the grant row exists, the caller is the named grantee and still holds the
+   `admin` role in `role_bindings` (any other caller gets the same 404 as a
+   missing grant, no grant oracle; a named grantee whose role was removed gets
+   403 `diagnostic_grantee_not_admin` — the live role, not the historical grant,
+   is the authority);
 2. `revoked_at IS NULL` → 403 `diagnostic_grant_revoked`;
 3. `expires_at > now()` (database clock) → 403 `diagnostic_grant_expired`;
 4. `runs.deleted_at IS NULL` → 403 `diagnostic_run_deleted`;
