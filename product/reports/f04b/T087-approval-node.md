@@ -219,14 +219,25 @@ python -m pytest tests/f04b/test_canvas_f04b_assets.py tests/f04b/test_t086_mode
 ok  orchara/platform/internal/presetexec
 ```
 
-### 4.7 合并后门禁（本票分支 `b086419`）
+### 4.7 合并后门禁（本票分支 HEAD）
 
 - `go build ./...`、`go vet ./...`、`go test ./...`：全部通过；`gofmt -l internal cmd tools` 空。
 - `python tools/sync_spec.py --check`：no drift。
 - 画布：上述 3 个 Node 模块测试 + 11 个画布 pytest 全部通过（合并后重跑）。
-- **合并后真实栈 T087 套件与 f06 子集：`not_run`**——合并窗口内全局 pytest 锁被 T086/T088/T089/merger 的
-  真实栈套件连续占用（每次 2–25 分钟），编排者明确要求不重跑长套件并让本票尽快提交文档；合并前同内容证据见
-  §4.1–4.3，合并只改动 `graphplan.go`/`graphrun.go`/canvas 的并存冲突（Go 全量测试与 Node/pytest 画布测试已过）。
+- 合并后真实栈（短锁窗口，只跑合并最相关的 3 个用例：服务端幂等、批准恢复、两次审批）：
+
+```powershell
+python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_server_built_business_decision_and_replays_idempotently \
+  tests/f04b/test_t087_approval_node.py::test_approved_node_approval_resumes_the_same_run_once \
+  tests/f04b/test_t087_approval_node.py::test_two_approvals_wait_twice_and_converge_on_one_run -q
+```
+```text
+...                                                                      [100%]
+3 passed in 58.54s
+```
+
+- **合并后全量 `tests/f04b` / `tests/f06` 未重跑**：合并窗口内全局 pytest 锁被 T086/T088/T089/merger 的真实栈
+  套件连续占用；按编排者指示不重跑长套件，合并后以关键 3 用例真实栈 + Go 全量 + 画布全量收口。
 
 ## 5. stub / real 与边界（not_run / partial）
 
@@ -238,7 +249,7 @@ ok  orchara/platform/internal/presetexec
   mocked 的审批/决定/resume/写授权。
 - **not_run**：
   - 全量 `pytest tests/f06`（共享栈争用，见 §4.2；审批/等待相关子集 27 passed）。
-  - 合并后的真实栈 T087 套件与 f06 子集（同上，编排者要求）。
+  - 合并后全量 `pytest tests/f04b` / `tests/f06`（同上；合并后关键 3 用例真实栈 3 passed，Go/画布全量通过）。
   - 自动过期 sweeper：本构建没有后台过期扫描；过期由契约唯一决定入口（decision 路径）观察，符合 T050 已记录边界。
   - 真实浏览器 DOM：画布/审批页逻辑用 Node 执行真实字节（无浏览器驱动，环境现状）。
   - 审批后的写工具“未知结果/needs_reconciliation”语义（spec 归 EXECUTION §5/T051，不在本票切片）。
