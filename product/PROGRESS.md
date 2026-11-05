@@ -2052,9 +2052,30 @@ T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内�
 无迁移；未改 `docs/spec/**`、`contracts/**`。首轮真实栈曾用 `t055_stack`（缺 T025 编译器环境）出现
 `compiler_unconfigured`/helper KB-id 拆分 bug，修正为 `t033_stack` + helper 归一化后 6 passed（报告 §5 如实记录）。
 
+## F04B/T091 十节点工作流：保存/恢复、两次审批与嵌套汇合（GitHub #92，2026-11-06）
+
+T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保存/校验 + 真实两次审批嵌套汇合 + optional/required/未知不降级）。
+证据：`reports/f04b/T091-ten-node-workflow.md`；分支 `t/t091-ten-node-graph`（worktree `E:\Orchara-wt\t091`），
+基线 `integration/t083-t091` @ `15db973`，结束前 merge 集成分支 @ `bd4d791`（含 T085 skip 政策 `9a302f2`、T088 收尾）。
+
+| 交付点 | 结果 |
+|---|---|
+| 十类 palette/面板/allowlist | **passed**：`NODE_TYPES`/`CONFIG_ALLOWLIST` 十类；`ten_node_canvas.test.mjs` 12 用例整组钉住 palette、每类默认 config 与契约白名单、真实 fixture 逐字节 graph↔definition 往返、来源选择器（join 按来源/retrieve 数组/call_app 映射/approval proposal）、导出 allowlist+dropped+secret 拒绝、十类错误定位；画布源码无需改，重建 bundle 逐字节一致 |
+| 十类 fixture 保存/校验 | **passed**：`tests/f04b/fixtures/ten_node_definition.json`（13 节点/十类/condition 内嵌 parallel fork+join/条件端口/join-by-source/固定 model+tool+child+KB）；真实 `PUT /draft`（保存不是校验门）→ GET 结构相等且读取/再保存逐字节稳定 → `POST /validate` valid:true + `X-Manifest-SHA256` → debug 提交冻结 manifest（十类/端口/`subapp_versions=[child]`） |
+| 非法变体定位 | **passed**：跨区边/坏端口/坏 join sources/type_mismatch/cycle/注入未展示能力键（`response_schema`+`api_key`）/未知节点类型 → `valid:false` 精确 pointer；跨区变体真实 debug 422 `validation_failed` + pointer、零 Run/零 Job |
+| 两次审批 + 嵌套汇合（真实栈） | **passed**：exec1 waiting（approve1 pending、无 resume）→ 决定 → exec2 新进程跑到 approve2 waiting（join2/join1 各一次）→ 决定 → exec3 succeeded；两个 approval/两个 resume、每节点 data 恰 1 条、join 每 attempt 至多一次 succeeded、capability 操作 2 条各 1 attempt、预算不重置；end 按来源读 join 封套；SSE 重连/node-results 重建 run view 数据面 |
+| optional/required/unknown | **passed**：optional py `node_output_invalid` 收敛进 join 封套（run succeeded、end 把失败当数据）；required py 失败 fail-fast（run failed、join/end skipped、无 join 行、无第二审批）；optional agent 撤销 profile `model_profile_unavailable` 不降级（run failed） |
+| 保存/恢复 | **passed**：run 使用冻结 snapshot/manifest；草稿被替换后 resume 仍执行原两次审批图；run snapshot 与 manifest hash 不变 |
+| 集成对齐（T087 wait skip） | 旧基线 `15db973` 上 T087 两审批因 T085 wait-skip 变红；集成分支 `9a302f2` 已修（waiting 不发 skip、failed/cancelled 终态前按拓扑发一次）。本票 merge 后采用上游实现，不重复改 `graphrun.go`，仅新增 Go 回归 `TestGraphRunWaitingAttemptDoesNotReportFutureNodesAsSkipped` |
+| run view（P1） | **passed**：`runview.js` 审批行显示「等待人工审批」/「审批已通过 · id · decided_at」，approval data artifact 纳入预取；`runview_t091.test.mjs` PASS 4 |
+| 门禁 | `pytest tests/f04b -q` **89 passed in 678.89s**、`pytest tests/f06 -q` **173 passed in 1311.21s**、`pytest tests/tooling -q` **21 passed**、`go build/vet/test ./...` 全绿（38 包）、`gofmt` 空、`sync_spec --check` no drift、`node --check` + 4 个 Node 套件全绿（tail 见报告 §4） |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：浏览器 DOM/Playwright、真实厂商模型/嵌入（仅 dev-stub）、
+跨版本 checkpoint 恢复（本批不做）、无关全量套件（f05/f08 等）。
+
 ## 批次完成记录：#84–#92 / T083–T091（2026-11-06）
 
-- 基线 `ea56392`（上一批 `integration/t068-t082` tip）→ 集成分支 tip（本记录写入时 `bd4d791`；T091 合并状态见下）。
+- 基线 `ea56392`（上一批 `integration/t068-t082` tip）→ 集成分支 tip `93ddc6b`（merge T091 `t/t091-ten-node-graph` @ `344c139`）。
 - 范围：F04B 九票（T083–T089、T091）+ F14 T090，共 10 张票（GitHub #84–#92）。
 - 契约/规格：未改 `contracts/**`、`docs/spec/**`、迁移编号；`python tools/sync_spec.py --check` **no drift**。
   运行时的 spec 偏离（生产是 Go 图执行、不是 LangGraph）由 **ADR 0034** 记录，不静默。
@@ -2071,14 +2092,14 @@ T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内�
 | T088 | **passed** | 平台 ACL 检索节点（非契约内部路由 + 执行器 + 画布 + run view 引用）；真实栈 `test_t088_retrieve.py` **6 passed in 74.49s**（最终树；另两次合并树 6 passed in 51.63s/78.47s）；引用与 DB chunk/citation 逐字段相等、撤权 404、并行不串。**输出已按 N-R10/R3 收窄**（本次复核修复）：items/citations 只带 `excerpt`（正文前 500 字符），无完整 `text`、无向量 `score`。缺项：`tests/f10` 全量 not_run、真实厂商 embedding、真实二次 exec 复用 retrieve 输出、浏览器 DOM |
 | T089 | **passed** | call_app 画布面板 + graph 路径真实栈 E2E；真实栈 7 passed in 110.27s、画布 23 passed；单 child 等待/恢复、并行/顺序、执行槽交接、失败映射均有真实栈断言。票面共用的 child-thread/slot 与 doc/version/span AC 中：call_app 无文档/切片引用 → doc/version/span 为 **not_applicable**（其“版本保留”由固定 `application_version` + child Run manifest sha 证明）；child slot 与 child-thread 隔离是**真实交付并断言**的，不是 not_applicable。浏览器 DOM `not_run` |
 | T090 | **blocked** | F14 所有不依赖模型的部分已交付：语料/目录卡冻结、泄漏检查、两臂 dev-stub 基线（臂 A frozen 25/25、臂 B 21/25）、`retrieval.not_used=true`；`tests/f14` **13 passed in 76.66s**（合并后复跑）、`test_t084_corpus.py` 4 passed。缺项（blocked 原因）：本机无模型凭据/端点/权重/训练 GPU，同基模强提示基线与训练 **not_run**；held-out 25 例低于 spec 的 100 例起步建议（未虚增）；训练 stop-go 只给 provisional |
-| T091 | **passed（分支）** | 十类画布/导出、十类 fixture 保存/校验、真实两次审批嵌套汇合、optional/required/未知不降级；其分支 `t/t091-ten-node-graph` 的 `pytest tests/f04b` **89 passed in 678.89s**、`go test ./...` 通过；报告 `reports/f04b/T091-ten-node-workflow.md`。**合并状态**：本记录写入时集成分支 tip 为 `bd4d791`（未含 T091）；收尾分支按实际 merge 集成分支，见下方“合并顺序” |
+| T091 | **passed** | 十类画布/导出、十类 fixture 保存/校验、真实两次审批嵌套汇合、optional/required/未知不降级；集成分支已 merge（`93ddc6b`，T091 `344c139`）。其报告门禁：`pytest tests/f04b` **89 passed in 678.89s**、`tests/f06` **173 passed in 1311.21s**、`tests/tooling` 21 passed、`go build/vet/test ./...` 全绿、`gofmt` 空、`sync_spec --check` no drift。缺项：浏览器 DOM/Playwright、真实厂商模型/嵌入、跨版本 checkpoint 恢复（本批不做） |
 
 ### 真实门禁汇总
 
 | 套件 | 实际结果（最终相关树） |
 |---|---|
 | `pytest tests/f04b` | 各票关键套件 6/7/9/14/43/89 passed（见上表）；本收尾分支只重跑受影响文件 + 最小回归（T088 retrieve、T083 runview、T086 model、canvas/runview/asset、T084 corpus），不重复全量 |
-| `pytest tests/f05` / `tests/f06` / `tests/f04a` / `tests/tooling` / `tests/f14` | 149 / 172+1 flake（隔离重跑通过）/ 36 / 21 / 13 passed（T085/T083/T090 记录） |
+| `pytest tests/f05` / `tests/f06` / `tests/f04a` / `tests/tooling` / `tests/f14` | 149 / 172+1 flake（隔离重跑通过；T091 最终树 173 passed in 1311.21s）/ 36 / 21 / 13 passed（T085/T083/T091/T090 记录） |
 | Go | `go build ./...`、`go vet ./...`、`go test ./...` 全绿；`gofmt -l internal cmd tools` 空 |
 | 契约/静态 | `python tools/sync_spec.py --check` → `no drift`；`node --check`（runview/canvas 产物）exit 0；画布 bundle 由 `npm ci --offline && npm run build` 重建并提交 |
 | 明确未跑/阻塞 | 全量 `pytest tests/f08`（final tree）、全量 `pytest tests/f04b`（收尾窗口）、`tests/f10` 全量、`go test -race`、T090 模型臂；均按实际标 `not_run`/`blocked`，不以部分结果冒充全绿 |
@@ -2112,7 +2133,7 @@ T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内�
   `f21f09a`（T090）→ `04f09ba`（T087）→ `7b1becd`（T088）→ `aced554`（T089）→
   `15db973`（T085 并发调度器）→ `4851c4f`（T085 文档）→ `355e5d4`（T087 证据）→
   `5bd939d`（T089 证据）→ `7da0249`（T087 gate）→ `9d8208e`（T085 skip 事实）→
-  `1cf7637`（T088 证据）→ `bd4d791`（T088 gate pins）。
+  `1cf7637`（T088 证据）→ `bd4d791`（T088 gate pins）→ `93ddc6b`（T091 十类工作流；T091 `344c139`）。
 - 收尾分支 `t/batch-review-fixes`：`50d095f`（C.1–C.3 重构）→ `6a3195a`（T088 输出收窄 +
   C.5/C.6）→ 文档/ADR/批次记录提交 → 合并 `refs/heads/integration/t083-t091` 的收尾 merge（见
   `reports/review/BATCH-REVIEW-FIXES.md` §4 的最终 HEAD）。
