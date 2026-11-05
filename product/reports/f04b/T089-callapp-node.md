@@ -2,9 +2,9 @@
 
 - 状态：**`passed`**（画布 call_app 节点/面板 + graph 路径真实栈 E2E；见 §4 的 stub/real 分界与 not_run/not_applicable）
 - 分支：`t/t089-callapp-node`，worktree `E:\Orchara-wt\t089`；基线 `integration/t083-t091` @ `b343f7b`
-- HEAD：`aced554`（= 集成分支 tip，含协调者的 T089 merge；文档提交在本文件写入后再 +1）
-- 范围：`apps/web/canvas/src/**` + 提交产物 `apps/web/src/assets/canvas.{js,css}` + `tests/f04b` 真实栈验收；**不改 Go 运行时**（T083 已把 call_app 接入 graph 路径）、不改 `contracts/**`、`docs/spec/**`、迁移
-- 原始日志：`E:\Orchara\.scratch\t083-t091\T089\`（`pytest-t089.log` 首次运行暴露恢复接缝未启用、`pytest-t089-rerun2.log` T086 合并树 7+15 passed、`pytest-t089-integrated.log` 最终合并树 7 passed）
+- HEAD：`b2d6e88`（= `integration/t083-t091` `4851c4f` 合并进本票；文档提交 `4c394ae` 在其上；本报告写入后的证据提交在其后）
+- 范围：`apps/web/canvas/src/**` + 提交产物 `apps/web/src/assets/canvas.{js,css}` + `tests/f04b` 真实栈验收；**不改 Go 运行时**（T083 已把 call_app 接入 graph 路径，T085 把调度器改为并发 ready-queue）、不改 `contracts/**`、`docs/spec/**`、迁移
+- 原始日志：`E:\Orchara\.scratch\t083-t091\T089\`（`pytest-t089.log` 首次运行暴露恢复接缝未启用、`pytest-t089-rerun2.log` T086 合并树 7+15 passed、`pytest-t089-integrated.log` T087/T088 合并树 7 passed、`pytest-t089-final3.log` T085 并发调度器合并树终跑）
 
 ## 1. AC 对照
 
@@ -43,13 +43,14 @@
 - graph 路径的 `executeGraphCallApp` → `runCallAppNode`（T083/T078 既有）已满足本票：`call_app` 节点固定版本 `config.application_version`；`LogicalKey = "call_app:" + node.ID`（由节点 id 派生 → 同 child 并行/顺序两次调用天然不同 key）；`spawnChild` 平台协议；child 未终态 → `waiting_children` 提案 + confirm exit；resume 重放同一 logical key → 返回原 child Run 并 adopt 结构化结果；required 子失败 → 父节点/run 取 child 稳定码；无 parent thread 复用（每次 spawn 新建 child `checkpoint_thread_id`）。
 - 本票以**真实栈测试**证明上述语义并**未修改** `internal/**`、`contracts/**`、`docs/spec/**`、迁移；`python tools/sync_spec.py --check` → `no drift`。
 - 关键环境事实：恢复接缝 `presetexec.Deps.NodeOutputs` → `cmd/supervisor` 的 `dbAccess.NodeData` 从 `ORCHARA_OBJECT_DIR` 打开 sealed 对象并复算 sha256；T033 的 `supervisor_exec_env` 未设置该部署变量，缺省时 seam 以 “no object store” 静默退化为重新执行已完成节点。T089 的 exec helper 显式传入（与 API 部署同一对象根），否则“adopt 原 child / 复用已完成节点”不可观测。建议后续把 `ORCHARA_OBJECT_DIR` 补进共享 helper/部署清单。
+- T085 合并后（`graphScheduler` ready-queue 并发，每分支 goroutine）：fork 的两个 call_app 分支会**同时启动**，两个 child 都可在一个 attempt 内创建；首个分支 waiting 时调度器 `cancel()` 其余在飞分支、`drain()` 等其返回后才提交 `waiting_children`。被取消的兄弟分支在 resume 后重新执行，`call_app:<node id>` 幂等键保证回放同一 child、不产生重复 child。被取消分支可能在停泊 attempt 记录一次瞬时 `failed` node.status（其失败结果提交被拒绝），run 本身不失败、最终 join 两源都 succeeded；本票测试按该并发语义驱动（先执行活 child，全部 child 终态后才 claim resume），并把瞬时 failed 记录为 T085/T091 的观察边界而不是本票运行时改动。
 
 ### 2.3 测试
 
 - `tests/f04b/callapp_canvas.test.mjs`（Node，纯模块，12 用例）：palette/default、图谱往返、应用/版本选项、冻结 schema、输入行三模式、输出行、`callAppBinding` 负例、`callAppNodeFromForm`、panel model、prefill、本地映射提示、export allowlist。
 - `tests/f04b/test_t089_callapp_canvas.py`（pytest）：`node --check` bundle、bundle marker（call_app/固定子版本/映射/allowlist 文案）、Node 模块 `PASS 12`、可选重建逐字节校验（`node_modules` 存在时才跑，finally 还原）。
 - `tests/support/t089.py`：真实栈 fixture —— `single_child_definition`（condition yes→child / no→direct(skipped)→join）、`parallel_definition`（fork→a/b→join）、`same_child_twice_definition`（yes→first→second→join）、`defective_binding_definition`、`mapping_type_definition`、`mapping_missing_definition`、`strict_child_definition` 与执行/读取助手（含恢复接缝的 `ORCHARA_OBJECT_DIR` 注入）。
-- `tests/f04b/test_t089_callapp.py`（真实栈，7 用例）：单 child 等待/恢复 E2E、并行两 child、同 child 两次、required 子失败传播、执行槽释放/重新占用、发布门禁映射定位、执行器运行期绑定防御。
+- `tests/f04b/test_t089_callapp.py`（真实栈，7 用例）：单 child 等待/恢复 E2E、并行两 child（按 T085 并发语义自适应驱动：先执行活 child，全部 child 终态后才 claim resume）、同 child 两次、required 子失败传播、执行槽释放/重新占用、发布门禁映射定位、执行器运行期绑定防御。
 
 ## 3. 证据：命令与原始输出
 
@@ -115,18 +116,38 @@ python -m pytest tests/f07/test_t078_child_runs.py tests/f04b/test_t083_conditio
 ...............                                                          [100%]
 15 passed in 131.63s (0:02:11)
 ```
-合并 T087/T088 + 协调者 T089 merge（`aced554`）后的最终真实栈重跑：
+合并 T087/T088 + 协调者 T089 merge（`aced554`）后的真实栈重跑：
 ```text
 === integrated T089 acceptance at 2026-11-06T01:47:27 ===
 .......                                                                  [100%]
 7 passed in 93.25s (0:01:33)
 ```
-三次真实栈运行均在 `New-Item E:\Orchara\.scratch\t083-t091\pytest.lock` 全局锁下串行执行，结束后 `lock_removed=True`；期间与其他票（T085/T086/T087/T088/T090）的套件互斥。
+合并 T085（`4851c4f`，并发 ready-queue 调度器）后的最终真实栈重跑：
+```text
+=== FINAL T089 acceptance (T085 concurrent scheduler) at 2026-11-06T02:05:16 ===
+.......                                                                  [100%]
+7 passed in 110.27s (0:01:50)
+```
+该次运行中并行用例的 supervisor stderr 证据（被取消兄弟分支的 node.status 提交被 context canceled，run 仍正确停泊/恢复；完整 node 事件序列见 `pytest-t089-final3.log`）：
+```text
+run_id=...: node.status a=pending was not recorded: ... context canceled
+exec: status=executed outcome=waiting_children run=... code=children_pending
+exec: status=executed outcome=succeeded run=<child-run> code=
+run_id=...: node.status b=running was not recorded: ... context canceled
+exec: status=executed outcome=waiting_children run=... code=children_pending
+exec: status=executed outcome=succeeded run=<second child-run> code=
+exec: status=executed outcome=succeeded run=<parent> code=
+PARALLEL_NODE_STATES {"a": ["running","failed","pending","running","pending","running","succeeded"],
+                      "b": ["pending","running","pending","failed","pending","running","succeeded"],
+                      "join": ["skipped","skipped","pending","running","succeeded"], ...}
+```
+四次真实栈运行（一次诊断运行暴露恢复接缝未启用；三次通过运行：T086 合并树、T087/T088 集成树、T085 并发调度器合并树）均在 `New-Item E:\Orchara\.scratch\t083-t091\pytest.lock` 全局锁下串行执行，结束后 `lock_removed=True`；期间与其他票（T085/T086/T087/T088/T090）的套件互斥。
 
 ### 3.4 合并与冲突
 
 - `git merge integration/t083-t091`（`f21f09a`，含 T086/T090）：冲突仅 `canvas/src/lib/dsl.js`（palette/defaultNode/positions）、`canvas/src/main.js`（panel dispatch）、生成产物 `canvas.js`；解析为同时保留 `model` 与 `call_app`（palette 顺序 start/python/agent/model/call_app/condition/join/end），并从合并源 `npm run build` 重建两个产物；合并提交 `00826aa`。
 - `git merge integration/t083-t091`（`aced554`，协调者已合入 T089 + T087/T088）：快进。合并后画布 23 passed（§3.2，含“committed bundle == fresh build”）；Go 门禁在合并树重跑全绿（§3.5）。
+- `git merge integration/t083-t091`（`4851c4f`，T085 并发调度器/optional）：快进为本票 HEAD `b2d6e88`；无画布冲突、产物无需重建；按并发语义更新并行用例的驱动与 node.status 断言后在合并树重跑真实栈（§3.3）。
 
 ### 3.5 Go / 规格门禁（合并树）
 
@@ -158,6 +179,7 @@ no drift: spec copy and contract snapshot match the manifest
 - **not_applicable**：
   - `引用保留 doc/version/span`：call_app 无文档/切片引用；版本保留用固定子版本/manifest hash 断言。
   - `optional 子失败`（T085 语义）：`spawnChild` 契约 body 无 required/optional 字段，delegation receipt 固定 `required=true`；可选子失败在本版本不可表达 → not_applicable（不是“未测”）。
+- **观察边界（T085/T091 承接，不是本票失败）**：并发调度器在 fork 分支一个 park、其余被取消时，被取消分支的 node.status 提交可能 `context canceled`（丢失 pending/running），也可能留下一次瞬时 `failed`；随后 resumed attempt 会重新记录 `pending,running,succeeded`，run 本身始终不失败、join 两源都 succeeded。run view 按 attempt 优先取最终状态，因此显示成功；若要清理这些瞬时事件，应归 T085/T091 的 run-view/调度器语义，而不是 call_app 协议。
 
 ## 5. 合并、门禁与 HEAD
 
@@ -165,12 +187,13 @@ no drift: spec copy and contract snapshot match the manifest
 |---|---|
 | 分支 / worktree | `t/t089-callapp-node` / `E:\Orchara-wt\t089` |
 | 基线 | `integration/t083-t091` @ `b343f7b` |
-| 合并提交 | `00826aa`（T086/T090，冲突解决 + bundle 重建）、快进到 `aced554`（T087/T088/协调者 T089 merge） |
-| HEAD | `aced554`（文档提交后为下一提交） |
+| 合并提交 | `00826aa`（T086/T090，冲突解决 + bundle 重建）、`aced554`（T087/T088 + 协调者 T089 merge，快进）、`b2d6e88`（T085 并发调度器/optional，快进后在本票上确认重跑） |
+| 文档提交 | `4c394ae`（本报告 + PROGRESS 小节）；本报告在 T085 合并后更新 |
+| HEAD | `b2d6e88`（最终证据/文档提交在其后） |
 | 迁移 | 无 |
 | 未改 | `internal/**`、`cmd/**`、`contracts/**`、`docs/spec/**`、`db/migrations/**`、`apps/web/src/assets/editor.js`、`runs.js`、`debug.js` |
 
-门禁汇总：画布 4 + 23 passed（合并树）；真实栈 7 passed（T086 树）+ 15 passed 定向回归 + 7 passed（集成树）；`go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全绿。**未发现需回退的失败**。
+门禁汇总：画布 4 + 23 passed（合并树）；真实栈 7 passed（T086 树）+ 15 passed 定向回归 + 7 passed（T087/T088 集成树）+ T085 并发调度器合并树重跑（§3.3）；`go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全绿（T085 合并树重跑）。**未发现需回退的失败**。
 
 ## 6. 变更文件
 

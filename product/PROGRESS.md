@@ -1982,7 +1982,7 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 
 ## F04B/T089 画布调用固定子应用并映射结果（GitHub #90，2026-11-06）
 
-T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路径真实栈 E2E；无 Go 运行时改动）。证据：`reports/f04b/T089-callapp-node.md`；分支 `t/t089-callapp-node`（worktree `E:\Orchara-wt\t089`，基线 `b343f7b`，结束前合入 `aced554`）。
+T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路径真实栈 E2E；无 Go 运行时改动）。证据：`reports/f04b/T089-callapp-node.md`；分支 `t/t089-callapp-node`（worktree `E:\Orchara-wt\t089`，基线 `b343f7b`，结束前合入 `4851c4f`）。
 
 | 交付点 | 结果 |
 |---|---|
@@ -1992,7 +1992,7 @@ T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路
 | 执行槽交接 | **passed**：等待 exit 后 `global/execution_slots` 释放（used=0）；child 只占独立 child pool（global+parent）；resume 重新占用 1 槽、终态释放一次；`assert_slot_consistent` |
 | 失败/映射定位 | **passed**：required 子失败传播 child 稳定码（`child_output_schema_invalid`）；`io_mapping_type_mismatch` `/nodes/2/inputs/source`、`io_mapping_missing_field` `/nodes/{2,3}/inputs/region`、debug 422；执行器运行期绑定 `node_input_invalid`（report 定位 `child.source`） |
 | 测试 | 新增 `tests/f04b/callapp_canvas.test.mjs`（12 Node 用例）、`test_t089_callapp_canvas.py`（4 passed）、`test_t089_callapp.py`（真实栈 7 passed）、`tests/support/t089.py`；定向回归 T078+T083 `15 passed` |
-| 合并/门禁 | merge `f21f09a`（T086/T090）→ 画布冲突解决 + 从合并源重建 bundle；merge `aced554`（T087/T088）→ 画布 23 passed（含逐字节重建校验）；`go build/vet/test ./...`、`gofmt -l`（空）、`sync_spec --check` no drift |
+| 合并/门禁 | merge `f21f09a`（T086/T090）→ 画布冲突解决 + 从合并源重建 bundle；merge `aced554`（T087/T088）→ 画布 23 passed（含逐字节重建校验）；merge `4851c4f`（T085 并发调度器/optional）→ 并发语义下重跑本票真实栈 **7 passed in 110.27s**；`go build/vet/test ./...`、`gofmt -l`（空）、`sync_spec --check` no drift |
 | 边界 | 浏览器 DOM `not_run`；call_app 无 doc/span 引用 → `not_applicable`；`spawnChild` 无 required/optional 字段 → optional 子失败 `not_applicable`；真实厂商模型 `not_run` |
 
-发现（供后续票）：恢复接缝真实生效要求 supervisor 配置 `ORCHARA_OBJECT_DIR`（sealed object root）；T033 helper 未设置会让 resume 静默退化为重执行（T089 helper 已显式传入，建议补进共享 helper）。同 child 并行调用在 graph 调度器下表现为顺序两次等待，但两个 child Run 完全独立。
+发现（供后续票）：恢复接缝真实生效要求 supervisor 配置 `ORCHARA_OBJECT_DIR`（sealed object root）；T033 helper 未设置会让 resume 静默退化为重执行（T089 helper 已显式传入，建议补进共享 helper）。合并 T085 后 graph 调度器为 ready-queue 并发：fork 的两个 call_app 分支同时启动，首个 branch 等待时调度器取消其余在飞分支并在 drain 后提交 waiting_children；被取消的兄弟分支在 resume 后重执行（spawn 幂等键保证不产生重复 child），两个 child Run 仍完全独立。
