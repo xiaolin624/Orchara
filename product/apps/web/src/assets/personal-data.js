@@ -163,6 +163,165 @@ function deletionResultText(job, resourceType) {
 }
 
 // ---------------------------------------------------------------------------
+// F11/T073: user-scoped diagnostic grants
+//
+// A grant names one run, one administrator grantee, the explicit object snapshot
+// the user selected, bounded purposes and a hard expiry. The page never reads
+// content: it creates/lists/revokes the consent record only. The server's content
+// door is admin-only and audits every read.
+// ---------------------------------------------------------------------------
+
+var DIAGNOSTIC_GRANTS_PATH = '/api/v1/diagnostic-grants';
+var DIAGNOSTIC_GRANT_STATES = {
+  active: '有效',
+  expired: '已过期',
+  revoked: '已撤销'
+};
+var DIAGNOSTIC_REFUSAL_TEXT = {
+  diagnostic_grant_revoked: '诊断授权已被撤销，正文不可再读。',
+  diagnostic_grant_expired: '诊断授权已过期，正文不可再读。',
+  diagnostic_run_deleted: '运行已删除；诊断授权不能越过删除记录读取正文。',
+  diagnostic_purpose_denied: '该用途不在诊断授权范围内。',
+  diagnostic_scope_denied: '该对象不在诊断授权范围内。',
+  diagnostic_content_unavailable: '正文已不可用（已删除或已清理）。',
+  diagnostic_content_not_ready: '正文尚未就绪。',
+  personal_scope_forbidden: '服务账号不能管理诊断授权。'
+};
+var DIAGNOSTIC_PURPOSE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+
+function diagnosticGrantPath(grantId) {
+  return DIAGNOSTIC_GRANTS_PATH + '/' + encodeURIComponent(String(grantId));
+}
+
+function diagnosticObjectEntry(artifactId) {
+  var id = String(artifactId == null ? '' : artifactId).trim();
+  if (!UUID_PATTERN.test(id)) {
+    throw new Error('artifact id 必须是 UUID');
+  }
+  return 'artifact:' + id.toLowerCase();
+}
+
+function diagnosticObjectScopeHeader(entries) {
+  var items = Array.isArray(entries) ? entries : [];
+  return items.map(diagnosticObjectEntry).join(',');
+}
+
+/** The purpose tokens, lower-case and deduplicated; an invalid token is refused. */
+function diagnosticPurposes(raw) {
+  var values = Array.isArray(raw)
+    ? raw
+    : String(raw == null ? '' : raw).split(',');
+  var seen = {};
+  var purposes = [];
+  values.forEach(function (value) {
+    var purpose = String(value == null ? '' : value).trim();
+    if (!purpose) {
+      return;
+    }
+    if (!DIAGNOSTIC_PURPOSE_PATTERN.test(purpose)) {
+      throw new Error('用途必须匹配 [a-z][a-z0-9_-]{0,63}：' + purpose);
+    }
+    if (!seen[purpose]) {
+      seen[purpose] = true;
+      purposes.push(purpose);
+    }
+  });
+  if (purposes.length === 0) {
+    throw new Error('至少需要一个用途');
+  }
+  return purposes;
+}
+
+/** A datetime-local value as the RFC3339 UTC instant the API expects. */
+function diagnosticExpiryISO(localValue) {
+  var raw = String(localValue == null ? '' : localValue).trim();
+  if (!raw) {
+    throw new Error('请选择到期时间');
+  }
+  var moment = new Date(raw);
+  if (isNaN(moment.getTime())) {
+    throw new Error('到期时间格式无效');
+  }
+  return moment.toISOString();
+}
+
+function diagnosticGrantStateText(state) {
+  return DIAGNOSTIC_GRANT_STATES[String(state || '')] || '未知状态';
+}
+
+function diagnosticReadRefusalText(code) {
+  return DIAGNOSTIC_REFUSAL_TEXT[String(code || '')] || '诊断读取被拒绝。';
+}
+
+/** The POST /api/v1/diagnostic-grants request the form produces. */
+function diagnosticGrantCreateRequest(input) {
+  var runID = String(input && input.runID ? input.runID : '').trim();
+  var granteeID = String(input && input.granteeID ? input.granteeID : '').trim();
+  if (!UUID_PATTERN.test(runID)) {
+    throw new Error('运行 id 必须是 UUID');
+  }
+  if (!UUID_PATTERN.test(granteeID)) {
+    throw new Error('管理员 principal id 必须是 UUID');
+  }
+  var purposes = diagnosticPurposes(input && input.purposes);
+  var expiresAt = diagnosticExpiryISO(input && input.expiresAt);
+  var objects = Array.isArray(input && input.objects) ? input.objects : [];
+  var headers = {};
+  if (objects.length > 0) {
+    headers['X-Diagnostic-Object-Scope'] = diagnosticObjectScopeHeader(objects);
+  }
+  return {
+    path: DIAGNOSTIC_GRANTS_PATH,
+    method: 'POST',
+    headers: headers,
+    body: {
+      run_id: runID.toLowerCase(),
+      grantee_id: granteeID.toLowerCase(),
+      purposes: purposes,
+      expires_at: expiresAt
+    }
+  };
+}
+
+function diagnosticGrantRevokeRequest(grantId) {
+  var id = String(grantId == null ? '' : grantId).trim();
+  if (!UUID_PATTERN.test(id)) {
+    throw new Error('授权 id 必须是 UUID');
+  }
+  return { path: diagnosticGrantPath(id), method: 'DELETE' };
+}
+
+/** Project one metadata grant for display. Never a content field. */
+function describeDiagnosticGrant(grant) {
+  if (!grant || typeof grant.id !== 'string' || typeof grant.state !== 'string') {
+    throw new Error('服务端没有返回有效的诊断授权');
+  }
+  var purposes = Array.isArray(grant.purposes) ? grant.purposes.slice() : [];
+  var objects = Array.isArray(grant.object_scope) ? grant.object_scope.slice() : [];
+  return {
+    id: grant.id,
+    state: grant.state,
+    stateText: diagnosticGrantStateText(grant.state),
+    runID: typeof grant.run_id === 'string' ? grant.run_id : '',
+    purposeText: purposes.length ? purposes.join('、') : '无用途',
+    objectCount: objects.length,
+    objectText: objects.length ? objects.join('、') : '未选择对象',
+    expiresAt: typeof grant.expires_at === 'string' ? grant.expires_at : '',
+    revokedAt: typeof grant.revoked_at === 'string' ? grant.revoked_at : '',
+    isActive: grant.state === 'active'
+  };
+}
+
+function diagnosticGrantSummaryText(grant) {
+  var view = describeDiagnosticGrant(grant);
+  return '诊断授权 ' + view.id + '：' + view.stateText
+    + '；运行 ' + view.runID
+    + '；用途 ' + view.purposeText
+    + '；对象 ' + String(view.objectCount) + ' 个'
+    + '；到期 ' + view.expiresAt + '。';
+}
+
+// ---------------------------------------------------------------------------
 // DOM wiring (never executed by the Node helper test; the pure functions are)
 // ---------------------------------------------------------------------------
 function setText(id, value) {
@@ -350,6 +509,148 @@ async function loadDocuments() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// F11/T073 grant management wiring (browser only; the pure helpers above are
+// what the Node page test executes)
+// ---------------------------------------------------------------------------
+var grantObjectEntries = [];
+
+function selectedGrantObjects() {
+  var list = document.getElementById('grant-objects-list');
+  if (!list || !list.querySelectorAll) {
+    return [];
+  }
+  var selected = [];
+  var inputs = list.querySelectorAll('input[type="checkbox"]');
+  for (var index = 0; index < inputs.length; index += 1) {
+    if (inputs[index].checked) {
+      selected.push(inputs[index].value);
+    }
+  }
+  return selected;
+}
+
+function renderGrantObjects(items) {
+  var list = document.getElementById('grant-objects-list');
+  if (!list) {
+    return;
+  }
+  list.textContent = '';
+  grantObjectEntries = [];
+  items.forEach(function (item) {
+    var entry = diagnosticObjectEntry(item.id);
+    grantObjectEntries.push(entry);
+    var row = document.createElement('li');
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = entry;
+    box.checked = true;
+    var label = document.createElement('label');
+    label.textContent = ' ' + entry + '（' + String(item.state || '未知状态') + '）';
+    row.appendChild(box);
+    row.appendChild(label);
+    list.appendChild(row);
+  });
+}
+
+async function loadGrantObjects() {
+  var input = document.getElementById('grant-run-id');
+  var raw = input ? input.value : '';
+  try {
+    var runID = String(raw == null ? '' : raw).trim();
+    if (!UUID_PATTERN.test(runID)) {
+      throw new Error('运行 id 必须是 UUID');
+    }
+    setStatus('grant-objects-status', '正在读取运行制品…', '');
+    var payload = await api('/api/v1/runs/' + encodeURIComponent(runID) + '/artifacts?limit=100');
+    var items = payload.items || [];
+    renderGrantObjects(items);
+    if (items.length === 0) {
+      setStatus('grant-objects-status', '这个运行没有可授权的制品。', '');
+    } else {
+      setStatus('grant-objects-status', '已列出 ' + String(items.length) + ' 个对象，可取消勾选。', 'ok');
+    }
+  } catch (error) {
+    setStatus('grant-objects-status', error.message || String(error), 'bad');
+  }
+}
+
+function renderDiagnosticGrants(items) {
+  renderItemList('grants-list', 'grants-empty', items, function (grant, entry) {
+    var view = describeDiagnosticGrant(grant);
+    addFieldRow(entry, '授权 id', view.id);
+    addFieldRow(entry, '状态', view.stateText);
+    addFieldRow(entry, '运行', view.runID);
+    addFieldRow(entry, '用途', view.purposeText);
+    addFieldRow(entry, '对象', view.objectText);
+    addFieldRow(entry, '到期', view.expiresAt);
+    if (view.revokedAt) {
+      addFieldRow(entry, '撤销于', view.revokedAt);
+    }
+    if (view.isActive) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '撤销这条授权';
+      button.addEventListener('click', function () {
+        revokeDiagnosticGrant(view.id);
+      });
+      entry.appendChild(button);
+    }
+  });
+}
+
+async function loadDiagnosticGrants() {
+  try {
+    var payload = await api(DIAGNOSTIC_GRANTS_PATH);
+    var items = payload.items || [];
+    renderDiagnosticGrants(items);
+    if (items.length === 0) {
+      setStatus('grant-status', '还没有诊断授权。', '');
+    }
+  } catch (error) {
+    setStatus('grant-status', error.message || String(error), 'bad');
+  }
+}
+
+async function createDiagnosticGrant() {
+  var runInput = document.getElementById('grant-run-id');
+  var granteeInput = document.getElementById('grant-grantee-id');
+  var purposesInput = document.getElementById('grant-purposes');
+  var expiresInput = document.getElementById('grant-expires');
+  try {
+    var request = diagnosticGrantCreateRequest({
+      runID: runInput ? runInput.value : '',
+      granteeID: granteeInput ? granteeInput.value : '',
+      purposes: purposesInput ? purposesInput.value : '',
+      expiresAt: expiresInput ? expiresInput.value : '',
+      objects: selectedGrantObjects()
+    });
+    var token = await csrf();
+    var accepted = await api(request.path, {
+      method: request.method,
+      body: request.body,
+      headers: request.headers,
+      csrf: token
+    });
+    setStatus('grant-status', '已创建诊断授权 ' + accepted.id + '（' + accepted.state + '）。', 'ok');
+    await loadDiagnosticGrants();
+  } catch (error) {
+    setStatus('grant-status', error.message || String(error), 'bad');
+  }
+}
+
+async function revokeDiagnosticGrant(grantId) {
+  try {
+    var request = diagnosticGrantRevokeRequest(grantId);
+    var token = await csrf();
+    await api(request.path, { method: request.method, csrf: token });
+    setStatus('grant-status', '已撤销诊断授权 ' + grantId + '；后续读取会立即被拒绝。', 'ok');
+    await loadDiagnosticGrants();
+  } catch (error) {
+    setStatus('grant-status', error.message || String(error), 'bad');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   var button = document.getElementById('delete-artifact');
   if (button) {
@@ -370,9 +671,18 @@ document.addEventListener('DOMContentLoaded', function () {
       refreshDeletion();
     });
   }
+  var loadObjects = document.getElementById('grant-load-objects');
+  if (loadObjects) {
+    loadObjects.addEventListener('click', loadGrantObjects);
+  }
+  var createGrant = document.getElementById('create-grant');
+  if (createGrant) {
+    createGrant.addEventListener('click', createDiagnosticGrant);
+  }
   requireLogin().then(function () {
     loadMemories();
     loadDocuments();
+    loadDiagnosticGrants();
   }).catch(function (error) {
     setStatus('action-status', error.message || String(error), 'bad');
   });
