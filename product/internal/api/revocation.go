@@ -11,7 +11,7 @@ package api
 // `revoked_at IS NULL` CAS is the idempotency and a repeated call replays 200.
 //
 // The runnable read is the documented non-contract surface over
-// `catalog.ResolveRunnableVersion` (ADR 0020): the authoritative, live-database
+// `catalog.ResolveRunnableVersion` (ADR 0022): the authoritative, live-database
 // answer a run entry (and T074's Request/Run creation) must use instead of a
 // catalog projection. A stale index can only supply a candidate version id; this
 // read refuses a revoked/archived/invisible one with a distinct 409/404.

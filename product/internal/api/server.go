@@ -325,7 +325,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
 	// F02B/T070: administrator revocation of one published version and the
-	// non-contract run-entry guard (ADR 0020). Revocation is admin-only over a
+	// non-contract run-entry guard (ADR 0022). Revocation is admin-only over a
 	// cookie session + CSRF; the guard is the authoritative live-database answer a
 	// stale catalog index cannot bypass, and T074 calls the same Go function.
 	mux.HandleFunc("POST /api/v1/versions/{version_id}/revoke", s.handleRevokeVersion)
