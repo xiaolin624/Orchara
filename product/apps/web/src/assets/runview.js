@@ -63,6 +63,25 @@ const RUNVIEW_TYPE_TEXT = {
 
 const RUNVIEW_TERMINAL_STATES = { succeeded: true, failed: true, cancelled: true };
 
+// The runtime brief's stable failure codes, with one honest sentence each. An
+// unknown code is still shown verbatim; no explanation is invented for it.
+const RUNVIEW_ERROR_HINT = {
+  invalid_activation: '运行期没有已激活的入边（条件端口与 join 的 required_sources 不匹配时会出现）；请检查草稿分支与 join 配置。',
+  condition_operand_invalid: '条件比较的操作数类型不符（gt/gte/lt/lte 只接受 JSON number）；请改用同类型字面量。',
+  node_input_invalid: '节点输入缺失或无法解析；请检查该节点的 inputs 绑定。',
+  node_output_invalid: '节点输出未通过 output_schema；请检查节点输出字段与 end 的映射。',
+  node_unsupported_model: '本版本执行器尚不支持 model 节点。',
+  node_unsupported_retrieve: '本版本执行器尚不支持 retrieve 节点。',
+  node_unsupported_approval: '本版本执行器尚不支持 approval 节点。',
+  tool_unsupported_graph: '执行器不支持该图（旧线性执行器仍会拒绝 F04B 节点）。',
+  invalid_region: '分支/汇合区域不合法；请检查 condition 的 join_id 与 join 的 fork_id 是否配对。',
+  cross_region_edge: '存在跨区边；分支内部节点只能连到配对的 join。',
+  bad_port: '边引用了条件节点未声明的端口。',
+  bad_join_sources: 'join 的 required_sources/optional_sources 与前驱不一致。',
+  sandbox_failed: '沙箱执行失败（设施问题）；可重试并查看运行报告。',
+  budget_exceeded: '预算已用尽。',
+};
+
 /**
  * Fold committed `node.status` events into `{node_id: {state, attempt_no}}`.
  *
@@ -199,6 +218,113 @@ function runViewTypeText(type, inDefinition) {
   return text || String(type || '未知');
 }
 
+/** Cap one rendered value; the page keeps the full value behind a details toggle. */
+function runViewTruncate(text, limit) {
+  const source = String(text === undefined || text === null ? '' : text);
+  const cap = Number.isSafeInteger(limit) && limit > 0 ? limit : 120;
+  return source.length <= cap ? source : source.slice(0, cap - 1) + '…';
+}
+
+function runViewPrettyJSON(value) {
+  try {
+    return runViewTruncate(JSON.stringify(value, null, 2), 4000);
+  } catch (error) {
+    return '';
+  }
+}
+
+/** The condition artifact's `matched_case`: a 0-based index, or the default port. */
+function runViewMatchedCaseText(matchedCase) {
+  if (matchedCase === 'default') {
+    return '默认分支';
+  }
+  if (typeof matchedCase === 'number' && Number.isSafeInteger(matchedCase) && matchedCase >= 0) {
+    return '第 ' + (matchedCase + 1) + ' 个 case';
+  }
+  if (typeof matchedCase === 'string' && /^\d+$/.test(matchedCase)) {
+    return '第 ' + (Number(matchedCase) + 1) + ' 个 case';
+  }
+  return '匹配信息缺失';
+}
+
+/** Fill the condition row from the non-contract `{port, matched_case}` artifact. */
+function runViewDescribeCondition(row) {
+  if (!row.condition || !row.content || typeof row.content !== 'object' || Array.isArray(row.content)) {
+    return;
+  }
+  const port = typeof row.content.port === 'string' ? row.content.port : '';
+  if (port === '') {
+    return;
+  }
+  row.branchPort = port;
+  row.matchedCase = row.content.matched_case === undefined ? null : row.content.matched_case;
+  row.branchText = '端口 ' + port + '（' + runViewMatchedCaseText(row.content.matched_case) + '）';
+}
+
+/**
+ * Fill the join row from the COMPILER-CONTRACT envelope
+ * `{results: {<source>: {status, value?, error_code?}}}`. Sources keep the
+ * definition's required+optional order; an extra envelope key is still shown.
+ */
+function runViewDescribeJoin(row, config) {
+  if (!row.join || !row.content || typeof row.content !== 'object' || Array.isArray(row.content)) {
+    return;
+  }
+  const results = row.content.results;
+  if (!results || typeof results !== 'object' || Array.isArray(results)) {
+    return;
+  }
+  const declared = [];
+  for (const key of ['required_sources', 'optional_sources']) {
+    const list = Array.isArray(config[key]) ? config[key] : [];
+    for (const value of list) {
+      const source = String(value === undefined || value === null ? '' : value);
+      if (source !== '' && declared.indexOf(source) === -1) {
+        declared.push(source);
+      }
+    }
+  }
+  const ordered = declared.filter((source) =>
+    Object.prototype.hasOwnProperty.call(results, source));
+  for (const source of Object.keys(results)) {
+    if (ordered.indexOf(source) === -1) {
+      ordered.push(source);
+    }
+  }
+  row.joinSources = ordered.map((source) => {
+    const entry = results[source] && typeof results[source] === 'object' ? results[source] : {};
+    const status = String(entry.status || '');
+    const errorCode = typeof entry.error_code === 'string' ? entry.error_code : '';
+    const hasValue = entry.value !== undefined && entry.value !== null;
+    let valueSummary = '';
+    if (hasValue) {
+      try {
+        valueSummary = runViewTruncate(JSON.stringify(entry.value), 120);
+      } catch (error) {
+        valueSummary = '';
+      }
+    }
+    const statusText = RUNVIEW_STATE_TEXT[status] || status || '未知';
+    return {
+      source: source,
+      status: status,
+      statusText: statusText,
+      hasValue: hasValue,
+      valueSummary: valueSummary,
+      valueText: hasValue ? runViewPrettyJSON(entry.value) : '',
+      errorCode: errorCode,
+      line:
+        source + '=' + statusText + (errorCode === '' ? '' : '（' + errorCode + '）') +
+        (hasValue ? ' · ' + valueSummary : ''),
+    };
+  });
+  row.joinText =
+    '汇合 ' + row.joinSources.length + ' 个来源 · ' +
+    row.joinSources
+      .map((source) => source.source + '=' + source.statusText + (source.errorCode === '' ? '' : '(' + source.errorCode + ')'))
+      .join('、');
+}
+
 /**
  * Build the ordered node-state rows of a Run.
  *
@@ -308,6 +434,8 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
       content: dataRow ? contents[String(dataRow.artifact_id || '')] : undefined,
       classNames: ['run-node-row', 'state-' + state].concat(inferred ? ['inferred'] : []),
     };
+    runViewDescribeCondition(row);
+    runViewDescribeJoin(row, config);
     rows.push(row);
   }
 
@@ -373,3 +501,124 @@ function runViewCancelPath(runId) {
 function runViewEventsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/events';
 }
+
+/**
+ * One honest sentence for the Run's state and stable error code.
+ *
+ * "Accepted" (202 cancel) is never "stopped"; a non-terminal state is never
+ * success. `hint` is only present for a code the runtime brief documents.
+ */
+function formatRunError(run) {
+  const value = run && typeof run === 'object' ? run : null;
+  const state = value && typeof value.state === 'string' ? value.state : '';
+  const code = value && typeof value.error_code === 'string' ? value.error_code : '';
+  const terminal = RUNVIEW_TERMINAL_STATES[state] === true;
+  if (!value) {
+    return {
+      code: '',
+      state: '',
+      terminal: false,
+      severity: '',
+      hint: '',
+      text: '（尚未收到 Run 快照；页面不会在没有服务端事实时显示成功或失败。）',
+    };
+  }
+  if (state === 'succeeded') {
+    return {
+      code: code,
+      state: state,
+      terminal: true,
+      severity: 'ok',
+      hint: '',
+      text: '运行成功（succeeded）；节点状态以已提交的 node.status 事件为准。',
+    };
+  }
+  if (state === 'failed') {
+    return {
+      code: code,
+      state: state,
+      terminal: true,
+      severity: 'bad',
+      hint: code === '' ? '' : RUNVIEW_ERROR_HINT[code] || '',
+      text:
+        code === ''
+          ? '运行失败（failed），服务端未给出 error_code；请查看运行报告与失败节点。'
+          : '运行失败（failed），稳定错误码 ' + code + '。',
+    };
+  }
+  if (state === 'cancelled') {
+    return {
+      code: code,
+      state: state,
+      terminal: true,
+      severity: '',
+      hint: '',
+      text: '运行已取消（cancelled）：平台已确认受控执行单元停止；这不表示撤回已经发送的外部写入。',
+    };
+  }
+  if (state === 'recovery_pending') {
+    return {
+      code: code,
+      state: state,
+      terminal: false,
+      severity: 'pending',
+      hint: '',
+      text: 'Run 挂起在 recovery_pending（已确认退出但没有结果）；恢复证据齐全前不会重新执行。',
+    };
+  }
+  if (state === 'needs_reconciliation') {
+    return {
+      code: code,
+      state: state,
+      terminal: false,
+      severity: 'pending',
+      hint: '',
+      text: 'Run 等待人工核对（needs_reconciliation）；不显示为成功或失败。',
+    };
+  }
+  if (state === 'cancelling') {
+    return {
+      code: code,
+      state: state,
+      terminal: false,
+      severity: 'pending',
+      hint: '',
+      text: '已收到取消意图（cancelling），等待执行单元退出并提交终态。',
+    };
+  }
+  if (state === 'running' || state === 'queued' || state === 'waiting_approval' ||
+      state === 'waiting_children') {
+    return {
+      code: code,
+      state: state,
+      terminal: false,
+      severity: 'pending',
+      hint: '',
+      text: 'Run 仍在进行（state=' + state + '）；页面会继续从服务端事实刷新。',
+    };
+  }
+  return {
+    code: code,
+    state: state,
+    terminal: false,
+    severity: '',
+    hint: '',
+    text: '（Run 快照没有可识别的 state；页面不推断状态。）',
+  };
+}
+
+/** A Run can be cancelled until its terminal state is committed. */
+function runViewCanCancel(run) {
+  if (!run || typeof run.state !== 'string' || run.state === '') {
+    return false;
+  }
+  return RUNVIEW_TERMINAL_STATES[run.state] !== true;
+}
+
+/** Cancelling is idempotent, so a second request is allowed and labelled. */
+function runViewCancelLabel(run) {
+  return String((run && run.state) || '') === 'cancelling'
+    ? '再次请求取消（幂等）'
+    : '取消 Run';
+}
+

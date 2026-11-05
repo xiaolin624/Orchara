@@ -234,4 +234,147 @@ test('buildRunViewModel carries run error codes and honest unknown states', () =
   assert.strictEqual(inferred.artifactId, 'a-left');
 });
 
+// --- buildRunViewModel: condition port and the join envelope ---------------
+
+test('buildRunViewModel reads the selected port and the join envelope from data artifacts', () => {
+  const runView = loadRunView();
+  const definition = exampleDefinition(BRANCH_EXAMPLE);
+  const nodeStates = statesFrom([
+    ['start', 'succeeded', 1],
+    ['choose', 'succeeded', 1],
+    ['approve', 'skipped', 1],
+    ['direct', 'succeeded', 1],
+    ['join', 'succeeded', 1],
+    ['end', 'succeeded', 1],
+  ]);
+  const nodeResults = {
+    items: [
+      { node_id: 'choose', kind: 'data', artifact_id: 'a-choose', media_type: 'application/json' },
+      { node_id: 'join', kind: 'data', artifact_id: 'a-join', media_type: 'application/json' },
+      { node_id: 'direct', kind: 'file', artifact_id: 'a-file', media_type: 'text/csv' },
+    ],
+  };
+  const contents = {
+    'a-choose': { port: 'no', matched_case: 'default' },
+    'a-join': {
+      results: {
+        approve: { status: 'skipped' },
+        direct: {
+          status: 'succeeded',
+          value: { summary: 'ok', nested: { a: 1 }, long: 'x'.repeat(300) },
+        },
+      },
+    },
+  };
+  const model = runView.buildRunViewModel(
+    definition, nodeStates, nodeResults, contents, { state: 'succeeded' },
+  );
+  const byID = Object.fromEntries(model.rows.map((row) => [row.nodeId, row]));
+  assert.strictEqual(byID.choose.artifactId, 'a-choose');
+  assert.strictEqual(byID.choose.branchPort, 'no');
+  assert.strictEqual(byID.choose.matchedCase, 'default');
+  assert.ok(byID.choose.branchText.includes('no'), byID.choose.branchText);
+  assert.ok(byID.choose.branchText.includes('默认'), byID.choose.branchText);
+  // The join sources keep the definition's required/optional order and the
+  // envelope's value is summarised (truncated) with the full value available.
+  assert.deepStrictEqual(plain(byID.join.joinSources.map((entry) => entry.source)),
+    ['approve', 'direct']);
+  assert.deepStrictEqual(plain(byID.join.joinSources.map((entry) => entry.status)),
+    ['skipped', 'succeeded']);
+  assert.strictEqual(byID.join.joinSources[0].statusText, '已跳过');
+  assert.strictEqual(byID.join.joinSources[0].hasValue, false);
+  assert.strictEqual(byID.join.joinSources[1].statusText, '成功');
+  assert.strictEqual(byID.join.joinSources[1].hasValue, true);
+  assert.ok(byID.join.joinSources[1].valueSummary.includes('summary'));
+  assert.ok(byID.join.joinSources[1].valueSummary.length <= 140,
+    byID.join.joinSources[1].valueSummary.length);
+  assert.ok(byID.join.joinSources[1].valueText.includes('"summary"'));
+  assert.ok(byID.join.joinText.includes('approve=已跳过'), byID.join.joinText);
+  assert.ok(byID.join.joinText.includes('direct=成功'), byID.join.joinText);
+  // matched_case is 0-based: the first case is shown as the first case.
+  const first = runView.buildRunViewModel(
+    definition, nodeStates, nodeResults,
+    { 'a-choose': { port: 'yes', matched_case: 0 }, 'a-join': contents['a-join'] },
+    { state: 'succeeded' },
+  );
+  const yesRow = first.rows.find((row) => row.nodeId === 'choose');
+  assert.ok(yesRow.branchText.includes('第 1 个 case'), yesRow.branchText);
+  // A failed join source keeps its stable error code in the source line.
+  const failedJoin = runView.buildRunViewModel(
+    definition, nodeStates, nodeResults,
+    {
+      'a-choose': { port: 'yes', matched_case: 0 },
+      'a-join': {
+        results: {
+          approve: { status: 'failed', error_code: 'sandbox_failed' },
+          direct: { status: 'skipped' },
+        },
+      },
+    },
+    { state: 'failed', error_code: 'sandbox_failed' },
+  );
+  const failedJoinRow = failedJoin.rows.find((row) => row.nodeId === 'join');
+  assert.strictEqual(failedJoinRow.joinSources[0].errorCode, 'sandbox_failed');
+  assert.ok(failedJoinRow.joinSources[0].line.includes('sandbox_failed'),
+    failedJoinRow.joinSources[0].line);
+  // Without the artifact bytes the port/envelope is simply not claimed.
+  const withoutContents = runView.buildRunViewModel(
+    definition, nodeStates, nodeResults, {}, { state: 'succeeded' },
+  );
+  const plainChoose = withoutContents.rows.find((row) => row.nodeId === 'choose');
+  assert.strictEqual(plainChoose.branchPort, '');
+  assert.strictEqual(plainChoose.branchText, '');
+  const plainJoin = withoutContents.rows.find((row) => row.nodeId === 'join');
+  assert.deepStrictEqual(plain(plainJoin.joinSources), []);
+  assert.strictEqual(plainJoin.joinText, '');
+});
+
+// --- formatRunError, cancel intent and paths -------------------------------
+
+test('formatRunError names the stable code and never turns intent into success', () => {
+  const runView = loadRunView();
+  const failed = runView.formatRunError({ state: 'failed', error_code: 'invalid_activation' });
+  assert.strictEqual(failed.code, 'invalid_activation');
+  assert.strictEqual(failed.severity, 'bad');
+  assert.strictEqual(failed.terminal, true);
+  assert.ok(failed.text.includes('invalid_activation'), failed.text);
+  assert.ok(failed.hint.length > 0, 'a known code should carry a human hint');
+  // An unrecognised code is still shown verbatim; no invented explanation.
+  const unknownCode = runView.formatRunError({ state: 'failed', error_code: 'brand_new_code' });
+  assert.ok(unknownCode.text.includes('brand_new_code'), unknownCode.text);
+  assert.strictEqual(unknownCode.hint, '');
+  const noCode = runView.formatRunError({ state: 'failed' });
+  assert.ok(noCode.text.includes('未给出'), noCode.text);
+  const succeeded = runView.formatRunError({ state: 'succeeded' });
+  assert.strictEqual(succeeded.severity, 'ok');
+  assert.strictEqual(succeeded.terminal, true);
+  assert.ok(succeeded.text.includes('成功'), succeeded.text);
+  const cancelled = runView.formatRunError({ state: 'cancelled' });
+  assert.strictEqual(cancelled.terminal, true);
+  assert.strictEqual(cancelled.severity, '');
+  assert.ok(cancelled.text.includes('取消'), cancelled.text);
+  const live = runView.formatRunError({ state: 'running' });
+  assert.strictEqual(live.terminal, false);
+  assert.strictEqual(live.severity, 'pending');
+  assert.ok(live.text.includes('running'), live.text);
+  const empty = runView.formatRunError(null);
+  assert.strictEqual(empty.terminal, false);
+  assert.strictEqual(empty.severity, '');
+  // A cancel request is only possible before a terminal state is committed.
+  assert.strictEqual(runView.runViewCanCancel({ state: 'running' }), true);
+  assert.strictEqual(runView.runViewCanCancel({ state: 'queued' }), true);
+  assert.strictEqual(runView.runViewCanCancel({ state: 'cancelling' }), true);
+  assert.strictEqual(runView.runViewCanCancel({ state: 'succeeded' }), false);
+  assert.strictEqual(runView.runViewCanCancel({ state: 'failed' }), false);
+  assert.strictEqual(runView.runViewCanCancel(null), false);
+  assert.strictEqual(runView.runViewCancelLabel({ state: 'cancelling' }), '再次请求取消（幂等）');
+  assert.strictEqual(runView.runViewCancelLabel({ state: 'running' }), '取消 Run');
+  // Paths encode their ids and never put a credential in a URL.
+  assert.strictEqual(runView.runViewCancelPath('r1'), '/api/v1/runs/r1/cancel');
+  assert.strictEqual(runView.runViewNodeResultsPath('r1'), '/api/v1/runs/r1/node-results');
+  assert.strictEqual(runView.runViewRunPath('r1'), '/api/v1/runs/r1');
+  assert.strictEqual(runView.runViewEventsPath('r1'), '/api/v1/runs/r1/events');
+  assert.strictEqual(runView.runViewArtifactContentPath('a b'), '/api/v1/artifacts/a%20b/content');
+});
+
 console.log('PASS ' + checks + ' runview tests');
