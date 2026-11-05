@@ -823,23 +823,35 @@ func loadConnectorDependenciesQ(
 }
 
 func (r *Reader) loadSubappDependencies(ctx context.Context, ids []string) (map[string]subappDependency, error) {
-	return loadSubappDependenciesQ(ctx, r.DB, ids)
+	return loadSubappDependenciesQ(ctx, r.DB, ids, false)
 }
 
+// loadSubappDependenciesQ reads the referenced child versions and their owning
+// applications. When lockChildVersions is set the same statement also takes
+// FOR KEY SHARE on the version rows: inside the approval transaction a concurrent
+// revoke (which takes FOR UPDATE on the version row before writing revoked_at)
+// then either commits before this read (and the revocation is visible to it) or
+// waits until the approval commits (a revocation that is strictly later). Without
+// the lock the read was plain MVCC and a revoke could commit between the check
+// and the version_dependencies insert.
 func loadSubappDependenciesQ(
-	ctx context.Context, q dependencyQueryer, ids []string,
+	ctx context.Context, q dependencyQueryer, ids []string, lockChildVersions bool,
 ) (map[string]subappDependency, error) {
 	rows := map[string]subappDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
-	result, err := q.QueryContext(ctx, `
+	statement := `
 		SELECT v.id::text, v.application_id::text, a.owner_id::text,
 		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL,
 		       v.manifest -> 'definition'
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
-		 WHERE v.id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
+		 WHERE v.id::text = ANY($1::text[])`
+	if lockChildVersions {
+		statement += " FOR KEY SHARE OF v"
+	}
+	result, err := q.QueryContext(ctx, statement, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading application versions: %w", err)
 	}
@@ -1295,11 +1307,15 @@ func uniqueStrings(values []string) []string {
 func (r *Reader) RecheckFrozenDependencies(
 	ctx context.Context, manifest *compiler.Manifest,
 ) ([]ExecutableError, error) {
-	return recheckFrozenDependencies(ctx, r.DB, manifest)
+	return recheckFrozenDependencies(ctx, r.DB, manifest, false)
 }
 
+// recheckFrozenDependencies is the one dependency gate. lockPinnedSubapps is true
+// only inside F02B's approval transaction, where the referenced child version
+// rows are locked FOR KEY SHARE so a concurrent revoke cannot commit between the
+// recheck and the version_dependencies insert.
 func recheckFrozenDependencies(
-	ctx context.Context, q dependencyQueryer, manifest *compiler.Manifest,
+	ctx context.Context, q dependencyQueryer, manifest *compiler.Manifest, lockPinnedSubapps bool,
 ) ([]ExecutableError, error) {
 	located := make([]ExecutableError, 0)
 	if manifest == nil {
@@ -1359,7 +1375,7 @@ func recheckFrozenDependencies(
 	for _, id := range manifest.SubappVersions {
 		subappIDs = append(subappIDs, normalizeDependencyID(id))
 	}
-	subapps, err := loadSubappDependenciesQ(ctx, q, subappIDs)
+	subapps, err := loadSubappDependenciesQ(ctx, q, subappIDs, lockPinnedSubapps)
 	if err != nil {
 		return nil, err
 	}

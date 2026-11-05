@@ -15,7 +15,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from support import t068, t027, t052
+from support import f00b, t025, t027, t052, t068, t070, t075, t078
+from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     api_server,
     fresh_database,
@@ -313,3 +314,117 @@ def test_concurrent_approvals_create_one_version_and_old_versions_stay_immutable
     fetched = session.client.get(f"/api/v1/versions/{first_version['id']}")
     assert fetched.status == 200, fetched.text
     assert fetched.json["manifest_sha256"] == manifest_sha, fetched.text
+
+
+# The test-only advisory key the injected revoke gate waits on (this database is
+# a throwaway and the trigger is dropped at the end of the test).
+_REVOKE_GATE_KEY = 7300681
+
+
+def _install_revoke_gate(dbname: str) -> None:
+    """Hold the real revoke transaction inside its own audit write.
+
+    The trigger blocks on an advisory lock that a test-held psql session owns, so
+    the revoke keeps the child version row locked but cannot commit until the test
+    releases the gate. That turns the approve-vs-revoke interleaving into an
+    observed order instead of a sleep.
+    """
+    st.sql(dbname, f"""
+        CREATE OR REPLACE FUNCTION platform.t068_revoke_gate() RETURNS trigger AS $$
+        BEGIN
+            PERFORM pg_advisory_xact_lock({_REVOKE_GATE_KEY});
+            RETURN NEW;
+        END
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER t068_revoke_gate BEFORE INSERT ON platform.audit_events
+            FOR EACH ROW WHEN (NEW.action = 'version.revoked')
+            EXECUTE FUNCTION platform.t068_revoke_gate();
+    """)
+
+
+def _drop_revoke_gate(dbname: str) -> None:
+    st.sql(dbname, """
+        DROP TRIGGER IF EXISTS t068_revoke_gate ON platform.audit_events;
+        DROP FUNCTION IF EXISTS platform.t068_revoke_gate();
+    """)
+
+
+def test_a_concurrent_revoke_cannot_slip_past_the_approval_dependency_lock(
+    t068_stack,
+) -> None:
+    """T068 AC5 (concurrent): the approval re-reads the pinned child under a lock.
+
+    Linearization asserted here: **the revoke commits first and the approval
+    fails**. The real revoke is held inside its transaction by an injected audit
+    trigger; the real approval then blocks on the child version row the revoke
+    locked FOR UPDATE (the recheck takes FOR KEY SHARE on that row). Releasing the
+    gate lets the revoke commit before the approval can re-read the row, so the
+    recheck sees ``dependency_revoked`` and no version is pinned. Without the lock
+    the approval would have passed its plain recheck while the revoke was still
+    uncommitted and then publish a parent pinned to a revoked child.
+    """
+    stack = t068_stack
+    _admin, creator = t075.creator(stack)
+
+    child_app = t025.create_application_or_fail(creator, "t068 race child")
+    saved = t075.save_definition(creator, child_app["id"], t078.child_definition())
+    assert saved.status == 200, saved.text
+    child_version = t078.publish_version(stack, creator, child_app["id"])
+
+    parent_app = t025.create_application_or_fail(creator, "t068 race parent")
+    saved = t075.save_definition(
+        creator, parent_app["id"], t078.parent_definition([child_version])
+    )
+    assert saved.status == 200, saved.text
+    report = t068.seeded_passed_report(
+        stack, session=creator, application_id=parent_app["id"]
+    )
+    snapshot = t027.snapshot_row(stack.dbname, report["evaluation"]["snapshot_id"])
+    manifest_sha = snapshot["manifest_sha256"]
+    submitted = t068.submit_publication(
+        creator, parent_app["id"],
+        expected_manifest_sha256=manifest_sha,
+        evaluation_report_id=report["report"]["id"],
+    )
+    assert submitted.status == 202, submitted.text
+    review_id = submitted.json["id"]
+
+    revoker = t068.admin_session(stack)
+    approver = t068.admin_session(stack)
+    holder = "t068-revoke-gate-" + f00b.new_uuid()[:8]
+    _install_revoke_gate(stack.dbname)
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        with st.HeldLock(
+            stack.dbname, f"SELECT pg_advisory_lock({_REVOKE_GATE_KEY});", name=holder
+        ) as gate:
+            revoked_future = pool.submit(
+                t070.revoke_version, revoker, child_version,
+                reason="concurrent revoke during an approval",
+            )
+            # The real revoke holds the child version row and is parked inside its
+            # own audit write: it has not committed.
+            st.wait_for_lock_waiters(stack.dbname)
+            approved_future = pool.submit(
+                t068.decided_review, approver, review_id,
+                decision="approve", manifest_sha256=manifest_sha,
+            )
+            # The approval now waits on the pinned child version row itself; the
+            # second waiter is the proof that it reached the recheck while the
+            # revoke was still uncommitted.
+            st.wait_for_lock_waiters(stack.dbname, count=2)
+            gate.release()
+        revoked = revoked_future.result(timeout=120)
+        approved = approved_future.result(timeout=120)
+    finally:
+        pool.shutdown(wait=True)
+        _drop_revoke_gate(stack.dbname)
+
+    assert revoked.status == 200, revoked.text
+    assert t070.version_row(stack.dbname, child_version)["revoked_at"] is not None
+    assert approved.status == 409, approved.text
+    assert approved.json["error"]["code"] == "dependency_unavailable", approved.text
+    located = approved.json["error"]["details"]["errors"]
+    assert any(error["code"] == "dependency_revoked" for error in located), located
+    assert t068.version_count(stack.dbname, parent_app["id"]) == 0
+    assert t068.review_row(stack.dbname, review_id)["state"] == "submitted"
