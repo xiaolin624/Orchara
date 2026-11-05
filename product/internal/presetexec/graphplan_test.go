@@ -480,9 +480,9 @@ func TestEvaluateConditionNeverCoercesTypes(t *testing.T) {
 		return map[string]any{"flag": false, "number": float64(0), "text": "x"}
 	}
 	for _, testCase := range []struct {
-		name     string
-		mutate   func(map[string]any)
-		port     string
+		name   string
+		mutate func(map[string]any)
+		port   string
 	}{
 		{"bool string is not a bool", func(b map[string]any) { b["flag"] = "true" }, "no"},
 		{"bool matches", func(b map[string]any) { b["flag"] = true }, "bool"},
