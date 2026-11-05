@@ -62,6 +62,12 @@ def test_the_bundle_ships_the_condition_and_join_surfaces() -> None:
         "no_free_port",
         "fork_requires_join",
         "cross_region_edge",
+        # F04B/T085: the optional branch's convergence rule is visible in the
+        # join panel (only pure read/compute errors are absorbed; writes,
+        # authorization, budget and approval failures are never downgraded).
+        "config.optional_sources.convergence",
+        "仅纯读/计算错误可收敛",
+        "不会降级",
     ):
         assert marker in text, marker
     css = (ASSETS / "canvas.css").read_text(encoding="utf-8")

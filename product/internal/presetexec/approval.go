@@ -107,32 +107,34 @@ func parseApprovalConfig(node *manifestNode) (*approvalConfig, error) {
 }
 
 // executeGraphApproval asks the platform for the one approval of this node and
-// either parks the attempt (pending) or publishes the decision (approved).
+// either parks the attempt (pending) or publishes the decision (approved). It
+// runs on T085's concurrent scheduler: the node only records its decision on the
+// attempt record, and the scheduler commits it after the other branches stopped.
 func (r *runner) executeGraphApproval(
-	ctx context.Context, run *graphRun, node *graphNode,
+	ctx context.Context, node *graphNode, view *graphNodeView,
 ) (executionOutcome, map[string]any, bool) {
 	id := node.node.ID
 	config := node.approval
 	if config == nil {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeBadConfig,
+		return r.failGraph(ctx, id, CodeBadConfig,
 			"the approval node was not planned"), nil, true
 	}
 	r.emitNode(ctx, id, "pending")
 	r.emitNode(ctx, id, "running")
 
-	bindings, err := resolveNodeBindings(node.node, run.available())
+	bindings, err := resolveNodeBindings(node.node, view.available)
 	if err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeNodeInputInvalid,
+		return r.failGraph(ctx, id, CodeNodeInputInvalid,
 			err.Error()), nil, true
 	}
 	rawProposal, present := bindings["proposal"]
 	if !present {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeNodeInputInvalid,
+		return r.failGraph(ctx, id, CodeNodeInputInvalid,
 			id+".proposal: the approval node has no bound proposal"), nil, true
 	}
 	proposal, ok := rawProposal.(map[string]any)
 	if !ok {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeNodeInputInvalid,
+		return r.failGraph(ctx, id, CodeNodeInputInvalid,
 			id+".proposal: the approval proposal must be a JSON object"), nil, true
 	}
 
@@ -148,70 +150,54 @@ func (r *runner) executeGraphApproval(
 		},
 	)
 	if err != nil {
-		return r.failGraph(ctx, run, id, CodeApprovalPrepareFailed,
+		return r.failGraph(ctx, id, CodeApprovalPrepareFailed,
 			"the node approval could not be prepared: "+err.Error()), nil, true
 	}
 
 	switch approval.State {
 	case "pending":
-		return r.waitGraphApproval(ctx, run, node, approval), nil, true
+		return r.waitGraphApproval(ctx, view, approval), nil, true
 	case "approved":
-		return r.publishGraphApproval(ctx, run, node, approval, proposal)
+		return r.publishGraphApproval(ctx, node, approval, proposal)
 	case "rejected":
-		return r.failGraph(ctx, run, id, CodeApprovalRejected,
+		return r.failGraph(ctx, id, CodeApprovalRejected,
 			"the node approval was rejected; the run stops before any later node"), nil, true
 	case "expired":
-		return r.failGraph(ctx, run, id, CodeApprovalExpired,
+		return r.failGraph(ctx, id, CodeApprovalExpired,
 			"the node approval expired; the run stops before any later node"), nil, true
 	case "invalidated":
-		return r.failGraph(ctx, run, id, CodeApprovalInvalidated,
+		return r.failGraph(ctx, id, CodeApprovalInvalidated,
 			"the node approval was invalidated; the run stops before any later node"), nil, true
 	default:
-		return r.failGraph(ctx, run, id, CodeApprovalPrepareFailed,
+		return r.failGraph(ctx, id, CodeApprovalPrepareFailed,
 			"the node approval returned the unknown state "+approval.State), nil, true
 	}
 }
 
 // waitGraphApproval parks the attempt at the fixed approval checkpoint. The
-// supervisor exit fact is certified before the platform may create the one
-// resume job; nothing here reports node success.
+// scheduler submits the waiting proposal and certifies the supervisor exit fact
+// after the other branches stopped, so nothing here reports node success or
+// commits a result itself.
 func (r *runner) waitGraphApproval(
-	ctx context.Context, run *graphRun, node *graphNode, approval *NodeApproval,
+	ctx context.Context, view *graphNodeView, approval *NodeApproval,
 ) executionOutcome {
-	if err := r.deps.Client.SubmitResult(
-		ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
-			EventID:        uuid.NewString(),
-			SuggestedState: "waiting_approval",
-			CheckpointID:   "approval:" + approval.ID,
-			ErrorCode:      CodeApprovalRequired,
-		},
-	); err != nil {
-		return r.failGraph(ctx, run, node.node.ID, CodeApprovalPrepareFailed,
-			"the approval waiting result was refused: "+err.Error())
-	}
-	evidence := r.exitEvidence(r.heartbeatCount(), run.last, nil)
-	if err := r.confirmExit(ctx, run.started, evidence); err != nil {
-		return executionOutcome{
-			outcome:  "error",
-			code:     CodeApprovalPrepareFailed,
-			err:      "the approval exit confirmation was refused: " + err.Error(),
-			runState: r.readRunState(ctx),
-			sandbox:  run.report,
-		}
-	}
-	return executionOutcome{
-		outcome:  "waiting_approval",
-		code:     CodeApprovalRequired,
-		runState: r.readRunState(ctx),
-		sandbox:  run.report,
-	}
+	// The launch snapshot carries the run's deterministic last-sandbox evidence;
+	// the scheduler commits it with the waiting decision.
+	evidence := r.exitEvidence(r.heartbeatCount(), view.last, nil)
+	captureGraphWaiting(ctx, Proposal{
+		EventID:        uuid.NewString(),
+		SuggestedState: "waiting_approval",
+		CheckpointID:   "approval:" + approval.ID,
+		ErrorCode:      CodeApprovalRequired,
+	}, "waiting_approval", view.last, evidence, CodeApprovalPrepareFailed)
+	return executionOutcome{}
 }
 
 // publishGraphApproval writes the approved decision as the node's data output.
 // The output shape is documented in reports/f04b/T087-approval-node.md; it
 // carries only server decision facts plus the resolved proposal the human saw.
 func (r *runner) publishGraphApproval(
-	ctx context.Context, run *graphRun, node *graphNode,
+	ctx context.Context, node *graphNode,
 	approval *NodeApproval, proposal map[string]any,
 ) (executionOutcome, map[string]any, bool) {
 	id := node.node.ID
@@ -227,22 +213,22 @@ func (r *runner) publishGraphApproval(
 		"proposal":      proposal,
 	}
 	if err := validateSchema(node.node.OutputSchema, output, "#/data"); err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeNodeOutputInvalid,
+		return r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
 			"the approval output does not match the node output_schema: "+err.Error()), nil, true
 	}
 	canonical, err := canonicalNodeDocument(output)
 	if err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, run, node, CodeNodeOutputInvalid,
+		return r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
 			"the approval output cannot be encoded"), nil, true
 	}
 	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
 	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, run, node, CodeSandboxFailed,
+		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
 			"registering the approval decision failed: "+err.Error()), nil, true
 	}
 	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
 		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "data"}}); err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, run, node, CodeSandboxFailed,
+		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
 			"recording the approval decision failed: "+err.Error()), nil, true
 	}
 	r.emitNode(ctx, id, "succeeded")
