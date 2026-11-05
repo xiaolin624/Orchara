@@ -250,6 +250,45 @@ def test_a_deployed_third_party_component_is_recorded_external_not_erasable(
     assert "third_party_history" not in t069.remaining_scopes(job_after), job_after
 
 
+def test_a_failed_model_call_count_is_recorded_as_a_failed_check(
+    t069_stack, tmp_path
+) -> None:
+    """T072 AC1/AC4: a failed vendor-copy check is not "nothing to look for".
+
+    The failure is real: ``platform.operations`` is renamed away for the pass, so
+    the model-call count query fails. The vendor class must be recorded failed and
+    the scope kept; before the fix the same failure was recorded ``absent`` with
+    ``no_external_model_path``.
+    """
+    stack = t069_stack
+    owner, run, _lease = t072.claimed_run_with_exited_attempt(
+        stack, input_value={"text": "t072 failed count"}
+    )
+    job = t072.delete_run_input_artifact(stack, owner, run["id"])
+
+    st.sql(stack.dbname, "ALTER TABLE platform.operations RENAME TO operations_t072_hidden")
+    try:
+        completed, reports = t072.copies(stack, sandbox_root=tmp_path / "sandbox")
+    finally:
+        st.sql(
+            stack.dbname,
+            "ALTER TABLE platform.operations_t072_hidden RENAME TO operations",
+        )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    entries = t072.entries_for_job(stack.dbname, job["id"])
+    vendor = t072.entry_of(entries, copy_class="vendor_copy")
+    assert vendor["entry_kind"] == "scope_failed", vendor
+    record = t072.ledger_record(vendor)
+    assert record["reason"] == "model_call_count_failed", record
+    assert record["error_code"] == "copy_vendor_count_failed", record
+
+    job_after = t069.deletion_job(stack.dbname, job["id"])
+    assert job_after["state"] == "failed", job_after
+    assert job_after["error_code"] == "copy_vendor_count_failed", job_after
+    assert "third_party_history" in t069.remaining_scopes(job_after), job_after
+
+
 def test_the_summary_surfaces_hold_no_body_copy(t069_stack, tmp_path) -> None:
     stack = t069_stack
     sentinel = "T072-SUMMARY-SENTINEL " + uuid.uuid4().hex

@@ -280,7 +280,15 @@ func (s *Service) Delete(
 	// A repeated delete also retries cancellation for runs that were still
 	// non-terminal when the target re-read them.
 	if len(plan.AffectedRuns) > 0 {
-		s.cancelAffectedRuns(ctx, caller, job, plan.AffectedRuns, created)
+		if err := s.cancelAffectedRuns(ctx, caller, job, plan.AffectedRuns, created); err != nil {
+			// The tombstone is already committed, so the 202 still stands; what must
+			// not happen is an unrecorded fan-out looking like a clean delete. Retry
+			// the visible marker on the job, and if even that write fails return the
+			// failure instead of swallowing it.
+			if markErr := s.markCancellationIncomplete(ctx, job.ID); markErr != nil {
+				return job, errors.Join(err, markErr)
+			}
+		}
 	}
 	return job, nil
 }
@@ -421,10 +429,11 @@ func (s *Service) existingJobTx(
 // and records the safe outcome in the audit trail. A cancellation refusal never
 // resurrects the resource: the tombstone already committed. The job's
 // error_code records an incomplete fan-out so operators (and a repeated DELETE)
-// can retry it.
+// can retry it; a failure to record even that is returned to the caller rather
+// than swallowed.
 func (s *Service) cancelAffectedRuns(
 	ctx context.Context, callerID string, job *Job, runs []AffectedRun, firstAttempt bool,
-) {
+) error {
 	results := make([]map[string]any, 0, len(runs))
 	failures := 0
 	for _, run := range runs {
@@ -450,20 +459,19 @@ func (s *Service) cancelAffectedRuns(
 		})
 	}
 	if len(results) == 0 {
-		return
+		return nil
 	}
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		// Best effort: the next repeated DELETE re-selects the affected runs.
-		return
+		return fmt.Errorf("starting the run cancellation audit: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	actor := callerID
 	for _, result := range results {
 		runID, _ := result["run_id"].(string)
 		if err := audit.Record(ctx, tx, &actor, "deletion.run_cancel", "run", &runID, result); err != nil {
-			return
+			return fmt.Errorf("recording the run cancellation of %s: %w", runID, err)
 		}
 	}
 	if failures > 0 {
@@ -471,16 +479,32 @@ func (s *Service) cancelAffectedRuns(
 			UPDATE platform.deletion_jobs
 			   SET error_code = 'run_cancel_incomplete', updated_at = now()
 			 WHERE id = $1::uuid AND state <> 'completed'`, job.ID); err != nil {
-			return
+			return fmt.Errorf("recording the incomplete run cancellation: %w", err)
 		}
 	} else if firstAttempt {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE platform.deletion_jobs SET updated_at = now()
 			 WHERE id = $1::uuid`, job.ID); err != nil {
-			return
+			return fmt.Errorf("touching the deletion job after the cancellation fan-out: %w", err)
 		}
 	}
-	_ = tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing the run cancellation audit: %w", err)
+	}
+	return nil
+}
+
+// markCancellationIncomplete is the second attempt at making a failed
+// post-commit fan-out visible. The tombstone committed, so the delete stands;
+// this write is what keeps the job from reading as a clean delete.
+func (s *Service) markCancellationIncomplete(ctx context.Context, jobID string) error {
+	if _, err := s.DB.ExecContext(ctx, `
+		UPDATE platform.deletion_jobs
+		   SET error_code = 'run_cancel_incomplete', updated_at = now()
+		 WHERE id = $1::uuid AND state <> 'completed'`, jobID); err != nil {
+		return fmt.Errorf("recording the incomplete run cancellation: %w", err)
+	}
+	return nil
 }
 
 // runState reads the committed run state, or "" when the run is gone.
