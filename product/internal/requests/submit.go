@@ -37,12 +37,15 @@ const idempotencyTTL = 24 * 60 * 60
 // Order is deliberate:
 //  1. idempotency scope and canonical body (422/400) — cheap, no writes;
 //  2. the conversation is live and owned by the caller (404) — nothing leaks;
-//  3. the explicit version is published/runnable (404/409) — no Run is ever
+//  3. a committed receipt for this key replays the stored 202 body first (409 on
+//     the same key with a different body), so a revocation that happened after
+//     the commit cannot turn a replay into a version refusal;
+//  4. the explicit version is published/runnable (404/409) — no Run is ever
 //     created from a revoked version;
-//  4. referenced attachments and handover sources are the caller's (422);
-//  5. the message bytes and the confirmed handover summary are sealed (503 if the
+//  5. referenced attachments and handover sources are the caller's (422);
+//  6. the message bytes and the confirmed handover summary are sealed (503 if the
 //     object store is absent);
-//  6. one transaction: lock the conversation, claim the receipt, write the
+//  7. one transaction: lock the conversation, claim the receipt, write the
 //     Request (+ handover record), then promote/dispatch it if it is the earliest
 //     unfinished request and the slot is free.
 //
@@ -77,6 +80,19 @@ func (s *Service) Submit(
 	}
 	if !alive {
 		return nil, conversationNotFound()
+	}
+
+	// Post-review fix (#75 ordering): a committed receipt is authoritative, so a
+	// replay is answered before the version/authorisation checks that protect a
+	// *new* execution. A request committed against a version that was revoked
+	// afterwards must still replay as the same Request/Run, not 409
+	// version_revoked; the same key with a different body stays 409. The
+	// conversation liveness check above stays first: a deleted conversation
+	// refuses even the replay.
+	if outcome, found, err := s.replayIfPresent(ctx, scope, input.RequestSHA256); err != nil {
+		return nil, err
+	} else if found {
+		return outcome, nil
 	}
 
 	// The explicit version is checked before any bytes are sealed. The transaction
@@ -425,6 +441,35 @@ func (s *Service) createRequestTx(ctx context.Context, params createParams) (*Su
 		return nil, fmt.Errorf("committing the request: %w", err)
 	}
 	return &SubmitOutcome{Request: created, Replayed: false}, nil
+}
+
+// replayIfPresent reads the committed receipt before the version/authorisation
+// checks. found=false means no receipt: the caller may execute a new request.
+// found=true always returns an outcome or a refusal (the same-key collision is
+// reported here, not by the insert conflict, so the version check can never
+// pre-empt a committed key). A receipt written concurrently is invisible until it
+// commits, so this pre-read cannot steal the createRequestTx conflict path.
+func (s *Service) replayIfPresent(
+	ctx context.Context, scope IdempotencyScope, digest string,
+) (*SubmitOutcome, bool, error) {
+	var storedDigest string
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT request_sha256
+		  FROM platform.idempotency_keys
+		 WHERE principal_id = $1::uuid AND method = $2 AND path = $3 AND key = $4`,
+		scope.PrincipalID, scope.Method, scope.Path, scope.Key,
+	).Scan(&storedDigest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the idempotency receipt: %w", err)
+	}
+	if storedDigest != digest {
+		return nil, true, &IdempotencyConflictError{}
+	}
+	outcome, err := s.replay(ctx, scope, digest)
+	return outcome, true, err
 }
 
 // replay returns the stored 202 body when the key and canonical body match. A

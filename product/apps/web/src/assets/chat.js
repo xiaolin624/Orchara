@@ -105,6 +105,27 @@ function describeQueue(items, activeID) {
 }
 
 /**
+ * The request a conversation load must show again. The active request wins when it
+ * is still in the timeline; otherwise the first request that can still move (the
+ * queue slot holder, which is the one carrying a live interaction) is restored;
+ * a dispatched request is shown for its handling version. A timeline whose requests
+ * are all terminal restores nothing: there is no control surface left to continue.
+ */
+function resumableRequest(items, activeID) {
+  const list = Array.isArray(items) ? items : [];
+  const known = (id) => list.some((item) => item && item.id === id);
+  if (activeID && known(activeID)) {
+    return activeID;
+  }
+  const waiting = list.find((item) => item && WAITING_STATES.includes(item.state));
+  if (waiting) {
+    return waiting.id;
+  }
+  const dispatched = list.find((item) => item && item.state === 'dispatched');
+  return dispatched ? dispatched.id : '';
+}
+
+/**
  * Pending interaction projection; `visible:false` means there is nothing to answer.
  *
  * The proposal is the sealed server projection (question / candidates / missing
@@ -217,6 +238,16 @@ function interactionReplyBody(interactionID, message, candidateVersionID, artifa
     throw pageFailure('interaction_id', '请选择候选或补充信息后再提交');
   }
   return body;
+}
+
+/**
+ * The uploaded artifact ids a reply carries. The page never sends an artifact the
+ * user did not upload here; the server re-validates readiness, ownership and that
+ * the artifact answers the request's missing inputs.
+ */
+function replyArtifactIDs(uploaded) {
+  const list = Array.isArray(uploaded) ? uploaded : [];
+  return Array.from(new Set(list.filter(Boolean).map(String)));
 }
 
 /** One reply attempt owns one key; a retry reuses the same object/key. */
@@ -525,6 +556,7 @@ function initChat() {
   }
   let currentConversationID = null;
   let currentRequestID = null;
+  let queueRequests = [];
   let attachmentIDs = [];
   let pollTimer = null;
   let pendingAttempt = null;
@@ -569,11 +601,15 @@ function initChat() {
   }
 
   async function selectConversation(conversationID) {
+    stopPolling();
     currentConversationID = conversationID;
     currentRequestID = null;
+    currentInteraction = null;
+    currentInteractionAttempt = null;
     attachmentIDs = [];
     handoffArtifactIDs = [];
     currentHandoffPreview = null;
+    queueRequests = [];
     document.getElementById('chat-conversation-id').textContent = conversationID;
     document.getElementById('chat-handoff-source-runs').value = '';
     document.getElementById('chat-handoff-artifact-options').replaceChildren();
@@ -581,10 +617,23 @@ function initChat() {
     document.getElementById('chat-handoff-summary').textContent = '';
     document.getElementById('chat-handoff-scope').textContent = '';
     document.getElementById('chat-handoff-confirmed').checked = false;
+    document.getElementById('request-panel').hidden = true;
+    document.getElementById('chat-request-id').textContent = '';
+    document.getElementById('chat-request-state').textContent = '';
+    document.getElementById('chat-handling').textContent = '';
+    document.getElementById('chat-run-link').replaceChildren();
+    renderInteraction(null);
     panel.hidden = false;
     renderAttachmentLines();
     await loadMessages();
     await refreshQueue();
+    // Post-review fix (#80): reopening a conversation restores the request that
+    // still controls it — the interaction panel/candidates and polling come back,
+    // and the queue below is clickable.
+    const resumeID = resumableRequest(queueRequests, null);
+    if (resumeID) {
+      await showRequest(resumeID, true);
+    }
   }
 
   async function loadMessages() {
@@ -652,6 +701,7 @@ function initChat() {
         }
       }
     }
+    queueRequests = requests;
     const queue = describeQueue(
       requests.map((request) => ({ id: request.id, state: request.state })),
       currentRequestID,
@@ -659,8 +709,74 @@ function initChat() {
     document.getElementById('chat-queue-status').textContent = queue.text;
     for (const row of queue.rows) {
       const item = document.createElement('li');
-      item.textContent = row.position + '. ' + row.label + ' · ' + row.id.slice(0, 8);
+      item.dataset.requestId = row.id;
+      const show = document.createElement('button');
+      show.type = 'button';
+      show.textContent = row.position + '. ' + row.label + ' · ' + row.id.slice(0, 8);
+      show.addEventListener('click', () => {
+        showRequest(row.id, true);
+      });
+      item.appendChild(show);
+      // Post-review fix (#80): a queued/awaiting request is visible and cancellable
+      // from the queue itself, not only while it happens to be the selected one.
+      if (row.cancelable) {
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = '取消';
+        cancel.addEventListener('click', () => {
+          cancelRequest(row.id);
+        });
+        item.appendChild(cancel);
+      }
       queueList.appendChild(item);
+    }
+  }
+
+  /** Load and render one request; `resume` continues its polling. */
+  async function showRequest(requestID, resume) {
+    if (!requestID) {
+      return;
+    }
+    stopPolling();
+    currentRequestID = requestID;
+    currentInteraction = null;
+    currentInteractionAttempt = null;
+    renderInteraction(null);
+    try {
+      const result = await fetchRequest(requestID);
+      renderRequest(result.request, result.facts, result.run);
+      if (resume) {
+        poll(0);
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setStatus(submitStatus, '查询请求失败 [' + error.code + '] ' + error.message, 'bad');
+    }
+  }
+
+  /** The one cancel path for the selected request and for a queue row. */
+  async function cancelRequest(requestID) {
+    if (!requestID) {
+      return;
+    }
+    try {
+      const csrfToken = await csrf();
+      await api(requestCancelPath(requestID), { method: 'POST', csrf: csrfToken });
+      setStatus(submitStatus, '已接受取消意图，正在刷新状态…', 'pending');
+      await loadMessages();
+      await refreshQueue();
+      if (requestID === currentRequestID) {
+        poll(0);
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setStatus(submitStatus, '取消失败 [' + error.code + '] ' + error.message, 'bad');
     }
   }
 
@@ -1050,24 +1166,8 @@ function initChat() {
     }
   });
 
-  document.getElementById('chat-cancel').addEventListener('click', async () => {
-    if (!currentRequestID) {
-      return;
-    }
-    try {
-      const csrfToken = await csrf();
-      await api(requestCancelPath(currentRequestID), { method: 'POST', csrf: csrfToken });
-      setStatus(submitStatus, '已接受取消意图，正在刷新状态…', 'pending');
-      await loadMessages();
-      await refreshQueue();
-      poll(0);
-    } catch (error) {
-      if (error.status === 401) {
-        window.location.assign('/login');
-        return;
-      }
-      setStatus(submitStatus, '取消失败 [' + error.code + '] ' + error.message, 'bad');
-    }
+  document.getElementById('chat-cancel').addEventListener('click', () => {
+    cancelRequest(currentRequestID);
   });
 
   document.getElementById('interaction-reply').addEventListener('click', async () => {
@@ -1083,11 +1183,13 @@ function initChat() {
     }
     let body;
     try {
+      // Post-review fix (#80): the missing-input reply carries the artifacts the
+      // user uploaded for it; a hard-coded [] could never complete a CSV request.
       body = interactionReplyBody(
         currentInteraction.interaction_id,
         document.getElementById('interaction-message').value,
         candidate,
-        [],
+        replyArtifactIDs(attachmentIDs),
       );
     } catch (error) {
       setStatus(interactionStatus, '无法答复 [' + error.code + '] ' + error.message, 'bad');
