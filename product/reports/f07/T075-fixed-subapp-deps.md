@@ -347,4 +347,5 @@ T070 合并后补充：`ListVersions`/`GetVersion` 现在过滤 `revoked_at`（T
 
 - ADR：[0023 — Fixed sub-application delegation at publication time](docs/adr/0023-f07-fixed-subapp-delegation.md)
 - 规格：spec ADR 0011、`WORKFLOW-SPEC.md` §2/§3、`COMPILER-CONTRACT.md:35`、EXECUTION.md:70/72/78。
-- 依赖：T068 发布器（`internal/catalog/publication.go`）、T070 撤销端点（未来）、T078 子运行。
+- 依赖：T068 发布器（`internal/catalog/publication.go`）、T070 版本撤销（`ListVersions`/`GetVersion`
+  过滤 revoked，`POST /versions/{id}/revoke`）、T078 子运行（本票 partial 的 owner）。
