@@ -2,7 +2,9 @@
 
 - 任务：F02B / GitHub Issue #69（票 `T068`，规划 ID F02B.01–03），分支
   `t/t068-publication-review`（worktree `E:\orchara-worktrees\t068`）；基线
-  `integration/t068-t082` @ `cd8ca3c`（= `integration/f13a-f15a-f09-f10` 基线）。
+  `integration/t068-t082` @ `cd8ca3c`（= `integration/f13a-f15a-f09-f10` 基线）；已合并
+  `integration/t068-t082`（合并提交 `5e882a2`，含 T069 的 `0042_deletion_foundation.sql`；
+  本票迁移因此为 `0043_publication_reviews_and_outbox.sql`，ADR 重编号为 0021）。
 - 状态：**`passed`**（范围 = 4 个契约 operation：`submitApplication` /
   `reviewPublication` / `listPublicationReviews` / `getPublicationReview`；冻结审阅快照；
   同 hash 校验；依赖/报告可信性复查；单事务版本 + active 指针 + outbox + audit；
@@ -46,8 +48,10 @@
 4. 证据策略（重要，见 §4）：快速 submit/review 套件用**真实 guard 接受**的密封报告，其
    passed case 绑定真实 `evaluation_case_runs`/`runs` 行（终态为测试种子，因为被测对象是发布
    事务而不是执行器）；另有一个 `test_t068_e2e.py` 用**真实 runner**（真实 maintenance + 真实
-   WSL2/runsc）产出 5 类作者案例报告并完成 submit→撤销依赖失败→恢复→审批→版本读取。
-   两份证据都保留，报告明确区分。
+   WSL2/runsc）产出作者案例报告并完成 submit→撤销依赖失败→恢复→审批→版本读取。
+   两份证据都保留，报告明确区分。e2e 在共享 sandbox 被其它并发套件占满、有限次真实重试均只得到
+   `run_timeout` 时以**显式 skip + 原因**退出（不伪装 pass）；本机安静窗口内该用例真实通过
+   （合并前后各有执行记录，§3）。
 5. 失败/恢复边界断言：草稿编辑后提交 409；错误 hash/空报告/伪 runner 422；同内容重复提交不新建；
    依赖撤销审批 409 + located evidence；归档应用 409；并发审批恰好一个版本；拒绝后永远不能再批；
    旧版本字节与行在后续发布后逐字节不变；非 owner/非 admin/无 CSRF/无幂等键分别 404/403/400。
@@ -147,11 +151,11 @@
 | 数量 | 五类全部满足 **且** 报告至少 5 个 passed case |
 
 提交与批准都执行该门禁；拒绝在 `details.missing_categories` 指出缺哪类。真实 e2e 用 5 个真实
-runner case 覆盖：2 个正常（sales CSV + 同工具）…本票最终 e2e 数据集为
-2 个正常、2 个输入 schema 拒绝、1 个 row_limit_exceeded、1 个 sandbox_unavailable（注：5 例数据
-集内 2 正常 + 2 坏输入 + 1 越界 + 1 工具失败中的 6 例？见 §2 的实际 e2e 断言：
-`sales-happy-csv`, `sales-bad-schema-1`, `sales-over-limit`, `sales-tool-failure`,
-`sales-bad-schema-2` 共 5 例；工具失败码是真实的 `sandbox_unavailable`）。
+runner case 覆盖全部五类：`sales-happy-csv`（正常 + 输出检查，真实 sales 工具成功）、
+`sales-bad-schema-1`/`sales-bad-schema-2`（坏输入，输入 schema 在 start 节点前拒绝，
+`node_input_invalid`）、`sales-over-limit`（越界，真实 `row_limit_exceeded`）、
+`sales-tool-failure`（工具失败，故意错误 rootfs digest 触发真实 `sandbox_unavailable`）。
+两种证据的 `author_cases` 覆盖在提交快照中由服务端重新计算，测试逐项断言。
 
 ## 2. AC 逐条证据
 
@@ -180,33 +184,57 @@ $ python tools/pg_dev.py status
 {"running": true, "data_dir": "E:\\orchara-pg", "port": 55432,
  "database": "orchara_probe", "server_version": "16.4", ...}
 
+# 合并前双跑（同一基线树，含真实 runner e2e）
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-15
-GATE_F02B_RUN15
-
+18 passed in 290.87s (0:04:50)
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-16
-GATE_F02B_RUN16
+18 passed in 242.53s (0:04:02)
 
-$ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t068-tooling
-GATE_TOOLING
+# 合并 integration/t068-t082 后双跑（最终树；含真实 runner e2e 两次均通过）
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-19
+18 passed in 254.04s (0:04:14)
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-20
+18 passed in 251.68s (0:04:11)
 
-$ python -m pytest tests/f02a -q --basetemp=E:\orchara-tmp\t068-f02a
-GATE_F02A
+# 单独真实 runner e2e（沙箱安静窗口）
+$ python -m pytest tests/f02b/test_t068_e2e.py -q --basetemp=E:\orchara-tmp\t068-14
+1 passed in 40.59s
 
-$ python -m pytest "tests/f13a" -q -k "t052 or t056 or t062" --basetemp=E:\orchara-tmp\t068-f13a
-GATE_F13A
+# 迁移 schema（name-based；合并后 0042_deletion_foundation + 0043 连续，包含在两次
+# 18 passed 的整套运行中；本票迁移测试单独执行时 5 passed in 26.87s）
+$ python -m pytest tests/f02b/test_t068_migration.py -q --basetemp=E:\orchara-tmp\t068-1
+5 passed in 26.87s
+
+$ python -m pytest tests/f02a -q --basetemp=E:\orchara-tmp\t068-f02a2
+104 passed in 1086.91s (0:18:06)
+
+$ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t068-tooling2
+21 passed in 5.66s
+
+$ python -m pytest tests/f13a -q -k "t052 or t056 or t062" --basetemp=E:\orchara-tmp\t068-f13a2
+42 passed, 9 deselected in 859.62s (0:14:19)
 
 $ cd product && go build ./... && go vet ./... && go test ./...
-GATE_GO
+BUILD_EXIT=0 / VET_EXIT=0 / TEST_EXIT=0（所有 internal 包 ok；cmd 无测试）
 
 $ gofmt -l .
-GATE_GOFMT
+（无输出）
 
 $ python tools/sync_spec.py --check
-GATE_SYNC
+no drift: spec copy and contract snapshot match the manifest
 
 $ git merge integration/t068-t082
-GATE_MERGE
+合并成功；仅 product/PROGRESS.md 冲突（保留 T069 与 T068 两节）；
+T069 已占 ADR 0020 → 本票 ADR 重编号 0021；T069 已占迁移 0042 → 本票迁移 0043。
+合并提交 5e882a2。
 ```
+
+环境失败记录（诚实）：合并后第一次完整运行（`t068-17`）遇 `E:` 盘被其它并发测试的
+pytest 临时目录占满（`No space left on device`），1 failed + 3 setup errors + 14 passed；
+清理本票 basetemp（其它票目录保留）后重跑通过。另一次合并后运行（`t068-18`）在共享
+WSL2/runsc 沙箱被其它并发套件占满时，e2e 的 3 次真实重试都得到 `run_timeout`（其余 17 例
+全绿）；随后为 e2e 增加显式 “共享沙箱不可用→skip” 退出路径（不伪装 pass），并在安静窗口
+连续两次 18 passed（`t068-19/20`）。这两次环境失败不计作产品通过，也不隐藏。
 
 ## 4. `not_run` / `partial` 列表
 
