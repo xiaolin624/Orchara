@@ -33,6 +33,17 @@ package background
 //     failed *without* clearing the previous activation pointer: a failed rebuild
 //     leaves the previous active index readable and can be re-submitted. A
 //     retryable failure leaves both untouched for the next attempt.
+//
+// T061 (#62) upgrade recovery: a job with no index version binding (a pre-0039
+// job) or whose bound index version is gone or no longer `building` can never
+// activate anything. Ending such an attempt without touching the document used to
+// leave it in `scanning`/`indexing` forever (the idempotent re-ingest returned the
+// stuck document and a rebuild was refused with `index_build_in_progress`). The
+// guard now fails the document with a specific code as well, unless another live
+// build still owns it; a later ingest then creates a new revision/index version.
+// A stale *source revision* is different: a newer revision legitimately owns the
+// document (and its own live job), so that refusal still leaves the document
+// alone.
 
 import (
 	"context"
@@ -92,8 +103,15 @@ func guardDocumentIngestCompletion(
 		return nil
 	}
 	if indexID == "" {
+		// A pre-0039 job has no index version to stage into: it can never activate
+		// anything. Fail the job with its own code and end the attempt on the
+		// document too (unless a newer build owns it), so the document is
+		// re-ingestable instead of stuck in scanning/indexing.
+		if err := failAbandonedAttemptTx(ctx, tx, job, revision, CodeIngestIndexUnbound); err != nil {
+			return err
+		}
 		completion.State = StateFailed
-		completion.ErrorCode = CodeStaleRevision
+		completion.ErrorCode = CodeIngestIndexUnbound
 		return nil
 	}
 
@@ -112,6 +130,10 @@ func guardDocumentIngestCompletion(
 		 FOR UPDATE`, indexID,
 	).Scan(&indexDocument, &indexRevision, &indexModel, &indexDimension, &indexState)
 	if errors.Is(err, sql.ErrNoRows) {
+		// The bound index version is gone; this attempt cannot activate anything.
+		if err := failAbandonedAttemptTx(ctx, tx, job, revision, CodeStaleRevision); err != nil {
+			return err
+		}
 		completion.State = StateFailed
 		completion.ErrorCode = CodeStaleRevision
 		return nil
@@ -120,6 +142,12 @@ func guardDocumentIngestCompletion(
 		return fmt.Errorf("reading the index version: %w", err)
 	}
 	if indexDocument != job.TargetID || indexState != "building" {
+		// The index version belongs to another document or already reached a
+		// terminal state: this attempt can never activate. (A version that belongs
+		// to another document is never failed here.)
+		if err := failAbandonedAttemptTx(ctx, tx, job, revision, CodeStaleRevision); err != nil {
+			return err
+		}
 		completion.State = StateFailed
 		completion.ErrorCode = CodeStaleRevision
 		return nil
@@ -241,6 +269,64 @@ func guardDocumentIngestCompletion(
 		return failDocumentAfterAttemptTx(ctx, tx, job.TargetID, revision, CodeIngestCancelled)
 	}
 	return nil
+}
+
+// LiveDocumentBuildTx reports whether one document's *current* source revision
+// has an index build that can still finish: a non-terminal (`ready`/`leased`)
+// `document_ingest` job bound to an index version that is still `building` for
+// that same document and revision.
+//
+// This is the one definition of "a build is genuinely live" for the knowledge
+// index lifecycle. A `document_ingest` job whose expected revision or index
+// version is gone (a pre-0039 job, a job whose version already failed) is *not*
+// live: it can never activate anything. `knowledge.CreateDocument`,
+// `knowledge.ReindexDocument` and `knowledge.insertIndexVersionTx` call this to
+// decide whether a document is stuck (and may be reclaimed by a new ingest) or
+// whether a same-source build must be refused with ErrIndexBuildInProgress.
+// `state` is used instead of a lease deadline on purpose: the sweep recovers an
+// expired lease to `ready` with backoff, so the attempt is still pending, and
+// failing it early would throw away in-flight work.
+func LiveDocumentBuildTx(
+	ctx context.Context, tx *sql.Tx, documentID string, documentRevision int64,
+) (bool, error) {
+	var live bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM platform.background_jobs AS j
+			  JOIN platform.knowledge_index_versions AS iv
+			    ON iv.id = j.expected_index_version_id
+			 WHERE j.kind = 'document_ingest' AND j.target_id = $1::uuid
+			   AND j.state IN ('ready', 'leased')
+			   AND j.expected_revision = $2
+			   AND iv.document_id = j.target_id
+			   AND iv.document_revision = $2
+			   AND iv.state = 'building')`,
+		documentID, documentRevision,
+	).Scan(&live)
+	if err != nil {
+		return false, fmt.Errorf("reading the live index builds: %w", err)
+	}
+	return live, nil
+}
+
+// failAbandonedAttemptTx ends an attempt that can never activate. Unlike a
+// stale-revision refusal (a newer revision and its own live job own the
+// document), nothing can finish the document here, so it is moved to `failed`
+// with a specific code and a repeat ingest can start a new revision/index
+// version. A document whose current build is still live is left untouched: that
+// job owns it and its own guard will decide.
+func failAbandonedAttemptTx(
+	ctx context.Context, tx *sql.Tx, job *Job, revision int64, code string,
+) error {
+	live, err := LiveDocumentBuildTx(ctx, tx, job.TargetID, revision)
+	if err != nil {
+		return err
+	}
+	if live {
+		return nil
+	}
+	return failDocumentAfterAttemptTx(ctx, tx, job.TargetID, revision, code)
 }
 
 // verifyStagedDocumentChunks re-reads the staged set of one index version and

@@ -243,6 +243,18 @@ const (
 	// are business failures: the newer revision owns the document.
 	CodeStaleRevision         = "stale_revision"
 	CodeEmbeddingModelChanged = "embedding_model_changed"
+	// T061 upgrade recovery. `ingest_index_unbound` is a pre-0039 document_ingest
+	// job: it was created before `expected_index_version_id` existed, so it has no
+	// build to stage into and can never activate. The migration 0041 repair and
+	// the completion guard both end such an attempt with this code and leave the
+	// document failed-and-re-ingestable instead of stuck in scanning/indexing.
+	CodeIngestIndexUnbound = "ingest_index_unbound"
+	// `ingest_build_abandoned` marks a document whose index build can no longer be
+	// finished (no non-terminal job is bound to a still-building index version).
+	// The recovery path writes it on the orphaned index version and on the
+	// document before a new build starts, so the abandoned attempt is a named
+	// fact rather than a silent scanning state.
+	CodeIngestBuildAbandoned = "ingest_build_abandoned"
 
 	// tool_build failure codes (T037). The handler reports the safe code; the
 	// completion guard stores the same closed vocabulary on tool_versions.

@@ -459,8 +459,35 @@ func (s *Service) CreateDocument(
 		}
 		modelChanged := existing.State == StateReady && activeIndexID.Valid &&
 			activeModel.String != "" && activeModel.String != modelRevision
-		if (existing.State != StateFailed && !modelChanged) ||
-			existing.State == StateScanning || existing.State == StateIndexing {
+		switch existing.State {
+		case StateScanning, StateIndexing:
+			// A live build owns the document: the repeat ingest is the same intent
+			// (T055 idempotency), so nothing is created and nothing is healed.
+			live, liveErr := background.LiveDocumentBuildTx(ctx, tx, existing.ID, existing.Revision)
+			if liveErr != nil {
+				return Document{}, liveErr
+			}
+			if live {
+				if err := tx.Commit(); err != nil {
+					return Document{}, fmt.Errorf("committing the idempotent document: %w", err)
+				}
+				return existing, nil
+			}
+			// T061 (#62) upgrade recovery: no job can ever finish this attempt (a
+			// pre-0039 job that lost its binding, a dead lease, a build that failed
+			// outside the guard). End it with a specific code and fall through to
+			// the retry path below, so the document gets a new revision/index
+			// version instead of being returned stuck forever.
+			if err := reclaimAbandonedBuildTx(
+				ctx, tx, existing.ID, existing.Revision, background.CodeIngestBuildAbandoned,
+			); err != nil {
+				return Document{}, err
+			}
+			code := background.CodeIngestBuildAbandoned
+			existing.State = StateFailed
+			existing.ErrorCode = &code
+		}
+		if existing.State != StateFailed && !modelChanged {
 			if err := tx.Commit(); err != nil {
 				return Document{}, fmt.Errorf("committing the idempotent document: %w", err)
 			}
