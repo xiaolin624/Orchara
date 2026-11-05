@@ -77,6 +77,41 @@
     <p><button id="delete-artifact" type="button">删除这个文件</button></p>
   </section>
 
+  <section class="card" id="diagnostic-grants-card">
+    <h2>诊断授权（F11/T073）</h2>
+    <p class="hint">
+      诊断授权只把<strong>指定运行中选中的对象正文</strong>开放给指定的另一位管理员，并限定用途与到期时间。
+      每次正文读取都会写审计（运行/尝试/操作关联），授权到期或撤销后立即失效。诊断授权
+      <strong>不包含训练同意</strong>，也不会把正文复制进审计或日志。
+    </p>
+
+    <label for="grant-run-id">运行 id</label>
+    <input id="grant-run-id" type="text" autocomplete="off" spellcheck="false"
+           placeholder="00000000-0000-4000-8000-000000000000" />
+    <p><button id="grant-load-objects" type="button">列出这个运行的可授权对象</button></p>
+    <p id="grant-objects-status" class="status" role="status" aria-live="polite"></p>
+    <ul id="grant-objects-list"></ul>
+
+    <label for="grant-grantee-id">管理员 principal id</label>
+    <input id="grant-grantee-id" type="text" autocomplete="off" spellcheck="false"
+           placeholder="00000000-0000-4000-8000-000000000000" />
+
+    <label for="grant-purposes">用途（逗号分隔的小写 token）</label>
+    <input id="grant-purposes" type="text" autocomplete="off" spellcheck="false"
+           value="troubleshooting" />
+
+    <label for="grant-expires">到期时间（本地时间）</label>
+    <input id="grant-expires" type="datetime-local" />
+
+    <p><button id="create-grant" type="button">授权</button></p>
+    <p id="grant-status" class="status" role="status" aria-live="polite"></p>
+
+    <h2>我的诊断授权</h2>
+    <p class="hint">授权对象、用途与到期时间按服务端记录展示；撤销后状态立即变为“已撤销”。</p>
+    <ul id="grants-list"></ul>
+    <p id="grants-empty" class="hint" hidden>还没有诊断授权。</p>
+  </section>
+
   <section class="card" id="deletion-card" hidden>
     <h2>最近一次删除</h2>
     <p class="hint">

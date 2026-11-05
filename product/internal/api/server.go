@@ -19,6 +19,7 @@ import (
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/deletion"
+	"orchara/platform/internal/diagnostics"
 	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
@@ -81,6 +82,10 @@ type Server struct {
 	// deleted resource revision, the tombstone transaction and the affected-run
 	// cancellation fan-out. Purge execution is T071/T072's.
 	deletions *deletion.Service
+	// diagnostics is F11/T073's user-scoped diagnostic grant store: the only door
+	// through which an administrator may read another user's run content, with an
+	// audit row committed before any byte is served.
+	diagnostics *diagnostics.Service
 	// requests is the F08/T074 conversation/request aggregate: the ordered
 	// per-conversation slot, idempotent submission, the explicit fixed-version
 	// dispatch and the message projection.
@@ -263,6 +268,9 @@ func New(deps Deps) *Server {
 		})
 		return err
 	}
+	// F11/T073: the diagnostic grant store. It owns its own table and the typed
+	// content-read audit helper; no other package can read content through it.
+	diagnosticService := diagnostics.New(deps.Service.DB, deps.Objects)
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -284,6 +292,7 @@ func New(deps Deps) *Server {
 		preview:           newPreviewHub(),
 		memory:            memoryService,
 		deletions:         deletionService,
+		diagnostics:       diagnosticService,
 		requests:          requestService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
@@ -543,6 +552,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// conversation id is a located 404 through the same generic foundation.
 	mux.HandleFunc("DELETE /api/v1/conversations/{conversation_id}", s.handleDeleteConversation)
 	mux.HandleFunc("GET /api/v1/deletions/{deletion_id}", s.handleGetDeletion)
+
+	// F11/T073: user-scoped diagnostic grants. The contract operations are
+	// cookie-session + CSRF, owner-grants and admin-grantee; the metadata list and
+	// the audited content door are documented non-contract extensions (ADR 0028).
+	mux.HandleFunc("POST /api/v1/diagnostic-grants", s.handleCreateDiagnosticGrant)
+	mux.HandleFunc("DELETE /api/v1/diagnostic-grants/{grant_id}", s.handleRevokeDiagnosticGrant)
+	mux.HandleFunc("GET /api/v1/diagnostic-grants", s.handleListDiagnosticGrants)
+	mux.HandleFunc("GET /api/v1/diagnostic-grants/{grant_id}/content", s.handleDiagnosticContent)
 
 	// F08/T074: conversations, the ordered request queue and the message timeline.
 	// The create/submit/cancel POSTs need CSRF (cookie) and the application:write
