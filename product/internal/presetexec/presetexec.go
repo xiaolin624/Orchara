@@ -848,6 +848,9 @@ type manifestDefinition struct {
 type manifestEdge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
+	// Port is the condition exit port this edge leaves from. Omitted means the
+	// contract's literal "default"; the executor normalises it at plan time.
+	Port string `json:"port,omitempty"`
 }
 
 type manifestNode struct {
