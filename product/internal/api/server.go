@@ -681,6 +681,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
+	// F04B/T083: the debug page's node-state table (pure run-view helpers + DOM
+	// wiring). A static asset like every other page script; no new API surface.
+	mux.HandleFunc("GET /assets/runview.js", s.staticPage(filepath.Join("assets", "runview.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
 	mux.HandleFunc("GET /knowledge", s.staticPage("knowledge.html"))

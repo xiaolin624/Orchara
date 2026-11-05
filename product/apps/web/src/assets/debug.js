@@ -381,6 +381,17 @@ function initDebug() {
         submitted.lease,
       );
       debugStatus('已创建 queued debug Run ' + summary.id + '（revision ' + summary.revision + '）。', 'ok');
+      // F04B/T083: the node-state table consumes the same durable facts (SSE
+      // node.status + the non-contract node-results data artifacts). It is fed by
+      // the timeline's onEvent hook below, so the page keeps one SSE consumer.
+      if (typeof beginRunView === 'function') {
+        beginRunView({
+          runID: summary.id,
+          applicationID: applicationId,
+          draftRevision: payload.draft_revision,
+          run: submitted.run,
+        });
+      }
       // T032: the panel's durable timeline is the same SSE client the runs page
       // uses (runs.js is loaded first). It dedupes by seq, reconnects with
       // Last-Event-ID, and shows the 410 snapshot URL instead of faking history.
@@ -389,6 +400,11 @@ function initDebug() {
           listID: 'run-timeline',
           statusID: 'run-timeline-status',
           previewID: 'run-preview',
+          onEvent: function (events, event) {
+            if (typeof runViewOnEvent === 'function') {
+              runViewOnEvent(events, event);
+            }
+          },
         });
       }
       // T044: the temporary model preview is a separate, non-persistent stream.
