@@ -24,9 +24,9 @@ import (
 // also has an entry in the fixed retry table (internal/background/job.go); a
 // kind that is absent here is never claimed, even if it is a whitelisted kind.
 // T022 implemented artifact_finalize; T024 adds model_validate; T026 adds
-// application_evaluate; T030 adds tool_run; T037 adds tool_build. The remaining
-// whitelisted kinds stay
-// ready until their ticket lands (T027/F03/F05/F07/F13A).
+// application_evaluate; T030 adds tool_run; T037 adds tool_build; T055 adds
+// document_ingest; T077 adds catalog_index. route_request and delete_content
+// stay ready until their handler tickets (T079/F11) land.
 var Registry = background.Registry{
 	background.KindArtifactFinalize:    ArtifactFinalize,
 	background.KindModelValidate:       ModelValidate,
@@ -35,6 +35,8 @@ var Registry = background.Registry{
 	background.KindToolBuild:           ToolBuild,
 	// T055: txt/md ingestion (parse -> chunk -> embed -> sealed chunk bodies).
 	background.KindDocumentIngest: DocumentIngest,
+	// T077: one authoritative re-read and one catalog projection reconciliation.
+	background.KindCatalogIndex: CatalogIndex,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from
