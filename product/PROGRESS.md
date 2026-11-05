@@ -1491,6 +1491,21 @@ T067 → T060 → T063 → T056 → T066 → T061 → T065；T053 有过一次�
 其余非契约面（T062 管理员归属读、F09 记忆端点、T060 的 `application/pdf` 准入与解析器
 revision）分别见各票行、报告与 ADR 0014/0009/0016。
 
+## RV1 评测完整性复核修复（2026-11-05，分支 `fix/rv1-eval-integrity`）
+
+独立复核确认两项 P1，本分支已修复并以真实 PG/真实二进制/真实 HTTP 回归：
+
+| Finding | 修复 | 证据 |
+|---|---|---|
+| 1（标准+规格）管理员可读他人逐例结果正文 | `internal/catalog/evaluation_cases.go` SQL 去 `OR admin`、**删除 `admin bool` 参数**（编译期强制）；`internal/api/evaluation_cases.go` 不再传 role；ADR 0017/T056 报告/PROGRESS 同步 owner-only | `tests/f13a/test_t056_sales.py::test_a_succeeded_csv_sales_case_yields_a_passed_report`（admin 404 = missing 同码同文，owner 200 正文不变）、`tests/f13a/test_t062_authz.py::test_accounts_are_isolated_on_reads_and_submission`（合同读 admin 仍 200，逐例读 admin 404） |
+| 2（规格）`effect_count` 把未确认/未派发当副作用 | `internal/execution/evaluation_runs.go` `effectCounts` 只计 `state='succeeded'`；`unknown`/`dispatching` → `EffectsCollected=false` + `effect_evidence=unconfirmed_unknown|unconfirmed_dispatching`（不报数字）；failed/prepared/authorized/awaiting_approval 计 0；capability 键 = 原样 `capability_version`（两侧 trim+lowercase，按 version 分组，非 run 总数），facts/断言 detail/报告 limits 明示；`evaluation.NormalizeCapabilityKey`、`CaseFacts.effect_evidence` 经内部 facts 桥全链贯通 | `tests/f13a/test_rv1_effect_evidence.py::test_effect_count_reads_confirmed_effects_from_the_real_ledger`（7 场景：succeeded=1、非派发=0、unknown/dispatching 未采集、空账本 0、按 version 键、混合不采集）；Go 单测 `TestEffectCountLooksUpTheStoredCapabilityVersionKey`、`TestEffectCountUncollectedCarriesTheLedgerEvidenceReason`、`TestUnconfirmedEffectEvidenceIsRecordedWithoutInventingACount` |
+
+报告：`reports/f13a/RV1-eval-integrity.md`。ADR 0017 增 RV1 amendment。
+管理员行为变化：逐例读 `GET /api/v1/evaluation-reports/{id}/cases` 从 **200+他人正文**
+变为 **404 `resource_not_found`（与不存在的 report id 同码同文）**；合同评测/报告读仍
+owner-or-admin 200。门禁与合入记录见本分支报告 §3（`pytest tests/f13a` ×2、
+`tests/tooling`、Go build/vet/test、gofmt、sync_spec）。
+
 ## 记录模板
 
 ```text
