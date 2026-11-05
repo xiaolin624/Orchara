@@ -650,83 +650,10 @@ def test_the_real_linear_run_view_shows_committed_states_and_the_data_artifact(
 
 
 
-def _condition_definition() -> dict:
-    from support import t027, t042
-
-    return {
-        "dsl_version": "1.0",
-        "input_schema": {
-            "type": "object",
-            "properties": {"requires_approval": {"type": "boolean"}},
-            "required": ["requires_approval"],
-            "additionalProperties": False,
-        },
-        "output_schema": {"type": "object"},
-        "nodes": [
-            t027.start_node(),
-            {
-                "id": "choose",
-                "type": "condition",
-                "inputs": {"requires_approval": {"ref": "input#/requires_approval"}},
-                "output_schema": {"type": "object"},
-                "config": {
-                    "join_id": "join",
-                    "cases": [
-                        {"input": "requires_approval", "op": "eq", "value": True, "port": "yes"},
-                    ],
-                    "default_port": "no",
-                },
-            },
-            {
-                "id": "left",
-                "type": "python",
-                "inputs": {"file": {"ref": "node:start#/artifact"}},
-                "output_schema": t042.PYTHON_OUTPUT_SCHEMA,
-                "config": {"tool_version": t042.PRESET_TOOL_ID},
-            },
-            {
-                "id": "right",
-                "type": "python",
-                "inputs": {"file": {"ref": "node:start#/artifact"}},
-                "output_schema": t042.PYTHON_OUTPUT_SCHEMA,
-                "config": {"tool_version": t042.PRESET_TOOL_ID},
-            },
-            {
-                "id": "join",
-                "type": "join",
-                "inputs": {},
-                "output_schema": {"type": "object"},
-                "config": {
-                    "fork_id": "choose",
-                    "mode": "all_active",
-                    "required_sources": ["left", "right"],
-                    "optional_sources": [],
-                },
-            },
-            {
-                "id": "end",
-                "type": "end",
-                "inputs": {"results": {"ref": "node:join#/results"}},
-                "output_schema": {"type": "object"},
-                "config": {},
-            },
-        ],
-        "edges": [
-            {"source": "start", "target": "choose"},
-            {"source": "choose", "target": "left", "port": "yes"},
-            {"source": "choose", "target": "right", "port": "no"},
-            {"source": "left", "target": "join"},
-            {"source": "right", "target": "join"},
-            {"source": "join", "target": "end"},
-        ],
-        "policy": dict(t027.BASE_POLICY),
-    }
-
-
 @pytest.mark.skipif(
     not GRAPH_RUNTIME.is_file(),
     reason=(
-        "the graph runtime is not in integration/t083-t091 yet "
+        "the graph runtime is not in integration/t083-t091 "
         "(internal/presetexec/graphplan.go is absent), so a condition/join debug run "
         "cannot execute; the real HTTP run-view E2E is not_run"
     ),
@@ -734,17 +661,29 @@ def _condition_definition() -> dict:
 def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     t033_stack, node_binary_fixture: str, tmp_path: Path,
 ) -> None:
-    from support import t033, t042
+    """A real condition/join run, rendered by the real run-view module.
 
-    definition = _condition_definition()
-    owner = t033.minimal_owner(t033_stack)
-    application_id = t042.application_for(owner, definition=definition, name="t083 runview")
-    csv_id = t042.ready_csv(t033_stack, owner)
-    run = t042.submit_linear_run(
-        owner, application_id, artifact_id=csv_id,
+    Reuses the T083 runtime acceptance fixture/helpers (`tests/support/t083.py`):
+    start -> choose(condition) --yes--> left(python) / --no--> right(python) ->
+    join -> end, executed by the real supervisor on runsc, read back through the
+    owner's real HTTP surface (Run snapshot, node-results, artifact content and
+    the owner-only SSE replay).
+    """
+    from support import t027, t032, t033, t083
+
+    if not t033.sandbox_available():
+        pytest.skip(
+            "WSL2/runsc is unavailable: `wsl -d Ubuntu-24.04 -u root -e bash -lc "
+            "'runsc --version'` failed; the branch python nodes cannot execute"
+        )
+    definition = t083.branch_definition()
+    owner, _application_id, run = t083.queue_graph_run(
+        t033_stack,
+        definition,
         input_value={"requires_approval": True},
+        name="t083 run view",
     )
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = t083.run_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
@@ -752,39 +691,63 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert report["run_state"] == "succeeded", report
     t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
 
-    # Real owner HTTP reads plus the committed node.status events (what SSE
-    # replays); the condition/join artifacts are the page's data surface.
-    run_body, results, extra = _owner_reads(t033_stack, owner, run["id"])
-    assert run_body["state"] == "succeeded", run_body
-    items = results["items"]
-    data_rows = {item["node_id"]: item for item in items if item["kind"] == "data"}
-    assert "choose" in data_rows, items
-    assert "join" in data_rows, items
-    contents = extra["contents"]
-    assert contents[data_rows["choose"]["artifact_id"]] == {"port": "yes", "matched_case": 0}
-    envelope = contents[data_rows["join"]["artifact_id"]]
-    assert envelope["results"]["left"]["status"] == "succeeded", envelope
-    assert envelope["results"]["right"]["status"] == "skipped", envelope
+    items = t083.node_results(owner.creator, run["id"], expected=6)
+    assert {item["node_id"] for item in items} == {"left", "choose", "join"}, items
+    condition = t083.node_data_document(owner.creator, items, "choose")
+    join_document = t083.node_data_document(owner.creator, items, "join")
+    assert condition == {"port": "yes", "matched_case": 0}, condition
+    assert join_document["results"]["left"]["status"] == "succeeded", join_document
+    assert join_document["results"]["right"]["status"] == "skipped", join_document
 
-    events = extra["events"]
-    statuses = {(row["payload"]["node_id"], row["payload"]["state"]) for row in events}
+    detail = t027.get_run(owner.creator, run["id"])
+    assert detail.status == 200, detail.text
+    run_body = detail.json
+    assert run_body["state"] == "succeeded", run_body
+    node_results = t083.node_results(owner.creator, run["id"], expected=6)
+
+    # The owner-only SSE replay is the surface the page consumes: the same
+    # committed node.status events, with their real seq numbers.
+    stream = t032.open_sse(t033_stack, owner.creator, run["id"])
+    try:
+        frames = t032.read_status_frames(stream, max_frames=200)
+    finally:
+        stream.close()
+    events = []
+    statuses = set()
+    for frame in frames:
+        envelope = t032.frame_envelope(frame)
+        if envelope["type"] != "node.status":
+            continue
+        events.append(
+            {
+                "seq": envelope["seq"],
+                "type": "node.status",
+                "payload": envelope["payload"],
+            }
+        )
+        statuses.add((envelope["payload"]["node_id"], envelope["payload"]["state"]))
     assert ("right", "skipped") in statuses, statuses
     assert ("left", "succeeded") in statuses, statuses
     assert ("left", "skipped") not in statuses, statuses
     joins = [
-        row for row in events
-        if row["payload"]["node_id"] == "join" and row["payload"]["state"] == "succeeded"
+        event for event in events
+        if event["payload"]["node_id"] == "join" and event["payload"]["state"] == "succeeded"
     ]
     assert len(joins) == 1, events
 
-    # Drive the real page module with the real HTTP payloads.
+    data_rows = {item["node_id"]: item for item in node_results["items"] if item["kind"] == "data"}
+    assert "choose" in data_rows and "join" in data_rows, node_results["items"]
+    contents = {
+        data_rows["choose"]["artifact_id"]: condition,
+        data_rows["join"]["artifact_id"]: join_document,
+    }
     model = _run_runview_harness(
         node_binary_fixture,
         tmp_path,
         {
             "definition": definition,
             "events": events,
-            "nodeResults": results,
+            "nodeResults": node_results,
             "contents": contents,
             "run": run_body,
         },
@@ -804,3 +767,4 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert "right=已跳过" in rows["join"]["joinText"], rows["join"]
     assert model["error"]["severity"] == "ok", model["error"]
     assert model["counts"]["skipped"] == 1, model["counts"]
+
