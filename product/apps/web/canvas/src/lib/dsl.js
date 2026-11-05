@@ -17,20 +17,27 @@
  * ``response_schema`` config key).
  */
 
-export const NODE_TYPES = ['start', 'python', 'agent', 'model', 'condition', 'join', 'end'];
+export const NODE_TYPES = [
+  'start', 'python', 'agent', 'model', 'retrieve', 'call_app', 'condition', 'join', 'approval', 'end',
+];
 
 export const NODE_LABELS = {
   start: '开始',
   python: 'Python 工具',
   agent: 'Agent',
   model: '模型',
+  retrieve: '知识检索',
+  call_app: '子应用调用',
   condition: '条件分支',
   join: '并行汇合',
+  approval: '人工审批',
   end: '结束',
 };
 
 /** Types the palette may add more than once; start and end stay unique. */
-export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'model', 'condition', 'join'];
+export const REPEATABLE_NODE_TYPES = [
+  'python', 'agent', 'model', 'retrieve', 'call_app', 'condition', 'join', 'approval',
+];
 
 /** The comparison vocabulary of a condition case (workflow.schema.json). */
 export const CONDITION_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'exists'];
@@ -43,6 +50,73 @@ export const MODEL_RESPONSE_MODES = ['json', 'text'];
 
 export function emptySchema() {
   return { type: 'object', properties: {} };
+}
+
+/**
+ * F04B/T088: the one-click output schema of a retrieve node.
+ *
+ * It mirrors the documented non-contract node output: the full platform items (with
+ * the stored citation JSON), the lightweight citations projection and the count.
+ * The schema only uses the restricted subset the executor validates
+ * (type/properties/required/items/additionalProperties).
+ */
+export function retrieveOutputSchema() {
+  const span = {
+    type: 'object',
+    properties: {
+      start_char: { type: 'integer' },
+      end_char: { type: 'integer' },
+      start_line: { type: 'integer' },
+      end_line: { type: 'integer' },
+    },
+    required: ['start_char', 'end_char', 'start_line', 'end_line'],
+    additionalProperties: false,
+  };
+  return {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            chunk_id: { type: 'string' },
+            document_id: { type: 'string' },
+            document_revision: { type: 'integer' },
+            document_state: { type: 'string' },
+            chunk_no: { type: 'integer' },
+            span,
+            text: { type: 'string' },
+            score: { type: 'number' },
+            citation: { type: 'object' },
+          },
+          required: [
+            'chunk_id', 'document_id', 'document_revision', 'document_state',
+            'chunk_no', 'span', 'text', 'score', 'citation',
+          ],
+          additionalProperties: false,
+        },
+      },
+      citations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            chunk_id: { type: 'string' },
+            document_id: { type: 'string' },
+            document_revision: { type: 'integer' },
+            span,
+            text: { type: 'string' },
+          },
+          required: ['chunk_id', 'document_id', 'document_revision', 'span', 'text'],
+          additionalProperties: false,
+        },
+      },
+      count: { type: 'integer' },
+    },
+    required: ['items', 'citations', 'count'],
+    additionalProperties: false,
+  };
 }
 
 export function defaultPolicy() {
@@ -102,12 +176,20 @@ export function defaultNode(type, id) {
       prompt_template: '',
       response_mode: 'json',
     };
+  } else if (type === 'call_app') {
+    // F04B/T089: a fixed published child version only. The mapping and the
+    // parent output_schema are authored in the panel once a version is picked.
+    base.config = { application_version: '' };
   } else if (type === 'condition') {
     base.config = {
       join_id: '',
       default_port: 'no',
       cases: [{ input: '', op: 'eq', value: true, port: 'yes' }],
     };
+  } else if (type === 'retrieve') {
+    // F04B/T088: the contract's retrieve config; the query is an input binding,
+    // never a config key.
+    base.config = { knowledge_base_ids: [], top_k: 5 };
   } else if (type === 'join') {
     base.config = {
       mode: 'all_active',
@@ -115,6 +197,12 @@ export function defaultNode(type, id) {
       required_sources: [],
       optional_sources: [],
     };
+  } else if (type === 'approval') {
+    // Contract config is exactly {title, expires_seconds}; the proposal is a
+    // bound input, never a config field. The default is an (editable) empty
+    // object literal so the node is complete on the canvas.
+    base.inputs = { proposal: { literal: {} } };
+    base.config = { title: '', expires_seconds: 3600 };
   }
   return base;
 }
@@ -144,8 +232,11 @@ export const DEFAULT_POSITIONS = {
   python: { x: 280, y: 160 },
   agent: { x: 520, y: 160 },
   model: { x: 400, y: 320 },
+  retrieve: { x: 280, y: 240 },
+  call_app: { x: 520, y: 420 },
   condition: { x: 280, y: 320 },
   join: { x: 600, y: 320 },
+  approval: { x: 420, y: 440 },
   end: { x: 760, y: 160 },
 };
 

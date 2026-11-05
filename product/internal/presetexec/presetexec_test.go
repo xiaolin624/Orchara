@@ -82,6 +82,48 @@ type fakeClient struct {
 	childResult   func(childRunID string) (*ChildResult, error)
 	spawnRequests []SpawnChildRequest
 	childReads    []string
+
+	// scripted approval seam (T087 approval-node tests)
+	nodeApprovalScript   []*NodeApproval
+	nodeApprovalErr      error
+	nodeApprovalRequests []NodeApprovalRequest
+
+	// scripted retrieval seam (retrieve node tests)
+	retrieve         func(RetrieveRequest) (*RetrieveResult, error)
+	retrieveRequests []RetrieveRequest
+}
+
+// PrepareNodeApproval implements Client: the executor asks the platform for the
+// one server-built approval; the scripted answer is the platform's row.
+func (f *fakeClient) PrepareNodeApproval(
+	_ context.Context, _ string, _ string, request NodeApprovalRequest,
+) (*NodeApproval, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodeApprovalRequests = append(f.nodeApprovalRequests, request)
+	if f.nodeApprovalErr != nil {
+		return nil, f.nodeApprovalErr
+	}
+	if len(f.nodeApprovalScript) == 0 {
+		return nil, errors.New("no scripted node approval")
+	}
+	next := f.nodeApprovalScript[0]
+	f.nodeApprovalScript = f.nodeApprovalScript[1:]
+	return next, nil
+}
+
+// Retrieve implements Client with the test's scripted retrieval seam.
+func (f *fakeClient) Retrieve(
+	_ context.Context, _ string, _ string, request RetrieveRequest,
+) (*RetrieveResult, error) {
+	f.mu.Lock()
+	f.retrieveRequests = append(f.retrieveRequests, request)
+	handler := f.retrieve
+	f.mu.Unlock()
+	if handler == nil {
+		return nil, errors.New("no retrieval handler is scripted")
+	}
+	return handler(request)
 }
 
 // SpawnChild implements Client: the executor never creates a Run itself.

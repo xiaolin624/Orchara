@@ -76,8 +76,10 @@ const RUNVIEW_ERROR_HINT = {
   node_input_invalid: '节点输入缺失或无法解析；请检查该节点的 inputs 绑定。',
   node_output_invalid: '节点输出未通过 output_schema；请检查节点输出字段与 end 的映射。',
   node_unsupported_model: '本版本执行器尚不支持 model 节点。',
-  node_unsupported_retrieve: '本版本执行器尚不支持 retrieve 节点。',
   node_unsupported_approval: '本版本执行器尚不支持 approval 节点。',
+  // F04B/T088: retrieve is executable now; these are its call-level failures.
+  retrieve_unavailable: '知识检索服务不可用（503/网络失败）；本次运行以 retrieve_unavailable 失败，可稍后重试。',
+  retrieve_denied: '知识检索调用被拒绝（权限/容量）；本次运行以 retrieve_denied 失败，请检查运行账号与授权。',
   tool_unsupported_graph: '执行器不支持该图（旧线性执行器仍会拒绝 F04B 节点）。',
   invalid_region: '分支/汇合区域不合法；请检查 condition 的 join_id 与 join 的 fork_id 是否配对。',
   cross_region_edge: '存在跨区边；分支内部节点只能连到配对的 join。',
@@ -351,6 +353,149 @@ function runViewDescribeJoin(row, config) {
     (convergedErrors > 0 ? '；其中 ' + convergedErrors + ' 个 optional 分支错误已收敛' : '');
 }
 
+/** The documented owner route that opens one retrieved citation. */
+function runViewCitationPath(chunkID) {
+  return '/api/v1/knowledge-citations/' + encodeURIComponent(String(chunkID || ''));
+}
+
+/** "第 3–5 行" from the stored span; empty when the span is unusable. */
+function runViewSpanText(span) {
+  if (!span || typeof span !== 'object' || Array.isArray(span)) {
+    return '';
+  }
+  const start = Number(span.start_line);
+  const end = Number(span.end_line);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) {
+    return '';
+  }
+  return start === end ? '第 ' + start + ' 行' : '第 ' + start + '–' + end + ' 行';
+}
+
+/** One citation's compact line: document · revision · span · excerpt. */
+function runViewCitationLine(citation) {
+  const parts = [];
+  if (citation.documentId !== '') {
+    parts.push(citation.documentId);
+  }
+  if (citation.documentRevision !== '') {
+    parts.push('v' + citation.documentRevision);
+  }
+  if (citation.span !== '') {
+    parts.push(citation.span);
+  }
+  if (citation.text !== '') {
+    parts.push('“' + citation.text + '”');
+  }
+  return parts.length > 0 ? parts.join(' · ') : citation.chunkId;
+}
+
+/**
+ * Fill the retrieve row from the documented non-contract retrieve node data
+ * artifact `{items, citations, count}`. Only the citations projection is shown;
+ * the full item text stays in the artifact. The executor forwards the stored
+ * citation JSON verbatim, so the page can only link to the real source route —
+ * it never renders a body the server would not serve under the current ACL.
+ */
+function runViewDescribeRetrieve(row) {
+  if (!row.retrieve || !row.content || typeof row.content !== 'object' || Array.isArray(row.content)) {
+    return;
+  }
+  const citations = Array.isArray(row.content.citations) ? row.content.citations : [];
+  const items = Array.isArray(row.content.items) ? row.content.items : [];
+  const count =
+    Number.isSafeInteger(row.content.count) && row.content.count >= 0
+      ? row.content.count
+      : items.length;
+  row.retrieveCount = count;
+  row.retrieveCitations = [];
+  for (const citation of citations) {
+    if (!citation || typeof citation !== 'object' || Array.isArray(citation)) {
+      continue;
+    }
+    const chunkID = String(citation.chunk_id || '');
+    if (chunkID === '') {
+      continue;
+    }
+    const entry = {
+      chunkId: chunkID,
+      documentId: String(citation.document_id || ''),
+      documentRevision:
+        citation.document_revision === undefined || citation.document_revision === null
+          ? ''
+          : String(citation.document_revision),
+      span: runViewSpanText(citation.span),
+      text: runViewTruncate(String(citation.text || ''), 120),
+      path: runViewCitationPath(chunkID),
+    };
+    entry.line = runViewCitationLine(entry);
+    row.retrieveCitations.push(entry);
+  }
+  row.retrieveText =
+    count === 0
+      ? '检索无结果（空结果不是失败；不伪造引用）'
+      : '检索 ' + count + ' 段 · 引用 ' + row.retrieveCitations.length + ' 条';
+}
+
+/**
+ * Open one citation through the real owner route
+ * `GET /api/v1/knowledge-citations/{chunk_id}`. 200 shows the stored source text;
+ * 404 means the permission was revoked or the document was deleted — the page
+ * says "unavailable" and never shows a cached body.
+ */
+async function runViewOpenCitation(link, citation) {
+  if (!link || !citation || citation.chunkId === '') {
+    return null;
+  }
+  const container = link.parentNode || link;
+  const status = document.createElement('span');
+  status.className = 'run-node-citation-status';
+  if (typeof fetch !== 'function') {
+    status.textContent = '当前环境不能打开引用（没有 fetch）。';
+    container.appendChild(status);
+    return null;
+  }
+  try {
+    const response = await fetch(citation.path, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (response.status === 404) {
+      link.className = (link.className === '' ? '' : link.className + ' ') + 'unavailable';
+      status.className += ' state-failed';
+      status.textContent = '该引用已不可用（权限撤销或文档已删除），未提供缓存正文。';
+      container.appendChild(status);
+      return { unavailable: true };
+    }
+    if (!response.ok) {
+      status.textContent = '打开引用失败（HTTP ' + response.status + '）。';
+      container.appendChild(status);
+      return { failed: true };
+    }
+    const source = await response.json();
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const sourceSpan = runViewSpanText(source && source.span);
+    summary.textContent =
+      '真实来源 ' +
+      String((source && source.document_id) || citation.documentId) +
+      (source && source.document_revision !== undefined
+        ? ' · v' + String(source.document_revision)
+        : '') +
+      (sourceSpan === '' ? '' : ' · ' + sourceSpan);
+    const pre = document.createElement('pre');
+    pre.className = 'hint';
+    pre.textContent = String((source && source.text) || '');
+    details.appendChild(summary);
+    details.appendChild(pre);
+    container.appendChild(details);
+    return { opened: true, source: source };
+  } catch (error) {
+    status.textContent = '打开引用失败（网络错误）。';
+    container.appendChild(status);
+    return { failed: true };
+  }
+}
+
 /**
  * Build the ordered node-state rows of a Run.
  *
@@ -360,8 +505,7 @@ function runViewDescribeJoin(row, config) {
  * `run` is the contract Run snapshot. Nothing is invented: when there is no
  * state event and no registered result, the row is `unknown` on a terminal run,
  * and `pending` (not success) while the Run is still live.
- */
-function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents, run) {
+ */function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents, run) {
   const source = definition && typeof definition === 'object' ? definition : {};
   const nodes = Array.isArray(source.nodes)
     ? source.nodes.filter((node) => node && typeof node === 'object')
@@ -454,6 +598,10 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
       join: type === 'join',
       joinSources: [],
       joinText: '',
+      retrieve: type === 'retrieve',
+      retrieveCount: 0,
+      retrieveCitations: [],
+      retrieveText: '',
       convergedErrors: 0,
       artifactId: dataRow ? String(dataRow.artifact_id || '') : '',
       artifactKind: dataRow ? String(dataRow.kind || '') : '',
@@ -463,6 +611,7 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
     };
     runViewDescribeCondition(row);
     runViewDescribeJoin(row, config);
+    runViewDescribeRetrieve(row);
     rows.push(row);
   }
 
@@ -504,8 +653,9 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
     runTerminal: runTerminal,
     text: text,
     sourceText:
-      '节点状态来自已提交的 node.status 事件；条件端口与 join 结果来自节点 data artifact'
-      + '（非契约数据面，owner 可见）。',
+      '节点状态来自已提交的 node.status 事件；条件端口与 join 结果来自节点 data artifact' +
+      '（非契约数据面，owner 可见）；知识检索的引用来自 retrieve 节点 data artifact，' +
+      '点击引用会通过 GET /api/v1/knowledge-citations/{chunk_id} 打开真实来源，撤权/删除后显示不可用。',
   };
 }
 
@@ -722,7 +872,7 @@ function runViewCell(text, className) {
   return cell;
 }
 
-/** The condition port / join-source cell of one row. */
+/** The condition port / join-source / retrieve-citation cell of one row. */
 function runViewBranchCell(details) {
   const cell = document.createElement('td');
   cell.className = 'run-node-branch';
@@ -731,6 +881,26 @@ function runViewBranchCell(details) {
     port.className = 'node-port';
     port.textContent = details.branchText;
     cell.appendChild(port);
+  }
+  if (details.retrieveText !== '') {
+    const summary = document.createElement('p');
+    summary.className = 'hint';
+    summary.textContent = details.retrieveText;
+    cell.appendChild(summary);
+    for (const citation of details.retrieveCitations) {
+      const link = document.createElement('a');
+      link.className = 'run-node-citation';
+      link.href = citation.path;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = citation.line;
+      link.title = 'GET ' + citation.path + '（真实来源；撤权/删除后为 404）';
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        void runViewOpenCitation(link, citation);
+      });
+      cell.appendChild(link);
+    }
   }
   if (details.joinSources.length > 0) {
     const summary = document.createElement('p');
@@ -757,7 +927,7 @@ function runViewBranchCell(details) {
       }
     }
   }
-  if (details.branchText === '' && details.joinSources.length === 0) {
+  if (details.branchText === '' && details.joinSources.length === 0 && details.retrieveText === '') {
     cell.textContent = '';
   }
   return cell;
@@ -875,13 +1045,16 @@ async function loadRunViewDefinition(view) {
   renderRunView(view);
 }
 
-/** Fetch the data artifact content of condition/join nodes, at most once each. */
+/** Fetch the data artifact content of condition/join/retrieve nodes, at most once each. */
 async function refreshRunViewArtifacts(view) {
   const definition = view.definition;
   const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
   const byID = {};
   for (const node of nodes) {
-    if (node && (node.type === 'condition' || node.type === 'join')) {
+    if (
+      node &&
+      (node.type === 'condition' || node.type === 'join' || node.type === 'retrieve')
+    ) {
       byID[String(node.id || '')] = String(node.type);
     }
   }

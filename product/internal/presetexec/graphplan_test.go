@@ -352,12 +352,13 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
-	// F04B/T086: `model` is executable now; the remaining per-type refusals keep
-	// their own stable codes until T087 (approval) and T088 (retrieve) replace them.
+	// F04B/T086 made `model` executable, T087 `approval` and T088 `retrieve`;
+	// no per-type refusal remains, so only an unknown type has a distinct code.
+	if !graphNodeTypes["approval"] || !graphNodeTypes["retrieve"] {
+		t.Fatal("approval and retrieve must both be executable on the graph path")
+	}
 	cases := map[string]string{
-		"retrieve": "node_unsupported_retrieve",
-		"approval": "node_unsupported_approval",
-		"mystery":  "tool_unsupported_graph",
+		"mystery": "tool_unsupported_graph",
 	}
 	for nodeType, want := range cases {
 		definition := definitionDocument(t, flatConditionDefinition)
@@ -425,6 +426,10 @@ func TestHasGraphConstructsOnlyFiresForGraphOnlyNodes(t *testing.T) {
 	// presence must select that path even without a region.
 	if hasGraphConstructs(modelGraphDocument(t, nil)) != true {
 		t.Fatal("a model graph must select the graph path")
+	}
+	// F04B/T088: a retrieve node is graph-only too, even without a region.
+	if hasGraphConstructs(definitionDocument(t, retrieveDefinition)) != true {
+		t.Fatal("a retrieve graph must select the graph path")
 	}
 	linear := definitionDocument(t, `{
       "nodes":[{"id":"start","type":"start","config":{}},

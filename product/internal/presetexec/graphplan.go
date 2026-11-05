@@ -46,9 +46,9 @@ import (
 )
 
 // Graph-path refusal codes. The region codes are the validator's frozen
-// vocabulary; the unsupported-node codes are this build's per-type refusals until
-// T087 (approval) and T088 (retrieve) replace them. F04B/T086 made `model`
-// executable, so its old `node_unsupported_model` refusal is gone.
+// vocabulary. F04B/T086 made `model` executable, T087 made `approval` and T088
+// made `retrieve`; the per-type `node_unsupported_*` codes stay in the closed
+// vocabulary so a run view can still name them if a future build drops a type.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -64,6 +64,8 @@ const (
 	CodeStartEndCount = "start_end_count"
 	CodeMissingValue  = "missing_value"
 
+	// Superseded per-type refusals: both types now run on the graph path, so
+	// these are only reachable if a later build removes them again.
 	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
 	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
@@ -77,6 +79,7 @@ const (
 )
 
 // graphNodeTypes is the closed set of node types the graph path can execute.
+// T086 added `model`; T088 added `retrieve`; T087 replaces `approval` here.
 var graphNodeTypes = map[string]bool{
 	"start":     true,
 	"end":       true,
@@ -85,7 +88,9 @@ var graphNodeTypes = map[string]bool{
 	"call_app":  true,
 	"condition": true,
 	"join":      true,
+	"approval":  true,
 	"model":     true,
+	"retrieve":  true,
 }
 
 // graphPlan is the parsed and proven graph.
@@ -116,7 +121,9 @@ type graphNode struct {
 	outgoing  []*planEdge
 	condition *conditionConfig
 	join      *joinConfig
+	approval  *approvalConfig
 	model     *modelNodeConfig
+	retrieve  *retrieveConfig
 }
 
 // planEdge is one sealed edge with its normalized exit port.
@@ -162,16 +169,16 @@ func planRefusal(code, message string) *planError {
 
 // hasGraphConstructs reports whether the sealed definition carries a construct
 // only the graph plan can execute. The legacy and linear paths keep their exact
-// previous selection for every other definition. F04B/T086 adds `model` (one
-// controlled generation, no branch); T087/T088 will add approval/retrieve the
-// same way.
+// previous selection for every other definition. F04B/T086 added `model` (one
+// controlled generation, no branch), T087 added `approval` (a human wait) and
+// T088 added `retrieve` (one knowledge query) the same way.
 func hasGraphConstructs(manifest *manifestDocument) bool {
 	if manifest == nil {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
 		switch node.Type {
-		case "condition", "join", "model":
+		case "condition", "join", "model", "approval", "retrieve":
 			return true
 		}
 	}
@@ -223,7 +230,7 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 			code = CodeNodeUnsupportedApproval
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition and join",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join, approval and retrieve",
 			index, node.Type))
 	}
 
@@ -314,6 +321,13 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.join = config
+		case "approval":
+			config, err := parseApprovalConfig(node)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.approval = config
 		case "model":
 			// F04B/T086: the publish validator already checked the closed config
 			// set; the executor re-proves it on the frozen bytes, before any node
@@ -324,6 +338,15 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.model = config
+		case "retrieve":
+			// F04B/T088: the retrieve config is re-proved here (stable KB ids,
+			// no inline query) before the scheduler can run the node.
+			config, err := parseRetrieveConfig(node.Config)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.retrieve = config
 		}
 	}
 

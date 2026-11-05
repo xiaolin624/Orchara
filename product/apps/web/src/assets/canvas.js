@@ -19232,21 +19232,109 @@ Edge: ${id2}`,
   });
 
   // src/lib/dsl.js
-  var NODE_TYPES = ["start", "python", "agent", "model", "condition", "join", "end"];
+  var NODE_TYPES = [
+    "start",
+    "python",
+    "agent",
+    "model",
+    "retrieve",
+    "call_app",
+    "condition",
+    "join",
+    "approval",
+    "end"
+  ];
   var NODE_LABELS = {
     start: "开始",
     python: "Python 工具",
     agent: "Agent",
     model: "模型",
+    retrieve: "知识检索",
+    call_app: "子应用调用",
     condition: "条件分支",
     join: "并行汇合",
+    approval: "人工审批",
     end: "结束"
   };
-  var REPEATABLE_NODE_TYPES = ["python", "agent", "model", "condition", "join"];
+  var REPEATABLE_NODE_TYPES = [
+    "python",
+    "agent",
+    "model",
+    "retrieve",
+    "call_app",
+    "condition",
+    "join",
+    "approval"
+  ];
   var CONDITION_OPS = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "exists"];
   var MODEL_RESPONSE_MODES = ["json", "text"];
   function emptySchema() {
     return { type: "object", properties: {} };
+  }
+  function retrieveOutputSchema() {
+    const span = {
+      type: "object",
+      properties: {
+        start_char: { type: "integer" },
+        end_char: { type: "integer" },
+        start_line: { type: "integer" },
+        end_line: { type: "integer" }
+      },
+      required: ["start_char", "end_char", "start_line", "end_line"],
+      additionalProperties: false
+    };
+    return {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              chunk_id: { type: "string" },
+              document_id: { type: "string" },
+              document_revision: { type: "integer" },
+              document_state: { type: "string" },
+              chunk_no: { type: "integer" },
+              span,
+              text: { type: "string" },
+              score: { type: "number" },
+              citation: { type: "object" }
+            },
+            required: [
+              "chunk_id",
+              "document_id",
+              "document_revision",
+              "document_state",
+              "chunk_no",
+              "span",
+              "text",
+              "score",
+              "citation"
+            ],
+            additionalProperties: false
+          }
+        },
+        citations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              chunk_id: { type: "string" },
+              document_id: { type: "string" },
+              document_revision: { type: "integer" },
+              span,
+              text: { type: "string" }
+            },
+            required: ["chunk_id", "document_id", "document_revision", "span", "text"],
+            additionalProperties: false
+          }
+        },
+        count: { type: "integer" }
+      },
+      required: ["items", "citations", "count"],
+      additionalProperties: false
+    };
   }
   function defaultPolicy() {
     return {
@@ -19301,12 +19389,16 @@ Edge: ${id2}`,
         prompt_template: "",
         response_mode: "json"
       };
+    } else if (type === "call_app") {
+      base.config = { application_version: "" };
     } else if (type === "condition") {
       base.config = {
         join_id: "",
         default_port: "no",
         cases: [{ input: "", op: "eq", value: true, port: "yes" }]
       };
+    } else if (type === "retrieve") {
+      base.config = { knowledge_base_ids: [], top_k: 5 };
     } else if (type === "join") {
       base.config = {
         mode: "all_active",
@@ -19314,6 +19406,9 @@ Edge: ${id2}`,
         required_sources: [],
         optional_sources: []
       };
+    } else if (type === "approval") {
+      base.inputs = { proposal: { literal: {} } };
+      base.config = { title: "", expires_seconds: 3600 };
     }
     return base;
   }
@@ -19341,8 +19436,11 @@ Edge: ${id2}`,
     python: { x: 280, y: 160 },
     agent: { x: 520, y: 160 },
     model: { x: 400, y: 320 },
+    retrieve: { x: 280, y: 240 },
+    call_app: { x: 520, y: 420 },
     condition: { x: 280, y: 320 },
     join: { x: 600, y: 320 },
+    approval: { x: 420, y: 440 },
     end: { x: 760, y: 160 }
   };
   function defaultLayout(definition) {
@@ -20365,6 +20463,9 @@ Edge: ${id2}`,
     }
     return result;
   }
+  function isLegalSource(definition, nodeId, ref2) {
+    return legalSources(definition, nodeId).some((entry) => entry.ref === ref2);
+  }
   function sourceType(definition, ref2) {
     if (typeof ref2 !== "string") {
       return "unknown";
@@ -20567,7 +20668,16 @@ Edge: ${id2}`,
     // F04B/T086: the response schema is node.output_schema, never a config key.
     model: ["model_profile_version", "prompt_template", "response_mode"],
     condition: ["join_id", "default_port", "cases"],
+    // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
+    // query is an input binding and any inline query is dropped as unknown_config_key.
+    retrieve: ["knowledge_base_ids", "top_k"],
     join: ["mode", "fork_id", "required_sources", "optional_sources"],
+    // T087: an approval node carries exactly the title and the expiry window; the
+    // proposal is a bound input (definition.inputs), not a config field.
+    approval: ["title", "expires_seconds"],
+    // T089: a call_app node pins one fixed child application version; the I/O
+    // mapping lives on the node's inputs, not in config.
+    call_app: ["application_version"],
     end: []
   };
   var TOP_LEVEL_KEYS = ["dsl_version", "input_schema", "output_schema", "nodes", "edges", "policy"];
@@ -20715,6 +20825,262 @@ Edge: ${id2}`,
   }
   function exportFilename(applicationId) {
     return "orchara-canvas-" + (applicationId || "draft") + ".json";
+  }
+
+  // src/lib/callapp.js
+  var CALL_APP_VERSION_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  var CALL_APP_BINDING_MODES = ["none", "input", "literal", "node"];
+  function callAppApplicationOptions(payload) {
+    const items = payload && Array.isArray(payload.items) ? payload.items : [];
+    return items.map((item) => ({ id: String(item.id), name: String(item.name || item.id) })).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  }
+  function callAppVersionOptions(payload) {
+    const items = payload && Array.isArray(payload.items) ? payload.items : [];
+    return items.filter((item) => item && CALL_APP_VERSION_ID.test(String(item.id || ""))).map((item) => ({
+      id: String(item.id),
+      applicationId: String(item.application_id || ""),
+      versionNo: Number(item.version_no) || 0,
+      manifestSha256: String(item.manifest_sha256 || ""),
+      label: "v" + String(item.version_no) + " · " + String(item.manifest_sha256 || "").slice(0, 12),
+      version: item
+    }));
+  }
+  function manifestOf(versionView) {
+    if (!versionView || typeof versionView !== "object") {
+      return null;
+    }
+    const manifest = versionView.manifest;
+    if (manifest && typeof manifest === "object" && !Array.isArray(manifest)) {
+      return manifest;
+    }
+    if (typeof manifest === "string") {
+      try {
+        const parsed = JSON.parse(manifest);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  }
+  function callAppChildSchemas(versionView) {
+    const manifest = manifestOf(versionView);
+    const definition = manifest && typeof manifest === "object" ? manifest.definition : null;
+    if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+      return null;
+    }
+    const inputSchema = definition.input_schema;
+    const outputSchema = definition.output_schema;
+    if (!inputSchema || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
+      return null;
+    }
+    if (!outputSchema || typeof outputSchema !== "object" || Array.isArray(outputSchema)) {
+      return null;
+    }
+    return { inputSchema, outputSchema };
+  }
+  function callAppInputRows(inputSchema, mapped) {
+    const properties = inputSchema && typeof inputSchema.properties === "object" && inputSchema.properties ? inputSchema.properties : {};
+    const required = new Set(Array.isArray(inputSchema && inputSchema.required) ? inputSchema.required : []);
+    const existing = mapped && typeof mapped === "object" ? mapped : {};
+    return Object.keys(properties).sort().map((field) => {
+      const declared = properties[field] && typeof properties[field] === "object" ? properties[field] : {};
+      const binding = existing[field];
+      let mode = "none";
+      let value = "";
+      if (binding && typeof binding === "object" && !Array.isArray(binding)) {
+        if (Object.prototype.hasOwnProperty.call(binding, "literal")) {
+          mode = "literal";
+          value = JSON.stringify(binding.literal);
+        } else if (typeof binding.ref === "string") {
+          if (binding.ref.startsWith("input#")) {
+            mode = "input";
+            value = binding.ref.slice("input#".length) || "/" + field;
+          } else if (binding.ref.startsWith("node:")) {
+            mode = "node";
+            value = binding.ref.slice("node:".length);
+          }
+        }
+      }
+      return {
+        field,
+        type: typeof declared.type === "string" ? declared.type : "any",
+        required: required.has(field),
+        mode,
+        value
+      };
+    });
+  }
+  function jsonTypeOf(value) {
+    if (Array.isArray(value)) {
+      return "array";
+    }
+    if (value === null) {
+      return "null";
+    }
+    const type = typeof value;
+    if (type === "number") {
+      return Number.isInteger(value) ? "integer" : "number";
+    }
+    return type;
+  }
+  function normaliseStaticType(type) {
+    if (typeof type !== "string" || type === "") {
+      return "unknown";
+    }
+    if (type.startsWith("array")) {
+      return "array";
+    }
+    if (type.includes("|") || type.includes("<")) {
+      return "unknown";
+    }
+    return type;
+  }
+  function schemaTypeOf(schema) {
+    if (!schema || typeof schema !== "object") {
+      return "unknown";
+    }
+    if (typeof schema.type === "string") {
+      return schema.type;
+    }
+    return "unknown";
+  }
+  function typeAccepts(childType, bindingType) {
+    if (childType === "unknown" || childType === "any" || bindingType === "unknown") {
+      return true;
+    }
+    if (childType === "number") {
+      return bindingType === "number" || bindingType === "integer";
+    }
+    if (childType === "integer") {
+      return bindingType === "integer";
+    }
+    if (childType === "array") {
+      return bindingType === "array";
+    }
+    return childType === bindingType;
+  }
+  function bindingShape(binding) {
+    if (!binding || typeof binding !== "object" || Array.isArray(binding)) {
+      return null;
+    }
+    if (Object.prototype.hasOwnProperty.call(binding, "literal")) {
+      return { kind: "literal", value: binding.literal };
+    }
+    if (typeof binding.ref === "string" && binding.ref !== "") {
+      return { kind: "ref", ref: binding.ref };
+    }
+    return null;
+  }
+  function describeBindingType(definition, shape) {
+    if (!shape) {
+      return "unknown";
+    }
+    if (shape.kind === "literal") {
+      return jsonTypeOf(shape.value);
+    }
+    return normaliseStaticType(sourceType(definition, shape.ref));
+  }
+  function callAppProblems(node, definition, schemas) {
+    const problems = [];
+    const config = node && node.config && typeof node.config === "object" ? node.config : {};
+    const versionId = typeof config.application_version === "string" ? config.application_version.trim() : "";
+    if (!CALL_APP_VERSION_ID.test(versionId)) {
+      return [{
+        code: "call_app.version",
+        field: "config.application_version",
+        message: "请选择一个已发布的固定子应用版本（固定 UUID，不接受 latest）。"
+      }];
+    }
+    if (!schemas) {
+      return [{
+        code: "call_app.not_callable",
+        field: "config.application_version",
+        message: "该版本没有冻结的 definition，不能作为固定子应用调用；服务端会以 dependency_not_ready 拒绝。"
+      }];
+    }
+    const childProperties = schemas.inputSchema && typeof schemas.inputSchema.properties === "object" && schemas.inputSchema.properties ? schemas.inputSchema.properties : {};
+    const childRequired = Array.isArray(schemas.inputSchema && schemas.inputSchema.required) ? schemas.inputSchema.required : [];
+    const additional = schemas.inputSchema && schemas.inputSchema.additionalProperties === true;
+    const mapped = node && node.inputs && typeof node.inputs === "object" ? node.inputs : {};
+    for (const field of Object.keys(mapped)) {
+      if (!Object.prototype.hasOwnProperty.call(childProperties, field)) {
+        if (!additional) {
+          problems.push({
+            code: "call_app.unknown_input",
+            field: "inputs." + escapePointer(field),
+            message: '子版本没有声明输入字段 "' + field + '"；映射只能命名子版本 input_schema 的字段。'
+          });
+        }
+        continue;
+      }
+      const shape = bindingShape(mapped[field]);
+      if (!shape) {
+        problems.push({
+          code: "call_app.binding",
+          field: "inputs." + escapePointer(field),
+          message: '输入 "' + field + '" 的绑定必须是 {literal} 或 {ref} 之一。'
+        });
+        continue;
+      }
+      if (shape.kind === "ref") {
+        if (!isLegalSource(definition, node.id, shape.ref)) {
+          problems.push({
+            code: "call_app.illegal_source",
+            field: "inputs." + escapePointer(field),
+            message: "引用 " + shape.ref + " 不是该节点当前路径上的合法来源；只能使用应用输入或上游节点的已声明输出。"
+          });
+          continue;
+        }
+      }
+      const childType = schemaTypeOf(childProperties[field]);
+      const bindingType = describeBindingType(definition, shape);
+      if (!typeAccepts(childType, bindingType)) {
+        problems.push({
+          code: "call_app.type_mismatch",
+          field: "inputs." + escapePointer(field),
+          message: '子输入 "' + field + '" 声明为 ' + childType + "，但绑定产生 " + bindingType + "；映射必须类型兼容（服务端会再次校验）。"
+        });
+      }
+    }
+    for (const field of childRequired) {
+      if (!Object.prototype.hasOwnProperty.call(mapped, field)) {
+        problems.push({
+          code: "call_app.missing_required_input",
+          field: "inputs." + escapePointer(field),
+          message: '子应用要求输入 "' + field + '" 但没有映射；必填子输入不会被隐式补默认值。'
+        });
+      }
+    }
+    const childOutputProperties = schemas.outputSchema && typeof schemas.outputSchema.properties === "object" && schemas.outputSchema.properties ? schemas.outputSchema.properties : {};
+    const declaredOutput = node && node.output_schema && typeof node.output_schema.properties === "object" && node.output_schema.properties ? node.output_schema.properties : {};
+    for (const field of Object.keys(declaredOutput)) {
+      if (!Object.prototype.hasOwnProperty.call(childOutputProperties, field)) {
+        problems.push({
+          code: "call_app.unknown_output",
+          field: "output_schema.properties." + escapePointer(field),
+          message: '子版本输出没有声明 "' + field + '"；父节点输出只能是子版本输出的细化。'
+        });
+        continue;
+      }
+      const childType = schemaTypeOf(childOutputProperties[field]);
+      const declaredType = schemaTypeOf(declaredOutput[field]);
+      if (!typeAccepts(childType, declaredType)) {
+        problems.push({
+          code: "call_app.output_type_mismatch",
+          field: "output_schema.properties." + escapePointer(field),
+          message: '子输出 "' + field + '" 声明为 ' + childType + "，父节点声明为 " + declaredType + "；父声明必须是子 schema 的细化。"
+        });
+      }
+    }
+    return problems;
+  }
+  function callAppOutputSchemaFor(versionView) {
+    const schemas = callAppChildSchemas(versionView);
+    if (!schemas) {
+      return null;
+    }
+    return JSON.parse(JSON.stringify(schemas.outputSchema));
   }
 
   // src/main.js
@@ -21173,6 +21539,90 @@ Edge: ${id2}`,
       ...renderOutputSchemaEditor(definition, state, node)
     ];
   }
+  function updateRetrieveConfig(state, node, patch) {
+    node.config = { ...node.config || {}, ...patch };
+    commit(state);
+  }
+  function renderRetrievePanel(definition, state, node) {
+    const config = node.config || {};
+    const bases = Array.isArray(state.knowledgeBases) ? state.knowledgeBases : [];
+    const selectedBases = Array.isArray(config.knowledge_base_ids) ? config.knowledge_base_ids : [];
+    const knownBases = new Set(bases.map((base) => base.id));
+    const missingBases = selectedBases.filter((id2) => !knownBases.has(id2));
+    const queryRef = node.inputs && node.inputs.query && node.inputs.query.ref ? node.inputs.query.ref : "";
+    return [
+      h("h3", {}, "知识库"),
+      h(
+        "p",
+        { class: "hint" },
+        "只列出当前账号可见的知识库（GET /api/v1/knowledge-bases）；运行时仍按 owner ACL 重新过滤，看不见的知识库会被静默排除，不会泄露它是否存在。"
+      ),
+      h("select", {
+        multiple: true,
+        size: Math.min(6, Math.max(2, bases.length)),
+        "data-field": "config.knowledge_base_ids",
+        onChange: (event) => {
+          const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+          updateRetrieveConfig(state, node, { knowledge_base_ids: values });
+        }
+      }, bases.map((base) => h("option", {
+        value: base.id,
+        selected: selectedBases.includes(base.id)
+      }, (base.name || base.id) + " · " + base.id))),
+      missingBases.length ? h(
+        "p",
+        { class: "hint", "data-field": "config.knowledge_base_ids.stale" },
+        "已选但当前不可见的知识库会保留：" + missingBases.join("、") + "。运行时会按 ACL 排除，不会出现在结果里。"
+      ) : null,
+      h("label", { class: "field-label" }, "top_k（1–20）"),
+      h("input", {
+        type: "number",
+        min: 1,
+        max: 20,
+        "data-field": "config.top_k",
+        value: config.top_k === void 0 ? 5 : config.top_k,
+        onInput: (event) => {
+          updateRetrieveConfig(state, node, { top_k: Number(event.target.value) });
+        }
+      }),
+      h("h3", {}, "query 输入"),
+      h(
+        "p",
+        { class: "hint" },
+        "retrieve 没有 query 配置：必须把一个字符串来源绑定到输入名 query（应用输入或合法上游字段）。没有绑定或类型不是 string 时，服务端执行以 node_input_invalid 失败。"
+      ),
+      h("div", { class: "mapping-row" }, [
+        h("code", { class: "mapping-name" }, "query"),
+        renderSourceSelect(definition, node.id, queryRef, (ref2) => {
+          const next = clone3(node.inputs || {});
+          if (ref2) {
+            next.query = { ref: ref2 };
+          } else {
+            delete next.query;
+          }
+          node.inputs = next;
+          commit(state);
+        }, "inputs.query"),
+        h("span", { class: "type-chip" }, queryRef ? sourceType(definition, queryRef) : "未绑定")
+      ]),
+      ...renderOutputSchemaEditor(definition, state, node),
+      h(
+        "p",
+        { class: "hint" },
+        "输出模板固定为 items/citations/count：items 保留完整平台字段与 citation JSON，citations 是文档/版本/span/短摘要投影。填入模板后，下游才能选择 node:<id>#/citations、#/items 与 #/count。"
+      ),
+      h("button", {
+        type: "button",
+        "data-field": "output_schema.template",
+        onClick: () => {
+          node.output_schema = retrieveOutputSchema();
+          delete state.schemaText[node.id];
+          state.schemaErrors[node.id] = "";
+          commit(state);
+        }
+      }, "填入 retrieve 输出模板")
+    ];
+  }
   function renderModelPanel(definition, state, node) {
     const models = state.models.filter((model) => model.validation_state === "passed");
     const config = node.config && typeof node.config === "object" ? node.config : {};
@@ -21521,6 +21971,441 @@ Edge: ${id2}`,
       }, "直接前驱：" + (predecessors.length ? predecessors.join("、") : "（无）") + "；未覆盖：" + (missing.length ? missing.join("、") : "无") + "；多余：" + (extra.length ? extra.join("、") : "无"))
     ];
   }
+  function renderApprovalPanel(definition, state, node) {
+    const config = node.config || {};
+    const inputs = node.inputs && typeof node.inputs === "object" ? node.inputs : {};
+    const binding = inputs.proposal && typeof inputs.proposal === "object" ? inputs.proposal : {};
+    const boundRef = typeof binding.ref === "string" ? binding.ref : "";
+    const literal = binding.literal !== void 0 ? JSON.stringify(binding.literal, null, 2) : "";
+    const draftKey = node.id + ".proposalLiteral";
+    const literalValue = Object.prototype.hasOwnProperty.call(state.proposalDrafts, draftKey) ? state.proposalDrafts[draftKey] : literal;
+    return [
+      h("h3", {}, "人工审批"),
+      h(
+        "p",
+        { class: "hint", "data-field": "approval.boundary" },
+        "审批只代表业务决定，不授权后续外部写：恢复后继续本次运行，但后面的写工具仍需各自的 operation 审批（服务端能力代理逐次校验）。"
+      ),
+      h("label", { class: "field-label" }, "标题 title（必填，最多 200 字符）"),
+      h("input", {
+        type: "text",
+        maxlength: 200,
+        "data-field": "config.title",
+        value: config.title || "",
+        onInput: (event) => {
+          const value = String(event.target.value || "").trim();
+          node.config = { ...node.config, title: value };
+          commit(state);
+        }
+      }),
+      h("p", { class: "hint" }, "标题为空时发布校验会拒绝该节点。"),
+      h("label", { class: "field-label" }, "有效期 expires_seconds（60..86400 秒）"),
+      h("input", {
+        type: "number",
+        min: 60,
+        max: 86400,
+        "data-field": "config.expires_seconds",
+        value: config.expires_seconds === void 0 ? 3600 : config.expires_seconds,
+        onInput: (event) => {
+          node.config = { ...node.config, expires_seconds: Number(event.target.value) };
+          commit(state);
+        }
+      }),
+      h("h3", {}, "审批提议（proposal 输入，JSON 对象）"),
+      h(
+        "p",
+        { class: "hint" },
+        "提议由使用者审批时原样展示；可以绑定一个合法上游对象，或直接编写字面量对象。"
+      ),
+      h("label", { class: "field-label" }, "来源绑定（proposal ref）"),
+      renderSourceSelect(
+        definition,
+        node.id,
+        boundRef,
+        (ref2) => {
+          const next = clone3(node.inputs || {});
+          if (ref2) {
+            next.proposal = { ref: ref2 };
+          } else if (!Object.prototype.hasOwnProperty.call(next, "proposal") || next.proposal.literal === void 0) {
+            next.proposal = { literal: {} };
+          }
+          node.inputs = next;
+          delete state.proposalDrafts[draftKey];
+          commit(state);
+        },
+        "inputs.proposal.ref"
+      ),
+      h("label", { class: "field-label" }, boundRef ? "字面量（设置会清除来源绑定）" : "字面量 proposal（JSON 对象）"),
+      h("textarea", {
+        rows: 6,
+        "data-field": "inputs.proposal.literal",
+        value: literalValue,
+        onInput: (event) => {
+          const text = String(event.target.value || "");
+          state.proposalDrafts[draftKey] = text;
+          let parsed;
+          try {
+            parsed = JSON.parse(text);
+          } catch (error) {
+            state.status = "proposal 字面量不是合法 JSON：" + (error && error.message ? error.message : "解析失败");
+            state.statusKind = "bad";
+            return;
+          }
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            state.status = "proposal 字面量必须是 JSON 对象（不是数组或标量）。";
+            state.statusKind = "bad";
+            return;
+          }
+          node.inputs = { ...node.inputs || {}, proposal: { literal: parsed } };
+          state.status = "已更新 proposal 字面量。";
+          state.statusKind = "ok";
+          refreshLocalProblems(state);
+          emitChange(state);
+        }
+      }),
+      h(
+        "p",
+        { class: "hint", "data-field": "inputs.proposal.kind" },
+        boundRef ? "当前为来源绑定：" + boundRef : binding.literal !== void 0 ? "当前为字面量对象。" : "尚未设置 proposal 输入。"
+      )
+    ];
+  }
+  function callAppPanelOf(state, nodeId) {
+    if (!state.callApp.byNode[nodeId]) {
+      state.callApp.byNode[nodeId] = {
+        applicationId: "",
+        versions: [],
+        loading: false,
+        versionView: null,
+        schemas: null,
+        error: ""
+      };
+    }
+    return state.callApp.byNode[nodeId];
+  }
+  function globalApi() {
+    return typeof window !== "undefined" ? window.apiFull : void 0;
+  }
+  async function loadCallAppApplications(state) {
+    const api = globalApi();
+    if (typeof api !== "function") {
+      state.callApp.state = "error";
+      state.callApp.error = "页面 API 助手不可用，子应用选择器为空。";
+      return;
+    }
+    try {
+      const result = await api("/api/v1/applications?limit=100");
+      state.callApp.applications = callAppApplicationOptions(result.payload);
+      state.callApp.state = "ready";
+    } catch (error) {
+      state.callApp.state = "error";
+      state.callApp.error = "加载可调用应用失败 [" + (error.code || "error") + "] " + error.message;
+    }
+  }
+  async function loadCallAppVersions(state, node, applicationId) {
+    const panel = callAppPanelOf(state, node.id);
+    panel.applicationId = applicationId;
+    panel.versions = [];
+    panel.error = "";
+    if (!applicationId) {
+      return;
+    }
+    const api = globalApi();
+    if (typeof api !== "function") {
+      return;
+    }
+    panel.loading = true;
+    try {
+      const result = await api(
+        "/api/v1/applications/" + encodeURIComponent(applicationId) + "/versions?limit=100"
+      );
+      panel.versions = callAppVersionOptions(result.payload);
+      if (panel.versions.length === 0) {
+        panel.error = "这个应用还没有已发布版本，不能作为固定子应用。";
+      }
+    } catch (error) {
+      panel.error = "加载版本失败 [" + (error.code || "error") + "] " + error.message;
+    } finally {
+      panel.loading = false;
+    }
+  }
+  async function ensureCallAppPinned(state, node) {
+    if (!node || node.type !== "call_app") {
+      return;
+    }
+    const panel = callAppPanelOf(state, node.id);
+    const versionId = node.config && typeof node.config.application_version === "string" ? node.config.application_version : "";
+    if (!versionId || panel.versionView && panel.versionView.id === versionId) {
+      return;
+    }
+    const api = globalApi();
+    if (typeof api !== "function") {
+      return;
+    }
+    panel.loading = true;
+    panel.error = "";
+    try {
+      const result = await api("/api/v1/versions/" + encodeURIComponent(versionId));
+      panel.versionView = result.payload;
+      panel.schemas = callAppChildSchemas(result.payload);
+      const applicationId = result.payload && typeof result.payload.application_id === "string" ? result.payload.application_id : "";
+      if (applicationId && applicationId !== panel.applicationId) {
+        await loadCallAppVersions(state, node, applicationId);
+      }
+    } catch (error) {
+      panel.error = "读取固定版本失败 [" + (error.code || "error") + "] " + error.message;
+    } finally {
+      panel.loading = false;
+    }
+  }
+  function ensureCallAppForSelection(state, nodeId) {
+    const node = state.definition.nodes.find((item) => item.id === nodeId);
+    if (node && node.type === "call_app") {
+      ensureCallAppPinned(state, node).catch(() => {
+      });
+    }
+  }
+  function selectCallAppVersion(state, node, versionId) {
+    const panel = callAppPanelOf(state, node.id);
+    const entry = panel.versions.find((candidate) => candidate.id === versionId);
+    panel.versionView = entry ? entry.version : null;
+    panel.schemas = entry ? callAppChildSchemas(entry.version) : null;
+    node.config = { ...node.config, application_version: versionId };
+    const declared = node.output_schema && node.output_schema.properties ? Object.keys(node.output_schema.properties).length : 0;
+    if (entry && panel.schemas && declared === 0) {
+      node.output_schema = callAppOutputSchemaFor(entry.version);
+    }
+    commit(state);
+  }
+  function defaultLiteralFor(type) {
+    switch (type) {
+      case "integer":
+      case "number":
+        return 0;
+      case "boolean":
+        return false;
+      case "array":
+        return [];
+      case "object":
+        return {};
+      default:
+        return "";
+    }
+  }
+  function callAppRefValue(mode, value) {
+    if (mode === "input") {
+      return "input#" + (value || "");
+    }
+    if (mode === "node") {
+      return "node:" + (value || "");
+    }
+    return "";
+  }
+  function renderCallAppSourceSelect(definition, nodeId, mode, value, onChange, fieldName) {
+    const prefix = mode === "input" ? "input#" : "node:";
+    const groups = sourceGroups(definition, nodeId).map((group) => ({
+      ...group,
+      options: group.options.filter((entry) => entry.ref.startsWith(prefix))
+    })).filter((group) => group.options.length > 0);
+    const options = [h("option", { value: "" }, mode === "input" ? "— 选择应用输入 —" : "— 选择上游节点字段 —")];
+    for (const group of groups) {
+      options.push(h("optgroup", { label: group.label }, group.options.map((entry) => h("option", { value: entry.ref }, entry.label + " (" + entry.type + ")"))));
+    }
+    if (value && !groups.some((group) => group.options.some((entry) => entry.ref === value))) {
+      options.push(h("option", { value, disabled: true }, value + "（不可用）"));
+    }
+    return h("select", {
+      value: value || "",
+      "data-field": fieldName,
+      onChange: (event) => onChange(event.target.value)
+    }, options);
+  }
+  function setCallAppInputBinding(state, node, field, binding) {
+    const next = clone3(node.inputs || {});
+    if (binding === null) {
+      delete next[field];
+    } else {
+      next[field] = binding;
+    }
+    node.inputs = next;
+    commit(state);
+  }
+  function renderCallAppInputRow(definition, state, node, row, problems) {
+    const fieldProblems = problems.filter((problem2) => problem2.field === "inputs." + row.field);
+    const draftKey = node.id + ".literal." + row.field;
+    const draft = state.callApp.drafts[draftKey];
+    const text = draft !== void 0 ? draft : row.value;
+    const onMode = (mode) => {
+      delete state.callApp.drafts[draftKey];
+      if (mode === "none") {
+        setCallAppInputBinding(state, node, row.field, null);
+        return;
+      }
+      if (mode === "literal") {
+        setCallAppInputBinding(state, node, row.field, { literal: defaultLiteralFor(row.type) });
+        return;
+      }
+      setCallAppInputBinding(state, node, row.field, { ref: "" });
+    };
+    let valueEditor;
+    if (row.mode === "input" || row.mode === "node") {
+      valueEditor = renderCallAppSourceSelect(
+        definition,
+        node.id,
+        row.mode,
+        callAppRefValue(row.mode, row.value),
+        (ref2) => {
+          if (!ref2) {
+            setCallAppInputBinding(state, node, row.field, null);
+            return;
+          }
+          setCallAppInputBinding(state, node, row.field, { ref: ref2 });
+        },
+        "callApp." + node.id + ".inputs." + row.field + ".value"
+      );
+    } else if (row.mode === "literal") {
+      valueEditor = h("input", {
+        type: "text",
+        value: text,
+        placeholder: row.type === "string" ? '"eu"' : "JSON 值",
+        "data-field": "callApp." + node.id + ".inputs." + row.field + ".literal",
+        onInput: (event) => {
+          const raw = event.target.value;
+          state.callApp.drafts[draftKey] = raw;
+          try {
+            const parsed = JSON.parse(raw);
+            setCallAppInputBinding(state, node, row.field, { literal: parsed });
+          } catch (error) {
+            state.status = "子输入 " + row.field + " 的字面量不是合法 JSON：" + error.message;
+            state.statusKind = "bad";
+          }
+        }
+      });
+    } else {
+      valueEditor = h("span", { class: "hint" }, "未映射");
+    }
+    return h("div", {
+      class: "callapp-row",
+      key: "callapp-" + row.field,
+      "data-field": "inputs." + row.field
+    }, [
+      h("div", { class: "callapp-row-head" }, [
+        h("code", { class: "mapping-name" }, row.field),
+        h("span", { class: "type-chip" }, row.type + (row.required ? " · 子应用必填" : ""))
+      ]),
+      h("div", { class: "callapp-row-fields" }, [
+        h("select", {
+          value: row.mode,
+          "data-field": "callApp." + node.id + ".inputs." + row.field + ".mode",
+          onChange: (event) => onMode(event.target.value)
+        }, CALL_APP_BINDING_MODES.map((mode) => h("option", { value: mode }, {
+          none: "不映射",
+          input: "应用输入",
+          literal: "字面量 JSON",
+          node: "节点输出"
+        }[mode]))),
+        valueEditor
+      ]),
+      ...fieldProblems.map((problem2) => h("p", {
+        class: "error-text",
+        "data-field": "callApp.problem." + row.field
+      }, "[" + problem2.code + "] " + problem2.message))
+    ]);
+  }
+  function renderCallAppPanel(definition, state, node) {
+    const panel = callAppPanelOf(state, node.id);
+    const config = node.config || {};
+    const versionId = typeof config.application_version === "string" ? config.application_version : "";
+    const schemas = panel.schemas;
+    const loadingPinned = Boolean(versionId) && panel.loading && !schemas;
+    const problems = loadingPinned ? [] : callAppProblems(node, definition, schemas);
+    const inputRows = schemas ? callAppInputRows(schemas.inputSchema, node.inputs) : [];
+    const applications = state.callApp.applications;
+    const versionOptions = [...panel.versions];
+    if (versionId && !versionOptions.some((entry) => entry.id === versionId)) {
+      versionOptions.push({ id: versionId, label: "当前固定版本 " + versionId.slice(0, 8) + "…（列表外）" });
+    }
+    const pinnedView = panel.versionView;
+    return [
+      h("h3", {}, "固定子版本"),
+      h(
+        "p",
+        { class: "hint" },
+        "只列出服务端允许当前用户读取的应用与已发布版本；节点固定一个版本 id，不接受 latest，也不存在“跟随最新版本”。"
+      ),
+      h("label", { class: "field-label" }, "子应用"),
+      h("select", {
+        "data-field": "callApp.application",
+        value: panel.applicationId,
+        onChange: (event) => {
+          loadCallAppVersions(state, node, event.target.value).then(() => commit(state)).catch(() => {
+          });
+        }
+      }, [
+        h("option", { value: "" }, state.callApp.state === "loading" ? "正在加载可调用应用…" : applications.length ? "— 选择可调用应用 —" : "没有可调用的应用"),
+        ...applications.map((entry) => h(
+          "option",
+          { value: entry.id },
+          entry.name + " · " + entry.id.slice(0, 8)
+        ))
+      ]),
+      state.callApp.error ? h("p", { class: "error-text" }, state.callApp.error) : null,
+      h("label", { class: "field-label" }, "已发布版本"),
+      h("select", {
+        "data-field": "config.application_version",
+        value: versionId,
+        onChange: (event) => selectCallAppVersion(state, node, event.target.value)
+      }, [
+        h("option", { value: "" }, panel.loading ? "正在加载版本…" : "— 选择固定版本 —"),
+        ...versionOptions.map((entry) => h("option", { value: entry.id }, entry.label))
+      ]),
+      panel.error ? h("p", { class: "error-text" }, panel.error) : null,
+      versionId ? h("div", { class: "schema-preview" }, [
+        h("h4", {}, "固定版本事实"),
+        h(
+          "p",
+          { class: "hint", "data-field": "callApp.version" },
+          "version id: " + versionId + (pinnedView && pinnedView.manifest_sha256 ? " · manifest sha256: " + pinnedView.manifest_sha256 : panel.loading ? " · 正在读取冻结 manifest…" : "")
+        )
+      ]) : null,
+      h("h3", {}, "输入映射（显式、最少字段）"),
+      h(
+        "p",
+        { class: "hint" },
+        "输入名来自子版本冻结的 input_schema；每个输入绑定字面量、应用输入或上游节点输出，平台不会自动补父聊天历史/个人记忆。"
+      ),
+      ...schemas ? inputRows.length ? inputRows.map((row) => renderCallAppInputRow(definition, state, node, row, problems)) : [h("p", { class: "hint" }, "该子版本没有声明输入字段。")] : [h("p", { class: "hint" }, versionId ? "正在读取子版本的冻结 Schema…" : "选择固定版本后这里显示子版本的输入字段与映射。")],
+      h("h3", {}, "输出 Schema"),
+      h(
+        "pre",
+        { class: "schema-json readonly", "data-field": "callApp.childOutputSchema" },
+        schemas ? JSON.stringify(schemas.outputSchema, null, 2) : "（尚未选择固定版本）"
+      ),
+      h("p", { class: "hint" }, "以上是子版本冻结的输出 Schema（只读）；父节点输出可编辑，默认取子版本 Schema。"),
+      schemas ? h("button", {
+        type: "button",
+        "data-field": "callApp.useChildOutputSchema",
+        onClick: () => {
+          node.output_schema = callAppOutputSchemaFor(panel.versionView);
+          commit(state);
+        }
+      }, "使用子版本输出 Schema") : null,
+      ...renderOutputSchemaEditor(definition, state, node),
+      problems.length ? h(
+        "div",
+        { class: "errors", "data-field": "callApp.problems" },
+        problems.map((problem2, index) => h("p", {
+          class: "error-text",
+          key: "callapp-problem-" + index,
+          "data-field": "callApp.problem." + index
+        }, "[" + problem2.code + "] " + problem2.message))
+      ) : h(
+        "p",
+        { class: "hint", "data-field": "callApp.problems.ok" },
+        loadingPinned ? "正在读取固定版本的冻结 Schema…" : "映射与输出声明在本地检查通过；服务端校验仍是权威。"
+      )
+    ];
+  }
   function renderEdgePanel(state, edge, index) {
     const definition = state.definition;
     const sourceNode = definition.nodes.find((node) => node.id === edge.source);
@@ -21658,6 +22543,7 @@ Edge: ${id2}`,
     state.selectedEdgeId = "";
     state.status = "[" + error.code + "] " + error.message;
     state.statusKind = "bad";
+    ensureCallAppForSelection(state, error.nodeId);
     nextTick(() => {
       const element = fieldElement(state.root, error.field);
       if (element && typeof element.focus === "function") {
@@ -21690,9 +22576,9 @@ Edge: ${id2}`,
     state.status = "正在请求服务端校验…";
     state.statusKind = "pending";
     state.manifestHash = "";
-    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
+    const globalApi2 = typeof window !== "undefined" ? window.apiFull : void 0;
     const globalCSRF = typeof window !== "undefined" ? window.csrf : void 0;
-    if (typeof globalApi !== "function" || state.applicationId === "") {
+    if (typeof globalApi2 !== "function" || state.applicationId === "") {
       refreshLocalProblems(state);
       state.status = "页面 API 助手不可用，无法请求服务端校验；已显示本地规则提示。";
       state.statusKind = "bad";
@@ -21700,7 +22586,7 @@ Edge: ${id2}`,
     }
     try {
       const token = typeof globalCSRF === "function" ? await globalCSRF() : null;
-      const result = await globalApi(
+      const result = await globalApi2(
         "/api/v1/applications/" + encodeURIComponent(state.applicationId) + "/validate",
         { method: "POST", csrf: token }
       );
@@ -21747,23 +22633,25 @@ Edge: ${id2}`,
     }
   }
   async function loadCatalogs(state) {
-    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
-    if (typeof globalApi !== "function") {
+    const globalApi2 = typeof window !== "undefined" ? window.apiFull : void 0;
+    if (typeof globalApi2 !== "function") {
       state.catalogsState = "error";
-      state.catalogsError = "页面 API 助手不可用，工具/模型选择器为空。";
+      state.catalogsError = "页面 API 助手不可用，工具/模型/知识库选择器为空。";
       return;
     }
     try {
-      const [tools, models] = await Promise.all([
-        globalApi("/api/v1/tools?limit=100"),
-        globalApi("/api/v1/models?limit=100")
+      const [tools, models, knowledgeBases] = await Promise.all([
+        globalApi2("/api/v1/tools?limit=100"),
+        globalApi2("/api/v1/models?limit=100"),
+        globalApi2("/api/v1/knowledge-bases?limit=100")
       ]);
       state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
       state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
+      state.knowledgeBases = Array.isArray(knowledgeBases.payload && knowledgeBases.payload.items) ? knowledgeBases.payload.items : [];
       state.catalogsState = "ready";
     } catch (error) {
       state.catalogsState = "error";
-      state.catalogsError = "加载工具/模型目录失败 [" + (error.code || "error") + "] " + error.message;
+      state.catalogsError = "加载工具/模型/知识库目录失败 [" + (error.code || "error") + "] " + error.message;
     }
   }
   function syncGraphConfigs(state) {
@@ -21887,6 +22775,7 @@ Edge: ${id2}`,
               state.selectedEdgeId = "";
               state.status = "已添加 " + NODE_LABELS[type] + "（" + result.node.id + "）。";
               state.statusKind = "ok";
+              ensureCallAppForSelection(state, result.node.id);
             }
           }, "+ " + NODE_LABELS[type]))
         ),
@@ -21952,6 +22841,7 @@ Edge: ${id2}`,
               state.selectedId = node.id;
               state.selectedEdgeId = "";
               state.highlightedEdgeId = "";
+              ensureCallAppForSelection(state, node.id);
             },
             "onEdgeClick": ({ edge }) => {
               state.selectedEdgeId = edge.id;
@@ -21994,8 +22884,11 @@ Edge: ${id2}`,
             selected && selected.type === "python" ? renderPythonPanel(state.definition, state, selected) : null,
             selected && selected.type === "agent" ? renderAgentPanel(state.definition, state, selected) : null,
             selected && selected.type === "model" ? renderModelPanel(state.definition, state, selected) : null,
+            selected && selected.type === "retrieve" ? renderRetrievePanel(state.definition, state, selected) : null,
+            selected && selected.type === "call_app" ? renderCallAppPanel(state.definition, state, selected) : null,
             selected && selected.type === "condition" ? renderConditionPanel(state.definition, state, selected) : null,
             selected && selected.type === "join" ? renderJoinPanel(state.definition, state, selected) : null,
+            selected && selected.type === "approval" ? renderApprovalPanel(state.definition, state, selected) : null,
             selected && selected.type === "end" ? renderEndPanel(state.definition, state, selected) : null,
             selected && !NODE_TYPES.includes(selected.type) ? [h(
               "p",
@@ -22062,13 +22955,22 @@ Edge: ${id2}`,
       manifestHash: "",
       tools: [],
       models: [],
+      knowledgeBases: [],
       catalogsState: "loading",
       catalogsError: "",
+      callApp: {
+        applications: [],
+        state: "loading",
+        error: "",
+        byNode: {},
+        drafts: {}
+      },
       schemaDrafts: {},
       inputDrafts: {},
       schemaText: {},
       schemaErrors: {},
       caseValueDrafts: {},
+      proposalDrafts: {},
       lastExportDropped: []
     };
   }
@@ -22081,6 +22983,7 @@ Edge: ${id2}`,
     app.mount(root2);
     emitChange(state);
     loadCatalogs(state);
+    loadCallAppApplications(state);
     const onKeydown = (event) => {
       const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
       if (["input", "textarea", "select"].includes(tag)) {
@@ -22126,6 +23029,7 @@ Edge: ${id2}`,
         state.schemaText = {};
         state.status = "已加载服务器草稿。";
         state.statusKind = "ok";
+        ensureCallAppForSelection(state, state.selectedId);
       },
       getDraft() {
         return { definition: clone3(state.definition), layout: clone3(state.layout) };

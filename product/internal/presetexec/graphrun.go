@@ -740,8 +740,8 @@ func (s *graphScheduler) commitWaiting(attempt *graphNodeAttempt) executionOutco
 
 // optionalFailureNodeTypes is the closed set of node types whose failures may be
 // converged as error data: pure read/compute nodes only. An agent/call_app failure
-// is never downgraded even when the branch is declared optional. `retrieve` is
-// reserved for T088 and is not executable in this build.
+// is never downgraded even when the branch is declared optional. T087 approval and
+// T086 model nodes are deliberately absent: neither is a pure read.
 var optionalFailureNodeTypes = map[string]bool{
 	"python":    true,
 	"condition": true,
@@ -843,6 +843,8 @@ func (r *runner) executeGraphNodeSegment(
 		return r.executeGraphCondition(ctx, node, view)
 	case "join":
 		return r.executeGraphJoin(ctx, node, view)
+	case "approval":
+		return r.executeGraphApproval(ctx, node, view)
 	case "agent":
 		output, outcome, done := r.executeGraphAgent(ctx, plan, inputs, node, view, attempt)
 		if done {
@@ -863,6 +865,8 @@ func (r *runner) executeGraphNodeSegment(
 			return outcome, nil, true
 		}
 		return executionOutcome{}, output, false
+	case "retrieve":
+		return r.executeGraphRetrieve(ctx, node, view)
 	case "end":
 		outcome := r.executeEndNode(ctx, plan.definition, node.node, view.available,
 			view.last, view.report)
