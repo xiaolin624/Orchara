@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import json
 
-from support import f00b, f08, t054, t058
+from support import f00b, f08, t054, t058, t082
 from support import stack as st
 
 OLD_HISTORY = "OLD-INTERNAL-HISTORY-MARKER: application A's sealed message"
 OLD_MEMORY = "OLD-PERSONAL-MEMORY-MARKER: application A's personal memory"
 NEW_MEMORY = "NEW-APP-MEMORY-MARKER: application B's own memory"
 EXPLICIT_ATTACHMENT = b"EXPLICIT-ATTACHMENT-MARKER: the one attachment the user chose\n"
-HANDOVER_SUMMARY = "HANDOVER-SUMMARY-MARKER: only this confirmed summary crosses the boundary"
 NEW_MESSAGE = "NEW-REQUEST-MARKER: the message the user typed for application B"
 
 
@@ -58,12 +57,11 @@ def test_a_new_application_never_reads_the_old_history_or_personal_memory(f08_st
     run_a = request_a["run_id"]
 
     attachment = f08.public_attachment(stack, owner.session, EXPLICIT_ATTACHMENT)
-    handoff = {
-        "source_run_ids": [run_a],
-        "artifact_ids": [attachment],
-        "summary": HANDOVER_SUMMARY,
-        "confirmed": True,
-    }
+    # T082 supersedes the free-text handover summary: the confirmed scope is the
+    # server-produced preview (T074's isolation invariant is unchanged).
+    preview = t082.preview_of(
+        t082.preview(owner.session, conversation_id, [run_a], [attachment]))
+    handoff = t082.handoff_from(preview)
     request_b = f08.request_of(
         f08.submit_request(
             owner.session, conversation_id, NEW_MESSAGE,
@@ -98,7 +96,7 @@ def test_a_new_application_never_reads_the_old_history_or_personal_memory(f08_st
     assert handoff_row["from_version_id"] == version_a.version_id
     summary_artifact = f08.artifact_row(stack.dbname, handoff_row["summary_artifact_id"])
     assert summary_artifact["purpose"] == "handoff_summary"
-    assert f08.artifact_bytes(stack, summary_artifact["id"]) == HANDOVER_SUMMARY.encode()
+    assert f08.artifact_bytes(stack, summary_artifact["id"]) == preview["summary"].encode()
 
     # The new Run's input closure is exactly the new message, the explicit
     # attachment and the confirmed summary. It does not include request A's input
@@ -114,7 +112,7 @@ def test_a_new_application_never_reads_the_old_history_or_personal_memory(f08_st
     }, links
     payload = b"\n".join(blob for _, blob in f08.run_artifact_bytes(stack, run_b))
     assert NEW_MESSAGE.encode() in payload
-    assert HANDOVER_SUMMARY.encode() in payload
+    assert preview["summary"].encode() in payload
     assert EXPLICIT_ATTACHMENT.strip() in payload
     assert b"OLD-INTERNAL-HISTORY-MARKER" not in payload
     assert b"OLD-PERSONAL-MEMORY-MARKER" not in payload

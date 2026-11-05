@@ -607,6 +607,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/conversations", s.handleListConversations)
 	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}", s.handleGetConversation)
 	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}/messages", s.handleListMessages)
+	// F08/T082: the non-contract minimal handover preview. It is a read-only POST
+	// because the selected source Runs/artifacts are an array body; it writes
+	// nothing, needs no Idempotency-Key and the submit path re-derives it.
+	mux.HandleFunc("POST /api/v1/conversations/{conversation_id}/handoff-preview",
+		s.handleHandoffPreview)
 	mux.HandleFunc("POST /api/v1/requests", s.handleSubmitRequest)
 	mux.HandleFunc("GET /api/v1/requests/{request_id}", s.handleGetRequest)
 	mux.HandleFunc("POST /api/v1/requests/{request_id}/cancel", s.handleCancelRequest)

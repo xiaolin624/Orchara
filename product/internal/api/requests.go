@@ -9,6 +9,7 @@ package api
 //	POST   /api/v1/requests                           submitRequest
 //	GET    /api/v1/requests/{id}                      getRequest
 //	POST   /api/v1/requests/{id}/cancel               cancelRequest
+//	POST   /api/v1/conversations/{id}/handoff-preview non-contract handover preview (T082)
 //	DELETE /api/v1/conversations/{id}                 deleteConversation (T069 foundation)
 //
 // The contract Request/Conversation schemas are additionalProperties:false, so
@@ -212,6 +213,38 @@ func readSubmitBody(w http.ResponseWriter, r *http.Request) (map[string]json.Raw
 		return nil, false
 	}
 	return fields, true
+}
+
+// handleHandoffPreview builds the server-produced minimal handover scope for one
+// conversation (F08/T082). It is a non-contract, read-only POST because the source
+// Run ids and the selected artifacts are an array body; it writes nothing and
+// needs no Idempotency-Key. The page copies this response verbatim into the
+// contract's RequestInput.handoff; the submit path re-derives and compares it.
+func (s *Server) handleHandoffPreview(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if failure := s.requireRequestRead(caller); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
+		return
+	}
+	fields, ok := readSubmitBody(w, r)
+	if !ok {
+		return
+	}
+	input, parseErr := requests.ParseHandoffPreview(fields)
+	if parseErr != nil {
+		s.writeRequestFailure(w, r, parseErr)
+		return
+	}
+	preview, err := s.requests.HandoffPreview(
+		r.Context(), caller.PrincipalID, r.PathValue("conversation_id"), input)
+	if err != nil {
+		s.writeRequestFailure(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
 }
 
 func (s *Server) handleSubmitRequest(w http.ResponseWriter, r *http.Request) {

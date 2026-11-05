@@ -347,6 +347,9 @@ func parseHandoff(raw json.RawMessage) (*HandoffInput, *Error) {
 	if len(handoff.SourceRunIDs) == 0 {
 		return nil, located("handoff.source_run_ids", "handoff must name at least one source Run")
 	}
+	if len(handoff.SourceRunIDs) > MaxHandoffSourceRuns {
+		return nil, handoffTooBroad("source_run_ids", MaxHandoffSourceRuns)
+	}
 	rawArtifacts, present := fields["artifact_ids"]
 	if !present {
 		return nil, located("handoff.artifact_ids", "handoff.artifact_ids is required (send [] for none)")
@@ -354,6 +357,9 @@ func parseHandoff(raw json.RawMessage) (*HandoffInput, *Error) {
 	handoff.ArtifactIDs, err = uuidList(rawArtifacts, "handoff.artifact_ids", 50)
 	if err != nil {
 		return nil, err
+	}
+	if len(handoff.ArtifactIDs) > MaxHandoffArtifacts {
+		return nil, handoffTooBroad("artifact_ids", MaxHandoffArtifacts)
 	}
 	summary, summaryErr := stringValue(fields["summary"])
 	if summaryErr != nil {

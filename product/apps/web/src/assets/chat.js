@@ -261,6 +261,122 @@ function describeHandling(request, run, version) {
   return { text: prefix + ' 正在处理', handled: true, versionNo: versionNo };
 }
 
+// ---------------------------------------------------------------------------
+// F08/T082: the minimal handover preview (non-contract, ADR 0030)
+// ---------------------------------------------------------------------------
+
+/** Parse the comma-separated source-Run field into a deduplicated id list. */
+function handoffSourceRunIDs(value) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value === undefined || value === null ? '' : value)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+  return Array.from(new Set(list.map((entry) => String(entry).trim()).filter(Boolean)));
+}
+
+function handoffPreviewPath(conversationID) {
+  return conversationPath(conversationID) + '/handoff-preview';
+}
+
+function runArtifactsPath(runID) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runID || '')) + '/artifacts';
+}
+
+/**
+ * The exact preview request: the source Runs the user named and the artifacts the
+ * user selected. The server produces the summary; the page never writes one.
+ */
+function handoffPreviewBody(sourceRunIDs, artifactIDs) {
+  const runs = handoffSourceRunIDs(sourceRunIDs);
+  if (runs.length === 0) {
+    throw pageFailure('handoff.source_run_ids', '交接至少需要一个来源 Run');
+  }
+  if (runs.length > 5) {
+    throw pageFailure('handoff_scope_exceeded', '来源 Run 最多 5 个');
+  }
+  for (const id of runs) {
+    if (!UUID_PATTERN.test(id)) {
+      throw pageFailure('handoff.source_run_ids', '来源 Run id 必须是 UUID');
+    }
+  }
+  const artifacts = handoffSourceRunIDs(artifactIDs);
+  if (artifacts.length > 5) {
+    throw pageFailure('handoff_scope_exceeded', '交接附件最多 5 个');
+  }
+  for (const id of artifacts) {
+    if (!UUID_PATTERN.test(id)) {
+      throw pageFailure('handoff.artifact_ids', '交接附件 id 必须是 UUID');
+    }
+  }
+  return { source_run_ids: runs.slice().sort(), artifact_ids: artifacts.slice().sort() };
+}
+
+/** The server preview as the user sees it; nothing is invented when absent. */
+function describeHandoffPreview(preview) {
+  if (!preview || !preview.summary) {
+    return {
+      visible: false, summary: '', sourceRunCount: 0, artifactCount: 0,
+      bounded: true, fromVersionId: '',
+    };
+  }
+  const summary = String(preview.summary);
+  const sourceRuns = Array.isArray(preview.source_runs) ? preview.source_runs : [];
+  const artifacts = Array.isArray(preview.artifacts) ? preview.artifacts : [];
+  const sourceRunIDs = Array.isArray(preview.source_run_ids) ? preview.source_run_ids : [];
+  const artifactIDs = Array.isArray(preview.artifact_ids) ? preview.artifact_ids : [];
+  return {
+    visible: true,
+    summary: summary,
+    sourceRunCount: sourceRuns.length || sourceRunIDs.length,
+    artifactCount: artifacts.length || artifactIDs.length,
+    bounded: Array.from(summary).length <= 2000,
+    fromVersionId: preview.from_version_id || '',
+  };
+}
+
+/**
+ * The confirmed handover object, copied verbatim from the server preview. An
+ * unchecked box or a missing preview refuses locally with the same code the
+ * server would answer; the summary is never editable on the page.
+ */
+function handoffFromPreview(preview, confirmed) {
+  const described = describeHandoffPreview(preview);
+  if (!described.visible) {
+    throw pageFailure('handoff_preview_required', '请先生成服务端交接预览');
+  }
+  if (!confirmed) {
+    throw pageFailure('handoff_not_confirmed', '请先确认交接范围');
+  }
+  return {
+    source_run_ids: Array.from(preview.source_run_ids || []),
+    artifact_ids: Array.from(preview.artifact_ids || []),
+    summary: described.summary,
+    confirmed: true,
+  };
+}
+
+/**
+ * Selectable artifacts of the source Runs. `input` links are the old Run's own
+ * sealed request/handover bytes, so they are never offered for handover.
+ */
+function handoffArtifactOptions(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && item.artifact_id && item.relation !== 'input')
+    .map((item) => ({
+      id: String(item.artifact_id),
+      relation: item.relation || '',
+      purpose: item.purpose || '',
+      mediaType: item.media_type || '',
+      sizeBytes: Number.isInteger(item.size_bytes) ? item.size_bytes : 0,
+      label:
+        '产出附件 · ' + (item.purpose || item.relation || 'artifact') +
+        (Number.isInteger(item.size_bytes) ? ' · ' + item.size_bytes + ' 字节' : ''),
+      selectable: true,
+    }));
+}
+
 /** Read the documented non-contract X-Request-* headers from one response. */
 function requestFacts(headers) {
   const read = (name) => {
@@ -414,10 +530,13 @@ function initChat() {
   let pendingAttempt = null;
   let currentInteraction = null;
   let currentInteractionAttempt = null;
+  let handoffArtifactIDs = [];
+  let currentHandoffPreview = null;
 
   const conversationStatus = document.getElementById('conversation-status');
   const submitStatus = document.getElementById('chat-submit-status');
   const attachmentStatus = document.getElementById('chat-attachment-status');
+  const handoffStatus = document.getElementById('chat-handoff-preview-status');
 
   function setStatus(element, message, kind) {
     if (!element) {
@@ -453,7 +572,15 @@ function initChat() {
     currentConversationID = conversationID;
     currentRequestID = null;
     attachmentIDs = [];
+    handoffArtifactIDs = [];
+    currentHandoffPreview = null;
     document.getElementById('chat-conversation-id').textContent = conversationID;
+    document.getElementById('chat-handoff-source-runs').value = '';
+    document.getElementById('chat-handoff-artifact-options').replaceChildren();
+    document.getElementById('chat-handoff-preview').textContent = '';
+    document.getElementById('chat-handoff-summary').textContent = '';
+    document.getElementById('chat-handoff-scope').textContent = '';
+    document.getElementById('chat-handoff-confirmed').checked = false;
     panel.hidden = false;
     renderAttachmentLines();
     await loadMessages();
@@ -671,6 +798,124 @@ function initChat() {
     }
   }
 
+  // --- F08/T082: preview → select → confirm ----------------------------------
+  function invalidateHandoffPreview() {
+    currentHandoffPreview = null;
+    document.getElementById('chat-handoff-preview').textContent = '';
+    document.getElementById('chat-handoff-summary').textContent = '';
+    document.getElementById('chat-handoff-scope').textContent = '';
+  }
+
+  function selectedHandoffArtifactIDs() {
+    const checked = document.querySelectorAll('#chat-handoff-artifact-options input:checked');
+    return Array.from(checked).map((input) => input.value);
+  }
+
+  function renderHandoffArtifactOptions(options) {
+    const list = document.getElementById('chat-handoff-artifact-options');
+    list.replaceChildren();
+    if (options.length === 0) {
+      const item = document.createElement('li');
+      item.textContent = '来源 Run 没有可交接的产出附件。';
+      list.appendChild(item);
+      return;
+    }
+    for (const option of options) {
+      const item = document.createElement('li');
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = option.id;
+      checkbox.checked = handoffArtifactIDs.includes(option.id);
+      checkbox.addEventListener('change', () => {
+        handoffArtifactIDs = selectedHandoffArtifactIDs();
+        invalidateHandoffPreview();
+      });
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(' ' + option.label));
+      item.appendChild(label);
+      list.appendChild(item);
+    }
+  }
+
+  async function loadHandoffArtifacts() {
+    const status = document.getElementById('chat-handoff-artifact-status');
+    setStatus(status, '', '');
+    if (!currentConversationID) {
+      setStatus(status, '请先选择一个会话。', 'bad');
+      return;
+    }
+    let body;
+    try {
+      // Reuse the preview body validator: it also enforces the source-Run bounds.
+      body = handoffPreviewBody(
+        document.getElementById('chat-handoff-source-runs').value, []);
+    } catch (error) {
+      setStatus(status, '无法读取 [' + error.code + '] ' + error.message, 'bad');
+      return;
+    }
+    const options = [];
+    try {
+      for (const runID of body.source_run_ids) {
+        const page = await api(runArtifactsPath(runID));
+        options.push(...handoffArtifactOptions(page.items));
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setStatus(status, '读取来源附件失败 [' + error.code + '] ' + error.message, 'bad');
+      return;
+    }
+    handoffArtifactIDs = [];
+    renderHandoffArtifactOptions(options);
+    invalidateHandoffPreview();
+    setStatus(status, '来源 Run 共 ' + options.length + ' 个可交接附件。', 'ok');
+  }
+
+  async function previewHandoff() {
+    if (!currentConversationID) {
+      setStatus(handoffStatus, '请先选择一个会话。', 'bad');
+      return;
+    }
+    let body;
+    try {
+      body = handoffPreviewBody(
+        document.getElementById('chat-handoff-source-runs').value,
+        selectedHandoffArtifactIDs(),
+      );
+    } catch (error) {
+      setStatus(handoffStatus, '无法生成预览 [' + error.code + '] ' + error.message, 'bad');
+      return;
+    }
+    try {
+      const csrfToken = await csrf();
+      setStatus(handoffStatus, '正在生成服务端预览…', 'pending');
+      const preview = await api(handoffPreviewPath(currentConversationID), {
+        method: 'POST',
+        body: body,
+        csrf: csrfToken,
+      });
+      currentHandoffPreview = preview;
+      const described = describeHandoffPreview(preview);
+      document.getElementById('chat-handoff-preview').textContent = described.summary;
+      document.getElementById('chat-handoff-summary').textContent = described.summary;
+      document.getElementById('chat-handoff-scope').textContent =
+        '来源 Run ' + described.sourceRunCount + ' 个，附件 ' + described.artifactCount +
+        ' 个，摘要 ' + Array.from(described.summary).length +
+        ' 字（上限 2000）。确认后才会提交这份最小范围；旧应用内部历史与个人记忆不在其中。';
+      setStatus(handoffStatus, '预览已生成，请确认范围。', 'ok');
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      invalidateHandoffPreview();
+      setStatus(handoffStatus, '生成预览失败 [' + error.code + '] ' + error.message, 'bad');
+    }
+  }
+
   async function uploadAttachment() {
     const input = document.getElementById('chat-attachment-input');
     const file = input.files && input.files[0];
@@ -737,6 +982,18 @@ function initChat() {
   });
 
   document.getElementById('chat-attachment-upload').addEventListener('click', uploadAttachment);
+  document.getElementById('chat-handoff-load-artifacts').addEventListener(
+    'click', loadHandoffArtifacts);
+  document.getElementById('chat-handoff-preview-button').addEventListener(
+    'click', previewHandoff);
+  document.getElementById('chat-handoff-source-runs').addEventListener(
+    'input', invalidateHandoffPreview);
+  document.getElementById('chat-handoff-confirmed').addEventListener(
+    'change', () => {
+      if (!document.getElementById('chat-handoff-confirmed').checked) {
+        setStatus(handoffStatus, '未确认时不会提交交接范围。', 'pending');
+      }
+    });
 
   document.getElementById('chat-message-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -744,17 +1001,15 @@ function initChat() {
     let body;
     try {
       const handoffConfirmed = document.getElementById('chat-handoff-confirmed').checked;
-      const handoff =
-        handoffConfirmed ||
-        document.getElementById('chat-handoff-source-runs').value.trim() ||
-        document.getElementById('chat-handoff-summary').value.trim()
-          ? handoffBody(
-              document.getElementById('chat-handoff-source-runs').value,
-              document.getElementById('chat-handoff-summary').value,
-              handoffConfirmed,
-              attachmentIDs,
-            )
-          : null;
+      const sourceRunText = document.getElementById('chat-handoff-source-runs').value.trim();
+      let handoff = null;
+      if (currentHandoffPreview) {
+        // The submitted handoff is the confirmed server preview, never an edited
+        // summary: the summary element is display-only.
+        handoff = handoffFromPreview(currentHandoffPreview, handoffConfirmed);
+      } else if (sourceRunText || handoffArtifactIDs.length > 0 || handoffConfirmed) {
+        throw pageFailure('handoff_preview_required', '请先生成服务端交接预览并确认范围');
+      }
       body = submitBody(
         currentConversationID,
         document.getElementById('chat-message').value,
