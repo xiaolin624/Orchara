@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -255,6 +256,21 @@ func New(deps Deps) *Server {
 	// F08/T074: conversations now have an authority, so the T069 conversation
 	// route stops being a permanent 404 and becomes a real tombstone+job.
 	deletionService.Register(requests.NewDeletionTarget(requestService))
+	// F11/T071: the physical purge unit of work is enqueued in the delete
+	// transaction. The seam keeps internal/deletion independent of
+	// internal/background (whose completion guard consumes the deletion package),
+	// and (kind=delete_content, dedup_key) makes it exactly one job per deletion.
+	deletionService.PurgeEnqueue = func(
+		ctx context.Context, tx *sql.Tx, deletionID, ownerID string,
+	) error {
+		_, _, err := background.EnqueueTx(ctx, tx, background.EnqueueParams{
+			Kind:     background.KindDeleteContent,
+			TargetID: deletionID,
+			OwnerID:  ownerID,
+			DedupKey: deletion.PurgeDedupKey(deletionID),
+		})
+		return err
+	}
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
@@ -357,6 +373,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// stale catalog index cannot bypass, and T074 calls the same Go function.
 	mux.HandleFunc("POST /api/v1/versions/{version_id}/revoke", s.handleRevokeVersion)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}/runnable", s.handleResolveRunnableVersion)
+
+	// F08/T077: authorized purpose-catalog search. Non-contract (ADR 0026) because
+	// the contract's Application/listApplications schema has no search member; the
+	// path is additive and listApplications is untouched. ACL and publication
+	// filters run in the SQL before ranking/LIMIT; a stale index falls back to the
+	// authorized full text and re-checks each row.
+	mux.HandleFunc("GET /api/v1/catalog/search", s.handleCatalogSearch)
 
 	// F02B/T068: publication review. submit/decision are idempotent state-changing
 	// POSTs (cookie sessions need CSRF; an API key needs application:write for a
@@ -593,6 +616,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// select control, never in the URL, so no request input reaches a file path.
 	mux.HandleFunc("GET /chat", s.staticPage("chat.html"))
 	mux.HandleFunc("GET /assets/chat.js", s.staticPage(filepath.Join("assets", "chat.js")))
+	// F08/T077: the authorized purpose-catalog browse/search page and its pure client
+	// helpers. Static, compile-time paths; the query lives in the page's own field
+	// and is always encoded by the helper before it reaches the URL.
+	mux.HandleFunc("GET /catalog", s.staticPage("catalog.html"))
+	mux.HandleFunc("GET /assets/catalog.js", s.staticPage(filepath.Join("assets", "catalog.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).

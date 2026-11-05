@@ -131,6 +131,18 @@ type Target interface {
 // package does not depend on internal/execution.
 type CancelRun func(ctx context.Context, callerID, runID string) error
 
+// PurgeEnqueue creates the F11/T071 `delete_content` background job for a
+// deletion job inside the caller's transaction. It is injected rather than
+// imported so this package keeps no dependency on internal/background (the
+// background completion guard imports this package): the API process wires the
+// real background.EnqueueTx.
+//
+// A nil hook means this deployment has no purge producer (the in-process memory
+// delete used by the experiment driver, and unit tests); the tombstone is still
+// the security fact, and no job is written. A returned error aborts the delete
+// transaction: a 202 without a durable purge unit of work would be a lie.
+type PurgeEnqueue func(ctx context.Context, tx *sql.Tx, deletionID, ownerID string) error
+
 // Service owns the durable job table and the cancellation/audit fan-out.
 type Service struct {
 	DB *sql.DB
@@ -138,7 +150,9 @@ type Service struct {
 	// value is a configuration error: the job is still written (the tombstone is
 	// the security fact), but it records run_cancel_unavailable.
 	CancelRun CancelRun
-	targets   map[ResourceType]Target
+	// PurgeEnqueue is the F11/T071 delete_content producer; see PurgeEnqueue.
+	PurgeEnqueue PurgeEnqueue
+	targets      map[ResourceType]Target
 }
 
 // New builds the foundation over one database handle.
@@ -215,6 +229,16 @@ func (s *Service) Delete(
 		created = true
 	}
 
+	// F11/T071: the one purge unit of work is part of the delete transaction, so
+	// a 202 always has a durable worker. The dedup key is the deletion job id, so
+	// a repeated DELETE (and the concurrent second DELETE that loses the race)
+	// reuses the same job instead of creating a second unit.
+	if s.PurgeEnqueue != nil {
+		if err := s.PurgeEnqueue(ctx, tx, job.ID, caller); err != nil {
+			return nil, fmt.Errorf("recording the content purge job: %w", err)
+		}
+	}
+
 	metadata := map[string]any{
 		"deletion_id":       job.ID,
 		"resource_type":     string(resourceType),
@@ -230,6 +254,24 @@ func (s *Service) Delete(
 	actor := caller
 	if err := audit.Record(ctx, tx, &actor, "deletion.requested", string(resourceType), &id, metadata); err != nil {
 		return nil, err
+	}
+	// F11/T072: the independently retainable ledger records the decision in the
+	// *same* transaction as the tombstone and the job. A restore replays this
+	// record before reads open (OPERATIONS.md §46); a repeated DELETE reuses the
+	// job and must not append a second decision.
+	if created {
+		if _, err := AppendLedgerTx(ctx, tx, LedgerAppend{
+			DeletionJobID:    job.ID,
+			ResourceType:     string(resourceType),
+			ResourceID:       id,
+			DeletionRevision: plan.Revision,
+			EntryKind:        EntryTombstone,
+			Record: TombstoneRecord(
+				resourceType, id, plan.Revision, derivedDocumentIDsOf(plan),
+			),
+		}); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the deletion: %w", err)

@@ -6,12 +6,12 @@ maintenance binary. The sweep must delete:
 * staging objects with no live uploader (no row, or a row that already moved on:
   ready/quarantined/deleted).
 
-It must never delete a sealed object, referenced or not. Deleting sealed bytes
-needs a registration/deletion lock shared with the writers (a sealed object can be
-written just before its artifact row commits), so sealed-orphan cleanup is a later
-ticket (F07/F13A); this sweep reports how many unreferenced sealed objects it left
-in ``sealed_deferred`` instead of guessing. It must also keep a staged object whose
-artifact is still uploading/scanning. A repeated sweep is a no-op.
+F11/T071 extended the same command to *old* unreferenced sealed objects (with a
+10-minute sealed-write grace); this T026 test keeps a freshly written sealed
+orphan, so the sweep must still defer it in ``sealed_deferred`` rather than delete
+it. Its staging expectations are unchanged. It must also keep a staged object
+whose artifact is still uploading/scanning. A repeated sweep is a no-op. The
+sealed-orphan deletion itself is proved by ``tests/f11/test_t071_orphans.py``.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     # 1. A staging object no row references (a crashed upload).
     orphan_staging_key = "staging/" + f00b.random_object_name()
     f00b.write_object(object_dir, orphan_staging_key, b"crashed upload")
-    # 2. A sealed object no row references (a crash between seal and commit).
-    #    The sweep must NOT delete it: registration and deletion need a shared
-    #    lock, so sealed-orphan cleanup is F07/F13A.
+    # 2. A freshly written sealed object no row references: the T071 sweep defers
+    #    it because it is younger than the 10m sealed-write grace (a writer may be
+    #    between PutSealed and its artifact-row commit).
     orphan_sealed_key = "sealed/" + f00b.random_object_name()
     f00b.write_object(object_dir, orphan_sealed_key, b"crashed sealed bytes")
 
@@ -106,7 +106,7 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     completed, deleted_lines, summary = t026.run_sweep(t026_stack, "--orphan-age", "0s")
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     assert summary["status"] == "ok", summary
-    # Only the staging leftovers go: the sealed orphans are preserved on purpose.
+    # Only the staging leftovers go: the young sealed orphan is deferred.
     assert summary["deleted"] == 2, (summary, deleted_lines)
     assert summary["sealed_deferred"] == 1, summary
     assert summary["deleted_bytes"] > 0
@@ -120,17 +120,18 @@ def test_sweep_removes_only_orphans_and_is_idempotent(t026_stack) -> None:
     assert "artifact_ready" in reasons, deleted_lines
     assert all(line["action"] == "deleted" for line in deleted_lines), deleted_lines
 
-    # What must survive: every sealed object (referenced, unreferenced and
-    # tombstoned alike) and the live uploader's staging object.
+    # What must survive: every referenced sealed object (including the tombstoned
+    # one the deletion purge owns), the too-young sealed orphan and the live
+    # uploader's staging object.
     assert (object_dir / ready.object_key).exists()
     assert (object_dir / deleted.object_key).exists()
-    assert (object_dir / orphan_sealed_key).exists(), "the sweep deleted sealed bytes"
+    assert (object_dir / orphan_sealed_key).exists(), "the sweep deleted fresh sealed bytes"
     assert (object_dir / live.staging_key).exists()
     assert not (object_dir / orphan_staging_key).exists()
     assert not (object_dir / leftover.staging_key).exists()
 
-    # Idempotent: a second sweep finds nothing to delete and still reports the
-    # sealed objects it left for the later ticket.
+    # Idempotent: a second sweep finds nothing to delete and still defers the
+    # young sealed object.
     completed, deleted_lines, summary = t026.run_sweep(t026_stack, "--orphan-age", "0s")
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     assert summary["deleted"] == 0, summary
