@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import json
 
+from support import stack as st
 from support import t027, t029, t033, t041, t043, t054
+
+# The production recall bounds mirrored from internal/memory/recall.go. The trace
+# assertions name these numbers instead of hard-coding them twice.
+RECALL_ROW_LIMIT = 200      # memory.RecallRowLimit
+RECALL_SCAN_BATCH = 200     # memory.RecallScanBatch
+RECALL_SCAN_LIMIT = 2000    # memory.RecallScanRowLimit
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +48,25 @@ def create_memory(session, application_id: str, text: str) -> dict:
     response = t054.create_memory(session, application_id=application_id, text=text)
     assert response.status == 201, response.text
     return response.json
+
+
+def seed_memories(
+    session, application_id: str, *, prefix: str, count: int, start: int = 0
+) -> list[str]:
+    """Create ``count`` ordinary confirmed memories through the real API.
+
+    Bulk seeding exists so a test can put a protected row beyond the recency cap
+    (``RECALL_ROW_LIMIT``) or beyond the hard scan bound (``RECALL_SCAN_LIMIT``)
+    without hiding that setup in SQL. Every row is a real ``POST /memories`` with
+    its own sealed body.
+    """
+    ids: list[str] = []
+    for index in range(start, start + count):
+        memory = create_memory(
+            session, application_id, f"{prefix}-{index}: value {index}"
+        )
+        ids.append(memory["id"])
+    return ids
 
 
 def submit_run(stack, owner_, application_id: str, *, input_value: dict | None = None) -> dict:
@@ -145,6 +171,39 @@ def optional_memory_truncations(turn: dict) -> list[dict]:
         truncation for truncation in turn.get("truncations", [])
         if truncation.get("reason") == "optional_memory"
     ]
+
+
+def memory_scan(turn: dict) -> dict:
+    """The recall source's bounded-scan report of one trace turn ({} if absent)."""
+    return turn.get("memory_scan") or {}
+
+
+def scan_truncations(turn: dict) -> list[dict]:
+    """Trace entries that admit the recall scan stopped at its hard bound."""
+    return [
+        truncation for truncation in turn.get("truncations", [])
+        if truncation.get("reason") == "memory_scan_truncated"
+    ]
+
+
+def newest_memory_ids(
+    dbname: str, owner_id: str, application_id: str, limit: int
+) -> list[str]:
+    """The exact recency page ``RecallSource`` reads, ordered like its SQL.
+
+    This is the independent setup proof that a seeded row is outside the cap: the
+    recall source itself is never asked to describe what it cannot see.
+    """
+    rows = st.sql_rows(
+        dbname,
+        "SELECT id::text AS id FROM platform.memories "
+        f"WHERE owner_id = {st.quote_literal(owner_id)}::uuid "
+        f"AND application_id = {st.quote_literal(application_id)}::uuid "
+        "AND deleted_at IS NULL "
+        "ORDER BY confirmed_at DESC, id DESC "
+        f"LIMIT {int(limit)}",
+    )
+    return [row["id"] for row in rows]
 
 
 def model_messages(stack, run_id: str) -> list[dict]:

@@ -54,13 +54,22 @@ const (
 	CodeSourceUnauthorized = "context_source_unauthorized"
 )
 
-// Truncation reasons, in the order the builder applies them.
+// Truncation reasons. The first five are the builder's token-pressure order;
+// memory_scan_truncated is recorded once, while the recall source is read, when
+// that source reports its own bounded scan.
 const (
 	ReasonLowRelevanceHistory = "low_relevance_history"
 	ReasonOldToolDetail       = "old_tool_detail"
 	ReasonVerboseUpstream     = "verbose_upstream_text"
 	ReasonDisplayOnlySummary  = "display_only_summary"
 	ReasonOptionalMemory      = "optional_memory"
+	// ReasonMemoryScanTruncated records a recall source that stopped scanning
+	// older in-scope rows at its hard bound without exhausting the
+	// owner+application scope. It removes no model tokens by itself; it exists so
+	// that "the source could not see every older row" is never silent. Without
+	// this entry a protected negation beyond the bound would be indistinguishable
+	// from a fact the user never stated.
+	ReasonMemoryScanTruncated = "memory_scan_truncated"
 	ReasonProtectedMinimum    = "protected_minimum"
 )
 
@@ -211,23 +220,53 @@ type Memory struct {
 	SourceRunID string
 }
 
+// MemoryScan reports how far a recall source looked for protected older rows
+// beyond its recency page.
+//
+// Scanned counts the in-scope rows the source examined past the newest
+// `RecencyLimit` rows; Limit is the hard bound the source applied; Protected is
+// how many of those older rows were added to the read because they carry a
+// protection marker; Truncated is true when the source stopped at Limit without
+// exhausting the owner+application scope. A zero Limit means "this source did
+// not report a bounded scan" (for example NoMemorySource, or a source with
+// nothing older than its newest page).
+type MemoryScan struct {
+	Scanned   int  `json:"scanned"`
+	Limit     int  `json:"limit"`
+	Protected int  `json:"protected_found"`
+	Truncated bool `json:"truncated"`
+}
+
+// MemoryRead is one recall read: the rows plus the bounded-scan report of the
+// source that produced them. Rows are ordered newest first.
+type MemoryRead struct {
+	Rows []Memory
+	Scan MemoryScan
+}
+
 // MemorySource is the F09 seam. The production source is memory.RecallSource,
 // which reads the current owner+application rows from PostgreSQL; NoMemorySource
 // is the "none wired" implementation used by processes that have no store.
+//
+// The read reports its own bounded scan instead of only rows: a source that
+// looked for protected older rows and stopped at a hard bound must say so, or a
+// user negation beyond that bound would vanish between the store and the builder
+// with nothing in the trace.
 type MemorySource interface {
-	ConfirmedMemories(ctx stdcontext.Context, ownerID, applicationID string) ([]Memory, error)
+	ConfirmedMemories(ctx stdcontext.Context, ownerID, applicationID string) (MemoryRead, error)
 }
 
 // NoMemorySource is the seam's "no source wired" implementation: it reads nothing
 // and the trace reports not_run. It is a real implementation of "no source", not
-// fake memory.
+// fake memory: it reports no rows and no scan.
 type NoMemorySource struct{}
 
-// ConfirmedMemories returns no rows: this process has no personal-memory source.
+// ConfirmedMemories returns no rows and no scan: this process has no
+// personal-memory source.
 func (NoMemorySource) ConfirmedMemories(
 	stdcontext.Context, string, string,
-) ([]Memory, error) {
-	return nil, nil
+) (MemoryRead, error) {
+	return MemoryRead{}, nil
 }
 
 // Request is one turn's builder input.
@@ -262,12 +301,22 @@ type TraceSource struct {
 
 // Truncation is one trace entry: which source lost tokens, why, and how many.
 // A memory truncation also names the memory row and revision that was dropped.
+//
+// A memory_scan_truncated entry is a source-level record, not a token loss: it
+// carries Scanned/ScanLimit and TokensRemoved is 0. It is emitted when the
+// recall source stopped at its hard scan bound with older in-scope rows
+// unexamined, so the trace can never pass a bounded view off as complete.
 type Truncation struct {
 	Source         string `json:"source"`
 	Reason         string `json:"reason"`
 	TokensRemoved  int    `json:"tokens_removed"`
 	MemoryID       string `json:"memory_id,omitempty"`
 	MemoryRevision int64  `json:"memory_revision,omitempty"`
+	// Scanned and ScanLimit are set only on a memory_scan_truncated entry: how
+	// many older in-scope rows the recall source examined and the hard bound it
+	// stopped at.
+	Scanned   int `json:"scanned,omitempty"`
+	ScanLimit int `json:"scan_limit,omitempty"`
 }
 
 // Trace is the durable, secret-free record of one build.
@@ -284,6 +333,11 @@ type Trace struct {
 	// sub-budget the selection used (budget / MemoryBudgetDivisor).
 	MemoryTokens       int `json:"memory_tokens"`
 	MemoryBudgetTokens int `json:"memory_budget_tokens"`
+	// MemoryScan is the recall source's bounded protection scan. It is present
+	// once the source examined older rows (Scanned > 0) or stopped at its bound
+	// (Truncated); it is absent when no source ran, the source reported no scan,
+	// or there was nothing older than the recency page. It carries counts only.
+	MemoryScan *MemoryScan `json:"memory_scan,omitempty"`
 	// DisplayOnlySummaryCount counts history summaries the builder deliberately
 	// kept out of the model input. A summary is display-only: it is never model
 	// context and never a fact source.
@@ -741,13 +795,26 @@ func loadMemory(
 		memoryBudget = 1
 	}
 	trace.MemoryBudgetTokens = memoryBudget
-	rows, err := request.Memory.ConfirmedMemories(
+	read, err := request.Memory.ConfirmedMemories(
 		ctx, request.Scope.OwnerID, request.Scope.ApplicationID,
 	)
 	if err != nil {
 		trace.MemoryState = MemoryUnavailable
 		return nil, nil
 	}
+	// The source's own bounded-scan facts are recorded even when no row ends up
+	// selected: a scan that stopped at its hard bound must never look complete.
+	scan := read.Scan
+	if scan.Scanned > 0 || scan.Truncated {
+		trace.MemoryScan = &scan
+	}
+	if scan.Truncated {
+		trace.Truncations = append(trace.Truncations, Truncation{
+			Source: "memory_scan", Reason: ReasonMemoryScanTruncated,
+			Scanned: scan.Scanned, ScanLimit: scan.Limit,
+		})
+	}
+	rows := read.Rows
 	if len(rows) == 0 {
 		trace.MemoryState = MemoryEmpty
 		return nil, nil
@@ -766,7 +833,7 @@ func loadMemory(
 			ID: row.ID, Text: row.Text, Revision: row.Revision,
 			ConfirmedAt: row.ConfirmedAt, CandidateID: row.CandidateID,
 			SourceRunID: row.SourceRunID,
-			Protected:   memoryTextIsProtected(row.Text),
+			Protected:   IsProtectionSensitive(row.Text),
 		})
 	}
 	if len(items) == 0 {
@@ -963,10 +1030,16 @@ var memoryProtectedMarkers = []string{
 	"不要", "不得", "禁止", "绝不", "审批", "批准", "除外",
 }
 
-// memoryTextIsProtected reports whether one memory body must survive the memory
-// budget. ASCII markers are matched on word boundaries so "whenever" is not read
-// as "never"; CJK markers are matched as substrings.
-func memoryTextIsProtected(text string) bool {
+// IsProtectionSensitive reports whether one memory body carries a user negation
+// or an approval parameter, using the single fixed vocabulary below.
+//
+// It is exported because two seams must agree on it: the recall source scans
+// older rows for exactly these markers before the context builder ever sees
+// them, and the builder marks the selected rows with the same rule. One
+// vocabulary means a marker added here is visible to both, and there is no
+// second list to drift. The scan only selects candidates; the builder's
+// protected selection is still the authority on the model input.
+func IsProtectionSensitive(text string) bool {
 	lowered := strings.ToLower(text)
 	for _, marker := range memoryProtectedMarkers {
 		if memoryMarkerPresent(lowered, marker) {
