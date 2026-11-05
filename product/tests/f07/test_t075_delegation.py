@@ -375,3 +375,22 @@ def test_the_picker_reads_are_acl_filtered(t025_stack) -> None:
     # input/output schemas from.
     assert items[0]["manifest"]["definition"]["input_schema"]["required"] == ["source"]
     assert json.dumps(items[0]["manifest"]["definition"]["output_schema"]).find("report") >= 0
+
+    # T070: a revoked version is not a published version the creator may call, so
+    # the list (and the picker built from it) never offers it, and its detail read
+    # is the same 404 as a missing row.
+    revoked_id = t025.seed_published_version(
+        t025_stack.dbname,
+        foreign.principal_id,
+        foreign_child["application"],
+        version_no=2,
+        revoked=True,
+    )
+    relisted = t075.list_versions(creator, foreign_child["application"])
+    assert relisted.status == 200, relisted.text
+    offered = [item["id"] for item in relisted.json["items"]]
+    assert offered == [foreign_child["id"]], offered
+    assert revoked_id not in offered
+    revoked = t075.get_version(creator, revoked_id)
+    assert revoked.status == 404, revoked.text
+    assert revoked.json["error"]["code"] == "resource_not_found", revoked.text
