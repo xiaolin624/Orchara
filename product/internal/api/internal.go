@@ -153,6 +153,12 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/jobs/claim", s.handleInternalExecutionClaim)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/heartbeat", s.handleInternalRunHeartbeat)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/result", s.handleInternalRunResult)
+	// F07/T078: the contract spawnChild operation (worker mTLS) and the
+	// non-contract terminal-result read the parent executor needs. Both re-prove
+	// the parent's live attempt token; the child is always a real platform Run.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/children", s.handleInternalSpawnChild)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/children/{child_run_id}/result",
+		s.handleInternalChildResult)
 	// F03/T035: the synthetic approval/child-result bridge. Supervisor-only mTLS;
 	// F06/F07 replace it with their real sources (documented non-contract bridge).
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/waiting-resolution", s.handleInternalWaitingResolution)

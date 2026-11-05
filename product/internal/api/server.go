@@ -14,6 +14,7 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/children"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
@@ -84,6 +85,8 @@ type Server struct {
 	// per-conversation slot, idempotent submission, the explicit fixed-version
 	// dispatch and the message projection.
 	requests *requests.Service
+	// children is the F07/T078 fixed-version child Run creator and read path.
+	children *children.Service
 	objects  *objectstore.Store
 	signer   *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
@@ -188,6 +191,11 @@ func New(deps Deps) *Server {
 	)
 	// local_sequence diagnostics go to the process log, never the API body.
 	executionService.Logger = logger
+	// F07/T078: the spawnChild service and the frozen-result-schema gate for
+	// delegated child Runs. The gate is optional in the execution service, so a
+	// caller that never wires it keeps the previous finalizer behaviour.
+	childService := children.New(deps.Service.DB, catalogReader, deps.Objects)
+	executionService.ResultValidator = children.NewResultValidator(deps.Service.DB, deps.Objects)
 	catalogRefs := deps.Catalog
 	if catalogRefs == nil {
 		// The dev-stub default is deterministic and cannot fail; a nil catalog
@@ -269,6 +277,7 @@ func New(deps Deps) *Server {
 		memory:            memoryService,
 		deletions:         deletionService,
 		requests:          requestService,
+		children:          childService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -380,6 +389,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+	// F07/T078: the owner-only child Run list the Run page uses. Non-contract
+	// (the contract has no list-children operation); owner-only exactly like the
+	// parent read, and it returns the same contract Run projection.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/children", s.handleListChildRuns)
 	// F03/T036: owner-only, idempotent cancel intent. 202 with the contract Run;
 	// "accepted" never means the external effect was undone.
 	mux.HandleFunc("POST /api/v1/runs/{run_id}/cancel", s.handleCancelRun)

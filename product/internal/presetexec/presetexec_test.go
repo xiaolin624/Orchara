@@ -72,6 +72,40 @@ type fakeClient struct {
 	reportCapability  func(capabilities.ResultReport) (*capabilities.Result, error)
 	capabilityInputs  []capabilities.Input
 	capabilityReports []capabilities.ResultReport
+
+	// scripted delegation seam (call_app / agent subapp tests)
+	spawnChild    func(SpawnChildRequest) (*ChildRun, error)
+	childResult   func(childRunID string) (*ChildResult, error)
+	spawnRequests []SpawnChildRequest
+	childReads    []string
+}
+
+// SpawnChild implements Client: the executor never creates a Run itself.
+func (f *fakeClient) SpawnChild(
+	_ context.Context, _ string, _ string, request SpawnChildRequest,
+) (*ChildRun, error) {
+	f.mu.Lock()
+	f.spawnRequests = append(f.spawnRequests, request)
+	script := f.spawnChild
+	f.mu.Unlock()
+	if script == nil {
+		return nil, errors.New("no scripted child")
+	}
+	return script(request)
+}
+
+// ChildResult implements Client: the terminal child read.
+func (f *fakeClient) ChildResult(
+	_ context.Context, _ string, _ string, childRunID string,
+) (*ChildResult, error) {
+	f.mu.Lock()
+	f.childReads = append(f.childReads, childRunID)
+	script := f.childResult
+	f.mu.Unlock()
+	if script == nil {
+		return nil, errors.New("no scripted child result")
+	}
+	return script(childRunID)
 }
 
 // recordedNodeEvent is one observed node.status transition.

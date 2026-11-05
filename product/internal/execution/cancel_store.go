@@ -423,6 +423,14 @@ func requireLiveAttemptTx(
 	return nil
 }
 
+// RequireLiveAttemptTx is the exported form of the run-scoped attempt proof for
+// creation paths outside this package. F07/T078's children.Spawn uses it exactly
+// like every execution-protocol route: worker mTLS plus a live, current attempt
+// token is the whole authorization for creating a child Run.
+func RequireLiveAttemptTx(ctx context.Context, tx *sql.Tx, runID, token string) error {
+	return requireLiveAttemptTx(ctx, tx, runID, token, false)
+}
+
 // insertUnknownOperationTx records one operation id once. ON CONFLICT DO NOTHING
 // is the idempotency; the caller re-reads the row and compares the reason.
 func insertUnknownOperationTx(

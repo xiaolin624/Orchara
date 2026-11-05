@@ -31,6 +31,113 @@ function runDetailPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || ''));
 }
 
+/** The owner-only child Run list path for one parent Run (F07/T078). */
+function runChildrenPath(runId) {
+  return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/children';
+}
+
+/** The owner-only artifact content path a child structured result is read from. */
+function artifactContentPath(artifactID) {
+  return '/api/v1/artifacts/' + encodeURIComponent(String(artifactID || '')) + '/content';
+}
+
+/**
+ * The child Run projection the panel renders. Only the contract Run fields are
+ * read; a child's success is the server's terminal state, never inferred here.
+ */
+function describeChildRun(child) {
+  const value = child || {};
+  const outputArtifactID =
+    value.output_artifact_id == null ? '' : String(value.output_artifact_id);
+  const state = String(value.state || '');
+  return {
+    id: String(value.id || ''),
+    state,
+    stateText: describeRunState(state),
+    kind: String(value.kind || ''),
+    versionID:
+      value.application_version_id == null ? '' : String(value.application_version_id),
+    parentRunID: value.parent_run_id == null ? '' : String(value.parent_run_id),
+    outputArtifactID,
+    errorCode: value.error_code == null ? '' : String(value.error_code),
+    hasStructuredResult: outputArtifactID !== '' && state === 'succeeded',
+  };
+}
+
+/**
+ * Load one parent Run's children and each succeeded child's structured result.
+ * `fetcher` defaults to the page's JSON client so the Node harness observes the
+ * exact request paths without a browser.
+ */
+async function loadChildRuns(runId, fetcher) {
+  const request = fetcher || api;
+  const body = await request(runChildrenPath(runId));
+  const items = body && Array.isArray(body.items) ? body.items : [];
+  const described = items.map(describeChildRun);
+  for (const child of described) {
+    if (!child.hasStructuredResult) {
+      continue;
+    }
+    try {
+      child.structuredResult = await request(artifactContentPath(child.outputArtifactID));
+    } catch (error) {
+      child.resultError = error && error.code ? String(error.code) : 'error';
+    }
+  }
+  return described;
+}
+
+/** One owner-facing line; a non-terminal child never reads as success. */
+function childRunSummaryText(child) {
+  const value = child || {};
+  const state = String(value.stateText || value.state || '未知状态');
+  const result = value.hasStructuredResult ? '有结构化结果' : '无结构化结果';
+  const error = value.errorCode ? ' [' + value.errorCode + ']' : '';
+  return String(value.id || '') + ' · ' + state + error + ' · ' + result;
+}
+
+async function loadChildRunsPanel(runId) {
+  const status = document.getElementById('children-status');
+  const list = document.getElementById('children-list');
+  if (!status || !list) {
+    return;
+  }
+  status.className = 'status pending';
+  status.textContent = '正在加载子运行…';
+  try {
+    const children = await loadChildRuns(runId);
+    list.replaceChildren();
+    if (children.length === 0) {
+      status.className = 'status';
+      status.textContent = '该 Run 没有独立子运行（未委派）。';
+      return;
+    }
+    for (const child of children) {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '查看';
+      button.addEventListener('click', () => loadRunDetail(child.id));
+      item.append(childRunSummaryText(child) + ' ');
+      item.append(button);
+      if (child.structuredResult !== undefined) {
+        const pre = document.createElement('pre');
+        pre.className = 'hint';
+        pre.textContent = JSON.stringify(child.structuredResult);
+        item.appendChild(pre);
+      }
+      list.appendChild(item);
+    }
+    status.className = 'status ok';
+    status.textContent = children.length + ' 个独立子运行。';
+  } catch (error) {
+    status.className = 'status bad';
+    status.textContent =
+      '子运行不可用 [' + (error && error.code ? error.code : 'error') + '] ' +
+      (error && error.message ? error.message : '未知错误');
+  }
+}
+
 /** The owner-only artifact list path for one run id (T033). */
 function runArtifactsPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/artifacts';
@@ -1914,6 +2021,7 @@ async function loadRunDetail(runId) {
     loadRunArtifacts(runId);
     loadCapabilityLedger(runId);
     loadNodeResults(runId);
+    loadChildRunsPanel(runId);
     beginRunTimeline(runId, {
       listID: 'detail-timeline',
       statusID: 'detail-timeline-status',
