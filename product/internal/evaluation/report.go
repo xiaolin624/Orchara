@@ -16,6 +16,11 @@ package evaluation
 // only writer of a report row.
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"time"
 )
@@ -295,6 +300,28 @@ func ValidateShape(document *Report) string {
 		return "the declared status disagrees with the cases (" + expected + ")"
 	}
 	return ""
+}
+
+// DecodeReport strictly decodes one sealed report document. Unknown fields,
+// trailing data or invalid JSON are a malformed report, never an accepted one.
+//
+// It is the single decoder used by the completion guard (which first writes the
+// report row) and by F02B's publication gate (which re-reads that row's sealed
+// bytes and must reach the same verdict). A second decoder would be a place for
+// the two acceptances to drift.
+func DecodeReport(content []byte) (*Report, error) {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var document Report
+	if err := decoder.Decode(&document); err != nil {
+		return nil, fmt.Errorf("decoding the report document: %w", err)
+	}
+	// A second value after the document is trailing garbage.
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("the report document has trailing data")
+	}
+	return &document, nil
 }
 
 // FormatTime renders a platform timestamp for the report. Zero times are
