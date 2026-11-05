@@ -312,18 +312,50 @@ def seed_published_version(
     version_id: str | None = None,
     version_no: int = 1,
     revoked: bool = False,
+    definition: dict | None = None,
+    manifest: dict | None = None,
+    manifest_sha256: str | None = None,
+    manifest_artifact_id: str | None = None,
 ) -> str:
     """Seed a real published version plus the review/artifact rows it requires.
 
     Since T026's 0013 ``publication_reviews.report_id`` is a real FK, so the
     review points at a real (seeded) ``evaluation_reports`` row with its own
     ready result artifact. No evaluation job is created by this helper.
+
+    Since T075 every seeded version carries a frozen ``definition`` (its
+    input_schema/output_schema are what a call_app mapping is checked against);
+    ``definition`` overrides the two schemas, and ``manifest``/``manifest_sha256``
+    /``manifest_artifact_id`` let a caller store the exact bytes a real validate
+    sealed (the publisher's stored shape) instead of a synthetic document.
     """
     version_id = version_id or new_uuid()
     review_id = new_uuid()
     report_id = new_uuid()
-    artifact = insert_artifact(dbname, owner_id, purpose="version_manifest", sha256=None)
+    artifact = manifest_artifact_id or insert_artifact(
+        dbname, owner_id, purpose="version_manifest", sha256=None
+    )
     report_artifact = insert_artifact(dbname, owner_id, purpose="report", sha256=None)
+    if manifest is None:
+        frozen = definition or {}
+        manifest = {
+            "manifest_version": "1.0",
+            "application_id": application_id,
+            "seeded": version_no,
+            "definition": {
+                "dsl_version": "1.0",
+                "nodes": [],
+                "edges": [],
+                "input_schema": frozen.get("input_schema", {"type": "object"}),
+                "output_schema": frozen.get("output_schema", {"type": "object"}),
+            },
+        }
+    if manifest_sha256 is None:
+        manifest_sha = hashlib.sha256(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    else:
+        manifest_sha = manifest_sha256
     sql_utf8(
         dbname,
         "INSERT INTO platform.evaluation_reports "
@@ -333,10 +365,6 @@ def seed_published_version(
         f"{_literal(hashlib.sha256(('dataset-' + report_id).encode()).hexdigest())}, "
         f"{_literal(report_artifact)}::uuid, 'passed')",
     )
-    manifest = {"manifest_version": "1.0", "application_id": application_id, "seeded": version_no}
-    manifest_sha = hashlib.sha256(
-        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
     sql_utf8(
         dbname,
         "INSERT INTO platform.publication_reviews "
@@ -352,12 +380,13 @@ def seed_published_version(
         "INSERT INTO platform.application_versions "
         "(id, application_id, version_no, review_id, manifest, manifest_sha256, "
         " manifest_artifact_id, capability_card, compiler_version, worker_image_digest, "
-        " state_schema_version, revoked_at) VALUES ("
+        " state_schema_version, revoked_at, revoke_reason) VALUES ("
         f"{_literal(version_id)}::uuid, {_literal(application_id)}::uuid, {int(version_no)}, "
         f"{_literal(review_id)}::uuid, " + _jsonb(manifest) + ", "
         f"{_literal(manifest_sha)}, {_literal(artifact)}::uuid, '{{}}'::jsonb, "
         "'orchara-compiler/1.0.0', " + _literal(WORKER_IMAGE_DIGEST) + ", 'orchara-state/1.0', "
-        f"{'now()' if revoked else 'NULL'})",
+        # T068's revoke shape requires a reason whenever revoked_at is set.
+        f"{'now(), ' + _literal('t025 revoked fixture') if revoked else 'NULL, NULL'})",
     )
     return version_id
 
