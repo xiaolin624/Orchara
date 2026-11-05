@@ -622,3 +622,450 @@ function runViewCancelLabel(run) {
     : '取消 Run';
 }
 
+/** Record one cancel intent. A 202 only records intent; it is never "stopped". */
+async function runViewRequestCancel(runId) {
+  const token = await csrf();
+  const result = await apiFull(runViewCancelPath(runId), { method: 'POST', csrf: token });
+  return result.payload;
+}
+
+/** Read one data artifact as JSON (owner-only contract content route). */
+async function runViewFetchArtifactContent(artifactID) {
+  const response = await fetch(runViewArtifactContentPath(artifactID), {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const failure = new Error('HTTP ' + response.status);
+    failure.code = 'http_' + response.status;
+    failure.status = response.status;
+    throw failure;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return text;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DOM wiring (not part of the pure-function tests; the pytest page harness
+// drives these bytes with a document shim).
+// ---------------------------------------------------------------------------
+
+const RUNVIEW_POLL_INTERVAL_MS = 700;
+const RUNVIEW_MAX_POLLS = 600;
+
+let activeRunView = null;
+
+function runViewElement(id) {
+  if (typeof document === 'undefined' || !document || typeof document.getElementById !== 'function') {
+    return null;
+  }
+  return document.getElementById(id);
+}
+
+function runViewStatus(message, kind) {
+  const element = runViewElement('runview-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+function runViewCancelStatus(message, kind) {
+  const element = runViewElement('runview-cancel-status');
+  if (!element) {
+    return;
+  }
+  element.textContent = message;
+  element.className = 'status ' + (kind || '');
+}
+
+/** One table cell; textContent only, so a node id can never inject markup. */
+function runViewCell(text, className) {
+  const cell = document.createElement('td');
+  cell.textContent = text === undefined || text === null ? '' : String(text);
+  if (className) {
+    cell.className = className;
+  }
+  return cell;
+}
+
+/** The condition port / join-source cell of one row. */
+function runViewBranchCell(details) {
+  const cell = document.createElement('td');
+  cell.className = 'run-node-branch';
+  if (details.branchText !== '') {
+    const port = document.createElement('span');
+    port.className = 'node-port';
+    port.textContent = details.branchText;
+    cell.appendChild(port);
+  }
+  if (details.joinSources.length > 0) {
+    const summary = document.createElement('p');
+    summary.className = 'hint';
+    summary.textContent = details.joinText;
+    cell.appendChild(summary);
+    for (const source of details.joinSources) {
+      const line = document.createElement('p');
+      line.className = 'run-node-join-source state-' + source.status;
+      line.textContent = source.line;
+      cell.appendChild(line);
+      if (source.hasValue && source.valueText !== '') {
+        const expandable = document.createElement('details');
+        const toggle = document.createElement('summary');
+        toggle.textContent = '查看 ' + source.source + ' 的值（截断展示，完整值以 artifact 为准）';
+        const pre = document.createElement('pre');
+        pre.className = 'hint';
+        pre.textContent = source.valueText;
+        expandable.appendChild(toggle);
+        expandable.appendChild(pre);
+        cell.appendChild(expandable);
+      }
+    }
+  }
+  if (details.branchText === '' && details.joinSources.length === 0) {
+    cell.textContent = '';
+  }
+  return cell;
+}
+
+function runViewRowElement(row) {
+  const tr = document.createElement('tr');
+  tr.className = row.classNames.join(' ');
+  tr.setAttribute('data-node-id', row.nodeId);
+  tr.setAttribute('data-state', row.state);
+  const name = document.createElement('td');
+  const code = document.createElement('code');
+  code.textContent = row.nodeId;
+  name.appendChild(code);
+  if (row.label !== '') {
+    const label = document.createElement('p');
+    label.className = 'hint';
+    label.textContent = row.label;
+    name.appendChild(label);
+  }
+  const badge = document.createElement('span');
+  badge.className = 'node-state state-' + row.state;
+  badge.textContent = row.stateText;
+  const stateCell = document.createElement('td');
+  stateCell.appendChild(badge);
+  const attemptCell = runViewCell(row.attemptText, 'run-node-attempt');
+  const errorCell = document.createElement('td');
+  errorCell.className = 'run-node-error';
+  errorCell.textContent = row.errorCode;
+  tr.appendChild(name);
+  tr.appendChild(runViewCell(row.typeText, 'run-node-type'));
+  tr.appendChild(stateCell);
+  tr.appendChild(attemptCell);
+  tr.appendChild(runViewBranchCell(row));
+  tr.appendChild(errorCell);
+  return tr;
+}
+
+/**
+ * Render the current view model: the table, the Run state/error sentence and the
+ * cancel button. Every value comes from buildRunViewModel, so this function adds
+ * no independent truth.
+ */
+function renderRunView(view) {
+  if (!view || activeRunView !== view) {
+    return null;
+  }
+  const model = buildRunViewModel(
+    view.definition,
+    view.nodeStates,
+    view.nodeResults,
+    view.artifactContents,
+    view.run,
+  );
+  view.model = model;
+  const container = runViewElement('run-node-rows');
+  if (container && typeof container.replaceChildren === 'function') {
+    container.replaceChildren();
+    for (const row of model.rows) {
+      container.appendChild(runViewRowElement(row));
+    }
+  }
+  const stateLine = runViewElement('runview-run-state');
+  if (stateLine) {
+    stateLine.textContent =
+      'Run state：' + (model.runState || '（未知）') +
+      (model.runErrorCode === '' ? '' : ' · error_code=' + model.runErrorCode);
+  }
+  const summary = runViewElement('runview-summary');
+  if (summary) {
+    summary.textContent = model.text;
+  }
+  const error = formatRunError(view.run);
+  const errorElement = runViewElement('runview-error');
+  if (errorElement) {
+    errorElement.textContent = error.text + (error.hint === '' ? '' : ' ' + error.hint);
+    errorElement.className = 'status ' + error.severity;
+  }
+  const cancelButton = runViewElement('runview-cancel');
+  if (cancelButton) {
+    cancelButton.textContent = runViewCancelLabel(view.run);
+    cancelButton.disabled = !runViewCanCancel(view.run);
+  }
+  return model;
+}
+
+function stopRunView() {
+  if (activeRunView) {
+    activeRunView.stopped = true;
+    if (activeRunView.timer !== null) {
+      clearTimeout(activeRunView.timer);
+      activeRunView.timer = null;
+    }
+  }
+  activeRunView = null;
+}
+
+async function loadRunViewDefinition(view) {
+  if (activeRunView !== view || view.stopped || view.applicationID === '') {
+    return;
+  }
+  try {
+    const draft = await api('/api/v1/applications/' + encodeURIComponent(view.applicationID) + '/draft');
+    view.definition = draft && draft.definition && typeof draft.definition === 'object'
+      ? draft.definition
+      : null;
+    runViewStatus('已加载当前草稿定义；节点表按定义顺序显示。', 'ok');
+  } catch (error) {
+    view.definitionError = error && error.code ? error.code : 'error';
+    runViewStatus(
+      '草稿定义不可用 [' + view.definitionError + ']；节点表只显示服务端返回的节点事实。',
+      'pending',
+    );
+  }
+  renderRunView(view);
+}
+
+/** Fetch the data artifact content of condition/join nodes, at most once each. */
+async function refreshRunViewArtifacts(view) {
+  const definition = view.definition;
+  const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
+  const byID = {};
+  for (const node of nodes) {
+    if (node && (node.type === 'condition' || node.type === 'join')) {
+      byID[String(node.id || '')] = String(node.type);
+    }
+  }
+  if (Object.keys(byID).length === 0) {
+    return;
+  }
+  const items = view.nodeResults && Array.isArray(view.nodeResults.items) ? view.nodeResults.items : [];
+  for (const item of items) {
+    if (!item || item.kind !== 'data') {
+      continue;
+    }
+    const nodeID = String(item.node_id || '');
+    const artifactID = String(item.artifact_id || '');
+    if (
+      !Object.prototype.hasOwnProperty.call(byID, nodeID) ||
+      artifactID === '' ||
+      view.requestedArtifacts[artifactID]
+    ) {
+      continue;
+    }
+    view.requestedArtifacts[artifactID] = true;
+    try {
+      view.artifactContents[artifactID] = await runViewFetchArtifactContent(artifactID);
+    } catch (error) {
+      view.artifactErrors[artifactID] = error && error.code ? error.code : 'error';
+    }
+  }
+}
+
+/** One poll: Run snapshot + durable node results + condition/join artifact bytes. */
+async function runViewTick(view) {
+  if (activeRunView !== view || view.stopped) {
+    return;
+  }
+  view.polls += 1;
+  let failure = '';
+  try {
+    view.run = await api(runViewRunPath(view.runID));
+  } catch (error) {
+    if (error && error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    if (error && error.status === 404) {
+      runViewStatus('该 Run 不存在或不属于当前账户（404）；节点表已停止刷新。', 'bad');
+      return;
+    }
+    failure = (error && error.code ? error.code : 'error') + ' ' + (error && error.message ? error.message : '');
+  }
+  try {
+    view.nodeResults = await api(runViewNodeResultsPath(view.runID));
+  } catch (error) {
+    if (error && error.status === 401) {
+      window.location.assign('/login');
+      return;
+    }
+    view.nodeResultsError = error && error.code ? error.code : 'error';
+  }
+  await refreshRunViewArtifacts(view);
+  if (activeRunView !== view || view.stopped) {
+    return;
+  }
+  const model = renderRunView(view);
+  if (failure !== '') {
+    runViewStatus('刷新 Run 失败 [' + failure + ']；将重试。', 'pending');
+  } else if (model && model.runTerminal) {
+    // One extra durable sweep already happened in this tick: the executor
+    // registers node results before the Run's terminal state is committed.
+    runViewStatus('Run 已进入终态 ' + (model.runState || '') + '；节点状态以已提交事实为准。', 'ok');
+    view.stopped = true;
+    return;
+  } else if (model) {
+    runViewStatus(
+      '正在跟踪 Run（第 ' + view.polls + ' 次刷新）；' + model.text +
+      '。条件端口/join 结果来自 data artifact。',
+      'pending',
+    );
+  }
+  if (view.polls >= RUNVIEW_MAX_POLLS) {
+    runViewStatus('已停止刷新（' + view.polls + ' 次）；Run 仍未进入终态。', 'pending');
+    return;
+  }
+  view.timer = setTimeout(() => {
+    void runViewTick(view);
+  }, RUNVIEW_POLL_INTERVAL_MS);
+}
+
+/**
+ * Start the node-state view for one Run. `options` = `{runID, applicationID,
+ * draftRevision, run}`. The view polls the Run snapshot and the owner-only node
+ * results; SSE `node.status` events are fed in through runViewOnEvent, which the
+ * page wires as the timeline's onEvent callback.
+ */
+function beginRunView(options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const runID = String(opts.runID || '');
+  if (runID === '') {
+    return null;
+  }
+  stopRunView();
+  const view = {
+    runID: runID,
+    applicationID: String(opts.applicationID || ''),
+    draftRevision: opts.draftRevision === undefined || opts.draftRevision === null
+      ? null
+      : opts.draftRevision,
+    definition: null,
+    definitionError: '',
+    events: [],
+    nodeStates: {},
+    nodeResults: null,
+    nodeResultsError: '',
+    artifactContents: {},
+    artifactErrors: {},
+    requestedArtifacts: {},
+    run: opts.run && typeof opts.run === 'object' ? opts.run : null,
+    model: null,
+    polls: 0,
+    timer: null,
+    stopped: false,
+  };
+  activeRunView = view;
+  const panel = runViewElement('runview-panel');
+  if (panel) {
+    panel.hidden = false;
+  }
+  const container = runViewElement('run-node-rows');
+  if (container && typeof container.replaceChildren === 'function') {
+    container.replaceChildren();
+  }
+  runViewCancelStatus('', '');
+  runViewStatus('正在加载节点状态…', 'pending');
+  renderRunView(view);
+  void loadRunViewDefinition(view);
+  void runViewTick(view);
+  return view;
+}
+
+/**
+ * Feed one committed SSE event (the timeline's deduped list) into the active
+ * view. A `run.status` event updates the Run state/error code without waiting for
+ * the next poll; node.status events rebuild the state map by aggregation, so a
+ * replayed frame cannot change what the table shows.
+ */
+function runViewOnEvent(events, event) {
+  const view = activeRunView;
+  if (!view || view.stopped) {
+    return null;
+  }
+  if (Array.isArray(events)) {
+    view.events = events;
+  } else if (event && typeof event === 'object') {
+    view.events = view.events.concat([event]);
+  }
+  view.nodeStates = aggregateNodeStates(view.events);
+  if (event && event.type === 'run.status' && event.payload && typeof event.payload === 'object') {
+    const payload = event.payload;
+    const next = Object.assign({}, view.run && typeof view.run === 'object' ? view.run : {});
+    if (typeof payload.state === 'string' && payload.state !== '') {
+      next.state = payload.state;
+    }
+    if (typeof payload.error_code === 'string' && payload.error_code !== '') {
+      next.error_code = payload.error_code;
+    }
+    view.run = next;
+  }
+  return renderRunView(view);
+}
+
+/** Record one cancel intent for the active Run and refresh the panel honestly. */
+async function runViewCancel() {
+  const view = activeRunView;
+  if (!view) {
+    return null;
+  }
+  const button = runViewElement('runview-cancel');
+  if (button) {
+    button.disabled = true;
+  }
+  runViewCancelStatus('正在请求取消（202 只表示意图，终态由 finalizer 提交）…', 'pending');
+  try {
+    const run = await runViewRequestCancel(view.runID);
+    view.run = run && typeof run === 'object' ? run : view.run;
+    renderRunView(view);
+    runViewCancelStatus(
+      '已接受取消意图（state=' + String((view.run && view.run.state) || '') + '）；页面会刷新到终态。',
+      'ok',
+    );
+    return run;
+  } catch (error) {
+    if (error && error.status === 401) {
+      window.location.assign('/login');
+      return null;
+    }
+    runViewCancelStatus(
+      '取消失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误'),
+      'bad',
+    );
+    if (button) {
+      button.disabled = false;
+    }
+    return null;
+  }
+}
+
+if (typeof document !== 'undefined' && document.getElementById) {
+  const cancelButton = runViewElement('runview-cancel');
+  if (cancelButton && typeof cancelButton.addEventListener === 'function') {
+    cancelButton.addEventListener('click', () => {
+      void runViewCancel();
+    });
+  }
+}
+
+
