@@ -8,7 +8,7 @@
 -- and `request_routing_decisions` do not exist. This migration creates them and
 -- adds the two request columns the reply/selection path needs.
 --
--- Deliberate design decisions (recorded in the T079 report and ADR 0025):
+-- Deliberate design decisions (recorded in the T079 report and ADR 0029):
 --   1. `request_routing_candidates` is the **candidate snapshot** for one routing
 --      round: the exact authorized, published, unrevoked versions the model was
 --      allowed to choose from, with `rank` as an ordinal (1-based). It is written

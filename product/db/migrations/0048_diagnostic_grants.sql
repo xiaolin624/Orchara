@@ -56,6 +56,20 @@ CREATE INDEX IF NOT EXISTS diagnostic_grants_live
 CREATE INDEX IF NOT EXISTS diagnostic_grants_owner
     ON platform.diagnostic_grants (owner_id, created_at DESC);
 
+-- Privileges: this file enforces the zero-grant boundary its header claims. The
+-- block is the same one 0007-0047 repeat (0042:145-152 and siblings).
+REVOKE ALL ON SCHEMA platform FROM PUBLIC;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'orchara_worker') THEN
+        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA platform FROM orchara_worker';
+        EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA platform FROM orchara_worker';
+        EXECUTE 'REVOKE USAGE ON SCHEMA platform FROM orchara_worker';
+    END IF;
+END
+$$;
+
 COMMENT ON TABLE platform.diagnostic_grants IS
     'F11/T073 user-scoped diagnostic grants: one run owner authorises one administrator to read one explicit object snapshot for bounded purposes until an expiry. The row is metadata only; the bytes stay in platform.artifacts and every content read appends audit_events(action=diagnostic.content_read) with a typed whitelist.';
 COMMENT ON COLUMN platform.diagnostic_grants.object_scope IS

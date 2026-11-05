@@ -375,7 +375,7 @@ def seed_published_version(
         f"{_literal(manifest_sha)}, {_literal(report_id)}::uuid, 'approved', "
         f"{_literal(owner_id)}::uuid, now())",
     )
-    # F02B/T070: the 0042 CHECK moves revoked_at/revoked_by/revoke_reason
+    # F02B/T070: the 0043 CHECK moves revoked_at/revoked_by/revoke_reason
     # together, so a seeded revoked row must carry all three (a revoked_at-only
     # row is refused by the database, exactly like a half revocation in code).
     sql_utf8(
