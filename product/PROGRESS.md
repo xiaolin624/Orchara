@@ -1340,6 +1340,19 @@ T063（GitHub #64）已交付，状态 **`passed`**（范围 = 真实 PostgreSQL
 | propose 身份 | 核实：`cmd/supervisor exec` 同时持 supervisor+worker 证书，能力调用与 node-results 已用 worker 容量；真实测试：supervisor/maintenance propose 403 `forbidden`、worker 201 且 application 从 run 推导。结论：传输身份可用，**不需要**拆分进程；自动抽取/propose 行为仍属 F04A（not_run，非 blocked） |
 | 门禁 | `pytest tests/f09` **51 passed ×2**（合并后最终树 511.80s / 643.37s；中间一轮 50 passed / 1 `sandbox_failed` 抖动，单独复跑通过）、`pytest tests/f10` 57 passed（679.35s）、`pytest tests/f06/test_t047_context.py` 2 passed（48.14s）、`pytest tests/tooling` 21 passed、`go build/vet/test`、`gofmt -l`、`sync_spec --check` 全绿 |
 | 边界/not_run | 自动抽取/propose producer（F04A）；检索打分/嵌入/缓存与 `memory_embeddings`（T067）；物理清理（F07）；浏览器 DOM；真实厂商模型（沿用 dev stub）；全量 `pytest tests`（orchestrator）；合并提交 `0c8a995`（合并后 f09 51 passed ×2、f10 57 passed、T047 2 passed、Go 门禁与 sync_spec 全绿） |
+
+## F09/T063 RV3 复审修复：保护感知的召回扫描（2026-11-05）
+
+复审确认并修复 1 个 P2 缺陷（T063 的召回只按新近度读 200 行，第 201 行及更早的用户否定
+在 builder 保护检测前被丢弃且 trace 无记录）。ADR 0009 §12.9、T063 报告 §9。
+
+| 项 | 内容 |
+|---|---|
+| 修复 | `internal/context.IsProtectionSensitive` 导出唯一保护词表（builder 与召回共用）；`internal/memory/recall.go` 新近 `RecallRowLimit=200` 页不变，满页时按 `(confirmed_at,id)` keyset 以 `RecallScanBatch=200` 行/批、最多 `RecallScanRowLimit=2000` 行（10 批）扫描同 owner+application 旧行，protected 行加入返回集；旧正文读不出仍 fail closed |
+| 接口/trace | `MemorySource.ConfirmedMemories` 返回 `MemoryRead{Rows,Scan}`；`Trace.MemoryScan{scanned,limit,protected_found,truncated}`；触顶时 `truncations[]` 新增 `{source:"memory_scan", reason:"memory_scan_truncated", scanned, scan_limit, tokens_removed:0}`；`NoMemorySource` 仍返回零值、`not_run` 不调用；预算截断仍 `optional_memory` |
+| 测试（真实 PG + sealed 字节 + 真实 run） | `tests/f09/test_t063_recall.py` 新增 `test_protection_scan_finds_a_negation_beyond_the_recency_cap_and_the_budget_keeps_it`（201 行、越界否定被保留且 512 token 子预算下不截断、`memory_scan` 记录、跨应用/跨用户隔离）与 `test_protection_scan_stops_at_its_hard_bound_and_the_trace_says_so`（2201 行、扫描 2000 行触顶、`memory_scan_truncated` 带 scanned/limit、越界否定不出现）；Go `internal/context/build_test.go` 增补 builder 侧用例；既有 T063 四用例与 T047 保持通过 |
+| 门禁 | `pytest tests/f09` 本树 **69 passed ×2**（独立 `TMP`/`TEMP` 背靠背 513.24s / 503.26s；默认临时目录的中间一轮 3 failed/66 passed 是并发 pytest 会话清理 `pytest-<N>` 临时目录 + WSL/runsc 抖动，失败在上传 500/二进制缺失/`sandbox_failed`，非断言失败）、`pytest tests/f06/test_t047_context.py` 2 passed（35.24s）、`pytest tests/tooling` 21 passed（6.01s）、`go build ./...`/`go vet ./...`/`go test ./...` 全绿、`gofmt -l .` 空、`sync_spec --check` no drift；无迁移、无端点、未改契约/规格 |
+
 ## F09 Mem0 对照实验：保留 PostgreSQL（T066，2026-11-04）
 
 T066（GitHub #67）已交付，状态 **`passed`**（实验范围；**不是采用票**）。决策
