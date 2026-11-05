@@ -4,13 +4,15 @@
   `t/t071-async-purge`（worktree `E:\orchara-worktrees\t071`）；父批次
   `integration/t068-t082`；基线 `afeba90`。开发期两次合并集成 tip
   （`6952e25` @ `57d90df` 含 T074/T075；`8295321` @ `fa6544f` 含 T077），
-  此后本分支的全部 T071 代码提交被集成分支并入；最终 `git merge
-  integration/t068-t082` 为 **fast-forward 到 `a4e946d`**（含 T072/T073/T078），
-  报告与 PROGRESS 的最后一次 `docs(f11)` 提交在其上。集成 tip 的
-  `0048_diagnostic_grants.sql`（T073）与 `0048_f07_child_runs.sql`（T078）版本重号会让
-  `internal/db.LoadFS` 直接 fatal（“duplicate migration version 0048”）；本分支把 T078
-  的迁移**只重编号**为 `0049_f07_child_runs.sql`（内容不变、按名字断言、见 §4.4），
-  否则最终树无法启动任何需 migrate 的测试。
+  随后本分支全部 T071 代码提交被集成分支并入；收尾先 fast-forward 到
+  `a4e946d`（含 T072/T073/T078），再 `git merge integration/t068-t082` 到最终
+  tip **`affc12c`** → 合并提交 **`5235711`**（该 merge 只带入 T078 的 ADR/报告
+  文字；产品代码树与被测树相同）。报告与 PROGRESS 的最后一次 `docs(f11)` 提交在
+  合并提交之上。集成 tip 的 `0048_diagnostic_grants.sql`（T073）与
+  `0048_f07_child_runs.sql`（T078）重号会让 `internal/db.LoadFS` 直接 fatal
+  （“duplicate migration version 0048”）；本分支把它只重编号为
+  `0049_f07_child_runs.sql`（内容不变、按名字断言），集成 tip `affc12c` 随后也做了
+  同一修复，merge 后两边一致（见 §4.4）。
 - 状态：**`passed`**（T071 的三个 scope：`object_store`、`search_index`、
   `retrieval_cache` 全部真实幂等清理；失败保持禁读、`GET /deletions/{id}` 可查
   `failed` + 未清 scope、真实重试后完成；sealed 孤儿 sweep 有真实引用回归；无复活
@@ -379,24 +381,30 @@ $ git log --oneline -1
 8295321 Merge branch 'integration/t068-t082' into t/t071-async-purge
 ```
 
-最终（T072/T073/T078 已并入，tip `a4e946d`）：
+最终（T072/T073/T078 已并入，tip `a4e946d`，随后 tip 修复 0048 重号到 `affc12c`）：
 
 ```text
 $ git merge integration/t068-t082
 Updating 8295321..a4e946d
 Fast-forward
 （本分支全部 T071 代码提交已先行被集成分支并入；fast-forward 后本分支 = 集成 tip）
+
+$ git merge integration/t068-t082
+Merge made by the 'ort' strategy.
+ product/docs/adr/0025-f07-child-runs.md | 2 +-
+ product/reports/f07/T078-child-runs.md  | 4 ++--
 $ git log --oneline -1
-a4e946d merge(f07): T078 platform child runs and DeepAgents delegation adapter (#79)
+5235711 Merge branch 'integration/t068-t082' into t/t071-async-purge
 ```
 
-**集成树启动性修复（非 T071 行为，必须披露）**：该集成 tip 同时带有
+**集成树启动性修复（非 T071 行为，必须披露）**：集成 tip 同时带有
 `0048_diagnostic_grants.sql`（T073）与 `0048_f07_child_runs.sql`（T078）两个
 `0048` 版本；`internal/db.LoadFS` 对重复版本直接 fatal
 （`duplicate migration version 0048`），所以任何需 migrate 的测试都无法启动。
-本分支只把 T078 的迁移**重编号**为 `0049_f07_child_runs.sql`（SQL 内容不变；
-仓库所有测试按名字/slug 断言，不依赖 0048 这个号码），然后在其上提交 docs。
-这是集成缺陷的修复，不改变 T071 行为。
+本分支把 T078 的迁移**只重编号**为 `0049_f07_child_runs.sql`（SQL 内容不变；
+仓库所有测试按名字/slug 断言，不依赖 0048 这个号码）；集成 tip `affc12c` 随后
+独立做了同一修复，最终 merge `5235711` 两边一致。这是集成缺陷的修复，不改变
+T071 行为。
 
 最终树重跑：`pytest tests/f11`（含 T072/T073 用例）**68 passed ×2**
 （§4.1 `final1` 846.70s / `final2` 979.59s）、`go build/vet/test`、
@@ -410,8 +418,8 @@ a4e946d merge(f07): T078 platform child runs and DeepAgents delegation adapter (
 | 基线 | `integration/t068-t082` @ `afeba90` |
 | 收尾合并 1 | `6952e25`（merge `integration/t068-t082` @ `57d90df`，含 T074/T075） |
 | 收尾合并 2 | `8295321`（merge `integration/t068-t082` @ `fa6544f`，含 T077） |
-| 最终合并（fast-forward） | `a4e946d`（`integration/t068-t082` tip，含 T072/T073/T078） |
-| 集成启动性修复 | `0048_f07_child_runs.sql` → `0049_f07_child_runs.sql`（仅重编号，T078 内容不变） |
+| 最终合并（fast-forward 后再 merge） | fast-forward 到 `a4e946d`，再 merge tip `affc12c` → 合并提交 `5235711` |
+| 集成启动性修复 | `0048_f07_child_runs.sql` → `0049_f07_child_runs.sql`（仅重编号，T078 内容不变；集成 `affc12c` 同一修复） |
 | `db/migrations/0047_deletion_purge_paths.sql`（集成合并时终版 0047；merger 可再重编号） | `CEAD1505DACE006B…` |
 | `db/migrations/0049_f07_child_runs.sql`（T078 原 0048，启动性重编号） | `A44363119DAEC7E7…` |
 | `internal/deletion/purge.go`（T072 在其上新增四 scope 后的终版） | `7C276F473C9BE280…` |
