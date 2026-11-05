@@ -97,13 +97,16 @@ func (s *Service) Submit(
 	}
 	fromVersionID := ""
 	if input.Handoff != nil {
-		// The handover summary must be a non-empty user confirmation and every
-		// source Run must be the caller's own Run in this conversation.
+		// The handover summary must be a non-empty user confirmation and the
+		// submitted scope must be exactly the server preview for the named source
+		// Runs and selected artifacts (F08/T082). A hand-written transcript or a
+		// summary the server did not produce is a located 422.
 		if strings.TrimSpace(input.Handoff.Summary) == "" {
 			return nil, located("handoff.summary",
 				"the handover summary must say what crosses the application boundary")
 		}
-		fromVersionID, err = s.checkHandoffSources(ctx, caller, input.ConversationID, input.Handoff.SourceRunIDs)
+		fromVersionID, err = s.verifyHandoffScope(ctx, caller, input.ConversationID,
+			input.Handoff, input.ArtifactIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -245,54 +248,8 @@ func (s *Service) checkArtifacts(ctx context.Context, callerID string, ids []str
 	return nil
 }
 
-// checkHandoffSources verifies the user's confirmed source Runs: every id must be
-// a real Run of this conversation owned by the caller. It returns the version of
-// the newest source Run (when it has one) for the handover record.
-func (s *Service) checkHandoffSources(
-	ctx context.Context, callerID, conversationID string, runIDs []string,
-) (string, error) {
-	type runFact struct {
-		ownerID      string
-		conversation string
-		versionID    sql.NullString
-		createdAt    string
-	}
-	newestVersion := ""
-	var newest string
-	for index, runID := range runIDs {
-		var fact runFact
-		err := s.DB.QueryRowContext(ctx, `
-			SELECT owner_id::text, conversation_id::text, application_version_id::text,
-			       created_at::text
-			  FROM platform.runs
-			 WHERE id = $1::uuid AND deleted_at IS NULL`,
-			runID,
-		).Scan(&fact.ownerID, &fact.conversation, &fact.versionID, &fact.createdAt)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", handoffSourceUnknown(index, "the source Run does not exist")
-		}
-		if err != nil {
-			return "", fmt.Errorf("reading a handover source Run: %w", err)
-		}
-		if !strings.EqualFold(fact.ownerID, callerID) {
-			return "", handoffSourceUnknown(index, "the source Run belongs to another principal")
-		}
-		if !strings.EqualFold(fact.conversation, conversationID) {
-			return "", handoffSourceUnknown(index, "the source Run is not part of this conversation")
-		}
-		if fact.versionID.Valid && (newest == "" || fact.createdAt > newest) {
-			newest = fact.createdAt
-			newestVersion = fact.versionID.String
-		}
-	}
-	return newestVersion, nil
-}
-
-func handoffSourceUnknown(index int, message string) *Error {
-	return failureWithDetails(422, "handoff_source_unknown", message, map[string]any{
-		"field": fmt.Sprintf("handoff.source_run_ids/%d", index),
-	})
-}
+// checkHandoffSources and handoffSourceUnknown moved to handoff.go in F08/T082,
+// where the same authorisation feeds both the preview and the submit gate.
 
 // sealBytes writes one sealed object and returns its key/hash/size after
 // verifying the store's own report. A failed verification deletes the object
@@ -703,8 +660,10 @@ func (s *Service) DispatchVersionTx(
 }
 
 // runInputArtifactIDsTx is the exact input closure of one published Run: the
-// sealed message, the caller's submitted attachments and the confirmed handover
-// summary. It never reads another request's/Run's artifacts.
+// sealed message, the caller's submitted attachments, the artifacts the confirmed
+// handover selected from the source Runs and the confirmed handover summary. It
+// never reads another request's/Run's artifacts, the conversation transcript or a
+// personal memory body.
 func runInputArtifactIDsTx(
 	ctx context.Context, tx *sql.Tx, requestID, messageArtifactID string,
 ) ([]string, error) {
@@ -714,6 +673,8 @@ func runInputArtifactIDsTx(
 		    SELECT $2::uuid AS artifact_id
 		    UNION
 		    SELECT unnest(artifact_ids) FROM platform.requests WHERE id = $1::uuid
+		    UNION
+		    SELECT unnest(artifact_ids) FROM platform.request_handoffs WHERE request_id = $1::uuid
 		    UNION
 		    SELECT summary_artifact_id FROM platform.request_handoffs WHERE request_id = $1::uuid
 		  ) AS inputs

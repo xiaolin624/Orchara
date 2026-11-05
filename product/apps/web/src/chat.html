@@ -46,14 +46,31 @@
           <textarea id="chat-message" rows="4" maxlength="32000" required></textarea>
 
           <fieldset id="chat-handoff">
-            <legend>交接确认（可选，仅跨应用时使用）</legend>
-            <label for="chat-handoff-source-runs">来源 Run（逗号分隔）</label>
+            <legend>跨应用交接（可选）：先生成服务端预览，再确认最小范围</legend>
+            <p class="hint">
+              新应用只会收到本次需求、你在下面勾选的来源附件和这份服务端摘要；
+              旧应用的内部历史、对话正文与个人记忆不会自动传递。
+            </p>
+            <label for="chat-handoff-source-runs">来源 Run（逗号分隔，最多 5 个）</label>
             <input id="chat-handoff-source-runs" type="text" />
-            <label for="chat-handoff-summary">交接摘要（最多 8000 字）</label>
-            <textarea id="chat-handoff-summary" rows="2" maxlength="8000"></textarea>
+            <div class="row">
+              <button type="button" id="chat-handoff-load-artifacts">读取来源 Run 的产出附件</button>
+              <span id="chat-handoff-artifact-status" class="status"></span>
+            </div>
+            <fieldset id="chat-handoff-artifacts">
+              <legend>选择要交接的来源附件（最多 5 个）</legend>
+              <ul id="chat-handoff-artifact-options"></ul>
+            </fieldset>
+            <div class="row">
+              <button type="button" id="chat-handoff-preview-button">生成交接预览</button>
+              <span id="chat-handoff-preview-status" class="status"></span>
+            </div>
+            <pre id="chat-handoff-preview" aria-live="polite"></pre>
+            <p id="chat-handoff-scope" class="hint"></p>
+            <pre id="chat-handoff-summary" hidden></pre>
             <label class="checkbox">
               <input id="chat-handoff-confirmed" type="checkbox" />
-              我确认只交接上面列出的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
+              我确认只交接上面预览的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
             </label>
           </fieldset>
 
@@ -72,7 +89,7 @@
         <section id="request-panel" hidden>
           <h3>请求</h3>
           <p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
-          <p id="chat-handling"></p>
+          <p>处理版本：<span id="chat-handling"></span></p>
           <p id="chat-run-link"></p>
           <p id="chat-queue-status"></p>
           <button type="button" id="chat-cancel">取消该请求</button>
