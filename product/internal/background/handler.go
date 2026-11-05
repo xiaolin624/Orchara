@@ -83,6 +83,10 @@ type HandlerSettings struct {
 	// ArtifactReadyPoll is the interval between those status checks. Zero means
 	// the documented default.
 	ArtifactReadyPoll time.Duration
+	// DeleteContentTimeout bounds one physical purge attempt (F11/T071). A zero
+	// value means the documented default; a timeout is a retryable delete_timeout
+	// failure, never a partial success.
+	DeleteContentTimeout time.Duration
 }
 
 // Outcome is what a handler reports. State is succeeded (the guard then decides

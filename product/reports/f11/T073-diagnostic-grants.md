@@ -46,16 +46,17 @@
      无 training/consent 列）：4 passed。
    - 页面（served HTML 结构 + Node 执行 12 个纯函数）：3 passed（页面实现与测试同批
      完成，首次执行即绿；其余四个切片均有真实红阶段）。
-4. 迁移编号：任务提示预留 `0049`，但本 worktree 的迁移尾是 `0044`，BRIEF §5 与
-   `stack.migration_chain` 要求**无空洞**，因此使用本 worktree 下一个空位
-   **`0046_diagnostic_grants.sql`**（合并 T077 后 `0045` 已被 `0045_catalog_index.sql`
-   占据，本分支用下一个空位 0046；按 `_diagnostic_grants.sql` 名字断言，合并时由
-   merger 重编号）；ADR 使用预留的 **0028**（0025–0027 属并行票）。
+4. 迁移编号：任务提示预留 `0049`，但本地编号必须无空洞（BRIEF §5 /
+   `stack.migration_chain`）。本分支先随 T077 的 `0045_catalog_index.sql`、再随
+   T071/T072 的 `0046_deletion_copy_ledger.sql`/`0047_deletion_purge_paths.sql` 合并，
+   因此最终使用本分支下一个空位 **`0048_diagnostic_grants.sql`**（按
+   `_diagnostic_grants.sql` 名字断言；merger 以 0049 分配为准重编号）；ADR 使用预留的
+   **0028**（0025–0027 属并行票）。
 5. 未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`；合并后工作树干净。
 
 ## 1. 交付内容
 
-### 1.1 迁移 `0046_diagnostic_grants.sql`
+### 1.1 迁移 `0048_diagnostic_grants.sql`
 
 - 契约表 `platform.diagnostic_grants(id, owner_id → users(principal_id),
   grantee_id → principals, run_id → runs, purposes text[], expires_at, revoked_at)`
@@ -66,7 +67,7 @@
   `diagnostic_grants_live(grantee_id, run_id) WHERE revoked_at IS NULL` 与
   `diagnostic_grants_owner(owner_id, created_at DESC)`。每个列/表都有归属说明注释。
 - 无 training/consent 列、触发器或外键；表只承载诊断授权。重复 `admin migrate` no-op，
-  新库 0001..0046 连续；`orchara_worker`/PUBLIC 对 `platform` 零权限。
+  新库 0001..0048 连续；`orchara_worker`/PUBLIC 对 `platform` 零权限。
 
 ### 1.2 `internal/audit.RecordContentRead`：唯一 typed 审计写入器
 

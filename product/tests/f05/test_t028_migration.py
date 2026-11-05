@@ -76,8 +76,7 @@ def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
     # expected red state before the migration lands.
     assert set(ADMISSION_COLUMNS) <= set(columns_of(dbname, "artifact_admissions"))
 
-    # No deletion model, request/conversation table or tool table was smuggled
-    # into this migration: those are F07/T037 work.
+    # No deletion model was smuggled into this migration: that is F07 work.
     existing = {
         row["table_name"]
         for row in st.sql_rows(
@@ -85,9 +84,12 @@ def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'platform'",
         )
     }
-    # deletion_jobs arrived later with T058 (0036_memory_revision_and_deletion.sql)
-    # and is covered by that suite; T028's migration must still not bring the rest.
-    assert not ({"deletion_scopes", "requests", "conversations"} & existing), existing
+    # 0015 itself must not smuggle in a deletion model: `deletion_scopes` is the
+    # planned T071/T072 per-scope table and does not exist (T069 chose the
+    # job-row JSON columns instead). `conversations`/`requests` are F08/T074's
+    # 0044 tables on the merged chain, so their existence is not evidence about
+    # 0015; the pinned link name above is what proves this migration's position.
+    assert not ({"deletion_scopes"} & existing), existing
     assert "artifact_admissions" in existing, existing
 
 
