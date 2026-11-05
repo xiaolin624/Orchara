@@ -181,8 +181,8 @@ pytest tests/f04a/test_canvas_assets.py tests/f04b/test_t086_model_canvas.py -q
 ## 6. 合并、门禁原始输出与 HEAD
 
 - 分支 `t/t086-model-node`，worktree `E:\Orchara-wt\t086`；基线 `integration/t083-t091` @ `111e2c2`。
-- 开发中合并集成分支 tip `0deeab9`（T084 合并后）→ merge commit **`8ec146b`**，无冲突；`product/` 中 T084 改动不涉及本票文件。
-- 最终 HEAD：见 `T086-REPORT.md` / 提交记录（本报告与 PROGRESS 在同一提交）。
+- 开发中先合并集成分支 tip `0deeab9`（T084 合并后）→ merge commit **`8ec146b`**；集成分支随后前进到 **`b343f7b`**（T083 run-view 真跑用例修复），再次 merge → **`79ce026`**，无冲突（只有 PROGRESS/文档/其他票测试变化，未触及本票代码）。
+- 最终 HEAD 是分支 tip（本报告与 PROGRESS 在同一收尾提交）；精确哈希记录在 `E:\Orchara\.scratch\t083-t091\T086-REPORT.md`。
 - 合并后门禁（原始 tail 见 §4）：
 
 | 命令 | 结果 |
