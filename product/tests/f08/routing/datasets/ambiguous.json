@@ -1,0 +1,127 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "ambiguous",
+  "description": "Two authorized candidates share contract-review tokens: the server must offer both and dispatch nothing until the user chooses. Both applications declare no required inputs, so ambiguity alone forces the selection interaction.",
+  "cases": [
+    {
+      "case_id": "rt-ambiguous-frozen-01",
+      "category": "ambiguous",
+      "family_id": "contract-review-zh",
+      "split": "frozen_test",
+      "message": "帮我审阅这份合同的条款和风险",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_selection",
+        "application": null,
+        "candidates": [
+          "alpha",
+          "beta"
+        ],
+        "interaction": "selection",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "合同/条款/审阅 hit alpha; 合同/风险/审阅 hit beta."
+      }
+    },
+    {
+      "case_id": "rt-ambiguous-frozen-02",
+      "category": "ambiguous",
+      "family_id": "contract-review-zh",
+      "split": "frozen_test",
+      "message": "合同条款和风险审阅",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_selection",
+        "application": null,
+        "candidates": [
+          "alpha",
+          "beta"
+        ],
+        "interaction": "selection",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-ambiguous-frozen-01; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-ambiguous-frozen-03",
+      "category": "ambiguous",
+      "family_id": "contract-risk-zh",
+      "split": "frozen_test",
+      "message": "请审阅合同的风险与条款",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_selection",
+        "application": null,
+        "candidates": [
+          "alpha",
+          "beta"
+        ],
+        "interaction": "selection",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family; same split."
+      }
+    },
+    {
+      "case_id": "rt-ambiguous-frozen-04",
+      "category": "ambiguous",
+      "family_id": "contract-review-clause-zh",
+      "split": "frozen_test",
+      "message": "合同的条款和风险需要审阅",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_selection",
+        "application": null,
+        "candidates": [
+          "alpha",
+          "beta"
+        ],
+        "interaction": "selection",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family; same split."
+      }
+    },
+    {
+      "case_id": "rt-ambiguous-dev-01",
+      "category": "ambiguous",
+      "family_id": "contract-review-dev-zh",
+      "split": "dev",
+      "message": "审阅这份合同的风险条款",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_selection",
+        "application": null,
+        "candidates": [
+          "alpha",
+          "beta"
+        ],
+        "interaction": "selection",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family; no rewrite of it appears in frozen_test."
+      }
+    }
+  ]
+}
