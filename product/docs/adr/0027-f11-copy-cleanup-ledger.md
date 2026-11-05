@@ -40,8 +40,8 @@ would be a false claim, so the design must record an honest `absent`.
 
 ### 1. `platform.deletion_ledger`: append-only, hash-chained, no foreign keys
 
-`db/migrations/0045_deletion_copy_ledger.sql` (allocated 0048; renumbered by the
-merger to the next free slot) creates:
+`db/migrations/0046_deletion_copy_ledger.sql` (allocated 0048; the merged tree uses
+0046 because T077 already owns 0045; the merger may renumber it to 0048) creates:
 
 ```
 sequence (identity, in the hash), deletion_job_id, resource_type, resource_id,

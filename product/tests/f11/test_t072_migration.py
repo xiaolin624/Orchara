@@ -14,7 +14,7 @@ import uuid
 from support import t069, t072
 from support import stack as st
 
-MIGRATION_NAME = "0045_deletion_copy_ledger.sql"
+MIGRATION_NAME = "0046_deletion_copy_ledger.sql"
 
 
 def test_the_migration_chain_includes_the_copy_ledger_by_name(t069_stack) -> None:

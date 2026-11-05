@@ -37,18 +37,19 @@
    - 失败切片：Windows 打开文件句柄使真实 `os.RemoveAll` 失败 → job failed / scope
      未清 / 读仍 404 / 释放后重试成功；活 attempt 的 workspace 绝不被删（2 用例）；
    - 迁移切片：名字断言/链连续/列与闭集 CHECK/无 FK/trigger/二次 migrate no-op（4 用例）。
-3. 迁移编号：票面分配 **0048**，但本 worktree 当前最大为 `0044`；若直接写 0048 会让
-   `tests/support/stack.py::migration_chain` 的 0001..NNNN 连续性断言失败（T069 迁移
-   用例亦调用它）。故按 BRIEF §5“下一个空位”使用 **`0045_deletion_copy_ledger.sql`**，
-   **合并时请重编号为 0048**（并注意 T071 分支的 `0044_deletion_purge_paths.sql` 与
-   T074 的 0044 撞号，需一并重编号）。
+3. 迁移编号：票面分配 **0048**。本 worktree 起始最大为 `0044`，故按 BRIEF §5“下一个空位”
+   先写 0045；合入集成 tip `fa6544f` 时 T077 已占 `0045_catalog_index.sql`，为保持
+   `tests/support/stack.py::migration_chain` 的 0001..NNNN 连续性，合并树最终使用
+   **`0046_deletion_copy_ledger.sql`**（名字断言随之更新）。**最终编号请以合并器的
+   0048 分配为准**；另 T071 分支的 `0044_deletion_purge_paths.sql` 与 T074 正式 0044
+   撞号，需合并器一并重编号。
 4. 未 push、未关 issue、未改 `docs/spec/**`/`contracts/**`；`sync_spec --check` no drift。
 
 ## 1. 交付内容
 
-### 1.1 迁移 0045：独立、append-only、哈希链账本
+### 1.1 迁移 0046：独立、append-only、哈希链账本
 
-`db/migrations/0045_deletion_copy_ledger.sql`（SHA-256 前缀 `CD168C657D4180AC…`）：
+`db/migrations/0046_deletion_copy_ledger.sql`（SHA-256 前缀 `CD168C657D4180AC…`）：
 
 - `platform.deletion_ledger(sequence identity PK, deletion_job_id, resource_type,
   resource_id, deletion_revision, entry_kind, scope, copy_class, scope_key,
@@ -223,7 +224,7 @@ $ git merge integration/t068-t082
 ### 4.5 TDD red 记录（摘要）
 
 - 账本切片首跑：`relation "platform.deletion_ledger" does not exist`（迁移/存储未实现）
-  → 实现 0045 + `ledger.go` + admin CLI 后 4 passed。
+  → 实现迁移 + `ledger.go` + admin CLI 后 4 passed。
 - 副本切片首跑：`cleanCheckpointsTx` 的 `scopeKeyOf` 用 RFC 8785 规范化时拒绝 `[]string`
   （`unsupported value type`）→ 增加 `jsonNative` 往返后 5 passed；此前 `copies` 仅记下
   checkpoint 一条 `scope_failed`，red 证据保留在 basetemp `t072-6`..`t072-9` 输出中。
@@ -236,7 +237,7 @@ $ git merge integration/t068-t082
 | 输入 | 版本 / SHA-256（前 16 位） |
 |---|---|
 | 基线 | `integration/t068-t082` @ `57d90df` |
-| `db/migrations/0045_deletion_copy_ledger.sql`（分配 0048；合并重编号） | `CD168C657D4180AC…` |
+| `db/migrations/0046_deletion_copy_ledger.sql`（分配 0048；合并重编号） | `CD168C657D4180AC…` |
 | `internal/deletion/ledger.go` | `A858C6AF0C919E15…` |
 | `internal/deletion/copies.go`（gofmt 后） | `71F856C056A1A363…` |
 | `internal/deletion/deletion.go`（tombstone 同事务追加账本） | `F465F7F4FEDCB033…` |
@@ -257,7 +258,7 @@ $ git merge integration/t068-t082
 | 真实模型供应商保留 | **not_run** | dev-stub profile 无外部 provider；账本按 `platform.operations` 是否有 model 调用决定 vendor_copy 的 external/absent，未接真实 provider |
 | 页面/DOM | **not_run** | 本票是运维 CLI 面；无新页面、无浏览器驱动（票面明示纯运维票不加无用管理页面） |
 | 全量 `pytest tests` | **not_run** | BRIEF 禁止（>60min），orchestrator 合并后运行 |
-| pre-0045 已有删除历史的账本回填 | **not_run** | 账本从 0045 起记录；升级前已存在的 tombstone 仍在 `deletion_jobs`，未回填（本批次基线无真实历史；如需迁移需单独一次性工具） |
+| pre-0046 已有删除历史的账本回填 | **not_run** | 账本从 0046 起记录；升级前已存在的 tombstone 仍在 `deletion_jobs`，未回填（本批次基线无真实历史；如需迁移需单独一次性工具） |
 | OTel/metrics | **not_run（本票无此要求）** | 沿用 T073 的结论：无 exporter，账本/报表只含 id/code |
 
 ## 7. 关键实现位置

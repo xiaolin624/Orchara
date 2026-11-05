@@ -13,6 +13,7 @@
 //	deletion         export/replay the append-only backup deletion ledger
 //	evaluations      enqueue one evaluation and its application_evaluate job
 //	runs             conservative recovery: park expired leases, recover with evidence
+//	catalog          rebuild/inspect the authorized purpose-catalog projection
 //	seed-sales-template  create/update the F04A sales template source draft
 package main
 
@@ -51,6 +52,7 @@ commands:
   deletion         export and replay the append-only backup deletion ledger (deletion --help)
   evaluations      enqueue one evaluation and its application_evaluate job (evaluations enqueue --help)
   runs             park expired leases and recover a parked Run with audited evidence (runs --help)
+  catalog          rebuild/index/status the authorized purpose-catalog projection (catalog --help)
   seed-sales-template  create/update the F04A sales template source draft
 
 handover:
@@ -116,7 +118,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs' or 'seed-sales-template'")
+		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs', 'catalog' or 'seed-sales-template'")
 	}
 	switch args[0] {
 	case "migrate":
@@ -133,13 +135,15 @@ func run(args []string) error {
 		return runEvaluations(args[1:])
 	case "runs":
 		return runRuns(args[1:])
+	case "catalog":
+		return runCatalog(args[1:])
 	case "seed-sales-template":
 		return runSeedSalesTemplate(args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs' or 'seed-sales-template'", args[0])
+		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs', 'catalog' or 'seed-sales-template'", args[0])
 	}
 }
 
