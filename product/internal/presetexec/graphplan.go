@@ -45,7 +45,7 @@ import (
 
 // Graph-path refusal codes. The region codes are the validator's frozen
 // vocabulary; the unsupported-node codes are this build's per-type refusals until
-// T086 (model), T088 (retrieve) and T087 (approval) replace them.
+// T086 (model) and T088 (retrieve) replace them.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -63,7 +63,6 @@ const (
 
 	CodeNodeUnsupportedModel    = "node_unsupported_model"
 	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
-	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
 	// take part in the configured operator. It is a run-time refusal because the
@@ -83,6 +82,7 @@ var graphNodeTypes = map[string]bool{
 	"call_app":  true,
 	"condition": true,
 	"join":      true,
+	"approval":  true,
 }
 
 // graphPlan is the parsed and proven graph.
@@ -110,6 +110,7 @@ type graphNode struct {
 	outgoing  []*planEdge
 	condition *conditionConfig
 	join      *joinConfig
+	approval  *approvalConfig
 }
 
 // planEdge is one sealed edge with its normalized exit port.
@@ -157,7 +158,7 @@ func hasGraphConstructs(manifest *manifestDocument) bool {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
-		if node.Type == "condition" || node.Type == "join" {
+		if node.Type == "condition" || node.Type == "join" || node.Type == "approval" {
 			return true
 		}
 	}
@@ -206,11 +207,9 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 			code = CodeNodeUnsupportedModel
 		case "retrieve":
 			code = CodeNodeUnsupportedRetrieve
-		case "approval":
-			code = CodeNodeUnsupportedApproval
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, condition and join",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, condition, join and approval",
 			index, node.Type))
 	}
 
@@ -301,6 +300,13 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.join = config
+		case "approval":
+			config, err := parseApprovalConfig(node)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.approval = config
 		}
 	}
 

@@ -352,10 +352,12 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
+	// T087 replaced the per-type approval refusal: an approval node is now
+	// executable (its config/proposal are proven by approval_test.go), so the
+	// remaining per-type refusals are the node types later F04B tickets own.
 	cases := map[string]string{
 		"model":    "node_unsupported_model",
 		"retrieve": "node_unsupported_retrieve",
-		"approval": "node_unsupported_approval",
 		"mystery":  "tool_unsupported_graph",
 	}
 	for nodeType, want := range cases {

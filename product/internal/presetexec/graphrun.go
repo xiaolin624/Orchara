@@ -214,6 +214,8 @@ func (r *runner) executeGraphNode(
 		return r.executeGraphCondition(ctx, run, node)
 	case "join":
 		return r.executeGraphJoin(ctx, run, node)
+	case "approval":
+		return r.executeGraphApproval(ctx, run, node)
 	case "agent":
 		return r.executeGraphAgent(ctx, run, node)
 	case "call_app":

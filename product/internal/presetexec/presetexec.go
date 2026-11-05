@@ -184,6 +184,29 @@ type ChildRun struct {
 	Phase                string
 }
 
+// NodeApprovalRequest is the F04B/T087 business-approval proposal the executor
+// asks the platform to prepare. It carries no decision and no capability: the
+// node id, the sealed config and the run-resolved proposal are the only inputs,
+// and the server rebuilds the canonical proposal/hash from them.
+type NodeApprovalRequest struct {
+	NodeID         string
+	Title          string
+	ExpiresSeconds int
+	Proposal       map[string]any
+}
+
+// NodeApproval is the platform's answer to PrepareNodeApproval. The approval row
+// is the server's business decision record (a `platform.approvals` row with no
+// operation); the executor only copies its state into the run.
+type NodeApproval struct {
+	ID                 string
+	State              string
+	ParamsSHA256       string
+	ProposalArtifactID string
+	ExpiresAt          time.Time
+	DecidedAt          *time.Time
+}
+
 // ChildResult is the non-contract terminal result read: the child's state, its
 // sealed output artifact and the decoded JSON object that artifact holds.
 type ChildResult struct {
@@ -242,6 +265,14 @@ type Client interface {
 	ChildResult(
 		ctx context.Context, runID, attemptToken, childRunID string,
 	) (*ChildResult, error)
+	// PrepareNodeApproval asks the platform to prepare (or replay) the one
+	// server-built approval for this run's approval node. The executor never
+	// supplies a decision; a pending approval parks the attempt at
+	// `approval:<approval_id>` and an approved one lets the node publish its
+	// decision output. The call is idempotent for the same canonical proposal.
+	PrepareNodeApproval(
+		ctx context.Context, runID, attemptToken string, request NodeApprovalRequest,
+	) (*NodeApproval, error)
 }
 
 // InputSource resolves the run's linked input artifacts. The supervisor's
