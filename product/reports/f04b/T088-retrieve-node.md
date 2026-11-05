@@ -51,7 +51,9 @@
 
 - `graphplan.go`：`graphNodeTypes` 加 `retrieve`；`hasGraphConstructs` 识别 retrieve（无 region 也走 graph 路径）；
   config 复验 `{knowledge_base_ids: uuid[] min1 unique, top_k:1..20}` 且拒绝未知键/内联 `query`
-  （`DisallowUnknownFields`，`bad_config` + `/nodes/<i>/config` 定位）。T083 的 `node_unsupported_retrieve` 已移除。
+  （`DisallowUnknownFields`，`bad_config` + `/nodes/<i>/config` 定位）。T083 的 `node_unsupported_retrieve`
+  已移除；批次复核修复又删除了该闭集常量与 switch（所有 `graphNodeTypes` 均可执行，未知类型统一
+  `tool_unsupported_graph`）。
 - **query 输入**：节点 `inputs` 必须绑定 `query` 且为字符串（运行期 `resolveNodeBindings`）；缺失/非 string/
   空串 → `node_input_invalid`，消息定位 `/nodes/<i>/inputs/query`。
 - **执行**：`Client.Retrieve`（`cmd/supervisor/client.go`，worker mTLS）调用内部路由；supervisor 从不 import
