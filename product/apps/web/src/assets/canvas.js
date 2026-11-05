@@ -19297,8 +19297,7 @@ Edge: ${id2}`,
               document_state: { type: "string" },
               chunk_no: { type: "integer" },
               span,
-              text: { type: "string" },
-              score: { type: "number" },
+              excerpt: { type: "string" },
               citation: { type: "object" }
             },
             required: [
@@ -19308,8 +19307,7 @@ Edge: ${id2}`,
               "document_state",
               "chunk_no",
               "span",
-              "text",
-              "score",
+              "excerpt",
               "citation"
             ],
             additionalProperties: false
@@ -19324,9 +19322,9 @@ Edge: ${id2}`,
               document_id: { type: "string" },
               document_revision: { type: "integer" },
               span,
-              text: { type: "string" }
+              excerpt: { type: "string" }
             },
-            required: ["chunk_id", "document_id", "document_revision", "span", "text"],
+            required: ["chunk_id", "document_id", "document_revision", "span", "excerpt"],
             additionalProperties: false
           }
         },

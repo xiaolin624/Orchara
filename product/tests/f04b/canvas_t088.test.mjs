@@ -123,14 +123,16 @@ test('the retrieve output template declares items/citations/count', () => {
   const item = schema.properties.items.items.properties;
   for (const key of [
     'chunk_id', 'document_id', 'document_revision', 'document_state', 'chunk_no',
-    'span', 'text', 'score', 'citation',
+    'span', 'excerpt', 'citation',
   ]) {
     assert.ok(item[key], 'items item is missing ' + key);
   }
+  assert.ok(!item.text && !item.score, 'the template must not offer the full body or the vector score');
   const citation = schema.properties.citations.items.properties;
-  for (const key of ['chunk_id', 'document_id', 'document_revision', 'span', 'text']) {
+  for (const key of ['chunk_id', 'document_id', 'document_revision', 'span', 'excerpt']) {
     assert.ok(citation[key], 'citation item is missing ' + key);
   }
+  assert.ok(!citation.text, 'the citations projection must carry an excerpt, never the full body');
 
   const definition = retrieveDefinition();
   const endRefs = legalSources(definition, 'end').map((entry) => entry.ref);

@@ -126,8 +126,7 @@ function retrieveOutput(count) {
       document_state: 'ready',
       chunk_no: index,
       span,
-      text: '段落 ' + (index + 1),
-      score: 0.75,
+      excerpt: '段落 ' + (index + 1),
       citation: { document_id: documentId, document_revision: 2, chunk_no: index, span },
     });
     citations.push({
@@ -135,7 +134,7 @@ function retrieveOutput(count) {
       document_id: documentId,
       document_revision: 2,
       span,
-      text: '段落 ' + (index + 1),
+      excerpt: '段落 ' + (index + 1),
     });
   }
   return { items, citations, count };
@@ -204,8 +203,21 @@ await test('a retrieve row exposes its citations with the real citation route', 
   assert.equal(row.retrieveCitations[0].path, '/api/v1/knowledge-citations/chunk-1');
   assert.ok(row.retrieveCitations[0].line.includes('document-1'), row.retrieveCitations[0].line);
   assert.ok(row.retrieveCitations[0].line.includes('第 1–2 行'), row.retrieveCitations[0].line);
+  assert.ok(row.retrieveCitations[0].line.includes('段落 1'), row.retrieveCitations[0].line);
   assert.ok(row.retrieveText.includes('2'), row.retrieveText);
   assert.ok(model.sourceText.includes('引用'), model.sourceText);
+});
+
+await test('a citation carries an excerpt and never the full stored body', () => {
+  const context = loadRunView();
+  const output = retrieveOutput(1);
+  // An older/hand-made artifact may still carry `text`; the page reads only the
+  // documented bounded `excerpt`, so no stored body is rendered from node data.
+  delete output.citations[0].excerpt;
+  output.citations[0].text = '旧正文不应显示';
+  const row = findCitationsRow(retrieveModel(context, output));
+  assert.equal(row.retrieveCitations.length, 1);
+  assert.ok(!row.retrieveCitations[0].line.includes('旧正文'), row.retrieveCitations[0].line);
 });
 
 await test('an empty retrieve result says so without pretending it failed', () => {

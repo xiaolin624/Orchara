@@ -75,8 +75,6 @@ const RUNVIEW_ERROR_HINT = {
   condition_operand_invalid: '条件比较的操作数类型不符（gt/gte/lt/lte 只接受 JSON number）；请改用同类型字面量。',
   node_input_invalid: '节点输入缺失或无法解析；请检查该节点的 inputs 绑定。',
   node_output_invalid: '节点输出未通过 output_schema；请检查节点输出字段与 end 的映射。',
-  node_unsupported_model: '本版本执行器尚不支持 model 节点。',
-  node_unsupported_approval: '本版本执行器尚不支持 approval 节点。',
   // F04B/T088: retrieve is executable now; these are its call-level failures.
   retrieve_unavailable: '知识检索服务不可用（503/网络失败）；本次运行以 retrieve_unavailable 失败，可稍后重试。',
   retrieve_denied: '知识检索调用被拒绝（权限/容量）；本次运行以 retrieve_denied 失败，请检查运行账号与授权。',
@@ -392,7 +390,8 @@ function runViewCitationLine(citation) {
 /**
  * Fill the retrieve row from the documented non-contract retrieve node data
  * artifact `{items, citations, count}`. Only the citations projection is shown;
- * the full item text stays in the artifact. The executor forwards the stored
+ * each entry carries a bounded `excerpt` (the executor never puts the full chunk
+ * body or the vector score in node data). The executor forwards the stored
  * citation JSON verbatim, so the page can only link to the real source route —
  * it never renders a body the server would not serve under the current ACL.
  */
@@ -424,7 +423,7 @@ function runViewDescribeRetrieve(row) {
           ? ''
           : String(citation.document_revision),
       span: runViewSpanText(citation.span),
-      text: runViewTruncate(String(citation.text || ''), 120),
+      text: runViewTruncate(String(citation.excerpt || ''), 120),
       path: runViewCitationPath(chunkID),
     };
     entry.line = runViewCitationLine(entry);
@@ -505,7 +504,8 @@ async function runViewOpenCitation(link, citation) {
  * `run` is the contract Run snapshot. Nothing is invented: when there is no
  * state event and no registered result, the row is `unknown` on a terminal run,
  * and `pending` (not success) while the Run is still live.
- */function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents, run) {
+ */
+function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents, run) {
   const source = definition && typeof definition === 'object' ? definition : {};
   const nodes = Array.isArray(source.nodes)
     ? source.nodes.filter((node) => node && typeof node === 'object')

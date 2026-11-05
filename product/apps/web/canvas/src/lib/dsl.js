@@ -55,8 +55,9 @@ export function emptySchema() {
 /**
  * F04B/T088: the one-click output schema of a retrieve node.
  *
- * It mirrors the documented non-contract node output: the full platform items (with
- * the stored citation JSON), the lightweight citations projection and the count.
+ * It mirrors the documented non-contract node output: the platform items (with the
+ * stored citation JSON and a bounded excerpt, never the full chunk body or the
+ * vector score), the lightweight citations projection and the count.
  * The schema only uses the restricted subset the executor validates
  * (type/properties/required/items/additionalProperties).
  */
@@ -86,13 +87,12 @@ export function retrieveOutputSchema() {
             document_state: { type: 'string' },
             chunk_no: { type: 'integer' },
             span,
-            text: { type: 'string' },
-            score: { type: 'number' },
+            excerpt: { type: 'string' },
             citation: { type: 'object' },
           },
           required: [
             'chunk_id', 'document_id', 'document_revision', 'document_state',
-            'chunk_no', 'span', 'text', 'score', 'citation',
+            'chunk_no', 'span', 'excerpt', 'citation',
           ],
           additionalProperties: false,
         },
@@ -106,9 +106,9 @@ export function retrieveOutputSchema() {
             document_id: { type: 'string' },
             document_revision: { type: 'integer' },
             span,
-            text: { type: 'string' },
+            excerpt: { type: 'string' },
           },
-          required: ['chunk_id', 'document_id', 'document_revision', 'span', 'text'],
+          required: ['chunk_id', 'document_id', 'document_revision', 'span', 'excerpt'],
           additionalProperties: false,
         },
       },
