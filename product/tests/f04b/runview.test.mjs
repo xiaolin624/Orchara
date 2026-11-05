@@ -50,6 +50,12 @@ function nodeStatus(seq, nodeID, state, attemptNo, extra) {
   };
 }
 
+function statesFrom(pairs) {
+  return Object.fromEntries(
+    pairs.map(([nodeID, state, attemptNo]) => [nodeID, { state, attempt_no: attemptNo }]),
+  );
+}
+
 let checks = 0;
 function test(name, body) {
   body();
@@ -123,6 +129,109 @@ test('aggregateNodeStates keeps skipped distinct and ignores malformed frames', 
     nodeStatus(2, 'stats', 'succeeded', 2),
   ]);
   assert.deepStrictEqual(plain(retriedFailure.stats), { state: 'succeeded', attempt_no: 2 });
+});
+
+// --- buildRunViewModel: order, state, skipped ------------------------------
+
+test('buildRunViewModel renders one row per definition node in topological order', () => {
+  const runView = loadRunView();
+  const definition = exampleDefinition(BRANCH_EXAMPLE);
+  const nodeStates = statesFrom([
+    ['start', 'succeeded', 1],
+    ['choose', 'succeeded', 1],
+    ['approve', 'skipped', 1],
+    ['direct', 'succeeded', 1],
+    ['join', 'succeeded', 1],
+    ['end', 'succeeded', 1],
+  ]);
+  const model = runView.buildRunViewModel(
+    definition, nodeStates, { items: [] }, {}, { state: 'succeeded' },
+  );
+  assert.deepStrictEqual(plain(model.rows.map((row) => row.nodeId)),
+    ['start', 'choose', 'approve', 'direct', 'join', 'end']);
+  const byID = Object.fromEntries(model.rows.map((row) => [row.nodeId, row]));
+  assert.strictEqual(byID.choose.type, 'condition');
+  assert.strictEqual(byID.choose.state, 'succeeded');
+  assert.strictEqual(byID.choose.stateText, '成功');
+  assert.strictEqual(byID.choose.attemptNo, 1);
+  assert.strictEqual(byID.choose.attemptText, '1');
+  assert.strictEqual(byID.choose.skipped, false);
+  // An unselected branch is skipped, visually distinct from failed.
+  assert.strictEqual(byID.approve.state, 'skipped');
+  assert.strictEqual(byID.approve.skipped, true);
+  assert.strictEqual(byID.approve.failed, false);
+  assert.ok(byID.approve.classNames.includes('state-skipped'), byID.approve.classNames);
+  assert.strictEqual(byID.direct.stateText, '成功');
+  assert.deepStrictEqual(plain(model.counts), {
+    total: 6, pending: 0, waiting: 0, running: 0,
+    succeeded: 5, failed: 0, skipped: 1, unknown: 0,
+  });
+  assert.ok(model.text.includes('6 个节点'), model.text);
+  assert.ok(model.text.includes('跳过 1'), model.text);
+  // A shuffled definition (the P05 shuffle case) is still ordered so a node never
+  // precedes its own predecessor.
+  const shuffled = {
+    ...definition,
+    nodes: definition.nodes.slice().reverse(),
+  };
+  const shuffledModel = runView.buildRunViewModel(shuffled, nodeStates, { items: [] }, {}, null);
+  assert.deepStrictEqual(plain(shuffledModel.rows.map((row) => row.nodeId)),
+    ['start', 'choose', 'direct', 'approve', 'join', 'end']);
+  // A state/result for a node the definition does not contain is appended, not hidden.
+  const extra = runView.buildRunViewModel(
+    definition,
+    statesFrom([['ghost', 'running', 1]]),
+    { items: [] },
+    {},
+    { state: 'running' },
+  );
+  assert.strictEqual(extra.rows[extra.rows.length - 1].nodeId, 'ghost');
+  assert.strictEqual(extra.rows[extra.rows.length - 1].typeText, '（定义中不存在）');
+});
+
+test('buildRunViewModel carries run error codes and honest unknown states', () => {
+  const runView = loadRunView();
+  const definition = exampleDefinition(PARALLEL_EXAMPLE);
+  // A failed run with a failed node: the run error_code is attributed to the
+  // failed row only (node.status itself has no error_code field).
+  const failedModel = runView.buildRunViewModel(
+    definition,
+    statesFrom([['start', 'succeeded', 1], ['left', 'failed', 1]]),
+    { items: [] },
+    {},
+    { state: 'failed', error_code: 'node_output_invalid' },
+  );
+  const failedLeft = failedModel.rows.find((row) => row.nodeId === 'left');
+  assert.strictEqual(failedLeft.errorCode, 'node_output_invalid');
+  assert.ok(failedLeft.errorText.includes('node_output_invalid'), failedLeft.errorText);
+  const startRow = failedModel.rows.find((row) => row.nodeId === 'start');
+  assert.strictEqual(startRow.errorCode, '');
+  assert.deepStrictEqual(plain(failedModel.counts), {
+    total: 5, pending: 0, waiting: 0, running: 0,
+    succeeded: 1, failed: 1, skipped: 0, unknown: 3,
+  });
+  const unknownRow = failedModel.rows.find((row) => row.nodeId === 'join');
+  assert.strictEqual(unknownRow.state, 'unknown');
+  assert.strictEqual(unknownRow.stateText, '无状态事件');
+  // A live run's silent node is "waiting", not a fabricated success.
+  const liveModel = runView.buildRunViewModel(
+    definition, {}, { items: [] }, {}, { state: 'running' },
+  );
+  assert.strictEqual(liveModel.rows[0].state, 'pending');
+  assert.strictEqual(liveModel.rows[0].observed, false);
+  // Registered results without a status event are inference, labelled as such.
+  const inferredModel = runView.buildRunViewModel(
+    definition,
+    {},
+    { items: [{ node_id: 'left', kind: 'data', artifact_id: 'a-left' }] },
+    {},
+    { state: 'succeeded' },
+  );
+  const inferred = inferredModel.rows.find((row) => row.nodeId === 'left');
+  assert.strictEqual(inferred.state, 'succeeded');
+  assert.strictEqual(inferred.inferred, true);
+  assert.ok(inferred.stateText.includes('推断'), inferred.stateText);
+  assert.strictEqual(inferred.artifactId, 'a-left');
 });
 
 console.log('PASS ' + checks + ' runview tests');
