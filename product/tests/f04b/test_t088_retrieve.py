@@ -311,6 +311,10 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t055_stack) -> 
     assert payload["authorized"] == 1, payload
     assert payload["items"], payload
     assert {item["document_id"] for item in payload["items"]} == {alice_document}
+    # The merged answer is ordered by score DESC (the stable chunk_id tie-break is
+    # exercised by the Go merge unit test).
+    scores = [item["score"] for item in payload["items"]]
+    assert scores == sorted(scores, reverse=True), scores
     for item in payload["items"]:
         # The internal route's item is exactly the documented platform projection.
         assert set(item) == t088.ITEM_KEYS, item
