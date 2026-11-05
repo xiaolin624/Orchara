@@ -22,6 +22,9 @@ const result = await build({
   format: 'iife',
   globalName: 'OrcharaCanvasBundle',
   target: ['es2020'],
+  // Keep the Chinese palette/panel copy readable in the committed asset so
+  // reviewers and marker tests can see exactly what the page ships.
+  charset: 'utf8',
   minify: false,
   sourcemap: false,
   legalComments: 'none',
