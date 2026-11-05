@@ -217,6 +217,18 @@ no drift: spec copy and contract snapshot match the manifest
 `dataset.activeVersionId = application.active_version_id`，既保留契约字段标记又不是死代码）；
 第 1、2 项由 T068 最终分支修复，合并时采用 T068 版本。合并后的 `tests/f02a` 见 §3.3。
 
+### 3.8 最终集成合并（如实）
+
+- 分支历史：`671509c` test → `68c79c8` feat → `b6824ac` merge `integration/t068-t082`
+  @ `163940f`（T069 删除基础）→ `203de89` docs → `25d74a1` merge
+  `t/t068-publication-review` @ `b30128b`（T068 最终）→ `535e716` docs。
+- 报告完成时 `integration/t068-t082` 仍停在 `163940f`（orchestrator 尚未把 T068 最终提交合入
+  集成分支）；因此 `git merge integration/t068-t082` 返回 **Already up to date**，没有新的合并
+  提交。本分支已**直接包含** T068 最终提交（`25d74a1`），T070 的 gates 也在这棵合并树上重跑；
+  orchestrator 之后把 T068 合入 integration 时，本分支的再次合并应是 no-op（或只带入其它票）。
+- 迁移编号按全局约定：T069 的 `0042_deletion_foundation.sql` + T068 的
+  `0043_publication_reviews_and_outbox.sql`，本票**不需要** 0045。
+
 ## 4. not_run / blocked / 边界
 
 - **T074（#75）**：真实 published Request/Run 创建路径与“创建时调用 `ResolveRunnableVersion`”；
