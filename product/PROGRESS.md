@@ -2098,7 +2098,7 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
 
 | 套件 | 实际结果（最终相关树） |
 |---|---|
-| `pytest tests/f04b` | 各票关键套件 6/7/9/14/43/89 passed（见上表）；本收尾分支只重跑受影响文件 + 最小回归（T088 retrieve、T083 runview、T086 model、canvas/runview/asset、T084 corpus），不重复全量 |
+| `pytest tests/f04b` | 各票关键套件 6/7/9/14/43/89 passed（见上表）；收尾分支在合并 T091 的树上重跑受影响文件：T088 retrieve + T083 runview + T086 model **18 passed in 178.05s**、T091 十类 acceptance 回归 **8 passed in 144.09s**、无栈模块/语料 **21 passed in 3.37s**；不重复全量 |
 | `pytest tests/f05` / `tests/f06` / `tests/f04a` / `tests/tooling` / `tests/f14` | 149 / 172+1 flake（隔离重跑通过；T091 最终树 173 passed in 1311.21s）/ 36 / 21 / 13 passed（T085/T083/T091/T090 记录） |
 | Go | `go build ./...`、`go vet ./...`、`go test ./...` 全绿；`gofmt -l internal cmd tools` 空 |
 | 契约/静态 | `python tools/sync_spec.py --check` → `no drift`；`node --check`（runview/canvas 产物）exit 0；画布 bundle 由 `npm ci --offline && npm run build` 重建并提交 |
@@ -2135,5 +2135,9 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
   `5bd939d`（T089 证据）→ `7da0249`（T087 gate）→ `9d8208e`（T085 skip 事实）→
   `1cf7637`（T088 证据）→ `bd4d791`（T088 gate pins）→ `93ddc6b`（T091 十类工作流；T091 `344c139`）。
 - 收尾分支 `t/batch-review-fixes`：`50d095f`（C.1–C.3 重构）→ `6a3195a`（T088 输出收窄 +
-  C.5/C.6）→ 文档/ADR/批次记录提交 → 合并 `refs/heads/integration/t083-t091` 的收尾 merge（见
-  `reports/review/BATCH-REVIEW-FIXES.md` §4 的最终 HEAD）。
+  C.5/C.6）→ `fbac878`（PROGRESS 诚实性/ADR 0034/T087 partial/T088 报告）→ merge
+  `refs/heads/integration/t083-t091` @ `93ddc6b`（含 T091）→ **`593554c`**。合并后收尾门禁：
+  受影响真实栈 `test_t088_retrieve.py`+`test_t083_runview.py`+`test_t086_model_node.py`
+  **18 passed in 178.05s**；T091 十类 acceptance 回归 **8 passed in 144.09s**；无栈模块/语料
+  **21 passed in 3.37s**；`go build/vet/test ./...` exit 0、`gofmt -l` 空、`sync_spec --check`
+  no drift、`node --check` exit 0。详见 `reports/review/BATCH-REVIEW-FIXES.md` §3.3/§4。

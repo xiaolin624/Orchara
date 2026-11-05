@@ -322,6 +322,47 @@ node tests/f04b/runview_t088.test.mjs   -> PASS 6 runview T088 tests
 ```
 - **未跑**：`pytest tests/f10` 全量（原因见 §4.4/§5）。
 
+### 6.1 批次复核修复（2026-11-06）：节点输出收窄
+
+批次两轴复核发现节点 data 输出含完整 chunk `text` 与向量 `score`，与 R3（短摘要）/N-R10
+（不暴露 chunk body/向量分数）冲突。修复在收尾分支 `t/batch-review-fixes` 完成（`6a3195a`）：
+
+- `retrieveOutputDocument`：items 改为 `{chunk_id,document_id,document_revision,document_state,
+  chunk_no,span,excerpt,citation}`，citations 改为 `{chunk_id,document_id,document_revision,span,
+  excerpt}`；`excerpt` = 正文前 500 字符（按 rune 截断）；**不再输出 `text`/`score`**。
+  内部 worker 检索路由保持 `text/score`（服务端排序/合并用，worker mTLS 数据面，不是节点数据），
+  测试用单独的 `INTERNAL_ITEM_KEYS` 钉住，避免把两个面混为一谈。
+- 消费者同步：`runview.js` 只读 `citation.excerpt`（新增“只有 text 的旧 artifact 不渲染正文”用例）；
+  画布 `retrieveOutputSchema` 不再提供 `text`/`score`，bundle 由 `npm ci --offline && npm run build`
+  重建提交；`reports/review/BATCH-REVIEW-FIXES.md` 记录 finding→fix→证据。
+
+收尾分支合并 `refs/heads/integration/t083-t091`（`93ddc6b`，含 T091）后的门禁：
+
+```text
+python -m pytest tests/f04b/test_t088_retrieve.py \
+                 tests/f04b/test_t083_runview.py \
+                 tests/f04b/test_t086_model_node.py -q
+..................                                                       [100%]
+18 passed in 178.05s (0:02:58)          # 全局 pytest 锁；真实 PG+mTLS+supervisor+知识摄取
+
+python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
+                 tests/f04b/test_canvas_f04b_assets.py tests/f08/test_t084_corpus.py \
+                 tests/f04b/test_t091_canvas.py tests/f04b/test_t091_runview.py -q
+21 passed in 3.37s
+
+python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
+8 passed in 144.09s (0:02:24)           # T091 真实栈回归（approval/model/join 路径经过本次重构）
+
+go build ./... ; go vet ./... ; go test ./...     # exit 0
+gofmt -l internal cmd tools                       # 无输出
+python tools/sync_spec.py --check                 # no drift
+node --check apps/web/src/assets/runview.js       # exit 0
+```
+
+Go 侧新增回归 `TestRetrieveOutputExcerptsLongChunksWithoutTheVectorScore`（长正文只留 500 rune、
+无 score/text）与既有 `TestGraphRunRetrievePublishesCitationsAndPassesThemDownstream`（key 集合 +
+`excerpt == "north 1234"`）在 `go test ./internal/presetexec` 中通过。
+
 ## 7. 变更文件
 
 新增：

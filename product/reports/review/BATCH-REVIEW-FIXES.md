@@ -44,10 +44,10 @@
 5. **runview.js 按类型增长字段/渲染（Divergent Change）与 retrieve `top_k` 三层校验**：保留。
    `top_k` 的三层校验是防御性的（契约→manifest 复验→执行期），不是死代码；runview 的类型分支
    在本批只做了 T088 字段收窄与换行修复，渲染重构不在范围内。
-6. **T091**：其分支（`t/t091-ten-node-graph`）的十类 workflow 验收与 `pytest tests/f04b`
-   89 passed in 678.89s 属于 T091 自己的报告（`reports/f04b/T091-ten-node-workflow.md`）。
-   本收尾分支按实际 merge `refs/heads/integration/t083-t091` 的结果记录（见 §4）；若集成分支
-   在收尾时仍未包含 T091，则本分支不冒充已复审其增量。
+6. **T091**：其分支 `t/t091-ten-node-graph` 在收尾前由编排者合并进集成分支（`93ddc6b`，
+   merge `344c139`），本分支已 merge 并重跑 T091 的真实栈 acceptance（8 passed in 144.09s）
+   作为本次重构的回归；T091 自身的 `pytest tests/f04b` 89 passed / `tests/f06` 173 passed
+   证据在 `reports/f04b/T091-ten-node-workflow.md` 与 PROGRESS。本报告不冒充重跑 T091 的全量套件。
 
 ## 3 门禁与回归证据
 
@@ -72,11 +72,58 @@
 
 ### 3.3 最终门禁（原始 tail）
 
-（见下方最终结果。）
+在合并 `refs/heads/integration/t083-t091` @ `93ddc6b`（含 T091 `344c139`）后的最终树、全局
+pytest 锁下（无其它 pytest 进程时取得/释放 `E:\Orchara\.scratch\t083-t091\pytest.lock`）：
+
+```text
+# 受影响真实栈文件一次跑（T088 retrieve + T083 runview + T086 model）
+$ python -m pytest tests/f04b/test_t088_retrieve.py \
+                   tests/f04b/test_t083_runview.py \
+                   tests/f04b/test_t086_model_node.py -q
+..................                                                       [100%]
+18 passed in 178.05s (0:02:58)
+
+# 合并 T091 后的集成回归（其 acceptance 图经过本次 publishNodeData/失败 helper 重构）
+$ python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
+........                                                                 [100%]
+8 passed in 144.09s (0:02:24)
+
+# 无真实栈的受影响模块 / 语料（画布 bundle 逐字节重建校验在 node_modules 存在时执行）
+$ python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
+                   tests/f04b/test_canvas_f04b_assets.py tests/f08/test_t084_corpus.py \
+                   tests/f04b/test_t091_canvas.py tests/f04b/test_t091_runview.py -q
+21 passed in 3.37s
+
+$ go build ./...          # exit 0（无输出）
+$ go vet ./...            # exit 0（无输出）
+$ go test ./...           # exit 0
+$ gofmt -l internal cmd tools   # 无输出
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+$ node --check apps/web/src/assets/runview.js   # exit 0
+```
+
+Go 单测（`go test ./internal/presetexec ./internal/workflow`）含新增
+`TestRetrieveOutputExcerptsLongChunksWithoutTheVectorScore`，以及全部既有 graph/approval/model/
+retrieve/condition/join 用例；无断言被放宽或跳过。原始日志：
+`E:\Orchara\.scratch\t083-t091\REVIEW-FIXES\`（`pytest-affected-final.log`、
+`pytest-t091-regression.log`、`go-*.log`、`gofmt.log`、`sync-spec.log`、`node-check.log`）。
 
 ## 4 合并与 HEAD
 
-（见下方最终结果。）
+- 收尾分支：`t/batch-review-fixes`（worktree `E:\Orchara-wt\review-fixes`），基线
+  `integration/t083-t091` @ `bd4d791`。
+- 提交：`50d095f`（C.1–C.3 重构）→ `6a3195a`（T088 输出收窄 + C.5/C.6）→
+  `fbac878`（PROGRESS 诚实性/ADR 0034/T087 partial/T088 报告与测试修正）。
+- 收尾 merge：`git merge refs/heads/integration/t083-t091` @ `93ddc6b`（merge T091
+  `t/t091-ten-node-graph` @ `344c139`）→ **`593554c`**。唯一冲突是 `product/PROGRESS.md`
+  （T091 小节 vs 批次完成记录）：保留两者（T091 小节在前、批次记录在后），随后补丁 T091 行
+  为已合并状态并在合并顺序中加入 `93ddc6b`。`runview.js` 自动合并（T091 的审批行 + 本次
+  excerpt 收窄/换行/错误提示）后 `node --check` 与 Node 模块测试均通过。
+- 最终 HEAD：见 `E:\Orchara\.scratch\t083-t091\REVIEW-FIXES-REPORT.md` 与父代理报告（文档提交在
+  `593554c` 之后）。
+- 合并后重跑：§3.3 的全部门禁；T091 的十类真实栈 acceptance 8 passed（证明本次重构未破坏其
+  approval/model/join 路径）。
 
 ## 5 诚实边界
 
