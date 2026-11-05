@@ -15,7 +15,11 @@
 - 决策：`docs/adr/0030-t082-cross-app-handover.md`（非契约预览端点、单一元数据摘要生成器、
   提交必须携带服务端预览原文、附件范围、Run 输入闭包扩展、数据库硬边界、页面确认语义）。
   契约与 `docs/spec/**` 未改动，`python tools/sync_spec.py --check` 无漂移。
-- 最终合并：`integration/t068-t082` 合并时点 `<待填>`，合并提交 **`<待填>`**。
+- 最终合并：`integration/t068-t082` 合并时点为 `6e52004`（带入 T076 无复活/清理告警与 T081
+  等待/容量），合并提交 **`bec622e`**；冲突无（自动合并）。合并带入 T081 的
+  `0051_f07_waiting_capacity.sql` 后，本票迁移按 BRIEF §5 由 0051 重编号为
+  `0052_handoff_scope_bounds.sql`（重编号提交 `49c294f`）；合并后 `tests/f08` 复跑
+  **65 passed in 637.46s**，`go build/vet/test`、`gofmt -l`、`sync_spec --check` 复跑全绿（见 §3）。
 
 ## 0. 工作记录（简短）
 
@@ -149,6 +153,20 @@ $ go build ./...            -> exit 0
 $ go vet ./...              -> exit 0
 $ go test ./...             -> exit 0 (37 "ok" packages, 0 FAIL)
 $ gofmt -l .                -> clean (no output)
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+合并 `integration/t068-t082` @ `6e52004` 后（merge `bec622e`，迁移重编号 0052）：
+
+```text
+$ python -m pytest tests/f08 -q --basetemp=E:\orchara-tmp\t082-full3
+.................................................................        [100%]
+65 passed in 637.46s (0:10:37)
+
+$ go build ./... ; go vet ./... ; go test ./...
+exit 0 / exit 0 / exit 0 (0 FAIL)
+$ gofmt -l .                -> clean
 $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 ```
