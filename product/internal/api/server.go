@@ -517,6 +517,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// asset so the Node page test executes the same bytes a browser receives.
 	mux.HandleFunc("GET /apps/{application_id}/evaluate", s.staticPage("evaluate.html"))
 	mux.HandleFunc("GET /assets/evaluate.js", s.staticPage(filepath.Join("assets", "evaluate.js")))
+	// F02B/T068: the creator publication page (purpose/risk/report before
+	// submitting) and the review pages (queue + one frozen snapshot). Like every
+	// static route the path is a compile-time constant; ids come from the path and
+	// are used only by the page's JavaScript against the authenticated API.
+	mux.HandleFunc("GET /apps/{application_id}/publish", s.staticPage("publish.html"))
+	mux.HandleFunc("GET /assets/publish.js", s.staticPage(filepath.Join("assets", "publish.js")))
+	mux.HandleFunc("GET /reviews", s.staticPage("reviews.html"))
+	mux.HandleFunc("GET /reviews/{review_id}", s.staticPage("reviews.html"))
+	mux.HandleFunc("GET /assets/reviews.js", s.staticPage(filepath.Join("assets", "reviews.js")))
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
