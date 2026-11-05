@@ -200,7 +200,6 @@ func (r *runner) publishGraphApproval(
 	ctx context.Context, node *graphNode,
 	approval *NodeApproval, proposal map[string]any,
 ) (executionOutcome, map[string]any, bool) {
-	id := node.node.ID
 	decidedAt := ""
 	if approval.DecidedAt != nil {
 		decidedAt = approval.DecidedAt.UTC().Format(time.RFC3339)
@@ -213,24 +212,8 @@ func (r *runner) publishGraphApproval(
 		"proposal":      proposal,
 	}
 	if err := validateSchema(node.node.OutputSchema, output, "#/data"); err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
+		return r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
 			"the approval output does not match the node output_schema: "+err.Error()), nil, true
 	}
-	canonical, err := canonicalNodeDocument(output)
-	if err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
-			"the approval output cannot be encoded"), nil, true
-	}
-	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"registering the approval decision failed: "+err.Error()), nil, true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "data"}}); err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"recording the approval decision failed: "+err.Error()), nil, true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return executionOutcome{}, output, false
+	return r.publishNodeData(ctx, node, output, "data", "approval output", "approval decision")
 }

@@ -189,24 +189,7 @@ func (r *runner) executeGraphRetrieve(
 		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
 			"the retrieval output does not match output_schema: "+err.Error()), nil, true
 	}
-	canonical, err := canonicalNodeDocument(output)
-	if err != nil {
-		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
-			"the retrieval output cannot be canonicalized: "+err.Error()), nil, true
-	}
-	artifactID, err := r.uploadNodeArtifact(
-		ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return r.failGraph(ctx, id, CodeSandboxFailed,
-			"registering the retrieval result failed: "+err.Error()), nil, true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "results"}}); err != nil {
-		return r.failGraph(ctx, id, CodeSandboxFailed,
-			"recording the retrieval result failed: "+err.Error()), nil, true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return executionOutcome{}, output, false
+	return r.publishNodeData(ctx, node, output, "results", "retrieval output", "retrieval result")
 }
 
 // retrieveOutputDocument projects the internal items onto the documented node

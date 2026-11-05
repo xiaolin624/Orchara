@@ -16,11 +16,12 @@ package presetexec
 // validator already freezes (rules.json): bad_config, duplicate_id,
 // start_end_count, cycle, unreachable_node, cannot_reach_end, merge_without_join,
 // invalid_region, bad_port, cross_region_edge, bad_join_sources, missing_value.
-// Three additions are documented in reports/f04b/T083-condition-branching.md:
-// `condition_operand_invalid` (a condition operand has the wrong JSON type),
+// Two additions are documented in reports/f04b/T083-condition-branching.md:
+// `condition_operand_invalid` (a condition operand has the wrong JSON type) and
 // `invalid_activation` (spec-named: a join region with no activated required
-// source) and the per-type `node_unsupported_<type>` codes so a run view can tell
-// "this build does not run this node type yet" from "this graph is broken".
+// source). An unknown node type is refused with the generic
+// `tool_unsupported_graph`; there is no per-type code because every type the
+// plan admits is executable.
 // F04B/T086 made `model` executable and moved its closed config into the same
 // defensive re-verification (`parseModelConfig`).
 //
@@ -46,9 +47,9 @@ import (
 )
 
 // Graph-path refusal codes. The region codes are the validator's frozen
-// vocabulary. F04B/T086 made `model` executable, T087 made `approval` and T088
-// made `retrieve`; the per-type `node_unsupported_*` codes stay in the closed
-// vocabulary so a run view can still name them if a future build drops a type.
+// vocabulary. Every node type in graphNodeTypes is executable, so there is no
+// per-type `node_unsupported_<type>` code any more: an unknown type is the
+// generic `tool_unsupported_graph` refusal.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -63,11 +64,6 @@ const (
 	CodeDuplicateID   = "duplicate_id"
 	CodeStartEndCount = "start_end_count"
 	CodeMissingValue  = "missing_value"
-
-	// Superseded per-type refusals: both types now run on the graph path, so
-	// these are only reachable if a later build removes them again.
-	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
-	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
 	// take part in the configured operator. It is a run-time refusal because the
@@ -222,15 +218,8 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		if graphNodeTypes[node.Type] {
 			continue
 		}
-		code := CodeToolUnsupportedGraph
-		switch node.Type {
-		case "retrieve":
-			code = CodeNodeUnsupportedRetrieve
-		case "approval":
-			code = CodeNodeUnsupportedApproval
-		}
-		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join, approval and retrieve",
+		return nil, planRefusal(CodeToolUnsupportedGraph, fmt.Sprintf(
+			"/nodes/%d: the sealed definition contains an unknown %q node; this executor runs start, end, python, agent, call_app, model, condition, join, approval and retrieve",
 			index, node.Type))
 	}
 
