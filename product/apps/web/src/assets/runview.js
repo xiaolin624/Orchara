@@ -63,6 +63,11 @@ const RUNVIEW_TYPE_TEXT = {
 
 const RUNVIEW_TERMINAL_STATES = { succeeded: true, failed: true, cancelled: true };
 
+// F04B/T085: an optional source's explicit pure-read/compute failure is folded
+// into the join envelope as error data. The run (and the other branches) are not
+// failed by it, so the run view names it differently from a failed branch/Run.
+const RUNVIEW_CONVERGED_TEXT = '已收敛的错误';
+
 // The runtime brief's stable failure codes, with one honest sentence each. An
 // unknown code is still shown verbatim; no explanation is invented for it.
 const RUNVIEW_ERROR_HINT = {
@@ -275,12 +280,17 @@ function runViewDescribeJoin(row, config) {
     return;
   }
   const declared = [];
+  const optionalSources = [];
   for (const key of ['required_sources', 'optional_sources']) {
     const list = Array.isArray(config[key]) ? config[key] : [];
     for (const value of list) {
       const source = String(value === undefined || value === null ? '' : value);
-      if (source !== '' && declared.indexOf(source) === -1) {
-        declared.push(source);
+      if (source === '' || declared.indexOf(source) !== -1) {
+        continue;
+      }
+      declared.push(source);
+      if (key === 'optional_sources') {
+        optionalSources.push(source);
       }
     }
   }
@@ -291,6 +301,7 @@ function runViewDescribeJoin(row, config) {
       ordered.push(source);
     }
   }
+  let convergedErrors = 0;
   row.joinSources = ordered.map((source) => {
     const entry = results[source] && typeof results[source] === 'object' ? results[source] : {};
     const status = String(entry.status || '');
@@ -304,9 +315,21 @@ function runViewDescribeJoin(row, config) {
         valueSummary = '';
       }
     }
-    const statusText = RUNVIEW_STATE_TEXT[status] || status || '未知';
+    // F04B/T085: an optional source's explicit pure-read/compute failure is
+    // converged error data, not a Run failure. It is rendered as "已收敛的错误"
+    // so the run view never confuses it with a failed Run/branch.
+    const optional = optionalSources.indexOf(source) !== -1;
+    const converged = optional && status === 'failed' && errorCode !== '';
+    if (converged) {
+      convergedErrors += 1;
+    }
+    const statusText = converged
+      ? RUNVIEW_CONVERGED_TEXT
+      : (RUNVIEW_STATE_TEXT[status] || status || '未知');
     return {
       source: source,
+      optional: optional,
+      converged: converged,
       status: status,
       statusText: statusText,
       hasValue: hasValue,
@@ -315,14 +338,17 @@ function runViewDescribeJoin(row, config) {
       errorCode: errorCode,
       line:
         source + '=' + statusText + (errorCode === '' ? '' : '（' + errorCode + '）') +
-        (hasValue ? ' · ' + valueSummary : ''),
+        (hasValue ? ' · ' + valueSummary : '') +
+        (converged ? ' · optional 纯读/计算错误已收敛为错误数据，Run 不受影响' : ''),
     };
   });
+  row.convergedErrors = convergedErrors;
   row.joinText =
     '汇合 ' + row.joinSources.length + ' 个来源 · ' +
     row.joinSources
       .map((source) => source.source + '=' + source.statusText + (source.errorCode === '' ? '' : '(' + source.errorCode + ')'))
-      .join('、');
+      .join('、') +
+    (convergedErrors > 0 ? '；其中 ' + convergedErrors + ' 个 optional 分支错误已收敛' : '');
 }
 
 /**
@@ -428,6 +454,7 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
       join: type === 'join',
       joinSources: [],
       joinText: '',
+      convergedErrors: 0,
       artifactId: dataRow ? String(dataRow.artifact_id || '') : '',
       artifactKind: dataRow ? String(dataRow.kind || '') : '',
       mediaType: dataRow ? String(dataRow.media_type || '') : '',
@@ -712,7 +739,9 @@ function runViewBranchCell(details) {
     cell.appendChild(summary);
     for (const source of details.joinSources) {
       const line = document.createElement('p');
-      line.className = 'run-node-join-source state-' + source.status;
+      // `state-converged` marks an optional branch's folded error as error data,
+      // visually distinct from a failed branch or a failed Run.
+      line.className = 'run-node-join-source state-' + (source.converged ? 'converged' : source.status);
       line.textContent = source.line;
       cell.appendChild(line);
       if (source.hasValue && source.valueText !== '') {

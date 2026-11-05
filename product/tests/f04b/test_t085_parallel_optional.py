@@ -51,6 +51,14 @@ def assert_succeeded(report: dict) -> None:
     assert report["sandbox"]["exit_code"] == 0, report["sandbox"]
 
 
+def assert_executed(completed, report: dict) -> None:
+    """The supervisor exits 0 only when the attempt itself was committed."""
+    if completed.returncode != 0:
+        print("SUPERVISOR STDERR:\n" + (completed.stderr or ""))
+        print("REPORT: " + repr(report))
+    assert completed.returncode == 0, (completed.stderr, report)
+
+
 def test_parallel_branches_run_and_join_once(t033_stack, sandbox) -> None:
     owner, application_id, run = t085.queue_graph_run(
         t033_stack,
@@ -64,7 +72,7 @@ def test_parallel_branches_run_and_join_once(t033_stack, sandbox) -> None:
     )
 
     completed, report = t085.run_once(t033_stack)
-    assert completed.returncode == 0, (completed.stderr, report)
+    assert_executed(completed, report)
     assert_succeeded(report)
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
@@ -105,7 +113,7 @@ def test_optional_pure_compute_failure_becomes_join_error_data(t033_stack, sandb
     )
 
     completed, report = t085.run_once(t033_stack)
-    assert completed.returncode == 0, (completed.stderr, report)
+    assert_executed(completed, report)
     # The explicit pure-compute failure of the optional branch is error data, so
     # the attempt still succeeds.
     assert report["outcome"] == "succeeded", report
@@ -153,7 +161,7 @@ def test_required_failure_cancels_the_other_branch_and_never_joins(t033_stack, s
 
     completed, report = t085.run_once(t033_stack)
     # A deterministic failed result is committed, so the supervisor itself exits 0.
-    assert completed.returncode == 0, (completed.stderr, report)
+    assert_executed(completed, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "node_output_invalid", report
@@ -200,7 +208,7 @@ def test_optional_never_swallows_an_agent_capability_failure(t033_stack, sandbox
     t085.revoke_golden_model(t033_stack.dbname)
 
     completed, report = t085.run_once(t033_stack)
-    assert completed.returncode == 0, (completed.stderr, report)
+    assert_executed(completed, report)
     assert report["error_code"] == "model_profile_unavailable", report
 
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
@@ -233,12 +241,13 @@ def test_nested_parallel_region_inside_a_condition_branch(t033_stack, sandbox) -
     )
 
     completed, report = t085.run_once(t033_stack)
-    assert completed.returncode == 0, (completed.stderr, report)
+    assert_executed(completed, report)
     assert_succeeded(report)
 
-    # fork + deepA + deepB run python (4 rows each) and both joins fire once.
-    items = t085.node_results(owner.creator, run["id"], expected=14)
+    # choose's port data + fork/deepA/deepB python data (4 rows each) + both joins.
+    items = t085.node_results(owner.creator, run["id"], expected=15)
     assert {item["node_id"] for item in items} == {
+        "choose",
         "fork",
         "deepA",
         "deepB",

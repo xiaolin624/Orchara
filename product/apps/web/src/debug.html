@@ -38,6 +38,9 @@
     .run-node-row.state-unknown .node-state { opacity: .7; }
     .legend-skipped { color: #6b7280; font-weight: 600; }
     .legend-failed { color: #b91c1c; font-weight: 600; }
+    .legend-converged { color: #a16207; font-weight: 600; }
+    /* F04B/T085: an optional branch's folded error is error data, not a failure. */
+    .run-node-join-source.state-converged { color: #92400e; }
     .run-node-join-source { margin: .15rem 0; }
     .run-node-join-source.state-skipped { opacity: .65; }
     .run-node-branch details { margin: .25rem 0 .25rem 1rem; }
@@ -144,7 +147,11 @@
     </table>
     <p id="runview-legend" class="hint">
       <span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
-      <span class="legend-failed">失败</span> 表示节点本身失败。条件节点的选中端口来自它的
+      <span class="legend-failed">失败</span> 表示节点本身失败；
+      <span class="legend-converged">已收敛的错误</span> 表示
+      <strong>optional 分支</strong>的纯读/计算错误已被汇合为<strong>错误数据</strong>
+      （Run 仍然成功；写操作/越权/预算/审批失败不会被降级，仍会让 Run 失败）。
+      条件节点的选中端口来自它的
       data artifact（<code>port</code> / <code>matched_case</code>）；汇合节点的每个来源来自
       data artifact 信封（<code>results.&lt;source&gt;.status</code> / <code>value</code> /
       <code>error_code</code>）。这些是<strong>非契约</strong>数据面：owner 通过

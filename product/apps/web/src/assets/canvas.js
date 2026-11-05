@@ -21364,7 +21364,7 @@ Edge: ${id2}`,
     const declared = [...required, ...optional];
     const missing = predecessors.filter((id2) => !declared.includes(id2));
     const extra = declared.filter((id2) => !predecessors.includes(id2));
-    const selectFor = (field, selected, other, onChange) => h("select", {
+    const selectFor = (field, selected, other, onChange, tagFor) => h("select", {
       multiple: true,
       size: Math.min(6, Math.max(2, predecessors.length)),
       "data-field": field,
@@ -21374,7 +21374,7 @@ Edge: ${id2}`,
     }, predecessors.map((id2) => h("option", {
       value: id2,
       selected: selected.includes(id2)
-    }, id2 + " (" + (predecessorLabels.get(id2) || "?") + ")" + (other.includes(id2) ? " — 已在一侧" : ""))));
+    }, id2 + " (" + (predecessorLabels.get(id2) || "?") + ")" + (other.includes(id2) ? " — 已在一侧" : "") + (tagFor ? tagFor(id2) : ""))));
     return [
       h("h3", {}, "并行汇合（join）"),
       h(
@@ -21432,7 +21432,11 @@ Edge: ${id2}`,
           required_sources: required.filter((id2) => !values.includes(id2))
         };
         commit(state);
-      }),
+      }, () => " — optional：仅纯读/计算错误可收敛"),
+      h("p", {
+        class: "hint",
+        "data-field": "config.optional_sources.convergence"
+      }, optional.length ? "已选 optional：" + optional.join("、") + "。只有 python/condition/join 的纯读/计算明确错误会被收敛为 join 结果里的错误数据；agent/call_app 失败、能力/权限拒绝、预算、审批、未知写与持久化失败不会降级，Run 仍失败。" : "optional 只允许纯读/计算（python/condition/join）的明确错误被收敛为错误数据；写/越权/预算/审批失败不会降级。"),
       h("p", {
         class: "hint",
         "data-field": "config.join_sources.coverage"
