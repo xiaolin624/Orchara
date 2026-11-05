@@ -299,12 +299,15 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	r.emitNode(ctx, node.ID, "pending")
 	r.emitNode(ctx, node.ID, "running")
 
-	available := map[string]any{
-		"input":           run.start,
-		run.plan.start.ID: run.start,
-	}
-	if run.plan.python != nil {
-		available[run.plan.python.ID] = run.python
+	available := run.available
+	if available == nil {
+		available = map[string]any{
+			"input":           run.start,
+			run.plan.start.ID: run.start,
+		}
+		if run.plan.python != nil {
+			available[run.plan.python.ID] = run.python
+		}
 	}
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {
@@ -343,7 +346,7 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	// before every model turn. The executor passes only this run's resolved
 	// bindings; the builder owns the token budget and the protected facts.
 	authorizedInputs := resolvedAgentInputs(run.plan, node, bindings)
-	contextScope := agentContextScope(run.plan, node)
+	contextScope := agentContextScope(run.plan, node, run.scopeIDs)
 	// F09/T063: personal memory is scoped by this run's trusted owner and
 	// application. The identity read is the same read-only database identity the
 	// input/facts readers use; a failure degrades recall to unavailable in the
@@ -626,7 +629,7 @@ func (r *runner) agentCancelled(
 	if node != nil {
 		r.emitNode(ctx, node.ID, "failed")
 	}
-	r.skipRemaining(ctx, run.plan, nodeIDOf(node))
+	r.skipAfter(ctx, run, nodeIDOf(node))
 	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
 	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
 		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
@@ -644,7 +647,7 @@ func (r *runner) failAgent(
 	if run.plan.agent != nil {
 		r.emitNode(ctx, run.plan.agent.ID, "failed")
 	}
-	r.skipRemaining(ctx, run.plan, nodeIDOf(run.plan.agent))
+	r.skipAfter(ctx, run, nodeIDOf(run.plan.agent))
 	return r.failAfterStart(ctx, code, message, run.outcome,
 		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
 }

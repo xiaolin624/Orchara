@@ -120,9 +120,11 @@ const parallelDefinition = `{
   "output_schema": {"type":"object"},
   "nodes": [
     {"id":"start","type":"start","inputs":{},"config":{},"output_schema":{"type":"object"}},
-    {"id":"left","type":"python","inputs":{},"config":{"tool_version":"11111111-1111-4111-8111-111111111111"},
+    {"id":"left","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"11111111-1111-4111-8111-111111111111"},
      "output_schema":{"type":"object"}},
-    {"id":"right","type":"python","inputs":{},"config":{"tool_version":"11111111-1111-4111-8111-111111111111"},
+    {"id":"right","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"11111111-1111-4111-8111-111111111111"},
      "output_schema":{"type":"object"}},
     {"id":"join","type":"join","inputs":{},
      "config":{"fork_id":"start","mode":"all_active",

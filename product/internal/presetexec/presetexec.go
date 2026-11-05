@@ -251,6 +251,20 @@ type InputSource interface {
 	Inputs(ctx context.Context, runID string) ([]InputArtifact, error)
 }
 
+// NodeOutputSource is the optional F04B recovery seam: the node_id -> canonical
+// JSON bytes of every already-completed `data` node output of this run. A resumed
+// attempt re-uses those outputs instead of re-calling a model/tool/sandbox, which
+// is what keeps T087/T091's "wait twice, then join" from repeating finished work.
+//
+// The supervisor's implementation re-reads platform.run_node_outputs and verifies
+// each artifact's sha256 against the stored bytes; the executor additionally
+// re-validates the decoded object against the node's output_schema before it
+// trusts a reused value. An error here is not fatal: the attempt re-executes the
+// nodes instead (the executor logs the degradation).
+type NodeOutputSource interface {
+	NodeData(ctx context.Context, runID string) (map[string][]byte, error)
+}
+
 // RunScope is the trusted owner/application identity of one run. It is the
 // authorization scope of personal-memory recall: an agent can only ever recall
 // the run owner's memories for the run's own application. It is read from the
@@ -355,6 +369,10 @@ type Deps struct {
 	Client  Client
 	Inputs  InputSource
 	Sandbox Sandbox
+	// NodeOutputs is the optional F04B recovery seam. Nil means every node is
+	// executed; a wired source lets a resumed attempt reuse completed node
+	// outputs (see NodeOutputSource).
+	NodeOutputs NodeOutputSource
 	// Facts is the trusted read-only capability catalog. Agent nodes require it;
 	// the T042 python chain does not.
 	Facts Facts
@@ -474,6 +492,16 @@ func (r *runner) execute(ctx context.Context) executionOutcome {
 	// T033 single-python path; T033/T037 and T042's golden-graph regression depend
 	// on it. The linear path requires the explicit `node:start#/artifact` facts
 	// binding the T042 chain (and the T043 agent chain) documents.
+	// F04B/T083: a definition with a structured branch region is served by the
+	// graph scheduler. Everything else keeps the exact legacy/linear selection:
+	// the T033 single-python path and the T042/T043 linear chain are unchanged.
+	if hasGraphConstructs(manifest) {
+		plan, planErr := buildGraphPlan(manifest)
+		if planErr != nil {
+			return r.refuse(ctx, codeOfPlanError(planErr), planErr.Error())
+		}
+		return r.executeGraph(ctx, plan)
+	}
 	if legacyPreferred(manifest) {
 		return r.executeLegacy(ctx)
 	}

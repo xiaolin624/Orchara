@@ -81,6 +81,9 @@ func validateCallAppNode(node *manifestNode) (*callAppConfig, error) {
 // availableBeforeCallApp is the output namespace the node's bindings resolve
 // against: the start input plus the admitted upstream nodes.
 func availableBeforeCallApp(run *linearRun) map[string]any {
+	if run.available != nil {
+		return run.available
+	}
 	available := map[string]any{
 		"input":           run.start,
 		run.plan.start.ID: run.start,
@@ -276,10 +279,10 @@ func (r *runner) failDelegation(
 ) executionOutcome {
 	if run.plan.callApp != nil {
 		r.emitNode(ctx, run.plan.callApp.ID, "failed")
-		r.skipRemaining(ctx, run.plan, run.plan.callApp.ID)
+		r.skipAfter(ctx, run, run.plan.callApp.ID)
 	} else if run.plan.agent != nil {
 		r.emitNode(ctx, run.plan.agent.ID, "failed")
-		r.skipRemaining(ctx, run.plan, run.plan.agent.ID)
+		r.skipAfter(ctx, run, run.plan.agent.ID)
 	}
 	return r.failAfterStart(ctx, code, message, run.outcome,
 		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
