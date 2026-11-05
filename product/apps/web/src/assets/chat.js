@@ -32,6 +32,71 @@ const ACTIVE_STATES = ['routing', 'awaiting_input', 'awaiting_selection', 'dispa
 const WAITING_STATES = ['queued', 'routing', 'awaiting_input', 'awaiting_selection'];
 const TERMINAL_REQUEST_STATES = ['cancelled', 'failed'];
 
+/**
+ * F08/T084: user-readable reasons for a failed request.
+ *
+ * The contract carries the stable error_code on Request; before this table a
+ * failed request rendered only "失败" and the reason existed only in the API
+ * body. The stable code stays in the DOM as data-error-code so the page test can
+ * assert the exact code, and an unknown code is said out loud rather than hidden.
+ */
+const REQUEST_FAILURE_REASONS = Object.freeze({
+  no_matching_application:
+    '未找到匹配的应用。请换一种说法描述任务，或先到应用目录确认有可用的应用。',
+  interaction_expired:
+    '等待的补充信息或应用选择已经过期；请重新提交需求，过期答复不会复活旧任务。',
+  interaction_closed:
+    '这次确认已经结束或已过期；请重新提交需求，旧答复不会复活任务。',
+  route_candidate_invalid:
+    '建议的应用版本不在你的授权候选内，本次请求没有执行；请重新提交需求。',
+  route_model_unavailable: '路由模型暂时不可用；请稍后重新提交需求。',
+  route_model_unconfigured: '部署尚未注册路由控制模型；请联系管理员。',
+  route_output_invalid: '路由结果无法通过服务端校验；请重新提交需求。',
+  route_budget_exhausted: '本次需求的路由尝试已用尽；请重新提交需求。',
+  selected_version_invalid: '所选应用版本已不可用；请重新提交需求。',
+  version_revoked: '该应用版本已被撤销；请重新提交需求。',
+  version_archived: '该应用已归档；请选择其他应用。',
+  version_unavailable: '该应用版本当前不可运行；请稍后重试。',
+});
+
+/** The failed-request explanation: visible only for a failed request. */
+function describeRequestFailure(request) {
+  const state = request && request.state ? String(request.state) : '';
+  if (state !== 'failed') {
+    return { visible: false, code: '', text: '', retryable: false };
+  }
+  const code = request && request.error_code ? String(request.error_code).trim() : '';
+  const reason = REQUEST_FAILURE_REASONS[code];
+  return {
+    visible: true,
+    code: code,
+    text: reason || (
+      '请求失败（原因代码 ' + (code || 'unknown') + '）。请稍后重试；若持续失败请联系管理员。'
+    ),
+    retryable: code === 'route_model_unavailable' || code === 'version_unavailable',
+  };
+}
+
+/**
+ * Render the failure explanation into #chat-request-error.
+ *
+ * Kept at module level (not inside initChat) so the Node page test can execute
+ * the real bytes against a minimal document; renderRequest calls it on every
+ * request read, including the 800ms poll path.
+ */
+function applyRequestFailure(document, request) {
+  const failure = describeRequestFailure(request);
+  const element = document.getElementById('chat-request-error');
+  if (!element) {
+    return failure;
+  }
+  element.hidden = !failure.visible;
+  element.textContent = failure.text;
+  element.dataset.errorCode = failure.code;
+  element.dataset.retryable = failure.retryable ? 'true' : 'false';
+  return failure;
+}
+
 function conversationPath(conversationID) {
   return '/api/v1/conversations/' + encodeURIComponent(String(conversationID || ''));
 }
@@ -834,6 +899,9 @@ function initChat() {
     document.getElementById('request-panel').hidden = false;
     document.getElementById('chat-request-id').textContent = request.id;
     document.getElementById('chat-request-state').textContent = describeRequestState(request.state);
+    // F08/T084: a failed request explains the stable error_code; the state label
+    // above keeps its existing seven-state meaning.
+    applyRequestFailure(document, request);
     renderInteraction(request.interaction);
     const handling = describeHandling(
       request,

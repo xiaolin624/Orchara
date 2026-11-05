@@ -1812,6 +1812,34 @@ pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修�
 `not_run`）。门禁：`pytest tests/f11` / `tests/f08` / `tests/tooling`、5 条修复测试 ×2、
 `go build/vet/test ./...`、`gofmt -l .`、`sync_spec --check`，原始输出见报告 §3。
 
+## F08 冻结路由案例并由另一用户完成销售旅程（T084 / #85，2026-11-05）
+
+- 状态：**passed**（真实 T068 发布 + 真实 supervisor 执行 + 独立真值 CSV 下载；
+  真实模型基线与浏览器 DOM 仍 `not_run`）。报告
+  `reports/f04b/T084-routing-eval.md` 与机器可读
+  `reports/f04b/T084-routing-eval.json`（`corpus.dataset_digest=9128080a…`）。
+- 语料：`tests/f08/routing/datasets/` 六单元格 34 例（frozen_test 25 / dev 9，
+  18+8 个消息模板 family 按 split 隔离），`registry.json` 逐文件 sha256+size；
+  失败即冻结漂移。附件只用 `docs/spec/examples/sales/input.csv`；provenance/license 已记录。
+- 代码：`tests/f08/routing/{corpus.py,runner.py}`、`tests/f08/test_t084_{corpus,
+  routing_eval,states,pages}.py`；`apps/web/src/assets/chat.js` 新增
+  `REQUEST_FAILURE_REASONS`/`describeRequestFailure`/`applyRequestFailure` 并由
+  `renderRequest` 渲染 `error_code`（稳定码保留 `data-error-code`），`chat.html` 增加
+  `#chat-request-error`。
+- 结果：frozen_test 25 例 decision 全对，误自动执行 **0/18**，澄清完成 **9/9**，
+  候选召回 1.0，无候选泄漏；dev 9 例 0/7、4/4、1.0。跨用户旅程 Run owner=B、
+  `summary.csv` 经 `t049.check_summary_csv`（Decimal 独立真值）通过；A 读 B 的
+  Run/产物均 404，匿名 401。队列位置/按序推进、交互过期 409 与
+  `failed/interaction_expired`、无匹配 `failed/no_matching_application` 均有真实 REST 断言。
+- stub/real 分界：路由控制模型是 dev-stub（`stub:true`）；销售应用走真实
+  `submit_publication`+`decided_review`（`publication.mode=t068_real`），其余 6 个
+  catalog 应用是真实编译 manifest + 文档化 T077 版本行（JSON 逐项标注）。
+- 边界/风险：聊天正文按原字节作为 published Run 输入，销售链 start 结点要求 JSON 对象，
+  故旅程消息是 JSON 任务文档；自然语言消息会路由成功但执行 `node_input_invalid`
+  （探针实测），属 F08↔F04B 集成缺口，未冒充通过。沙箱 heartbeat 抖动只做有界重试并逐次记录。
+- 门禁：`pytest tests/f08`、`go build/vet/test ./...`、`gofmt -l`、
+  `node --check apps/web/src/assets/chat.js`、`python tools/sync_spec.py --check`；
+  未改 `docs/spec/**` 与 `contracts/**`。
 ## F04B/T083 画布创作半：condition/join 配置与端口（GitHub #84，2026-11-05）
 
 T083 的**画布创作半**已交付，状态 **passed**（运行视图/执行语义属其它子任务）。
@@ -1850,6 +1878,31 @@ T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半�
 门禁：`python -m pytest tests/f04b -q` → 14 passed；`tests/f06`/`tests/f04a`/`tests/tooling`、`go build/vet/test ./...`、
 `gofmt -l internal cmd tools`、`python tools/sync_spec.py --check` 结果见报告 §6。无迁移；未改 `docs/spec/**`、`contracts/**`。
 **not_run**：真实二次 exec 复用观感烟测、真实厂商模型、浏览器 DOM、画布半。
+
+## F04B/T083 运行视图半：调试页节点状态表（condition 端口 / skipped / join）（2026-11-05）
+
+T083（GitHub #84）运行视图半已交付，状态 **`partial`**：页面、纯函数、页面结构与 DOM 测试、真实线性 Run 的
+HTTP E2E 通过；**真实条件/join/skipped 执行 E2E `not_run`**（合并运行时后测试就绪，但编排者要求避免与另一个
+agent 的 `pytest tests/f08` 并发使用共享 WSL/runsc 栈）。证据：`reports/f04b/T083-runview.md`；分支
+`t/t083-runview`（worktree `E:\Orchara-wt\t083-runview`），基线 `ea56392`，结束合并集成分支 `111e2c2`
+→ 合并提交 **`a050e2f`**。
+
+| 交付点 | 结果 |
+|---|---|
+| 节点状态表 | **passed**：`apps/web/src/assets/runview.js` 新纯函数 `aggregateNodeStates`（attempt 优先 + 状态秩、乱序/重放幂等、skipped 独立）/`buildRunViewModel`（拓扑序、每节点一行、attempt、错误码、定义外节点追加）；`debug.html` 表格 6 列 |
+| condition 端口 / join 信封 | **passed（渲染层）**：条件 data artifact `{port,matched_case}` → “端口 yes（第 1 个 case/默认分支）”；join 信封按 required+optional 顺序显示 `source=status/value 摘要(<details>)/error_code`；真实条件 Run E2E `not_run`（同上） |
+| skipped 视觉 | **passed（渲染层）**：`state-skipped`（灰/⏭/降透明）vs `state-failed`（红/✕/加粗）+ 图例；真实 skipped 事件 E2E `not_run` |
+| run 失败/取消 | **passed**：`formatRunError`（state/稳定码/severity/已知码提示；202 永不写成 stopped）；取消按钮 `POST /runs/{id}/cancel` + CSRF，DOM harness 断言 202 意图文案与终态禁用；`/runs` 链接 |
+| 断线/410 | **partial**：复用既有 `runs.js` SSE（`Last-Event-ID` 续传/去重/410 snapshot 文案），仅加可选 `onEvent` 钩子；事件缺失时表格用持久 node-results 并标注“由节点结果推断/无状态事件”，不伪造历史；真实 410 过期 E2E `not_run` |
+| 数据面 | **非契约**：`node.status` 契约事件 + condition/join **node data artifact** 约定；读取链 `node-results`(非契约) → `artifacts/{id}/content`(契约)。未改 OpenAPI/`contracts/**`/`docs/spec/**`；新增仅 `GET /assets/runview.js` 静态路由 |
+
+门禁：`node --check`（debug/runview/runs）exit 0；`node tests/f04b/runview.test.mjs` **PASS 6**；
+`pytest tests/f04b` 合并前 **6 passed, 1 skipped in 46.34s**（含真实线性 start→python→end Run 的 HTTP E2E，
+真实 PG/API/mTLS/supervisor/runsc；1 skip = 条件 E2E，当时运行时未合入）；`sync_spec --check` no drift；
+`go build ./...`、`go test ./internal/api`、`gofmt -l internal cmd tools` 干净；相关页面回归
+`tests/f06/test_t044_pages.py` 4 passed、`tests/f03` 三个页面模块 14 passed。合并 `111e2c2` 后 fast/Go 门禁复跑全绿。
+**not_run**：真实条件/join/skipped E2E（禁止并发 pytest，命令已给）、真实 410 过期、真实取消 E2E（T036 已覆盖）、
+浏览器 DOM/Playwright（P2，非门禁）、真实失败节点经 run-view 的 E2E。
 
 ## 记录模板
 

@@ -1,0 +1,1990 @@
+{
+  "schema": "orchara.t084-routing-eval/1",
+  "generated_at": "2026-11-05T23:20:33+0800",
+  "environment": {
+    "profile": "dev-stub",
+    "stack": "real PostgreSQL 16 cluster (tests/support/stack.py) + compiled cmd/api, cmd/maintenance and cmd/supervisor; WSL2/runsc for the publication and journey execution",
+    "route_control_model": "dev-stub route control model registered as a real passed model profile (provider=stub, stub=true); the server owns ACL, required inputs and the decision policy",
+    "database": "throwaway PostgreSQL 16 cluster on 127.0.0.1:55432",
+    "python": "3.12.2",
+    "git_head": "7c0e456d41f1392e0c8d9fc5e20425753845e048",
+    "run_started_at": "2026-11-05T23:19:26+0800",
+    "browser_dom": "not_run (no browser driver); chat.js executed under Node with a minimal DOM",
+    "real_model_baseline": "not_run (no vendor model credentials; dev-stub only)",
+    "corpus_input": "docs/spec/examples/sales/input.csv (copied into the frozen corpus)"
+  },
+  "corpus": {
+    "corpus_version": "1.0.0",
+    "frozen_at": "2026-11-05",
+    "registry_sha256": "491e4f25b6f8fbf91a8d345d1c260e2f576411978058cb3ab02e21351e39e42e",
+    "dataset_digest": "9128080ae557062f6ff5c0e2c96d999bad0e5bb8e52a0061cf554fb0e13071d2",
+    "case_count": 34,
+    "cells": [
+      "unique",
+      "ambiguous",
+      "missing_input",
+      "no_match",
+      "unseen_application",
+      "unauthorized_candidate"
+    ],
+    "splits": [
+      "dev",
+      "frozen_test"
+    ],
+    "families": [
+      {
+        "family_id": "contract-review-clause-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "contract-review-dev-zh",
+        "cell": "ambiguous",
+        "split": "dev"
+      },
+      {
+        "family_id": "contract-review-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "contract-risk-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "forecast-quarter-zh",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "forecast-trend-zh",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "inventory-reconcile-zh",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "inventory-stocktake-zh",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "invoice-matching-en",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "invoice-reconcile-en",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "joke-zh",
+        "cell": "no_match",
+        "split": "dev"
+      },
+      {
+        "family_id": "payroll-calc-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-generate-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-monthly-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-salary-zh",
+        "cell": "unseen_application",
+        "split": "dev"
+      },
+      {
+        "family_id": "physics-en",
+        "cell": "no_match",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "poem-zh",
+        "cell": "no_match",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-aggregation-en",
+        "cell": "unique",
+        "split": "dev"
+      },
+      {
+        "family_id": "sales-digest-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-monthly-report-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-summary-csv-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-aggregation-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-monthly-report-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-sales-digest-en",
+        "cell": "unauthorized_candidate",
+        "split": "dev"
+      },
+      {
+        "family_id": "uuid-sales-summary-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "weather-zh",
+        "cell": "no_match",
+        "split": "frozen_test"
+      }
+    ]
+  },
+  "catalog": {
+    "forecast": {
+      "key": "forecast",
+      "application_id": "731af6c2-a180-4e92-9b58-360f9070da07",
+      "version_id": "face57ee-47f6-4efc-8614-f1b105e18e8c",
+      "version_no": 1,
+      "purpose": "收入趋势预测",
+      "publication": "t077_fixture"
+    },
+    "inventory": {
+      "key": "inventory",
+      "application_id": "e34f815a-835b-44d6-a283-2537fdb8e5c0",
+      "version_id": "72ed2ee6-3366-4bd1-aea0-531df15fff28",
+      "version_no": 1,
+      "purpose": "库存流水核对",
+      "publication": "t077_fixture"
+    },
+    "invoice": {
+      "key": "invoice",
+      "application_id": "40477732-fb61-4c71-b20c-efad45dec2de",
+      "version_id": "012e5984-47c9-445d-a5d0-ff6c3a10d119",
+      "version_no": 1,
+      "purpose": "invoice reconciliation",
+      "publication": "t077_fixture"
+    },
+    "alpha": {
+      "key": "alpha",
+      "application_id": "e3ce3f84-ca62-4b2f-ac9e-d21477f457b7",
+      "version_id": "b22d500c-51fb-4fba-a080-cc286521fda2",
+      "version_no": 1,
+      "purpose": "合同条款审阅",
+      "publication": "t077_fixture"
+    },
+    "beta": {
+      "key": "beta",
+      "application_id": "a9be4936-2495-4e9d-9846-6c4d3a3b7b21",
+      "version_id": "f74152f6-c4df-448b-a914-c6114467bfb8",
+      "version_no": 1,
+      "purpose": "合同风险审阅",
+      "publication": "t077_fixture"
+    },
+    "payroll": {
+      "key": "payroll",
+      "application_id": "07ab6ca3-fdf6-4c7b-955b-b848b5373f9c",
+      "version_id": "20bf4d62-bbcb-4969-8d78-83096b2c7ca8",
+      "version_no": 1,
+      "purpose": "生成本月工资单",
+      "publication": "t077_fixture"
+    },
+    "sales": {
+      "key": "sales",
+      "application_id": "3dd4792f-ff75-4212-a3c7-82e2c38a3986",
+      "version_id": "c4c9266a-4acd-4d22-af20-955dc24415c4",
+      "version_no": 1,
+      "purpose": "summarise sales",
+      "publication": "t068_real"
+    }
+  },
+  "publication": {
+    "mode": "t068_real",
+    "fallback_reason": null,
+    "application_id": "3dd4792f-ff75-4212-a3c7-82e2c38a3986",
+    "version_id": "c4c9266a-4acd-4d22-af20-955dc24415c4",
+    "manifest_sha256": "844cad669298da65f59d6e658e5fd5b4d1f2efaf08ab1ef204d05170f331d87a",
+    "review_id": "fd8d1a94-df46-4b3e-99be-fc3b89afc612",
+    "evaluation_report_id": "deeb1d8c-816f-4ad8-9eb4-cb8ce66aa8ef",
+    "evaluation_status": "passed",
+    "five_category_cases": 5
+  },
+  "results": {
+    "dev": [
+      {
+        "case_id": "rt-unique-dev-01",
+        "cell": "unique",
+        "family_id": "sales-aggregation-en",
+        "split": "dev",
+        "message": "aggregation for this sales csv",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "8eb91678-4501-4f72-a4fe-fa59472c7631",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 922
+      },
+      {
+        "case_id": "rt-unique-dev-02",
+        "cell": "unique",
+        "family_id": "sales-aggregation-en",
+        "split": "dev",
+        "message": "summarise the sales csv",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "aca0da2a-69e2-4dbf-a4e1-c2273b7e8429",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1280
+      },
+      {
+        "case_id": "rt-ambiguous-dev-01",
+        "cell": "ambiguous",
+        "family_id": "contract-review-dev-zh",
+        "split": "dev",
+        "message": "审阅这份合同的风险条款",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_selection",
+          "application": null,
+          "candidates": [
+            "alpha",
+            "beta"
+          ],
+          "interaction": "selection",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_selection",
+          "state": "awaiting_selection",
+          "error_code": null,
+          "candidates": [
+            "beta",
+            "alpha"
+          ],
+          "candidate_version_ids": [
+            "f74152f6-c4df-448b-a914-c6114467bfb8",
+            "b22d500c-51fb-4fba-a080-cc286521fda2"
+          ],
+          "candidate_ranks": [
+            1,
+            2
+          ],
+          "interaction_kinds": [
+            "selection"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1421,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "22c56683-948c-4d91-bbb8-042c8784cbe1",
+          "chosen": "alpha",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-dev-01",
+        "cell": "missing_input",
+        "family_id": "inventory-stocktake-zh",
+        "split": "dev",
+        "message": "库存盘点",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "inventory",
+          "candidates": [
+            "inventory"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "inventory"
+          ],
+          "candidate_version_ids": [
+            "72ed2ee6-3366-4bd1-aea0-531df15fff28"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1344,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "478c6ddc-497b-443a-be9d-6102f14e8ddf",
+          "chosen": "inventory",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-dev-02",
+        "cell": "missing_input",
+        "family_id": "invoice-matching-en",
+        "split": "dev",
+        "message": "check the invoice matching result",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "invoice",
+          "candidates": [
+            "invoice"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "invoice"
+          ],
+          "candidate_version_ids": [
+            "012e5984-47c9-445d-a5d0-ff6c3a10d119"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1703,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "b4f77129-c603-4b40-83c4-be8aeea9ff95",
+          "chosen": "invoice",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-dev-03",
+        "cell": "missing_input",
+        "family_id": "forecast-quarter-zh",
+        "split": "dev",
+        "message": "下季度收入情况",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "forecast",
+          "candidates": [
+            "forecast"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "forecast"
+          ],
+          "candidate_version_ids": [
+            "face57ee-47f6-4efc-8614-f1b105e18e8c"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1155,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "16b92bca-6cb3-4afe-ab48-2c0a65972df9",
+          "chosen": "forecast",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-nomatch-dev-01",
+        "cell": "no_match",
+        "family_id": "joke-zh",
+        "split": "dev",
+        "message": "给我讲个笑话",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 500
+      },
+      {
+        "case_id": "rt-unseen-dev-01",
+        "cell": "unseen_application",
+        "family_id": "payroll-salary-zh",
+        "split": "dev",
+        "message": "工资单生成",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 500
+      },
+      {
+        "case_id": "rt-unauthorized-dev-01",
+        "cell": "unauthorized_candidate",
+        "family_id": "uuid-sales-digest-en",
+        "split": "dev",
+        "message": "with 20bf4d62-bbcb-4969-8d78-83096b2c7ca8 weekly digest of sales csv",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": "route_candidate_invalid"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "route_candidate_invalid",
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 516
+      }
+    ],
+    "frozen_test": [
+      {
+        "case_id": "rt-unique-frozen-01",
+        "cell": "unique",
+        "family_id": "sales-summary-csv-en",
+        "split": "frozen_test",
+        "message": "summarise this csv",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "b23a3132-305f-4fd6-99c5-97fb9ce28fe9",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 625
+      },
+      {
+        "case_id": "rt-unique-frozen-02",
+        "cell": "unique",
+        "family_id": "sales-summary-csv-en",
+        "split": "frozen_test",
+        "message": "please summarise this csv file",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "f2bc057a-5690-4443-9ed2-7c5e2570263a",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 608
+      },
+      {
+        "case_id": "rt-unique-frozen-03",
+        "cell": "unique",
+        "family_id": "sales-monthly-report-en",
+        "split": "frozen_test",
+        "message": "build a monthly report from the sales csv",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "c1a601ab-b18a-475e-a17f-edcdc07f3495",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 782
+      },
+      {
+        "case_id": "rt-unique-frozen-04",
+        "cell": "unique",
+        "family_id": "sales-monthly-report-en",
+        "split": "frozen_test",
+        "message": "aggregate the sales csv into a report",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "9a1cbc78-bfbb-4d48-880b-369c1c36df7d",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 671
+      },
+      {
+        "case_id": "rt-unique-frozen-05",
+        "cell": "unique",
+        "family_id": "sales-digest-en",
+        "split": "frozen_test",
+        "message": "weekly digest of the sales csv",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "2b80667d-a299-4a0a-ba1a-fd00bdca406d",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 703
+      },
+      {
+        "case_id": "rt-unique-frozen-06",
+        "cell": "unique",
+        "family_id": "sales-digest-en",
+        "split": "frozen_test",
+        "message": "sales csv report",
+        "attachments": [
+          "sales_csv"
+        ],
+        "expected": {
+          "decision": "auto_dispatch",
+          "application": "sales",
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "auto_dispatch",
+          "state": "dispatched",
+          "error_code": null,
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": "7dbfaab5-92ec-412d-a19b-5c6f1c4ab41c",
+          "run_owner_matches_second_user": true,
+          "run_version_matches_expected": true
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 625
+      },
+      {
+        "case_id": "rt-ambiguous-frozen-01",
+        "cell": "ambiguous",
+        "family_id": "contract-review-zh",
+        "split": "frozen_test",
+        "message": "帮我审阅这份合同的条款和风险",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_selection",
+          "application": null,
+          "candidates": [
+            "alpha",
+            "beta"
+          ],
+          "interaction": "selection",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_selection",
+          "state": "awaiting_selection",
+          "error_code": null,
+          "candidates": [
+            "beta",
+            "alpha"
+          ],
+          "candidate_version_ids": [
+            "f74152f6-c4df-448b-a914-c6114467bfb8",
+            "b22d500c-51fb-4fba-a080-cc286521fda2"
+          ],
+          "candidate_ranks": [
+            1,
+            2
+          ],
+          "interaction_kinds": [
+            "selection"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1077,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "32567d68-b4c3-47d9-ad79-50b51103f5ec",
+          "chosen": "alpha",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-ambiguous-frozen-02",
+        "cell": "ambiguous",
+        "family_id": "contract-review-zh",
+        "split": "frozen_test",
+        "message": "合同条款和风险审阅",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_selection",
+          "application": null,
+          "candidates": [
+            "alpha",
+            "beta"
+          ],
+          "interaction": "selection",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_selection",
+          "state": "awaiting_selection",
+          "error_code": null,
+          "candidates": [
+            "beta",
+            "alpha"
+          ],
+          "candidate_version_ids": [
+            "f74152f6-c4df-448b-a914-c6114467bfb8",
+            "b22d500c-51fb-4fba-a080-cc286521fda2"
+          ],
+          "candidate_ranks": [
+            1,
+            2
+          ],
+          "interaction_kinds": [
+            "selection"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1234,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "2c6a8c5b-6c7c-482d-a549-08833ac054e2",
+          "chosen": "alpha",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-ambiguous-frozen-03",
+        "cell": "ambiguous",
+        "family_id": "contract-risk-zh",
+        "split": "frozen_test",
+        "message": "请审阅合同的风险与条款",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_selection",
+          "application": null,
+          "candidates": [
+            "alpha",
+            "beta"
+          ],
+          "interaction": "selection",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_selection",
+          "state": "awaiting_selection",
+          "error_code": null,
+          "candidates": [
+            "beta",
+            "alpha"
+          ],
+          "candidate_version_ids": [
+            "f74152f6-c4df-448b-a914-c6114467bfb8",
+            "b22d500c-51fb-4fba-a080-cc286521fda2"
+          ],
+          "candidate_ranks": [
+            1,
+            2
+          ],
+          "interaction_kinds": [
+            "selection"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1530,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "29c36ce7-3fcc-4fdf-83d0-08100379e543",
+          "chosen": "alpha",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-ambiguous-frozen-04",
+        "cell": "ambiguous",
+        "family_id": "contract-review-clause-zh",
+        "split": "frozen_test",
+        "message": "合同的条款和风险需要审阅",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_selection",
+          "application": null,
+          "candidates": [
+            "alpha",
+            "beta"
+          ],
+          "interaction": "selection",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_selection",
+          "state": "awaiting_selection",
+          "error_code": null,
+          "candidates": [
+            "beta",
+            "alpha"
+          ],
+          "candidate_version_ids": [
+            "f74152f6-c4df-448b-a914-c6114467bfb8",
+            "b22d500c-51fb-4fba-a080-cc286521fda2"
+          ],
+          "candidate_ranks": [
+            1,
+            2
+          ],
+          "interaction_kinds": [
+            "selection"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1250,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "4556d240-ef7d-4d5b-8ad8-770fcab286d7",
+          "chosen": "alpha",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-frozen-01",
+        "cell": "missing_input",
+        "family_id": "inventory-reconcile-zh",
+        "split": "frozen_test",
+        "message": "帮我核对一下库存流水",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "inventory",
+          "candidates": [
+            "inventory"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "inventory"
+          ],
+          "candidate_version_ids": [
+            "72ed2ee6-3366-4bd1-aea0-531df15fff28"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1532,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "bc3a8b96-d4b5-4653-9f7d-c523ab864701",
+          "chosen": "inventory",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-frozen-02",
+        "cell": "missing_input",
+        "family_id": "inventory-reconcile-zh",
+        "split": "frozen_test",
+        "message": "库存流水核对一下",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "inventory",
+          "candidates": [
+            "inventory"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "inventory"
+          ],
+          "candidate_version_ids": [
+            "72ed2ee6-3366-4bd1-aea0-531df15fff28"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 2546,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "61c74e4e-6619-46ae-be92-1af3f6e287e1",
+          "chosen": "inventory",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-frozen-03",
+        "cell": "missing_input",
+        "family_id": "invoice-reconcile-en",
+        "split": "frozen_test",
+        "message": "reconcile the invoice pdf",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "invoice",
+          "candidates": [
+            "invoice"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "invoice"
+          ],
+          "candidate_version_ids": [
+            "012e5984-47c9-445d-a5d0-ff6c3a10d119"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 2250,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "3e6c0f85-8798-403d-92c7-47297523e800",
+          "chosen": "invoice",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-frozen-04",
+        "cell": "missing_input",
+        "family_id": "forecast-trend-zh",
+        "split": "frozen_test",
+        "message": "预测下季度收入趋势",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "forecast",
+          "candidates": [
+            "forecast"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "forecast"
+          ],
+          "candidate_version_ids": [
+            "face57ee-47f6-4efc-8614-f1b105e18e8c"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1453,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "7af511ea-61d8-4703-aac8-6dba9467758b",
+          "chosen": "forecast",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-missing-frozen-05",
+        "cell": "missing_input",
+        "family_id": "forecast-trend-zh",
+        "split": "frozen_test",
+        "message": "帮我预测下季度的收入趋势",
+        "attachments": [],
+        "expected": {
+          "decision": "awaiting_input",
+          "application": "forecast",
+          "candidates": [
+            "forecast"
+          ],
+          "interaction": "input",
+          "no_run_reason": null
+        },
+        "actual": {
+          "decision": "awaiting_input",
+          "state": "awaiting_input",
+          "error_code": null,
+          "candidates": [
+            "forecast"
+          ],
+          "candidate_version_ids": [
+            "face57ee-47f6-4efc-8614-f1b105e18e8c"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [
+            "input"
+          ],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": true,
+        "clarification_completed": true,
+        "final_file_ok": null,
+        "elapsed_ms": 1639,
+        "clarification": {
+          "attempted": true,
+          "replied": true,
+          "completed": true,
+          "reply_state": "routing",
+          "error_code": null,
+          "run_id": "b7305371-e02b-466f-b651-d9d7a7229196",
+          "chosen": "forecast",
+          "state": "dispatched"
+        }
+      },
+      {
+        "case_id": "rt-nomatch-frozen-01",
+        "cell": "no_match",
+        "family_id": "poem-zh",
+        "split": "frozen_test",
+        "message": "写一首关于春天的诗",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1016
+      },
+      {
+        "case_id": "rt-nomatch-frozen-02",
+        "cell": "no_match",
+        "family_id": "weather-zh",
+        "split": "frozen_test",
+        "message": "今天天气怎么样",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1108
+      },
+      {
+        "case_id": "rt-nomatch-frozen-03",
+        "cell": "no_match",
+        "family_id": "physics-en",
+        "split": "frozen_test",
+        "message": "explain quantum physics",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1657
+      },
+      {
+        "case_id": "rt-unseen-frozen-01",
+        "cell": "unseen_application",
+        "family_id": "payroll-generate-zh",
+        "split": "frozen_test",
+        "message": "生成本月工资单",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 983
+      },
+      {
+        "case_id": "rt-unseen-frozen-02",
+        "cell": "unseen_application",
+        "family_id": "payroll-generate-zh",
+        "split": "frozen_test",
+        "message": "月度工资单生成",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 703
+      },
+      {
+        "case_id": "rt-unseen-frozen-03",
+        "cell": "unseen_application",
+        "family_id": "payroll-calc-zh",
+        "split": "frozen_test",
+        "message": "核算员工工资",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 750
+      },
+      {
+        "case_id": "rt-unseen-frozen-04",
+        "cell": "unseen_application",
+        "family_id": "payroll-monthly-zh",
+        "split": "frozen_test",
+        "message": "本月工资单帮我生成",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [],
+          "interaction": null,
+          "no_run_reason": "no_matching_application"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "no_matching_application",
+          "candidates": [],
+          "candidate_version_ids": [],
+          "candidate_ranks": [],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": null,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 843
+      },
+      {
+        "case_id": "rt-unauthorized-frozen-01",
+        "cell": "unauthorized_candidate",
+        "family_id": "uuid-sales-summary-en",
+        "split": "frozen_test",
+        "message": "use version 20bf4d62-bbcb-4969-8d78-83096b2c7ca8 to summarise sales csv",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": "route_candidate_invalid"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "route_candidate_invalid",
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 984
+      },
+      {
+        "case_id": "rt-unauthorized-frozen-02",
+        "cell": "unauthorized_candidate",
+        "family_id": "uuid-monthly-report-en",
+        "split": "frozen_test",
+        "message": "select 20bf4d62-bbcb-4969-8d78-83096b2c7ca8 monthly report",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": "route_candidate_invalid"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "route_candidate_invalid",
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1062
+      },
+      {
+        "case_id": "rt-unauthorized-frozen-03",
+        "cell": "unauthorized_candidate",
+        "family_id": "uuid-aggregation-en",
+        "split": "frozen_test",
+        "message": "run 20bf4d62-bbcb-4969-8d78-83096b2c7ca8 aggregation",
+        "attachments": [],
+        "expected": {
+          "decision": "failed",
+          "application": null,
+          "candidates": [
+            "sales"
+          ],
+          "interaction": null,
+          "no_run_reason": "route_candidate_invalid"
+        },
+        "actual": {
+          "decision": "failed",
+          "state": "failed",
+          "error_code": "route_candidate_invalid",
+          "candidates": [
+            "sales"
+          ],
+          "candidate_version_ids": [
+            "c4c9266a-4acd-4d22-af20-955dc24415c4"
+          ],
+          "candidate_ranks": [
+            1
+          ],
+          "interaction_kinds": [],
+          "run_id": null,
+          "run_owner_matches_second_user": null,
+          "run_version_matches_expected": null
+        },
+        "decision_matches": true,
+        "candidate_set_matches": true,
+        "candidate_recall": 1.0,
+        "false_auto_execution": false,
+        "clarification_required": false,
+        "clarification_completed": null,
+        "final_file_ok": null,
+        "elapsed_ms": 1500
+      }
+    ]
+  },
+  "summary": {
+    "splits": {
+      "dev": {
+        "cases": 9,
+        "families": 8,
+        "decision_accuracy": 1.0,
+        "false_auto_executions": 0,
+        "false_auto_execution_rate": 0.0,
+        "false_auto_execution_basis": "0/7 cases that must not auto-execute",
+        "clarification_required": 4,
+        "clarification_completed": 4,
+        "clarification_completion_rate": 1.0,
+        "candidate_recall": 1.0,
+        "candidate_recall_cases": 7,
+        "no_candidate_leaks": [],
+        "runs_created": 2,
+        "by_cell": {
+          "unique": {
+            "cases": 2,
+            "decision_matches": 2,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "ambiguous": {
+            "cases": 1,
+            "decision_matches": 1,
+            "false_auto_executions": 0,
+            "clarification_required": 1,
+            "clarification_completed": 1
+          },
+          "missing_input": {
+            "cases": 3,
+            "decision_matches": 3,
+            "false_auto_executions": 0,
+            "clarification_required": 3,
+            "clarification_completed": 3
+          },
+          "no_match": {
+            "cases": 1,
+            "decision_matches": 1,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "unseen_application": {
+            "cases": 1,
+            "decision_matches": 1,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "unauthorized_candidate": {
+            "cases": 1,
+            "decision_matches": 1,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          }
+        }
+      },
+      "frozen_test": {
+        "cases": 25,
+        "families": 18,
+        "decision_accuracy": 1.0,
+        "false_auto_executions": 0,
+        "false_auto_execution_rate": 0.0,
+        "false_auto_execution_basis": "0/19 cases that must not auto-execute",
+        "clarification_required": 9,
+        "clarification_completed": 9,
+        "clarification_completion_rate": 1.0,
+        "candidate_recall": 1.0,
+        "candidate_recall_cases": 18,
+        "no_candidate_leaks": [],
+        "runs_created": 6,
+        "by_cell": {
+          "unique": {
+            "cases": 6,
+            "decision_matches": 6,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "ambiguous": {
+            "cases": 4,
+            "decision_matches": 4,
+            "false_auto_executions": 0,
+            "clarification_required": 4,
+            "clarification_completed": 4
+          },
+          "missing_input": {
+            "cases": 5,
+            "decision_matches": 5,
+            "false_auto_executions": 0,
+            "clarification_required": 5,
+            "clarification_completed": 5
+          },
+          "no_match": {
+            "cases": 3,
+            "decision_matches": 3,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "unseen_application": {
+            "cases": 4,
+            "decision_matches": 4,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          },
+          "unauthorized_candidate": {
+            "cases": 3,
+            "decision_matches": 3,
+            "false_auto_executions": 0,
+            "clarification_required": 0,
+            "clarification_completed": 0
+          }
+        }
+      }
+    },
+    "total_cases": 34,
+    "false_auto_executions_total": 0,
+    "clarification_completion_total": {
+      "required": 13,
+      "completed": 13
+    }
+  },
+  "journey": {
+    "request_id": "d4f0fe50-5c38-41b0-8a13-29ce775b389c",
+    "conversation_id": "8d060ad1-e208-4a66-86f9-4ab3fe9be598",
+    "run_id": "ddb98571-ed37-49c0-bf73-686af6be0851",
+    "run_owner_matches_second_user": true,
+    "application_version_id": "c4c9266a-4acd-4d22-af20-955dc24415c4",
+    "input_artifact_id": "c739956c-c816-4390-927e-e1c36893925b",
+    "attachment_artifact_id": "bcb6ff00-17ef-4fe2-aa78-80063ae12a72",
+    "summary_csv_artifact_id": "017cc10d-9de6-4031-ba34-b4229c8e2a73",
+    "summary_csv_sha256": "bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65",
+    "input_sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+    "independent_truth": "tests/support/t049.py:check_summary_csv (Decimal, never the tool)",
+    "final_file_ok": true,
+    "execution_attempts": [
+      {
+        "attempt": 1,
+        "request_id": "d4f0fe50-5c38-41b0-8a13-29ce775b389c",
+        "run_id": "ddb98571-ed37-49c0-bf73-686af6be0851",
+        "status": "executed",
+        "outcome": "succeeded",
+        "error_code": null,
+        "duration_ms": 2738
+      }
+    ],
+    "execution_attempt_count": 1,
+    "supervisor": {
+      "status": "executed",
+      "outcome": "succeeded",
+      "sandbox_started": true,
+      "error_code": null
+    },
+    "acl": {
+      "publisher_run_status": 404,
+      "publisher_artifact_status": 404,
+      "anonymous_run_status": 401,
+      "anonymous_artifact_status": 401
+    }
+  }
+}
