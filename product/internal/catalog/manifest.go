@@ -140,12 +140,22 @@ func (r *Reader) ValidateExecution(
 		return nil, located, nil
 	}
 
-	dependencies, dependencyErrors, err := r.checkDependencies(ctx, callerID, applicationID, collectDependencyRefs(document), options)
+	// One extraction, shared by the readiness pass and T075's delegation check.
+	refs := collectDependencyRefs(document)
+	dependencies, dependencyErrors, err := r.checkDependencies(ctx, callerID, applicationID, refs, options)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(dependencyErrors) > 0 {
 		return nil, dependencyErrors, nil
+	}
+	// T075: the closure is ready and acyclic, so the frozen child schemas can be
+	// compared with the call_app mapping and the real closure depth can be
+	// measured against the published child policy.
+	if delegationErrors := checkChildDelegation(
+		document, refs, dependencies.subappRows, dependencies.versionEdges,
+	); len(delegationErrors) > 0 {
+		return nil, delegationErrors, nil
 	}
 
 	resolved, err := inputs.Resolve()
@@ -184,6 +194,14 @@ type executionDependencySet struct {
 	models     []string
 	subapps    []string
 	connectors []compiler.ConnectorPolicy
+	// subappRows are the published rows behind subapps. T075's I/O mapping check
+	// reads each child version's frozen definition from here (one query, not a
+	// second readiness pass).
+	subappRows map[string]subappDependency
+	// versionEdges is the real platform.version_dependencies closure reachable
+	// from the referenced child versions. It is loaded by the cycle check and
+	// reused by T075's depth rule so the two cannot disagree about the closure.
+	versionEdges map[string][]string
 }
 
 // normalizeDependencyID is the identity form of a dependency reference.
@@ -292,6 +310,7 @@ func (r *Reader) checkDependencies(
 		models:     make([]string, 0, len(models)),
 		subapps:    make([]string, 0, len(subapps)),
 		connectors: make([]compiler.ConnectorPolicy, 0, len(connectors)),
+		subappRows: subapps,
 	}
 	located := make([]ExecutableError, 0)
 	emitted := make(map[string]bool)
@@ -371,13 +390,14 @@ func (r *Reader) checkDependencies(
 		return nil, located, nil
 	}
 
-	cycleErrors, err := r.checkSubappCycles(ctx, applicationID, refs, subapps)
+	cycleErrors, versionEdges, err := r.checkSubappCycles(ctx, applicationID, refs, subapps)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(cycleErrors) > 0 {
 		return nil, cycleErrors, nil
 	}
+	set.versionEdges = versionEdges
 	return set, nil, nil
 }
 
@@ -493,6 +513,10 @@ type subappDependency struct {
 	ownerID       string
 	revoked       bool
 	archived      bool
+	// definition is the frozen manifest's definition object (manifest ->
+	// 'definition'), the only source of the child version's I/O schema. T075's
+	// mapping check reads it; a version row without one is dependency_not_ready.
+	definition []byte
 }
 
 func modelReadinessProblem(row modelDependency, present bool) (string, string) {
@@ -811,7 +835,8 @@ func loadSubappDependenciesQ(
 	}
 	result, err := q.QueryContext(ctx, `
 		SELECT v.id::text, v.application_id::text, a.owner_id::text,
-		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL
+		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL,
+		       v.manifest -> 'definition'
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
 		 WHERE v.id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
@@ -824,7 +849,8 @@ func loadSubappDependenciesQ(
 			id  string
 			row subappDependency
 		)
-		if err := result.Scan(&id, &row.applicationID, &row.ownerID, &row.revoked, &row.archived); err != nil {
+		if err := result.Scan(&id, &row.applicationID, &row.ownerID, &row.revoked, &row.archived,
+			&row.definition); err != nil {
 			return nil, fmt.Errorf("reading application versions: %w", err)
 		}
 		rows[id] = row
@@ -855,7 +881,7 @@ func (r *Reader) checkSubappCycles(
 	applicationID string,
 	refs []dependencyRef,
 	subapps map[string]subappDependency,
-) ([]ExecutableError, error) {
+) ([]ExecutableError, map[string][]string, error) {
 	roots := make([]string, 0)
 	for _, ref := range refs {
 		if ref.kind != dependencySubapp || !uuid.Valid(ref.id) {
@@ -869,12 +895,12 @@ func (r *Reader) checkSubappCycles(
 	}
 	roots = uniqueStrings(roots)
 	if len(roots) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	edges, err := r.loadVersionEdges(ctx, roots)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	versionIDs := make([]string, 0, len(edges)+len(roots))
 	versionIDs = append(versionIDs, roots...)
@@ -885,7 +911,7 @@ func (r *Reader) checkSubappCycles(
 	versionIDs = uniqueStrings(versionIDs)
 	applications, err := r.loadVersionApplications(ctx, versionIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	selfVersions := make(map[string]bool)
 	for id, appID := range applications {
@@ -923,7 +949,7 @@ func (r *Reader) checkSubappCycles(
 				Code:    CodeDependencyCycle,
 				Pointer: ref.pointer,
 				Message: "the sub-application closure calls version " + selfHit + " of the application being validated; a draft cannot depend on its own application",
-			}}, nil
+			}}, edges, nil
 		}
 		cycleHit := false
 		for _, id := range reachable {
@@ -938,10 +964,10 @@ func (r *Reader) checkSubappCycles(
 				Code:    CodeDependencyCycle,
 				Pointer: ref.pointer,
 				Message: "the sub-application dependency graph contains a cycle through version " + strings.Join(cycle, " -> "),
-			}}, nil
+			}}, edges, nil
 		}
 	}
-	return nil, nil
+	return nil, edges, nil
 }
 
 // loadVersionEdges reads the version_dependencies closure reachable from roots.
