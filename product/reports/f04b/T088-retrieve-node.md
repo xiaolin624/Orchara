@@ -258,7 +258,43 @@ no drift: spec copy and contract snapshot match the manifest
 
 ## 6. 合并、门禁原始输出与 HEAD
 
-（待填）
+- 分支：`t/t088-retrieve-node`，worktree `E:\Orchara-wt\t088`。
+- 开发期 merge：`integration/t083-t091` @ `b343f7b` → 本分支 `39a3099`；@ `f21f09a`（T086 model + T090）→
+  `f194aea`。冲突解决：`graphNodeTypes`/`hasGraphConstructs`/dispatch/config 复验同时保留 `model` 与 `retrieve`，
+  `approval` 仍是唯一未支持的按类型码；画布 palette/labels/positions/panels/export allowlist 同样两者并存，
+  已提交 bundle 由合并后源码重建；T083 的 unsupported-type 用例改用 `approval`。集成树上的 Go/canvas 回归全绿。
+- 本分支最终代码/证据 HEAD：`a3825cb`（`test(f04b): fix the T088 real-stack stack fixture and record the retrieve
+  evidence`）。集成分支已由编排者先行合并本分支（`7b1becd`）；本 HEAD 及随后一次 docs 提交（钉住 HEAD）由父再次 merge。
+- 门禁（合并树 `f194aea` + 最终文件）原始结果：
+
+```text
+# 锁下、确认无其它 pytest 进程后（日志 T088/pytest-t088-2.log）
+python -m pytest tests/f04b/test_t088_retrieve.py -q
+......                                                                   [100%]
+6 passed in 51.63s
+
+# 同一合并树、同一次锁内（日志 T088/pytest-t088.log）——T083 run-view 回归
+python -m pytest tests/f04b/test_t083_runview.py -q
+7 passed
+
+# 画布/运行视图/资产（Node 执行真实字节 + 重建比对）
+python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
+                 tests/f04b/test_t086_model_canvas.py tests/f04b/test_canvas_f04b_assets.py -q
+15 passed in 2.38s
+
+go build ./...          # exit 0
+go vet ./...            # exit 0
+go test ./...           # 全部 ok，exit 0
+gofmt -l internal cmd tools   # 无输出
+python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+node tests/f04b/canvas_t088.test.mjs    -> PASS 6 canvas T088 module tests
+node tests/f04b/canvas_f04b.test.mjs    -> PASS 9 canvas F04B module tests
+node tests/f04b/canvas_model.test.mjs   -> PASS 4 canvas T086 model tests
+node tests/f04b/runview.test.mjs        -> PASS 6 runview tests
+node tests/f04b/runview_t088.test.mjs   -> PASS 6 runview T088 tests
+```
+- **未跑**：`pytest tests/f10` 全量（原因见 §4.4/§5）。
 
 ## 7. 变更文件
 
