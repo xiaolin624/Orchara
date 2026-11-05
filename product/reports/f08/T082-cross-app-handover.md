@@ -9,8 +9,9 @@
 - 边界（如实）：交接摘要只含元数据（应用名/版本号/Run id/时间/附件 purpose/type/size/sha 前缀），
   **不含**运行结果正文；页面不驱动浏览器 DOM（与 T023/T027/T033/T074/T079 同一边界）；全量
   `pytest tests` 未运行（BRIEF §3 明确禁止）。
-- 迁移：`db/migrations/0051_handoff_scope_bounds.sql`（本树 tail 为 0050；T076/T081 合并时会按
-  BRIEF §5 重编号；测试按 slug `_handoff_scope_bounds.sql` 断言，不 pin 编号）。
+- 迁移：`db/migrations/0052_handoff_scope_bounds.sql`（T082 开发期为下一空位 0051；最终合并
+  `integration/t068-t082` 时 T081 已占用 `0051_f07_waiting_capacity.sql`，按 BRIEF §5 重编号为
+  0052；测试按 slug `_handoff_scope_bounds.sql` 断言，不 pin 编号）。
 - 决策：`docs/adr/0030-t082-cross-app-handover.md`（非契约预览端点、单一元数据摘要生成器、
   提交必须携带服务端预览原文、附件范围、Run 输入闭包扩展、数据库硬边界、页面确认语义）。
   契约与 `docs/spec/**` 未改动，`python tools/sync_spec.py --check` 无漂移。
@@ -86,7 +87,7 @@
   B 直接派发到自己的固定版本，C 仍 `queued`；B 终止后 C 同样推进。每一步都断言
   `live_top_runs` 恰为 1 且请求/运行行是权威事实。
 
-### 1.4 数据库硬边界（`0051_handoff_scope_bounds.sql`）
+### 1.4 数据库硬边界（`0052_handoff_scope_bounds.sql`）
 
 - `platform.request_handoffs` 新增具名 CHECK：
   `request_handoffs_source_run_ids_bound`（`cardinality(source_run_ids) BETWEEN 1 AND 5`）、

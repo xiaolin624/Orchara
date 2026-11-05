@@ -4,7 +4,7 @@
 - 日期：2026-11-05
 - 责任票：T082（GitHub #83，父 F08）；复用 ADR 0023（T074 会话/请求/队列）、ADR 0022（T070 撤销）、ADR 0029（T079 路由与 interaction）
 - 影响范围：`internal/requests/{handoff,submit,service}.go`、`internal/api/{requests,server}.go`、
-  `db/migrations/0051_handoff_scope_bounds.sql`、`apps/web/src/{chat.html,assets/chat.js}`、`tests/f08/`
+  `db/migrations/0052_handoff_scope_bounds.sql`、`apps/web/src/{chat.html,assets/chat.js}`、`tests/f08/`
 
 ## 背景
 
@@ -49,7 +49,7 @@
    snapshot + Run + start job，**不**入 `route_request` job、不写候选/决策、不调控制模型；
    排队时由 `AdvanceConversationQueueTx` 在获得逻辑槽后走同一派发；撤销 409、不可见 404。
    本票不修改 `internal/routing`。
-7. **数据库回填最小范围的硬边界。** `0051_handoff_scope_bounds.sql` 给
+7. **数据库回填最小范围的硬边界。** `0052_handoff_scope_bounds.sql` 给
    `platform.request_handoffs` 加两个具名 CHECK：`cardinality(source_run_ids) BETWEEN 1 AND 5`、
    `cardinality(artifact_ids) BETWEEN 0 AND 5`。重复 migrate 是 no-op；worker/PUBLIC 仍零权限。
    这是 0030 记录的非契约偏差（表本身是 T074 的非契约表）。
