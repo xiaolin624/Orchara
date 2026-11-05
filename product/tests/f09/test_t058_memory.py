@@ -409,13 +409,17 @@ def test_delete_answers_a_deletion_job_and_stops_old_recall_immediately(t058_sta
     assert stored["completed_at"] is None
     scopes = t058.deletion_scopes(stored)
     artifact = t058.artifact_of(t058_stack.dbname, before["body_artifact_id"])
-    kinds = {scope["kind"] for scope in scopes}
-    assert kinds == {"object", "artifact", "embedding", "memory_row"}, scopes
-    object_scope = next(scope for scope in scopes if scope["kind"] == "object")
+    # F11/T069: remaining_scopes is now the contract's closed scope vocabulary
+    # (the T058 copy descriptors moved to scope_details). A memory delete has to
+    # hand T071/T072 every class of physical copy, and T069 cannot prove any gone.
+    assert set(scopes) == set(t058.DELETION_SCOPES), scopes
+    details = t058.deletion_scope_details(stored)
+    object_items = details["object_store"]["items"]
+    object_scope = next(item for item in object_items if item["kind"] == "object")
     assert object_scope["object_key"] == artifact["object_key"], scopes
     assert object_scope["sha256"] == artifact["sha256"], scopes
-    embedding_scope = next(scope for scope in scopes if scope["kind"] == "embedding")
-    assert embedding_scope["memory_revision"] == 1, scopes
+    embedding_scope = details["search_index"]
+    assert embedding_scope["memory_revisions"] == [1], embedding_scope
 
     # The next read refuses the old content: detail 404, list empty. A stale ETag
     # is not a 412 on a tombstone: the memory does not exist any more.
