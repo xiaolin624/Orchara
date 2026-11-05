@@ -234,6 +234,21 @@ def test_a_confirmed_server_preview_is_required_for_the_switch(f08_stack) -> Non
     assert outside_scope in error["details"]["artifact_ids"], error
     assert len(f08.request_rows(stack.dbname, conversation_id)) == 1
 
+    # A well-formed but nonexistent id leaves through the located T074 artifact
+    # gate as 422 `artifact_not_found`, never the 500 the pre-fix handover
+    # metadata read produced. The handover scope gate now also runs before that
+    # metadata read (defence in depth): only an allowed set is ever re-read.
+    unknown_artifact = submit({
+        "source_run_ids": preview["source_run_ids"],
+        "artifact_ids": [f00b.new_uuid()],
+        "summary": preview["summary"],
+        "confirmed": True,
+    })
+    error = st.assert_error(unknown_artifact, 422, t082.ERROR_VALIDATION)
+    codes = [entry["code"] for entry in error["details"]["errors"]]
+    assert codes == ["artifact_not_found"], codes
+    assert len(f08.request_rows(stack.dbname, conversation_id)) == 1
+
     # More attachment/run ids than the documented maximum is the same located 422.
     too_many = submit({
         "source_run_ids": preview["source_run_ids"],
