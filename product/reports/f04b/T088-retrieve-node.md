@@ -121,6 +121,11 @@ python -m pytest tests/f04b/test_t088_retrieve.py -q
 python -m pytest tests/f04b/test_t088_retrieve.py -q
 ......                                                                   [100%]
 6 passed in 78.47s (0:01:18)
+
+# 再并入集成 tip 1cf7637（T085 skipped-facts 修复 + 各票证据合并）后的最终树（8a13ee2）
+python -m pytest tests/f04b/test_t088_retrieve.py -q
+......                                                                   [100%]
+6 passed in 74.49s (0:01:14)
 ```
 
 每个用例的真实链路：真实 draft 保存（Go workflow 编译器）→ 真实 debug 提交（封印输入）→ 编译后的
@@ -268,19 +273,20 @@ no drift: spec copy and contract snapshot match the manifest
 
 - 分支：`t/t088-retrieve-node`，worktree `E:\Orchara-wt\t088`。
 - 开发期 merge：`integration/t083-t091` @ `b343f7b` → 本分支 `39a3099`；@ `f21f09a`（T086 model + T090）→
-  `f194aea`；@ `4851c4f`（T085 并发调度器、T087 approval、T089 call_app、T091）→ `a6cdf8e`（无冲突：T087/T089
-  已基于含本票 retrieve 的集成分支开发）。此前一次冲突解决：`graphNodeTypes`/`hasGraphConstructs`/dispatch/config
-  复验同时保留 `model` 与 `retrieve`，画布 palette/labels/positions/panels/export allowlist 同样两者并存，
-  已提交 bundle 由合并后源码重建；T083 的 unsupported-type 用例改用后续剩余的未支持类型。
-- 本分支最终代码/证据 HEAD：`a6cdf8e`（第三次合并后）；随后一次 docs 提交把 HEAD 钉进报告/`PROGRESS.md`。
-  集成分支已由编排者先行合并本分支（`7b1becd`）；最终 HEAD 由父再次 merge。
-- 门禁（最终合并树 `a6cdf8e`，T085/T087/T089 已并入）原始结果：
+  `f194aea`；@ `4851c4f`（T085 并发调度器、T087 approval、T089 call_app、T091）→ `a6cdf8e`；@ `1cf7637`
+  （T085 skipped-facts 修复 + 各票证据合并）→ `8a13ee2`（均无冲突：T087/T089/T085 已基于含本票 retrieve 的
+  集成分支开发）。更早一次冲突解决：`graphNodeTypes`/`hasGraphConstructs`/dispatch/config 复验同时保留 `model`
+  与 `retrieve`，画布 palette/labels/positions/panels/export allowlist 同样两者并存，已提交 bundle 由合并后源码
+  重建；T083 的 unsupported-type 用例改用后续剩余的未支持类型。
+- 本分支最终代码/证据 HEAD：`8a13ee2`（`Merge branch 'integration/t083-t091'`）。本文件与 `PROGRESS.md` 的最终
+  钉数 docs 提交在其后；集成分支已由编排者先行合并本分支（`7b1becd`），最终 HEAD 由父再次 merge。
+- 门禁（最终合并树 `8a13ee2`，T085/T087/T089/T091 已并入）原始结果：
 
 ```text
-# 锁下、确认无其它 pytest 进程后（日志 T088/pytest-t088-final.log）
+# 锁下、确认无其它 pytest 进程后（日志 T088/pytest-t088-final2.log）
 python -m pytest tests/f04b/test_t088_retrieve.py -q
 ......                                                                   [100%]
-6 passed in 78.47s (0:01:18)
+6 passed in 74.49s (0:01:14)
 
 # 合并 T086/T090 的树（f194aea）上已跑过的回归（日志 T088/pytest-t088.log / pytest-t088-2.log）
 python -m pytest tests/f04b/test_t083_runview.py -q
