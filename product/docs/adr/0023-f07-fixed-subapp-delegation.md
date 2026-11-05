@@ -100,7 +100,9 @@ editor page (`editor.html` + `editor.js`):
 - the application/version pickers are built from the existing ACL-filtered
   catalog/version reads (`GET /applications`, `GET /applications/{id}/versions`);
   a version the creator cannot read is never listed and the detail read answers
-  404, so the picker cannot offer a foreign version;
+  404, so the picker cannot offer a foreign version; after T070 (revocation) the
+  list and the detail also filter `revoked_at`, so an already-revoked version is
+  never offered either;
 - the mapping rows are generated from the selected version's frozen definition;
 - the node is inserted before `end` and the chain is rewired, then written into
   the same definition textarea the page has always saved (ETag/412/428
@@ -109,10 +111,10 @@ editor page (`editor.html` + `editor.js`):
   node strip, highlighting every node named by an error.
 
 **The canvas bundle is not rebuilt** and its palette still lists four node
-types; that limitation is recorded as `not_run` in the T075 report. The
-revocation flag is not in the contract's version read, so the picker cannot
-pre-filter revoked versions client-side; the server's `dependency_revoked` is
-the authority and the panel shows it inline.
+types; that limitation is recorded as `not_run` in the T075 report. A revocation
+that happens after a version was already pinned by a draft is not visible in the
+version picker (the pinned id is an explicit id, not a list choice); the server's
+`dependency_revoked` is the authority there and the panel shows it inline.
 
 ### 4. The publisher writes the edges, but a dependent version cannot be published yet
 
@@ -155,5 +157,6 @@ manifest bytes and the version read.
   treated as an empty schema.
 - T078 must reuse `checkChildDelegation`'s rules as the spawn-time re-check for
   the same definition; it must not invent a second mapping compatibility table.
-- The picker is ACL-filtered by the server, and revoked versions are surfaced by
-  validate until T070's revocation endpoint and a contract version flag exist.
+- The picker is ACL-filtered by the server; after T070 it also inherits the
+  version read's `revoked_at` filter, and a revocation after a draft already
+  pinned the version is still surfaced by validate as `dependency_revoked`.

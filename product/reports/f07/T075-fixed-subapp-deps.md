@@ -5,10 +5,12 @@
   T068 发布分支 `t/t068-publication-review` @ `b9acfa7`）。
 - 合并：`integration/t068-t082` @ `163940f`（含 T069）合并为 `4d2b928`；因该时刻集成分支尚未
   收到 T068 的 0043 重编号（T068 分支自己已 merge 集成并重编号），再合并
-  `t/t068-publication-review` @ `b30128b` 为 `1a201b3`，只解决 `PROGRESS.md` 的行冲突；最终树
-  迁移链 `0042_deletion_foundation`（T069）+ `0043_publication_reviews_and_outbox`（T068），
-  ADR `0020`（T069）/`0021`（T068）/`0022`（本票）。合并树上重跑全部门禁（§3.6），
-  `tests/f02a` **104 passed / 0 failed**。
+  `t/t068-publication-review` @ `b30128b` 为 `1a201b3`，只解决 `PROGRESS.md` 的行冲突；随后
+  集成分支前进到 `afeba90`（T070 撤销并入），最终合并为 **`eb46b0c`**（再解决
+  `PROGRESS.md` 行/节与 `tests/support/t025.py` revoked 种子两处冲突）。最终树迁移链
+  `0042_deletion_foundation`（T069）+ `0043_publication_reviews_and_outbox`（T068），
+  ADR `0020`（T069）/`0021`（T068）/`0022`（T070）/`0023`（本票）。合并树上重跑全部门禁
+  （§3.7）：`tests/f07` 12 passed ×2、`tests/f02a` **104 passed / 0 failed**、`tests/tooling` 21 passed。
 - 状态：**`partial`**。范围内已真实交付并验证：`call_app` 的 I/O 映射/类型校验（新 5 个定位码）、
   `policy.max_child_calls`/`max_child_depth` 对真实 `platform.version_dependencies` 闭包的检查、
   撤销/未发布/循环三类拒绝的区分、创作台 `call_app` 面板（真实 catalog/version 读 + 保存 + 校验 +
@@ -127,7 +129,8 @@
 
 - 应用/版本选择器只用既有 ACL 过滤读：`GET /api/v1/applications`、`GET
   /api/v1/applications/{id}/versions`（真实 HTTP 断言：外部应用不出现在列表；无授权时版本接口
-  404；显式读授权后可列出且带冻结 manifest，用于渲染 child schema）。
+  404；显式读授权后可列出且带冻结 manifest，用于渲染 child schema；T070 之后已撤销版本不在列表内，
+  且其 detail 读为 404）。
 - 选中版本后按冻结 `definition.input_schema`/`output_schema` 生成映射行：应用输入
   （`input#/...`）、字面量 JSON、上游节点输出（`node:<id>#/...`）；输出行勾选并选类型。
 - “加入/更新 `call_app` 节点”写入同一份 definition：新节点插在 `end` 前并改写
@@ -280,6 +283,25 @@ python tools/sync_spec.py --check                         -> no drift
 （T023 的 submit-404 与旧 FK 集合），§3.5 记录的两个基线失败随合并消失：**合并树 f02a 104 passed，
 0 failed**。§3.5 保留的是合并前分叉树的历史输出与基线复现证据，用于说明那两个失败不属于 T075。
 
+### 3.7 最终集成合并树（`eb46b0c`，integration @ `afeba90` = T068+T069+T070 已并入；本票在此树上复跑）
+
+```
+pytest tests/f07 --basetemp=E:\orchara-tmp\t075-final1        -> 12 passed in 111.05s (0:01:51)
+pytest tests/f07 --basetemp=E:\orchara-tmp\t075-final2        -> 12 passed in 104.28s (0:01:44)
+pytest tests/tooling --basetemp=E:\orchara-tmp\t075-final-tooling -> 21 passed in 5.33s
+pytest tests/f02a --basetemp=E:\orchara-tmp\t075-final-f02a   -> 104 passed in 1103.53s (0:18:23)
+go build ./... / go vet ./...                                 -> 无输出（成功）
+go test ./...                                                 -> 无 FAIL
+gofmt -l .                                                    -> 无输出（干净）
+python tools/sync_spec.py --check                             -> no drift
+```
+
+合并解决：`PROGRESS.md` 行/节冲突（保留 T068、T070、T075 三行与各自小节）；
+`tests/support/t025.py` 的 revoked 种子冲突（采用 T070 的 `revoked_at/revoked_by/revoke_reason`
+三列版本，正好满足 0043 的 revoke CHECK）。本票 ADR 因 T070 占用 0022 而重编号为 `0023`。
+T070 合并后 `ListVersions`/`GetVersion` 已过滤撤销版本，创作台版本选择器因此天然不列出已撤销版本，
+本票新增一条真实 HTTP 断言（`test_the_picker_reads_are_acl_filtered` 的 revoked 段）。
+
 ## 4. AC 对照
 
 | 验收项 | 结论 | 证据 |
@@ -302,9 +324,12 @@ python tools/sync_spec.py --check                         -> no drift
    sandbox 冷启动处停住（13:39 后无 API 调用、supervisor 空转），故本票测试不依赖评测；真实
    `tests/f02b` 不受本票修改影响但未在本票内重跑（由 T068 复跑）。
 4. **浏览器 DOM 驱动面板**（点击/下拉/高亮绘制）：not_run；Node 执行的是同一页面函数的纯逻辑。
-5. **客户端预先过滤撤销版本**：契约 Version 视图无撤销标志，面板只能列出已发布版本；撤销由服务端
-   `dependency_revoked` 定位并显示（T070 的撤销端点/契约标志是后续接口）。
-6. **同一子应用并发调用、child Run/预算/等待**：T078/T080/T081。
+5. **同一子应用并发调用、child Run/预算/等待**：T078/T080/T081。
+
+T070 合并后补充：`ListVersions`/`GetVersion` 现在过滤 `revoked_at`（T070 的版本撤销），因此创作台的
+版本选择器**不会列出已撤销版本**；若撤销发生在草稿已固定该版本之后，`validate` 仍按显式 version id
+以 `dependency_revoked` 定位并显示——两条规则合起来满足“只提供可调用的发布版本”，客户端不需要
+（也无法）自己判断撤销状态。
 
 ## 6. 给后续票的接口
 
