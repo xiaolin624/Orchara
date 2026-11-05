@@ -1239,23 +1239,15 @@ func (s *Service) rankRetrieval(
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
 		       kc.citation, kc.embedding, a.object_key,
-		       kc.body_artifact_id::text, coalesce(a.sha256, '')
-		  FROM platform.knowledge_chunks AS kc
-		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
-		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
-		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
-		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
-		 WHERE kb.id = $1::uuid AND kb.owner_id = $2::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL
-		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
-		   AND iv.document_id = kd.id
+		       kc.body_artifact_id::text, coalesce(a.sha256, '')`+
+		// The shared "current readable chunk" predicate (readable_chunk.go): owner
+		// ACL, tombstones, active index version and body-artifact readiness.
+		currentReadableChunkSQL(2)+`
+		   AND kb.id = $1::uuid
 		   AND iv.embedding_model_revision = $3
-		   AND kc.document_revision = iv.document_revision
 		   AND kc.embedding IS NOT NULL
 		   AND kc.embedding_model_revision = $3
 		   AND kc.embedding_dimension = iv.embedding_dimension
-		   AND a.owner_id = kb.owner_id
-		   AND a.deleted_at IS NULL AND a.state = 'ready'
 		 ORDER BY kc.document_id, kc.chunk_no
 		 LIMIT $4`,
 		baseID, ownerID, modelRevision, MaxCandidates,
@@ -1356,19 +1348,12 @@ func (s *Service) GetChunk(ctx context.Context, ownerID, chunkID string) (ChunkV
 	)
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.citation, a.object_key
-		  FROM platform.knowledge_chunks AS kc
-		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
-		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
-		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
-		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
-		 WHERE kc.id = $1::uuid AND kb.owner_id = $2::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL
-		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
-		   AND iv.document_id = kd.id
-		   AND kc.document_revision = iv.document_revision
-		   AND a.owner_id = kb.owner_id
-		   AND a.deleted_at IS NULL AND a.state = 'ready'`,
+		       kc.citation, a.object_key`+
+		// The shared "current readable chunk" predicate (readable_chunk.go): a
+		// revoked, deleted, failed, superseded-revision or foreign chunk is absent
+		// from the result set, hence ErrNotFound below.
+		currentReadableChunkSQL(2)+`
+		   AND kc.id = $1::uuid`,
 		chunkID, ownerID,
 	).Scan(&view.ChunkID, &view.DocumentID, &view.DocumentRevision, &view.ChunkNo,
 		&citation, &objectKey)
