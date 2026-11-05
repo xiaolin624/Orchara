@@ -6,7 +6,7 @@
 | 工作树 / 分支 | `E:\Orchara-wt\t083-runview` / `t/t083-runview` |
 | 基线 | `integration/t083-t091` @ `ea56392` |
 | 结束时合并 | `integration/t083-t091` @ `111e2c2`（含 T083 graph runtime + canvas），合并提交 **`a050e2f`** |
-| 本半最终 HEAD | **`d0d48e0`**（`a050e2f` 合并 + 报告/证据提交；功能提交 `30be9ff`） |
+| 本半代码提交 | **`30be9ff`**（功能+测试；期间 `57920b8…30be9ff` 5 个提交）；合并集成分支 `a050e2f`；报告随分支 tip 提交（`git log -1 t/t083-runview`） |
 | 状态 | **`partial`**：页面 + 纯函数 + 页面结构/DOM 测试 + 真实线性 Run 的 HTTP E2E 通过；**条件/join/skipped 的真实执行 E2E `not_run`**（原因见 §7，测试已就绪且 `skipif` 在合并后为假） |
 | 契约 | **未改** `contracts/**`、`docs/spec/**`、OpenAPI。条件端口 / join 结果使用既有**非契约 node data artifact** 约定（§2） |
 
@@ -168,7 +168,7 @@ $ python -m pytest tests/f03/test_t029_pages.py tests/f03/test_t031_pages.py tes
 
 ## 6. 环境与合并
 
-- 分支 / HEAD：`t/t083-runview` @ **`d0d48e0`**（`a050e2f` 合并提交 + 报告/证据提交；功能提交 `30be9ff`）。
+- 分支 / HEAD：`t/t083-runview`；代码提交 **`30be9ff`**，合并提交 **`a050e2f`**，报告提交为分支 tip（`git log -1`）。
 - 合并：`git merge integration/t083-t091` 唯一冲突 `product/tests/f04b/conftest.py`（add/add，双方各自新增）；
   采用集成分支版本（其中包含 worker 路径与 f04b 说明），保留本半的 `runview.test.mjs` / `test_t083_runview.py`；
   合并后树干净。
