@@ -49,8 +49,9 @@ def supervisor_config() -> None:
 
 
 def make_user(stack, admin, login: str):
+    # These owners author an application/draft, so they are creators.
     return f00b.invite_and_activate(
-        stack, admin, login, password=f00b.USER_PASSWORD
+        stack, admin, login, roles=("creator",), password=f00b.USER_PASSWORD
     )
 
 
@@ -80,6 +81,7 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t055_stack) 
 
     owner, application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([base_id]),
         input_value={"question": QUERY},
         name="t088 single retrieve",
@@ -138,9 +140,13 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t055_stack) 
         "text": item["text"],
     }, projection
 
-    # No framework/vendor internals: no embedding, object key, signed URL or vector.
+    # No framework/vendor internals as platform fields: no top-level embedding,
+    # object key, signed URL or vector. The stored citation document is forwarded
+    # verbatim, so its own provenance fields (including the embedding *model
+    # revision* string) stay intact.
+    assert "embedding" not in item, item
     serialized = json.dumps(output)
-    for forbidden in ("embedding", "object_key", "upload_url", "download_url", "vector"):
+    for forbidden in ("object_key", "upload_url", "download_url", "signed_url", "vector"):
         assert forbidden not in serialized, (forbidden, serialized[:400])
 
     # Opening the citation through the owner route returns the same real source.
@@ -185,6 +191,7 @@ def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t055_s
 
     owner, _application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([base_id]),
         input_value={"question": QUERY},
         name="t088 no results",
@@ -226,6 +233,7 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t055_stack) -
     # output never contains Bob's document or chunk ids.
     owner, _application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([alice_base, bob_base]),
         input_value={"question": QUERY},
         name="t088 acl mixed",
@@ -246,6 +254,7 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t055_stack) -
     # result, never a 404/403 and never an error.
     owner2, _application2, run2 = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([bob_base]),
         input_value={"question": QUERY},
         name="t088 acl foreign only",
@@ -278,6 +287,7 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t055_stack) -> 
     # with that attempt token, never with an owner id.
     owner, _application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([alice_base]),
         input_value={"question": QUERY},
         name="t088 route",
@@ -306,7 +316,8 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t055_stack) -> 
         assert set(item) == t088.ITEM_KEYS, item
     serialized = json.dumps(payload)
     assert bob_document not in serialized
-    assert "embedding" not in serialized and "object_key" not in serialized
+    assert "object_key" not in serialized
+    assert all("embedding" not in item for item in payload["items"])
 
     # Zero readable bases: 200 with requested/authorized and an empty list.
     foreign = dict(body, knowledge_base_ids=[bob_base, f00b.new_uuid()])
@@ -368,6 +379,7 @@ def test_revoked_knowledge_returns_nothing_and_the_old_citation_is_unavailable(
 
     owner, _application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.single_retrieve_definition([base_id]),
         input_value={"question": QUERY},
         name="t088 revoked",
@@ -397,6 +409,7 @@ def test_two_parallel_retrieve_nodes_keep_their_own_documents(t055_stack) -> Non
 
     owner, _application_id, run = t088.submit_run(
         stack,
+        alice,
         t088.parallel_retrieve_definition(left_base, right_base),
         input_value={"left": "华北地区十月的销售额", "right": "退款申请处理时限"},
         name="t088 parallel",

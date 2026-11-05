@@ -11,6 +11,7 @@ ingestion (``support/t055``) and the real supervisor ``exec --once``.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from support import f00b, t027, t033, t042, t055
 
@@ -212,10 +213,22 @@ def ready_knowledge_base(
 # ---------------------------------------------------------------------------
 # runs
 # ---------------------------------------------------------------------------
-def submit_run(stack, definition: dict, *, input_value: dict, name: str):
-    """Create one owner application with the definition and queue one debug run."""
-    owner = t033.golden_owner(stack)
-    application_id = t027.application_with_definition(owner.creator, definition, name=name)
+@dataclass(frozen=True)
+class Owner:
+    """One real creator plus the application whose draft carries the definition."""
+
+    creator: f00b.Session
+    application_id: str
+
+
+def submit_run(stack, creator, definition: dict, *, input_value: dict, name: str):
+    """Create one owner application with the definition and queue one debug run.
+
+    The run owner is the given session's principal: the knowledge bases the test
+    creates with the same session are the ones this run may retrieve from.
+    """
+    application_id = t027.application_with_definition(creator, definition, name=name)
+    owner = Owner(creator=creator, application_id=application_id)
     run = t042.submit_linear_run(owner, application_id, input_value=input_value)
     return owner, application_id, run
 
