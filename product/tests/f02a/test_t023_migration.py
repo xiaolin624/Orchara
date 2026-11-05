@@ -154,10 +154,18 @@ def test_publication_reviews_report_id_fk_lands_with_t026(f02a_stack) -> None:
         "FROM pg_constraint "
         "WHERE conrelid = 'platform.publication_reviews'::regclass AND contype = 'f'",
     )
+    # T023's three FKs (application, submitter, T026's deferred report FK) plus
+    # F02B/T068's typed evidence bindings on the same row (snapshot/evaluation/
+    # manifest artifact/created version). The set is exact so an unrelated FK
+    # still fails the test.
     assert {row["target"] for row in fks} == {
         "platform.applications",
         "platform.principals",
         "platform.evaluation_reports",
+        "platform.execution_snapshots",
+        "platform.evaluation_jobs",
+        "platform.artifacts",
+        "platform.application_versions",
     }, fks
     assert any(
         row["conname"] == "publication_reviews_report_id_fkey"
