@@ -76,6 +76,7 @@ var (
 	ErrGranteeNotFound    = errors.New("grantee does not exist")
 	ErrGranteeDisabled    = errors.New("grantee is disabled")
 	ErrGranteeNotAdmin    = errors.New("grantee is not an administrator")
+	ErrCallerNotAdmin     = errors.New("the content reader no longer holds the administrator role")
 	ErrRunNotGrantable    = errors.New("run is not grantable")
 	ErrGrantRevoked       = errors.New("diagnostic grant was revoked")
 	ErrGrantExpired       = errors.New("diagnostic grant has expired")

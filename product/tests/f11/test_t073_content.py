@@ -12,8 +12,9 @@ from __future__ import annotations
 import datetime
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
-from support import t073
+from support import f00b, t073
 from support import stack as st
 
 MARKER = "T073-CONTENT-MARKER-"
@@ -356,3 +357,61 @@ def test_an_admin_without_a_grant_sees_metadata_only_on_the_real_surfaces(
     # Once the grant exists the audited door opens exactly one body.
     served = t073.read_content(admin, grant["id"], t073.artifact_scope(artifact_a))
     assert served.status == 200 and served.raw == content_a, served.text
+
+
+def test_a_demoted_grantee_is_refused_at_the_content_door(t069_stack) -> None:
+    """ADR 0028 §3: the door is admin+grantee, and the role is checked live.
+
+    The read request is parked inside the door (behind a lock on the grant row)
+    *after* the handler authorized it while the grantee was still an
+    administrator. The role binding is removed while the request is parked, and
+    releasing the lock must produce the refusal: the historical grant is not the
+    authority, the live role is. Before the door re-check the request would have
+    served the sealed body.
+    """
+    stack = t069_stack
+    owner, admin, run, _lease, artifact, _other, content, _other_content = (
+        _setup_run_with_two_outputs(stack)
+    )
+    grant = t073.create_grant_ok(
+        owner.creator,
+        run["id"],
+        admin.principal_id,
+        purposes=[t073.GRANTED_PURPOSES[0]],
+        object_scope=[t073.artifact_scope(artifact)],
+    )
+
+    holder = "t073-door-gate-" + f00b.new_uuid()[:8]
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        with st.HeldLock(
+            stack.dbname,
+            "BEGIN; SELECT 1 FROM platform.diagnostic_grants "
+            f"WHERE id = {st.quote_literal(grant['id'])}::uuid FOR UPDATE;",
+            name=holder,
+        ) as gate:
+            read_future = pool.submit(
+                t073.read_content, admin, grant["id"], t073.artifact_scope(artifact)
+            )
+            # The request already passed the API's admin check (live roles at
+            # authentication) and is now parked on the grant row inside the door.
+            st.wait_for_lock_waiters(stack.dbname)
+            st.sql(
+                stack.dbname,
+                "DELETE FROM platform.role_bindings WHERE principal_id = "
+                f"{st.quote_literal(admin.principal_id)}::uuid AND role = 'admin'",
+            )
+            gate.release()
+        refused = read_future.result(timeout=120)
+    finally:
+        pool.shutdown(wait=True)
+
+    error = st.assert_error(refused, 403, "diagnostic_grantee_not_admin")
+    assert error["message"], error
+    assert content not in refused.raw
+    rows = t073.content_read_rows(stack.dbname)
+    assert len(rows) == 1, rows
+    metadata = t073.audit_metadata(rows[0])
+    assert metadata["outcome"] == "refused", metadata
+    assert metadata["error_code"] == "diagnostic_grantee_not_admin", metadata
+    assert metadata["grant_id"] == grant["id"], metadata
