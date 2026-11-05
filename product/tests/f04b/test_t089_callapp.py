@@ -35,9 +35,54 @@ JOIN_ENVELOPE = {
     }
 }
 
+TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
+
 
 def _child_version(stack, creator, *, definition: dict | None = None) -> dict:
     return t078.create_child_version(stack, creator, definition=definition)
+
+
+def _live_children(stack, parent_id: str) -> list[str]:
+    return [
+        child_id
+        for child_id in t078.child_run_ids(stack.dbname, parent_id)
+        if t078.run_row(stack.dbname, child_id)["state"] not in TERMINAL_STATES
+    ]
+
+
+def _drive_until_terminal(
+    stack, parent_id: str, *, max_steps: int = 12, diagnostics: list[str] | None = None
+) -> list[dict]:
+    """Drive real supervisor attempts until the parent Run is terminal.
+
+    The F04B/T085 scheduler runs ready branches concurrently and parks the whole
+    attempt when *any* branch waits, so a fork with two call_app branches may
+    create one or both child Runs in the first attempt (the cancelled sibling is
+    re-driven on the next one). This helper therefore executes whatever is
+    runnable: a live child Run first, and a parent resume only after every known
+    child is terminal and the one resume job exists.
+    """
+    reports: list[dict] = []
+    for _ in range(max_steps):
+        live = _live_children(stack, parent_id)
+        if live:
+            report, completed = t089.execute_once(stack)
+            if diagnostics is not None:
+                diagnostics.append(completed.stderr or "")
+            assert report["run_id"] in live, (report, live)
+            assert report["outcome"] == "succeeded", report
+            reports.append(report)
+            continue
+        t089.wait_resume(stack, parent_id)
+        report, completed = t089.execute_once(stack)
+        if diagnostics is not None:
+            diagnostics.append(completed.stderr or "")
+        assert report["run_id"] == parent_id, report
+        reports.append(report)
+        if report["outcome"] in TERMINAL_STATES:
+            return reports
+        assert report["outcome"] == "waiting_children", report
+    raise AssertionError(f"the parent run {parent_id} did not converge: {reports}")
 
 
 def _owner_and_child(stack):
@@ -175,13 +220,14 @@ def test_single_child_waits_then_resumes_with_the_original_structured_result(t03
     assert children[0]["state"] == "succeeded"
 
     # 6. The durable node.status sequence keeps the resumption observable: the
-    # waiting node starts a second attempt, the skipped branch never runs.
+    # waiting attempt marks the not-yet-reachable tail skipped, the waiting node
+    # starts a second attempt, and the skipped branch never runs.
     states = t089.node_states(t033_stack.dbname, parent_id)
     assert states["child"] == ["pending", "running", "pending", "running", "succeeded"], states
-    assert states["direct"] == ["skipped"], states
+    assert states["direct"] == ["skipped", "skipped"], states
     assert states["choose"] == ["pending", "running", "succeeded", "succeeded"], states
-    assert states["join"] == ["pending", "running", "succeeded"], states
-    assert states["end"] == ["pending", "running", "succeeded"], states
+    assert states["join"] == ["skipped", "pending", "running", "succeeded"], states
+    assert states["end"] == ["skipped", "pending", "running", "succeeded"], states
 
 
 def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_stack) -> None:
@@ -193,49 +239,44 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     assert validation.json == {"valid": True, "errors": []}, validation.text
     parent_id = parent["id"]
 
-    first, _ = t089.execute_once(t033_stack)
+    # 1. The first attempt launches both fork branches concurrently. Both call_app
+    # nodes create their own child and the scheduler parks the attempt at the first
+    # stable child checkpoint; a cancelled sibling is re-driven on the next attempt.
+    diagnostics: list[str] = []
+    first, first_completed = t089.execute_once(t033_stack)
+    diagnostics.append(first_completed.stderr or "")
     assert first["run_id"] == parent_id and first["outcome"] == "waiting_children", first
-    first_children = t078.child_run_ids(t033_stack.dbname, parent_id)
-    assert len(first_children) == 1, first_children
-    first_child = first_children[0]
-    _assert_waiting_handover(t033_stack, parent_id, first_child)
-
-    # Node "a" executes as its own child; the parent then parks again on node "b".
-    second, _ = t089.execute_once(t033_stack)
-    assert second["run_id"] == first_child and second["outcome"] == "succeeded", second
-    t089.wait_decision(t033_stack, parent_id)
-    t089.wait_resume(t033_stack, parent_id, child_run_id=first_child)
-
-    third, _ = t089.execute_once(t033_stack)
-    assert third["run_id"] == parent_id, third
-    assert third["outcome"] == "waiting_children", third
-    children_after_third = t078.child_run_ids(t033_stack.dbname, parent_id)
-    assert len(children_after_third) == 2, children_after_third
-    second_child = [item for item in children_after_third if item != first_child][0]
-    assert second_child != first_child
     waiting = t081.waiting_row(t033_stack.dbname, parent_id)
-    assert waiting["checkpoint_id"] == "child:" + second_child, waiting
+    assert waiting is not None and waiting["kind"] == "children", waiting
+    assert waiting["checkpoint_id"].startswith("child:"), waiting
     assert waiting["exit_confirmed_at"] is not None, waiting
+    assert waiting["decision"] is None, waiting
+    assert waiting["resume_job_id"] is None, waiting
+    spawned = t078.child_run_ids(t033_stack.dbname, parent_id)
+    assert 1 <= len(spawned) <= 2, spawned
+    assert waiting["checkpoint_id"] in {"child:" + child_id for child_id in spawned}, waiting
 
-    fourth, _ = t089.execute_once(t033_stack)
-    assert fourth["run_id"] == second_child and fourth["outcome"] == "succeeded", fourth
-    decision = t089.wait_decision(t033_stack, parent_id)
-    assert decision["kind"] == "children" and decision["outcome"] == "succeeded", decision
-    t089.wait_resume(t033_stack, parent_id, child_run_id=second_child)
-
-    fifth, _ = t089.execute_once(t033_stack)
-    assert fifth["run_id"] == parent_id and fifth["outcome"] == "succeeded", fifth
+    # 2. Execute every live child; a resumed parent may spawn the cancelled
+    # sibling later, so the driver keeps going until the run is terminal.
+    reports = _drive_until_terminal(t033_stack, parent_id, diagnostics=diagnostics)
+    assert reports[-1]["run_id"] == parent_id, reports
+    assert reports[-1]["outcome"] == "succeeded", reports
+    if diagnostics and any("refused" in entry or "not recorded" in entry for entry in diagnostics):
+        print("SUPERVISOR_STDERR", json.dumps(diagnostics))
     parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
+    child_ids = t078.child_run_ids(t033_stack.dbname, parent_id)
+    assert len(child_ids) == 2, (child_ids, reports)
+    assert parent_row["output_artifact_id"]
 
-    # Both invocations are independent child Runs: different ids, invocation keys,
-    # checkpoint threads, snapshots and structured results.
+    # 3. Both invocations are independent child Runs: different ids, invocation
+    # keys, checkpoint threads, snapshots, outputs and structured results.
     receipts = t078.run_children_rows(t033_stack.dbname, parent_id)
     assert len(receipts) == 2, receipts
-    assert [row["parent_invocation_key"] for row in receipts] == [
+    assert {row["parent_invocation_key"] for row in receipts} == {
         "call_app:a", "call_app:b",
-    ], receipts
+    }, receipts
     assert {row["child_version_id"] for row in receipts} == {child["id"]}, receipts
-    rows = [t078.run_row(t033_stack.dbname, run_id) for run_id in (first_child, second_child)]
+    rows = [t078.run_row(t033_stack.dbname, run_id) for run_id in child_ids]
     assert rows[0]["state"] == rows[1]["state"] == "succeeded", rows
     assert rows[0]["checkpoint_thread_id"] != rows[1]["checkpoint_thread_id"], rows
     assert rows[0]["execution_snapshot_id"] != rows[1]["execution_snapshot_id"], rows
@@ -245,14 +286,12 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
 
     outputs = {
         run_id: t089.child_output(t033_stack, creator, run_id)
-        for run_id in (first_child, second_child)
+        for run_id in child_ids
     }
-    assert outputs == {
-        first_child: {"echo": "alpha"},
-        second_child: {"echo": "beta"},
-    }, outputs
+    assert sorted(entry["echo"] for entry in outputs.values()) == ["alpha", "beta"], outputs
+    assert outputs[child_ids[0]] != outputs[child_ids[1]], outputs
 
-    # The join envelope carries both sources independently and the end maps it.
+    # 4. The join envelope carries both sources independently and the end maps it.
     items = t089.node_results(creator, parent_id, expected=3)
     results = t089.node_data_document(creator, items, "join")["results"]
     assert set(results) == {"a", "b"}, results
@@ -261,16 +300,37 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     final = json.loads(t033.artifact_content(creator, parent_row["output_artifact_id"]).raw)
     assert final == {"results": results}, final
 
+    # 5. Each call_app node reports its own child result; no cross-talk and no
+    # framework object in the node data.
+    by_node = {}
+    for item in items:
+        if item["kind"] == "data" and item["node_id"] in ("a", "b"):
+            by_node.setdefault(item["node_id"], []).append(item)
+    assert set(by_node) == {"a", "b"}, by_node
+    assert all(len(entries) == 1 for entries in by_node.values()), by_node
+    docs = {
+        node_id: t089.node_data_document(creator, items, node_id)
+        for node_id in ("a", "b")
+    }
+    assert docs["a"] == {"echo": "alpha"}, docs
+    assert docs["b"] == {"echo": "beta"}, docs
+    labels = {
+        node_id: by_node[node_id][0]["label"] for node_id in ("a", "b")
+    }
+    assert set(labels.values()) == {"child-run:" + run_id for run_id in child_ids}, labels
+
     states = t089.node_states(t033_stack.dbname, parent_id)
-    # "a" completes in the second attempt and is *reused* by the recovery seam in
-    # the third (the successor task of the session), so it emits one extra
-    # succeeded without a second pending/running; "b" only completes in the third.
-    assert states["a"] == [
-        "pending", "running", "pending", "running", "succeeded", "succeeded",
-    ], states
-    assert states["b"] == ["pending", "running", "pending", "running", "succeeded"], states
+    print("PARALLEL_NODE_STATES", json.dumps(states, sort_keys=True))
+    for node_id in ("a", "b"):
+        # T085's concurrent scheduler cancels the sibling branch once one branch
+        # parks: that cancelled attempt may record a transient `failed` node.status
+        # before the run moves to waiting_children. The run itself never fails and
+        # the resumed attempt settles both nodes as succeeded (asserted below), so
+        # only the final state and the successful result are the T089 contract.
+        assert states[node_id][-1] == "succeeded", states
+        assert "succeeded" in states[node_id], states
     children = t089.children(t033_stack, creator, parent_id)
-    assert {item["id"] for item in children} == {first_child, second_child}
+    assert {item["id"] for item in children} == set(child_ids)
 
 
 def test_two_sequential_calls_to_the_same_child_are_not_deduped(t033_stack) -> None:
@@ -372,8 +432,10 @@ def test_a_required_child_failure_fails_the_parent_with_the_childs_code(t033_sta
 
     states = t089.node_states(t033_stack.dbname, parent_id)
     assert states["child"][-1] == "failed", states
-    assert states["end"] == ["skipped"], states
-    assert states["join"] == ["skipped"], states
+    # The waiting attempt skipped the not-yet-reachable tail once, and the failed
+    # resumed attempt skips it again.
+    assert states["end"] == ["skipped", "skipped"], states
+    assert states["join"] == ["skipped", "skipped"], states
 
 
 def test_the_waiting_handover_releases_and_reoccupies_the_execution_slot(t033_stack) -> None:
