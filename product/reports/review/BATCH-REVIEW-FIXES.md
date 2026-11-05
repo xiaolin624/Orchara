@@ -120,8 +120,8 @@ retrieve/condition/join 用例；无断言被放宽或跳过。原始日志：
   （T091 小节 vs 批次完成记录）：保留两者（T091 小节在前、批次记录在后），随后补丁 T091 行
   为已合并状态并在合并顺序中加入 `93ddc6b`。`runview.js` 自动合并（T091 的审批行 + 本次
   excerpt 收窄/换行/错误提示）后 `node --check` 与 Node 模块测试均通过。
-- 最终 HEAD：见 `E:\Orchara\.scratch\t083-t091\REVIEW-FIXES-REPORT.md` 与父代理报告（文档提交在
-  `593554c` 之后）。
+- 最终代码/证据 HEAD：`d4ffaa8`（含 T091 merge `593554c` 与全部修复提交）；本报告与
+  PROGRESS 的钉数文档提交在其后（`git log -1` 为最终 HEAD）。
 - 合并后重跑：§3.3 的全部门禁；T091 的十类真实栈 acceptance 8 passed（证明本次重构未破坏其
   approval/model/join 路径）。
 
