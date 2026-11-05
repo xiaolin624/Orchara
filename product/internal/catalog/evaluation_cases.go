@@ -12,9 +12,14 @@ package catalog
 //   - the report bytes are read from the object store and re-verified against the
 //     artifact row's SHA-256 before parsing; an unreadable/tampered report is
 //     never rendered as case data;
-//   - the caller is the report's evaluation owner (or an administrator); every
-//     other principal gets the same answer as a missing report, so a report id
-//     cannot be enumerated;
+//   - the caller is the report's evaluation owner; every other principal —
+//     including an administrator — gets the same answer as a missing report, so
+//     a report id cannot be enumerated. DATA-POLICY.md's visibility rule is the
+//     authority: an application author or platform administrator role never
+//     grants result-body viewing rights. The administrator's audit surface is
+//     the separate T062 attribution read (ADR 0014), which carries no bodies.
+//     The owner-only rule is compile-time enforced: this read has no admin
+//     parameter a caller could pass.
 //   - an attachment is only listed when its artifact row is ready and not
 //     deleted, and it is linked to the case's run through the platform's own
 //     rows (run_node_outputs / runs.output_artifact_id / run_artifacts). No
@@ -69,11 +74,13 @@ type EvaluationCaseResults struct {
 
 // EvaluationCaseResults reads and authorizes one report's per-case view.
 //
-// The report must be the caller's own (or the caller must be an administrator);
-// anything else answers exactly like a missing report. The body is the sealed
-// report artifact's real bytes, re-verified against the recorded hash.
+// The report must be the caller's own; anything else answers exactly like a
+// missing report. The read is owner-only by construction: there is no
+// administrator flag, so no caller can opt another principal into the private
+// expected/actual/detail/facts bodies. The body is the sealed report artifact's
+// real bytes, re-verified against the recorded hash.
 func (r *Reader) EvaluationCaseResults(
-	ctx context.Context, reportID, principalID string, admin bool, objects *objectstore.Store,
+	ctx context.Context, reportID, principalID string, objects *objectstore.Store,
 ) (*EvaluationCaseResults, error) {
 	if !uuid.Valid(reportID) || !uuid.Valid(principalID) {
 		return nil, ErrNotVisible
@@ -100,8 +107,8 @@ func (r *Reader) EvaluationCaseResults(
 		   AND EXISTS (
 		        SELECT 1 FROM platform.evaluation_jobs AS e
 		         WHERE e.report_id = rep.id
-		           AND (e.owner_id = $2::uuid OR $3::boolean)
-		   )`, reportID, principalID, admin,
+		           AND e.owner_id = $2::uuid
+		   )`, reportID, principalID,
 	).Scan(&status, &artifactID, &objectKey, &sha256, &sizeBytes, &state, &mediaType, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotVisible

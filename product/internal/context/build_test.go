@@ -370,11 +370,14 @@ func TestInvalidModelConfigAndToolResult(t *testing.T) {
 // NoMemorySource, which reads nothing.
 type fakeMemorySource struct {
 	rows []Memory
+	scan MemoryScan
 	err  error
 }
 
-func (f fakeMemorySource) ConfirmedMemories(stdcontext.Context, string, string) ([]Memory, error) {
-	return f.rows, f.err
+func (f fakeMemorySource) ConfirmedMemories(
+	stdcontext.Context, string, string,
+) (MemoryRead, error) {
+	return MemoryRead{Rows: f.rows, Scan: f.scan}, f.err
 }
 
 func TestConfirmedMemoryIsIncludedOnlyForTheSameOwnerAndApplication(t *testing.T) {
@@ -592,6 +595,130 @@ func TestMemoryNegationIsIncludedAndNeverTruncated(t *testing.T) {
 		if truncation.Reason == ReasonOptionalMemory && truncation.MemoryID == "m-old" {
 			t.Fatalf("the protected negation was truncated: %+v", truncation)
 		}
+	}
+}
+
+// TestProtectionSensitivityIsOneSharedVocabulary pins the recall scan and the
+// builder to the same marker vocabulary: the exported helper is exactly the rule
+// the builder applies to a selected row, so a row the scan finds is protected
+// when it arrives.
+func TestProtectionSensitivityIsOneSharedVocabulary(t *testing.T) {
+	for _, text := range []string{
+		"The user must not receive marketing email.",
+		"禁止外发客户名单",
+		"这一条需要审批",
+		"never share the export",
+	} {
+		if !IsProtectionSensitive(text) {
+			t.Fatalf("IsProtectionSensitive(%q) = false, want true", text)
+		}
+	}
+	for _, text := range []string{
+		"whenever the user asks, use the short format",
+		"the user prefers weekly summaries",
+	} {
+		if IsProtectionSensitive(text) {
+			t.Fatalf("IsProtectionSensitive(%q) = true, want false", text)
+		}
+	}
+}
+
+// TestMemoryScanRecordsOlderProtectedRowsAndTheHardBound covers the builder half
+// of the protection-aware recall: an older row the source found beyond the
+// recency page is selected as a protected fact, the bounded scan is reported, and
+// a scan that stopped at its hard bound is recorded as memory_scan_truncated
+// instead of silently passing for completeness.
+func TestMemoryScanRecordsOlderProtectedRowsAndTheHardBound(t *testing.T) {
+	base := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	olderNegation := Memory{
+		ID: "m-old", OwnerID: "owner-1", ApplicationID: "app-1",
+		State: "active", Confirmed: true, Revision: 3, ConfirmedAt: base,
+		Text: "beyond-cap: the user must not export the customer list.",
+	}
+	newest := make([]Memory, 0, 4)
+	for index := 1; index <= 4; index++ {
+		newest = append(newest, Memory{
+			ID: fmt.Sprintf("m-%d", index), OwnerID: "owner-1", ApplicationID: "app-1",
+			State: "active", Confirmed: true, Revision: 1,
+			ConfirmedAt: base.Add(time.Duration(index) * time.Hour),
+			Text:        fmt.Sprintf("ordinary newest memory %d", index),
+		})
+	}
+
+	// The source exhausted the scope: one older row was scanned and it was
+	// protected, so the trace reports the bounded scan but no truncation.
+	request := baseRequest()
+	request.Model = ModelConfig{ContextWindow: 4096, MaxOutputTokens: 1024} // 768 memory budget
+	request.Memory = fakeMemorySource{
+		rows: append(append([]Memory{}, newest...), olderNegation),
+		scan: MemoryScan{Scanned: 1, Limit: 2000, Protected: 1},
+	}
+	output := mustBuild(t, request)
+	ids := memorySourceIDs(output.Trace)
+	if !containsString(ids, "m-old") {
+		t.Fatalf("the older protected row was not selected: %v", ids)
+	}
+	older := false
+	for _, source := range output.Trace.Sources {
+		if source.Kind != "memory" || source.MemoryID != "m-old" {
+			continue
+		}
+		older = true
+		if !source.Protected {
+			t.Fatalf("the older row is not marked protected: %+v", source)
+		}
+		if source.MemoryRevision != 3 || source.MemoryConfirmedAt == "" {
+			t.Fatalf("the older row lacks its provenance: %+v", source)
+		}
+	}
+	if !older {
+		t.Fatalf("the older protected row has no trace source: %+v", output.Trace.Sources)
+	}
+	if output.Trace.MemoryScan == nil || *output.Trace.MemoryScan !=
+		(MemoryScan{Scanned: 1, Limit: 2000, Protected: 1}) {
+		t.Fatalf("memory scan = %+v, want scanned=1 limit=2000 protected=1",
+			output.Trace.MemoryScan)
+	}
+	for _, truncation := range output.Trace.Truncations {
+		if truncation.Reason == ReasonMemoryScanTruncated {
+			t.Fatalf("an exhausted scan was reported as truncated: %+v", truncation)
+		}
+	}
+
+	// The source hit its hard bound with the scope not exhausted: the scan is
+	// reported as truncated, with the scanned/limit counts, and no token loss is
+	// claimed for it.
+	request = baseRequest()
+	request.Memory = fakeMemorySource{
+		rows: append(append([]Memory{}, newest...), olderNegation),
+		scan: MemoryScan{Scanned: 2000, Limit: 2000, Truncated: true},
+	}
+	output = mustBuild(t, request)
+	if output.Trace.MemoryScan == nil || !output.Trace.MemoryScan.Truncated {
+		t.Fatalf("memory scan = %+v, want truncated", output.Trace.MemoryScan)
+	}
+	found := false
+	for _, truncation := range output.Trace.Truncations {
+		if truncation.Reason != ReasonMemoryScanTruncated {
+			continue
+		}
+		found = true
+		if truncation.Source != "memory_scan" || truncation.Scanned != 2000 ||
+			truncation.ScanLimit != 2000 || truncation.TokensRemoved != 0 {
+			t.Fatalf("the scan truncation entry is incomplete: %+v", truncation)
+		}
+	}
+	if !found {
+		t.Fatalf("the truncated scan has no trace entry: %+v", output.Trace.Truncations)
+	}
+
+	// A source that reports no scan at all (a source with nothing older, or a
+	// no-store implementation) leaves the field absent rather than inventing one.
+	request = baseRequest()
+	request.Memory = fakeMemorySource{rows: newest}
+	output = mustBuild(t, request)
+	if output.Trace.MemoryScan != nil {
+		t.Fatalf("an unscanned source reported a scan: %+v", output.Trace.MemoryScan)
 	}
 }
 

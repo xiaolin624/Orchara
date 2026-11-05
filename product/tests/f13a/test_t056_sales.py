@@ -122,11 +122,18 @@ def test_a_succeeded_csv_sales_case_yields_a_passed_report(t056_stack) -> None:
     second = t056.get_cases(owner.creator, report["id"])
     assert second.status == 200 and second.text == first.text
 
-    # Authorization: non-owner 404 (no id enumeration), admin 200.
+    # Authorization: owner-only (DATA-POLICY.md §可见性: an application author or
+    # platform administrator does not get result-body viewing rights by role).
+    # A non-owner — including an administrator — gets exactly the missing-report
+    # 404, so a report id cannot be enumerated through this read.
     other = t056.t052.other_creator(t056_stack, login="t056-other-" + uuid.uuid4().hex[:8])
+    missing = t056.get_cases(owner.creator, str(uuid.uuid4()))
+    assert missing.status == 404, missing.text
     assert t056.get_cases(other.creator, report["id"]).status == 404
     admin_view = t056.get_cases(owner.admin, report["id"])
-    assert admin_view.status == 200 and admin_view.text == first.text
+    assert admin_view.status == 404, admin_view.text
+    assert admin_view.json["error"]["code"] == missing.json["error"]["code"]
+    assert admin_view.json["error"]["message"] == missing.json["error"]["message"]
 
     # A scoped key needs application:read; without it the read is refused
     # before any ACL decision. With it, a non-owner still learns nothing.

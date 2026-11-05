@@ -249,6 +249,163 @@ def test_over_budget_recall_truncates_lowest_relevance_memories_and_keeps_negati
         assert marker not in request_text, (marker, request_text)
 
 
+def test_protection_scan_finds_a_negation_beyond_the_recency_cap_and_the_budget_keeps_it(
+    t054_stack,
+) -> None:
+    """The oldest memory is a user negation outside the newest-200 recency page.
+
+    A purely recency-bounded read would drop it before the builder's protection
+    detection ever runs, and the model would act as if the user never stated the
+    constraint. Recall must scan older rows of the same owner+application scope
+    for protection markers, include the row, and say that it looked beyond the
+    cap. The 512-token memory sub-budget makes "it survives" a real budget fact:
+    newer rows are dropped while the older negation stays.
+    """
+    stack = t054_stack
+    run_owner = t063.owner(stack)
+    application_id = t063.application_for(run_owner)
+    owner_id = run_owner.creator.principal_id
+
+    negation = t063.create_memory(
+        run_owner.creator, application_id,
+        "beyond-cap-negation-marker: 禁止外发客户名单。",
+    )
+    t063.seed_memories(
+        run_owner.creator, application_id,
+        prefix="beyond-cap-bulk", count=t063.RECALL_ROW_LIMIT,
+    )
+    recency_page = t063.newest_memory_ids(
+        stack.dbname, owner_id, application_id, t063.RECALL_ROW_LIMIT
+    )
+    assert len(recency_page) == t063.RECALL_ROW_LIMIT, len(recency_page)
+    assert negation["id"] not in recency_page, "setup: the negation is inside the cap"
+
+    # The older scan is exactly one owner+application scope: another application
+    # of the same user, and another user's application, stay invisible even when
+    # their rows carry the same protection marker.
+    other_application = t063.other_application(run_owner.creator)
+    other_app_negation = t063.create_memory(
+        run_owner.creator, other_application,
+        "other-application-negation-marker: 禁止外发客户名单。",
+    )
+    other_owner = t041.secondary_owner(stack)
+    other_user_negation = t063.create_memory(
+        other_owner.creator, other_owner.application_id,
+        "other-user-negation-marker: 禁止外发客户名单。",
+    )
+
+    # 3072 - 1024 = a 2048-token context budget and a 512-token memory sub-budget.
+    t041.set_model_config(
+        stack.dbname, {"context_window": 3072, "max_output_tokens": 1024}
+    )
+
+    run = t063.submit_run(stack, run_owner, application_id)
+    completed, report = t063.run_agent_once(stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "succeeded", report
+
+    trace = t063.trace_document(run_owner.creator, stack, run["id"])
+    turn = t063.last_turn(trace)
+    assert turn["memory_state"] == "included", turn
+    assert turn["memory_budget_tokens"] == 512, turn
+    assert 0 < turn["memory_tokens"] <= 512, turn
+
+    # The trace proves the source looked past the recency cap: one older row was
+    # scanned, it was protected, and the scope was exhausted (no truncation).
+    assert t063.memory_scan(turn) == {
+        "scanned": 1,
+        "limit": t063.RECALL_SCAN_LIMIT,
+        "protected_found": 1,
+        "truncated": False,
+    }, turn
+    assert t063.scan_truncations(turn) == [], turn
+
+    sources = t063.memory_sources(turn)
+    negation_source = next(
+        (source for source in sources if source["memory_id"] == negation["id"]), None
+    )
+    assert negation_source is not None, sources
+    assert negation_source["protected"] is True, negation_source
+    row = t063.memory_row(stack.dbname, negation["id"])
+    assert negation_source["memory_revision"] == row["revision"], (negation_source, row)
+    assert t054.same_instant(
+        t054.parse_time(negation_source["memory_confirmed_at"]),
+        t054.parse_time(row["confirmed_at"]),
+    ), (negation_source, row)
+    # The sub-budget dropped newer rows rather than the older protected negation.
+    truncated = t063.optional_memory_truncations(turn)
+    assert truncated, turn
+    assert negation["id"] not in {entry["memory_id"] for entry in truncated}, truncated
+
+    source_ids = {source["memory_id"] for source in sources}
+    assert other_app_negation["id"] not in source_ids, source_ids
+    assert other_user_negation["id"] not in source_ids, source_ids
+
+    request_text = t063.messages_text(t063.model_messages(stack, run["id"]))
+    assert "beyond-cap-negation-marker" in request_text, request_text
+    assert "禁止外发客户名单" in request_text, request_text
+    assert "other-application-negation-marker" not in request_text, request_text
+    assert "other-user-negation-marker" not in request_text, request_text
+    t063.assert_no_content_leak(trace, ["beyond-cap-bulk-", "禁止外发客户名单"])
+
+
+def test_protection_scan_stops_at_its_hard_bound_and_the_trace_says_so(t054_stack) -> None:
+    """Beyond the hard scan bound, completeness is impossible — silence is not.
+
+    One more older row than the scan may examine is a user negation. The scan
+    must stop at its documented bound, the trace must record
+    ``memory_scan_truncated`` with the scanned/limit counts, and the protected row
+    must not be presented as if it had been considered.
+    """
+    stack = t054_stack
+    run_owner = t063.owner(stack)
+    application_id = t063.application_for(run_owner)
+    owner_id = run_owner.creator.principal_id
+
+    negation = t063.create_memory(
+        run_owner.creator, application_id,
+        "beyond-bound-negation-marker: 禁止外发客户名单。",
+    )
+    t063.seed_memories(
+        run_owner.creator, application_id,
+        prefix="beyond-bound-bulk", count=t063.RECALL_ROW_LIMIT + t063.RECALL_SCAN_LIMIT,
+    )
+    recency_page = t063.newest_memory_ids(
+        stack.dbname, owner_id, application_id, t063.RECALL_ROW_LIMIT
+    )
+    assert negation["id"] not in recency_page, "setup: the negation is inside the cap"
+
+    run = t063.submit_run(stack, run_owner, application_id)
+    completed, report = t063.run_agent_once(stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "succeeded", report
+
+    trace = t063.trace_document(run_owner.creator, stack, run["id"])
+    turn = t063.last_turn(trace)
+    assert turn["memory_state"] == "included", turn
+    assert t063.memory_scan(turn) == {
+        "scanned": t063.RECALL_SCAN_LIMIT,
+        "limit": t063.RECALL_SCAN_LIMIT,
+        "protected_found": 0,
+        "truncated": True,
+    }, turn
+    entries = t063.scan_truncations(turn)
+    assert len(entries) == 1, entries
+    entry = entries[0]
+    assert entry["source"] == "memory_scan", entry
+    assert entry["scanned"] == t063.RECALL_SCAN_LIMIT, entry
+    assert entry["scan_limit"] == t063.RECALL_SCAN_LIMIT, entry
+    assert entry["tokens_removed"] == 0, entry
+
+    # The bound is honest about what it could not see: the protected row beyond it
+    # is absent from the trace and the model input, and the trace records exactly
+    # that incompleteness instead of passing the view off as complete.
+    source_ids = {source["memory_id"] for source in t063.memory_sources(turn)}
+    assert negation["id"] not in source_ids, source_ids
+    request_text = t063.messages_text(t063.model_messages(stack, run["id"]))
+    assert "beyond-bound-negation-marker" not in request_text, request_text
+
+
 def test_missing_memory_bytes_fail_closed_and_never_inject_text(t054_stack) -> None:
     stack = t054_stack
     run_owner = t063.owner(stack)

@@ -104,7 +104,12 @@ type CaseFacts struct {
 	OutputArtifactID *string          `json:"output_artifact_id,omitempty"`
 	OutputSHA256     string           `json:"output_sha256,omitempty"`
 	EffectCounts     map[string]int64 `json:"effect_counts"`
-	CitationSources  []string         `json:"citation_sources"`
+	// EffectEvidence explains why effect_counts is null: a ledger row in
+	// unknown/dispatching could mean an effect happened without a confirmed
+	// outcome, so the evidence is uncollected rather than zero. Empty when the
+	// counts were collected (the map may then legitimately be empty).
+	EffectEvidence  string   `json:"effect_evidence,omitempty"`
+	CitationSources []string `json:"citation_sources"`
 	// F13A/T056: the caller fixture bound to the run as its task_input artifact,
 	// by content. It is real platform evidence (run_artifacts -> artifacts), so a
 	// per-case reader can show which input bytes produced the result.

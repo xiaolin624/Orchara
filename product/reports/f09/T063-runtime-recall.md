@@ -54,6 +54,11 @@
   `body_artifact_id`，`LEFT JOIN memory_candidates` 只取来源链
   `candidate_id → source_run_id`；`ORDER BY confirmed_at DESC, id DESC LIMIT 200`
   （`RecallRowLimit`，防止病态账户让单轮读取无界；真正的取舍在上下文预算）；
+- 保护感知的越界扫描（RV3 复审修复，见 §9）：新近 200 行仍照旧读取；该页恰好满 200 行
+  时，再按 `(confirmed_at, id)` keyset 以 `RecallScanBatch=200` 行一批、最多
+  `RecallScanRowLimit=2000` 行（10 批）扫描同 owner+application 的旧行，命中
+  `agentcontext.IsProtectionSensitive` 的行加入返回集；一条旧正文读不出仍整体 fail
+  closed。返回值由 `[]Memory` 扩为 `MemoryRead{Rows, Scan}`，把扫描边界带回 trace；
 - 候选永远不是召回源（pending/expired 没有 `memories` 行；confirmed 只经由它创建的
   memory 行读取）；记忆本身没有过期列，过期是候选生命周期事实；
 - 每条正文用 `readSealedBody`（从 T054/T058 的 `Service.readBody` 抽出，行为逐字节
@@ -82,6 +87,7 @@
   避免 `whenever` 命中 `never`）标记为受保护；选择时优先纳入、预算截断永不丢；
   整体上下文超预算时按条丢非受保护记忆（最低相关度优先），只剩受保护记忆仍放不下则
   走既有 `context_budget_exhausted`（与受保护最小输入同一条规则，绝不静默裁剪）；
+  该词表经 `IsProtectionSensitive` 导出并与召回源共用（§9），不复制第二份；
 - trace 只有标识/原因/计数/键路径，**没有记忆正文**（§2 AC3 用例断言）。
 
 ### 1.3 唯一生产接点与运行身份
@@ -126,7 +132,7 @@
 |---|---|---|
 | 1. 只召回本用户本应用已确认 active 记忆 | proven | `test_the_agent_recalls_only_this_users_this_applications_current_confirmed_memories`：同一 owner 在本应用用真实 `POST /memories` + 候选确认写入 4 条记忆；trace 的 memory sources 集合恰为这 4 个 memory id；同一 owner 另一应用、另一 owner 的记忆（真实 API 写入）不在 sources、不在 trace、不在 sealed 模型请求；memory rows 全部 `deleted_at IS NULL`（RecallSource 查询条件），`state=active`/`confirmed` 由存储事实保证 |
 | 2. 未确认/过期/已删/其他应用内容不进模型 | proven | 同一用例：pending 候选、`state=expired` 候选、真实 `DELETE` tombstone 的记忆、另一应用、另一用户、以及被 PATCH 更新前的旧修订文本，全部断言不出现在 `sources`/trace/模型请求中；更新后文本出现（current revision only）；读取路径是真实 `POST/PATCH/DELETE` + 真实候选确认 |
-| 3. 来源及 token 取舍可说明 | proven | trace 每条 memory source 带 `memory_id`/`memory_revision`（与 PG 行一致）/`memory_confirmed_at`（与 PG `confirmed_at` 同瞬）/`memory_candidate_id`+`memory_source_run_id`（候选确认来源链）与边际 token 数；`memory_tokens`/`memory_budget_tokens` 记录花费与子预算；`test_over_budget_recall_truncates_lowest_relevance_memories_and_keeps_negations`：3072−1024 预算下 `memory_budget_tokens=512`、2 条被纳入、5 条按最低相关度先截断（首条=最旧 bulk），每条 truncation 带 memory id/revision/tokens_removed；trace 文本泄漏由 `assert_no_content_leak` 断言不存在 |
+| 3. 来源及 token 取舍可说明 | proven | trace 每条 memory source 带 `memory_id`/`memory_revision`（与 PG 行一致）/`memory_confirmed_at`（与 PG `confirmed_at` 同瞬）/`memory_candidate_id`+`memory_source_run_id`（候选确认来源链）与边际 token 数；`memory_tokens`/`memory_budget_tokens` 记录花费与子预算；`test_over_budget_recall_truncates_lowest_relevance_memories_and_keeps_negations`：3072−1024 预算下 `memory_budget_tokens=512`、2 条被纳入、5 条按最低相关度先截断（首条=最旧 bulk），每条 truncation 带 memory id/revision/tokens_removed；trace 文本泄漏由 `assert_no_content_leak` 断言不存在。RV3 复审修复追加（§9）：`memory_scan{scanned,limit,protected_found,truncated}` 与 `memory_scan_truncated`（带 scanned/scan_limit）记录越界扫描边界，见上述两个新用例 |
 | 4. 真实端到端入口 + 失败/授权/重试恢复边界，非单层 mock | proven | 真实 `debugDraft` 提交 → 真实 `cmd/supervisor exec --once` claim → 真实 python/agent 节点（WSL2/runsc + T041 capability 账本）→ 真实 result/exit；失败关闭：删除 sealed 字节后 `memory_state=unavailable`、`memory_tokens=0`、无 memory 消息/文本；恢复：原字节写回后**下一次真实 run** `included` 且正文出现；当前授权：另一用户读 `GET /runs/{id}/node-results` → 404 `resource_not_found`；propose：supervisor/maintenance 403、worker 201；无单层 mock |
 | 5. 记录版本/hash/命令/原始结果/profile；stub/real 分报 | proven（本报告 §4/§5） | 基线/合并提交、输入 SHA-256 前 16 位、环境 profile、逐条门禁原始尾巴在 §4/§5；stub/real 分报：模型供应商为既有 dev stub（未改），其余全部 real；无 `blocked`/`not_run` 项被写成通过（§6 单列） |
 
@@ -272,12 +278,16 @@ implementer 的套件（orchestrator 曾为释放 CPU 终止过一个 pytest 进
 ## 7. 下一票接口
 
 - Go：`memory.NewRecallSource(db, *objectstore.Store)`、`memory.RecallSource`、
-  `memory.RecallRowLimit=200`；`presetexec.Deps.{Memory,RunIdentity}`、
+  `memory.RecallRowLimit=200`、`memory.RecallScanBatch=200`、
+  `memory.RecallScanBatches=10`、`memory.RecallScanRowLimit=2000`（§9）；
+  `presetexec.Deps.{Memory,RunIdentity}`、
   `presetexec.RunScope{OwnerID,ApplicationID}`；
   `config.SupervisorExecConfig.ObjectDir`（`ORCHARA_OBJECT_DIR`，可选）；
-  `agentcontext.MemoryBudgetDivisor=4`、`MemoryTruncated`、`Memory.Revision/ConfirmedAt/
-  CandidateID/SourceRunID`、`Trace.MemoryTokens/MemoryBudgetTokens`、逐条 memory
-  source/truncation 字段；
+  `agentcontext.MemoryBudgetDivisor=4`、`MemoryTruncated`、
+  `MemoryRead{Rows,Scan}`/`MemoryScan`、`IsProtectionSensitive`、
+  `Memory.Revision/ConfirmedAt/CandidateID/SourceRunID`、
+  `Trace.MemoryTokens/MemoryBudgetTokens/MemoryScan`、逐条 memory
+  source/truncation 字段（含 `memory_scan_truncated` 的 scanned/scan_limit）；
 - 表/迁移：无新表、无新迁移；读取 `platform.memories` 当前行（`memories_scope` 索引）；
 - HTTP：无新端点；trace 经 `GET /api/v1/runs/{run_id}/node-results` + owner-only
   artifact content 读取；
@@ -288,5 +298,107 @@ implementer 的套件（orchestrator 曾为释放 CPU 终止过一个 pytest 进
 
 `product/docs/adr/0009-f09-memory.md` §12（T063 增补：召回源=PG 当前行、run 身份 scope、
 预算 1/4 与最低相关度截断、逐条来源 trace、否定/审批保护、唯一接点与
-`ORCHARA_OBJECT_DIR`、无迁移、propose 身份核实结论、未做项）。
-`tools/sync_spec.py --check` 保持 no drift。
+`ORCHARA_OBJECT_DIR`、无迁移、propose 身份核实结论、未做项）；§12.9（RV3 复审修复：
+保护感知的有界越界扫描）。`tools/sync_spec.py --check` 保持 no drift。
+
+## 9. RV3 复审修复：保护感知的越界扫描（2026-11-05）
+
+复审确认的 P2 缺陷：§1.1 的召回只按新近度读 `RecallRowLimit=200` 行。第 201 行及更早的
+用户否定（例如“禁止外发”）在上下文 builder 的保护检测之前就被排除，trace 没有记录，
+模型可能把用户明确说过的约束当成不存在——违反 `ROUTING-MEMORY-KNOWLEDGE.md` §2
+“截断记录来源和原因，不能丢掉审批参数或用户否定条件”。
+
+修复（详情见 ADR 0009 §12.9）：
+
+1. **共享词表**：`internal/context.IsProtectionSensitive` 导出 builder 原有的封闭标记表；
+   `internal/context` 的 protected 判定与 `internal/memory` 的越界扫描都调用它。
+2. **有界越界扫描**：新近 200 行不变；满页时按 `(confirmed_at, id)` keyset 以
+   `RecallScanBatch=200` 行一批、最多 `RecallScanRowLimit=2000` 行（`RecallScanBatches=10`）
+   扫描同 owner+application 的旧行，命中保护标记的行加入返回集；旧正文读不出仍整体
+   fail closed。
+3. **接口承载边界**：`agentcontext.MemorySource.ConfirmedMemories` 返回
+   `MemoryRead{Rows []Memory, Scan MemoryScan}`；`MemoryScan{scanned, limit,
+   protected_found, truncated}` 只含计数。`NoMemorySource` 返回零值 `MemoryRead{}`，
+   builder 的 `not_run` 分支不调用它，不伪造行/扫描。
+4. **trace 不沉默**：触顶时 `turns[].memory_scan` 记录计数，且
+   `turns[].truncations[]` 追加
+   `{"source":"memory_scan","reason":"memory_scan_truncated","tokens_removed":0,
+   "scanned":N,"scan_limit":2000}`；预算截断仍是 `optional_memory`，语义不变。
+   硬上界处若不越界就无法证明“scope 已穷尽”，因此 `truncated=true` 是保守报告：
+   显式承认不完整好过假装完整。
+
+验证（真实 PG 16.4 + 真实编译二进制 + 真实 sealed 字节 + 真实 claim/result/exit +
+真实 WSL2/runsc；模型仍是既有 dev stub；无 mock、无跳过）：
+
+```text
+$ python -m pytest tests/f09/test_t063_recall.py -q -k "protection_scan_finds"
+1 passed in 60.88s
+
+$ python -m pytest tests/f09/test_t063_recall.py -q -k "hard_bound"
+1 passed in 106.17s
+
+# 红灯证据（扫描被临时短路时，同一用例失败）：
+#   assert {} == {'scanned': 1, 'limit': 2000, 'protected_found': 1, 'truncated': False}
+#   FAILED ...test_protection_scan_finds... (1 failed in 39.22s)
+
+$ python -m pytest tests/f09 -q          # 本树第 1 轮（默认 pytest 临时目录）
+69 passed in 656.20s
+
+$ python -m pytest tests/f09 -q          # 第 2 轮（默认 pytest 临时目录；主机并发）
+3 failed, 66 passed in 648.07s
+  # 失败：两个新用例在 submit 的签名上传 PUT 收到 500（对象目录已被并发 pytest 会话
+  # 清理），既有 missing-memory 用例的 setup 找不到 orchara-admin.exe，另有
+  # sandbox_failed。pytest 默认只保留最近 3 个 pytest-<N> 临时目录，本批主机同时在跑
+  # 多个 agent 的 pytest 会话；这是主机临时目录竞争 + WSL/runsc 抖动，不是断言失败
+
+$ python -m pytest tests/f09 -q          # 第 3 轮（独立 TMP/TEMP 隔离并发会话清理）
+69 passed in 513.24s
+
+$ python -m pytest tests/f09 -q          # 第 4 轮（背靠背，独立 TMP/TEMP）
+69 passed in 503.26s
+
+$ python -m pytest tests/f06/test_t047_context.py -q
+2 passed in 35.24s
+
+$ python -m pytest tests/tooling -q
+21 passed in 6.01s
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+
+$ git merge integration/f13a-f15a-f09-f10
+Already up to date.   # 集成 tip 仍是 8ad3bcc（= 本分支基线），无合并提交，工作树不变
+
+$ python -m pytest tests/f09 -q          # 合并结果树复跑（独立 TMP/TEMP）
+69 passed in 477.18s
+```
+
+确定性（BRIEF §6.1）：新用例不依赖墙钟窗口（记忆序由 PG 存储的 `confirmed_at`/`id` 决定，
+`newest_memory_ids` 用同一排序独立复核）；token 断言只要求 `0 < memory_tokens <= 512`，
+不押边界；无 sleep。第 3/4 轮为了避开并发 pytest 会话清理默认临时目录（pytest 保留最近
+3 个 `pytest-<N>`），每轮用独立 `TMP`/`TEMP` 运行同一命令；测试代码与命令本体未改。
+
+新增用例（`tests/f09/test_t063_recall.py`）：
+
+- `test_protection_scan_finds_a_negation_beyond_the_recency_cap_and_the_budget_keeps_it`：
+  201 条真实记忆（最早一条为“禁止外发客户名单”）；PG 侧 `newest_memory_ids` 独立证明
+  该行在 200 行新近页之外；真实 run 的 trace 为
+  `memory_scan={"scanned":1,"limit":2000,"protected_found":1,"truncated":false}`，
+  否定进入 `sources[]` 且 `protected=true`，512-token 子预算下被保留（更新行按
+  `optional_memory` 截断），同用户另一应用与另一用户的同标记记忆不在 sources/模型请求。
+- `test_protection_scan_stops_at_its_hard_bound_and_the_trace_says_so`：2201 条真实记忆
+  （200 新近 + 2001 旧行，最旧一条为否定）；扫描读满 2000 行触顶，
+  `memory_scan.truncated=true`，`truncations[]` 恰有一条 `memory_scan_truncated`
+  （`scanned=scan_limit=2000`、`tokens_removed=0`）；越界否定不在 sources、不在模型
+  请求；run 本身成功。
+
+Go 侧（`internal/context/build_test.go`）：
+`TestProtectionSensitivityIsOneSharedVocabulary` 与
+`TestMemoryScanRecordsOlderProtectedRowsAndTheHardBound` 覆盖 builder 的 `memory_scan`
+报告、`memory_scan_truncated` 条目（含 scanned/scan_limit 与 0 token）以及
+“无扫描时不发明字段”；既有 T063 四用例与 F06/T047 用例保持通过。
+
+边界（如实）：扫描硬上界 2000 行/10 批是刻意的产品权衡——遇到上界只会显式报告
+`memory_scan_truncated`，不会为了完整性无限读取历史；越界扫描不做嵌入/评分
+（属 T067），也没有缓存（每次直接读 PG 当前行）。`memory_scan` 的 `scanned` 只数新近页
+之外的旧行，不改变既有 `memory_tokens`/`memory_budget_tokens` 语义。
