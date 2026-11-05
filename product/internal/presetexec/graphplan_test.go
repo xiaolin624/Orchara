@@ -352,8 +352,9 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
+	// F04B/T086: `model` is executable now; the remaining per-type refusals keep
+	// their own stable codes until T087 (approval) and T088 (retrieve) replace them.
 	cases := map[string]string{
-		"model":    "node_unsupported_model",
 		"retrieve": "node_unsupported_retrieve",
 		"approval": "node_unsupported_approval",
 		"mystery":  "tool_unsupported_graph",
@@ -413,12 +414,17 @@ func TestBuildGraphPlanRejectsACycle(t *testing.T) {
 	}
 }
 
-func TestHasGraphConstructsOnlyFiresForConditionOrJoin(t *testing.T) {
+func TestHasGraphConstructsOnlyFiresForGraphOnlyNodes(t *testing.T) {
 	if hasGraphConstructs(definitionDocument(t, parallelDefinition)) != true {
 		t.Fatal("a join graph must select the graph path")
 	}
 	if hasGraphConstructs(definitionDocument(t, flatConditionDefinition)) != true {
 		t.Fatal("a condition graph must select the graph path")
+	}
+	// F04B/T086: a model node is only executable by the graph scheduler, so its
+	// presence must select that path even without a region.
+	if hasGraphConstructs(modelGraphDocument(t, nil)) != true {
+		t.Fatal("a model graph must select the graph path")
 	}
 	linear := definitionDocument(t, `{
       "nodes":[{"id":"start","type":"start","config":{}},
