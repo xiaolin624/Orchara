@@ -20,6 +20,11 @@
   F06 审批型交互仍不在本票；真实浏览器 DOM 未运行（Node 执行页面逻辑是页面边界，
   与其他页面测试一致）；共享 WSL2/runsc 环境下的 attempt 孤立恢复仍属 F03/T038
   运维命令（见 §5），测试用有界重试隔离该环境抖动并记录。
+- **RV1 复核修正（2026-11-05）**：本报告原先把逐例读取写成 owner-or-admin。按
+  `docs/spec/DATA-POLICY.md` §可见性，管理员角色不等于结果正文查看权，本端点现为
+  **owner-only**（`admin` 也按非 owner 返回与不存在相同的 404；SQL 与函数签名均去掉
+  admin 谓词/参数）。修复记录见 `reports/f13a/RV1-eval-integrity.md` 与 ADR 0017
+  的 RV1 amendment；下文相关行已按当前行为修正。
 
 ## 0. 工作记录（简短）
 
@@ -34,8 +39,8 @@
    - `failure_reason` 逐例 outcome（run state + error code 真值）→ 单测；
    - 案例 run 创建时按内容解析并绑定 `task_input` artifact（服务端事务内
      `run_artifacts(input)`）+ facts 记录绑定身份 → 真实 HTTP/真实 runner e2e；
-   - 非契约逐例读取 `GET /evaluation-reports/{id}/cases` → 真实 HTTP（owner/admin/
-     API key scope/非 owner 404/复读一致/无 object key/附件可下载）；
+   - 非契约逐例读取 `GET /evaluation-reports/{id}/cases` → 真实 HTTP（owner-only/
+     API key scope/非 owner 404（含 admin）/复读一致/无 object key/附件可下载）；
    - 逐例页面 + Node 执行页面逻辑；
    - 真实销售 CSV/XLSX/frozen 案例、5 个坏输入、1s 最低工具超时案例 → 真实沙箱 e2e；
    - 独立 Decimal 参考计算器 + 期望表 + “不得 import 被测工具”守卫。
@@ -104,7 +109,8 @@ run 时：
 `GET /api/v1/evaluation-reports/{report_id}/cases`（`internal/catalog/evaluation_cases.go`
 + `internal/api/evaluation_cases.go` + `server.go`）：
 
-- owner 或 admin；其他主体一律 **404**（与不存在同答，不能枚举 id）；
+- **仅 owner**；其他主体——**含管理员**——一律 **404**（与不存在同答，不能枚举 id；
+  RV1 复核修正：管理员角色不授予结果正文查看权，归因走 T062 无正文的管理读）；
   API key 缺 `application:read` → **403 `insufficient_scope`**；
 - 读取密封报告 artifact 的**真实字节**，先按 artifact 行 sha256/size 复核再解析；
 - 每例返回：case id、verdict、reason_code/detail、逐断言 outcome
@@ -147,7 +153,7 @@ SHA-256 引用的 CSV/XLSX），页面读取当前 draft revision 并通过 `eva
 | 1. 正常统计与下载通过（CSV 与 XLSX） | **proven** | `test_t056_sales.py::test_a_succeeded_csv_sales_case_yields_a_passed_report` / `...xlsx...`：真实 run `succeeded`、报告 `passed`、`decimal_equals` 实际 `250.00`、`json_equals` `3`、`effect_count` 实际 `0`（真实空账本）；逐例读取返回 `summary.csv`/`summary.json`/`output`，CSV 经合同下载路由得到 `region,total\n东区,200.00\n西区,50.00\n`；XLSX 案例同样 `250.00`（两格式期望一致） |
 | 2. 缺列/重复/负值/公式/超时/超限有预期与定位 | **proven** | `test_t056_bad_inputs.py::test_bad_input_cases_pass_only_for_their_expected_located_failure`：5 个案例真实 run 分别 `failed(missing_column/duplicate_order_id/negative_amount/formula_not_supported/row_limit_exceeded)`，`failure_reason` expected=actual 且 passed；逐例 `diagnostics` 附件含同码与 location（超限为文件级无 location）；`...test_a_tool_timeout_is_a_passed_case_with_the_expected_failure`：20 MiB 输入在 1 s（部署最小值）工具超时下真实 `failed(tool_timeout)`（沙箱内解析实测 ~2.2 s，裕量见 §3.1） |
 | 3. 真值不由被测工具产生 | **proven** | `test_t056_fixtures.py::test_the_reference_calculator_reproduces_the_committed_expected_table`（独立计算器复算 expect 表）、`...test_the_committed_dataset_assertions_agree_with_the_expected_table`、`...test_the_reference_calculator_rejects_the_bad_inputs_for_their_declared_reason`、`...test_the_reference_module_does_not_import_or_call_the_tool`（AST + 子进程 `sys.modules` 守卫） |
-| 4. 真实端到端入口 + 失败/授权/重试边界，无单层 mock | **proven** | 全部 T056 e2e 走真实 REST 提交 → 真实 background job → 真实 maintenance 双池 → 真实 supervisor/runsc 沙箱 → 真实封存报告 → 真实 completion guard；授权：`test_...csv...` 中非 owner 404、admin 200、API key `application:read` 404、无 scope 403；失败：`test_a_missing_fixture_blocks_the_case_and_never_passes`（逐例 `blocked/task_input_unavailable`、未创建 run、报告 `not_run`）、`test_a_malformed_reserved_binding_is_refused_at_submit_time`（422 定位） |
+| 4. 真实端到端入口 + 失败/授权/重试边界，无单层 mock | **proven** | 全部 T056 e2e 走真实 REST 提交 → 真实 background job → 真实 maintenance 双池 → 真实 supervisor/runsc 沙箱 → 真实封存报告 → 真实 completion guard；授权：`test_...csv...` 中非 owner 404、admin 404（RV1 复核修正；与 missing 同码同文）、API key `application:read` 404、无 scope 403；失败：`test_a_missing_fixture_blocks_the_case_and_never_passes`（逐例 `blocked/task_input_unavailable`、未创建 run、报告 `not_run`）、`test_a_malformed_reserved_binding_is_refused_at_submit_time`（422 定位） |
 | 5. 版本/输入 hash/命令/原始结果/profile，stub/real 分报，缺条件 blocked，未跑 not_run | **proven** | 本报告 §3 贴原始门禁输出；数据集/期望表/输入 sha256 均在仓库与报告中；环境 profile、stub/real 边界、not_run 清单见 §4；超时案例的确定性裕量与测试部署配额容量调整在本报告与 ADR 0017 记录 |
 
 ## 3. 门禁命令与原始输出
@@ -268,7 +274,7 @@ no drift: spec copy and contract snapshot match the manifest
 ## 6. 下一票接口
 
 - **T062**：`evaluation_case_runs.run_id -> runs.owner_id` 仍是归属事实；逐例读取的
-  owner/admin 谓词可作为其越权检查的参照。
+  owner-only 谓词可作为其越权检查的参照（RV1 复核后已去掉 admin 逃生门）。
 - **T065**：报告 `progress_total/progress_done` 与逐例状态一致；本票的
   `createSession` 无新增进度列。
 - **T066/T063**：逐例读取的附件解析可复用 `internal/catalog/evaluation_cases.go`

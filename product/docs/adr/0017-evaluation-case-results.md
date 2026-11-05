@@ -1,6 +1,7 @@
 # ADR 0017 — Evaluation case results: fixture binding and the per-case read
 
-- Status: Accepted (F13A/T056, issue #57)
+- Status: Accepted (F13A/T056, issue #57); **amended** by the RV1 eval-integrity
+  review fix (2026-11-05): the per-case body read is **owner-only** (see §3)
 - Date: 2026-11-04
 - Extends: ADR 0011 (the T052 run bridge), ADR 0005 (non-contract bridge
   precedent: `tool-runs`), ADR 0004 §31 (T026 evaluation pipeline)
@@ -81,8 +82,15 @@ report document (which is not a contract shape).
 GET /api/v1/evaluation-reports/{report_id}/cases   -> 200 per-case results
 ```
 
-- owner-or-admin; every other principal gets **404** (same answer as a missing
-  report, so ids cannot be enumerated);
+- **owner-only**; every other principal — **including an administrator** — gets
+  **404** (same answer as a missing report, so ids cannot be enumerated). The
+  sealed report's per-case `expected`/`actual`/`detail`/`facts` are result bodies;
+  `docs/spec/DATA-POLICY.md` §可见性 says a platform administrator role does not
+  automatically get user-content/result-body viewing rights. An administrator's
+  legitimate audit need is served by the separate T062 attribution read
+  (ADR 0014), whose fixed field set deliberately carries no bodies. The rule is
+  compile-time enforced: `catalog.Reader.EvaluationCaseResults` has no `admin`
+  parameter a caller could pass, and the SQL predicate is `e.owner_id = $2`;
 - an API key needs `application:read`; a key without it is refused
   `403 insufficient_scope` before any ACL decision;
 - the body is parsed from the **sealed report artifact's real bytes**, re-verified
@@ -123,6 +131,15 @@ tool path.
   content, never by an object key or a volatile id. The timeout/over-limit
   fixtures too large to commit are generated deterministically in the test tree;
   their SHA-256 is frozen in the dataset.
+- **RV1 review amendment (2026-11-05)**: T056 shipped the per-case read as
+  owner-or-admin. That was wrong for private result bodies: an administrator
+  could read another user's per-case `expected`/`actual`/`detail`/`facts`, which
+  `docs/spec/DATA-POLICY.md` §可见性 forbids (role ≠ content-viewing right). The
+  admin escape hatch is removed from both the SQL and the function signature (no
+  caller can pass an admin flag), and the T056/T062 tests now assert an
+  administrator gets the missing-report 404. The contract evaluation/report
+  reads (`getEvaluation`/`getReport`, four/six contract fields) stay
+  owner-or-admin: they carry no bodies.
 - **Contract debt to record** (unchanged from ADR 0011): `evaluateDraft` is
   authorized with `application:write`; the read piggybacks on
   `application:read`. A dedicated evaluation scope remains a later contract

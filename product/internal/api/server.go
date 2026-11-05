@@ -353,7 +353,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
 	// F13A/T056: the per-case view of one sealed report (the documented
-	// non-contract extension: artifact ids only, owner-or-admin, 404 otherwise).
+	// non-contract extension: artifact ids only). It is owner-only: an
+	// administrator is a non-owner of the private result bodies and gets the
+	// same 404 as a missing report (DATA-POLICY.md visibility rule; ADR 0017).
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}/cases", s.handleGetEvaluationCases)
 
 	// F13A/T065: the non-contract async progress read (ADR 0019). It returns the

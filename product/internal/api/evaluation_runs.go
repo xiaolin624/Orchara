@@ -71,6 +71,7 @@ type internalEvaluationRunFactsResponse struct {
 	OutputCollected     bool                     `json:"output_collected"`
 	EffectCounts        map[string]int64         `json:"effect_counts"`
 	EffectsCollected    bool                     `json:"effects_collected"`
+	EffectEvidence      string                   `json:"effect_evidence,omitempty"`
 	Citations           []string                 `json:"citations"`
 	CitationsCollected  bool                     `json:"citations_collected"`
 	TaskInputArtifactID string                   `json:"task_input_artifact_id"`
@@ -160,6 +161,7 @@ func (s *Server) handleInternalEvaluationRunFacts(w http.ResponseWriter, r *http
 		OutputCollected:     facts.OutputCollected,
 		EffectCounts:        facts.Effects,
 		EffectsCollected:    facts.EffectsCollected,
+		EffectEvidence:      facts.EffectEvidence,
 		Citations:           facts.Citations,
 		CitationsCollected:  facts.CitationsCollected,
 		TaskInputArtifactID: facts.TaskInputArtifactID,

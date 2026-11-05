@@ -394,11 +394,19 @@ func applyFacts(target *CaseFacts, facts Facts) {
 	target.OutputArtifactID = facts.OutputArtifactID
 	target.OutputSHA256 = facts.OutputSHA256
 	target.EffectCounts = nil
+	target.EffectEvidence = ""
 	if facts.EffectsCollected {
 		target.EffectCounts = make(map[string]int64, len(facts.Effects))
 		for capability, count := range facts.Effects {
-			target.EffectCounts[capability] = count
+			// The report and the checker use the same normalised
+			// capability_version key, so a curator sees the exact key the
+			// assertion names.
+			target.EffectCounts[NormalizeCapabilityKey(capability)] = count
 		}
+	} else {
+		// An unconfirmed ledger (unknown/dispatching) is not an empty ledger:
+		// record the reason and publish no number at all.
+		target.EffectEvidence = facts.EffectEvidence
 	}
 	target.CitationSources = nil
 	if facts.CitationsCollected {

@@ -144,8 +144,36 @@ func TestAFinishedFailedRunCanPassATheCaseThatAssertsIt(t *testing.T) {
 	}
 }
 
-func TestATimeoutIsNotRunAndNeverPassed(t *testing.T) {
-	// The run never reaches a rest state: the bounded wait expires with the last
+// An unconfirmed ledger row makes the effect evidence uncollected. The report's
+// facts must say so (a reason, and no invented count) and the case can never
+// pass on it, even when every other assertion is true.
+func TestUnconfirmedEffectEvidenceIsRecordedWithoutInventingACount(t *testing.T) {
+	facts := Facts{
+		RunID:              "run-4",
+		RunState:           "failed",
+		EffectsCollected:   false,
+		EffectEvidence:     "unconfirmed_unknown",
+		CitationsCollected: true,
+	}
+	result := collectOneCase(t, facts,
+		Assertion{Kind: "run_state", ExpectedState: "failed"},
+		Assertion{Kind: "effect_count", Capability: "test.send", ExpectedCount: 0},
+	)
+	if result.Status != VerdictFailed || result.Verdict != VerdictFailed {
+		t.Fatalf("uncollected effect evidence must not pass: %+v", result)
+	}
+	if result.Facts == nil {
+		t.Fatal("the case facts must be recorded")
+	}
+	if result.Facts.EffectCounts != nil {
+		t.Fatalf("an uncollected ledger must not publish a count: %+v", result.Facts.EffectCounts)
+	}
+	if result.Facts.EffectEvidence != "unconfirmed_unknown" {
+		t.Fatalf("the facts must record why the evidence is missing: %+v", result.Facts)
+	}
+}
+
+func TestATimeoutIsNotRunAndNeverPassed(t *testing.T) { // The run never reaches a rest state: the bounded wait expires with the last
 	// observed (non-terminal) state. The case is not_run, not passed.
 	client := &blockingRunClient{}
 	dataset := &Dataset{Cases: []Case{{

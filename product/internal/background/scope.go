@@ -159,6 +159,7 @@ type EvaluationRunFacts struct {
 	OutputCollected    bool
 	Effects            map[string]int64
 	EffectsCollected   bool
+	EffectEvidence     string
 	Citations          []string
 	CitationsCollected bool
 	// F13A/T056: the caller fixture bound to the run, by artifact id and hash.

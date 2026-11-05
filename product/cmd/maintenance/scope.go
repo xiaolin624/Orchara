@@ -219,6 +219,7 @@ func (s *jobScope) EvaluationRunFacts(
 		OutputCollected:     payload.OutputCollected,
 		Effects:             payload.EffectCounts,
 		EffectsCollected:    payload.EffectsCollected,
+		EffectEvidence:      payload.EffectEvidence,
 		Citations:           payload.Citations,
 		CitationsCollected:  payload.CitationsCollected,
 		TaskInputArtifactID: payload.TaskInputArtifactID,
@@ -599,6 +600,7 @@ type evaluationRunFactsPayload struct {
 	OutputCollected     bool                     `json:"output_collected"`
 	EffectCounts        map[string]int64         `json:"effect_counts"`
 	EffectsCollected    bool                     `json:"effects_collected"`
+	EffectEvidence      string                   `json:"effect_evidence"`
 	Citations           []string                 `json:"citations"`
 	CitationsCollected  bool                     `json:"citations_collected"`
 	TaskInputArtifactID string                   `json:"task_input_artifact_id"`
