@@ -211,6 +211,13 @@ func (r *runner) waitForChild(
 		CheckpointID:   "child:" + child.ID,
 		ErrorCode:      "children_pending",
 	}
+	if captureGraphWaiting(ctx, proposal, "waiting_children", run.outcome,
+		r.exitEvidence(r.heartbeatCount(), run.outcome, nil), CodeChildSpawnFailed) {
+		// The graph scheduler hands the run over only after the other branches
+		// stopped.
+		return executionOutcome{outcome: "waiting_children", code: "children_pending",
+			sandbox: sandboxReportOf(run.outcome)}
+	}
 	if err := r.deps.Client.SubmitResult(
 		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
 	); err != nil {

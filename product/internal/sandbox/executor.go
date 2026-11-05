@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"orchara/platform/internal/jcs"
@@ -278,6 +279,7 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 		controlMu       sync.Mutex
 		controlErr      error
 		cancelRequested bool
+		runnerDone      atomic.Bool
 		tickerDone      = make(chan struct{})
 	)
 	interval := control.HeartbeatInterval
@@ -296,6 +298,14 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 				case <-ticker.C:
 					state, heartbeatErr := control.Heartbeat(runCtx)
 					if heartbeatErr != nil {
+						if runnerDone.Load() {
+							// The unit's process already finished; this error is our
+							// own post-run cancel of a heartbeat that was still in
+							// flight, not a lost lease. Recording it here would mask
+							// the real unit outcome (a driver refusal or launch
+							// failure) as ErrHeartbeat.
+							return
+						}
 						controlMu.Lock()
 						if controlErr == nil {
 							controlErr = heartbeatErr
@@ -305,6 +315,8 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 						return
 					}
 					if state.CancelRequested {
+						// A late cancel after the unit exited still counts: its result
+						// must not be published as success (EXECUTION §6).
 						controlMu.Lock()
 						cancelRequested = true
 						controlMu.Unlock()
@@ -319,6 +331,9 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 	}
 
 	result, runErr := e.runner.Run(runCtx, runCommand)
+	// Announce the process result before cancelling the ticker context: from now
+	// on a heartbeat error means "our cancel", never "the lease was lost".
+	runnerDone.Store(true)
 	cancelRun()
 	<-tickerDone
 

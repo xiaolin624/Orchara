@@ -135,29 +135,32 @@ type RetrieveResult struct {
 	Authorized int             `json:"authorized"`
 }
 
-// executeGraphRetrieve runs one activated retrieve node.
+// executeGraphRetrieve runs one activated retrieve node. It is a pure read on
+// T085's concurrent scheduler: it resolves bindings from the launch snapshot,
+// records its failure on the attempt instead of committing a result, and lets the
+// scheduler stop and commit after the other branches stopped.
 func (r *runner) executeGraphRetrieve(
-	ctx context.Context, run *graphRun, node *graphNode,
+	ctx context.Context, node *graphNode, view *graphNodeView,
 ) (executionOutcome, map[string]any, bool) {
 	id := node.node.ID
 	r.emitNode(ctx, id, "pending")
 	r.emitNode(ctx, id, "running")
 	if node.retrieve == nil {
-		return r.failGraph(ctx, run, id, CodeBadConfig,
+		return r.failGraph(ctx, id, CodeBadConfig,
 			"the retrieve node has no validated config"), nil, true
 	}
-	bindings, err := resolveNodeBindings(node.node, run.available())
+	bindings, err := resolveNodeBindings(node.node, view.available)
 	if err != nil {
-		return r.failGraph(ctx, run, id, CodeNodeInputInvalid, err.Error()), nil, true
+		return r.failGraph(ctx, id, CodeNodeInputInvalid, err.Error()), nil, true
 	}
 	query, ok := bindings["query"].(string)
 	if !ok {
-		return r.failGraph(ctx, run, id, CodeNodeInputInvalid, fmt.Sprintf(
+		return r.failGraph(ctx, id, CodeNodeInputInvalid, fmt.Sprintf(
 			"/nodes/%d/inputs/query: the retrieve node must bind a string query", node.index)), nil, true
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return r.failGraph(ctx, run, id, CodeNodeInputInvalid, fmt.Sprintf(
+		return r.failGraph(ctx, id, CodeNodeInputInvalid, fmt.Sprintf(
 			"/nodes/%d/inputs/query: the retrieve node query must not be empty", node.index)), nil, true
 	}
 	result, err := r.deps.Client.Retrieve(
@@ -171,7 +174,7 @@ func (r *runner) executeGraphRetrieve(
 		if retrieveDenied(err) {
 			code = CodeRetrieveDenied
 		}
-		return r.failGraph(ctx, run, id, code,
+		return r.failGraph(ctx, id, code,
 			"the knowledge retrieval call failed: "+err.Error()), nil, true
 	}
 	if result == nil {
@@ -179,27 +182,27 @@ func (r *runner) executeGraphRetrieve(
 	}
 	output, err := retrieveOutputDocument(result.Items)
 	if err != nil {
-		return r.failGraph(ctx, run, id, CodeNodeOutputInvalid,
+		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
 			"the retrieval output cannot be encoded: "+err.Error()), nil, true
 	}
 	if err := validateSchema(node.node.OutputSchema, output, "#"); err != nil {
-		return r.failGraph(ctx, run, id, CodeNodeOutputInvalid,
+		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
 			"the retrieval output does not match output_schema: "+err.Error()), nil, true
 	}
 	canonical, err := canonicalNodeDocument(output)
 	if err != nil {
-		return r.failGraph(ctx, run, id, CodeNodeOutputInvalid,
+		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
 			"the retrieval output cannot be canonicalized: "+err.Error()), nil, true
 	}
 	artifactID, err := r.uploadNodeArtifact(
 		ctx, "node_output", "application/json", canonical, "artifact")
 	if err != nil {
-		return r.failGraph(ctx, run, id, CodeSandboxFailed,
+		return r.failGraph(ctx, id, CodeSandboxFailed,
 			"registering the retrieval result failed: "+err.Error()), nil, true
 	}
 	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
 		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "results"}}); err != nil {
-		return r.failGraph(ctx, run, id, CodeSandboxFailed,
+		return r.failGraph(ctx, id, CodeSandboxFailed,
 			"recording the retrieval result failed: "+err.Error()), nil, true
 	}
 	r.emitNode(ctx, id, "succeeded")
