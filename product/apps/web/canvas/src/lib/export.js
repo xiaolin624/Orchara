@@ -35,6 +35,12 @@ export const CONFIG_ALLOWLIST = {
   // query is an input binding and any inline query is dropped as unknown_config_key.
   retrieve: ['knowledge_base_ids', 'top_k'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
+  // T087: an approval node carries exactly the title and the expiry window; the
+  // proposal is a bound input (definition.inputs), not a config field.
+  approval: ['title', 'expires_seconds'],
+  // T089: a call_app node pins one fixed child application version; the I/O
+  // mapping lives on the node's inputs, not in config.
+  call_app: ['application_version'],
   end: [],
 };
 

@@ -18,7 +18,7 @@
  */
 
 export const NODE_TYPES = [
-  'start', 'python', 'agent', 'model', 'retrieve', 'condition', 'join', 'end',
+  'start', 'python', 'agent', 'model', 'retrieve', 'call_app', 'condition', 'join', 'approval', 'end',
 ];
 
 export const NODE_LABELS = {
@@ -27,14 +27,16 @@ export const NODE_LABELS = {
   agent: 'Agent',
   model: '模型',
   retrieve: '知识检索',
+  call_app: '子应用调用',
   condition: '条件分支',
   join: '并行汇合',
+  approval: '人工审批',
   end: '结束',
 };
 
 /** Types the palette may add more than once; start and end stay unique. */
 export const REPEATABLE_NODE_TYPES = [
-  'python', 'agent', 'model', 'retrieve', 'condition', 'join',
+  'python', 'agent', 'model', 'retrieve', 'call_app', 'condition', 'join', 'approval',
 ];
 
 /** The comparison vocabulary of a condition case (workflow.schema.json). */
@@ -174,6 +176,10 @@ export function defaultNode(type, id) {
       prompt_template: '',
       response_mode: 'json',
     };
+  } else if (type === 'call_app') {
+    // F04B/T089: a fixed published child version only. The mapping and the
+    // parent output_schema are authored in the panel once a version is picked.
+    base.config = { application_version: '' };
   } else if (type === 'condition') {
     base.config = {
       join_id: '',
@@ -191,6 +197,12 @@ export function defaultNode(type, id) {
       required_sources: [],
       optional_sources: [],
     };
+  } else if (type === 'approval') {
+    // Contract config is exactly {title, expires_seconds}; the proposal is a
+    // bound input, never a config field. The default is an (editable) empty
+    // object literal so the node is complete on the canvas.
+    base.inputs = { proposal: { literal: {} } };
+    base.config = { title: '', expires_seconds: 3600 };
   }
   return base;
 }
@@ -221,8 +233,10 @@ export const DEFAULT_POSITIONS = {
   agent: { x: 520, y: 160 },
   model: { x: 400, y: 320 },
   retrieve: { x: 280, y: 240 },
+  call_app: { x: 520, y: 420 },
   condition: { x: 280, y: 320 },
   join: { x: 600, y: 320 },
+  approval: { x: 420, y: 440 },
   end: { x: 760, y: 160 },
 };
 

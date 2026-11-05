@@ -640,6 +640,15 @@ button.link.danger {
   border-color: #0f766e;
   border-style: double;
 }
+.orchara-node-approval {
+  border-color: #a21caf;
+  border-style: solid;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(162, 28, 175, 0.08),
+      transparent);
+}
 .orchara-handle {
   width: 9px;
   height: 9px;
@@ -719,4 +728,32 @@ button.link.danger {
     border-left: none;
     border-top: 1px solid rgba(128, 128, 128, 0.25);
   }
+}
+.callapp-row {
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  margin: 0.3rem 0;
+}
+.callapp-row-head {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.callapp-row-fields {
+  display: grid;
+  grid-template-columns: 7.2rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+.callapp-row-fields input,
+.callapp-row-fields select {
+  margin: 0;
+  min-width: 0;
+}
+.schema-json.readonly {
+  background: color-mix(in srgb, Canvas 90%, #64748b 10%);
+  white-space: pre-wrap;
 }

@@ -352,12 +352,13 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
-	// F04B/T086 made `model` executable and F04B/T088 made `retrieve` executable;
-	// the remaining per-type refusal keeps its own stable code until T087
-	// (approval) replaces it.
+	// F04B/T086 made `model` executable, T087 `approval` and T088 `retrieve`;
+	// no per-type refusal remains, so only an unknown type has a distinct code.
+	if !graphNodeTypes["approval"] || !graphNodeTypes["retrieve"] {
+		t.Fatal("approval and retrieve must both be executable on the graph path")
+	}
 	cases := map[string]string{
-		"approval": "node_unsupported_approval",
-		"mystery":  "tool_unsupported_graph",
+		"mystery": "tool_unsupported_graph",
 	}
 	for nodeType, want := range cases {
 		definition := definitionDocument(t, flatConditionDefinition)

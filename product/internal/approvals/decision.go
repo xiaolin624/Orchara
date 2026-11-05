@@ -172,24 +172,29 @@ func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approva
 		return nil, failure(409, "run_state_conflict", "the run is not waiting for this approval")
 	}
 	// The frozen policy must still be the one the approval was prepared against,
-	// and it must not have been revoked since.
-	operationState, revoked, err := lockApprovalOperationTx(ctx, tx, approval.OperationID)
-	if err != nil {
-		return nil, err
-	}
-	if revoked {
-		if err := invalidateApprovalTx(ctx, tx, approval, "policy_revoked"); err != nil {
+	// and it must not have been revoked since. A T087 node approval has no
+	// operation and therefore no connector policy to re-check: it is a business
+	// decision, and it never authorizes an external write.
+	operationState, revoked := "", false
+	if approval.OperationID != "" {
+		operationState, revoked, err = lockApprovalOperationTx(ctx, tx, approval.OperationID)
+		if err != nil {
 			return nil, err
 		}
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("committing the invalidated approval: %w", err)
+		if revoked {
+			if err := invalidateApprovalTx(ctx, tx, approval, "policy_revoked"); err != nil {
+				return nil, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, fmt.Errorf("committing the invalidated approval: %w", err)
+			}
+			return nil, failure(409, CodePolicyRevoked,
+				"the connector policy was revoked; the approval is invalid")
 		}
-		return nil, failure(409, CodePolicyRevoked,
-			"the connector policy was revoked; the approval is invalid")
-	}
-	if operationState != "awaiting_approval" {
-		return nil, failure(409, CodeUsageConflict,
-			"the parked operation is no longer awaiting approval")
+		if operationState != "awaiting_approval" {
+			return nil, failure(409, CodeUsageConflict,
+				"the parked operation is no longer awaiting approval")
+		}
 	}
 
 	newState := "approved"
@@ -216,28 +221,33 @@ func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approva
 	if decision == "approve" {
 		// Approval only *allows* the operation to proceed. The resumed
 		// capability call still performs the authorized -> dispatching CAS and
-		// re-checks the attempt, manifest, policy and budget.
-		result, err = tx.ExecContext(ctx, `
-			UPDATE platform.operations
-			   SET state = 'authorized', updated_at = now()
-			 WHERE id = $1::uuid AND state = 'awaiting_approval'`, approval.OperationID)
-		if err != nil {
-			return nil, fmt.Errorf("authorizing the parked operation: %w", err)
-		}
-		affected, err = result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("authorizing the parked operation: %w", err)
-		}
-		if affected != 1 {
-			return nil, failure(409, CodeUsageConflict,
-				"the parked operation is no longer awaiting approval")
+		// re-checks the attempt, manifest, policy and budget. A node approval has
+		// no operation: it only records the human's business decision.
+		if approval.OperationID != "" {
+			result, err = tx.ExecContext(ctx, `
+				UPDATE platform.operations
+				   SET state = 'authorized', updated_at = now()
+				 WHERE id = $1::uuid AND state = 'awaiting_approval'`, approval.OperationID)
+			if err != nil {
+				return nil, fmt.Errorf("authorizing the parked operation: %w", err)
+			}
+			affected, err = result.RowsAffected()
+			if err != nil {
+				return nil, fmt.Errorf("authorizing the parked operation: %w", err)
+			}
+			if affected != 1 {
+				return nil, failure(409, CodeUsageConflict,
+					"the parked operation is no longer awaiting approval")
+			}
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE platform.operations
-			   SET state = 'failed', last_error_code = 'approval_rejected', updated_at = now()
-			 WHERE id = $1::uuid AND state = 'awaiting_approval'`, approval.OperationID); err != nil {
-			return nil, fmt.Errorf("failing the rejected operation: %w", err)
+		if approval.OperationID != "" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE platform.operations
+				   SET state = 'failed', last_error_code = 'approval_rejected', updated_at = now()
+				 WHERE id = $1::uuid AND state = 'awaiting_approval'`, approval.OperationID); err != nil {
+				return nil, fmt.Errorf("failing the rejected operation: %w", err)
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -395,6 +405,9 @@ func expireApprovalTx(ctx context.Context, tx *sql.Tx, approval *Approval, reque
 	); err != nil {
 		return fmt.Errorf("expiring the approval: %w", err)
 	}
+	if approval.OperationID == "" {
+		return nil
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
 		   SET state = 'failed', last_error_code = 'approval_expired', updated_at = now()
@@ -410,6 +423,9 @@ func invalidateApprovalTx(ctx context.Context, tx *sql.Tx, approval *Approval, r
 		   SET state = 'invalidated', decided_at = now(), decision_key = $2
 		 WHERE id = $1::uuid AND state = 'pending'`, approval.ID, reason); err != nil {
 		return fmt.Errorf("invalidating the approval: %w", err)
+	}
+	if approval.OperationID == "" {
+		return nil
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations

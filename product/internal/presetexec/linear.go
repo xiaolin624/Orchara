@@ -63,12 +63,25 @@ type linearRun struct {
 type nodeHost struct {
 	failed func()
 	skip   func()
+	// sandboxUnit overrides the runsc unit id for this node. The concurrent graph
+	// scheduler gives every branch its own id so two sandboxes can run at once;
+	// the linear chain leaves it empty and keeps the attempt's unit id.
+	sandboxUnit string
 }
 
 func (h nodeHost) nodeFailed() {
 	if h.failed != nil {
 		h.failed()
 	}
+}
+
+// executionUnit is the request's runsc unit id: the node's own id on the graph
+// schedule, the attempt's id on the linear chain.
+func (h nodeHost) executionUnit(attemptUnit string) string {
+	if h.sandboxUnit != "" {
+		return h.sandboxUnit
+	}
+	return attemptUnit
 }
 
 func (h nodeHost) skipRemaining() {
@@ -268,7 +281,7 @@ func (r *runner) executePythonNode(
 		MediaType:       strings.ToLower(strings.TrimSpace(input.MediaType)),
 		Input:           inputBytes,
 		InputJSON:       inputDocument,
-		ExecutionUnitID: r.options.ExecutionUnitID,
+		ExecutionUnitID: host.executionUnit(r.options.ExecutionUnitID),
 	}, r.heartbeatControl())
 	report := sandboxReportOf(outcome)
 	evidence := r.exitEvidence(r.heartbeatCount(), outcome, sandboxErr)
@@ -277,6 +290,13 @@ func (r *runner) executePythonNode(
 	case errors.Is(sandboxErr, sandbox.ErrCancelled):
 		host.nodeFailed()
 		host.skipRemaining()
+		if captureGraphCancellation(ctx, outcome, evidence) {
+			// The graph scheduler confirms the exit only after the other branches
+			// stopped, so a cancelled branch never races their cleanup.
+			return pythonExecution{sandbox: outcome, report: report,
+				terminal: &executionOutcome{outcome: "cancelled", code: "cancel_requested",
+					sandbox: report}}
+		}
 		if err := r.confirmExit(ctx, outcome.SandboxStarted, evidence); err != nil {
 			return pythonExecution{sandbox: outcome, report: report,
 				terminal: &executionOutcome{outcome: "cancelled", code: "cancel_requested",
@@ -646,8 +666,17 @@ func (r *runner) emitNode(ctx context.Context, nodeID, state string) {
 	if r.deps.Client == nil {
 		return
 	}
+	submitCtx := ctx
+	if ctx.Err() != nil {
+		// A node.status transition is a durable fact about what happened, not work
+		// the cancellation should erase: F04B/T085 cancels a branch's context on
+		// fail-fast, and the interrupted branch's terminal fact must still be
+		// recorded before the run's failure is committed. The protocol client
+		// bounds this call with its own timeout.
+		submitCtx = context.WithoutCancel(ctx)
+	}
 	if err := r.deps.Client.SubmitNodeStatus(
-		ctx, r.lease.RunID, r.lease.AttemptToken, nodeID, state,
+		submitCtx, r.lease.RunID, r.lease.AttemptToken, nodeID, state,
 	); err != nil {
 		r.logger.Printf("run_id=%s: node.status %s=%s was not recorded: %v",
 			r.lease.RunID, nodeID, state, err)

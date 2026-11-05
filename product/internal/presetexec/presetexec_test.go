@@ -66,6 +66,10 @@ type fakeClient struct {
 	statusErr     error
 	nodeEventErr  error
 	nodeResultErr error
+	// onSubmitResult is a test hook called before a proposal is recorded. The
+	// T085 fail-fast test uses it to prove the failure was committed only after
+	// the other branch stopped.
+	onSubmitResult func(Proposal)
 
 	// scripted capability seam (agent tests)
 	invokeCapability  func(capabilities.Input) (*capabilities.Result, error)
@@ -79,9 +83,33 @@ type fakeClient struct {
 	spawnRequests []SpawnChildRequest
 	childReads    []string
 
+	// scripted approval seam (T087 approval-node tests)
+	nodeApprovalScript   []*NodeApproval
+	nodeApprovalErr      error
+	nodeApprovalRequests []NodeApprovalRequest
+
 	// scripted retrieval seam (retrieve node tests)
 	retrieve         func(RetrieveRequest) (*RetrieveResult, error)
 	retrieveRequests []RetrieveRequest
+}
+
+// PrepareNodeApproval implements Client: the executor asks the platform for the
+// one server-built approval; the scripted answer is the platform's row.
+func (f *fakeClient) PrepareNodeApproval(
+	_ context.Context, _ string, _ string, request NodeApprovalRequest,
+) (*NodeApproval, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodeApprovalRequests = append(f.nodeApprovalRequests, request)
+	if f.nodeApprovalErr != nil {
+		return nil, f.nodeApprovalErr
+	}
+	if len(f.nodeApprovalScript) == 0 {
+		return nil, errors.New("no scripted node approval")
+	}
+	next := f.nodeApprovalScript[0]
+	f.nodeApprovalScript = f.nodeApprovalScript[1:]
+	return next, nil
 }
 
 // Retrieve implements Client with the test's scripted retrieval seam.
@@ -177,17 +205,27 @@ func (f *fakeClient) Fetch(_ context.Context, link string) ([]byte, error) {
 	return f.manifest, nil
 }
 
-func (f *fakeClient) PutBytes(_ context.Context, _ string, content []byte) error {
+func (f *fakeClient) PutBytes(_ context.Context, link string, content []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if len(f.uploads) == 0 {
-		return errors.New("put without an upload")
+	// F04B/T085: node uploads run concurrently, so the upload is resolved by its
+	// own signed link instead of "the last upload created".
+	for index := range f.uploads {
+		if "http://object.invalid/put/"+f.uploads[index].Artifact == link {
+			f.uploads[index].Content = append([]byte(nil), content...)
+			return nil
+		}
 	}
-	f.uploads[len(f.uploads)-1].Content = append([]byte(nil), content...)
-	return nil
+	return errors.New("put without a matching upload")
 }
 
 func (f *fakeClient) SubmitResult(_ context.Context, _ string, _ string, proposal Proposal) error {
+	f.mu.Lock()
+	hook := f.onSubmitResult
+	f.mu.Unlock()
+	if hook != nil {
+		hook(proposal)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.proposals = append(f.proposals, recordedProposal{Proposal: proposal})
@@ -229,6 +267,8 @@ func (f *fakeClient) Complete(
 func (f *fakeClient) Status(
 	_ context.Context, _ string, _ string, artifactID string,
 ) (ArtifactView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.statusErr != nil {
 		return ArtifactView{}, f.statusErr
 	}

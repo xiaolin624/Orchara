@@ -13,6 +13,7 @@ package api
 // and deliberately ignored.
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -70,6 +71,67 @@ func (s *Server) handleInternalPrepareApproval(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusCreated, approvalResponse(approval))
+}
+
+// internalPrepareNodeApprovalRequest is the non-contract F04B/T087 body: the
+// sealed node identity, the display title and expiry from the node config, and
+// the run-resolved proposal object. No decision and no capability ride here.
+type internalPrepareNodeApprovalRequest struct {
+	AttemptToken   string          `json:"attempt_token"`
+	NodeID         string          `json:"node_id"`
+	Title          string          `json:"title"`
+	ExpiresSeconds int             `json:"expires_seconds"`
+	Proposal       json.RawMessage `json:"proposal"`
+}
+
+// nodeApprovalView is the internal node-approval answer the executor reads. It is
+// a superset of the contract Approval (decided_at is needed for the node output);
+// it is non-contract and never reachable from the public listener.
+type nodeApprovalView struct {
+	ID                 string  `json:"id"`
+	State              string  `json:"state"`
+	ExpiresAt          string  `json:"expires_at"`
+	ParamsSHA256       string  `json:"params_sha256"`
+	ProposalArtifactID string  `json:"proposal_artifact_id"`
+	DecidedAt          *string `json:"decided_at"`
+}
+
+func nodeApprovalResponse(approval *approvals.Approval) nodeApprovalView {
+	view := nodeApprovalView{
+		ID:                 approval.ID,
+		State:              approval.State,
+		ExpiresAt:          approval.ExpiresAt.UTC().Format(time.RFC3339),
+		ParamsSHA256:       approval.ParamsSHA256,
+		ProposalArtifactID: approval.ProposalArtifactID,
+	}
+	if approval.DecidedAt != nil {
+		decided := approval.DecidedAt.UTC().Format(time.RFC3339)
+		view.DecidedAt = &decided
+	}
+	return view
+}
+
+func (s *Server) handleInternalPrepareNodeApproval(w http.ResponseWriter, r *http.Request) {
+	if !requireInternalRole(w, r, InternalRoleWorker) {
+		return
+	}
+	var request internalPrepareNodeApprovalRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
+		return
+	}
+	approval, err := s.approvals.PrepareNode(r.Context(), approvals.PrepareNodeRecord{
+		RunID:          r.PathValue("run_id"),
+		AttemptToken:   request.AttemptToken,
+		NodeID:         request.NodeID,
+		Title:          request.Title,
+		ExpiresSeconds: request.ExpiresSeconds,
+		Proposal:       request.Proposal,
+	})
+	if !s.writeApprovalError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, nodeApprovalResponse(approval))
 }
 
 func (s *Server) handleGetApproval(w http.ResponseWriter, r *http.Request) {

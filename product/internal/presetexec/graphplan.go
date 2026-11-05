@@ -46,9 +46,9 @@ import (
 )
 
 // Graph-path refusal codes. The region codes are the validator's frozen
-// vocabulary; the unsupported-node codes are this build's per-type refusals until
-// T087 (approval) and T088 (retrieve) replace them. F04B/T086 made `model`
-// executable, so its old `node_unsupported_model` refusal is gone.
+// vocabulary. F04B/T086 made `model` executable, T087 made `approval` and T088
+// made `retrieve`; the per-type `node_unsupported_*` codes stay in the closed
+// vocabulary so a run view can still name them if a future build drops a type.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -64,6 +64,9 @@ const (
 	CodeStartEndCount = "start_end_count"
 	CodeMissingValue  = "missing_value"
 
+	// Superseded per-type refusals: both types now run on the graph path, so
+	// these are only reachable if a later build removes them again.
+	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
 	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
@@ -85,6 +88,7 @@ var graphNodeTypes = map[string]bool{
 	"call_app":  true,
 	"condition": true,
 	"join":      true,
+	"approval":  true,
 	"model":     true,
 	"retrieve":  true,
 }
@@ -104,6 +108,9 @@ type graphPlan struct {
 	// dom/postDom are the dominance sets the region proof is computed from.
 	dom     map[string]map[string]bool
 	postDom map[string]map[string]bool
+	// regionOfNode is the innermost proven region containing each node. A fork and
+	// its join belong to their parent region, never to the region they delimit.
+	regionOfNode map[string]*graphRegion
 }
 
 // graphNode is one sealed node plus the plan facts the scheduler reads.
@@ -114,6 +121,7 @@ type graphNode struct {
 	outgoing  []*planEdge
 	condition *conditionConfig
 	join      *joinConfig
+	approval  *approvalConfig
 	model     *modelNodeConfig
 	retrieve  *retrieveConfig
 }
@@ -148,6 +156,10 @@ type graphRegion struct {
 	sources  []string
 	required map[string]bool
 	optional map[string]bool
+	// branchSource maps every node inside the region to the join source its
+	// branch converges to. It is how a failure deep inside a branch is attributed
+	// to that branch's named join result (F04B/T085 optional convergence).
+	branchSource map[string]string
 }
 
 // planRefusal is a graph-path structural refusal with its stable run code.
@@ -157,16 +169,16 @@ func planRefusal(code, message string) *planError {
 
 // hasGraphConstructs reports whether the sealed definition carries a construct
 // only the graph plan can execute. The legacy and linear paths keep their exact
-// previous selection for every other definition. F04B/T086 adds `model` (one
-// controlled generation, no branch); T088 adds `retrieve`; T087 adds `approval`
-// the same way.
+// previous selection for every other definition. F04B/T086 added `model` (one
+// controlled generation, no branch), T087 added `approval` (a human wait) and
+// T088 added `retrieve` (one knowledge query) the same way.
 func hasGraphConstructs(manifest *manifestDocument) bool {
 	if manifest == nil {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
 		switch node.Type {
-		case "condition", "join", "model", "retrieve":
+		case "condition", "join", "model", "approval", "retrieve":
 			return true
 		}
 	}
@@ -187,6 +199,7 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		definition:   definition,
 		nodes:        make(map[string]*graphNode, len(definition.Nodes)),
 		regionByJoin: make(map[string]*graphRegion),
+		regionOfNode: make(map[string]*graphRegion),
 		dom:          make(map[string]map[string]bool, len(definition.Nodes)),
 		postDom:      make(map[string]map[string]bool, len(definition.Nodes)),
 	}
@@ -211,11 +224,13 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		}
 		code := CodeToolUnsupportedGraph
 		switch node.Type {
+		case "retrieve":
+			code = CodeNodeUnsupportedRetrieve
 		case "approval":
 			code = CodeNodeUnsupportedApproval
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join and retrieve",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join, approval and retrieve",
 			index, node.Type))
 	}
 
@@ -306,6 +321,13 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.join = config
+		case "approval":
+			config, err := parseApprovalConfig(node)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.approval = config
 		case "model":
 			// F04B/T086: the publish validator already checked the closed config
 			// set; the executor re-proves it on the frozen bytes, before any node
@@ -477,6 +499,17 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		plan.regionByJoin[joinID] = region
 	}
 
+	// 10b. Innermost containing region per node (regions nest strictly, so the
+	// smallest inside set that carries the node is the closest one).
+	for _, region := range plan.regions {
+		for id := range region.inside {
+			current := plan.regionOfNode[id]
+			if current == nil || len(region.inside) < len(current.inside) {
+				plan.regionOfNode[id] = region
+			}
+		}
+	}
+
 	// 11. Cross-region edges (the validator's stage-4 edge proof).
 	for _, region := range plan.regions {
 		for _, edge := range plan.edges {
@@ -497,6 +530,53 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 				return nil, planRefusal(CodeCrossRegion, fmt.Sprintf(
 					"/edges/%d: the edge %q->%q crosses the boundary of the region %q->%q",
 					edge.index, edge.source, edge.target, region.fork, region.join))
+			}
+		}
+	}
+
+	// 11b. Partition each region's inside set into one branch per join source by
+	// walking backwards from every source to the fork. This is what lets the
+	// scheduler attribute a failure deep inside a branch to that branch's named
+	// join result. A node that converges to two sources would mean two branches
+	// share a path, which a proven structured region cannot express. The
+	// cross-region proof above runs first so a crossing edge keeps its own code.
+	for _, region := range plan.regions {
+		region.branchSource = make(map[string]string, len(region.inside))
+		for _, source := range region.sources {
+			if !region.inside[source] {
+				// A fork may be its own join source (a condition port that goes
+				// straight to the join); it is outside the inside set by
+				// definition and is never labelled as branch data.
+				continue
+			}
+			region.branchSource[source] = source
+			pending := []string{source}
+			for len(pending) > 0 {
+				current := pending[len(pending)-1]
+				pending = pending[:len(pending)-1]
+				for _, edge := range plan.nodes[current].incoming {
+					parent := edge.source
+					if parent == region.fork || !region.inside[parent] {
+						continue
+					}
+					if existing, assigned := region.branchSource[parent]; assigned {
+						if existing != source {
+							return nil, planRefusal(CodeInvalidRegion, fmt.Sprintf(
+								"the node %q converges to two branches %q and %q of the region %q->%q",
+								parent, existing, source, region.fork, region.join))
+						}
+						continue
+					}
+					region.branchSource[parent] = source
+					pending = append(pending, parent)
+				}
+			}
+		}
+		for id := range region.inside {
+			if _, assigned := region.branchSource[id]; !assigned {
+				return nil, planRefusal(CodeInvalidRegion, fmt.Sprintf(
+					"the node %q is inside the region %q->%q but converges to no join source",
+					id, region.fork, region.join))
 			}
 		}
 	}
@@ -556,6 +636,21 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		}
 	}
 	return plan, nil
+}
+
+// branchFor returns the innermost region that carries the node and the join
+// source its branch converges to. A fork/join-owning node or a node outside every
+// region returns nil: its failure is a region/run failure, never optional data.
+func (p *graphPlan) branchFor(nodeID string) (*graphRegion, string) {
+	region := p.regionOfNode[nodeID]
+	if region == nil {
+		return nil, ""
+	}
+	source, ok := region.branchSource[nodeID]
+	if !ok {
+		return nil, ""
+	}
+	return region, source
 }
 
 // topologicalOrder is Kahn's algorithm with the definition index as the stable

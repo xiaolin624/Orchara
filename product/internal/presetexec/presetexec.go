@@ -32,6 +32,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -184,6 +185,29 @@ type ChildRun struct {
 	Phase                string
 }
 
+// NodeApprovalRequest is the F04B/T087 business-approval proposal the executor
+// asks the platform to prepare. It carries no decision and no capability: the
+// node id, the sealed config and the run-resolved proposal are the only inputs,
+// and the server rebuilds the canonical proposal/hash from them.
+type NodeApprovalRequest struct {
+	NodeID         string
+	Title          string
+	ExpiresSeconds int
+	Proposal       map[string]any
+}
+
+// NodeApproval is the platform's answer to PrepareNodeApproval. The approval row
+// is the server's business decision record (a `platform.approvals` row with no
+// operation); the executor only copies its state into the run.
+type NodeApproval struct {
+	ID                 string
+	State              string
+	ParamsSHA256       string
+	ProposalArtifactID string
+	ExpiresAt          time.Time
+	DecidedAt          *time.Time
+}
+
 // ChildResult is the non-contract terminal result read: the child's state, its
 // sealed output artifact and the decoded JSON object that artifact holds.
 type ChildResult struct {
@@ -242,6 +266,14 @@ type Client interface {
 	ChildResult(
 		ctx context.Context, runID, attemptToken, childRunID string,
 	) (*ChildResult, error)
+	// PrepareNodeApproval asks the platform to prepare (or replay) the one
+	// server-built approval for this run's approval node. The executor never
+	// supplies a decision; a pending approval parks the attempt at
+	// `approval:<approval_id>` and an approved one lets the node publish its
+	// decision output. The call is idempotent for the same canonical proposal.
+	PrepareNodeApproval(
+		ctx context.Context, runID, attemptToken string, request NodeApprovalRequest,
+	) (*NodeApproval, error)
 	// Retrieve runs one F04B/T088 knowledge retrieval through the non-contract
 	// internal mTLS route. The server derives the run owner from the database and
 	// applies each knowledge base's ACL before ranking; the executor never sees a
@@ -405,8 +437,11 @@ type runner struct {
 	// read (a refusal still has to state which image it is refusing to run).
 	projection *manifestDocument
 	heartbeats atomic.Int64
-	artifacts  []ArtifactReport
-	logger     *log.Logger
+	// artifactsMu guards artifacts: F04B/T085 node goroutines upload their own
+	// node artifacts concurrently.
+	artifactsMu sync.Mutex
+	artifacts   []ArtifactReport
+	logger      *log.Logger
 }
 
 // Run performs at most one claim and its execution. It never panics on a refusal:
@@ -755,6 +790,11 @@ func (e *unsupportedError) Error() string { return e.message }
 // terminal failure instead of an infinite requeue loop). The distinction is
 // recorded in the T033 report.
 func (r *runner) refuse(ctx context.Context, code, message string) executionOutcome {
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandbox.Outcome{}, nil, nil, false, false,
+	); ok {
+		return captured
+	}
 	evidence := r.exitEvidence(0, sandbox.Outcome{}, nil)
 	evidence["sandbox_started"] = false
 	evidence["refusal_code"] = code
@@ -786,6 +826,13 @@ func (r *runner) failRun(
 	input *InputArtifact,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, sandboxErr, evidence, true, true,
+	); ok {
+		// The graph scheduler records the failure evidence and commits the run
+		// result after it stopped the other branches.
+		return captured
+	}
 	r.uploadFailureEvidence(ctx, code, message, sandboxOutcome, diagnostics, input)
 	proposal := Proposal{EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, proposal); err != nil {
@@ -811,6 +858,11 @@ func (r *runner) failAfterStart(
 	ctx context.Context, code, message string, sandboxOutcome sandbox.Outcome, evidence map[string]any,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, nil, evidence, false, true,
+	); ok {
+		return captured
+	}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
 		EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code,
 	}); err != nil {
@@ -1163,6 +1215,7 @@ func (r *runner) uploadArtifact(
 	if err != nil {
 		return "", err
 	}
+	r.artifactsMu.Lock()
 	r.artifacts = append(r.artifacts, ArtifactReport{
 		ID:        ticket.ArtifactID,
 		Purpose:   purpose,
@@ -1170,6 +1223,7 @@ func (r *runner) uploadArtifact(
 		State:     ready.State,
 		SizeBytes: ready.SizeBytes,
 	})
+	r.artifactsMu.Unlock()
 	return ticket.ArtifactID, nil
 }
 

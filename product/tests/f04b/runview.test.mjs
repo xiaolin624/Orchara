@@ -315,8 +315,47 @@ test('buildRunViewModel reads the selected port and the join envelope from data 
   );
   const failedJoinRow = failedJoin.rows.find((row) => row.nodeId === 'join');
   assert.strictEqual(failedJoinRow.joinSources[0].errorCode, 'sandbox_failed');
+  // A required source's failure is a failure, never converged error data.
+  assert.strictEqual(failedJoinRow.joinSources[0].converged, false);
+  assert.strictEqual(failedJoinRow.joinSources[0].statusText, '失败');
   assert.ok(failedJoinRow.joinSources[0].line.includes('sandbox_failed'),
     failedJoinRow.joinSources[0].line);
+  // F04B/T085: an *optional* source's explicit pure-compute failure is converged
+  // error data — the run succeeds and the row must say so, not "失败".
+  const optionalDefinition = JSON.parse(JSON.stringify(definition));
+  for (const node of optionalDefinition.nodes) {
+    if (node.type === 'join') {
+      node.config.required_sources = ['direct'];
+      node.config.optional_sources = ['approve'];
+    }
+  }
+  const converged = runView.buildRunViewModel(
+    optionalDefinition, nodeStates, nodeResults,
+    {
+      'a-choose': { port: 'yes', matched_case: 0 },
+      'a-join': {
+        results: {
+          approve: { status: 'failed', error_code: 'node_output_invalid' },
+          direct: { status: 'succeeded', value: { summary: 'ok' } },
+        },
+      },
+    },
+    { state: 'succeeded' },
+  );
+  const convergedRow = converged.rows.find((row) => row.nodeId === 'join');
+  const optionalEntry = convergedRow.joinSources.find((entry) => entry.source === 'approve');
+  assert.strictEqual(optionalEntry.optional, true);
+  assert.strictEqual(optionalEntry.converged, true);
+  assert.strictEqual(optionalEntry.statusText, '已收敛的错误');
+  assert.ok(optionalEntry.line.includes('node_output_invalid'), optionalEntry.line);
+  assert.ok(optionalEntry.line.includes('已收敛'), optionalEntry.line);
+  assert.strictEqual(optionalEntry.hasValue, false);
+  assert.strictEqual(convergedRow.convergedErrors, 1);
+  assert.ok(convergedRow.joinText.includes('approve=已收敛的错误'), convergedRow.joinText);
+  assert.ok(convergedRow.joinText.includes('optional'), convergedRow.joinText);
+  const requiredEntry = convergedRow.joinSources.find((entry) => entry.source === 'direct');
+  assert.strictEqual(requiredEntry.converged, false);
+  assert.strictEqual(requiredEntry.statusText, '成功');
   // Without the artifact bytes the port/envelope is simply not claimed.
   const withoutContents = runView.buildRunViewModel(
     definition, nodeStates, nodeResults, {}, { state: 'succeeded' },
