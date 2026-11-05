@@ -11,7 +11,7 @@
   独立子槽与每父并行上限属 T081（本票测试用既有 T035 bridge 提供 children 决议，报告 §5 明示）；
   真实 WSL2/runsc 五类评测仍未跑（依赖 T081 的自动恢复；本票用 T068 已验证的五类报告 fixture
   完成真实发布事务）；浏览器 DOM not_run（Node 执行页面纯逻辑）。
-- 迁移：`0048_f07_child_runs.sql`（分支内初为 0045；合并 `integration/t068-t082` 时 0045–0047 已被 T077/T071/T072 占用，按合并树顺延为 0048；orchestrator 目标号 0052，最终合并可再重编号）。
+- 迁移：`0049_f07_child_runs.sql`（分支内初为 0045；合并 `integration/t068-t082` 时 0045–0047 已被 T077/T071/T072 占用，按合并树顺延为 0048；orchestrator 目标号 0052，最终合并可再重编号）。
   ADR：`docs/adr/0025-f07-child-runs.md`。未改 `docs/spec/**`/`contracts/**`，`sync_spec --check` no drift。
 
 ## 0. 工作记录（简短）
@@ -29,7 +29,7 @@
 
 ## 1. 交付
 
-### 1.1 迁移 `0048_f07_child_runs.sql`（非契约、加法）
+### 1.1 迁移 `0049_f07_child_runs.sql`（非契约、加法）
 
 `platform.run_children`：`child_run_id` PK/FK、`parent_run_id` FK、`parent_attempt_token` FK、
 `parent_invocation_key` + `UNIQUE(parent_run_id, parent_invocation_key)`、`child_version_id` FK、

@@ -137,7 +137,7 @@ child 终态自动 hook（以及独立子槽、每父并行上限、预算）归
 
 ## 影响
 
-- 迁移：`0048_f07_child_runs.sql`（分支内初为 0045；合并集成分支时 0045–0047 已被其它票占用，按合并树顺延为 0048；orchestrator 目标号 0052，最终合并可再重编号）。
+- 迁移：`0049_f07_child_runs.sql`（分支内初为 0045；合并集成分支时 0045–0047 已被其它票占用，按合并树顺延为 0048；orchestrator 目标号 0052，最终合并可再重编号）。
 - 非契约 REST：3 条（spawnChild 是契约；结果读 + owner child 列表是非契约），全部有报告/ADR。
 - 不改 `docs/spec/**`、`contracts/**`；`sync_spec --check` 保持 no drift。
 - 后续：T080 只扩展预算/次数原子性；T081 只扩展 child 终态 hook、独立子槽、父等待收敛；
