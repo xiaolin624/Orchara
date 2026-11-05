@@ -185,6 +185,9 @@ python tools/sync_spec.py --check -> no drift: spec copy and contract snapshot m
    在 claim 排队。这是设计选择，不是缺口。
 7. **父取消向 child 的传播范围**：只对带 `run_children` 收据的委派 child 传播取消；没有收据的
    合成/历史 child 保持 T036 语义（父记录 intent 并等待），既有 T036 cancel 套件因此不变。
+8. **授权边界**：本票新增路径没有引入新的授权面——claim 仍是 supervisor/worker mTLS + live
+   attempt token，spawn 仍走 T078 的当前 ACL 交集，cancel 仍是 T036 的 owner-only；这些由
+   `tests/f03` 与 `tests/f07` 既有用例覆盖，本票用例未重复断言越权/撤权。
 
 ## 6. 给后续票的接口
 
