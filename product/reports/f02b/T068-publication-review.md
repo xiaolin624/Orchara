@@ -23,7 +23,7 @@
     （sales 预设工具，risk_class/read/write/network 由真实 `tool_versions` 投影），模型/子应用
     列表在真实可发布应用上为空是诚实的（manifest 未含这些依赖）。
 - 未改 `docs/spec/**` 与 `contracts/**`（`python tools/sync_spec.py --check` 干净）；未 push、
-  未关闭 issue。新增非契约面在 ADR 0020、迁移头和本报告记录。
+  未关闭 issue。新增非契约面在 ADR 0021、迁移头和本报告记录。
 
 ## 0. 工作记录（简短）
 
@@ -137,7 +137,7 @@
 
 规范句在 `docs/spec/EVALUATION.md` §6：“应用发布至少 5 个作者案例，含正常、坏输入、歧义/越界、
 工具失败和输出检查”。`contracts/evaluation-case.schema.json` 没有“作者案例类别”字段，因此本票
-对报告自身证据定义并测试一个最小判定（ADR 0020 §3、`catalog/publication_cases.go`）：
+对报告自身证据定义并测试一个最小判定（ADR 0021 §3、`catalog/publication_cases.go`）：
 
 | 类别 | 判据 |
 |---|---|
@@ -278,9 +278,9 @@ revoke_reason=$reason WHERE id=$1 AND revoked_at IS NULL`（第二调用幂等 2
    出现，不能把种子报告说成真实 runner 报告。评审若要求所有用例都跑真实 runner，代价是每例数十秒
    （本机共享 WSL2 有时数分钟），T056 的环境 stall 重试逻辑已在 e2e helper 中复用。
 2. 五类案例判定是对 EVALUATION.md §6 的**解释**（报告 schema 没有类别字段）；分类规则在
-   `publication_cases.go`/ADR 0020 §3 固定并有单测。若后续契约增加类别字段，应替换而不是扩张。
+   `publication_cases.go`/ADR 0021 §3 固定并有单测。若后续契约增加类别字段，应替换而不是扩张。
 3. 审批时子应用 ACL 不再以提交者身份复查（提交时已查），只复查版本未撤销/父应用未归档；
-   ADR 0020 §4 记录该选择。
+   ADR 0021 §4 记录该选择。
 4. `publication_reviews.report_id` 没有“同一报告只能被一条 review 引用”的唯一约束；当前
    submit 以 (application, manifest) 去重，同一报告只能属于一个 application/evaluation，
    所以不可达；若后续开放跨应用引用，需要加约束。
@@ -291,7 +291,7 @@ revoke_reason=$reason WHERE id=$1 AND revoked_at IS NULL`（第二调用幂等 2
 
 ## 7. 关联 ADR / 文件
 
-- ADR 0020 `docs/adr/0020-publication-review-and-versions.md`（新增列/outbox/五类解释/事务边界）。
+- ADR 0021 `docs/adr/0021-publication-review-and-versions.md`（新增列/outbox/五类解释/事务边界）。
 - 迁移 `db/migrations/0043_publication_reviews_and_outbox.sql`。
 - 代码 `internal/catalog/{publication,publication_cases,publication_report,manifest}.go`、
   `internal/api/publication.go`、`internal/api/server.go`、`internal/evaluation/report.go`、
