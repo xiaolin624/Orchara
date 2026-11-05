@@ -202,14 +202,25 @@ error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartb
 
 ## 8. 最终树门禁状态
 
-最终代码树（含 `78d09db` 与 T086 合并）上：`tests/f04b` **34 passed**（合并 T086 前；T086 的 f04b 真实栈用例见下方复跑）、
-`tests/f05` **149 passed**、`tests/tooling` **21 passed**、`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；
+最终代码树（含 `78d09db` 与 T086 合并）上：`tests/f04b` **43 passed in 239.44s**（合并 T086 后，含 T085 5 例、
+T083 全回归、T086 model-node 9 例，见 §8.1）、`tests/f05` **149 passed**、`tests/tooling` **21 passed**、
+`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；
 `tests/f06` **172 passed / 1 failed**（§6.1 的环境性 sandbox 启动失败，修复后该用例单测重跑 **1 passed**）。
 按编排者队列要求（T088/T089 使用共享栈），本轮之后未再次占用共享栈；合并 T086 后的 `tests/f04b` 复跑与原始输出见 §8.1。
 
 ### 8.1 合并 T086 后的复跑
 
-（见文末：最终 `tests/f04b` 原始输出尾部与 HEAD。）
+```text
+$ python -m pytest tests/f04b -q          # 合并 T086（model node）后、全局 pytest 锁、最终树
+...........................................                              [100%]
+43 passed in 239.44s (0:03:59)
+exit=0
+```
+
+43 = 合并前 34 + T086 的 model-node 用例 9（真实栈单次生成/schema 独立失败/prompt/等待/复用）。
+合并后另跑：`node tests/f04b/{runview,canvas_f04b,canvas_model}.test.mjs` → PASS 6 / PASS 9 / PASS 4；
+`pytest tests/f04b/{test_canvas_f04b_assets,test_t086_model_canvas,test_t083_canvas_validate}.py` → 12 passed；
+`go build/vet/test ./...` 全绿、`gofmt` 空、`sync_spec --check` no drift。最终 HEAD：见分支 tip。
 
 ## 9. 变更文件
 
