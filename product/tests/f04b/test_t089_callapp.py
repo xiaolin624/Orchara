@@ -262,8 +262,13 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     assert final == {"results": results}, final
 
     states = t089.node_states(t033_stack.dbname, parent_id)
-    for node_id in ("a", "b"):
-        assert states[node_id] == ["pending", "running", "pending", "running", "succeeded"], states
+    # "a" completes in the second attempt and is *reused* by the recovery seam in
+    # the third (the successor task of the session), so it emits one extra
+    # succeeded without a second pending/running; "b" only completes in the third.
+    assert states["a"] == [
+        "pending", "running", "pending", "running", "succeeded", "succeeded",
+    ], states
+    assert states["b"] == ["pending", "running", "pending", "running", "succeeded"], states
     children = t089.children(t033_stack, creator, parent_id)
     assert {item["id"] for item in children} == {first_child, second_child}
 
