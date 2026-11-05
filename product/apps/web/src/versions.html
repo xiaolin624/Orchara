@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 版本与撤销（F02B）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
+    li { margin: .45rem 0; }
+    code { font-size: .82rem; opacity: .85; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    .hint { font-size: .82rem; opacity: .7; }
+    label { display: block; margin-top: .7rem; font-size: .9rem; }
+    textarea { width: 100%; min-height: 4.5rem; font: inherit; }
+    select { font: inherit; min-width: 16rem; }
+    button { margin-top: .7rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body id="versions-page">
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/admin">管理台</a>
+    <a href="/runs">运行</a>
+  </nav>
+
+  <h1>版本与撤销（F02B/T070）</h1>
+  <p class="sub">
+    列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
+    <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
+    <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
+    生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
+  </p>
+  <p id="application-availability" class="status" role="status" aria-live="polite">正在读取应用可用性…</p>
+
+  <section class="card">
+    <h2>已发布版本</h2>
+    <p id="versions-status" class="status" role="status" aria-live="polite">正在加载版本…</p>
+    <ul id="versions-list"></ul>
+    <p class="hint">
+      已撤销的版本按契约从列表和详情中消失（<code>Version</code> 没有状态字段，因此用“不可见”表达不可用，
+      详情返回 404）。版本详情：<code>GET /api/v1/versions/{id}</code>；运行入口校验：
+      <code>GET /api/v1/versions/{id}/runnable</code>（撤销后返回 409 <code>version_revoked</code>）。
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>撤销版本（仅管理员）</h2>
+    <form id="revoke-form" method="post">
+      <label for="revoke-version-id">要撤销的版本</label>
+      <select id="revoke-version-id" name="version_id"></select>
+      <label for="revoke-reason">撤销原因（必填，最多 2000 字符）</label>
+      <textarea id="revoke-reason" name="reason" maxlength="2000" autocomplete="off"></textarea>
+      <label for="revoke-stop-existing">
+        <input id="revoke-stop-existing" name="stop_existing" type="checkbox" />
+        同时停止该版本正在进行的运行（记录取消意图，由执行器完成终止）
+      </label>
+      <button id="revoke-submit" type="submit">撤销这个版本</button>
+    </form>
+    <p id="revoke-status" class="status" role="status" aria-live="polite"></p>
+    <p class="hint">
+      不勾选“同时停止”时只记录撤销，正在进行的运行不受影响。勾选后服务器只记录取消意图并追加一条
+      <code>run.status</code> 事件（原因是 <code>version_revoked</code>），不会在撤销事务里直接写终态。
+    </p>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/versions.js"></script>
+  <script>
+    const applicationId = applicationIdFromVersionsPath(window.location.pathname);
+    const versionsList = document.getElementById('versions-list');
+    const versionsStatus = document.getElementById('versions-status');
+    const availability = document.getElementById('application-availability');
+    const revokeForm = document.getElementById('revoke-form');
+    const versionSelect = document.getElementById('revoke-version-id');
+    const reasonInput = document.getElementById('revoke-reason');
+    const stopCheckbox = document.getElementById('revoke-stop-existing');
+    const revokeStatus = document.getElementById('revoke-status');
+
+    function setVersionStatus(message, kind) {
+      versionsStatus.textContent = message;
+      versionsStatus.className = 'status ' + (kind || '');
+    }
+
+    function setRevokeStatus(message, kind) {
+      revokeStatus.textContent = message;
+      revokeStatus.className = 'status ' + (kind || '');
+    }
+
+    function renderVersions(versions) {
+      versionsList.textContent = '';
+      versionSelect.textContent = '';
+      const options = describeVersionOptions(versions);
+      for (const option of options) {
+        const element = document.createElement('option');
+        element.value = option.id;
+        element.textContent = option.label;
+        versionSelect.appendChild(element);
+      }
+      for (const version of versions) {
+        const item = document.createElement('li');
+        const label = document.createElement('strong');
+        label.textContent = describeVersion(version);
+        const id = document.createElement('code');
+        id.textContent = version.id;
+        const link = document.createElement('a');
+        link.href = versionPath(version.id);
+        link.textContent = '版本详情';
+        item.append(label, ' ', id, ' ', link);
+        versionsList.appendChild(item);
+      }
+      if (versions.length === 0) {
+        setVersionStatus('这个应用还没有可见的已发布版本（未发布或已全部撤销）。', '');
+      } else {
+        setVersionStatus('共 ' + versions.length + ' 个可见版本。', 'ok');
+      }
+    }
+
+    async function loadVersions() {
+      const page = await api(versionsPath(applicationId));
+      renderVersions(page.items || []);
+    }
+
+    async function loadPage() {
+      if (!applicationId) {
+        setVersionStatus('这个页面需要 /apps/{application_id}/versions 路径。', 'bad');
+        return;
+      }
+      setVersionStatus('正在加载版本…', 'pending');
+      try {
+        await requireLogin();
+        const current = await identity();
+        revokeForm.hidden = !canRevokeVersion(current);
+        const application = await api(applicationPath(applicationId));
+        availability.textContent = describeCatalogAvailability(application);
+        availability.className = 'status ' + (application.active_version_id ? 'ok' : '');
+        await loadVersions();
+      } catch (error) {
+        if (error.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
+        setVersionStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
+      }
+    }
+
+    revokeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const versionId = versionSelect.value;
+      if (!versionId) {
+        setRevokeStatus('请选择一个要撤销的版本。', 'bad');
+        return;
+      }
+      const request = revokeVersionBody(reasonInput.value, stopCheckbox.checked);
+      if (!request.ok) {
+        setRevokeStatus(request.error, 'bad');
+        return;
+      }
+      setRevokeStatus('正在撤销…', 'pending');
+      try {
+        const result = await api(revokeVersionPath(versionId), {
+          method: 'POST',
+          body: request.body,
+          csrf: await csrf(),
+        });
+        setRevokeStatus(describeRevokeResult(result), 'ok');
+        const application = await api(applicationPath(applicationId));
+        availability.textContent = describeCatalogAvailability(application);
+        await loadVersions();
+      } catch (error) {
+        setRevokeStatus(describeRevocationFailure(error), 'bad');
+      }
+    });
+
+    loadPage();
+  </script>
+</body>
+</html>
