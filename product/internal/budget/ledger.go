@@ -86,6 +86,52 @@ type Totals struct {
 	Overrun         bool
 }
 
+// Allowance is the shared run-tree allowance at one instant, read while holding
+// the root Run's row lock. It is the same decimal arithmetic ReserveTx applies
+// (limit - charged - outstanding, clamped at zero), so a caller can decide
+// something *from* the allowance without inventing a second accounting path or
+// contradicting a concurrent reservation.
+type Allowance struct {
+	RootRunID   string
+	Limit       string
+	Currency    string
+	Charged     string
+	Outstanding string
+	Remaining   string
+	Overrun     bool
+}
+
+// LockAllowanceTx resolves the tree's root Run and locks it exactly like
+// ReserveTx, then returns the authoritative decimal allowance. The lock is the
+// atomicity point: every reservation, settlement and release of the tree
+// serialises on the same row, so the returned Remaining is a consistent
+// snapshot. Nothing is written.
+//
+// F07/T080 uses it to freeze a child Run's budget from the parent's shared
+// allowance and to refuse a delegation when nothing remains.
+func (l *Ledger) LockAllowanceTx(
+	ctx context.Context, tx *sql.Tx, runID string,
+) (*Allowance, error) {
+	root, limit, currency, err := lockBudgetRoot(ctx, tx, runID)
+	if err != nil {
+		return nil, err
+	}
+	charged, outstanding, err := ledgerTotalsTx(ctx, tx, root)
+	if err != nil {
+		return nil, err
+	}
+	consumed, err := addAmounts(charged, outstanding)
+	if err != nil {
+		return nil, err
+	}
+	remaining, overrun := remainingOf(limit, consumed)
+	return &Allowance{
+		RootRunID: root, Limit: limit, Currency: currency,
+		Charged: charged, Outstanding: outstanding,
+		Remaining: remaining, Overrun: overrun,
+	}, nil
+}
+
 // ExhaustedError is the typed budget refusal: the conservative reservation
 // does not fit the run tree's remaining budget. Remaining is the amount that was
 // available before the refused reservation.

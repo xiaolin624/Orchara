@@ -34,6 +34,7 @@ import (
 	"io"
 	"strings"
 
+	"orchara/platform/internal/budget"
 	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/jcs"
@@ -71,6 +72,7 @@ const (
 	CodeChildCallsExceeded     = "child_calls_exceeded"
 	CodeChildDepthExceeded     = "child_depth_exceeded"
 	CodeChildNotTerminal       = "child_not_terminal"
+	CodeBudgetExhausted        = "budget_exhausted"
 	CodeObjectStoreUnavailable = "object_store_unavailable"
 	CodeResultNotReadable      = "child_result_unavailable"
 )
@@ -164,6 +166,11 @@ type Service struct {
 	DB      *sql.DB
 	Catalog *catalog.Reader
 	Objects *objectstore.Store
+	// Budget is the shared decimal ledger (F07/T080). A child Run freezes its
+	// allowance from the tree's budget root under the same row lock a reservation
+	// takes, so parallel children can never race a recovery or each other into a
+	// second allowance.
+	Budget *budget.Ledger
 	// Execution is the F07/T081 state-machine seam: the child lifecycle hook
 	// resolves a parent's children wait and re-drives its finalizer through the
 	// same execution primitives the T035 bridge and the finalizer use. Nil keeps
@@ -179,7 +186,7 @@ type Service struct {
 // them refuses spawn instead of creating a Run whose input/manifest identity
 // cannot be frozen.
 func New(db *sql.DB, cat *catalog.Reader, objects *objectstore.Store) *Service {
-	return &Service{DB: db, Catalog: cat, Objects: objects}
+	return &Service{DB: db, Catalog: cat, Objects: objects, Budget: budget.New(db)}
 }
 
 // SpawnRequest is the contract spawnChild body. Input stays raw so the canonical
@@ -385,9 +392,10 @@ func (s *Service) Spawn(
 			"the child version has no frozen I/O schema identity")
 	}
 
-	// 5. Runtime depth: the child's depth is the number of Run generations above
-	// it. The parent's own frozen policy bounds it; F07/T080 owns the budget
-	// accounting, not this structural bound.
+	// 5. Runtime depth and the parent's child-call count are rows, not counters:
+	// both are derived from the real ancestor/run_children rows inside the
+	// parent-lock transaction, so a retry or recovery can never re-initialise an
+	// allowance (IMPLEMENTATION-DETAILS.md:69, EXECUTION.md:72).
 	depth, err := childDepthTx(ctx, tx, parentRunID)
 	if err != nil {
 		return nil, err
@@ -411,7 +419,49 @@ func (s *Service) Spawn(
 			map[string]any{"used": childCount, "max_child_calls": maxCalls})
 	}
 
-	// 6. Seal exactly the mapped object. The bytes are the canonical mapped
+	// 6. F07/T080: the child's frozen allowance is read from the tree's **budget
+	// root** under the same row lock every reservation of the tree takes
+	// (internal/budget.LockAllowanceTx). There is one ledger and one allowance:
+	// the child never receives a second budget, and a concurrent reservation,
+	// recovery or spawn cannot race this snapshot into a fresh allowance.
+	//
+	// A root with no remaining allowance cannot delegate: the child would be
+	// created only to be refused on its first positive reservation. The refusal
+	// is the ledger's own typed 429, so the parent executor reports it as the
+	// delegation node's stable code. An existing child is replayed before this
+	// point, so a resumed parent is never stranded by a budget spent while it
+	// waited.
+	childBudget, childCurrency, maxActiveMS, policyProblem := catalog.RunPolicy(childDefinition)
+	if policyProblem != nil {
+		return nil, refusalWithDetails(422, "child_policy_invalid",
+			"the child version has no runnable policy", map[string]any{"reason": policyProblem.Message})
+	}
+	allowance, err := s.Budget.LockAllowanceTx(ctx, tx, parentRunID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the parent run's shared allowance: %w", err)
+	}
+	if cmp, err := budget.CompareAmounts(allowance.Remaining, "0"); err != nil {
+		return nil, fmt.Errorf("reading the parent run's shared allowance: %w", err)
+	} else if cmp == 0 {
+		return nil, refusalWithDetails(429, CodeBudgetExhausted,
+			"the parent run's shared budget has no remaining allowance for a new child Run",
+			map[string]any{
+				"remaining_amount": allowance.Remaining,
+				"currency":         allowance.Currency,
+			})
+	}
+	// The ledger (usage_ledger.budget_root_run_id) is the authority; the Run
+	// columns are the frozen display limit. Fall back to the child's declared
+	// policy only if the root row could not name a limit, never to a new value.
+	sharedBudget, sharedCurrency := allowance.Limit, allowance.Currency
+	if strings.TrimSpace(sharedBudget) == "" {
+		sharedBudget = childBudget
+	}
+	if strings.TrimSpace(sharedCurrency) == "" {
+		sharedCurrency = childCurrency
+	}
+
+	// 7. Seal exactly the mapped object. The bytes are the canonical mapped
 	// input and nothing else; the receipt records which field names crossed.
 	objectKey, err := objectstore.SealedKey()
 	if err != nil {
@@ -439,27 +489,9 @@ func (s *Service) Spawn(
 		return nil, fmt.Errorf("registering the sealed child input: %w", err)
 	}
 
-	// 7. The child's execution identity is its own frozen version manifest, not
+	// 8. The child's execution identity is its own frozen version manifest, not
 	// the parent's. The snapshot is created from the version row exactly like the
 	// F08/T074 published-run path.
-	childBudget, childCurrency, maxActiveMS, policyProblem := catalog.RunPolicy(childDefinition)
-	if policyProblem != nil {
-		return nil, refusalWithDetails(422, "child_policy_invalid",
-			"the child version has no runnable policy", map[string]any{"reason": policyProblem.Message})
-	}
-	budget, currency, err := budgetRootAllowanceTx(ctx, tx, parentRunID)
-	if err != nil {
-		return nil, err
-	}
-	// The ledger is the budget authority (usage_ledger.budget_root_run_id); the
-	// Run column is the frozen display limit. Prefer the root's value, fall back to
-	// the child's policych when the root row is unreadable (never invent a limit).
-	if budget == "" {
-		budget = childBudget
-	}
-	if currency == "" {
-		currency = childCurrency
-	}
 	snapshotID := uuid.NewString()
 	childRunID := uuid.NewString()
 	jobID := uuid.NewString()
@@ -491,7 +523,7 @@ func (s *Service) Spawn(
 		childRunID, nullableUUID(parent.ConversationID.String), parentRunID, logicalKey,
 		parent.OwnerID, snapshotID, version.ID,
 		version.ManifestSHA256, inputArtifactID, checkpointThreadID,
-		budget, currency, maxActiveMS,
+		sharedBudget, sharedCurrency, maxActiveMS,
 	); err != nil {
 		return nil, fmt.Errorf("creating the child run: %w", err)
 	}
@@ -725,35 +757,6 @@ func childCallCountTx(ctx context.Context, tx *sql.Tx, parentRunID string) (int,
 		return 0, fmt.Errorf("counting the parent's child runs: %w", err)
 	}
 	return count, nil
-}
-
-// budgetRootAllowanceTx reads the allowance from the tree's root Run. The
-// usage_ledger root (usage_ledger.budget_root_run_id) is the accounting
-// authority; the Run column is the frozen display limit copied at creation.
-func budgetRootAllowanceTx(
-	ctx context.Context, tx *sql.Tx, parentRunID string,
-) (string, string, error) {
-	var budget, currency string
-	err := tx.QueryRowContext(ctx, `
-		WITH RECURSIVE chain(id, parent_run_id, level) AS (
-		    SELECT id, parent_run_id, 1 FROM platform.runs WHERE id = $1::uuid
-		    UNION ALL
-		    SELECT r.id, r.parent_run_id, c.level + 1
-		      FROM platform.runs AS r
-		      JOIN chain AS c ON r.id = c.parent_run_id
-		     WHERE c.level < 8
-		)
-		SELECT root.budget_limit::text, root.currency
-		  FROM platform.runs AS root
-		 WHERE root.id = (SELECT id FROM chain WHERE parent_run_id IS NULL LIMIT 1)`,
-		parentRunID).Scan(&budget, &currency)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", nil
-	}
-	if err != nil {
-		return "", "", fmt.Errorf("reading the budget root: %w", err)
-	}
-	return budget, currency, nil
 }
 
 // readRunTx reads one contract Run projection inside a transaction.
