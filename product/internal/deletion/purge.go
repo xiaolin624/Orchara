@@ -389,20 +389,20 @@ func derivePurgeTargets(
 	}
 
 	searchIndex := scopeMap(details, ScopeSearchIndex)
-	for _, id := range stringList(searchIndex["document_ids"]) {
+	for _, id := range stringListFrom(searchIndex["document_ids"]) {
 		documents[id] = true
 	}
-	for _, id := range stringList(searchIndex["chunk_ids"]) {
+	for _, id := range stringListFrom(searchIndex["chunk_ids"]) {
 		chunks[id] = true
 	}
-	for _, id := range stringList(searchIndex["knowledge_base_ids"]) {
+	for _, id := range stringListFrom(searchIndex["knowledge_base_ids"]) {
 		bases[id] = true
 	}
 	retrievalCache := scopeMap(details, ScopeRetrievalCache)
-	for _, id := range stringList(retrievalCache["document_ids"]) {
+	for _, id := range stringListFrom(retrievalCache["document_ids"]) {
 		documents[id] = true
 	}
-	for _, id := range stringList(retrievalCache["knowledge_base_ids"]) {
+	for _, id := range stringListFrom(retrievalCache["knowledge_base_ids"]) {
 		bases[id] = true
 	}
 	if job.ResourceType == ResourceDocument {
@@ -411,10 +411,10 @@ func derivePurgeTargets(
 	if job.ResourceType == ResourceMemory {
 		memories[job.ResourceID] = true
 	}
-	for _, id := range stringList(searchIndex["memory_ids"]) {
+	for _, id := range stringListFrom(searchIndex["memory_ids"]) {
 		memories[id] = true
 	}
-	for _, id := range stringList(retrievalCache["memory_ids"]) {
+	for _, id := range stringListFrom(retrievalCache["memory_ids"]) {
 		memories[id] = true
 	}
 
@@ -913,7 +913,7 @@ func stringValue(value any) string {
 
 // stringList accepts the descriptor arrays T069 writes ([]any of strings) and a
 // bare string for a single-id descriptor.
-func stringList(value any) []string {
+func stringListFrom(value any) []string {
 	switch typed := value.(type) {
 	case nil:
 		return nil

@@ -451,7 +451,7 @@ func (cleaner *CopyCleaner) processJob(
 	}
 	owed := make([]Scope, 0, len(CopyScopes))
 	for _, scope := range CopyScopes {
-		if containsScope(job.Remaining, scope) {
+		if containsScopeString(job.Remaining, scope) {
 			owed = append(owed, scope)
 		}
 	}
@@ -490,7 +490,7 @@ func (cleaner *CopyCleaner) processJob(
 	}
 	owedNow := make([]Scope, 0, len(CopyScopes))
 	for _, scope := range CopyScopes {
-		if containsScope(locked.Remaining, scope) {
+		if containsScopeString(locked.Remaining, scope) {
 			owedNow = append(owedNow, scope)
 		}
 	}
@@ -1188,7 +1188,7 @@ func mustJSON(value any) string {
 	return string(encoded)
 }
 
-func containsScope(scopes []string, wanted Scope) bool {
+func containsScopeString(scopes []string, wanted Scope) bool {
 	for _, scope := range scopes {
 		if scope == string(wanted) {
 			return true
