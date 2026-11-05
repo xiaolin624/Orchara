@@ -93,13 +93,13 @@ def test_twenty_waiting_parents_do_not_starve_the_child_pool(t029_stack) -> None
     """
     admin, creator = t075.creator(t029_stack)
     chain = st.migration_chain(t029_stack.dbname)
-    assert "0050_f07_waiting_capacity.sql" in chain.values(), chain
+    assert "0051_f07_waiting_capacity.sql" in chain.values(), chain
     child_version = _child_version(t029_stack, creator)
     application_id = _parent_application(t029_stack, creator, child_version["id"])
 
     # The child pool is seeded by the migration with the documented capacity.
     counter = t081.child_counter(t029_stack.dbname)
-    assert counter is not None, "0050 must seed global/child_slots"
+    assert counter is not None, "0051 must seed global/child_slots"
     assert counter["capacity"] == 8, counter
     assert counter["used"] == 0, counter
 

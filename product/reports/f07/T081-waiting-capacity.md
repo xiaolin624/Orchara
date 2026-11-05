@@ -11,7 +11,7 @@
 - 边界（如实）：共享父预算/次数原子属 T080；顶层配额与每会话逻辑槽属 F08/T074 请求队列，
   本票不读写（§5.3）；真实 WSL2/runsc 五类评测仍 `not_run`（T078 边界不变）；浏览器 DOM
   `not_run`（未改页面）。
-- 迁移：`0050_f07_waiting_capacity.sql`（worktree 当前尾号；orchestrator 目标 0054，合并时按合并
+- 迁移：`0051_f07_waiting_capacity.sql`（worktree 当前尾号；orchestrator 目标 0054，合并时按合并
   树重编号；测试按名字断言）。ADR：`docs/adr/0032-f07-waiting-capacity.md`。未改
   `docs/spec/**`/`contracts/**`，`sync_spec --check` no drift。
 
@@ -24,14 +24,14 @@
 2. **基线缺陷**：`integration/t068-t082` @ `a4e946d` 同时存在 `0048_diagnostic_grants.sql` 与
    `0048_f07_child_runs.sql`，`internal/db.LoadFS` 对重复版本直接失败 ⇒ 任何新库 `admin migrate`
    都不可能成功。父代理在集成分支提交 `affc12c` 将 T078 迁移改为 `0049`；本分支先合并该提交
-   （merge `<merge-commit>`），再使用下一个空号 `0050`。修复只重命名、字节不变。
+   （merge `<merge-commit>`），再使用下一个空号 `0051`。修复只重命名、字节不变。
 3. TDD 切片：真实栈用例先红（子 Run 被顶层池/候选择序挡住；等待父不会自动收敛），再实现
    claim 池路由/轮转/释放、hook、Reconcile，逐片转绿。
 4. 门禁、报告、PROGRESS、ADR，合并 `integration/t068-t082` 后复跑（§3）。
 
 ## 1. 交付
 
-### 1.1 迁移 `0050_f07_waiting_capacity.sql`（非契约、加法）
+### 1.1 迁移 `0051_f07_waiting_capacity.sql`（非契约、加法）
 
 | 变更 | 说明 |
 |---|---|

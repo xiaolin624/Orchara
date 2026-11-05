@@ -27,7 +27,7 @@ child 终态没有任何父侧 hook（T078 测试只能手工调 T035 bridge）�
 
 ## 决策
 
-### D1. 迁移 `0050_f07_waiting_capacity.sql`（非契约、加法）
+### D1. 迁移 `0051_f07_waiting_capacity.sql`（非契约、加法）
 
 - `platform.runs.last_child_claim_at timestamptz`：公平领取的轮转键，写在**父** Run 上，
   记录该父最近一次消费 child claim 的时间。
@@ -115,7 +115,7 @@ hook 是提交后事务，进程可能在 child 终态提交与 hook 之间崩�
 
 ## 影响
 
-- 迁移 `0050_f07_waiting_capacity.sql`（分支树下一个空号；orchestrator 目标 0054，最终合并按
+- 迁移 `0051_f07_waiting_capacity.sql`（分支树下一个空号；orchestrator 目标 0054，最终合并按
   合并树重编号；测试按名字断言本迁移，不 pin 版本号）。
 - 代码：`internal/execution/{execution,store,service,cancel,cancel_store,children_hooks}.go`、
   `internal/children/hook.go`、`internal/api/server.go`；无非契约 REST 变更。
