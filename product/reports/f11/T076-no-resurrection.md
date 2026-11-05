@@ -2,10 +2,10 @@
 
 - 任务：T076 / GitHub #77（父 F11），"删除后恢复与组件历史不能让内容复活"
 - 分支：`t/t076-no-resurrection`；基线 `integration/t068-t082` @ `affc12c`；
-  合并提交 `6b85d1a`（集成 tip `d24cacb`，含 T079/T080）
+  两次合并：`6b85d1a`（tip `d24cacb`，T079/T080）、`8a92076`（tip `9f1ba89`，T081）
 - 状态：**passed**（OTel/metrics 专用行 **partial**：本仓库无 tracer/metrics SDK，
-  交付的是只读 operator 告警面 + 退出码，见 ADR 0032 §2；ADR 因集成树已占用
-  0029/0031 而按名重编号为 0032）
+  交付的是只读 operator 告警面 + 退出码，见 ADR 0033 §2；ADR 因集成树已占用
+  0029/0031/0032 而按名重编号为 0033）
 - 边界：第三方组件自有存储、备份介质、用户已下载副本**不由平台擦除**；T072 只把
   它们登记为 external/not_erasable，本票的告警报文重复该边界（§1.4）。备份工具本身
   属 T072，本票不做恢复工具。
@@ -199,12 +199,16 @@ python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot 
 
 ## 5 合并
 
-最终 `git merge integration/t068-t082` 的 merge commit 为 **`6b85d1a`**（集成 tip
-`d24cacb`，含 T079/T080）。唯一冲突在 `product/PROGRESS.md`：保留双方新增的 T079 与
-T076 行，并保留集成侧已移动的 T078 小节（丢弃本分支旧位置的重复副本）；本票 ADR 因
-集成树已占用 0029（T079）与 0031（T080）而重编号为 **0032**（文件名
-`docs/adr/0032-no-resurrection-and-cleanup-alerts.md`，merger 可按名再编号）。迁移
-无冲突：T079 已占 `0050_router_interactions.sql`，本票不新增迁移。合并后树干净，
+两次 `git merge integration/t068-t082`：
+
+1. `6b85d1a`（集成 tip `d24cacb`，含 T079/T080）。唯一冲突在 `product/PROGRESS.md`：
+   保留双方新增的 T079 与 T076 行，并保留集成侧已移动的 T078 小节（丢弃本分支旧位置的
+   重复副本）。
+2. `8a92076`（集成 tip `9f1ba89`，含 T081）。自动合并无冲突。
+
+本票 ADR 因集成树先后占用 0029（T079）、0031（T080）、0032（T081）而按名重编号为
+**0033**（`docs/adr/0033-no-resurrection-and-cleanup-alerts.md`；merger 可再按名编号）。
+迁移无冲突：T079 已占 0050、T081 已占 0051，本票不新增迁移。两次合并后树均干净，
 `go build ./...` exit 0，`pytest tests/f11` 复跑见 §3.z 末尾。
 
 ## 6 与后续票的接口
