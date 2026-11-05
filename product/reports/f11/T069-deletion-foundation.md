@@ -2,7 +2,8 @@
 
 - 任务：F11 / GitHub Issue #70（票 `T069`，规划 ID F11.01）；分支
   `t/t069-deletion-scope`（worktree `E:\orchara-worktrees\t069`）；父批次
-  `integration/t068-t082`；基线 `cd8ca3c`；合并提交：本报告 §4.3（收尾时填写）。
+  `integration/t068-t082`；基线 `cd8ca3c`；合并提交：**无**（收尾
+  `git merge integration/t068-t082` → `Already up to date`，集成 tip 仍 `cd8ca3c`）。
 - 状态：**`partial`**（T069 范围内的四个资源类型全部真实交付并验证；票面
   “会话”资源没有权威表/读路径，属 **F08/T074**，本票只把 `resource_type=conversation`
   接进同一通用基础并对未知 id 返回 404 —— 见 §2 AC 表与 §6）。
@@ -224,6 +225,10 @@ $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-15
 $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-16
 .....................                                                    [100%]
 21 passed in 153.96s (0:02:33)
+
+$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-22   # 合并后最终树
+.....................                                                    [100%]
+21 passed in 207.95s (0:03:27)
 ```
 
 套内细分：`test_t069_delete_api.py` 2、`test_t069_resource_deletes.py` 4、
@@ -283,10 +288,13 @@ no drift: spec copy and contract snapshot match the manifest   (exit 0)
 
 ```text
 $ git merge integration/t068-t082
-<见收尾记录：merge commit、冲突与重跑>
-```
+Already up to date.
 
-<!-- MERGE-RESULT -->
+结果：无合并提交（本分支已在集成 tip `cd8ca3c` 之上，集成分支尚未包含其他同批票）。
+合并后复跑：`pytest tests/f11` 21 passed（207.95s）；`go build ./...` exit 0、
+`go vet ./...` exit 0、`go test ./...` 33 ok / 0 FAIL / 14 no-test、`gofmt -l .` 空、
+`tools/sync_spec.py --check` no drift、`pytest tests/tooling` 21 passed（6.38s）。
+工作树 `git status --short` 为空（报告此行为最后一次 docs 提交后）。
 
 ## 5. 输入与版本
 
