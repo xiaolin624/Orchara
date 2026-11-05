@@ -298,6 +298,11 @@ $ python -m pytest tests/f14 -q
 .............                                                            [100%]
 13 passed in 73.36s (0:01:13)
 
+# merge integration/t083-t091（b343f7b）→ merge commit 9c062ec 后复跑
+$ python -m pytest tests/f14 -q
+.............                                                            [100%]
+13 passed in 76.66s (0:01:16)
+
 $ python -m pytest tests/f08/test_t084_corpus.py -q
 ....                                                                     [100%]
 4 passed in 0.20s
@@ -307,7 +312,7 @@ no drift: spec copy and contract snapshot match the manifest
 ```
 
 - `pytest tests/f14 -q` = 12 个纯 Python 冻结/泄漏断言 + 1 个真实栈基线用例
-  （该次运行未设 `T090_ROUTING_REPORT`，只写 pytest tmp，不改仓库证据 JSON）。
+  （门禁运行未设 `T090_ROUTING_REPORT`，只写 pytest tmp，不改仓库证据 JSON）。
 - **全量 `pytest tests/f08 -q`：`not_run`**。理由：本票未改 `product/` 生产代码、未改
   T084 语料/runner（见 `git diff --stat` 仅 tests/f14 + experiments + reports + PROGRESS）；
   T084 语料回归 4 passed，且 registry/dataset 摘要逐字节锚定 T084 证据 JSON；共享
