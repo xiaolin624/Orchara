@@ -161,7 +161,19 @@ python tools/sync_spec.py --check
 
 ## 6. 合并、门禁原始输出与 HEAD
 
-（见文末更新；`.scratch/t083-t091/T083-REPORT.md` 与 `product/PROGRESS.md` 有同样摘要。）
+分支 `t/t083-graph-runtime`（worktree `E:\Orchara-wt\t083`），基线 `integration/t083-t091` @ `ea56392`；
+运行时代码由集成分支 merge `111e2c2`，随后 run view 合并 `c21d45e`。门禁原始结果（日志
+`.scratch/t083-t091/T083/`，2026-11-05）：
+
+- `python -m pytest tests/f04b -q` → **14 passed in 110.23s**；
+- `python -m pytest tests/f04a -q` → **36 passed in 85.31s**（同目录另一次未设 `ORCHARA_P01_PYTHON`
+  的运行是 29 passed + 7 errors，不计为通过）；
+- `python -m pytest tests/tooling -q` → **21 passed**；
+- `go build ./...`/`go vet ./...`/`go test ./...` exit 0；
+- `gofmt -l internal cmd tools` 当次原始日志列出 4 个文件（`agent.go`/`agentcontext.go`/`callapp.go`/
+  `graphplan_test.go`）；后续提交已格式化，批次最终树 `gofmt -l` 为空（`reports/review/BATCH-REVIEW-FIXES.md` §3）；
+- `python tools/sync_spec.py --check` → `no drift: spec copy and contract snapshot match the manifest`；
+- 全量 `python -m pytest tests/f06 -q` **not_run**：日志只有 12 个点、无 summary，被共享真实栈争用打断。
 
 ## 7. 变更文件
 

@@ -76,6 +76,14 @@ ITEM_KEYS = {
     "span", "excerpt", "citation",
 }
 CITATION_KEYS = {"chunk_id", "document_id", "document_revision", "span", "excerpt"}
+# The internal worker retrieval route (worker mTLS, non-contract) still returns the
+# full text and the vector score so the server can rank/merge; those fields are not
+# node data and never reach the run view/artifact consumer. Kept separate so the
+# node-output narrowing stays pinned.
+INTERNAL_ITEM_KEYS = {
+    "chunk_id", "document_id", "document_revision", "document_state", "chunk_no",
+    "span", "text", "score", "citation",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +255,9 @@ def run_once(stack):
 
 
 def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    states: dict[str, list[str]] = {}
-    for event in t042.node_events(dbname, run_id):
-        payload = event["payload"]
-        states.setdefault(payload["node_id"], []).append(payload["state"])
-    return states
+    from support import t083
+
+    return t083.node_states(dbname, run_id)
 
 
 def final_output_document(session, dbname: str, run_id: str) -> dict:

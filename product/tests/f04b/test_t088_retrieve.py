@@ -320,8 +320,9 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t033_stack) -> 
     scores = [item["score"] for item in payload["items"]]
     assert scores == sorted(scores, reverse=True), scores
     for item in payload["items"]:
-        # The internal route's item is exactly the documented platform projection.
-        assert set(item) == t088.ITEM_KEYS, item
+        # The internal worker route keeps text/score for server-side ranking; the
+        # narrowed node data output is asserted by the run-artifact case above.
+        assert set(item) == t088.INTERNAL_ITEM_KEYS, item
     serialized = json.dumps(payload)
     assert bob_document not in serialized
     assert "object_key" not in serialized
