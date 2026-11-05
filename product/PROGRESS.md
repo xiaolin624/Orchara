@@ -1837,9 +1837,13 @@ pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修�
 - 边界/风险：聊天正文按原字节作为 published Run 输入，销售链 start 结点要求 JSON 对象，
   故旅程消息是 JSON 任务文档；自然语言消息会路由成功但执行 `node_input_invalid`
   （探针实测），属 F08↔F04B 集成缺口，未冒充通过。沙箱 heartbeat 抖动只做有界重试并逐次记录。
-- 门禁：`pytest tests/f08`、`go build/vet/test ./...`、`gofmt -l`、
-  `node --check apps/web/src/assets/chat.js`、`python tools/sync_spec.py --check`；
-  未改 `docs/spec/**` 与 `contracts/**`。
+- 门禁：**最终合并树上的完整 `pytest tests/f08` 是 `not_run`**（两次最终树运行都在共享 WSL/runsc 状态根争用下
+  被编排者终止，低 CPU 长时间等待，非代码失败）；实际证据是分套件结果：
+  `test_t084_routing_eval.py` **1 passed in 84.91s**、`test_t084_pages.py` **2 passed in 10.34s**、
+  `test_t084_corpus.py` + `test_t084_states.py` **7 passed in 46.93s**；第一次合并树（`08af658`）上的
+  完整套件曾 **79 passed in 948.05s**。`go build/vet/test ./...`、`gofmt -l internal cmd tools`、
+  `node --check apps/web/src/assets/chat.js`、`python tools/sync_spec.py --check` 全绿；未改
+  `docs/spec/**` 与 `contracts/**`。
 ## F04B/T083 画布创作半：condition/join 配置与端口（GitHub #84，2026-11-05）
 
 T083 的**画布创作半**已交付，状态 **passed**（运行视图/执行语义属其它子任务）。
@@ -1875,8 +1879,13 @@ T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半�
 | 恢复接缝 | **partial**：`presetexec.Deps.NodeOutputs` 接口 + `cmd/supervisor` 读取 `run_node_outputs(kind='data')`/对象根/复算 sha256 + Go 复用单测完成；真实“同一 run 第二次 exec”冒烟 not_run（本票无 waiting，留 T087/T091） |
 | Python LangGraph 证明 | **passed**：真实 `langgraph 1.1.6`，激活集合、skipped 集合、join 调用次数=1、未选分支不进屏障（超时保护） |
 
-门禁：`python -m pytest tests/f04b -q` → 14 passed；`tests/f06`/`tests/f04a`/`tests/tooling`、`go build/vet/test ./...`、
-`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check` 结果见报告 §6。无迁移；未改 `docs/spec/**`、`contracts/**`。
+门禁（原始日志 `.scratch/t083-t091/T083/`）：`python -m pytest tests/f04b -q` **14 passed in 110.23s**；
+`pytest tests/f04a -q` **36 passed in 85.31s**（另一次未设 `ORCHARA_P01_PYTHON` 的运行是 29 passed + 7 errors，
+不计为通过）；`pytest tests/tooling -q` **21 passed**；`go build/vet/test ./...` exit 0；
+`python tools/sync_spec.py --check` **no drift**；全量 `pytest tests/f06` **not_run**（日志只有 12 个点，
+被共享栈争用打断、无 summary）；该次 `gofmt -l` 原始日志列出 4 个文件（`agent.go`/`agentcontext.go`/
+`callapp.go`/`graphplan_test.go`），后续提交已格式化，批次最终树 `gofmt -l` 为空。无迁移；
+未改 `docs/spec/**`、`contracts/**`。
 **not_run**：真实二次 exec 复用观感烟测、真实厂商模型、浏览器 DOM、画布半。
 
 ## F04B/T083 运行视图半：调试页节点状态表（condition 端口 / skipped / join）（2026-11-05）
@@ -1978,13 +1987,14 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 | 预算/usage | **passed（ledger）**：`usage_ledger` 三行（reserve/release/charge，零价 dev stub 金额 0）；`usage.updated` SSE 事件本构建无 emitter → `not_run` |
 | 恢复接缝 | **passed（接口+Go 单测）**：已完成 model 节点 data 复用、0 次 capability 调用；真实 resume 场景留 T087/T091 |
 | 画布 | **passed**：`model` palette/panel（固定 profile、prompt 编辑+插入变量、response_mode、响应 Schema=output_schema）、导出白名单 `model_profile_version,prompt_template,response_mode`；bundle 已重建提交 |
-| 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
+| 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py` **9 passed in 44.74s**；`pytest tests/f06/test_t041_capabilities.py tests/f06/test_t043_agent_node.py` **18 passed in 127.72s**；`pytest tests/f04a/test_canvas_assets.py tests/f04b/test_t086_model_canvas.py` **9 passed in 1.06s**；`go build/vet/test ./...` exit 0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` no drift；全量 `pytest tests/f04b`/`tests/f06` 本票 **not_run**（共享栈争用，见报告 §6） |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。
 
 ## F04B/T087 人工审批节点：服务端业务审批与重启后继续原决定（2026-11-06）
 
-T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈）。
+T087（GitHub #88）已交付，状态 **`partial`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈均已交付并通过；
+票面“审批过期后终止”一项为 partial：本构建**没有自动过期 sweeper**，只有 decision 路径能观察过期）。
 证据：`reports/f04b/T087-approval-node.md`；分支 `t/t087-approval-node`（worktree `E:\Orchara-wt\t087`），
 基线 `integration/t083-t091` @ `491cb78`，结束前 merge `f21f09a` → 合并提交 `b086419`（+ 文档提交）。
 
@@ -1996,13 +2006,14 @@ T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + �
 | 等待桥 | **passed**：`approval:<approval_id>` checkpoint 的 adopt 分支与既有 `capability:<operation_id>` 分支并列，capability 行为未变；rejected/expired → Run `approval_rejected`/`approval_expired`，无 resume；resume 仍由唯一 `maybeEnqueueResumeTx` 创建 |
 | 执行器 | **passed**：graph `approval` 类型/触发/config 复验/`proposal` 输入；pending → `waiting_approval` + `approval:<id>` + ConfirmExit 不继续；approved → data artifact `{approval_id,decision,decided_at,params_sha256,proposal}` 并继续；invalidated/拒绝/过期稳定码；真实二次 exec 同一 Run 恢复成功 |
 | 两次审批（T091 预演） | **passed**：`start→a1→a2→end` 两次等待/两次决定/第三次 exec 汇合；2 条独立 approval、2 个 resume job、a1/a2 各 1 条 data artifact（a1 由恢复接缝复用）、最终输出含两 id |
+| 审批过期（票面“过期后终止”） | **partial（缺自动过期 sweeper）**：现有真实栈用例是把 `expires_at` 写成过去后再 decide → 409 `approval_expired`、approval `expired`、Run failed `approval_expired`、无 resume/output；**等待中的 Run 不会仅因时间流逝自动终止**。没有后台过期扫描/定时器。 |
 | 画布 | **passed**：`approval` palette/panel（title、expires_seconds、proposal 来源绑定/JSON 字面量编辑器、“审批不授权后续外部写”说明）、export allowlist `title,expires_seconds`；bundle 已重建提交 |
 | 审批页 | **passed**：`approvals.js` 识别 `kind=node_approval`，经既有 artifact-content ACL 显示真实 title/节点/来源/proposal；capability 提案渲染不变（T050 页面测试通过） |
 | 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 7 用例（真实 PG/API/mTLS/supervisor/审批 API/唯一 resume）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票 9 passed in 57.79s |
 | 回归子集 | **passed**：`pytest tests/f06/test_t050_approval.py tests/f06/test_t050_pages.py tests/f06/test_t043_agent_node.py -q` **27 passed in 178.74s**（首跑 1 个 sandbox lease-lost 环境 flake，隔离重跑通过后整套复跑通过） |
 | Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过；合并后真实栈关键 3 用例（服务端幂等/批准恢复/两次审批）**3 passed in 58.54s** |
 | 既有测试缺陷 | **修复（2 行，测试代码）**：`tests/f04b/test_t083_runview.py` 条件/join 真实栈用例在 `491cb78` 上把 items 列表当 body 使用（该用例在 graph runtime 合并前一直 skip，从未跑过）；修复后 7 passed，产品断言不变 |
-| 边界/not_run | 全量 `pytest tests/f06` 与合并后全量 `pytest tests/f04b` 未重跑（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件；审批/等待子集 27 passed，合并后关键 3 用例真实栈 3 passed）；自动过期 sweeper 不存在（过期经 decision 路径观察）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
+| 边界/not_run | 全量 `pytest tests/f06` 与合并后全量 `pytest tests/f04b` 未重跑（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件；审批/等待子集 27 passed，合并后关键 3 用例真实栈 3 passed）；**无自动过期 sweeper**（过期只能在 decision 路径观察：过期后 `decide` 返回 409 且 Run 以 `approval_expired` 终止；等待中的 Run 不会仅因时间自动终止）→ 票面该项 partial；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`（`sync_spec --check` no drift）。
 
@@ -2031,7 +2042,7 @@ T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内�
 | 交付点 | 结果 |
 |---|---|
 | 内部检索路由（非契约） | **passed**：`POST /internal/v1/runs/{run_id}/retrieval`（worker mTLS，`internal/api/retrieval.go`）；attempt_token 复证 live attempt，owner 取 `runs.owner_id`（body 无 owner）；对每个 KB 调既有 `knowledge.Service.Query`（SQL 先 ACL/tombstone/active index/embedding revision 过滤），非 owner/不存在静默排除并计数 `requested/authorized`；多 KB 合并 score DESC + `chunk_id` 稳定 tie-break；响应仅平台字段；400/422/409/503 复用既有错误词汇 |
-| retrieve 执行器 | **passed**：`internal/presetexec/retrieve.go`；`graphNodeTypes`/`hasGraphConstructs`/dispatch 最小扩展；config 复验（uuid 数组 min1 unique、top_k 1..20、拒未知键/内联 query）；query 必须绑定为 string，缺失/非 string → `node_input_invalid` 定位 `/nodes/<i>/inputs/query`；输出 `{items,citations,count}`，citation/span 原样；无结果 `succeeded`；稳定码 `retrieve_unavailable`（503/网络）、`retrieve_denied`（调用被拒 403）、`node_output_invalid` |
+| retrieve 执行器 | **passed**：`internal/presetexec/retrieve.go`；`graphNodeTypes`/`hasGraphConstructs`/dispatch 最小扩展；config 复验（uuid 数组 min1 unique、top_k 1..20、拒未知键/内联 query）；query 必须绑定为 string，缺失/非 string → `node_input_invalid` 定位 `/nodes/<i>/inputs/query`；输出 `{items,citations,count}`，`span`/`citation` 原样；**输出已收窄（批次复核修复）**：items 为 `{chunk_id,document_id,document_revision,document_state,chunk_no,span,excerpt,citation}`、citations 为 `{chunk_id,document_id,document_revision,span,excerpt}`，`excerpt` 是 chunk 正文前 500 字符，**不含完整正文、不含向量 score**（R3/N-R10；正文只能经 owner-only citation 路由读）；无结果 `succeeded`；稳定码 `retrieve_unavailable`（503/网络）、`retrieve_denied`（调用被拒 403）、`node_output_invalid` |
 | 真实栈验收 | **passed**：`pytest tests/f04b/test_t088_retrieve.py` **6 passed in 51.63s**（T086/T090 合并树）+ **6 passed in 78.47s**（T085 并发调度器/T087/T089 合并树）+ **6 passed in 74.49s**（最终树 `8a13ee2`，再并入 skipped-facts 修复；全局锁、真实 PG+mTLS+supervisor+真实知识摄取）；引用与 DB chunk/citation 逐字段相等、citation 路由同源、空结果、foreign KB 静默排除 + requested/authorized 计数、撤权后 404、并行 retrieve 不串 |
 | 画布 | **passed**：`retrieve` palette「知识检索」、`{knowledge_base_ids:[],top_k:5}` 默认、KB 多选（`GET /knowledge-bases`，不可见已选保留+说明）、top_k 1..20、query 合法 string 来源绑定、`items/citations/count` 输出模板一键填入、导出 allowlist `knowledge_base_ids,top_k`；bundle `npm run build` 重建提交 |
 | 运行视图 | **passed**：retrieve data artifact 预取；行内展示「检索 N 段 · 引用 M 条」，citation 链接 `GET /api/v1/knowledge-citations/{chunk_id}`；200 展开真实来源，404 显示不可用且不显示缓存正文；`retrieve_unavailable`/`retrieve_denied` 稳定码提示 |
@@ -2061,3 +2072,72 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：浏览器 DOM/Playwright、真实厂商模型/嵌入（仅 dev-stub）、
 跨版本 checkpoint 恢复（本批不做）、无关全量套件（f05/f08 等）。
+
+## 批次完成记录：#84–#92 / T083–T091（2026-11-06）
+
+- 基线 `ea56392`（上一批 `integration/t068-t082` tip）→ 集成分支 tip `93ddc6b`（merge T091 `t/t091-ten-node-graph` @ `344c139`）。
+- 范围：F04B 九票（T083–T089、T091）+ F14 T090，共 10 张票（GitHub #84–#92）。
+- 契约/规格：未改 `contracts/**`、`docs/spec/**`、迁移编号；`python tools/sync_spec.py --check` **no drift**。
+  运行时的 spec 偏离（生产是 Go 图执行、不是 LangGraph）由 **ADR 0034** 记录，不静默。
+
+### 票状态
+
+| 票 | 状态 | 结果与缺项 |
+|---|---|---|
+| T083 | **passed** | 画布创作半 + 运行时半 + 运行视图半；真实栈 `tests/f04b` **14 passed in 110.23s**、`test_t083_runview.py` **7 passed in 42.69s**（含真实 condition/join/skipped E2E）；画布模块 8 passed；`tests/f04a` 36 passed、`tests/tooling` 21 passed。缺项：replay 后 join 只触发一次只有 Go fake-seam 证据，真实二次 exec 复用未跑（T087/T091 间接覆盖） |
+| T084 | **passed** | 34 例冻结语料（frozen 25 / dev 9，18+8 family 不跨 split）+ 真实发布/执行跨用户销售旅程；final-tree 全量 `pytest tests/f08` **not_run**（共享栈争用），实际证据为分套件 1/2/7 passed，第一次合并树完整套件 79 passed in 948.05s。已知缺口：自然语言聊天消息会被路由成功但执行 `node_input_invalid`（F08 把正文当 Run 输入，旅程用 JSON 任务文档） |
+| T085 | **passed** | ready-queue 并发调度器、optional 收敛/required fail-fast/嵌套并行；`tests/f04b` **43 passed in 239.44s**；`tests/f05` 149 passed、`tests/f06` 172 passed + 1 个既有 sandbox flake（隔离重跑通过）、`tests/tooling` 21 passed；`go test -race` 因无 cgo 编译器 **not_run**；真实 resume join-once **not_run**（只有 Go fake-seam，T087/T091 间接覆盖）。附带修复 `internal/sandbox/executor.go` 租约竞态（`78d09db`） |
+| T086 | **passed** | graph 路径 model 节点：一次受控生成、严格 `{{name}}` prompt、平台侧 `output_schema` 校验、恢复接缝；`test_t086_model_node.py`+`test_t086_model_canvas.py` **9 passed in 44.74s**；capability/agent 回归 18 passed；画布纯模块 9 passed。缺项：真实厂商模型、`usage.updated` 事件、真实二次 exec resume、浏览器 DOM 均 `not_run` |
+| T087 | **partial** | 服务端 node approval、等待桥、执行器、画布、真实栈均交付（9 passed in 57.79s；审批/等待子集 27 passed；合并后关键 3 用例 3 passed in 58.54s）。**缺项：没有自动过期 sweeper**——过期只能在 decision 路径观察（过期后 `decide` 返回 409 `approval_expired`，Run 随即 failed）；停在 `waiting_approval` 的 Run 不会仅因时间自动终止。因此票面“审批过期后终止”为 partial，不写成完整 passed |
+| T088 | **passed** | 平台 ACL 检索节点（非契约内部路由 + 执行器 + 画布 + run view 引用）；真实栈 `test_t088_retrieve.py` **6 passed in 74.49s**（最终树；另两次合并树 6 passed in 51.63s/78.47s）；引用与 DB chunk/citation 逐字段相等、撤权 404、并行不串。**输出已按 N-R10/R3 收窄**（本次复核修复）：items/citations 只带 `excerpt`（正文前 500 字符），无完整 `text`、无向量 `score`。缺项：`tests/f10` 全量 not_run、真实厂商 embedding、真实二次 exec 复用 retrieve 输出、浏览器 DOM |
+| T089 | **passed** | call_app 画布面板 + graph 路径真实栈 E2E；真实栈 7 passed in 110.27s、画布 23 passed；单 child 等待/恢复、并行/顺序、执行槽交接、失败映射均有真实栈断言。票面共用的 child-thread/slot 与 doc/version/span AC 中：call_app 无文档/切片引用 → doc/version/span 为 **not_applicable**（其“版本保留”由固定 `application_version` + child Run manifest sha 证明）；child slot 与 child-thread 隔离是**真实交付并断言**的，不是 not_applicable。浏览器 DOM `not_run` |
+| T090 | **blocked** | F14 所有不依赖模型的部分已交付：语料/目录卡冻结、泄漏检查、两臂 dev-stub 基线（臂 A frozen 25/25、臂 B 21/25）、`retrieval.not_used=true`；`tests/f14` **13 passed in 76.66s**（合并后复跑）、`test_t084_corpus.py` 4 passed。缺项（blocked 原因）：本机无模型凭据/端点/权重/训练 GPU，同基模强提示基线与训练 **not_run**；held-out 25 例低于 spec 的 100 例起步建议（未虚增）；训练 stop-go 只给 provisional |
+| T091 | **passed** | 十类画布/导出、十类 fixture 保存/校验、真实两次审批嵌套汇合、optional/required/未知不降级；集成分支已 merge（`93ddc6b`，T091 `344c139`）。其报告门禁：`pytest tests/f04b` **89 passed in 678.89s**、`tests/f06` **173 passed in 1311.21s**、`tests/tooling` 21 passed、`go build/vet/test ./...` 全绿、`gofmt` 空、`sync_spec --check` no drift。缺项：浏览器 DOM/Playwright、真实厂商模型/嵌入、跨版本 checkpoint 恢复（本批不做） |
+
+### 真实门禁汇总
+
+| 套件 | 实际结果（最终相关树） |
+|---|---|
+| `pytest tests/f04b` | 各票关键套件 6/7/9/14/43/89 passed（见上表）；收尾分支在合并 T091 的树上重跑受影响文件：T088 retrieve + T083 runview + T086 model **18 passed in 178.05s**、T091 十类 acceptance 回归 **8 passed in 144.09s**、无栈模块/语料 **21 passed in 3.37s**；不重复全量 |
+| `pytest tests/f05` / `tests/f06` / `tests/f04a` / `tests/tooling` / `tests/f14` | 149 / 172+1 flake（隔离重跑通过；T091 最终树 173 passed in 1311.21s）/ 36 / 21 / 13 passed（T085/T083/T091/T090 记录） |
+| Go | `go build ./...`、`go vet ./...`、`go test ./...` 全绿；`gofmt -l internal cmd tools` 空 |
+| 契约/静态 | `python tools/sync_spec.py --check` → `no drift`；`node --check`（runview/canvas 产物）exit 0；画布 bundle 由 `npm ci --offline && npm run build` 重建并提交 |
+| 明确未跑/阻塞 | 全量 `pytest tests/f08`（final tree）、全量 `pytest tests/f04b`（收尾窗口）、`tests/f10` 全量、`go test -race`、T090 模型臂；均按实际标 `not_run`/`blocked`，不以部分结果冒充全绿 |
+
+### 诚实边界
+
+- **LangGraph 不是生产运行时**：生产图执行是 Go `internal/presetexec`（F04A 起），Python
+  `worker/platform_worker/compiler/regions.py` + `tests/f04b/test_t083_langgraph_regions.py` 是独立证明
+  （激活/skipped/join 次数）。这是对 `COMPILER-CONTRACT.md:3` 的偏离，ADR 0034 记录理由与边界。
+- **非契约数据面**：节点输出约定、`/internal/v1/runs/{id}/retrieval`、`/node-approvals`（worker mTLS）、
+  `GET /assets/runview.js`、`GET /runs/{id}/node-results` 均为非契约面，不写入 OpenAPI；见 ADR 0034。
+- **浏览器 DOM 未驱动**：所有页面逻辑用 Node 执行已提交真实字节 + 最小 DOM/fetch shim（T083/T084/T086–
+  T089/T091 同一边界），不是 Playwright。
+- **真实厂商模型/嵌入**：仅 `ORCHARA_PROFILE=dev-stub`；无凭据/端点/权重/GPU，真实模型路径 `not_run`，
+  T090 因此 `blocked`。
+- **T084 输入形状**：聊天正文当 Run 输入会 `node_input_invalid`；旅程用 JSON 任务文档绕过，属 F08↔F04B
+  集成缺口，未冒充通过。
+- **T087 过期**：无自动过期 sweeper；只有 decision 路径观察过期（见 T087 行）。
+- **T085 optional 发布限制**：画布/发布允许 `optional_sources` 指向 agent/call_app/model，运行时只会收敛
+  纯读/计算错误，其余 fail closed（写/能力/预算/审批/未知不降级）；发布期拒绝待后续（ADR 0034 §4）。
+- **T083/T085 replay join-once**：只有 Go fake-seam 证据；真实第二次 exec 复用由 T087/T091 的真实等待
+  场景间接覆盖，T083/T085 自身标 `not_run`。
+- **T088 输出边界**：节点数据只含 `excerpt`/无 score；完整正文只能经 owner-only citation 路由读取（撤权/
+  删除后 404，不回退缓存正文）。内部 worker 路由的 text/score 是服务端排序用的 mTLS 数据面，不是节点数据。
+
+### 合并顺序与提交
+
+- 集成分支 first-parent merge（`git log --oneline --merges ea56392..bd4d791`）：
+  `ea56392` → `08af658`（T083 画布）→ `111e2c2`（T083 运行时）→ `0deeab9`（T084）→
+  `c21d45e`（T083 run view）→ `b343f7b`（T083 真实 condition E2E）→ `e5e7cc0`（T086）→
+  `f21f09a`（T090）→ `04f09ba`（T087）→ `7b1becd`（T088）→ `aced554`（T089）→
+  `15db973`（T085 并发调度器）→ `4851c4f`（T085 文档）→ `355e5d4`（T087 证据）→
+  `5bd939d`（T089 证据）→ `7da0249`（T087 gate）→ `9d8208e`（T085 skip 事实）→
+  `1cf7637`（T088 证据）→ `bd4d791`（T088 gate pins）→ `93ddc6b`（T091 十类工作流；T091 `344c139`）。
+- 收尾分支 `t/batch-review-fixes`：`50d095f`（C.1–C.3 重构）→ `6a3195a`（T088 输出收窄 +
+  C.5/C.6）→ `fbac878`（PROGRESS 诚实性/ADR 0034/T087 partial/T088 报告）→ merge
+  `refs/heads/integration/t083-t091` @ `93ddc6b`（含 T091）→ **`593554c`**。合并后收尾门禁：
+  受影响真实栈 `test_t088_retrieve.py`+`test_t083_runview.py`+`test_t086_model_node.py`
+  **18 passed in 178.05s**；T091 十类 acceptance 回归 **8 passed in 144.09s**；无栈模块/语料
+  **21 passed in 3.37s**；`go build/vet/test ./...` exit 0、`gofmt -l` 空、`sync_spec --check`
+  no drift、`node --check` exit 0。详见 `reports/review/BATCH-REVIEW-FIXES.md` §3.3/§4。

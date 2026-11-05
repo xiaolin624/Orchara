@@ -924,29 +924,13 @@ func (r *runner) executeGraphCondition(
 	r.emitNode(ctx, id, "running")
 	bindings, err := resolveNodeBindings(node.node, view.available)
 	if err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeInputInvalid, err.Error()), nil, true
+		return r.failGraphNode(ctx, node, CodeNodeInputInvalid, err.Error()), nil, true
 	}
 	output, err := evaluateCondition(node, bindings)
 	if err != nil {
-		return r.failGraphNodeBeforeSandbox(ctx, node, codeOfNodeError(err), err.Error()), nil, true
+		return r.failGraphNode(ctx, node, codeOfNodeError(err), err.Error()), nil, true
 	}
-	canonical, err := canonicalNodeDocument(output)
-	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeNodeOutputInvalid,
-			"the condition output cannot be encoded"), nil, true
-	}
-	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"registering the condition port failed: "+err.Error()), nil, true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "port"}}); err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"recording the condition port failed: "+err.Error()), nil, true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return executionOutcome{}, output, false
+	return r.publishNodeData(ctx, node, output, "port", "condition output", "condition port")
 }
 
 // executeGraphJoin merges exactly the region's activated branches into the
@@ -959,7 +943,7 @@ func (r *runner) executeGraphJoin(
 	r.emitNode(ctx, id, "running")
 	branches := view.branches
 	if branches == nil {
-		return r.failGraphNodeBeforeSandbox(ctx, node, CodeInvalidRegion,
+		return r.failGraphNode(ctx, node, CodeInvalidRegion,
 			"the join has no settled branch view"), nil, true
 	}
 
@@ -982,23 +966,7 @@ func (r *runner) executeGraphJoin(
 		results[source] = entry
 	}
 	envelope := map[string]any{"results": results}
-	canonical, err := canonicalNodeDocument(envelope)
-	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeNodeOutputInvalid,
-			"the join envelope cannot be encoded"), nil, true
-	}
-	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"registering the join envelope failed: "+err.Error()), nil, true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "results"}}); err != nil {
-		return r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"recording the join envelope failed: "+err.Error()), nil, true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return executionOutcome{}, envelope, false
+	return r.publishNodeData(ctx, node, envelope, "results", "join envelope", "join envelope")
 }
 
 // executeGraphAgent runs one agent node through the shared controlled loop by
@@ -1010,7 +978,7 @@ func (r *runner) executeGraphAgent(
 ) (map[string]any, executionOutcome, bool) {
 	config, err := validateAgentNode(node.node, r.manifest)
 	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, codeOfPlanError(err), err.Error()), true
+		return nil, r.failGraphNode(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
 	linearView := r.graphLinearView(plan, inputs, node.node, view)
 	linearView.plan.agent = node.node
@@ -1033,7 +1001,7 @@ func (r *runner) executeGraphCallApp(
 ) (map[string]any, executionOutcome, bool) {
 	config, err := validateCallAppNode(node.node)
 	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, codeOfPlanError(err), err.Error()), true
+		return nil, r.failGraphNode(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
 	linearView := r.graphLinearView(plan, inputs, node.node, view)
 	linearView.plan.callApp = node.node
@@ -1083,15 +1051,13 @@ func (r *runner) failGraph(
 	return r.failGraphRun(ctx, code, message)
 }
 
-// failGraphNodeBeforeSandbox is a join/condition refusal that needs no sandbox.
-func (r *runner) failGraphNodeBeforeSandbox(
-	ctx context.Context, node *graphNode, code, message string,
-) executionOutcome {
-	return r.failGraph(ctx, node.node.ID, code, message)
-}
-
-// failGraphNodeAfterSandbox is a platform-side refusal after earlier work ran.
-func (r *runner) failGraphNodeAfterSandbox(
+// failGraphNode fails one graph node by id. Both refusals a node can make before
+// touching a sandbox (a join/condition refusal) and platform-side refusals after
+// earlier work ran share the same observable effect: emit the node's failed fact,
+// record the failure on the attempt and let the scheduler commit after the other
+// branches stopped. The former separate Before/AfterSandbox names described the
+// call site, not different behavior.
+func (r *runner) failGraphNode(
 	ctx context.Context, node *graphNode, code, message string,
 ) executionOutcome {
 	return r.failGraph(ctx, node.node.ID, code, message)
@@ -1147,6 +1113,38 @@ func (r *runner) reusableNodeOutputs(ctx context.Context, plan *graphPlan) map[s
 		outputs[nodeID] = object
 	}
 	return outputs
+}
+
+// publishNodeData seals one node's JSON output as its node_output data artifact,
+// records the owner-visible node result and emits the node's succeeded fact. Every
+// graph node that produces data (condition, join, model, retrieve, approval) goes
+// through it, so the step order, result label and stable failure codes cannot
+// drift between node types. `document` names the value in encode failures,
+// `operation` names it in artifact/registration failures and `label` is the node
+// result label the run view reads. It never commits the run: the scheduler owns
+// the commit after the other branches stopped.
+func (r *runner) publishNodeData(
+	ctx context.Context, node *graphNode, output map[string]any,
+	label, document, operation string,
+) (executionOutcome, map[string]any, bool) {
+	id := node.node.ID
+	canonical, err := canonicalNodeDocument(output)
+	if err != nil {
+		return r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
+			"the "+document+" cannot be encoded"), nil, true
+	}
+	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
+	if err != nil {
+		return r.failGraphNode(ctx, node, CodeSandboxFailed,
+			"registering the "+operation+" failed: "+err.Error()), nil, true
+	}
+	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
+		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: label}}); err != nil {
+		return r.failGraphNode(ctx, node, CodeSandboxFailed,
+			"recording the "+operation+" failed: "+err.Error()), nil, true
+	}
+	r.emitNode(ctx, id, "succeeded")
+	return executionOutcome{}, output, false
 }
 
 // canonicalNodeDocument is the canonical JSON a node data artifact carries.

@@ -233,13 +233,13 @@ func TestGraphRunRetrievePublishesCitationsAndPassesThemDownstream(t *testing.T)
 	item, _ := items[0].(map[string]any)
 	wantItemKeys := []string{
 		"chunk_id", "chunk_no", "citation", "document_id", "document_revision",
-		"document_state", "score", "span", "text",
+		"document_state", "excerpt", "span",
 	}
 	if got := sortedStringKeys(item); strings.Join(got, ",") != strings.Join(wantItemKeys, ",") {
 		t.Fatalf("item keys = %v", got)
 	}
 	if item["document_id"] != "document-1" || item["chunk_id"] != "chunk-1" ||
-		item["document_revision"] != float64(2) || item["text"] != "north 1234" {
+		item["document_revision"] != float64(2) || item["excerpt"] != "north 1234" {
 		t.Fatalf("item = %v", item)
 	}
 	span, _ := item["span"].(map[string]any)
@@ -257,9 +257,12 @@ func TestGraphRunRetrievePublishesCitationsAndPassesThemDownstream(t *testing.T)
 		t.Fatalf("citations = %v", output["citations"])
 	}
 	projection, _ := citations[0].(map[string]any)
-	wantCitationKeys := []string{"chunk_id", "document_id", "document_revision", "span", "text"}
+	wantCitationKeys := []string{"chunk_id", "document_id", "document_revision", "excerpt", "span"}
 	if got := sortedStringKeys(projection); strings.Join(got, ",") != strings.Join(wantCitationKeys, ",") {
 		t.Fatalf("citation projection keys = %v", got)
+	}
+	if projection["excerpt"] != "north 1234" {
+		t.Fatalf("citation projection = %v", projection)
 	}
 	if projection["chunk_id"] != "chunk-1" || projection["document_id"] != "document-1" ||
 		projection["document_revision"] != float64(2) {
@@ -280,6 +283,37 @@ func TestGraphRunRetrievePublishesCitationsAndPassesThemDownstream(t *testing.T)
 	}
 	if len(client.proposals) != 1 || client.proposals[0].SuggestedState != "succeeded" {
 		t.Fatalf("proposals = %+v", client.proposals)
+	}
+}
+
+func TestRetrieveOutputExcerptsLongChunksWithoutTheVectorScore(t *testing.T) {
+	body := strings.Repeat("华", maxRetrieveExcerptRunes) + "被删掉的尾部"
+	output, err := retrieveOutputDocument([]RetrievedItem{
+		retrievedItem("chunk-long", "document-1", body),
+	})
+	if err != nil {
+		t.Fatalf("retrieveOutputDocument: %v", err)
+	}
+	items, _ := output["items"].([]any)
+	item, _ := items[0].(map[string]any)
+	if _, present := item["score"]; present {
+		t.Fatalf("the node output must not expose the vector score: %v", item)
+	}
+	if _, present := item["text"]; present {
+		t.Fatalf("the node output must not expose the full chunk body: %v", item)
+	}
+	want := strings.Repeat("华", maxRetrieveExcerptRunes)
+	if item["excerpt"] != want {
+		t.Fatalf("excerpt = %q (%d runes), want %d runes",
+			item["excerpt"], len([]rune(item["excerpt"].(string))), maxRetrieveExcerptRunes)
+	}
+	citations, _ := output["citations"].([]any)
+	projection, _ := citations[0].(map[string]any)
+	if projection["excerpt"] != want {
+		t.Fatalf("citation excerpt = %v", projection)
+	}
+	if output["count"] != float64(1) {
+		t.Fatalf("count = %v", output["count"])
 	}
 }
 

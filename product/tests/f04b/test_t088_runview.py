@@ -78,4 +78,4 @@ def test_the_retrieve_runview_pure_functions_pass_under_node(node_binary: str) -
         timeout=120,
     )
     assert completed.returncode == 0, completed.stderr
-    assert "PASS 6 runview T088 tests" in completed.stdout
+    assert "PASS 7 runview T088 tests" in completed.stdout

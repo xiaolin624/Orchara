@@ -230,7 +230,7 @@ func (r *runner) executeGraphModel(
 		ctx, r.lease.RunID, r.lease.AttemptToken, r.options.ExecutionUnitID,
 	)
 	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeCapabilityFailed,
+		return nil, r.failGraphNode(ctx, node, CodeNodeCapabilityFailed,
 			"the model control heartbeat failed"), true
 	}
 	if heartbeat.CancelRequested {
@@ -241,12 +241,12 @@ func (r *runner) executeGraphModel(
 	// 1. Resolve only the node's own bindings and render the strict template.
 	bindings, err := resolveNodeBindings(node.node, view.available)
 	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeInputInvalid,
+		return nil, r.failGraphNode(ctx, node, CodeNodeInputInvalid,
 			err.Error()), true
 	}
 	prompt, err := renderModelPrompt(config.PromptTemplate, bindings)
 	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodePromptInvalid,
+		return nil, r.failGraphNode(ctx, node, CodeNodePromptInvalid,
 			(&nodeError{
 				Code:    CodeNodePromptInvalid,
 				Pointer: fmt.Sprintf("/nodes/%d/config/prompt_template", node.index),
@@ -254,7 +254,7 @@ func (r *runner) executeGraphModel(
 			}).Error()), true
 	}
 	if len(prompt) > maxModelPromptBytes {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeInputInvalid,
+		return nil, r.failGraphNode(ctx, node, CodeNodeInputInvalid,
 			"the rendered prompt exceeds the capability's 1 MiB message limit"), true
 	}
 
@@ -263,12 +263,12 @@ func (r *runner) executeGraphModel(
 	// invoke; the executor refuses earlier so an unusable profile never creates
 	// an operation row.
 	if r.deps.Facts == nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, capabilities.CodeModelUnavailable,
+		return nil, r.failGraphNode(ctx, node, capabilities.CodeModelUnavailable,
 			"the executor has no capability facts source for the model node"), true
 	}
 	fact, factErr := r.deps.Facts.ModelProfile(ctx, config.ModelProfileVersion)
 	if factErr != nil || fact.ValidationState != "passed" || fact.Revoked {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, capabilities.CodeModelUnavailable,
+		return nil, r.failGraphNode(ctx, node, capabilities.CodeModelUnavailable,
 			"the model_profile_version is not a passed, unrevoked profile"), true
 	}
 
@@ -282,7 +282,7 @@ func (r *runner) executeGraphModel(
 	if config.ResponseMode == "json" {
 		schema, schemaErr := decodeResponseSchema(node.node.OutputSchema)
 		if schemaErr != nil {
-			return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeBadConfig,
+			return nil, r.failGraphNode(ctx, node, CodeBadConfig,
 				"the model node output_schema is not a usable object schema"), true
 		}
 		params["response_schema"] = schema
@@ -309,13 +309,13 @@ func (r *runner) executeGraphModel(
 			// The provider's answer violated the node's own response schema. That
 			// IS the node's independent schema failure; it is never retried and
 			// never turned into another model call.
-			return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
+			return nil, r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
 				message), true
 		}
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, code, message), true
+		return nil, r.failGraphNode(ctx, node, code, message), true
 	}
 	if result == nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeCapabilityFailed,
+		return nil, r.failGraphNode(ctx, node, CodeNodeCapabilityFailed,
 			"the model capability returned no result object"), true
 	}
 	switch result.State {
@@ -325,49 +325,34 @@ func (r *runner) executeGraphModel(
 		if rawCode, ok := result.Data["error_code"].(string); ok && safePlatformCode(rawCode) {
 			code = rawCode
 		}
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, code,
+		return nil, r.failGraphNode(ctx, node, code,
 			"the replayed model operation is recorded as failed"), true
 	case "awaiting_approval":
 		// A pure model call should never park; if a deployment ever does, the
 		// node follows the existing waiting semantics instead of inventing one.
 		return nil, r.waitModelNode(ctx, node, view, operationID), true
 	case "unknown":
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeCapabilityUnknown,
+		return nil, r.failGraphNode(ctx, node, CodeNodeCapabilityUnknown,
 			"the model call has an unknown provider outcome and must be reconciled"), true
 	default:
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeCapabilityFailed,
+		return nil, r.failGraphNode(ctx, node, CodeNodeCapabilityFailed,
 			"the model call returned an unsupported platform state"), true
 	}
 
 	// 4. The platform — not "the JSON looks valid" — validates the output object.
 	output, outputErr := modelOutput(config.ResponseMode, result.Data)
 	if outputErr != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
+		return nil, r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
 			outputErr.Error()), true
 	}
 	if err := validateSchema(node.node.OutputSchema, output, "#"); err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
+		return nil, r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
 			"model node "+id+" output does not match its output_schema: "+err.Error()), true
 	}
-	canonical, err := canonicalNodeDocument(output)
-	if err != nil {
-		return nil, r.failGraphNodeBeforeSandbox(ctx, node, CodeNodeOutputInvalid,
-			"the model node output cannot be canonicalised"), true
-	}
-
 	// 5. Publish exactly one data artifact, then the terminal success fact.
-	artifactID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return nil, r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"registering the model node data failed: "+err.Error()), true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "data"}}); err != nil {
-		return nil, r.failGraphNodeAfterSandbox(ctx, node, CodeSandboxFailed,
-			"recording the model node data failed: "+err.Error()), true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return output, executionOutcome{}, false
+	outcome, published, done := r.publishNodeData(
+		ctx, node, output, "data", "model node output", "model node data")
+	return published, outcome, done
 }
 
 // modelCapabilityError turns a transport/capability error into a stable

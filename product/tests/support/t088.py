@@ -40,13 +40,12 @@ RETRIEVE_OUTPUT_SCHEMA = {
                         "required": ["start_char", "end_char", "start_line", "end_line"],
                         "additionalProperties": False,
                     },
-                    "text": {"type": "string"},
-                    "score": {"type": "number"},
+                    "excerpt": {"type": "string"},
                     "citation": {"type": "object"},
                 },
                 "required": [
                     "chunk_id", "document_id", "document_revision", "document_state",
-                    "chunk_no", "span", "text", "score", "citation",
+                    "chunk_no", "span", "excerpt", "citation",
                 ],
                 "additionalProperties": False,
             },
@@ -60,9 +59,9 @@ RETRIEVE_OUTPUT_SCHEMA = {
                     "document_id": {"type": "string"},
                     "document_revision": {"type": "integer"},
                     "span": {"type": "object"},
-                    "text": {"type": "string"},
+                    "excerpt": {"type": "string"},
                 },
-                "required": ["chunk_id", "document_id", "document_revision", "span", "text"],
+                "required": ["chunk_id", "document_id", "document_revision", "span", "excerpt"],
                 "additionalProperties": False,
             },
         },
@@ -74,9 +73,17 @@ RETRIEVE_OUTPUT_SCHEMA = {
 
 ITEM_KEYS = {
     "chunk_id", "document_id", "document_revision", "document_state", "chunk_no",
+    "span", "excerpt", "citation",
+}
+CITATION_KEYS = {"chunk_id", "document_id", "document_revision", "span", "excerpt"}
+# The internal worker retrieval route (worker mTLS, non-contract) still returns the
+# full text and the vector score so the server can rank/merge; those fields are not
+# node data and never reach the run view/artifact consumer. Kept separate so the
+# node-output narrowing stays pinned.
+INTERNAL_ITEM_KEYS = {
+    "chunk_id", "document_id", "document_revision", "document_state", "chunk_no",
     "span", "text", "score", "citation",
 }
-CITATION_KEYS = {"chunk_id", "document_id", "document_revision", "span", "text"}
 
 
 # ---------------------------------------------------------------------------
@@ -248,11 +255,9 @@ def run_once(stack):
 
 
 def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    states: dict[str, list[str]] = {}
-    for event in t042.node_events(dbname, run_id):
-        payload = event["payload"]
-        states.setdefault(payload["node_id"], []).append(payload["state"])
-    return states
+    from support import t083
+
+    return t083.node_states(dbname, run_id)
 
 
 def final_output_document(session, dbname: str, run_id: str) -> dict:

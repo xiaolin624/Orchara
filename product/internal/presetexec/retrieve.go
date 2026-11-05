@@ -14,9 +14,15 @@ package presetexec
 // The node output is the documented non-contract object:
 //
 //	{"items":[{"chunk_id","document_id","document_revision","document_state",
-//	           "chunk_no","span","text","score","citation"}],
-//	 "citations":[{"chunk_id","document_id","document_revision","span","text"}],
+//	           "chunk_no","span","excerpt","citation"}],
+//	 "citations":[{"chunk_id","document_id","document_revision","span","excerpt"}],
 //	 "count":<int>}
+//
+// The output deliberately does not carry the full chunk body or the vector score
+// (N-R10/R3): `excerpt` is the first 500 characters of the chunk and a caller that
+// needs the body opens the owner-only citation route. The internal worker route
+// still returns text and score so the server can rank and the worker can merge
+// bases; those fields never become node data.
 //
 // The citation JSON and the span are passed through from the stored
 // knowledge_chunks.citation document: this build never invents a citation, a
@@ -48,6 +54,10 @@ const (
 	CodeRetrieveUnavailable = "retrieve_unavailable"
 	// maxRetrieveTopK mirrors workflow.schema.json's retrieve top_k ceiling.
 	maxRetrieveTopK = 20
+	// maxRetrieveExcerptRunes bounds the excerpt the node output exposes. The full
+	// chunk body stays in the sealed source and is only readable through the
+	// owner-only citation route (N-R10/R3).
+	maxRetrieveExcerptRunes = 500
 )
 
 // retrieveConfig is the validated sealed config of one retrieve node. The query
@@ -189,35 +199,21 @@ func (r *runner) executeGraphRetrieve(
 		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
 			"the retrieval output does not match output_schema: "+err.Error()), nil, true
 	}
-	canonical, err := canonicalNodeDocument(output)
-	if err != nil {
-		return r.failGraph(ctx, id, CodeNodeOutputInvalid,
-			"the retrieval output cannot be canonicalized: "+err.Error()), nil, true
-	}
-	artifactID, err := r.uploadNodeArtifact(
-		ctx, "node_output", "application/json", canonical, "artifact")
-	if err != nil {
-		return r.failGraph(ctx, id, CodeSandboxFailed,
-			"registering the retrieval result failed: "+err.Error()), nil, true
-	}
-	if err := r.deps.Client.RecordNodeResults(ctx, r.lease.RunID, r.lease.AttemptToken,
-		[]NodeResult{{NodeID: id, Kind: "data", ArtifactID: artifactID, Label: "results"}}); err != nil {
-		return r.failGraph(ctx, id, CodeSandboxFailed,
-			"recording the retrieval result failed: "+err.Error()), nil, true
-	}
-	r.emitNode(ctx, id, "succeeded")
-	return executionOutcome{}, output, false
+	return r.publishNodeData(ctx, node, output, "results", "retrieval output", "retrieval result")
 }
 
 // retrieveOutputDocument projects the internal items onto the documented node
 // output. The citation and span bytes are forwarded unchanged; the citations
-// array is the lightweight projection the canvas and later steps read.
+// array is the lightweight projection the canvas and later steps read. Neither
+// the full chunk body nor the vector score leaves the platform boundary: `excerpt`
+// is a bounded prefix and the owner-only citation route serves the real text.
 func retrieveOutputDocument(items []RetrievedItem) (map[string]any, error) {
 	outputItems := make([]any, 0, len(items))
 	citations := make([]any, 0, len(items))
 	for _, item := range items {
 		span := json.RawMessage(item.Span)
 		citation := json.RawMessage(item.Citation)
+		excerpt := retrieveExcerpt(item.Text)
 		outputItems = append(outputItems, map[string]any{
 			"chunk_id":          item.ChunkID,
 			"document_id":       item.DocumentID,
@@ -225,8 +221,7 @@ func retrieveOutputDocument(items []RetrievedItem) (map[string]any, error) {
 			"document_state":    item.DocumentState,
 			"chunk_no":          item.ChunkNo,
 			"span":              span,
-			"text":              item.Text,
-			"score":             item.Score,
+			"excerpt":           excerpt,
 			"citation":          citation,
 		})
 		citations = append(citations, map[string]any{
@@ -234,7 +229,7 @@ func retrieveOutputDocument(items []RetrievedItem) (map[string]any, error) {
 			"document_id":       item.DocumentID,
 			"document_revision": item.DocumentRevision,
 			"span":              span,
-			"text":              item.Text,
+			"excerpt":           excerpt,
 		})
 	}
 	payload, err := json.Marshal(map[string]any{
@@ -252,6 +247,16 @@ func retrieveOutputDocument(items []RetrievedItem) (map[string]any, error) {
 		return nil, errors.New("the retrieval output is not a JSON object")
 	}
 	return object, nil
+}
+
+// retrieveExcerpt returns at most maxRetrieveExcerptRunes characters. It counts
+// runes so a multi-byte chunk body is never cut in the middle of a character.
+func retrieveExcerpt(text string) string {
+	runes := []rune(text)
+	if len(runes) <= maxRetrieveExcerptRunes {
+		return text
+	}
+	return string(runes[:maxRetrieveExcerptRunes])
 }
 
 // retrieveDenied distinguishes a server-side refusal of the call (403) from an

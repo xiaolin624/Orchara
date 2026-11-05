@@ -1,6 +1,7 @@
 # F04B/T087 人工审批节点：服务端业务审批 + 重启后继续原决定（GitHub #88）
 
-**状态：`passed`**（运行时 + 等待桥 + 执行器 + 画布 + 真实栈验收）。全量 `tests/f06` 在共享栈争用下未重跑
+**状态：`partial`**（运行时 + 等待桥 + 执行器 + 画布 + 真实栈验收已交付；票面“审批过期后终止”一项
+**partial**：本构建没有自动过期 sweeper，只有 decision 路径能观察过期）。全量 `tests/f06` 在共享栈争用下未重跑
 （`not_run`，见 §5），审批/等待相关子集已通过（§4.2）。
 
 - 分支：`t/t087-approval-node`，worktree `E:\Orchara-wt\t087`，基线 `integration/t083-t091` @ `491cb78`；
@@ -20,7 +21,7 @@
 | 通用审批不能授权后续未知外部写 | **passed** | 同一真实 Run 内：节点审批批准后 `platform.operations` 仍为 0；随后真实 write-risk connector capability 调用仍返回 `awaiting_approval`，并创建**自己的** operation + operation 级 approval（`operation_id` 非空、`node_key != node:approve1`）；节点审批行始终 `operation_id IS NULL`。`::test_a_node_approval_never_authorises_a_later_write_operation` |
 | 重放不重复审批（同一 proposal 复用原行） | **passed** | `UNIQUE(run_id,node_key,params_sha256)`：同一 attempt 内二次 prepare 返回同一 id、approvals 恰 1 行、`approval.required` 恰 1 条；恢复后的第二次 exec 再次 prepare 同一 proposal 仍返回原行（approvals 恰 1 条、resume job 恰 1 个）。`::test_node_approval_is_a_server_built_business_decision_and_replays_idempotently`、`::test_approved_node_approval_resumes_the_same_run_once` |
 | 审批拒绝后终止 | **passed** | reject → 200 `rejected`；Run `failed` + `error_code=approval_rejected`；无 resume job、无 output artifact、无 operations/usage；再次 exec `idle`（无 resume 可继续）。`::test_rejected_node_approval_terminates_the_run_without_a_resume` |
-| 审批过期后终止 | **passed** | 测试 SQL 把 `expires_at` 置为过去 → 决定 409 `approval_expired`；approval `expired`；Run `failed` + `approval_expired`；无 resume/output/operations。`::test_expired_node_approval_terminates_the_run_and_refuses_the_decision` |
+| 审批过期后终止 | **partial**（无自动过期 sweeper） | 测试 SQL 把 `expires_at` 置为过去 → 决定 409 `approval_expired`；approval `expired`；Run `failed` + `approval_expired`；无 resume/output/operations。**这只证明 decision 路径会观察过期**：没有后台扫描/定时器，停在 `waiting_approval` 的 Run 不会仅因时间流逝自动终止。`::test_expired_node_approval_terminates_the_run_and_refuses_the_decision` |
 | 两次审批（T091 预演） | **passed** | `start → a1 → a2 → end`：两次等待、两次决定、第三次 exec 汇合 `succeeded`；2 条独立 approval（均 `operation_id NULL`）、2 个不同 resume job、a1/a2 各 1 条 data artifact、最终输出含两个 approval id。`::test_two_approvals_wait_twice_and_converge_on_one_run` |
 | 参数变化不复用旧决定 | **passed** | 同 node 不同 proposal → 新 approval id/新 `params_sha256`（2 行，旧行保持 approved）；重放新 proposal 不新增第 3 行；用旧 hash 决定新 approval → 409 `approval_params_mismatch`，状态仍 pending。`::test_a_changed_proposal_is_a_new_approval_and_the_old_decision_does_not_apply` |
 | 真实端到端（真实 PG/mTLS/supervisor/API，无 mock 通过） | **passed** | 真实 PostgreSQL 16 隔离库、编译 `cmd/api`/`cmd/supervisor`、真实 mTLS internal listener、真实对象目录封存、真实 F03/T035 waiting/resume 事务、真实审批 API。§4 原始输出 |
@@ -254,7 +255,11 @@ python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_
   - 真实浏览器 DOM：画布/审批页逻辑用 Node 执行真实字节（无浏览器驱动，环境现状）。
   - 审批后的写工具“未知结果/needs_reconciliation”语义（spec 归 EXECUTION §5/T051，不在本票切片）。
   - 真实厂商模型（本票无模型节点，且本机无凭据）。
-- **partial**：无（票面口径内）。
+- **partial**：票面“审批过期后终止”一项。自动过期 sweeper 不存在：`platform.approvals.expires_at`
+  只会在下一次 decision/读取路径被检查，停在 `waiting_approval` 的 Run 不会自动终止；决定路径的 409
+  `approval_expired` + Run `failed approval_expired` 是真实栈证明的（§4.1），但没有“定时到期”证据。
+  该缺项已是 T050 记录的既有边界，本票没有补 sweeper；批次记录（`product/PROGRESS.md` 的批次完成记录）
+  明确 T087=`partial`。其余票面项 `passed`。
 
 ## 6. 变更文件
 

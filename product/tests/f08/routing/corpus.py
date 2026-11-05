@@ -146,6 +146,9 @@ def validate_corpus(cases: list[Case], registry: dict) -> None:
         else:
             assert expected["no_run_reason"] is None, (case.case_id, expected)
         if case.decision == "auto_dispatch":
+            # The candidate list is exactly the dispatched application, which is the
+            # stricter form of "the application is among the candidates"; one guard
+            # is enough (the previous second block was unreachable).
             assert expected["application"], case.case_id
             assert expected["candidates"] == [expected["application"]], case.case_id
             assert expected["interaction"] is None, case.case_id
@@ -159,8 +162,6 @@ def validate_corpus(cases: list[Case], registry: dict) -> None:
             assert expected["interaction"] == "selection", case.case_id
             assert expected["application"] is None, case.case_id
             assert len(expected["candidates"]) >= 2, case.case_id
-        if case.decision == "auto_dispatch":
-            assert not expected["candidates"] or expected["application"] in expected["candidates"]
 
         assert case.provenance.get("origin") == "self_created", case.case_id
         assert case.provenance.get("license_review") == "not_applicable", case.case_id

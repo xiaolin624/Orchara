@@ -126,10 +126,14 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
     assert item["span"] == db_citation["span"], (item["span"], db_citation["span"])
     assert int(item["span"]["start_line"]) >= 1 and int(item["span"]["start_char"]) >= 0
     assert item["citation"] == db_citation, (item["citation"], db_citation)
-    assert item["text"] == t088.chunk_body_text(
+    # N-R10/R3 boundary: the node output carries a bounded excerpt, never the full
+    # chunk body and never the vector score. The full body stays independently
+    # readable through the owner-only citation route below.
+    db_body = t088.chunk_body_text(
         stack, document_id, int(db_chunk["document_revision"]), int(db_chunk["chunk_no"])
     )
-    assert isinstance(item["score"], (int, float))
+    assert item["excerpt"] == db_body[:500], item
+    assert "text" not in item and "score" not in item, item
 
     # The citations projection is the lightweight view of the same item.
     assert projection == {
@@ -137,7 +141,7 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
         "document_id": item["document_id"],
         "document_revision": item["document_revision"],
         "span": item["span"],
-        "text": item["text"],
+        "excerpt": item["excerpt"],
     }, projection
 
     # No framework/vendor internals as platform fields: no top-level embedding,
@@ -160,7 +164,7 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
     assert body["document_state"] == "ready"
     assert body["span"] == item["span"]
     assert body["citation"] == item["citation"]
-    assert body["text"] == item["text"]
+    assert body["text"] == db_body
 
     # The downstream end node received the citations unchanged.
     final = t088.final_output_document(owner.creator, stack.dbname, run["id"])
@@ -316,8 +320,9 @@ def test_the_internal_route_derives_the_owner_and_counts_the_acl(t033_stack) -> 
     scores = [item["score"] for item in payload["items"]]
     assert scores == sorted(scores, reverse=True), scores
     for item in payload["items"]:
-        # The internal route's item is exactly the documented platform projection.
-        assert set(item) == t088.ITEM_KEYS, item
+        # The internal worker route keeps text/score for server-side ranking; the
+        # narrowed node data output is asserted by the run-artifact case above.
+        assert set(item) == t088.INTERNAL_ITEM_KEYS, item
     serialized = json.dumps(payload)
     assert bob_document not in serialized
     assert "object_key" not in serialized

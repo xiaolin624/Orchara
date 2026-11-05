@@ -15,7 +15,7 @@
 
 | 验收项 | 结论 | 证据 |
 |---|---|---|
-| 引用保留 doc/version/span（item 与 citations 投影都保留 `document_id`/`document_revision`/`span`，`citation` 原样 JSON） | **passed** | `tests/f04b/test_t088_retrieve.py::test_retrieve_returns_real_citations_and_passes_them_downstream`：item 与 DB `knowledge_chunks` 行的 `document_id`/`document_revision`/`chunk_no`/`span`/`citation` 逐项相等，`text` 与封印 chunk body 相等；`GET /knowledge-citations/{chunk_id}` 返回同一来源 |
+| 引用保留 doc/version/span（item 与 citations 投影都保留 `document_id`/`document_revision`/`span`，`citation` 原样 JSON） | **passed** | `tests/f04b/test_t088_retrieve.py::test_retrieve_returns_real_citations_and_passes_them_downstream`：item 与 DB `knowledge_chunks` 行的 `document_id`/`document_revision`/`chunk_no`/`span`/`citation` 逐项相等，`excerpt` 与封印 chunk body 的前 500 字符相等且不含完整正文/`score`；`GET /knowledge-citations/{chunk_id}` 返回同一来源的完整正文 |
 | 在画布选知识库和合法字段、运行后可打开真实来源；无结果/撤权按契约 | **passed** | 画布：`tests/f04b/test_t088_canvas.py`（`canvas_t088.test.mjs` PASS 6）；运行视图：`tests/f04b/test_t088_runview.py`（`runview_t088.test.mjs` PASS 6）打开真实 citation/404 不可用；真实栈无结果/撤权用例见 §4.1 |
 | 相同 child 并发不串 thread → **not_applicable**（retrieve 无 child），改写为「两个并行 retrieve 节点不串结果」 | **passed（改写口径）** | 真实栈 `test_two_parallel_retrieve_nodes_keep_their_own_documents`（两分支各自文档/引用，join 信封两源独立）+ Go `TestGraphRunTwoRetrieveNodesEachKeepTheirOwnResults` |
 | 节点等待按交接协议释放槽 → **not_applicable**（retrieve 不等待、不产生 `waiting`） | not_applicable | retrieve 不提交 `waiting_children`，不占 child 槽；supervisor 在执行完 retrieve 后继续拓扑序，无等待交接 |
@@ -51,14 +51,20 @@
 
 - `graphplan.go`：`graphNodeTypes` 加 `retrieve`；`hasGraphConstructs` 识别 retrieve（无 region 也走 graph 路径）；
   config 复验 `{knowledge_base_ids: uuid[] min1 unique, top_k:1..20}` 且拒绝未知键/内联 `query`
-  （`DisallowUnknownFields`，`bad_config` + `/nodes/<i>/config` 定位）。T083 的 `node_unsupported_retrieve` 已移除。
+  （`DisallowUnknownFields`，`bad_config` + `/nodes/<i>/config` 定位）。T083 的 `node_unsupported_retrieve`
+  已移除；批次复核修复又删除了该闭集常量与 switch（所有 `graphNodeTypes` 均可执行，未知类型统一
+  `tool_unsupported_graph`）。
 - **query 输入**：节点 `inputs` 必须绑定 `query` 且为字符串（运行期 `resolveNodeBindings`）；缺失/非 string/
   空串 → `node_input_invalid`，消息定位 `/nodes/<i>/inputs/query`。
 - **执行**：`Client.Retrieve`（`cmd/supervisor/client.go`，worker mTLS）调用内部路由；supervisor 从不 import
   knowledge service。
-- **输出**（非契约约定，文档化）：`{items:[…9 个平台字段…], citations:[{chunk_id,document_id,document_revision,
-  span,text}], count}`；`citation`/`span` 来自存储 citation 的原样 JSON。输出在登记前按节点 `output_schema` 复验
-  （`node_output_invalid`）。
+- **输出**（非契约约定，文档化；批次复核修复后已收窄）：`{items:[{chunk_id,document_id,document_revision,
+  document_state,chunk_no,span,excerpt,citation}], citations:[{chunk_id,document_id,document_revision,
+  span,excerpt}], count}`；`excerpt` 是 chunk 正文的前 500 字符（按 rune 截断，不切断多字节字符），
+  **节点输出不含完整 chunk 正文、不含向量 `score`**（R3 要求短摘要、N-R10 禁止把 chunk body/向量分数当平台字段；
+  完整正文只能经 owner-only `GET /api/v1/knowledge-citations/{chunk_id}` 读取）；`citation`/`span` 来自存储 citation
+  的原样 JSON。内部 worker 检索路由仍返回 text/score 供服务端排序/合并，它们不进入节点数据。输出在登记前按节点
+  `output_schema` 复验（`node_output_invalid`）。
 - **artifact/事件**：data artifact label `results`，`node.status` pending→running→succeeded；失败码
   `node_input_invalid`、`node_output_invalid`、`retrieve_unavailable`（503/网络/非 403 拒绝，新增并文档化）、
   `retrieve_denied`（服务端 403，仅调用被拒绝时；全部 KB 不可见不是 denied）。
@@ -135,7 +141,7 @@ owner-only node-results / citation 路由读取。
 
 | 用例 | 断言要点 |
 |---|---|
-| `test_retrieve_returns_real_citations_and_passes_them_downstream` | items/citations/count 精确形状；item 9 字段、citations 5 字段；与 DB chunk 行 + 存储 citation 逐字段相等；`text` 与封印 chunk body 相等；`GET /knowledge-citations/{chunk_id}` 同一来源；end 下游拿到相同 citations；node.status 序列；输出无 object key/signed URL；发布校验 `valid:true` |
+| `test_retrieve_returns_real_citations_and_passes_them_downstream` | items/citations/count 精确形状；item 8 字段、citations 5 字段；与 DB chunk 行 + 存储 citation 逐字段相等；`excerpt` 与封印 chunk body 的前 500 字符相等，且输出不含完整 `text`/`score`；`GET /knowledge-citations/{chunk_id}` 返回完整来源；end 下游拿到相同 citations；node.status 序列；输出无 object key/signed URL；发布校验 `valid:true` |
 | `test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items` | 空候选集 → `{"items":[],"citations":[],"count":0}`，节点/run succeeded，final output 空数组 |
 | `test_a_foreign_knowledge_base_never_reaches_another_owners_run` | A 的 run 同时命名 A/B 的 KB：只出 A 文档，B 的 document/chunk id 不出现在序列化输出；只命名 B：空结果且 succeeded |
 | `test_the_internal_route_derives_the_owner_and_counts_the_acl` | 直接 mTLS 调路由：`requested=2/authorized=1`；items 只含 A 文档；score 降序；全 foreign → `requested=2/authorized=0` 空列表；supervisor 证书 403；坏 token 409 `stale_attempt`；空/重复 KB、空 query、top_k 0/21 → 422 + field 定位 |
@@ -262,7 +268,8 @@ no drift: spec copy and contract snapshot match the manifest
   - 「无结果」指候选集为空（空 KB/文档撤权或删除）。平台检索**没有相关性阈值**：有可读 chunk 时总返回 top-k
     （F10 既有语义，T088 不改变）；因此「与文档无关的 query」在非空 KB 上仍会有 ranked items，测试用候选集为空
     的真实场景验证「空数组 + succeeded」。
-  - 平台无 `score` 阈值参数；`score` 是 cosine 分数，按契约允许出现在 items。
+  - 平台检索没有 `score` 阈值参数；`score` 是 cosine 分数，只用于服务端/内部路由排序，**不再是节点输出字段**
+    （批次复核修复后节点只暴露 `excerpt`）。内部路由的 `items[].score` 是 worker mTLS 数据面，不是公开契约字段。
   - `sources.js` 支持整段数组字段（`node:<id>#/citations`、`#/items`）；**未实现** array item 固定索引选择器
     （票面允许不实现；不做未文档化的隐式索引）。
   - 运行视图表头仍为「分支 / join 来源」（T083 已冻结的 6 列）；retrieve 引用渲染在同一列，未改表头/列数以免
@@ -316,6 +323,47 @@ node tests/f04b/runview.test.mjs        -> PASS 6 runview tests
 node tests/f04b/runview_t088.test.mjs   -> PASS 6 runview T088 tests
 ```
 - **未跑**：`pytest tests/f10` 全量（原因见 §4.4/§5）。
+
+### 6.1 批次复核修复（2026-11-06）：节点输出收窄
+
+批次两轴复核发现节点 data 输出含完整 chunk `text` 与向量 `score`，与 R3（短摘要）/N-R10
+（不暴露 chunk body/向量分数）冲突。修复在收尾分支 `t/batch-review-fixes` 完成（`6a3195a`）：
+
+- `retrieveOutputDocument`：items 改为 `{chunk_id,document_id,document_revision,document_state,
+  chunk_no,span,excerpt,citation}`，citations 改为 `{chunk_id,document_id,document_revision,span,
+  excerpt}`；`excerpt` = 正文前 500 字符（按 rune 截断）；**不再输出 `text`/`score`**。
+  内部 worker 检索路由保持 `text/score`（服务端排序/合并用，worker mTLS 数据面，不是节点数据），
+  测试用单独的 `INTERNAL_ITEM_KEYS` 钉住，避免把两个面混为一谈。
+- 消费者同步：`runview.js` 只读 `citation.excerpt`（新增“只有 text 的旧 artifact 不渲染正文”用例）；
+  画布 `retrieveOutputSchema` 不再提供 `text`/`score`，bundle 由 `npm ci --offline && npm run build`
+  重建提交；`reports/review/BATCH-REVIEW-FIXES.md` 记录 finding→fix→证据。
+
+收尾分支合并 `refs/heads/integration/t083-t091`（`93ddc6b`，含 T091）后的门禁：
+
+```text
+python -m pytest tests/f04b/test_t088_retrieve.py \
+                 tests/f04b/test_t083_runview.py \
+                 tests/f04b/test_t086_model_node.py -q
+..................                                                       [100%]
+18 passed in 178.05s (0:02:58)          # 全局 pytest 锁；真实 PG+mTLS+supervisor+知识摄取
+
+python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
+                 tests/f04b/test_canvas_f04b_assets.py tests/f08/test_t084_corpus.py \
+                 tests/f04b/test_t091_canvas.py tests/f04b/test_t091_runview.py -q
+21 passed in 3.37s
+
+python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
+8 passed in 144.09s (0:02:24)           # T091 真实栈回归（approval/model/join 路径经过本次重构）
+
+go build ./... ; go vet ./... ; go test ./...     # exit 0
+gofmt -l internal cmd tools                       # 无输出
+python tools/sync_spec.py --check                 # no drift
+node --check apps/web/src/assets/runview.js       # exit 0
+```
+
+Go 侧新增回归 `TestRetrieveOutputExcerptsLongChunksWithoutTheVectorScore`（长正文只留 500 rune、
+无 score/text）与既有 `TestGraphRunRetrievePublishesCitationsAndPassesThemDownstream`（key 集合 +
+`excerpt == "north 1234"`）在 `go test ./internal/presetexec` 中通过。
 
 ## 7. 变更文件
 
