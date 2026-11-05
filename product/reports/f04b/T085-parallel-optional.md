@@ -7,8 +7,8 @@
 | 票 | T085 / GitHub #86（F04B）；依赖 #84（T083 graph runtime + canvas + run view 已在集成分支） |
 | 工作树 / 分支 | `E:\Orchara-wt\t085` / `t/t085-parallel-optional` |
 | 基线 | `integration/t083-t091` @ `111e2c2`（T083 graph runtime + canvas） |
-| 结束合并 | `git merge integration/t083-t091` @ `b343f7b` → merge commit 见 §7（`a74ac9d`） |
-| 功能提交 | `71213f0`（并发调度 + fail-fast + optional 收敛）、`3a98b3a`（run view/画布 optional 提示 + 重建 bundle）；报告提交为分支 tip |
+| 结束合并 | `git merge integration/t083-t091` @ `b343f7b` → merge commits `f6e7e5b`、`a74ac9d`（详见 §7） |
+| 功能提交 | `71213f0`（并发调度 + fail-fast + optional 收敛）、`3a98b3a`（run view/画布 optional 提示 + 重建 bundle）、`5935afd`（graph agent 视图携带 run inputs + 测试）、`78d09db`（F05 sandbox 竞态：启动失败不再被伪装成租约丢失）；报告提交为分支 tip |
 | 契约 | **未改** `contracts/**`、`docs/spec/**`、迁移、校验器规则；`python tools/sync_spec.py --check` → `no drift` |
 | 环境 | Go 1.27.3 windows/amd64；Python 3.12.2 / pytest 9；PostgreSQL 16 隔离集群 `127.0.0.1:55432`；WSL2 + runsc |
 
@@ -114,26 +114,47 @@ exit=0
 
 ## 6. 门禁（原始输出尾部）
 
-工作目录 `E:\Orchara-wt\t085\product`；原始日志 `.scratch/t083-t091/T085/`。
+工作目录 `E:\Orchara-wt\t085\product`；原始日志 `.scratch/t083-t091/T085/`（`go-gates.log`、`pytest-*-gate.log`、`pytest-f04b-final.log`）。
 
 ```text
-$ python -m pytest tests/f04b -q
+$ python -m pytest tests/f04b -q          # 最终树（含 sandbox 修复），全局 pytest 锁
 ..................................                                       [100%]
-34 passed in 197.55s (0:03:17)
+34 passed in 162.35s (0:02:42)
 exit=0
 
-$ python -m pytest tests/f06 -q
-（见 §8 最终树结果）
+$ python -m pytest tests/f04b/test_t085_parallel_optional.py -q -rs
+.....                                                                    [100%]
+5 passed in 54.34s
+exit=0
+
+$ python -m pytest tests/f05 -q           # sandbox 修复回归，全局 pytest 锁
+........................................................................ [ 48%]
+........................................................................ [ 96%]
+.....                                                                    [100%]
+149 passed in 795.61s (0:13:15)
+exit=0
+
+$ python -m pytest tests/f06 -q           # 全局 pytest 锁
+FAILED tests/f06/test_t047_context.py::test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts
+1 failed, 172 passed in 881.33s (0:14:41)
+exit=1
+# 该失败是环境性的 sandbox 启动失败被旧 executor 竞态伪装成"租约丢失"（见 §6.1）；
+# 修复后单测重跑该用例：
+$ python -m pytest tests/f06/test_t047_context.py::test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts -q
+1 passed in 25.64s
+exit=0
 
 $ python -m pytest tests/tooling -q
-（见 §8 最终树结果）
+.....................                                                    [100%]
+21 passed in 6.79s
+exit=0
 
 $ go build ./...
 exit=0
 $ go vet ./...
 exit=0
 $ go test ./... -count=1
-（全部 ok，无 FAIL；见 .scratch/t083-t091/T085/go-gates.log）
+（全部 ok，无 FAIL；原始输出 .scratch/t083-t091/T085/go-gates.log）
 exit=0
 $ gofmt -l internal cmd tools
 （无输出）
@@ -154,15 +175,36 @@ $ go test ./internal/presetexec -run 'TestGraphRunRunsIndependentBranchesConcurr
 ok      orchara/platform/internal/presetexec    2.609s
 ```
 
+### 6.1 `tests/f06` 的 1 例失败：sandbox 启动失败被旧竞态伪装（已修）
+
+失败报告（真实栈，`test_parallel_branches_run_and_join_once` 一次、`test_t047_context` 一次，同一根因）：
+
+```text
+sandbox: {'sandbox_id': 'exec-ai-72640-05ce4ff2-a83eb8410', 'started': False,
+          'exit_code': 0, 'duration_ms': 277, 'cleanup': {'sandbox_list_matches': 0, 'pid': 0, ...}}
+error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartbeat": context canceled
+```
+
+`started=false`/`pid=0`/277ms 证明 unit 根本没有启动（驱动拒绝或 WSL 启动失败），但 executor 在
+`runner.Run` 返回后执行 `cancelRun()`，把仍在飞的 heartbeat HTTP 请求取消掉，该错误被记录成
+`controlErr` → 归类为 `ErrHeartbeat`（租约丢失），真实启动错误被掩盖。修复（`78d09db`，
+`internal/sandbox/executor.go`）：进程结果返回后先置 `runnerDone`，此后观察到的 heartbeat **错误**视为
+"我们自己的取消"而不再记录（迟到的 `CancelRequested` 仍然生效，保持 EXECUTION §6"工具已退出后的迟到取消
+仍不得发布成功"）。`internal/sandbox/sandbox_test.go::TestExecutorDoesNotMaskAPreStartRefusalAsALeaseLoss`
+用"第二次 heartbeat 阻塞到 ctx 取消 + 驱动拒绝"确定性复现；`tests/f05` 149 passed 回归。
+
 ## 7. 合并与 HEAD
 
 - 基线 `111e2c2` → 本票合并两次集成分支：`f6e7e5b`（T083 runview + T084）与 `a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）；无冲突。
-- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`，报告提交为分支 tip（`git log -1`）。
+- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，报告提交为分支 tip（`git log -1`）。
 - 无迁移；`product/docs/spec/**`、`product/contracts/**` 未改。
 
-## 8. 最终树门禁（合并后复跑）与 not_run 汇总
+## 8. 最终树门禁状态
 
-（见文末更新：最终 HEAD 与 `tests/f06`/`tests/tooling`/Go 门禁原始输出。）
+最终代码树（含 `78d09db`）上：`tests/f04b` **34 passed**、`tests/f05` **149 passed**、`tests/tooling` **21 passed**、
+`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；`tests/f06` **172 passed / 1 failed**
+（§6.1 的环境性 sandbox 启动失败，修复后该用例单测重跑 **1 passed**）。按编排者队列要求（T088/T089 使用共享栈），
+本轮之后未再次占用共享栈；如需在集成分支合并后复跑，命令同上。
 
 ## 9. 变更文件
 
@@ -180,6 +222,7 @@ ok      orchara/platform/internal/presetexec    2.609s
 - `internal/presetexec/agent.go`（agent 取消/waiting capture；工具 sandbox 单元含节点 id）
 - `internal/presetexec/callapp.go`（waiting_children capture）
 - `internal/presetexec/presetexec_test.go`（fake client：`onSubmitResult` 钩子、按 URL 的 PutBytes、Status 加锁）
+- `internal/sandbox/executor.go`、`internal/sandbox/sandbox_test.go`（§6.1 的 F05 竞态修复 + 确定性回归测试）
 - `apps/web/src/assets/runview.js`、`apps/web/src/debug.html`（optional 收敛显示 + 图例/CSS）
 - `apps/web/canvas/src/main.js`、`apps/web/src/assets/canvas.js`（join 面板 optional 标记/提示；重建 bundle）
 - `tests/f04b/runview.test.mjs`（optional 收敛断言）、`tests/f04b/test_canvas_f04b_assets.py`（bundle marker）

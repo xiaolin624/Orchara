@@ -1921,10 +1921,14 @@ T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机�
 | join-once / replay | **passed（Go 单测）**：fake `NodeOutputSource` 回放 start/choose/left/join → join 只发一条 succeeded、无新 data 行、无 sandbox、final output=复用封套；真实二次 exec 冒烟 `not_run`（无 waiting，留 T087/T091） |
 | 运行视图 / 画布提示（P1） | **passed**：run view 把 optional failed 显示为「已收敛的错误」（`state-converged`，与 failed 区分）+ 图例；画布 join 面板逐个标记 optional、列出已选 optional 并提示"只有纯读/计算错误会收敛；写/越权/预算/审批失败不降级"；`npm ci --offline && npm run build` 重建并提交 canvas bundle |
 
-门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **34 passed in 197.55s**（含本票 5 例与 T083 全部回归；
-`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；`tests/f06`/`tests/tooling` 见报告 §8；
+门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **34 passed in 162.35s**（含本票 5 例与 T083 全部回归；
+`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；`pytest tests/f05` **149 passed**（sandbox 修复回归）；
+`pytest tests/tooling` **21 passed**；`pytest tests/f06` **172 passed / 1 failed**（T047 的 sandbox 启动失败被旧
+executor 竞态伪装成租约丢失，修复后该用例单测重跑 **1 passed**，见报告 §6.1）；
 `go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
 `go test -race ./internal/presetexec` **not_run**（`cgo: C compiler "gcc" not found`，原始输出见报告 §6）。
+附带修复：`internal/sandbox/executor.go`（`78d09db`）不再把"进程退出后自己的取消失败"记成租约丢失，
+真实启动失败保持原错误类型并提供确定性 Go 回归测试（T083/T085 真实栈偶发失败的根因）。
 **not_run**：race detector、真实 resume join-once、graph 并发下的真实 waiting hand-over、浏览器 DOM/Playwright、真实厂商模型。
 
 ## 记录模板
