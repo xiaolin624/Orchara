@@ -106,7 +106,7 @@ completion guard 用 evidence 结果覆盖（`objects_present` → `transient_st
 | `copy_ledger` | T072 四 scope 完成、job `completed`、ledger `job_completed`、third-party 结果如实记录 |
 | `grant_read` | 真实字节 200 + 一条内容读取审计 |
 | `grant_revoked` | 撤销后 403 `diagnostic_grant_revoked` |
-| `grant_deleted_content` | 真实删除后同一 grant 403 `diagnostic_run_deleted`，正文不出现 |
+| `grant_deleted_content` | 真实删除该对象后同一 grant 404 `diagnostic_content_unavailable`（run 仍活、对象 tombstone 是权威），正文不出现 |
 | `late_writer` | 重放 finalize `failed/source_deleted`，sealed 集合不变 |
 | `final_read_refusal` | 文档/source artifact 仍 404、检索空、chunk 0 |
 
@@ -123,7 +123,7 @@ OPERATIONS.md §46 要求在开放读取前回放账本的原因）；真实
 
 | AC | 结论 | 证据 |
 |---|---|---|
-| 晚到 finalize/ingest 与恢复拒绝已删输入 | **passed** | `test_t076_late_writer.py::test_a_replayed_finalize_job_cannot_resurrect_a_deleted_artifact`、`::test_a_parked_ingest_handler_cannot_activate_a_really_deleted_document`、`test_t076_recovery.py` 3 用例（含 linked-input 修复）；每条重放两次 |
+| 晚到 finalize/ingest 与恢复拒绝已删输入 | **passed** | `test_t076_late_writer.py::test_a_replayed_finalize_job_cannot_resurrect_a_deleted_artifact`、`::test_a_parked_ingest_handler_cannot_activate_a_really_deleted_document`、`test_t076_recovery.py` 4 用例（主输入/链接输入/等待审批/队列 Run）；每条重放两次 |
 | Mem0 删除无法满足时不准采用 | **passed** | `test_t076_adoption.py` 3 用例（`decision` 与 `records` 双门禁 + 提交证据不变） |
 | 清理超时有告警 | **passed**（OTel/metrics 专有行 **partial**） | `test_t076_alerts.py` 2 用例：真实 `--delete-content-timeout 1ns` → `delete_timeout` → `cleanup_timeout` 告警 + 退出码 3；逾期/停滞/失败告警；完成后恢复 `ok` |
 | 端到端入口实际演示；失败、授权与重试/恢复边界有断言 | **passed** | 6 个 f11 T076 文件共 13 用例；真实 HTTP/DELETE/maintenance/admin/ledger/grant |
