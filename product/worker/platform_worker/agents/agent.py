@@ -59,12 +59,23 @@ class ToolExecutionError(Exception):
 
     ``uncertain`` means the external effect may have happened (a write timed out
     after dispatch): the only honest outcome is ``needs_reconciliation``.
+    ``waiting`` means the tool handed the work to a controlled unit that is still
+    running (F07/T078 delegation): neither success nor failure, so the loop
+    returns a ``waiting`` outcome and the platform parks the Run.
     """
 
-    def __init__(self, code: str, *, uncertain: bool = False, message: str = "") -> None:
+    def __init__(
+        self,
+        code: str,
+        *,
+        uncertain: bool = False,
+        waiting: bool = False,
+        message: str = "",
+    ) -> None:
         super().__init__(message or code)
         self.code = code
         self.uncertain = uncertain
+        self.waiting = waiting
 
 
 @dataclass(frozen=True)
@@ -176,6 +187,15 @@ def run_agent(
             try:
                 result = executor.execute(call.name, call.arguments)
             except ToolExecutionError as exc:
+                if exc.waiting:
+                    # F07/T078: the tool delegated to a controlled unit that is
+                    # still running (a platform child Run). The platform owns the
+                    # hand-over; this is not a failure and not a reconciliation.
+                    return NodeOutcome(
+                        state="waiting", error_code=_safe_code(exc.code, "children_pending"),
+                        detail="the tool handed the work to a running child Run", turns=turn,
+                        tool_calls=tuple(executed),
+                    )
                 state = "needs_reconciliation" if exc.uncertain else "failed"
                 return NodeOutcome(
                     state=state, error_code=_safe_code(exc.code, "tool_execution_failed"),

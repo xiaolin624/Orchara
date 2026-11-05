@@ -41,6 +41,12 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 	if err != nil {
 		return nil, err
 	}
+	// F07/T081: a child terminal commit and its post-commit lifecycle hook are two
+	// transactions (the hook must not invert the spawn parent->child lock order).
+	// If the API process stops in between, the parent would wait forever. The
+	// bounded, idempotent reconcile runs here, before any claim lock is held, and
+	// replays only terminal children whose parent still needs convergence.
+	s.reconcileChildLifecycle(ctx)
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -103,29 +109,60 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 		return nil, nil
 	}
 
-	used, capacity, err := lockQuotaCounterTx(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	if used >= capacity {
-		// Nothing was leased; only the disabled-owner refusals (if any) commit.
-		if err := commitFailures(); err != nil {
+	if candidate.ParentRunID == "" {
+		used, capacity, err := lockQuotaCounterTx(ctx, tx)
+		if err != nil {
 			return nil, err
 		}
-		return nil, nil
-	}
-	if err := takeQuotaSlotTx(ctx, tx); err != nil {
-		if errors.Is(err, errNotEnoughCapacity) {
+		if used >= capacity {
+			// Nothing was leased; only the disabled-owner refusals (if any) commit.
 			if err := commitFailures(); err != nil {
 				return nil, err
 			}
 			return nil, nil
 		}
-		return nil, err
+		if err := takeQuotaSlotTx(ctx, tx); err != nil {
+			if errors.Is(err, errNotEnoughCapacity) {
+				if err := commitFailures(); err != nil {
+					return nil, err
+				}
+				return nil, nil
+			}
+			return nil, err
+		}
+	} else {
+		// F07/T081: a delegated child attempt takes the independent child pool and
+		// its parent's parallel cap, never a Python execution slot.
+		ok, err := takeChildClaimSlotsTx(ctx, tx, candidate.ParentRunID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			if err := commitFailures(); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
 	}
 	holderKey := "job:" + candidate.JobID
-	if err := takeAllocationTx(ctx, tx, holderKey); err != nil {
-		return nil, err
+	if candidate.ParentRunID == "" {
+		if err := takeAllocationTx(ctx, tx, holderKey); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := takeAllocationScopedTx(
+			ctx, tx, childQuotaScope, childQuotaDimension, holderKey,
+		); err != nil {
+			return nil, err
+		}
+		if err := takeAllocationScopedTx(
+			ctx, tx, parentQuotaScope(candidate.ParentRunID), childQuotaDimension, holderKey,
+		); err != nil {
+			return nil, err
+		}
+		if err := markParentChildClaimedTx(ctx, tx, candidate.ParentRunID); err != nil {
+			return nil, err
+		}
 	}
 
 	token := uuid.NewString()
@@ -156,6 +193,51 @@ func (s *Service) Claim(ctx context.Context, request ClaimRequest) (*Lease, erro
 		return nil, fmt.Errorf("committing the claim transaction: %w", err)
 	}
 	return lease, nil
+}
+
+// parentQuotaScope names one parent Run's parallel-cap counter.
+func parentQuotaScope(parentRunID string) string {
+	return parentQuotaScopePrefix + parentRunID
+}
+
+// takeChildClaimSlotsTx takes the two F07/T081 child-pool slots atomically: one
+// from global/child_slots and one from parent:<parent_run_id>/child_slots. It
+// returns false with a nil error when either pool is full (the caller answers
+// 204 and rolls back this claim; the disabled-owner sweeps are committed only
+// when no slot was taken).
+//
+// The per-parent counter is created lazily at its documented capacity. Lock order
+// is always child-global -> parent so two claims of the same parent cannot
+// deadlock. The capacity checks happen under FOR UPDATE and the increments are in
+// the same transaction, so a checked counter cannot change before its take.
+func takeChildClaimSlotsTx(
+	ctx context.Context, tx *sql.Tx, parentRunID string,
+) (bool, error) {
+	used, capacity, err := lockQuotaCounterScopedTx(ctx, tx, childQuotaScope, childQuotaDimension)
+	if err != nil {
+		return false, err
+	}
+	if used >= capacity {
+		return false, nil
+	}
+	scope := parentQuotaScope(parentRunID)
+	if err := ensureQuotaCounterTx(ctx, tx, scope, childQuotaDimension, parentQuotaCapacity); err != nil {
+		return false, err
+	}
+	parentUsed, parentCapacity, err := lockQuotaCounterScopedTx(ctx, tx, scope, childQuotaDimension)
+	if err != nil {
+		return false, err
+	}
+	if parentUsed >= parentCapacity {
+		return false, nil
+	}
+	if err := takeQuotaSlotScopedTx(ctx, tx, childQuotaScope, childQuotaDimension); err != nil {
+		return false, err
+	}
+	if err := takeQuotaSlotScopedTx(ctx, tx, scope, childQuotaDimension); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // buildLease verifies the sealed manifest bytes and mints the two real sealed
@@ -569,6 +651,11 @@ func (s *Service) ConfirmExit(ctx context.Context, request ExitRequest) (*ExitRe
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the attempt-exit transaction: %w", err)
 	}
+	// F07/T081: the exit transaction may have made this Run terminal (succeeded,
+	// failed, cancelled or a schema-invalid child result). The child lifecycle
+	// hook runs in its own transaction after the commit, so a parent is never
+	// locked from inside a child's finalizer (spawn locks parent -> child).
+	s.notifyChildTerminal(ctx, facts.RunID)
 	return &ExitResult{ID: normalized.AttemptID, State: "exited"}, nil
 }
 
@@ -726,6 +813,19 @@ func (s *Service) finalizeRunTx(
 			code := "output_artifact_invalid"
 			outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
 			break
+		}
+		// F07/T078: a delegated child's result must conform to the output schema
+		// frozen in the child version it was spawned from. A violation fails the
+		// child (child_output_schema_invalid), never the parent, and never parks
+		// it for reconciliation: the content is known to be invalid, not unknown.
+		if err := s.validateRunResult(ctx, tx, input.RunID, *proposal.OutputArtifactID); err != nil {
+			var invalid *InvalidRunResultError
+			if errors.As(err, &invalid) {
+				code := invalid.Code
+				outcome = runOutcome{State: "failed", ErrorCode: &code, Finished: true}
+				break
+			}
+			return false, err
 		}
 		outcome = runOutcome{
 			State:            "succeeded",
@@ -959,6 +1059,10 @@ func (s *Service) SubmitResult(
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("committing the waiting result transaction: %w", err)
 		}
+		// F07/T081: a child that parks itself has not terminalised, so the hook is
+		// a no-op; a child whose exit evidence arrived first can be terminalised
+		// by this transaction, and its parent must still be reconciled.
+		s.notifyChildTerminal(ctx, run.ID)
 		return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 	}
 	if err := setRunFinalizingTx(ctx, tx, run.ID); err != nil {
@@ -994,6 +1098,9 @@ func (s *Service) SubmitResult(
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the result transaction: %w", err)
 	}
+	// F07/T081: exit-first ordering means this proposal may have completed the
+	// finalizer. The post-commit hook is the only place a parent is reconciled.
+	s.notifyChildTerminal(ctx, run.ID)
 	return &ResultOutcome{RunID: run.ID, OwnerID: run.OwnerID}, nil
 }
 

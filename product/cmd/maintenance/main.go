@@ -6,6 +6,8 @@
 //	run     F00B/T022 maintenance client: claim fixed kinds, heartbeat,
 //	        execute the compiled handlers, submit results
 //	sweep   F00B/T026 object-store orphan cleanup
+//	copies  F11/T072 copy-class cleanup (checkpoint/summary/sandbox/third-party)
+//	        and backup deletion-ledger registration for deletion jobs
 //
 // The no-argument behaviour is deliberately unchanged: it proves the maintenance
 // identity can reach the database and read the state the worker writes. The
@@ -25,11 +27,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const usage = `usage: orchara-maintenance [run|sweep]
+const usage = `usage: orchara-maintenance [run|sweep|copies]
 
   (no argument)  connectivity and visibility pass; prints one JSON report
   run            claim and execute background jobs over the internal mTLS API
-  sweep          delete orphaned staging objects (sealed bytes are never touched)
+  sweep          delete provably-unreferenced staging and sealed objects
+  copies         clear the F11/T072 copy classes of deletion jobs and register
+                 the backup deletion ledger
 
 run flags:
   --once                 drain every pool until idle, then exit
@@ -42,25 +46,40 @@ run flags:
   --evaluation-poll-interval D   evaluation status-poll/heartbeat cadence
   --report-wait-timeout D    how long one attempt waits for its report finalize
   --tool-timeout D       how long one trusted preset-tool subprocess may run
+  --delete-content-timeout D   how long one physical content purge attempt may run
 
   Every pool/flag default can also come from the environment:
   ORCHARA_MAINTENANCE_SYSTEM_IO_SLOTS, ORCHARA_MAINTENANCE_WORK_SLOTS,
   ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT,
   ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL,
   ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT,
-  ORCHARA_MAINTENANCE_TOOL_TIMEOUT. The preset tool's interpreter and product
-  root are ORCHARA_PYTHON and ORCHARA_PRODUCT_ROOT.
+  ORCHARA_MAINTENANCE_TOOL_TIMEOUT,
+  ORCHARA_MAINTENANCE_DELETE_CONTENT_TIMEOUT. The preset tool's interpreter and
+  product root are ORCHARA_PYTHON and ORCHARA_PRODUCT_ROOT.
 
 sweep flags:
   --orphan-age 1h   required; only delete objects at least this old
   --dry-run         report what would be deleted, delete nothing
 
   sweep needs ORCHARA_MAINTENANCE_DSN and ORCHARA_OBJECT_DIR (not the internal
-  TLS client configuration): it reads staging references from PostgreSQL and
-  deletes unreferenced staging objects from the local store. Sealed bytes are
-  never deleted by this command; it reports unreferenced ones as
-  sealed_deferred for F07/F13A, which must coordinate registration and deletion
-  with a lock.
+  TLS client configuration): it reads references from PostgreSQL and deletes
+  unreferenced staging objects plus sealed objects that no artifact row, run
+  artifact, knowledge chunk or memory body names and that are older than both
+  --orphan-age and the 10-minute sealed-write grace. Unreferenced sealed objects
+  younger than the grace are reported as sealed_deferred, never guessed.
+
+copies flags:
+  --sandbox-temp-root PATH   host staging root (default: ORCHARA_SANDBOX_WORKSPACE_ROOT
+                             or the OS temp directory the supervisor uses)
+  --sandbox-age 1h           only remove sandbox leftovers at least this old
+  --third-party-components a,b   deployed third-party memory/RAG components
+                             (default: none; the committed T066 decision is do_not_adopt)
+  --limit 100                maximum deletion jobs handled by this pass
+
+  copies needs ORCHARA_MAINTENANCE_DSN only. It clears the four T069 scopes
+  checkpoints|sandbox_temp|third_party_history|backup_catalog, records one ledger
+  outcome per copy class, and writes the backup deletion ledger. It never claims a
+  vendor copy, an already-downloaded copy or backup media was erased.
 `
 
 type report struct {
@@ -82,6 +101,8 @@ func main() {
 		runMaintenance(os.Args[2:])
 	case "sweep":
 		runSweep(os.Args[2:])
+	case "copies":
+		runCopies(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 	default:

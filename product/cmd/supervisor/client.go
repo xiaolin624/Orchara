@@ -493,6 +493,96 @@ func (c *supClient) ReportCapabilityResult(
 	return response.result(), nil
 }
 
+// childRunPayload is the contract Run subset spawnChild answers with.
+type childRunPayload struct {
+	ID                   string  `json:"id"`
+	State                string  `json:"state"`
+	Revision             int64   `json:"revision"`
+	ApplicationVersionID *string `json:"application_version_id"`
+	ParentRunID          *string `json:"parent_run_id"`
+	OutputArtifactID     *string `json:"output_artifact_id"`
+	ErrorCode            *string `json:"error_code"`
+	Kind                 string  `json:"kind"`
+	ExecutionSnapshotID  string  `json:"execution_snapshot_id"`
+	Phase                string  `json:"phase"`
+}
+
+func (p childRunPayload) run() *presetexec.ChildRun {
+	return &presetexec.ChildRun{
+		ID: p.ID, State: p.State, Revision: p.Revision,
+		ApplicationVersionID: stringOrEmpty(p.ApplicationVersionID),
+		ParentRunID:          stringOrEmpty(p.ParentRunID),
+		OutputArtifactID:     stringOrEmpty(p.OutputArtifactID),
+		ErrorCode:            stringOrEmpty(p.ErrorCode),
+		Kind:                 p.Kind, ExecutionSnapshotID: p.ExecutionSnapshotID, Phase: p.Phase,
+	}
+}
+
+// SpawnChild implements presetexec.Client on the worker mTLS capacity: the
+// contract declares x-internal-role: worker for spawnChild. The parent attempt
+// token in the body is the only delegation authority; a supervisor certificate
+// is refused by the server.
+func (c *supClient) SpawnChild(
+	ctx context.Context, runID, attemptToken string, request presetexec.SpawnChildRequest,
+) (*presetexec.ChildRun, error) {
+	body := map[string]any{
+		"attempt_token":          attemptToken,
+		"logical_key":            request.LogicalKey,
+		"application_version_id": request.ApplicationVersionID,
+		"input":                  request.Input,
+	}
+	var payload childRunPayload
+	status, err := c.post(ctx, c.worker, workerRole, runPath(runID, "/children"), body, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusAccepted {
+		return nil, fmt.Errorf("spawnChild returned unexpected status %d", status)
+	}
+	if payload.ID == "" || payload.ParentRunID == nil {
+		return nil, errors.New("spawnChild response is not a child Run")
+	}
+	return payload.run(), nil
+}
+
+// ChildResult implements presetexec.Client: the non-contract read of one
+// terminal child's structured result. It is only reachable while the parent holds
+// a live attempt, and the child must be linked to that parent.
+func (c *supClient) ChildResult(
+	ctx context.Context, runID, attemptToken, childRunID string,
+) (*presetexec.ChildResult, error) {
+	body := map[string]any{"attempt_token": attemptToken}
+	var payload struct {
+		ChildRunID       string         `json:"child_run_id"`
+		State            string         `json:"state"`
+		OutputArtifactID *string        `json:"output_artifact_id"`
+		Output           map[string]any `json:"output"`
+		ErrorCode        *string        `json:"error_code"`
+	}
+	status, err := c.post(ctx, c.worker, workerRole,
+		runPath(runID, "/children/"+url.PathEscape(childRunID)+"/result"), body, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("child result returned unexpected status %d", status)
+	}
+	return &presetexec.ChildResult{
+		ChildRunID:       payload.ChildRunID,
+		State:            payload.State,
+		OutputArtifactID: stringOrEmpty(payload.OutputArtifactID),
+		ErrorCode:        stringOrEmpty(payload.ErrorCode),
+		Output:           payload.Output,
+	}, nil
+}
+
+func stringOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 // validateSignedURL keeps bytes moving only to HTTP(S) links the server minted.
 func validateSignedURL(link string) error {
 	parsed, err := url.Parse(link)

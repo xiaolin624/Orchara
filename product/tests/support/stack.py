@@ -67,23 +67,7 @@ def psql(
     env = dict(os.environ)
     env["PGPASSWORD"] = password
     completed = subprocess.run(
-        [
-            pg_dev.psql_binary(),
-            "-X",
-            "-h",
-            "127.0.0.1",
-            "-p",
-            str(pg_dev.DEFAULT_PORT),
-            "-U",
-            user,
-            "-d",
-            database,
-            "-tA",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-c",
-            query,
-        ],
+        _psql_invocation(database, user=user) + ["-c", query],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -286,6 +270,119 @@ def wait_for_http(url: str, timeout: float = 30.0) -> None:
             last = exc
             time.sleep(0.2)
     raise AssertionError(f"timed out waiting for {url}; last error: {last}")
+
+
+# ---------------------------------------------------------------------------
+# deterministic interleavings: a real psql session holds a lock
+# ---------------------------------------------------------------------------
+def _psql_invocation(database: str, *, user: str | None = None) -> list[str]:
+    return [
+        pg_dev.psql_binary(),
+        "-X",
+        "-h",
+        "127.0.0.1",
+        "-p",
+        str(pg_dev.DEFAULT_PORT),
+        "-U",
+        user or pg_dev.DEFAULT_USER,
+        "-d",
+        database,
+        "-tA",
+        "-v",
+        "ON_ERROR_STOP=1",
+    ]
+
+
+def wait_for_sql(database: str, query: str, *, expected: str = "t", timeout: float = 30.0) -> None:
+    """Poll one scalar SQL predicate until it returns exactly ``expected``."""
+    deadline = time.monotonic() + timeout
+    last = ""
+    while time.monotonic() < deadline:
+        last = sql_scalar(database, query)
+        if last == expected:
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"SQL condition never held: {query} (last result {last!r})")
+
+
+class HeldLock:
+    """A real psql session that holds one lock until the test aborts it.
+
+    The deterministic-interleaving primitive for concurrency tests: the holder
+    takes exactly the lock the product's writer takes (``SELECT ... FOR UPDATE``,
+    or an advisory lock a test trigger takes), the request under test really
+    queues behind it inside PostgreSQL, and :meth:`release` aborts the holder
+    session so every waiter proceeds immediately. Readiness is observed, not
+    slept on: the holder counts as ready only when it is inside the final
+    ``pg_sleep`` that follows the lock statements.
+    """
+
+    def __init__(self, database: str, statements: str, *, name: str) -> None:
+        self.database = database
+        self.statements = statements.strip().rstrip(";")
+        self.name = name
+        self.process: subprocess.Popen[str] | None = None
+        self._released = False
+
+    def __enter__(self) -> "HeldLock":
+        env = dict(os.environ)
+        env["PGPASSWORD"] = pg_dev.load_secret()
+        statement = (
+            f"SET application_name = {quote_literal(self.name)}; {self.statements}; "
+            "SELECT pg_sleep(600)"
+        )
+        self.process = subprocess.Popen(
+            _psql_invocation(self.database) + ["-c", statement],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdin=subprocess.DEVNULL,
+            env=env,
+        )
+        wait_for_sql(
+            self.database,
+            "SELECT count(*) FROM pg_stat_activity "
+            f"WHERE application_name = {quote_literal(self.name)} AND wait_event = 'PgSleep'",
+            expected="1",
+        )
+        return self
+
+    def release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        sql(
+            self.database,
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE application_name = {quote_literal(self.name)}",
+        )
+        if self.process is None:
+            return
+        try:
+            self.process.wait(timeout=30)
+        except subprocess.TimeoutExpired:  # pragma: no cover - defensive
+            self.process.kill()
+        finally:
+            if self.process.stdout is not None:
+                self.process.stdout.close()
+            if self.process.stderr is not None:
+                self.process.stderr.close()
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self.release()
+
+
+def wait_for_lock_waiters(database: str, *, count: int = 1, timeout: float = 30.0) -> None:
+    """Wait until exactly ``count`` backends of this database wait on a lock."""
+    wait_for_sql(
+        database,
+        "SELECT count(*) FROM pg_stat_activity "
+        "WHERE datname = current_database() AND wait_event_type = 'Lock'",
+        expected=str(count),
+        timeout=timeout,
+    )
 
 
 def sha256_hex(value: str | bytes) -> str:

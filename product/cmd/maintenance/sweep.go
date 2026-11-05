@@ -1,24 +1,32 @@
-// Command maintenance sweep: staging object orphan cleanup (F00B/T026).
+// Command maintenance sweep: staging object orphan cleanup (F00B/T026), extended
+// by F11/T071 to provably-unreferenced sealed objects.
 //
-// Only staging bytes are deleted, and only after an age threshold:
+// Deletion rules:
 //
 //	staging/  no live uploader is waiting for it. A live artifact means an
 //	          `uploading`/`scanning`, non-deleted artifact row whose
 //	          staging_object_key is exactly this key. A staging key referenced
 //	          only by a ready/quarantined/deleted row is a leftover from an
 //	          upload that already finished (or failed).
-//	sealed/   never deleted here. A sealed object is written before its
-//	          artifact row commits, so "no row references this key" observed in
-//	          one snapshot does not prove the object is garbage: the writer may
-//	          be between the seal and its commit. Safe sealed-orphan cleanup needs
-//	          a lock shared by registration and deletion (F07/F13A). This command
-//	          reports how many unreferenced sealed objects it left behind in
-//	          `sealed_deferred` and never guesses.
+//	sealed/   no artifact row names it *and* it is older than both
+//	          --orphan-age and the documented 10-minute sealed-write grace.
+//	          The five reference classes are checked explicitly: artifact
+//	          rows, run artifacts, knowledge chunk bodies and memory bodies all
+//	          resolve through platform.artifacts.object_key, and a tombstoned
+//	          row still owns its object until the deletion purge clears it, so
+//	          the sweep never races a pending deletion. The grace is the
+//	          substitute for the missing writer/deletion lock: a real writer can
+//	          be between PutSealed and the artifact-row commit, so a fresh
+//	          sealed object is never garbage even when one snapshot sees no row.
+//
+// Until T071 the command only counted unreferenced sealed objects
+// (`sealed_deferred`) and deleted none. It now deletes the old ones and reports
+// the young ones it deferred; `--dry-run` reports the same set without deleting.
 //
 // The sweep never guesses: it reads the references from PostgreSQL, lists the
 // real store, and re-reads the database before each deletion decision. It is
 // idempotent (a second run finds nothing) and prints one JSON line per deletion
-// plus a summary. `--dry-run` reports what would be deleted and touches nothing.
+// plus a summary.
 package main
 
 import (
@@ -40,6 +48,14 @@ import (
 	"orchara/platform/internal/objectstore"
 )
 
+// sealedOrphanGrace is the minimum age of a sealed object before the sweep may
+// call it an orphan. A sealed object is written before its artifact row commits;
+// without a lock shared by the writer and the sweep, the age window is what makes
+// "no row references this key" a stable observation instead of a race. It is a
+// code constant (not a flag) so an operator cannot disable the safety margin by
+// passing --orphan-age 0s: sealed deletion uses max(--orphan-age, this grace).
+const sealedOrphanGrace = 10 * time.Minute
+
 // sweepDeletion is one planned/applied deletion.
 type sweepDeletion struct {
 	Key       string `json:"key"`
@@ -57,6 +73,7 @@ type sweepSummary struct {
 	ScannedStaging int    `json:"scanned_staging"`
 	ScannedSealed  int    `json:"scanned_sealed"`
 	SealedDeferred int    `json:"sealed_deferred"`
+	SealedDeleted  int    `json:"sealed_deleted"`
 	Deleted        int    `json:"deleted"`
 	WouldDelete    int    `json:"would_delete"`
 	Kept           int    `json:"kept"`
@@ -154,8 +171,9 @@ func sweepOrphans(
 		Status:    "ok",
 		OrphanAge: orphanAge.String(),
 		DryRun:    dryRun,
-		Note: "staging objects without a live uploader; sealed objects are never deleted here " +
-			"(sealed-orphan cleanup belongs to F07/F13A and needs a registration/deletion lock)",
+		Note: "staging objects without a live uploader; sealed objects only when no artifact/run/chunk/memory " +
+			"reference names them and they are older than both --orphan-age and the 10m sealed-write grace " +
+			"(sealed_deferred counts the unreferenced-but-too-young ones)",
 	}
 
 	staging, err := loadStagingReferences(ctx, db)
@@ -217,21 +235,29 @@ func sweepOrphans(
 		}
 	}
 
+	sealedMinAge := orphanAge
+	if sealedMinAge < sealedOrphanGrace {
+		sealedMinAge = sealedOrphanGrace
+	}
 	for _, object := range sealedObjects {
 		if sealed[object.Key] {
-			// Referenced by an artifact row in some state. Never deleted here,
-			// whatever the row's state: F07's deletion model owns artifact
-			// removal.
+			// Named by an artifact row in some state (a tombstoned row still owns
+			// its object until the deletion purge clears it). Never deleted here.
 			summary.Kept++
 			continue
 		}
 		// Unreferenced *by this snapshot*. A concurrent writer may be between
-		// sealing the object and committing its artifact row, so this is a
-		// candidate for a later ticket, never a deletion decision here.
-		if now.Sub(object.ModTime) >= orphanAge {
+		// sealing the object and committing its artifact row, so only an object
+		// older than the grace window is a stable observation.
+		if now.Sub(object.ModTime) < sealedMinAge {
 			summary.SealedDeferred++
+			summary.Kept++
+			continue
 		}
-		summary.Kept++
+		if err := decide(object.Key, "sealed", "unreferenced_sealed_object", object.Size); err != nil {
+			return summary, deletions, err
+		}
+		summary.SealedDeleted++
 	}
 	return summary, deletions, nil
 }
@@ -279,9 +305,26 @@ func loadStagingReferences(ctx context.Context, db *sql.DB) (map[string]stagingR
 	return references, nil
 }
 
-// loadSealedReferences returns every object key any artifact row points at.
+// loadSealedReferences returns every object key any resource references. The
+// five reference classes are named explicitly even though the last four resolve
+// through the artifact row they point at: the join makes the rule executable
+// rather than implied, so a future schema that stores a body key directly cannot
+// silently become sweepable.
 func loadSealedReferences(ctx context.Context, db *sql.DB) (map[string]bool, error) {
-	rows, err := db.QueryContext(ctx, `SELECT object_key FROM platform.artifacts`)
+	rows, err := db.QueryContext(ctx, `
+		SELECT object_key FROM platform.artifacts
+		UNION
+		SELECT a.object_key FROM platform.run_artifacts AS ra
+		  JOIN platform.artifacts AS a ON a.id = ra.artifact_id
+		UNION
+		SELECT a.object_key FROM platform.knowledge_chunks AS kc
+		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
+		UNION
+		SELECT a.object_key FROM platform.memories AS m
+		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
+		UNION
+		SELECT a.object_key FROM platform.memory_candidates AS c
+		  JOIN platform.artifacts AS a ON a.id = c.body_artifact_id`)
 	if err != nil {
 		return nil, fmt.Errorf("reading sealed references: %w", err)
 	}

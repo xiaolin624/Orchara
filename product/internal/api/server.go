@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -13,9 +15,12 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/capabilities"
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/children"
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
+	"orchara/platform/internal/deletion"
+	"orchara/platform/internal/diagnostics"
 	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
@@ -25,6 +30,8 @@ import (
 	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
+	"orchara/platform/internal/requests"
+	"orchara/platform/internal/routing"
 	"orchara/platform/internal/toolruns"
 	"orchara/platform/internal/toolversions"
 )
@@ -72,9 +79,26 @@ type Server struct {
 	// memory is the F09/T054 personal memory store (candidates + confirmed
 	// memories). Its nil-ness is not a supported state: the store is always
 	// built, and a process without an object store fails closed per request.
-	memory  *memory.Service
-	objects *objectstore.Store
-	signer  *objectstore.Signer
+	memory *memory.Service
+	// deletions is the F11/T069 shared deletion foundation: one durable job per
+	// deleted resource revision, the tombstone transaction and the affected-run
+	// cancellation fan-out. Purge execution is T071/T072's.
+	deletions *deletion.Service
+	// diagnostics is F11/T073's user-scoped diagnostic grant store: the only door
+	// through which an administrator may read another user's run content, with an
+	// audit row committed before any byte is served.
+	diagnostics *diagnostics.Service
+	// requests is the F08/T074 conversation/request aggregate: the ordered
+	// per-conversation slot, idempotent submission, the explicit fixed-version
+	// dispatch, interactions and the message projection.
+	requests *requests.Service
+	// routing is the F08/T079 control plane: authorized candidates, the governed
+	// control-model call and the one interaction-or-Run decision.
+	routing *routing.Service
+	// children is the F07/T078 fixed-version child Run creator and read path.
+	children *children.Service
+	objects  *objectstore.Store
+	signer   *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -171,11 +195,27 @@ func New(deps Deps) *Server {
 		notifier = background.NopNotifier{}
 	}
 	authorizer := policy.New(deps.Service.DB)
+	catalogReader := catalog.New(deps.Service.DB, authorizer)
 	executionService := execution.New(
 		deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL,
 	)
 	// local_sequence diagnostics go to the process log, never the API body.
 	executionService.Logger = logger
+	// F07/T078: the spawnChild service and the frozen-result-schema gate for
+	// delegated child Runs. The gate is optional in the execution service, so a
+	// caller that never wires it keeps the previous finalizer behaviour.
+	childService := children.New(deps.Service.DB, catalogReader, deps.Objects)
+	executionService.ResultValidator = children.NewResultValidator(deps.Service.DB, deps.Objects)
+	// F07/T081: the child lifecycle hook. The execution service owns every Run
+	// transition; the children service owns the delegation receipts and decides
+	// when a parent's last controlled unit stopped. Both seams are the existing
+	// ones (T036 cancel, T035 resume, T031 finalizer) - no second state machine.
+	childService.Execution = executionService
+	childService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
+	executionService.Children = childService
 	catalogRefs := deps.Catalog
 	if catalogRefs == nil {
 		// The dev-stub default is deterministic and cannot fail; a nil catalog
@@ -208,29 +248,85 @@ func New(deps Deps) *Server {
 	if deps.RetrievalCache != nil {
 		knowledgeService.Cache = *deps.RetrievalCache
 	}
+	userArtifactService := artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL)
+	memoryService := memory.New(
+		deps.Service.DB, deps.Objects,
+		catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
+	)
+	// F08/T074: the conversation/request aggregate. Its cancel seam is the same
+	// F03/T036 path the deletion foundation uses, so cancelling a dispatched
+	// request and deleting a conversation cannot diverge.
+	requestService := requests.New(deps.Service.DB, catalogReader, deps.Objects)
+	requestService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
+	// F08/T079: the background completion guard fails a stranded routing request and
+	// releases its conversation slot through the same T074 seam.
+	jobsController.QueueAdvancer = requestService.AdvanceConversationQueueTx
+	// F11/T069: the one deletion foundation every resource type registers with.
+	// Cancellation is the existing F03/T036 path (Owner-only, idempotent); the
+	// foundation does not reimplement the cancel state machine.
+	deletionService := deletion.New(deps.Service.DB)
+	deletionService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
+	deletionService.Register(artifacts.NewDeletionTarget(userArtifactService))
+	deletionService.Register(memory.NewDeletionTarget(memoryService))
+	deletionService.Register(knowledge.NewDeletionTarget(knowledgeService))
+	// F08/T074: conversations now have an authority, so the T069 conversation
+	// route stops being a permanent 404 and becomes a real tombstone+job.
+	deletionService.Register(requests.NewDeletionTarget(requestService))
+	modelService := modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs)
+	// F08/T079: the router reuses the T074 queue seam for its slot/expiry
+	// decisions and the same model proxy/ledger for its control calls.
+	routingService := routing.New(deps.Service.DB, catalogReader, deps.Objects,
+		modelService, requestService)
+	routingService.Logger = logger
+	// F11/T071: the physical purge unit of work is enqueued in the delete
+	// transaction. The seam keeps internal/deletion independent of
+	// internal/background (whose completion guard consumes the deletion package),
+	// and (kind=delete_content, dedup_key) makes it exactly one job per deletion.
+	deletionService.PurgeEnqueue = func(
+		ctx context.Context, tx *sql.Tx, deletionID, ownerID string,
+	) error {
+		_, _, err := background.EnqueueTx(ctx, tx, background.EnqueueParams{
+			Kind:     background.KindDeleteContent,
+			TargetID: deletionID,
+			OwnerID:  ownerID,
+			DedupKey: deletion.PurgeDedupKey(deletionID),
+		})
+		return err
+	}
+	// F11/T073: the diagnostic grant store. It owns its own table and the typed
+	// content-read audit helper; no other package can read content through it.
+	diagnosticService := diagnostics.New(deps.Service.DB, deps.Objects)
 	return &Server{
-		service:        deps.Service,
-		policy:         authorizer,
-		catalog:        catalog.New(deps.Service.DB, authorizer),
-		jobs:           jobsController,
-		artifacts:      background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		execution:      executionService,
-		evaluationRuns: execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
-		runArtifacts:   execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		userArtifacts:  artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		knowledge:      knowledgeService,
-		toolRuns:       toolruns.New(deps.Service.DB, notifier),
-		toolVersions:   toolversions.New(deps.Service.DB),
-		models:         modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
-		modelRegistry:  modelRegistry,
-		capabilities:   capabilityService,
-		connectors:     deps.Connectors,
-		approvals:      approvalService,
-		preview:        newPreviewHub(),
-		memory: memory.New(
-			deps.Service.DB, deps.Objects,
-			catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
-		),
+		service:           deps.Service,
+		policy:            authorizer,
+		catalog:           catalogReader,
+		jobs:              jobsController,
+		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:         executionService,
+		evaluationRuns:    execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
+		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts:     userArtifactService,
+		knowledge:         knowledgeService,
+		toolRuns:          toolruns.New(deps.Service.DB, notifier),
+		toolVersions:      toolversions.New(deps.Service.DB),
+		models:            modelService,
+		modelRegistry:     modelRegistry,
+		capabilities:      capabilityService,
+		connectors:        deps.Connectors,
+		approvals:         approvalService,
+		preview:           newPreviewHub(),
+		memory:            memoryService,
+		deletions:         deletionService,
+		diagnostics:       diagnosticService,
+		requests:          requestService,
+		routing:           routingService,
+		children:          childService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -304,6 +400,33 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
+	// F02B/T070: administrator revocation of one published version and the
+	// non-contract run-entry guard (ADR 0022). Revocation is admin-only over a
+	// cookie session + CSRF; the guard is the authoritative live-database answer a
+	// stale catalog index cannot bypass, and T074 calls the same Go function.
+	mux.HandleFunc("POST /api/v1/versions/{version_id}/revoke", s.handleRevokeVersion)
+	mux.HandleFunc("GET /api/v1/versions/{version_id}/runnable", s.handleResolveRunnableVersion)
+
+	// F08/T077: authorized purpose-catalog search. Non-contract (ADR 0026) because
+	// the contract's Application/listApplications schema has no search member; the
+	// path is additive and listApplications is untouched. ACL and publication
+	// filters run in the SQL before ranking/LIMIT; a stale index falls back to the
+	// authorized full text and re-checks each row.
+	mux.HandleFunc("GET /api/v1/catalog/search", s.handleCatalogSearch)
+
+	// F02B/T068: publication review. submit/decision are idempotent state-changing
+	// POSTs (cookie sessions need CSRF; an API key needs application:write for a
+	// submission and the admin role for a decision, which an API key never has).
+	// The two review reads are ACL-filtered: an administrator sees all, a creator
+	// sees only their own. The non-contract preview is the creator's pre-submit
+	// shared-definition read; it creates no review.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/submit", s.handleSubmitApplication)
+	mux.HandleFunc("POST /api/v1/reviews/{review_id}/decision", s.handleReviewDecision)
+	mux.HandleFunc("GET /api/v1/reviews", s.handleListPublicationReviews)
+	mux.HandleFunc("GET /api/v1/reviews/{review_id}", s.handleGetPublicationReview)
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/publication-preview",
+		s.handlePreviewPublication)
+
 	// F04A/T049: copy the server-controlled sales template into the caller's own
 	// private application. Non-contract and not a publication: the caller then
 	// uses the normal draft/debug path, and F02B still owns shared versions.
@@ -322,6 +445,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/applications/{application_id}/debug-runs", s.handleDebugDraft)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/runs/{run_id}", s.handleGetRun)
+	// F07/T078: the owner-only child Run list the Run page uses. Non-contract
+	// (the contract has no list-children operation); owner-only exactly like the
+	// parent read, and it returns the same contract Run projection.
+	mux.HandleFunc("GET /api/v1/runs/{run_id}/children", s.handleListChildRuns)
 	// F03/T036: owner-only, idempotent cancel intent. 202 with the contract Run;
 	// "accepted" never means the external effect was undone.
 	mux.HandleFunc("POST /api/v1/runs/{run_id}/cancel", s.handleCancelRun)
@@ -395,6 +522,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}", s.handleGetArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/download", s.handleDownloadArtifact)
 	mux.HandleFunc("GET /api/v1/artifacts/{artifact_id}/content", s.handleArtifactContent)
+	// F11/T069: the contract's deleteArtifact. The tombstone commits before the
+	// 202; physical cleanup stays T071's.
+	mux.HandleFunc("DELETE /api/v1/artifacts/{artifact_id}", s.handleDeleteArtifact)
 
 	// F05/T030: the trusted preset tool. A documented non-contract bridge over
 	// the durable background-job pipeline (T033/F04A bind tools to runs later).
@@ -450,6 +580,44 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/retrieval-queries", s.handleKnowledgeRetrievalQuery)
 	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/answer", s.handleKnowledgeAnswer)
 	mux.HandleFunc("GET /api/v1/knowledge-citations/{chunk_id}", s.handleGetKnowledgeCitation)
+	// F11/T069: the contract's deleteDocument; the same tombstone transaction
+	// makes retrieval, citation open and the cache hit refuse immediately.
+	mux.HandleFunc("DELETE /api/v1/knowledge-documents/{document_id}", s.handleDeleteDocument)
+
+	// F11/T069: the shared deletion job read and the conversation delete route.
+	// Conversations have no authority until F08/T074 creates them, so every
+	// conversation id is a located 404 through the same generic foundation.
+	mux.HandleFunc("DELETE /api/v1/conversations/{conversation_id}", s.handleDeleteConversation)
+	mux.HandleFunc("GET /api/v1/deletions/{deletion_id}", s.handleGetDeletion)
+
+	// F11/T073: user-scoped diagnostic grants. The contract operations are
+	// cookie-session + CSRF, owner-grants and admin-grantee; the metadata list and
+	// the audited content door are documented non-contract extensions (ADR 0028).
+	mux.HandleFunc("POST /api/v1/diagnostic-grants", s.handleCreateDiagnosticGrant)
+	mux.HandleFunc("DELETE /api/v1/diagnostic-grants/{grant_id}", s.handleRevokeDiagnosticGrant)
+	mux.HandleFunc("GET /api/v1/diagnostic-grants", s.handleListDiagnosticGrants)
+	mux.HandleFunc("GET /api/v1/diagnostic-grants/{grant_id}/content", s.handleDiagnosticContent)
+
+	// F08/T074: conversations, the ordered request queue and the message timeline.
+	// The create/submit/cancel POSTs need CSRF (cookie) and the application:write
+	// scope (API key); the reads need application:read. The extra facts the
+	// additionalProperties:false schemas have no field for travel as documented
+	// response headers (X-Request-*).
+	mux.HandleFunc("POST /api/v1/conversations", s.handleCreateConversation)
+	mux.HandleFunc("GET /api/v1/conversations", s.handleListConversations)
+	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}", s.handleGetConversation)
+	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}/messages", s.handleListMessages)
+	// F08/T082: the non-contract minimal handover preview. It is a read-only POST
+	// because the selected source Runs/artifacts are an array body; it writes
+	// nothing, needs no Idempotency-Key and the submit path re-derives it.
+	mux.HandleFunc("POST /api/v1/conversations/{conversation_id}/handoff-preview",
+		s.handleHandoffPreview)
+	mux.HandleFunc("POST /api/v1/requests", s.handleSubmitRequest)
+	mux.HandleFunc("GET /api/v1/requests/{request_id}", s.handleGetRequest)
+	mux.HandleFunc("POST /api/v1/requests/{request_id}/cancel", s.handleCancelRequest)
+	// F08/T079: answer a pending input/selection interaction. The contract requires
+	// Idempotency-Key; the request id is part of the key's scope (path).
+	mux.HandleFunc("POST /api/v1/requests/{request_id}/reply", s.handleReplyInteraction)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
@@ -467,14 +635,41 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F02B/T070: the administrator's version/revocation page for one application.
+	mux.HandleFunc("GET /apps/{application_id}/versions", s.staticPage("versions.html"))
+	mux.HandleFunc("GET /assets/versions.js", s.staticPage(filepath.Join("assets", "versions.js")))
 	// F13A/T056: the creator evaluation page. The application id comes from the
 	// path; the page never invents one. Its helpers are served as a separate
 	// asset so the Node page test executes the same bytes a browser receives.
 	mux.HandleFunc("GET /apps/{application_id}/evaluate", s.staticPage("evaluate.html"))
 	mux.HandleFunc("GET /assets/evaluate.js", s.staticPage(filepath.Join("assets", "evaluate.js")))
+	// F02B/T068: the creator publication page (purpose/risk/report before
+	// submitting) and the review pages (queue + one frozen snapshot). Like every
+	// static route the path is a compile-time constant; ids come from the path and
+	// are used only by the page's JavaScript against the authenticated API.
+	mux.HandleFunc("GET /apps/{application_id}/publish", s.staticPage("publish.html"))
+	mux.HandleFunc("GET /assets/publish.js", s.staticPage(filepath.Join("assets", "publish.js")))
+	mux.HandleFunc("GET /reviews", s.staticPage("reviews.html"))
+	mux.HandleFunc("GET /reviews/{review_id}", s.staticPage("reviews.html"))
+	mux.HandleFunc("GET /assets/reviews.js", s.staticPage(filepath.Join("assets", "reviews.js")))
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F11/T069: the personal-data page that starts a delete and shows the real
+	// deletion-job state/remaining scopes. Static, compile-time paths.
+	mux.HandleFunc("GET /personal-data", s.staticPage("personal-data.html"))
+	mux.HandleFunc("GET /assets/personal-data.js",
+		s.staticPage(filepath.Join("assets", "personal-data.js")))
+	// F08/T074: the conversation/queue page and its pure client helpers. The page
+	// path is a compile-time constant; the conversation id lives in the page's own
+	// select control, never in the URL, so no request input reaches a file path.
+	mux.HandleFunc("GET /chat", s.staticPage("chat.html"))
+	mux.HandleFunc("GET /assets/chat.js", s.staticPage(filepath.Join("assets", "chat.js")))
+	// F08/T077: the authorized purpose-catalog browse/search page and its pure client
+	// helpers. Static, compile-time paths; the query lives in the page's own field
+	// and is always encoded by the helper before it reaches the URL.
+	mux.HandleFunc("GET /catalog", s.staticPage("catalog.html"))
+	mux.HandleFunc("GET /assets/catalog.js", s.staticPage(filepath.Join("assets", "catalog.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).

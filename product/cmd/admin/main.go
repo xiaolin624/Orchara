@@ -10,8 +10,10 @@
 //	bootstrap        create the first local administrator (password on stdin only)
 //	handover         move unfinished service-account responsibility to another admin
 //	background-jobs  the formal control interface for fixed-handler background work
+//	deletion         export/replay the append-only backup deletion ledger
 //	evaluations      enqueue one evaluation and its application_evaluate job
 //	runs             conservative recovery: park expired leases, recover with evidence
+//	catalog          rebuild/inspect the authorized purpose-catalog projection
 //	seed-sales-template  create/update the F04A sales template source draft
 package main
 
@@ -47,8 +49,10 @@ commands:
   bootstrap        create the first local administrator (password read from stdin)
   handover         move unfinished service-account responsibility to another administrator
   background-jobs  enqueue fixed-handler background work (background-jobs enqueue --help)
+  deletion         export/replay the backup deletion ledger, and the cleanup alert surface (deletion --help)
   evaluations      enqueue one evaluation and its application_evaluate job (evaluations enqueue --help)
   runs             park expired leases and recover a parked Run with audited evidence (runs --help)
+  catalog          rebuild/index/status the authorized purpose-catalog projection (catalog --help)
   seed-sales-template  create/update the F04A sales template source draft
 
 handover:
@@ -100,12 +104,27 @@ func usageErrorf(format string, args ...any) error {
 	return &usageError{message: fmt.Sprintf(format, args...) + "\n\n" + usage}
 }
 
+// exitCodeError carries a decided process exit code that is not a failure. The
+// F11/T076 alert surface uses it: "the pass ran and found an alert" is a signal
+// (exit 3), distinct from a command failure (1) and a usage problem (2).
+type exitCodeError struct {
+	code    int
+	message string
+}
+
+func (e *exitCodeError) Error() string { return e.message }
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		var usageProblem *usageError
 		if errors.As(err, &usageProblem) {
 			fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", usageProblem)
 			os.Exit(2)
+		}
+		var decided *exitCodeError
+		if errors.As(err, &decided) {
+			fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", decided.message)
+			os.Exit(decided.code)
 		}
 		fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", err)
 		os.Exit(1)
@@ -114,7 +133,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'evaluations', 'runs' or 'seed-sales-template'")
+		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs', 'catalog' or 'seed-sales-template'")
 	}
 	switch args[0] {
 	case "migrate":
@@ -125,17 +144,21 @@ func run(args []string) error {
 		return runHandover(args[1:])
 	case "background-jobs":
 		return runBackgroundJobs(args[1:])
+	case "deletion":
+		return runDeletion(args[1:])
 	case "evaluations":
 		return runEvaluations(args[1:])
 	case "runs":
 		return runRuns(args[1:])
+	case "catalog":
+		return runCatalog(args[1:])
 	case "seed-sales-template":
 		return runSeedSalesTemplate(args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'evaluations', 'runs' or 'seed-sales-template'", args[0])
+		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs', 'catalog' or 'seed-sales-template'", args[0])
 	}
 }
 

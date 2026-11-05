@@ -160,6 +160,40 @@ type NodeResult struct {
 	Label      string
 }
 
+// SpawnChildRequest is the contract spawnChild body the executor sends. The
+// logical key is derived deterministically from the run and the invocation path,
+// so a retried attempt replays the same child instead of creating a second one.
+type SpawnChildRequest struct {
+	LogicalKey           string
+	ApplicationVersionID string
+	Input                map[string]any
+}
+
+// ChildRun is the contract Run subset the executor reads from spawnChild. It is
+// the platform's own projection; the executor never invents a child identity.
+type ChildRun struct {
+	ID                   string
+	State                string
+	Revision             int64
+	ApplicationVersionID string
+	ParentRunID          string
+	OutputArtifactID     string
+	ErrorCode            string
+	Kind                 string
+	ExecutionSnapshotID  string
+	Phase                string
+}
+
+// ChildResult is the non-contract terminal result read: the child's state, its
+// sealed output artifact and the decoded JSON object that artifact holds.
+type ChildResult struct {
+	ChildRunID       string
+	State            string
+	OutputArtifactID string
+	ErrorCode        string
+	Output           map[string]any
+}
+
 // Client is the execution protocol as this executor uses it. The supervisor
 // process implements it with two mTLS capacities (supervisor for claim/exit,
 // worker for the artifact routes) and never exposes a generic request method.
@@ -195,6 +229,19 @@ type Client interface {
 	ReportCapabilityResult(
 		ctx context.Context, runID, attemptToken string, report capabilities.ResultReport,
 	) (*capabilities.Result, error)
+	// SpawnChild creates (or replays) one delegated child Run through the
+	// platform's contract spawnChild operation. This is the only way this
+	// executor can create a Run: it holds a live attempt token on the parent and
+	// the server re-proves the frozen closure, the child version and the mapping.
+	SpawnChild(
+		ctx context.Context, runID, attemptToken string, request SpawnChildRequest,
+	) (*ChildRun, error)
+	// ChildResult reads one terminal child's structured result. The server
+	// re-proves the parent's live attempt and the parent_run_id link; the child
+	// output bytes are re-hashed before they are decoded.
+	ChildResult(
+		ctx context.Context, runID, attemptToken, childRunID string,
+	) (*ChildResult, error)
 }
 
 // InputSource resolves the run's linked input artifacts. The supervisor's
@@ -777,6 +824,10 @@ type manifestDocument struct {
 	Definition           manifestDefinition     `json:"definition"`
 	ToolArtifacts        []manifestToolArtifact `json:"tool_artifacts"`
 	ModelProfileVersions []string               `json:"model_profile_versions"`
+	// SubappVersions is the frozen fixed sub-application closure. A call_app node
+	// or an agent's subapp_versions entry must be one of these ids; the spawn
+	// endpoint re-proves the same membership again.
+	SubappVersions []string `json:"subapp_versions"`
 }
 
 // manifestToolArtifact is one manifest.tool_artifacts entry (the id is the tool

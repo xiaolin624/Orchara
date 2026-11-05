@@ -149,6 +149,12 @@ func (s *stubProvider) Call(_ context.Context, request CallRequest) (ProviderRes
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
 	}
+	// F08/T079: a routing control call is a server-built prompt with
+	// `task: "route"`; it is answered deterministically from the prompt bytes.
+	// The agent/validation branches below are untouched.
+	if task, ok := request.Params["task"].(string); ok && task == "route" {
+		return stubRouteResponse(request)
+	}
 	// F06/T041 agent branch: a run-scoped capability call carries `messages`
 	// (and `task: "agent"`); the job-scoped validation call carries a fixture.
 	// The agent answer is derived deterministically from the canonical params,

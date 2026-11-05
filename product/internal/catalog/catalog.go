@@ -129,6 +129,17 @@ func DecodeCursor(raw string) (time.Time, string, error) {
 // The predicate assumes the application is aliased `a` and is used in the same
 // WHERE as the keyset cursor and LIMIT, so filtering happens before pagination.
 func applicationReadPredicate(principalArg, nowArg, resourceTypeArg, actionArg int) string {
+	return ApplicationReadPredicate(principalArg, nowArg, resourceTypeArg, actionArg)
+}
+
+// ApplicationReadPredicate is the same owner-or-unexpired-grant SQL predicate as
+// applicationReadPredicate, exported for the F08/T079 router. The router must
+// filter the authorized catalog inside the candidate query (before its LIMIT) and
+// share this one copy rather than growing a second ACL predicate that can drift.
+// The caller supplies the 1-based placeholders for the principal, the read clock,
+// the resource type (policy.ResourceApplication) and the action (policy.ActionRead),
+// and aliases the application table as `a`.
+func ApplicationReadPredicate(principalArg, nowArg, resourceTypeArg, actionArg int) string {
 	return fmt.Sprintf(`(
 		        a.owner_id = $%[1]d
 		        OR EXISTS (

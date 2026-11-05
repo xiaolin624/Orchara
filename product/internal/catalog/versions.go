@@ -18,12 +18,21 @@ import (
 // Version is one immutable published row of the contract's Version schema. It
 // never carries a draft definition/layout: only the published manifest and its
 // hash are readable through this model.
+//
+// ManifestArtifactID/CompilerVersion/WorkerImageDigest/StateSchemaVersion are the
+// frozen execution identity F08/T074 copies into a published Run's
+// execution_snapshot. They are populated by ResolveRunnableVersion(\.Tx) only; the
+// contract's Version view (api.versionView) never serialises them.
 type Version struct {
-	ID             string
-	ApplicationID  string
-	VersionNo      int64
-	ManifestSHA256 string
-	Manifest       json.RawMessage
+	ID                 string
+	ApplicationID      string
+	VersionNo          int64
+	ManifestSHA256     string
+	Manifest           json.RawMessage
+	ManifestArtifactID string
+	CompilerVersion    string
+	WorkerImageDigest  string
+	StateSchemaVersion string
 }
 
 // EncodeVersionCursor serialises the keyset position (version_no, id) as an
@@ -97,7 +106,9 @@ func (r *Reader) applicationVisible(
 //
 // The application-level visibility check runs first and answers 404 for an
 // invisible application; the list query repeats the predicate so a grant revoked
-// between the two statements cannot leak a page.
+// between the two statements cannot leak a page. A revoked version (F02B/T070)
+// is omitted: the contract's Version schema has no state/availability field, so
+// omission is the only honest representation of "not runnable".
 func (r *Reader) ListVersions(
 	ctx context.Context,
 	callerID, applicationID, cursor string,
@@ -131,6 +142,7 @@ func (r *Reader) ListVersions(
 		  JOIN platform.applications AS a ON a.id = v.application_id
 		 WHERE v.application_id = $1
 		   AND a.archived_at IS NULL
+		   AND v.revoked_at IS NULL
 		   AND `+applicationReadPredicate(2, 6, 7, 8)+`
 		   AND (
 		        $3::bigint IS NULL
@@ -176,7 +188,9 @@ func (r *Reader) ListVersions(
 }
 
 // GetVersion returns one published version of an application the caller may
-// read. Unknown, archived-application and unauthorized are all ErrNotVisible.
+// read. Unknown, archived-application, revoked (F02B/T070) and unauthorized are
+// all ErrNotVisible/404: the contract's Version schema has no state field, so an
+// emptied detail read is the only availability signal it can express.
 func (r *Reader) GetVersion(
 	ctx context.Context, callerID, versionID string,
 ) (*Version, error) {
@@ -194,7 +208,8 @@ func (r *Reader) GetVersion(
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
 		 WHERE v.id = $1
-		   AND a.archived_at IS NULL`,
+		   AND a.archived_at IS NULL
+		   AND v.revoked_at IS NULL`,
 		versionID,
 	).Scan(
 		&version.ID, &version.ApplicationID, &version.VersionNo,

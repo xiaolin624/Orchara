@@ -39,6 +39,10 @@ type cancelAttemptFacts struct {
 	Token    string
 	JobID    string
 	ExitedAt sql.NullTime
+	// ReportedResult is the stored result proposal; F07/T081's child-terminal
+	// re-drive needs it to let the one finalizer commit a result that was blocked
+	// by a live child (the child is now stopped).
+	ReportedResult []byte
 }
 
 // unknownOperationFacts is one ledger row locked for a resolution.
@@ -356,15 +360,17 @@ func revokeRunAttemptsTx(ctx context.Context, tx *sql.Tx, runID string) error {
 }
 
 // releaseAllocationIfPresentTx is the idempotent release for a cancel that may
-// never have taken a worker slot (a queued Run has no allocation yet).
+// never have taken a worker slot (a queued Run has no allocation yet). It asks by
+// holder key only: a delegated child attempt holds both a child-pool and a
+// per-parent allocation, and both must be returned by the same release.
 func releaseAllocationIfPresentTx(ctx context.Context, tx *sql.Tx, holderKey string) error {
 	var exists bool
 	err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS (
 		    SELECT 1 FROM platform.quota_allocations
-		     WHERE scope = $1 AND dimension = $2 AND holder_key = $3
+		     WHERE holder_key = $1
 		)`,
-		quotaScope, quotaDimension, holderKey,
+		holderKey,
 	).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("reading the cancel allocation: %w", err)
@@ -421,6 +427,14 @@ func requireLiveAttemptTx(
 		return ErrStaleAttempt
 	}
 	return nil
+}
+
+// RequireLiveAttemptTx is the exported form of the run-scoped attempt proof for
+// creation paths outside this package. F07/T078's children.Spawn uses it exactly
+// like every execution-protocol route: worker mTLS plus a live, current attempt
+// token is the whole authorization for creating a child Run.
+func RequireLiveAttemptTx(ctx context.Context, tx *sql.Tx, runID, token string) error {
+	return requireLiveAttemptTx(ctx, tx, runID, token, false)
 }
 
 // insertUnknownOperationTx records one operation id once. ON CONFLICT DO NOTHING
@@ -525,14 +539,14 @@ func lockLatestCancelAttemptTx(
 ) (*cancelAttemptFacts, error) {
 	var facts cancelAttemptFacts
 	err := tx.QueryRowContext(ctx, `
-		SELECT token::text, job_id::text, exited_at
+		SELECT token::text, job_id::text, exited_at, reported_result
 		  FROM platform.run_attempts
 		 WHERE run_id = $1::uuid
 		 ORDER BY started_at DESC, token DESC
 		 LIMIT 1
 		 FOR UPDATE`,
 		runID,
-	).Scan(&facts.Token, &facts.JobID, &facts.ExitedAt)
+	).Scan(&facts.Token, &facts.JobID, &facts.ExitedAt, &facts.ReportedResult)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

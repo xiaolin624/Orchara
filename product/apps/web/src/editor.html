@@ -31,6 +31,16 @@
     [hidden] { display: none !important; }
     details { margin-top: .8rem; }
     summary { cursor: pointer; font-size: .88rem; }
+    .callapp-row { display: grid; grid-template-columns: 14rem 9rem 1fr; gap: .5rem; align-items: center; margin: .35rem 0; }
+    .callapp-row input[type="checkbox"] { justify-self: start; }
+    .callapp-field { font-size: .84rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    .node-chip { margin: .25rem .35rem .25rem 0; padding: .25rem .6rem; border: 1px solid rgba(128,128,128,.5); border-radius: 999px; background: transparent; font-size: .82rem; cursor: pointer; }
+    .node-chip.call-app { border-style: dashed; }
+    .node-chip.invalid { border-color: #b91c1c; color: #b91c1c; font-weight: 600; }
+    .node-chip-id { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; margin-right: .35rem; }
+    .node-chip-type { opacity: .7; }
+    .node-chip-errors { margin-left: .4rem; }
+    .node-error { font-size: .8rem; color: #b91c1c; margin: .15rem 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
   </style>
 </head>
 <body>
@@ -67,9 +77,49 @@
       四类节点各一个：开始 / Python / Agent / 结束。只能连成单条线性链；非法连接会被拒绝并说明原因。
       配置面板按节点类型显示字段、合法变量来源、工具/模型选择器与输出 Schema。校验调用
       <code>POST /api/v1/applications/{id}/validate</code>，定位错误可点击跳转。
+      F07 的 <code>call_app</code> 节点不作为第五种画布节点伪装：它在下面的“子应用调用”面板中编辑，
+      写入同一份 definition，并沿用本页唯一的保存路径。
     </p>
     <div id="canvas-root"></div>
     <noscript>画布需要 JavaScript；下方的 JSON 视图仍可通过表单保存。</noscript>
+  </section>
+
+  <section class="card" id="subapp-card" aria-label="子应用调用 call_app">
+    <h2>子应用调用（call_app，F07/T075）</h2>
+    <p class="hint">
+      只列出服务端按读权限过滤后的应用与已发布版本；<strong>固定版本不接受 latest</strong>。
+      选中版本后，输入/输出映射按该版本冻结的 <code>definition</code> Schema 生成。
+      撤销/不可见/循环/深度或次数超限等拒绝由 <code>POST /validate</code> 定位返回，
+      并在下方节点条上高亮对应节点。运行时执行子应用属于 T078，本页只声明并固化依赖。
+    </p>
+    <label for="callapp-application">可调用的应用</label>
+    <select id="callapp-application"></select>
+    <label for="callapp-version">固定版本</label>
+    <select id="callapp-version"></select>
+    <label for="callapp-node-id">节点 id</label>
+    <input id="callapp-node-id" type="text" value="callapp1" />
+    <h3>输入映射（call_app.inputs）</h3>
+    <p class="hint">
+      每个子应用输入字段选择来源：应用输入（如 <code>/source</code>）、字面量 JSON 或上游节点输出
+      （如 <code>python1#/report</code>）。未映射的必填字段会被服务端定位为
+      <code>io_mapping_missing_field</code>；未声明的字段是 <code>io_mapping_unknown_field</code>；
+      类型不兼容是 <code>io_mapping_type_mismatch</code>。
+    </p>
+    <div id="callapp-input-rows"></div>
+    <h3>输出声明（节点 output_schema）</h3>
+    <p class="hint">
+      只勾选希望向下游暴露的子应用输出。声明一个子应用没有的字段是
+      <code>io_output_unknown_field</code>，类型不兼容是 <code>io_output_type_mismatch</code>。
+      子应用只保证其冻结 Schema 声明的输出。
+    </p>
+    <div id="callapp-output-rows"></div>
+    <button id="callapp-add" type="button">加入 / 更新 call_app 节点</button>
+    <button id="callapp-validate" type="button">保存并校验</button>
+    <p id="callapp-status" class="status" role="status" aria-live="polite"></p>
+    <h3>节点与定位错误</h3>
+    <p class="hint">节点条：红色 = 服务端定位到该节点；虚线 = call_app 节点。点击节点可把它的固定版本与映射载回面板。</p>
+    <div id="editor-node-list"></div>
+    <div id="callapp-errors"></div>
   </section>
 
   <form id="draft-form" method="post">

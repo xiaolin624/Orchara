@@ -118,6 +118,10 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifact-downloads", s.handleInternalArtifactDownload)
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/artifact-status", s.handleInternalArtifactStatus)
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/model-calls", s.handleInternalModelCall)
+	// F08/T079: one server-side routing round for a `route_request` job. Job-scoped
+	// and maintenance-capacity only; the handler never sees user text or a
+	// candidate row. Non-contract; see internal/api/route.go.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/route", s.handleInternalRoute)
 	// F00B/T026: the job-scoped evaluation binding (kind, dataset, bound manifest
 	// hash) the handler must put in its report. Non-contract internal extension;
 	// see internal/api/evaluations.go for why the lease cannot carry it.
@@ -153,6 +157,12 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/jobs/claim", s.handleInternalExecutionClaim)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/heartbeat", s.handleInternalRunHeartbeat)
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/result", s.handleInternalRunResult)
+	// F07/T078: the contract spawnChild operation (worker mTLS) and the
+	// non-contract terminal-result read the parent executor needs. Both re-prove
+	// the parent's live attempt token; the child is always a real platform Run.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/children", s.handleInternalSpawnChild)
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/children/{child_run_id}/result",
+		s.handleInternalChildResult)
 	// F03/T035: the synthetic approval/child-result bridge. Supervisor-only mTLS;
 	// F06/F07 replace it with their real sources (documented non-contract bridge).
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/waiting-resolution", s.handleInternalWaitingResolution)

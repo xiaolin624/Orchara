@@ -22,8 +22,11 @@ func testDefinition(t *testing.T, raw string) *manifestDocument {
 			ID: PresetToolID, ImageDigest: "sha256:" + strings.Repeat("aa", 32),
 		}},
 		ModelProfileVersions: []string{testModelProfileID},
+		SubappVersions:       []string{testSubappID},
 	}
 }
+
+const testSubappID = "55555555-5555-4555-8555-555555555555"
 
 const testModelProfileID = "22222222-2222-4222-8222-222222222222"
 
@@ -128,8 +131,7 @@ func TestBuildLinearPlanRefusesUnsafeAgentConfigs(t *testing.T) {
 		{"zero turns", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":0}`, CodeAgentConfigInvalid},
 		{"too many turns", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":51}`, CodeAgentConfigInvalid},
 		{"subapps", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":1,
-		              "subapp_versions":["33333333-3333-4333-8333-333333333333"]}`, CodeAgentSubappUnsupported},
-		{"unknown tool", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":1,
+		              "subapp_versions":["33333333-3333-4333-8333-333333333333"]}`, CodeAgentSubappUnsupported}, {"unknown tool", `{"model_profile_version":"` + testModelProfileID + `","instructions":"go","max_turns":1,
 		              "tool_versions":["33333333-3333-4333-8333-333333333333"]}`, CodeToolUnsupportedTool},
 	}
 	for _, testCase := range cases {
@@ -195,15 +197,6 @@ func TestBuildLinearPlanRefusesNonLinearGraphs(t *testing.T) {
 		code string
 	}{
 		{
-			name: "agent without a python node",
-			raw: `{"nodes":[
-				{"id":"start","type":"start","config":{}},
-				{"id":"agent","type":"agent","config":{}},
-				{"id":"end","type":"end","config":{}}],
-				"edges":[{"source":"start","target":"agent"},{"source":"agent","target":"end"}]}`,
-			code: CodeToolUnsupportedGraph,
-		},
-		{
 			name: "branch",
 			raw: `{"nodes":[
 				{"id":"start","type":"start","config":{}},
@@ -220,6 +213,18 @@ func TestBuildLinearPlanRefusesNonLinearGraphs(t *testing.T) {
 				{"id":"m","type":"model","config":{}},
 				{"id":"end","type":"end","config":{}}],
 				"edges":[{"source":"start","target":"m"},{"source":"m","target":"end"}]}`,
+			code: CodeToolUnsupportedGraph,
+		},
+		{
+			// F07/T078: a call_app node without the required object output schema
+			// is a deterministic plan refusal. A complete call_app chain is
+			// accepted by TestBuildLinearPlanAcceptsACallAppChain below.
+			name: "call_app node without an output schema",
+			raw: `{"nodes":[
+				{"id":"start","type":"start","config":{}},
+				{"id":"child","type":"call_app","config":{"application_version":"` + testSubappID + `"}},
+				{"id":"end","type":"end","config":{}}],
+				"edges":[{"source":"start","target":"child"},{"source":"child","target":"end"}]}`,
 			code: CodeToolUnsupportedGraph,
 		},
 		{
@@ -407,5 +412,101 @@ func TestPlanErrorsCarryStableCodes(t *testing.T) {
 	}
 	if !strings.HasPrefix(planErr.code, "agent_") && !strings.HasPrefix(planErr.code, "tool_") {
 		t.Fatalf("unexpected plan code: %q", planErr.code)
+	}
+}
+
+// TestBuildLinearPlanAcceptsACallAppChain pins the F07/T078 delegation shapes.
+func TestBuildLinearPlanAcceptsACallAppChain(t *testing.T) {
+	cases := []struct {
+		name   string
+		raw    string
+		hasPy  bool
+		hasApp bool
+	}{
+		{
+			name: "pure delegation",
+			raw: `{"nodes":[
+				{"id":"start","type":"start","config":{}},
+				{"id":"child","type":"call_app","inputs":{"source":{"ref":"input#/source"}},
+				 "output_schema":{"type":"object","properties":{"echo":{"type":"string"}}},
+				 "config":{"application_version":"` + testSubappID + `"}},
+				{"id":"end","type":"end","config":{}}],
+				"edges":[{"source":"start","target":"child"},{"source":"child","target":"end"}]}`,
+			hasApp: true,
+		},
+		{
+			name: "python then delegation",
+			raw: `{"nodes":[
+				{"id":"start","type":"start","config":{}},
+				{"id":"stats","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+				 "config":{"tool_version":"` + PresetToolID + `"}},
+				{"id":"child","type":"call_app","inputs":{"source":{"ref":"input#/source"}},
+				 "output_schema":{"type":"object"},
+				 "config":{"application_version":"` + testSubappID + `"}},
+				{"id":"end","type":"end","config":{}}],
+				"edges":[{"source":"start","target":"stats"},{"source":"stats","target":"child"},
+				         {"source":"child","target":"end"}]}`,
+			hasPy: true, hasApp: true,
+		},
+		{
+			name: "identity child",
+			raw: `{"nodes":[
+				{"id":"start","type":"start","config":{}},
+				{"id":"end","type":"end","inputs":{"echo":{"ref":"input#/source"}},"config":{}}],
+				"edges":[{"source":"start","target":"end"}]}`,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			plan, err := buildLinearPlan(testDefinition(t, testCase.raw))
+			if err != nil {
+				t.Fatalf("a legal delegation chain was refused: %v", err)
+			}
+			if (plan.python != nil) != testCase.hasPy || (plan.callApp != nil) != testCase.hasApp {
+				t.Fatalf("unexpected plan: python=%v callApp=%v", plan.python, plan.callApp)
+			}
+			if plan.callApp != nil && plan.callAppConfig.VersionID != testSubappID {
+				t.Fatalf("the pinned child version was not parsed: %+v", plan.callAppConfig)
+			}
+		})
+	}
+	// Two call_app nodes, or a call_app next to an agent, are refused: one chain
+	// executes one delegation segment in this build.
+	two := `{"nodes":[
+		{"id":"start","type":"start","config":{}},
+		{"id":"a","type":"call_app","output_schema":{"type":"object"},"config":{"application_version":"` + testSubappID + `"}},
+		{"id":"b","type":"call_app","output_schema":{"type":"object"},"config":{"application_version":"` + testSubappID + `"}},
+		{"id":"end","type":"end","config":{}}],
+		"edges":[{"source":"start","target":"a"},{"source":"a","target":"b"},{"source":"b","target":"end"}]}`
+	if _, err := buildLinearPlan(testDefinition(t, two)); err == nil {
+		t.Fatal("two call_app nodes were accepted")
+	}
+}
+
+// TestBuildLinearPlanAcceptsAnAgentSubappAllowedSet proves F07/T078's agent
+// declaration is accepted exactly when the version is in the sealed manifest.
+func TestBuildLinearPlanAcceptsAnAgentSubappAllowedSet(t *testing.T) {
+	chain := func(subapps string) string {
+		return `{"nodes":[
+			{"id":"start","type":"start","config":{}},
+			{"id":"stats","type":"python","config":{"tool_version":"` + PresetToolID + `"}},
+			{"id":"analysis","type":"agent","output_schema":{"type":"object"},
+			 "config":{"model_profile_version":"` + testModelProfileID + `",
+			           "instructions":"go","max_turns":2,"tool_versions":[],"subapp_versions":` + subapps + `}},
+			{"id":"end","type":"end","config":{}}],
+			"edges":[{"source":"start","target":"stats"},{"source":"stats","target":"analysis"},
+			         {"source":"analysis","target":"end"}]}`
+	}
+	plan, err := buildLinearPlan(testDefinition(t, chain(`["`+testSubappID+`"]`)))
+	if err != nil {
+		t.Fatalf("an allowed sub-app delegation was refused: %v", err)
+	}
+	if len(plan.agentConfig.Subapps) != 1 || plan.agentConfig.Subapps[0].Name != "call_app_1" ||
+		plan.agentConfig.Subapps[0].VersionID != testSubappID {
+		t.Fatalf("unexpected subapp tools: %+v", plan.agentConfig.Subapps)
+	}
+	// A version the sealed manifest does not close over is refused.
+	if _, err := buildLinearPlan(testDefinition(t, chain(`["33333333-3333-4333-8333-333333333333"]`))); err == nil {
+		t.Fatal("a subapp outside the manifest closure was accepted")
 	}
 }

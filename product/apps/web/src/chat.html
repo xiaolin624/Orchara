@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>会话与请求 · Orchara</title>
+    <link rel="stylesheet" href="/assets/canvas.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <strong>Orchara</strong>
+      <nav>
+        <a href="/apps">应用</a>
+        <a href="/chat">会话</a>
+        <a href="/runs">运行</a>
+        <a href="/personal-data">个人数据</a>
+        <a href="/login" id="logout-link">退出</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="panel" id="conversation-panel">
+        <h1>会话</h1>
+        <p class="hint">
+          每个会话只有一个逻辑执行槽：最早的未完成请求占槽，后续普通请求按顺序排队。
+          固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。
+        </p>
+        <div class="row">
+          <button type="button" id="conversation-create">新建会话</button>
+          <span id="conversation-status" class="status"></span>
+        </div>
+        <ul id="conversation-list" aria-label="我的会话"></ul>
+      </section>
+
+      <section class="panel" id="chat-panel" hidden>
+        <h2>当前会话 <code id="chat-conversation-id"></code></h2>
+
+        <div class="row">
+          <label for="chat-version-id">固定版本（可选）</label>
+          <input id="chat-version-id" type="text" placeholder="application_version_id" />
+          <span class="hint">填写后直接使用该发布版本，不经过模型匹配。</span>
+        </div>
+
+        <form id="chat-message-form">
+          <label for="chat-message">需求</label>
+          <textarea id="chat-message" rows="4" maxlength="32000" required></textarea>
+
+          <fieldset id="chat-handoff">
+            <legend>跨应用交接（可选）：先生成服务端预览，再确认最小范围</legend>
+            <p class="hint">
+              新应用只会收到本次需求、你在下面勾选的来源附件和这份服务端摘要；
+              旧应用的内部历史、对话正文与个人记忆不会自动传递。
+            </p>
+            <label for="chat-handoff-source-runs">来源 Run（逗号分隔，最多 5 个）</label>
+            <input id="chat-handoff-source-runs" type="text" />
+            <div class="row">
+              <button type="button" id="chat-handoff-load-artifacts">读取来源 Run 的产出附件</button>
+              <span id="chat-handoff-artifact-status" class="status"></span>
+            </div>
+            <fieldset id="chat-handoff-artifacts">
+              <legend>选择要交接的来源附件（最多 5 个）</legend>
+              <ul id="chat-handoff-artifact-options"></ul>
+            </fieldset>
+            <div class="row">
+              <button type="button" id="chat-handoff-preview-button">生成交接预览</button>
+              <span id="chat-handoff-preview-status" class="status"></span>
+            </div>
+            <pre id="chat-handoff-preview" aria-live="polite"></pre>
+            <p id="chat-handoff-scope" class="hint"></p>
+            <pre id="chat-handoff-summary" hidden></pre>
+            <label class="checkbox">
+              <input id="chat-handoff-confirmed" type="checkbox" />
+              我确认只交接上面预览的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
+            </label>
+          </fieldset>
+
+          <fieldset id="chat-attachments">
+            <legend>附件（最多 5 个，均为真实上传并封存的 artifact）</legend>
+            <input id="chat-attachment-input" type="file" />
+            <button type="button" id="chat-attachment-upload">上传附件</button>
+            <span id="chat-attachment-status" class="status"></span>
+            <ul id="chat-attachment-lines"></ul>
+          </fieldset>
+
+          <button type="submit" id="chat-submit">提交需求</button>
+          <span id="chat-submit-status" class="status"></span>
+        </form>
+
+        <section id="request-panel" hidden>
+          <h3>请求</h3>
+          <p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
+          <p>处理版本：<span id="chat-handling"></span></p>
+          <p id="chat-run-link"></p>
+          <p id="chat-queue-status"></p>
+          <button type="button" id="chat-cancel">取消该请求</button>
+        </section>
+
+        <section id="interaction-panel" hidden>
+          <h3>需要你的确认</h3>
+          <p id="interaction-prompt"></p>
+          <p id="interaction-missing" class="hint"></p>
+          <p id="interaction-expires" class="hint"></p>
+          <ul id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
+          <button type="button" id="interaction-select" hidden>使用所选候选继续</button>
+          <label for="interaction-message">补充信息（可选，最多 32000 字）</label>
+          <textarea id="interaction-message" rows="3" maxlength="32000"></textarea>
+          <p id="interaction-attachments-hint" class="hint">
+            补充输入需要文件时，请先用上方“附件”上传；提交答复时会把已上传的附件一并带上。
+          </p>
+          <button type="button" id="interaction-reply">提交答复</button>
+          <span id="interaction-status" class="status"></span>
+        </section>
+
+        <section id="queue-panel">
+          <h3>会话队列</h3>
+          <ol id="queue-list"></ol>
+        </section>
+
+        <section id="messages-panel">
+          <h3>会话消息</h3>
+          <ul id="chat-messages"></ul>
+        </section>
+      </section>
+    </main>
+
+    <script src="/assets/app.js"></script>
+    <script src="/assets/attachments.js"></script>
+    <script src="/assets/chat.js"></script>
+  </body>
+</html>

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/catalog"
+	"orchara/platform/internal/deletion"
 	"orchara/platform/internal/identity"
 	"orchara/platform/internal/memory"
 )
@@ -238,18 +239,10 @@ func (s *Server) handleUpdateMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, viewOfMemory(*entry))
 }
 
-// deletionAcceptedView is exactly the contract's DeletionAccepted. `id` is a
-// deletion_job id, not the memory id; the memory is named by `resource_id`.
-type deletionAcceptedView struct {
-	ID         string `json:"id"`
-	State      string `json:"state"`
-	ResourceID string `json:"resource_id"`
-}
-
-// handleDeleteMemory answers 202 with the deletion job. The tombstone, the
+// handleDeleteMemory answers 202 with the shared deletion job. The tombstone, the
 // revision bump, the job row and the memory-scope cache-epoch bump are committed
 // before this response is written, so the next read or recall already refuses the
-// old content; physical cleanup is asynchronous F07 work and the reported
+// old content; physical cleanup is asynchronous T071/T072 work and the reported
 // `pending` state says so honestly.
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	caller, ok := s.authorize(w, r, "")
@@ -259,8 +252,11 @@ func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	if !s.requireHumanMemory(w, r, caller) {
 		return
 	}
-	job, err := s.memory.Delete(r.Context(), caller.PrincipalID, r.PathValue("memory_id"))
-	if !s.writeMemoryError(w, r, err) {
+	job, err := s.deletions.Delete(
+		r.Context(), caller.PrincipalID, deletion.ResourceMemory, r.PathValue("memory_id"),
+	)
+	if err != nil {
+		s.writeDeletionFailure(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, deletionAcceptedView{

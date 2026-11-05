@@ -112,6 +112,27 @@ func (s *jobScope) ModelCall(
 	}, nil
 }
 
+// Route executes one routing round (F08/T079). The server owns the model call and
+// every write; the handler supplies its lease proof and reports the outcome.
+func (s *jobScope) Route(
+	ctx context.Context, jobID, attemptToken string,
+) (background.RouteResult, error) {
+	result, err := s.client.route(ctx, jobID, attemptToken)
+	if err != nil {
+		return background.RouteResult{}, err
+	}
+	return background.RouteResult{
+		RequestID:     result.RequestID,
+		State:         result.State,
+		Result:        result.Result,
+		ErrorCode:     result.ErrorCode,
+		InteractionID: result.InteractionID,
+		CorrelationID: result.CorrelationID,
+		RunID:         result.RunID,
+		ControlCalls:  result.ControlCalls,
+	}, nil
+}
+
 // Evaluation resolves the job-scoped evaluation binding. The handler never
 // learns which candidate/snapshot row the manifest came from, only the hash it
 // must declare in the report.
@@ -515,6 +536,41 @@ func (c *internalClient) modelCall(
 	}
 	if status != http.StatusOK {
 		return modelCallPayload{}, fmt.Errorf("model-calls returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// routePayload is the F08/T079 internal routing answer.
+type routePayload struct {
+	RequestID     string `json:"request_id"`
+	State         string `json:"state"`
+	Result        string `json:"result"`
+	ErrorCode     string `json:"error_code"`
+	InteractionID string `json:"interaction_id"`
+	CorrelationID string `json:"correlation_id"`
+	RunID         string `json:"run_id"`
+	ControlCalls  int    `json:"control_calls"`
+}
+
+// route executes one routing round for the job. A 503 route_model_transient is
+// mapped to background.ErrRouteTransient so the handler retries through the fixed
+// retry table; a deterministic refusal is committed by the server and answers 200.
+func (c *internalClient) route(
+	ctx context.Context, jobID, attemptToken string,
+) (routePayload, error) {
+	var response routePayload
+	status, err := c.post(
+		ctx, "/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/route",
+		map[string]string{"attempt_token": attemptToken}, &response)
+	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusServiceUnavailable {
+			return routePayload{}, fmt.Errorf("%w: %s", background.ErrRouteTransient, apiErr.Message)
+		}
+		return routePayload{}, err
+	}
+	if status != http.StatusOK {
+		return routePayload{}, fmt.Errorf("route returned unexpected status %d", status)
 	}
 	return response, nil
 }

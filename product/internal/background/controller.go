@@ -1,6 +1,7 @@
 package background
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strings"
@@ -45,6 +46,12 @@ type Controller struct {
 	// Notifier is the best-effort wakeup hook called after Enqueue commits. It is
 	// never required for delivery (claim polls PostgreSQL); nil means NopNotifier.
 	Notifier Notifier
+	// QueueAdvancer releases a conversation slot after a terminal route_request
+	// failure (F08/T079). It is injected by the process that owns the request
+	// aggregate so this package does not import internal/requests (which imports
+	// this package). Nil means the completion guard cannot advance the queue; the
+	// request is still failed, never left in routing.
+	QueueAdvancer func(ctx context.Context, tx *sql.Tx, conversationID string) (string, error)
 }
 
 // New builds a Controller. store may be nil only in processes that never

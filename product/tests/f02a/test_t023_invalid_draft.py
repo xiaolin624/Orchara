@@ -94,9 +94,20 @@ def test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absen
     assert isinstance(located, list) and located, refused.text
     assert all({"code", "pointer", "message"} <= set(entry) for entry in located), located
 
-    # Publication-submit is F02B and has no endpoint at all. This is evidence of
-    # absence, not of a submit refusal; T023 must not claim the F02B closure.
+    # Publication-submit is now delivered by F02B/T068. An empty request is
+    # refused by the new endpoint's own contract (Idempotency-Key first, then the
+    # two-field body), so this no longer proves absence; T023 keeps its partial
+    # acceptance item and the F02B behaviour is covered by tests/f02b.
     submit = owner.client.post(
         f"/api/v1/applications/{application['id']}/submit", body={}, csrf=owner.csrf
     )
-    assert submit.status == 404, f"submit unexpectedly exists: {submit.status} {submit.text}"
+    assert submit.status == 400, f"submit shape: {submit.status} {submit.text}"
+    assert submit.json["error"]["code"] == "idempotency_key_required", submit.text
+    submit_with_key = owner.client.post(
+        f"/api/v1/applications/{application['id']}/submit",
+        body={},
+        csrf=owner.csrf,
+        headers={"Idempotency-Key": "t023-submit-shape"},
+    )
+    assert submit_with_key.status == 422, submit_with_key.text
+    assert submit_with_key.json["error"]["code"] == "validation_failed", submit_with_key.text

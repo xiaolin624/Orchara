@@ -140,12 +140,22 @@ func (r *Reader) ValidateExecution(
 		return nil, located, nil
 	}
 
-	dependencies, dependencyErrors, err := r.checkDependencies(ctx, callerID, applicationID, collectDependencyRefs(document), options)
+	// One extraction, shared by the readiness pass and T075's delegation check.
+	refs := collectDependencyRefs(document)
+	dependencies, dependencyErrors, err := r.checkDependencies(ctx, callerID, applicationID, refs, options)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(dependencyErrors) > 0 {
 		return nil, dependencyErrors, nil
+	}
+	// T075: the closure is ready and acyclic, so the frozen child schemas can be
+	// compared with the call_app mapping and the real closure depth can be
+	// measured against the published child policy.
+	if delegationErrors := checkChildDelegation(
+		document, refs, dependencies.subappRows, dependencies.versionEdges,
+	); len(delegationErrors) > 0 {
+		return nil, delegationErrors, nil
 	}
 
 	resolved, err := inputs.Resolve()
@@ -184,6 +194,14 @@ type executionDependencySet struct {
 	models     []string
 	subapps    []string
 	connectors []compiler.ConnectorPolicy
+	// subappRows are the published rows behind subapps. T075's I/O mapping check
+	// reads each child version's frozen definition from here (one query, not a
+	// second readiness pass).
+	subappRows map[string]subappDependency
+	// versionEdges is the real platform.version_dependencies closure reachable
+	// from the referenced child versions. It is loaded by the cycle check and
+	// reused by T075's depth rule so the two cannot disagree about the closure.
+	versionEdges map[string][]string
 }
 
 // normalizeDependencyID is the identity form of a dependency reference.
@@ -292,6 +310,7 @@ func (r *Reader) checkDependencies(
 		models:     make([]string, 0, len(models)),
 		subapps:    make([]string, 0, len(subapps)),
 		connectors: make([]compiler.ConnectorPolicy, 0, len(connectors)),
+		subappRows: subapps,
 	}
 	located := make([]ExecutableError, 0)
 	emitted := make(map[string]bool)
@@ -371,13 +390,14 @@ func (r *Reader) checkDependencies(
 		return nil, located, nil
 	}
 
-	cycleErrors, err := r.checkSubappCycles(ctx, applicationID, refs, subapps)
+	cycleErrors, versionEdges, err := r.checkSubappCycles(ctx, applicationID, refs, subapps)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(cycleErrors) > 0 {
 		return nil, cycleErrors, nil
 	}
+	set.versionEdges = versionEdges
 	return set, nil, nil
 }
 
@@ -389,6 +409,15 @@ func (r *Reader) subappReadable(ctx context.Context, callerID, ownerID, applicat
 		return true, nil
 	}
 	return r.readAllowed(ctx, callerID, applicationID, ownerID)
+}
+
+// dependencyQueryer is the read seam shared by the draft compiler (r.DB) and
+// F02B's approval transaction (a *sql.Tx), so a frozen dependency closure is
+// re-checked with exactly the same readiness rules the submission used. A
+// second implementation of those rules would be a place for the gate to drift.
+type dependencyQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +513,10 @@ type subappDependency struct {
 	ownerID       string
 	revoked       bool
 	archived      bool
+	// definition is the frozen manifest's definition object (manifest ->
+	// 'definition'), the only source of the child version's I/O schema. T075's
+	// mapping check reads it; a version row without one is dependency_not_ready.
+	definition []byte
 }
 
 func modelReadinessProblem(row modelDependency, present bool) (string, string) {
@@ -594,11 +627,17 @@ func connectorRefsForTools(refs []dependencyRef, tools map[string]toolDependency
 // ---------------------------------------------------------------------------
 
 func (r *Reader) loadModelDependencies(ctx context.Context, ids []string) (map[string]modelDependency, error) {
+	return loadModelDependenciesQ(ctx, r.DB, ids)
+}
+
+func loadModelDependenciesQ(
+	ctx context.Context, q dependencyQueryer, ids []string,
+) (map[string]modelDependency, error) {
 	rows := map[string]modelDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
-	result, err := r.DB.QueryContext(ctx, `
+	result, err := q.QueryContext(ctx, `
 		SELECT id::text, validation_state, revoked_at IS NOT NULL, config
 		  FROM platform.model_profile_versions
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
@@ -690,11 +729,17 @@ func fallbackModelRefs(refs []dependencyRef, models map[string]modelDependency) 
 }
 
 func (r *Reader) loadToolDependencies(ctx context.Context, ids []string) (map[string]toolDependency, error) {
+	return loadToolDependenciesQ(ctx, r.DB, ids)
+}
+
+func loadToolDependenciesQ(
+	ctx context.Context, q dependencyQueryer, ids []string,
+) (map[string]toolDependency, error) {
 	rows := map[string]toolDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
-	result, err := r.DB.QueryContext(ctx, `
+	result, err := q.QueryContext(ctx, `
 		SELECT id::text, owner_id::text, state, approved_at IS NOT NULL, image_digest,
 		       connector_versions
 		  FROM platform.tool_versions
@@ -743,11 +788,17 @@ func connectorVersionIDs(raw []byte) []string {
 
 // loadConnectorDependencies reads the registry rows the tool closure named.
 func (r *Reader) loadConnectorDependencies(ctx context.Context, ids []string) (map[string]connectorDependency, error) {
+	return loadConnectorDependenciesQ(ctx, r.DB, ids)
+}
+
+func loadConnectorDependenciesQ(
+	ctx context.Context, q dependencyQueryer, ids []string,
+) (map[string]connectorDependency, error) {
 	rows := map[string]connectorDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
-	result, err := r.DB.QueryContext(ctx, `
+	result, err := q.QueryContext(ctx, `
 		SELECT id::text, policy_sha256, approved_at IS NOT NULL, revoked_at IS NOT NULL
 		  FROM platform.connector_policies
 		 WHERE id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
@@ -772,16 +823,35 @@ func (r *Reader) loadConnectorDependencies(ctx context.Context, ids []string) (m
 }
 
 func (r *Reader) loadSubappDependencies(ctx context.Context, ids []string) (map[string]subappDependency, error) {
+	return loadSubappDependenciesQ(ctx, r.DB, ids, false)
+}
+
+// loadSubappDependenciesQ reads the referenced child versions and their owning
+// applications. When lockChildVersions is set the same statement also takes
+// FOR KEY SHARE on the version rows: inside the approval transaction a concurrent
+// revoke (which takes FOR UPDATE on the version row before writing revoked_at)
+// then either commits before this read (and the revocation is visible to it) or
+// waits until the approval commits (a revocation that is strictly later). Without
+// the lock the read was plain MVCC and a revoke could commit between the check
+// and the version_dependencies insert.
+func loadSubappDependenciesQ(
+	ctx context.Context, q dependencyQueryer, ids []string, lockChildVersions bool,
+) (map[string]subappDependency, error) {
 	rows := map[string]subappDependency{}
 	if len(ids) == 0 {
 		return rows, nil
 	}
-	result, err := r.DB.QueryContext(ctx, `
+	statement := `
 		SELECT v.id::text, v.application_id::text, a.owner_id::text,
-		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL
+		       v.revoked_at IS NOT NULL, a.archived_at IS NOT NULL,
+		       v.manifest -> 'definition'
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
-		 WHERE v.id::text = ANY($1::text[])`, normalizedDependencyIDs(ids))
+		 WHERE v.id::text = ANY($1::text[])`
+	if lockChildVersions {
+		statement += " FOR KEY SHARE OF v"
+	}
+	result, err := q.QueryContext(ctx, statement, normalizedDependencyIDs(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading application versions: %w", err)
 	}
@@ -791,7 +861,8 @@ func (r *Reader) loadSubappDependencies(ctx context.Context, ids []string) (map[
 			id  string
 			row subappDependency
 		)
-		if err := result.Scan(&id, &row.applicationID, &row.ownerID, &row.revoked, &row.archived); err != nil {
+		if err := result.Scan(&id, &row.applicationID, &row.ownerID, &row.revoked, &row.archived,
+			&row.definition); err != nil {
 			return nil, fmt.Errorf("reading application versions: %w", err)
 		}
 		rows[id] = row
@@ -822,7 +893,7 @@ func (r *Reader) checkSubappCycles(
 	applicationID string,
 	refs []dependencyRef,
 	subapps map[string]subappDependency,
-) ([]ExecutableError, error) {
+) ([]ExecutableError, map[string][]string, error) {
 	roots := make([]string, 0)
 	for _, ref := range refs {
 		if ref.kind != dependencySubapp || !uuid.Valid(ref.id) {
@@ -836,12 +907,12 @@ func (r *Reader) checkSubappCycles(
 	}
 	roots = uniqueStrings(roots)
 	if len(roots) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	edges, err := r.loadVersionEdges(ctx, roots)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	versionIDs := make([]string, 0, len(edges)+len(roots))
 	versionIDs = append(versionIDs, roots...)
@@ -852,7 +923,7 @@ func (r *Reader) checkSubappCycles(
 	versionIDs = uniqueStrings(versionIDs)
 	applications, err := r.loadVersionApplications(ctx, versionIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	selfVersions := make(map[string]bool)
 	for id, appID := range applications {
@@ -890,7 +961,7 @@ func (r *Reader) checkSubappCycles(
 				Code:    CodeDependencyCycle,
 				Pointer: ref.pointer,
 				Message: "the sub-application closure calls version " + selfHit + " of the application being validated; a draft cannot depend on its own application",
-			}}, nil
+			}}, edges, nil
 		}
 		cycleHit := false
 		for _, id := range reachable {
@@ -905,10 +976,10 @@ func (r *Reader) checkSubappCycles(
 				Code:    CodeDependencyCycle,
 				Pointer: ref.pointer,
 				Message: "the sub-application dependency graph contains a cycle through version " + strings.Join(cycle, " -> "),
-			}}, nil
+			}}, edges, nil
 		}
 	}
-	return nil, nil
+	return nil, edges, nil
 }
 
 // loadVersionEdges reads the version_dependencies closure reachable from roots.
@@ -1219,4 +1290,131 @@ func uniqueStrings(values []string) []string {
 		unique = append(unique, value)
 	}
 	return unique
+}
+
+// RecheckFrozenDependencies re-runs the publication dependency gate against a
+// manifest that was frozen earlier (the snapshot's sealed bytes), without a
+// draft and without recompiling. It is what makes "a dependency revoked after
+// submission fails the approval" true: the frozen IDs are re-read from the
+// current tables with the same readiness predicates the submission used
+// (model_readiness/tool_readiness/subapp_readiness/connector_readiness), and the
+// exact pinned digests/hashes are compared with what the manifest published.
+//
+// It deliberately does not re-check the submitting creator's read ACL for a
+// sub-application: the submission already proved it, and an approval is a
+// governance action over the frozen content, not a re-read by the creator. The
+// dependency application must still be unarchived and its version unrevoked.
+func (r *Reader) RecheckFrozenDependencies(
+	ctx context.Context, manifest *compiler.Manifest,
+) ([]ExecutableError, error) {
+	return recheckFrozenDependencies(ctx, r.DB, manifest, false)
+}
+
+// recheckFrozenDependencies is the one dependency gate. lockPinnedSubapps is true
+// only inside F02B's approval transaction, where the referenced child version
+// rows are locked FOR KEY SHARE so a concurrent revoke cannot commit between the
+// recheck and the version_dependencies insert.
+func recheckFrozenDependencies(
+	ctx context.Context, q dependencyQueryer, manifest *compiler.Manifest, lockPinnedSubapps bool,
+) ([]ExecutableError, error) {
+	located := make([]ExecutableError, 0)
+	if manifest == nil {
+		return []ExecutableError{{
+			Code: CodeDependencyNotFound, Pointer: "/manifest",
+			Message: "no frozen execution manifest is available to re-check",
+		}}, nil
+	}
+
+	modelIDs := make([]string, 0, len(manifest.ModelProfileVersions))
+	for _, id := range manifest.ModelProfileVersions {
+		modelIDs = append(modelIDs, normalizeDependencyID(id))
+	}
+	models, err := loadModelDependenciesQ(ctx, q, modelIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range uniqueStrings(modelIDs) {
+		row, present := models[id]
+		if code, message := modelReadinessProblem(row, present); code != "" {
+			located = append(located, ExecutableError{
+				Code: code, Pointer: "/manifest/model_profile_versions",
+				Message: "model profile version " + id + ": " + message,
+			})
+		}
+	}
+
+	toolIDs := make([]string, 0, len(manifest.ToolArtifacts))
+	pinnedDigests := make(map[string]string, len(manifest.ToolArtifacts))
+	for _, artifact := range manifest.ToolArtifacts {
+		id := normalizeDependencyID(artifact.ID)
+		toolIDs = append(toolIDs, id)
+		pinnedDigests[id] = artifact.ImageDigest
+	}
+	tools, err := loadToolDependenciesQ(ctx, q, toolIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range uniqueStrings(toolIDs) {
+		row, present := tools[id]
+		if code, message := toolReadinessProblem(row, present, "", false); code != "" {
+			located = append(located, ExecutableError{
+				Code: code, Pointer: "/manifest/tool_artifacts",
+				Message: "tool version " + id + ": " + message,
+			})
+			continue
+		}
+		if pinned := pinnedDigests[id]; pinned != "" && row.imageDigest.String != pinned {
+			located = append(located, ExecutableError{
+				Code: CodeDependencyNotReady, Pointer: "/manifest/tool_artifacts",
+				Message: "tool version " + id + ": the pinned image digest changed since submission",
+			})
+		}
+	}
+
+	subappIDs := make([]string, 0, len(manifest.SubappVersions))
+	for _, id := range manifest.SubappVersions {
+		subappIDs = append(subappIDs, normalizeDependencyID(id))
+	}
+	subapps, err := loadSubappDependenciesQ(ctx, q, subappIDs, lockPinnedSubapps)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range uniqueStrings(subappIDs) {
+		row, present := subapps[id]
+		if code, message := subappReadinessProblem(row, present); code != "" {
+			located = append(located, ExecutableError{
+				Code: code, Pointer: "/manifest/subapp_versions",
+				Message: "sub-application version " + id + ": " + message,
+			})
+		}
+	}
+
+	connectorIDs := make([]string, 0, len(manifest.ConnectorPolicies))
+	pinnedPolicies := make(map[string]string, len(manifest.ConnectorPolicies))
+	for _, policy := range manifest.ConnectorPolicies {
+		id := normalizeDependencyID(policy.VersionID)
+		connectorIDs = append(connectorIDs, id)
+		pinnedPolicies[id] = policy.PolicySHA256
+	}
+	connectors, err := loadConnectorDependenciesQ(ctx, q, connectorIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range uniqueStrings(connectorIDs) {
+		row, present := connectors[id]
+		if code, message := connectorReadinessProblem(row, present); code != "" {
+			located = append(located, ExecutableError{
+				Code: code, Pointer: "/manifest/connector_policies",
+				Message: "connector policy " + id + ": " + message,
+			})
+			continue
+		}
+		if pinned := pinnedPolicies[id]; pinned != "" && row.policySHA256 != pinned {
+			located = append(located, ExecutableError{
+				Code: CodeDependencyNotReady, Pointer: "/manifest/connector_policies",
+				Message: "connector policy " + id + ": the pinned policy digest changed since submission",
+			})
+		}
+	}
+	return located, nil
 }

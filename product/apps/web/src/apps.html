@@ -29,6 +29,7 @@
     <a href="/">状态</a>
     <a href="/login">登录</a>
     <a href="/admin">管理台</a>
+    <a href="/catalog">用途目录检索</a>
     <a href="/attachments">附件</a>
     <a href="/tools">工具</a>
     <a href="/runs">运行</a>
@@ -78,6 +79,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/versions.js"></script>
   <script>
     const listElement = document.getElementById('apps-list');
     const statusElement = document.getElementById('apps-status');
@@ -108,16 +110,23 @@
       const id = document.createElement('code');
       id.textContent = application.id;
       const version = document.createElement('span');
-      version.textContent = application.active_version_id
-        ? '当前版本 ' + application.active_version_id
-        : '尚未发布版本';
+      // F02B/T070: the contract's only availability signal is the active pointer.
+      // A revoked version is nulled, never silently replaced, so the catalog says
+      // the application is unavailable through the shared page helper. The raw
+      // active_version_id is also kept on the node for inspection (the contract
+      // field has no separate availability/state member).
+      version.dataset.activeVersionId = application.active_version_id || '';
+      version.textContent = describeCatalogAvailability(application);
       const edit = document.createElement('a');
       edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
       edit.textContent = '编辑草稿';
       const debug = document.createElement('a');
       debug.href = '/apps/' + encodeURIComponent(application.id) + '/debug';
       debug.textContent = '调试';
-      item.append(name, ' ', id, ' ', version, ' ', edit, ' ', debug);
+      const versions = document.createElement('a');
+      versions.href = '/apps/' + encodeURIComponent(application.id) + '/versions';
+      versions.textContent = '版本与撤销';
+      item.append(name, ' ', id, ' ', version, ' ', edit, ' ', debug, ' ', versions);
       listElement.appendChild(item);
     }
 

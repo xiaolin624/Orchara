@@ -503,8 +503,16 @@ func (s *Service) loadModelProfile(ctx context.Context, profileVersionID string)
 // ones this run may declare to a model: ready and approved, or (debug) ready and
 // owned by the run's author. A tool that exists in the manifest but is not
 // callable is absent, so validateDeclaredTools refuses it by name.
+//
+// F07/T078: the run's frozen `subapp_versions` are callable model tools too. A
+// sub-application tool is not a capability operation — the executor maps the
+// validated model tool call to the platform's spawnChild endpoint, which
+// re-proves the frozen closure, the child version's ACL and the mapping. The
+// server only needs the child version's frozen input schema to validate the tool
+// call arguments before they reach the executor. A revoked/archived child version
+// is not offered, so a model call naming it is refused here.
 func (s *Service) loadManifestTools(ctx context.Context, run *runContext) (map[string]*ToolSpec, *Error) {
-	tools := make(map[string]*ToolSpec, len(run.Manifest.ToolArtifacts))
+	tools := make(map[string]*ToolSpec, len(run.Manifest.ToolArtifacts)+len(run.Manifest.SubappVersions))
 	for _, artifact := range run.Manifest.ToolArtifacts {
 		spec, err := s.loadTool(ctx, run, artifact.ID)
 		if err != nil {
@@ -515,7 +523,46 @@ func (s *Service) loadManifestTools(ctx context.Context, run *runContext) (map[s
 		}
 		tools[strings.ToLower(spec.ID)] = spec
 	}
+	for version, spec := range s.loadManifestSubapps(ctx, run) {
+		if _, clash := tools[version]; !clash {
+			tools[version] = spec
+		}
+	}
 	return tools, nil
+}
+
+// loadManifestSubapps resolves the frozen sub-application closure into the tool
+// specs a model may declare. Only a version whose own frozen definition carries
+// an input schema is offered; revocation/archival after publication removes it,
+// never a stale grant.
+func (s *Service) loadManifestSubapps(ctx context.Context, run *runContext) map[string]*ToolSpec {
+	specs := make(map[string]*ToolSpec, len(run.Manifest.SubappVersions))
+	for _, rawID := range run.Manifest.SubappVersions {
+		version := strings.ToLower(strings.TrimSpace(rawID))
+		if !uuid.Valid(version) {
+			continue
+		}
+		var (
+			schemaRaw []byte
+			revoked   sql.NullTime
+			archived  sql.NullTime
+		)
+		err := s.DB.QueryRowContext(ctx, `
+			SELECT v.manifest -> 'definition' -> 'input_schema', v.revoked_at, a.archived_at
+			  FROM platform.application_versions AS v
+			  JOIN platform.applications AS a ON a.id = v.application_id
+			 WHERE v.id = $1::uuid`, version,
+		).Scan(&schemaRaw, &revoked, &archived)
+		if err != nil || revoked.Valid || archived.Valid || len(schemaRaw) == 0 {
+			continue
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(schemaRaw, &schema); err != nil || schema == nil {
+			continue
+		}
+		specs[version] = &ToolSpec{ID: version, State: "subapp", InputSchema: schema}
+	}
+	return specs
 }
 
 func (s *Service) loadTool(ctx context.Context, run *runContext, toolVersionID string) (*ToolSpec, error) {

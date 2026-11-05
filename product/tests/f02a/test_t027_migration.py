@@ -178,15 +178,13 @@ def test_the_foreign_keys_are_real_and_the_deferred_ones_are_documented(migrated
     assert receipts["principal_id"] == "platform.principals"
     assert receipts["response_artifact_id"] == "platform.artifacts"
 
-    # The deferred foreign keys: requests/conversations (F05/F07) are still plain
-    # uuids in this chain, while T029's 0016 completed the two run_attempts
-    # references. Both halves are pinned so a later migration must be explicit.
-    for table, column in (
-        ("runs", "request_id"),
-        ("runs", "conversation_id"),
-    ):
-        assert columns_of(dbname, table)[column]["data_type"] == "uuid", (table, column)
-        assert column not in targets(table), (table, column, targets(table))
+    # The deferred foreign keys: F05/F07 were plain uuids in T027's chain; T074's
+    # 0044_conversations_and_requests.sql completed both references. The columns
+    # and their FK targets are pinned so a later migration must be explicit.
+    assert columns_of(dbname, "runs")["request_id"]["data_type"] == "uuid"
+    assert columns_of(dbname, "runs")["conversation_id"]["data_type"] == "uuid"
+    assert runs["request_id"] == "platform.requests", runs
+    assert runs["conversation_id"] == "platform.conversations", runs
     assert targets("jobs")["current_attempt_token"] == "platform.run_attempts"
     assert targets("run_artifacts")["attempt_token"] == "platform.run_attempts"
 

@@ -33,12 +33,10 @@ package background
 // report bodies and artifact paths never leave the server.
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -816,16 +814,11 @@ type EvaluationReportCase = eval.CaseReport
 // decodeEvaluationReport strictly decodes one report document. Unknown fields,
 // trailing data or invalid JSON are a malformed report, never an accepted one.
 func decodeEvaluationReport(content []byte, document *EvaluationReportDocument) error {
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(document); err != nil {
+	decoded, err := eval.DecodeReport(content)
+	if err != nil {
 		return err
 	}
-	// A second value after the document is trailing garbage.
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errors.New("the report document has trailing data")
-	}
+	*document = *decoded
 	return nil
 }
 
