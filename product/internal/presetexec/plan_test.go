@@ -223,6 +223,18 @@ func TestBuildLinearPlanRefusesNonLinearGraphs(t *testing.T) {
 			code: CodeToolUnsupportedGraph,
 		},
 		{
+			// F07/T075 declares and pins the node; executing it is T078's child-run
+			// slice. Until then the executor must refuse it honestly, not pretend
+			// the definition is runnable.
+			name: "call_app node",
+			raw: `{"nodes":[
+				{"id":"start","type":"start","config":{}},
+				{"id":"child","type":"call_app","config":{"application_version":"55555555-5555-4555-8555-555555555555"}},
+				{"id":"end","type":"end","config":{}}],
+				"edges":[{"source":"start","target":"child"},{"source":"child","target":"end"}]}`,
+			code: CodeToolUnsupportedGraph,
+		},
+		{
 			name: "two chain edges plus a shortcut",
 			raw: `{"nodes":[
 				{"id":"start","type":"start","config":{}},
