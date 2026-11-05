@@ -257,7 +257,8 @@ const candidateByKeyQuery = `
 		       a.sha256
 		  FROM platform.memory_candidates AS c
 		  JOIN platform.artifacts AS a ON a.id = c.body_artifact_id
-		 WHERE c.source_run_id = $1::uuid AND c.logical_key = $2`
+		 WHERE c.source_run_id = $1::uuid AND c.logical_key = $2
+		   AND a.deleted_at IS NULL AND a.state = 'ready'`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -336,6 +337,7 @@ func (s *Service) ListCandidates(
 		  FROM platform.memory_candidates AS c
 		  JOIN platform.artifacts AS a ON a.id = c.body_artifact_id
 		 WHERE c.owner_id = $1::uuid
+		   AND a.deleted_at IS NULL AND a.state = 'ready'
 		   AND ($2::uuid IS NULL OR c.application_id = $2::uuid)
 		   AND (
 		        $3::timestamptz IS NULL
@@ -553,8 +555,15 @@ func (s *Service) insertMemoryTx(
 		sha       sql.NullString
 	)
 	err := tx.QueryRowContext(ctx, `
-		SELECT object_key, sha256 FROM platform.artifacts WHERE id = $1::uuid`,
+		SELECT object_key, sha256 FROM platform.artifacts
+		 WHERE id = $1::uuid AND deleted_at IS NULL AND state = 'ready'`,
 		candidate.BodyArtifactID).Scan(&objectKey, &sha)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The body was tombstoned between the proposal and the confirmation: the
+		// content must not be resurrected into a new memory.
+		return "", failure(409, "memory_candidate_unavailable",
+			"the candidate body is no longer available")
+	}
 	if err != nil {
 		return "", fmt.Errorf("reading the candidate body artifact: %w", err)
 	}
