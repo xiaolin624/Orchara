@@ -175,7 +175,7 @@ def ready_document(stack, session, content: bytes | str, *, log_path: Path):
     assert artifact["state"] == "ready", artifact
     with t055.ingest_pools(stack, log_path):
         accepted = t055.ingest_document(session, base_id, source)
-        assert accepted.status == 201, accepted.text
+        assert accepted.status == 202, accepted.text
         document_id = accepted.json["id"]
         view = t055.wait_for_document_state(session, document_id, {"ready", "failed"})
         assert view["state"] == "ready", view
@@ -270,11 +270,40 @@ def run_rows(dbname: str, run_id: str) -> dict | None:
         dbname,
         "SELECT id::text AS id, owner_id::text AS owner_id, state, revision, "
         "cancel_requested_at::text AS cancel_requested_at, "
-        "deleted_at::text AS deleted_at, error_code "
+        "deleted_at::text AS deleted_at, error_code, "
+        "input_artifact_id::text AS input_artifact_id, "
+        "execution_snapshot_id::text AS execution_snapshot_id "
         "FROM platform.runs "
         f"WHERE id = {st.quote_literal(run_id)}::uuid",
     )
     return rows[0] if rows else None
+
+
+def run_snapshot_manifest_artifact(dbname: str, run_id: str) -> str:
+    """The frozen execution-manifest artifact a real run references."""
+    rows = st.sql_rows(
+        dbname,
+        "SELECT s.manifest_artifact_id::text AS manifest_artifact_id "
+        "FROM platform.runs AS r "
+        "JOIN platform.execution_snapshots AS s ON s.id = r.execution_snapshot_id "
+        f"WHERE r.id = {st.quote_literal(run_id)}::uuid",
+    )
+    assert len(rows) == 1, rows
+    return rows[0]["manifest_artifact_id"]
+
+
+def run_artifact_list(session, run_id: str):
+    return session.client.get(
+        "/api/v1/runs/" + quote(str(run_id), safe="") + "/artifacts"
+    )
+
+
+def run_events(dbname: str, run_id: str) -> list[dict]:
+    return st.sql_rows(
+        dbname,
+        "SELECT seq, type, payload::text AS payload FROM platform.run_events "
+        f"WHERE run_id = {st.quote_literal(run_id)}::uuid ORDER BY seq",
+    )
 
 
 def audit_events(dbname: str, action: str, *, resource_id: str | None = None) -> list[dict]:

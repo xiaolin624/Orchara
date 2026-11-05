@@ -84,10 +84,15 @@ def test_the_t058_migration_is_one_link_of_a_continuous_chain(
 def test_deletion_jobs_has_the_contract_columns_and_keys(migrated_database) -> None:
     _dsn, dbname = migrated_database
     columns = columns_of(dbname, DELETION_JOBS)
-    assert set(columns) == {
+    # F11/T069 extends the T058 table with the shared deletion foundation's
+    # progress/retry/timestamp fields (remaining_scopes also became the contract's
+    # string scope vocabulary). The contract columns are still all present.
+    assert {
         "id", "owner_id", "resource_type", "resource_id", "deletion_revision",
         "state", "remaining_scopes", "created_at", "completed_at",
-    }, columns
+        "scope_details", "completed_scopes", "attempt_count", "error_code",
+        "started_at", "updated_at",
+    } == set(columns), columns
     for name in (
         "id", "owner_id", "resource_type", "resource_id", "deletion_revision",
         "state", "remaining_scopes", "created_at",
