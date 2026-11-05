@@ -2,8 +2,10 @@
 
 The package is new (`tests/f04b/`); it reuses the shared support modules and
 fixtures exactly like `tests/f04a/` does. Nothing here starts a browser: the
-canvas pure modules run under Node and the definition paths run over the real
-API/PostgreSQL stack.
+canvas pure modules run under Node, the definition paths and the graph-runtime
+condition/join cases run over the real API/PostgreSQL stack, and the LangGraph
+region proof drives the Python compiler directly (it puts its own probe and
+`platform_worker` paths on `sys.path`).
 """
 
 from __future__ import annotations

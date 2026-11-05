@@ -9,7 +9,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -171,11 +173,12 @@ func runExec(args []string) {
 	}
 	recall := memory.NewRecallSource(db, objects)
 
-	access := dbAccess{db: db}
+	access := dbAccess{db: db, objects: objects}
 	execClient := execClient{supClient: client, db: access}
 	report := presetexec.Run(ctx, presetexec.Deps{
 		Client:      execClient,
 		Inputs:      access,
+		NodeOutputs: access,
 		Facts:       execClient,
 		Memory:      recall,
 		RunIdentity: access,
@@ -208,11 +211,67 @@ func failExec(logger *log.Logger, err error) {
 }
 
 // dbAccess is the supervisor's trusted read-only identity: it resolves the
-// claimed run's linked input artifacts and reads the committed run state for the
-// operator report. It is not a write path and it never moves artifact bytes (the
-// signed link does that).
+// claimed run's linked input artifacts, reads the completed node data of a
+// resumed attempt and the committed run state for the operator report. It is not
+// a write path and it never moves artifact bytes through the executor's signed
+// links (the input link does that; node data is read from the sealed object root).
 type dbAccess struct {
-	db *sql.DB
+	db      *sql.DB
+	objects *objectstore.Store
+}
+
+// NodeData implements presetexec.NodeOutputSource: the recovery seam that lets a
+// resumed graph attempt reuse already-completed `data` node outputs instead of
+// re-calling the model/tool/sandbox.
+//
+// It reads platform.run_node_outputs(kind='data') joined to the ready artifact's
+// object key and sha256, opens the sealed object from the same object root the API
+// writes to, and re-hashes the bytes. A row whose object is missing, unreadable or
+// mismatched is left out: the executor then re-executes that node (never an
+// unverified value). A query error is returned so the executor can log the
+// degradation.
+func (a dbAccess) NodeData(ctx context.Context, runID string) (map[string][]byte, error) {
+	if a.objects == nil {
+		return nil, errors.New("no object store is configured for node data")
+	}
+	rows, err := a.db.QueryContext(ctx, `
+		SELECT o.node_id, a.object_key, a.sha256
+		  FROM platform.run_node_outputs AS o
+		  JOIN platform.artifacts AS a ON a.id = o.artifact_id
+		 WHERE o.run_id = $1::uuid
+		   AND o.kind = 'data'
+		   AND a.state = 'ready'
+		   AND a.deleted_at IS NULL
+		 ORDER BY o.node_id`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	data := map[string][]byte{}
+	for rows.Next() {
+		var nodeID, objectKey, wantSHA string
+		if err := rows.Scan(&nodeID, &objectKey, &wantSHA); err != nil {
+			return nil, err
+		}
+		reader, _, err := a.objects.Open(objectKey)
+		if err != nil {
+			continue
+		}
+		payload, readErr := io.ReadAll(io.LimitReader(reader, presetexec.MaxInputBytes+1))
+		closeErr := reader.Close()
+		if readErr != nil || closeErr != nil || int64(len(payload)) > presetexec.MaxInputBytes {
+			continue
+		}
+		sum := sha256.Sum256(payload)
+		if !strings.EqualFold(hex.EncodeToString(sum[:]), wantSHA) {
+			continue
+		}
+		data[nodeID] = payload
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func (a dbAccess) Inputs(ctx context.Context, runID string) ([]presetexec.InputArtifact, error) {
