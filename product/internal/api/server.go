@@ -304,6 +304,19 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/applications/{application_id}/versions", s.handleListVersions)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}", s.handleGetVersion)
 
+	// F02B/T068: publication review. submit/decision are idempotent state-changing
+	// POSTs (cookie sessions need CSRF; an API key needs application:write for a
+	// submission and the admin role for a decision, which an API key never has).
+	// The two review reads are ACL-filtered: an administrator sees all, a creator
+	// sees only their own. The non-contract preview is the creator's pre-submit
+	// shared-definition read; it creates no review.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/submit", s.handleSubmitApplication)
+	mux.HandleFunc("POST /api/v1/reviews/{review_id}/decision", s.handleReviewDecision)
+	mux.HandleFunc("GET /api/v1/reviews", s.handleListPublicationReviews)
+	mux.HandleFunc("GET /api/v1/reviews/{review_id}", s.handleGetPublicationReview)
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/publication-preview",
+		s.handlePreviewPublication)
+
 	// F04A/T049: copy the server-controlled sales template into the caller's own
 	// private application. Non-contract and not a publication: the caller then
 	// uses the normal draft/debug path, and F02B still owns shared versions.
