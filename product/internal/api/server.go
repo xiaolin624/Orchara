@@ -31,6 +31,7 @@ import (
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
 	"orchara/platform/internal/requests"
+	"orchara/platform/internal/routing"
 	"orchara/platform/internal/toolruns"
 	"orchara/platform/internal/toolversions"
 )
@@ -89,8 +90,11 @@ type Server struct {
 	diagnostics *diagnostics.Service
 	// requests is the F08/T074 conversation/request aggregate: the ordered
 	// per-conversation slot, idempotent submission, the explicit fixed-version
-	// dispatch and the message projection.
+	// dispatch, interactions and the message projection.
 	requests *requests.Service
+	// routing is the F08/T079 control plane: authorized candidates, the governed
+	// control-model call and the one interaction-or-Run decision.
+	routing *routing.Service
 	// children is the F07/T078 fixed-version child Run creator and read path.
 	children *children.Service
 	objects  *objectstore.Store
@@ -247,6 +251,9 @@ func New(deps Deps) *Server {
 		_, err := executionService.Cancel(ctx, callerID, runID)
 		return err
 	}
+	// F08/T079: the background completion guard fails a stranded routing request and
+	// releases its conversation slot through the same T074 seam.
+	jobsController.QueueAdvancer = requestService.AdvanceConversationQueueTx
 	// F11/T069: the one deletion foundation every resource type registers with.
 	// Cancellation is the existing F03/T036 path (Owner-only, idempotent); the
 	// foundation does not reimplement the cancel state machine.
@@ -261,6 +268,12 @@ func New(deps Deps) *Server {
 	// F08/T074: conversations now have an authority, so the T069 conversation
 	// route stops being a permanent 404 and becomes a real tombstone+job.
 	deletionService.Register(requests.NewDeletionTarget(requestService))
+	modelService := modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs)
+	// F08/T079: the router reuses the T074 queue seam for its slot/expiry
+	// decisions and the same model proxy/ledger for its control calls.
+	routingService := routing.New(deps.Service.DB, catalogReader, deps.Objects,
+		modelService, requestService)
+	routingService.Logger = logger
 	// F11/T071: the physical purge unit of work is enqueued in the delete
 	// transaction. The seam keeps internal/deletion independent of
 	// internal/background (whose completion guard consumes the deletion package),
@@ -292,7 +305,7 @@ func New(deps Deps) *Server {
 		knowledge:         knowledgeService,
 		toolRuns:          toolruns.New(deps.Service.DB, notifier),
 		toolVersions:      toolversions.New(deps.Service.DB),
-		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		models:            modelService,
 		modelRegistry:     modelRegistry,
 		capabilities:      capabilityService,
 		connectors:        deps.Connectors,
@@ -302,6 +315,7 @@ func New(deps Deps) *Server {
 		deletions:         deletionService,
 		diagnostics:       diagnosticService,
 		requests:          requestService,
+		routing:           routingService,
 		children:          childService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
@@ -586,6 +600,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/requests", s.handleSubmitRequest)
 	mux.HandleFunc("GET /api/v1/requests/{request_id}", s.handleGetRequest)
 	mux.HandleFunc("POST /api/v1/requests/{request_id}/cancel", s.handleCancelRequest)
+	// F08/T079: answer a pending input/selection interaction. The contract requires
+	// Idempotency-Key; the request id is part of the key's scope (path).
+	mux.HandleFunc("POST /api/v1/requests/{request_id}/reply", s.handleReplyInteraction)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))

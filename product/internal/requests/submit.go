@@ -438,7 +438,7 @@ func (s *Service) createRequestTx(ctx context.Context, params createParams) (*Su
 	}
 	if !occupied && earliest != nil && earliest.ID == requestID {
 		if params.Input.ApplicationVersionID != "" {
-			if _, err := s.dispatchVersionTx(ctx, tx, params.CallerID, requestID,
+			if _, err := s.DispatchVersionTx(ctx, tx, params.CallerID, requestID,
 				params.Input.ConversationID, params.Input.ApplicationVersionID); err != nil {
 				return nil, err
 			}
@@ -447,7 +447,7 @@ func (s *Service) createRequestTx(ctx context.Context, params createParams) (*Su
 		}
 	}
 
-	created, err := readRequestTx(ctx, tx, requestID)
+	created, err := s.readRequestTx(ctx, tx, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -572,11 +572,11 @@ func promoteQueuedTx(ctx context.Context, tx *sql.Tx, requestID, callerID string
 	return nil
 }
 
-// dispatchVersionTx creates the frozen published execution and its one Run for an
+// DispatchVersionTx creates the frozen published execution and its one Run for an
 // explicit version, then moves the Request to `dispatched`. The version is
 // re-read inside the transaction under a share lock: a revocation that committed
 // first is refused here, and one that starts later waits for this Run insert.
-func (s *Service) dispatchVersionTx(
+func (s *Service) DispatchVersionTx(
 	ctx context.Context, tx *sql.Tx, callerID, requestID, conversationID, versionID string,
 ) (string, error) {
 	version, err := s.Catalog.ResolveRunnableVersionTx(ctx, tx, callerID, versionID)
