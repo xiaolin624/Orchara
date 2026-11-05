@@ -19479,9 +19479,11 @@ Edge: ${id2}`,
       byId.set(id2, {
         id: id2,
         type: nodeType,
-        inputs: old.inputs && typeof old.inputs === "object" ? old.inputs : {},
-        output_schema: old.output_schema && typeof old.output_schema === "object" ? old.output_schema : emptySchema(),
-        config: old.config && typeof old.config === "object" ? old.config : {}
+        // Deep-copy the parts merged by id: the rebuilt definition must not alias
+        // the previous one the page still holds in its textareas.
+        inputs: old.inputs && typeof old.inputs === "object" ? clone(old.inputs) : {},
+        output_schema: old.output_schema && typeof old.output_schema === "object" ? clone(old.output_schema) : emptySchema(),
+        config: old.config && typeof old.config === "object" ? clone(old.config) : {}
       });
     }
     const draft = {
@@ -21696,6 +21698,11 @@ Edge: ${id2}`,
       if (definitionNode.type === "condition") {
         data.ports = conditionPorts(definitionNode.config || {});
       }
+      if (definitionNode.type === "join") {
+        data.sourceLabels = [...new Set(
+          state.definition.edges.filter((edge) => edge.target === definitionNode.id).map((edge) => edge.source)
+        )];
+      }
       return { ...flowNode, data };
     });
   }
@@ -21757,12 +21764,14 @@ Edge: ${id2}`,
       }));
     }
     const height = type === "condition" ? Math.max(48, ports.length * 26 + 28) : 48;
+    const sourceLabels = type === "join" && Array.isArray(data.sourceLabels) ? data.sourceLabels : [];
     return h("div", {
       class: "orchara-flow-node orchara-node-" + type,
       style: { minHeight: height + "px" }
     }, [
       h("span", { class: "orchara-flow-label" }, data.label || type),
       h("span", { class: "orchara-flow-type" }, type),
+      sourceLabels.length ? h("span", { class: "orchara-flow-sources" }, "来源: " + sourceLabels.join(" · ")) : null,
       ...handles
     ]);
   }

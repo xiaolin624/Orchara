@@ -311,10 +311,14 @@ export function graphToDefinition(graphNodes, graphEdges, previous) {
     byId.set(id, {
       id,
       type: nodeType,
-      inputs: old.inputs && typeof old.inputs === 'object' ? old.inputs : {},
+      // Deep-copy the parts merged by id: the rebuilt definition must not alias
+      // the previous one the page still holds in its textareas.
+      inputs: old.inputs && typeof old.inputs === 'object' ? clone(old.inputs) : {},
       output_schema:
-        old.output_schema && typeof old.output_schema === 'object' ? old.output_schema : emptySchema(),
-      config: old.config && typeof old.config === 'object' ? old.config : {},
+        old.output_schema && typeof old.output_schema === 'object'
+          ? clone(old.output_schema)
+          : emptySchema(),
+      config: old.config && typeof old.config === 'object' ? clone(old.config) : {},
     });
   }
   const draft = {

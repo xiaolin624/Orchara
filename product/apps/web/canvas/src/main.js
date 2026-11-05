@@ -1043,6 +1043,13 @@ function syncGraphConfigs(state) {
     if (definitionNode.type === 'condition') {
       data.ports = conditionPorts(definitionNode.config || {});
     }
+    if (definitionNode.type === 'join') {
+      data.sourceLabels = [...new Set(
+        state.definition.edges
+          .filter((edge) => edge.target === definitionNode.id)
+          .map((edge) => edge.source),
+      )];
+    }
     return { ...flowNode, data };
   });
 }
@@ -1117,12 +1124,18 @@ function renderFlowNode(props) {
   const height = type === 'condition'
     ? Math.max(48, ports.length * 26 + 28)
     : 48;
+  const sourceLabels = type === 'join' && Array.isArray(data.sourceLabels)
+    ? data.sourceLabels
+    : [];
   return h('div', {
     class: 'orchara-flow-node orchara-node-' + type,
     style: { minHeight: height + 'px' },
   }, [
     h('span', { class: 'orchara-flow-label' }, data.label || type),
     h('span', { class: 'orchara-flow-type' }, type),
+    sourceLabels.length
+      ? h('span', { class: 'orchara-flow-sources' }, '来源: ' + sourceLabels.join(' · '))
+      : null,
     ...handles,
   ]);
 }
