@@ -2,18 +2,23 @@
 
 - 任务：F07 / GitHub Issue #76（票 `T075`，规划 ID F07.01），分支
   `t/t075-fixed-subapp-deps`（worktree `E:\orchara-worktrees\t075`，基线 = 在飞
-  T068 发布分支 `t/t068-publication-review` @ `b9acfa7`，最终合并
-  `integration/t068-t082`）。
+  T068 发布分支 `t/t068-publication-review` @ `b9acfa7`）。
+- 合并：`integration/t068-t082` @ `163940f`（含 T069）合并为 `4d2b928`；因该时刻集成分支尚未
+  收到 T068 的 0043 重编号（T068 分支自己已 merge 集成并重编号），再合并
+  `t/t068-publication-review` @ `b30128b` 为 `1a201b3`，只解决 `PROGRESS.md` 的行冲突；最终树
+  迁移链 `0042_deletion_foundation`（T069）+ `0043_publication_reviews_and_outbox`（T068），
+  ADR `0020`（T069）/`0021`（T068）/`0022`（本票）。合并树上重跑全部门禁（§3.6），
+  `tests/f02a` **104 passed / 0 failed**。
 - 状态：**`partial`**。范围内已真实交付并验证：`call_app` 的 I/O 映射/类型校验（新 5 个定位码）、
   `policy.max_child_calls`/`max_child_depth` 对真实 `platform.version_dependencies` 闭包的检查、
   撤销/未发布/循环三类拒绝的区分、创作台 `call_app` 面板（真实 catalog/version 读 + 保存 + 校验 +
   节点高亮）。**未闭环**：真实发布事务写入 `version_dependencies` 并给出“父发布后子最新版不替旧引用”
-  的端到端断言——见 §2.2 的具体阻塞（T078 #79）。
+  的端到端断言——见 §1.4 的具体阻塞（T078 #79）。
 - 边界（如实）：父版本固定的是**子版本 id**（`call_app.config.application_version`,
   `agent.subapp_versions`），闭包由 `platform.version_dependencies` 与之上的冻结 manifest 表达；
   子运行执行/`spawnChild`/预算/等待属 T078/T080/T081，本票**不实现**；`internal/presetexec` 对
   `call_app` 仍诚实拒绝（`tool_unsupported_graph`，本票新增回归断言），作为 T078 的接口记录；
-  F04A Vue 画布 bundle **未重建**（见 §3.3）；浏览器 DOM 驱动 not_run；未改
+  F04A Vue 画布 bundle **未重建**（见 §5.2）；浏览器 DOM 驱动 not_run；未改
   `docs/spec/**`/`contracts/**`，`sync_spec --check` no drift；**无迁移**（见 §1.1）。
 
 ## 0. 工作记录（简短）
@@ -228,7 +233,7 @@ python tools/sync_spec.py --check
   -> no drift: spec copy and contract snapshot match the manifest
 ```
 
-### 3.5 `pytest tests/f02a -q --basetemp=E:\orchara-tmp\t075-f02a-3`（最终树，103 用例）
+### 3.5 `pytest tests/f02a -q --basetemp=E:\orchara-tmp\t075-f02a-3`（合并前分叉树，103 用例）
 
 ```
 FAILED tests/f02a/test_t023_invalid_draft.py::test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent
@@ -257,6 +262,23 @@ FAILED tests/f02a/test_t023_migration.py::test_publication_reviews_report_id_fk_
 - 第三个 f02a 失败（`test_subapp_readiness...` 的 revoked 种子）由 T068 的
   `application_versions_revoke_shape` CHECK 引起：`seed_published_version(revoked=True)` 现在同时写
   `revoke_reason`，该用例已通过（21.12s）。
+
+### 3.6 合并后最终树复跑（`1a201b3`，T069+0042 与 T068 0043/ADR0021 已并入）
+
+```
+pytest tests/f07 --basetemp=E:\orchara-tmp\t075-merged1   -> 12 passed in 122.91s (0:02:02)
+pytest tests/f07 --basetemp=E:\orchara-tmp\t075-merged2   -> 12 passed in 117.40s (0:01:57)
+pytest tests/tooling --basetemp=E:\orchara-tmp\t075-tooling-merged -> 21 passed in 6.65s
+pytest tests/f02a --basetemp=E:\orchara-tmp\t075-merged-f02a       -> 104 passed in 1077.38s (0:17:57)
+go build ./... / go vet ./...                             -> 无输出（成功）
+go test ./...                                             -> 无 FAIL
+gofmt -l .                                                -> 无输出（干净）
+python tools/sync_spec.py --check                         -> no drift
+```
+
+合并后 T068 已自行更新 `test_t023_invalid_draft.py`/`test_t023_migration.py` 的两处过时断言
+（T023 的 submit-404 与旧 FK 集合），§3.5 记录的两个基线失败随合并消失：**合并树 f02a 104 passed，
+0 failed**。§3.5 保留的是合并前分叉树的历史输出与基线复现证据，用于说明那两个失败不属于 T075。
 
 ## 4. AC 对照
 
