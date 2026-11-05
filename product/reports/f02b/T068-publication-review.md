@@ -3,15 +3,16 @@
 - 任务：F02B / GitHub Issue #69（票 `T068`，规划 ID F02B.01–03），分支
   `t/t068-publication-review`（worktree `E:\orchara-worktrees\t068`）；基线
   `integration/t068-t082` @ `cd8ca3c`（= `integration/f13a-f15a-f09-f10` 基线）。已合并
-  `integration/t068-t082` 两次：`5e882a2`（含 T069 的 `0042_deletion_foundation.sql`；本票迁移
-  因此为 `0043_publication_reviews_and_outbox.sql`，ADR 重编号 0021）与 `a9c12ba`
-  （含 T070 撤销；其复用本票的撤销列/outbox/`ResolveRunnableVersion`）。
+  `integration/t068-t082` 三次：`5e882a2`（T069，`0042_deletion_foundation.sql`；本票迁移因此为
+  `0043_publication_reviews_and_outbox.sql`，ADR 重编号 0021）、`a9c12ba`（T070 撤销）与
+  `92318d1`（T074/T075，自动合并无冲突）。
 - 状态：**`passed`**（范围 = 4 个契约 operation：`submitApplication` /
   `reviewPublication` / `listPublicationReviews` / `getPublicationReview`；冻结审阅快照；
   同 hash 校验；依赖/报告可信性复查；单事务版本 + active 指针 + outbox + audit；
   并发审批只产生一个版本；旧版本字节/行不被改写；作者/管理员页面。
   真实 PostgreSQL 16.4、真实编译二进制、真实 HTTP（session+CSRF+mTLS）、真实封存对象字节、
-  真实 WSL2/runsc 测试执行器、真实两池 maintenance、真实 5 类作者案例报告。无 mock、无跳过。）
+  真实 WSL2/runsc 测试执行器、真实两池 maintenance、真实 5 类作者案例报告。无 mock；真实 runner
+  e2e 在共享 WSL2/runsc 被并发套件占满时以显式 skip 退出（见 §4，不伪装 pass）。）
 - 边界（如实）：
   - **撤销本身不在本票**（T070 #71）：`application_versions.revoked_at/revoked_by/revoke_reason`
     与 `catalog.ResolveRunnableVersion` 由本票设计/交付；T070 已合入
@@ -204,6 +205,12 @@ $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-21
 $ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-22
 18 passed in 252.17s (0:04:12)
 
+# 第三次合并（T074/T075，自动合并无冲突）后的最终树双跑
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-23
+18 passed in 225.56s (0:03:45)
+$ python -m pytest tests/f02b -q --basetemp=E:\orchara-tmp\t068-24
+18 passed in 196.54s (0:03:16)
+
 # T070 依赖本票 API 的邻近套件（最终树，确认合并未破坏其契约）
 $ python -m pytest tests/t070 -q --basetemp=E:\orchara-tmp\t068-t070
 12 passed in 153.54s (0:02:33)
@@ -218,7 +225,12 @@ $ python -m pytest tests/f02b/test_t068_migration.py -q --basetemp=E:\orchara-tm
 5 passed in 26.87s
 
 $ python -m pytest tests/f02a -q --basetemp=E:\orchara-tmp\t068-f02a2
-104 passed in 827.73s (0:13:47)
+103 passed + 1 failed in 1170.93s (T074 合并后 f02a 仍断言 0044 之前的
+# runs.request_id/conversation_id “无 FK”；这是 T074 的交付改变了旧断言，不是 T068 回归。
+# 已在本分支同步更新该断言为 platform.requests/conversations 并单独复跑通过：
+# tests/f02a/test_t027_migration.py::test_the_foreign_keys_are_real_and_the_deferred_ones_are_documented
+# 1 passed in 20.42s。T068 改动本身在 f02a 的另一次最终树运行中 104 passed（827.73s，T070 合并后、
+# T074 合并前）。
 
 $ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t068-tooling2
 21 passed in 5.66s
