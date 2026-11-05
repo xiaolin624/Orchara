@@ -1979,3 +1979,27 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 | 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。
+
+## F04B/T087 人工审批节点：服务端业务审批与重启后继续原决定（2026-11-06）
+
+T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈）。
+证据：`reports/f04b/T087-approval-node.md`；分支 `t/t087-approval-node`（worktree `E:\Orchara-wt\t087`），
+基线 `integration/t083-t091` @ `491cb78`，结束前 merge `f21f09a` → 合并提交 `b086419`（+ 文档提交）。
+
+| 交付点 | 结果 |
+|---|---|
+| 节点审批 = 业务决定 | **passed**：`platform.approvals` 行 `operation_id NULL`、`node_key="node:<id>"`、approver=run owner；无 `platform.operations`/capability grant；后续真实 write-risk connector 仍 `awaiting_approval` 并创建自己的 operation 审批 |
+| 服务端提案 | **passed**：`internal/approvals/node.go` 从 sealed manifest（逐字节复算 hash）+ run/snapshot 事实构建 JCS proposal 文档，`params_sha256=sha256(JCS(proposal))`；title/expires(60..86400)/proposal 对象与尺寸校验；内部路由 `POST /internal/v1/runs/{id}/node-approvals`（worker mTLS） |
+| 幂等/重放 | **passed**：同一 canonical proposal 重放返回原行（同 attempt 与恢复后的第二次 exec 均验证）；approvals 恰 1 行、`approval.required` 恰 1 条、resume job 恰 1 个；不同 proposal = 新 approval 行，旧决定不复用（旧 hash 决定新行 409 `approval_params_mismatch`） |
+| 等待桥 | **passed**：`approval:<approval_id>` checkpoint 的 adopt 分支与既有 `capability:<operation_id>` 分支并列，capability 行为未变；rejected/expired → Run `approval_rejected`/`approval_expired`，无 resume；resume 仍由唯一 `maybeEnqueueResumeTx` 创建 |
+| 执行器 | **passed**：graph `approval` 类型/触发/config 复验/`proposal` 输入；pending → `waiting_approval` + `approval:<id>` + ConfirmExit 不继续；approved → data artifact `{approval_id,decision,decided_at,params_sha256,proposal}` 并继续；invalidated/拒绝/过期稳定码；真实二次 exec 同一 Run 恢复成功 |
+| 两次审批（T091 预演） | **passed**：`start→a1→a2→end` 两次等待/两次决定/第三次 exec 汇合；2 条独立 approval、2 个 resume job、a1/a2 各 1 条 data artifact（a1 由恢复接缝复用）、最终输出含两 id |
+| 画布 | **passed**：`approval` palette/panel（title、expires_seconds、proposal 来源绑定/JSON 字面量编辑器、“审批不授权后续外部写”说明）、export allowlist `title,expires_seconds`；bundle 已重建提交 |
+| 审批页 | **passed**：`approvals.js` 识别 `kind=node_approval`，经既有 artifact-content ACL 显示真实 title/节点/来源/proposal；capability 提案渲染不变（T050 页面测试通过） |
+| 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 7 用例（真实 PG/API/mTLS/supervisor/审批 API/唯一 resume）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票 9 passed in 57.79s |
+| 回归子集 | **passed**：`pytest tests/f06/test_t050_approval.py tests/f06/test_t050_pages.py tests/f06/test_t043_agent_node.py -q` **27 passed in 178.74s**（首跑 1 个 sandbox lease-lost 环境 flake，隔离重跑通过后整套复跑通过） |
+| Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过 |
+| 既有测试缺陷 | **修复（2 行，测试代码）**：`tests/f04b/test_t083_runview.py` 条件/join 真实栈用例在 `491cb78` 上把 items 列表当 body 使用（该用例在 graph runtime 合并前一直 skip，从未跑过）；修复后 7 passed，产品断言不变 |
+| 边界/not_run | 全量 `pytest tests/f06` 与合并后 T087/f06 真实栈重跑 `not_run`（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件）；自动过期 sweeper 不存在（过期经 decision 路径观察）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`（`sync_spec --check` no drift）。
