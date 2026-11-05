@@ -219,15 +219,15 @@ def test_single_child_waits_then_resumes_with_the_original_structured_result(t03
     assert children[0]["parent_run_id"] == parent_id
     assert children[0]["state"] == "succeeded"
 
-    # 6. The durable node.status sequence keeps the resumption observable: the
-    # waiting attempt marks the not-yet-reachable tail skipped, the waiting node
-    # starts a second attempt, and the skipped branch never runs.
+    # 6. The durable node.status sequence keeps the resumption observable. T085's
+    # final skip publication emits no skips during the waiting hand-over, so the
+    # unselected branch is skipped exactly once, in the resumed attempt.
     states = t089.node_states(t033_stack.dbname, parent_id)
     assert states["child"] == ["pending", "running", "pending", "running", "succeeded"], states
-    assert states["direct"] == ["skipped", "skipped"], states
+    assert states["direct"] == ["skipped"], states
     assert states["choose"] == ["pending", "running", "succeeded", "succeeded"], states
-    assert states["join"] == ["skipped", "pending", "running", "succeeded"], states
-    assert states["end"] == ["skipped", "pending", "running", "succeeded"], states
+    assert states["join"] == ["pending", "running", "succeeded"], states
+    assert states["end"] == ["pending", "running", "succeeded"], states
 
 
 def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_stack) -> None:
@@ -432,10 +432,10 @@ def test_a_required_child_failure_fails_the_parent_with_the_childs_code(t033_sta
 
     states = t089.node_states(t033_stack.dbname, parent_id)
     assert states["child"][-1] == "failed", states
-    # The waiting attempt skipped the not-yet-reachable tail once, and the failed
-    # resumed attempt skips it again.
-    assert states["end"] == ["skipped", "skipped"], states
-    assert states["join"] == ["skipped", "skipped"], states
+    # T085's final skip publication emits no skips during the waiting hand-over;
+    # the failed resumed attempt skips the not-yet-reachable tail exactly once.
+    assert states["end"] == ["skipped"], states
+    assert states["join"] == ["skipped"], states
 
 
 def test_the_waiting_handover_releases_and_reoccupies_the_execution_slot(t033_stack) -> None:
