@@ -143,7 +143,7 @@ Node 24；WSL2/runsc 可用。
 ok  orchara/platform/internal/api         2.455s
 ...
 ok  orchara/platform/internal/workflow    1.347s
-(32 个有测试的 package 全 ok，0 FAIL；cmd/* 为 no test files)  exit=0
+(33 个有测试的 package 全 ok，0 FAIL；cmd/* 为 no test files)  exit=0
 
 == gofmt -l . ==
 (no output)  exit=0
@@ -162,6 +162,19 @@ no drift: spec copy and contract snapshot match the manifest  exit=0
 == python -m pytest tests/f13a -q --basetemp=C:\orchara-pytest\rv1-run2 ==   (run B, 背靠背)
 ...................................................                      [100%]
 51 passed in 818.86s (0:13:38)  exit=0
+
+== git merge integration/f13a-f15a-f09-f10 ==
+integration tip 8ad3bcc -> 5f6401e（F09/T063 review fix）；本地 merge commit b6cc5af，
+RV1 触及的文件无冲突（ort 自动合并，PROGRESS 双方内容保留）。
+
+== merge result: go build ./... / go vet ./... / gofmt -l . / sync_spec --check ==
+全部 exit=0（gofmt 无输出，sync_spec = no drift）
+== merge result: go test ./... ==
+33 行 ok（含 internal/context 0.898s、internal/memory 1.222s 等），0 FAIL，exit=0
+
+== merge result: python -m pytest tests/f13a -q -k "t056 or t062 or rv1" --basetemp=C:\orchara-pytest\rv1-merge ==
+...........................                                              [100%]
+27 passed, 24 deselected in 244.92s (0:04:04)  exit=0
 ```
 
 关于 `--basetemp`：本机是多 agent 共享的 12 核环境，第一次用裸
