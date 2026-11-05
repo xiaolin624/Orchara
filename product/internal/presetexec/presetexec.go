@@ -32,6 +32,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -398,8 +399,11 @@ type runner struct {
 	// read (a refusal still has to state which image it is refusing to run).
 	projection *manifestDocument
 	heartbeats atomic.Int64
-	artifacts  []ArtifactReport
-	logger     *log.Logger
+	// artifactsMu guards artifacts: F04B/T085 node goroutines upload their own
+	// node artifacts concurrently.
+	artifactsMu sync.Mutex
+	artifacts   []ArtifactReport
+	logger      *log.Logger
 }
 
 // Run performs at most one claim and its execution. It never panics on a refusal:
@@ -748,6 +752,11 @@ func (e *unsupportedError) Error() string { return e.message }
 // terminal failure instead of an infinite requeue loop). The distinction is
 // recorded in the T033 report.
 func (r *runner) refuse(ctx context.Context, code, message string) executionOutcome {
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandbox.Outcome{}, nil, nil, false, false,
+	); ok {
+		return captured
+	}
 	evidence := r.exitEvidence(0, sandbox.Outcome{}, nil)
 	evidence["sandbox_started"] = false
 	evidence["refusal_code"] = code
@@ -779,6 +788,13 @@ func (r *runner) failRun(
 	input *InputArtifact,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, sandboxErr, evidence, true, true,
+	); ok {
+		// The graph scheduler records the failure evidence and commits the run
+		// result after it stopped the other branches.
+		return captured
+	}
 	r.uploadFailureEvidence(ctx, code, message, sandboxOutcome, diagnostics, input)
 	proposal := Proposal{EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, proposal); err != nil {
@@ -804,6 +820,11 @@ func (r *runner) failAfterStart(
 	ctx context.Context, code, message string, sandboxOutcome sandbox.Outcome, evidence map[string]any,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, nil, evidence, false, true,
+	); ok {
+		return captured
+	}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
 		EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code,
 	}); err != nil {
@@ -1156,6 +1177,7 @@ func (r *runner) uploadArtifact(
 	if err != nil {
 		return "", err
 	}
+	r.artifactsMu.Lock()
 	r.artifacts = append(r.artifacts, ArtifactReport{
 		ID:        ticket.ArtifactID,
 		Purpose:   purpose,
@@ -1163,6 +1185,7 @@ func (r *runner) uploadArtifact(
 		State:     ready.State,
 		SizeBytes: ready.SizeBytes,
 	})
+	r.artifactsMu.Unlock()
 	return ticket.ArtifactID, nil
 }
 
