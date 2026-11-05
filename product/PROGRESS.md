@@ -1952,3 +1952,20 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 | 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。
+
+## F04B/T089 画布调用固定子应用并映射结果（GitHub #90，2026-11-06）
+
+T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路径真实栈 E2E；无 Go 运行时改动）。证据：`reports/f04b/T089-callapp-node.md`；分支 `t/t089-callapp-node`（worktree `E:\Orchara-wt\t089`，基线 `b343f7b`，结束前合入 `aced554`）。
+
+| 交付点 | 结果 |
+|---|---|
+| 画布 call_app | **passed**：palette `call_app` + `defaultNode={config:{application_version:''}}`；面板只列 ACL-filtered 应用与已发布版本（UUID 过滤，无 latest），显示 version id/manifest sha256，按子版本冻结 `input_schema` 逐字段映射（literal/input/node），子 `output_schema` 只读、父输出可编辑并默认取子 schema；本地提示缺失/未知字段/类型不符/非法来源；`lib/callapp.js` 纯逻辑（editor sidebar 纯逻辑的复制，经典脚本不能 import ESM；editor.js 未改）；`export.js` allowlist `call_app:['application_version']` |
+| 单 child 等待/恢复 | **passed**：`waiting_children` + confirm exit → child 独立 Run（独立 snapshot/thread）→ 唯一 resume → 父 succeeded，父节点 data=子结构化结果（label `child-run:<id>`），`GET /runs/{id}/children` 1 条，无第二 child |
+| 并行/顺序同 child | **passed**：两个 child Run、不同 invocation key（`call_app:<node id>`）/thread/snapshot/结果；同版本顺序两次调用不按 app id 去重；join 两源独立 |
+| 执行槽交接 | **passed**：等待 exit 后 `global/execution_slots` 释放（used=0）；child 只占独立 child pool（global+parent）；resume 重新占用 1 槽、终态释放一次；`assert_slot_consistent` |
+| 失败/映射定位 | **passed**：required 子失败传播 child 稳定码（`child_output_schema_invalid`）；`io_mapping_type_mismatch` `/nodes/2/inputs/source`、`io_mapping_missing_field` `/nodes/{2,3}/inputs/region`、debug 422；执行器运行期绑定 `node_input_invalid`（report 定位 `child.source`） |
+| 测试 | 新增 `tests/f04b/callapp_canvas.test.mjs`（12 Node 用例）、`test_t089_callapp_canvas.py`（4 passed）、`test_t089_callapp.py`（真实栈 7 passed）、`tests/support/t089.py`；定向回归 T078+T083 `15 passed` |
+| 合并/门禁 | merge `f21f09a`（T086/T090）→ 画布冲突解决 + 从合并源重建 bundle；merge `aced554`（T087/T088）→ 画布 23 passed（含逐字节重建校验）；`go build/vet/test ./...`、`gofmt -l`（空）、`sync_spec --check` no drift |
+| 边界 | 浏览器 DOM `not_run`；call_app 无 doc/span 引用 → `not_applicable`；`spawnChild` 无 required/optional 字段 → optional 子失败 `not_applicable`；真实厂商模型 `not_run` |
+
+发现（供后续票）：恢复接缝真实生效要求 supervisor 配置 `ORCHARA_OBJECT_DIR`（sealed object root）；T033 helper 未设置会让 resume 静默退化为重执行（T089 helper 已显式传入，建议补进共享 helper）。同 child 并行调用在 graph 调度器下表现为顺序两次等待，但两个 child Run 完全独立。
