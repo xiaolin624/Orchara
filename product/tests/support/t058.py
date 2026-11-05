@@ -157,7 +157,20 @@ def epoch_of(dbname: str, owner_id: str, application_id: str) -> int:
 DELETION_COLUMNS = (
     "id::text AS id, owner_id::text AS owner_id, resource_type, resource_id::text AS resource_id, "
     "deletion_revision, state, remaining_scopes::text AS remaining_scopes, "
-    "created_at::text AS created_at, completed_at::text AS completed_at"
+    "scope_details::text AS scope_details, completed_scopes::text AS completed_scopes, "
+    "attempt_count, error_code, created_at::text AS created_at, "
+    "completed_at::text AS completed_at"
+)
+
+# F11/T069: the contract DeletionJob's closed remaining-scope vocabulary.
+DELETION_SCOPES = (
+    "backup_catalog",
+    "checkpoints",
+    "object_store",
+    "retrieval_cache",
+    "sandbox_temp",
+    "search_index",
+    "third_party_history",
 )
 
 
@@ -178,10 +191,17 @@ def deletion_job(dbname: str, resource_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def deletion_scopes(job: dict) -> list[dict]:
+def deletion_scopes(job: dict) -> list[str]:
+    """The contract's remaining scope names (F11/T069 changed this from objects)."""
     import json
 
     return json.loads(job["remaining_scopes"])
+
+
+def deletion_scope_details(job: dict) -> dict:
+    import json
+
+    return json.loads(job["scope_details"])
 
 
 def memory_body_artifacts(dbname: str, *, owner_id: str | None = None) -> list[dict]:

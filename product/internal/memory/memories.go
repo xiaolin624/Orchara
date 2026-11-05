@@ -10,13 +10,12 @@ package memory
 // listMemories is the real read model that replaces F01's honest empty list. It
 // is owner-only: the query filters `owner_id` in the same WHERE as the cursor and
 // LIMIT, so a foreign or deleted row can never consume a page slot. An
-// administrator is not exempt — an administrator who does not own the memory sees
+// administrator is not exempt 鈥?an administrator who does not own the memory sees
 // an empty list here and 404 on every single-memory path in T058.
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -133,7 +132,8 @@ func (s *Service) Get(ctx context.Context, ownerID, memoryID string) (*Memory, e
 		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
 		 WHERE m.id = $1::uuid
 		   AND m.owner_id = $2::uuid
-		   AND m.deleted_at IS NULL`, target, ownerID).Scan(
+		   AND m.deleted_at IS NULL
+		   AND a.deleted_at IS NULL AND a.state = 'ready'`, target, ownerID).Scan(
 		&memory.ID, &memory.OwnerID, &memory.ApplicationID,
 		&memory.BodyArtifactID, &candidate, &memory.Revision,
 		&memory.ConfirmedAt, &memory.ConfirmedBy, &objectKey, &sha,
@@ -177,8 +177,8 @@ type UpdateInput struct {
 //
 // The new body is a new sealed artifact written in the same transaction as the
 // revision bump and the memory-scope cache-epoch bump. The superseded artifact is
-// left in place (F07 owns physical purge); the memory row — the recall authority
-// — no longer references it, and its revision can never be served as current.
+// left in place (F07 owns physical purge); the memory row 鈥?the recall authority
+// 鈥?no longer references it, and its revision can never be served as current.
 func (s *Service) Update(
 	ctx context.Context, ownerID string, input UpdateInput,
 ) (*Memory, error) {
@@ -279,6 +279,11 @@ func lockOwnedMemory(ctx context.Context, tx *sql.Tx, memoryID, ownerID string) 
 		 WHERE id = $1::uuid
 		   AND owner_id = $2::uuid
 		   AND deleted_at IS NULL
+		   AND EXISTS (
+		        SELECT 1 FROM platform.artifacts AS a
+		         WHERE a.id = memories.body_artifact_id
+		           AND a.deleted_at IS NULL AND a.state = 'ready'
+		       )
 		 FOR UPDATE`,
 		memoryID, ownerID,
 	).Scan(
@@ -295,237 +300,6 @@ func lockOwnedMemory(ctx context.Context, tx *sql.Tx, memoryID, ownerID string) 
 		memory.CandidateID = candidate.String
 	}
 	return &memory, nil
-}
-
-// DeletionJob is the contract's DeletionAccepted: ID is a deletion_job id (not
-// the memory id), and ResourceID is the memory the job removes.
-type DeletionJob struct {
-	ID         string
-	State      string
-	ResourceID string
-}
-
-// Delete tombstones one owned memory and records the deletion job.
-//
-// This is the "old content stops being recalled now" write, and it is
-// deliberately synchronous: in one transaction the row gets `deleted_at`, its
-// revision moves to the next value, a `deletion_jobs` row is written with the
-// physical scopes still to purge, and the `memory:<owner>:<application>` cache
-// epoch is raised. Only then does the API answer 202. The job stays `pending`:
-// the asynchronous cleanup handler and the physical purge belong to F07, and this
-// ticket neither registers that handler nor claims the bytes are gone.
-//
-// The operation is idempotent by the memory tombstone, not by a client key: a
-// repeated DELETE finds the deleted row, returns its existing job and does not
-// bump the revision or the epoch a second time. Two concurrent deletes serialise
-// on the row lock, so exactly one of them tombstones the row and the other
-// replays that job.
-func (s *Service) Delete(ctx context.Context, ownerID, memoryID string) (*DeletionJob, error) {
-	if !uuid.Valid(strings.TrimSpace(ownerID)) {
-		return nil, failure(401, "unauthenticated", "an authenticated human is required")
-	}
-	target := strings.TrimSpace(memoryID)
-	if !uuid.Valid(target) {
-		return nil, failure(404, CodeResourceNotFound, "that memory does not exist")
-	}
-
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("starting the memory deletion transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	memory, deleted, err := lockMemoryForDelete(ctx, tx, target, ownerID)
-	if err != nil {
-		return nil, err
-	}
-	if deleted {
-		// A repeated delete: the tombstone is the idempotency key. Return the job
-		// that the first delete committed, if it exists; a tombstone without a job
-		// (a row removed by some future path) still gets one so the contract's
-		// "repeated delete returns the same job" holds without another bump.
-		job, err := existingDeletionJobTx(ctx, tx, target)
-		if err != nil {
-			return nil, err
-		}
-		if job == nil {
-			job, err = s.insertDeletionJobTx(ctx, tx, ownerID, memory, memory.Revision, false)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("committing the repeated deletion: %w", err)
-		}
-		return job, nil
-	}
-
-	job, err := s.insertDeletionJobTx(ctx, tx, ownerID, memory, memory.Revision+1, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := bumpMemoryEpoch(ctx, tx, ownerID, memory.ApplicationID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("committing the memory deletion: %w", err)
-	}
-	return job, nil
-}
-
-// insertDeletionJobTx tombstones the locked memory (when tombstone is true) and
-// writes the deletion job with the physical scopes that still have to be purged.
-//
-// The scopes are the durable "what F07 still owes" record: the sealed object and
-// its artifact row, the embedding of the revision that was current, and the
-// tombstone row itself. The cache epoch needs no scope — it was already raised
-// synchronously in this transaction, which is the whole point of the design.
-func (s *Service) insertDeletionJobTx(
-	ctx context.Context, tx *sql.Tx, ownerID string, memory *Memory, revision int64, tombstone bool,
-) (*DeletionJob, error) {
-	var (
-		objectKey string
-		sha       sql.NullString
-		size      sql.NullInt64
-	)
-	err := tx.QueryRowContext(ctx, `
-		SELECT object_key, sha256, size_bytes FROM platform.artifacts
-		 WHERE id = $1::uuid`, memory.BodyArtifactID).Scan(&objectKey, &sha, &size)
-	if err != nil {
-		return nil, fmt.Errorf("reading the memory body artifact for deletion: %w", err)
-	}
-
-	if tombstone {
-		result, err := tx.ExecContext(ctx, `
-			UPDATE platform.memories
-			   SET revision   = $3,
-			       deleted_at = now()
-			 WHERE id = $1::uuid
-			   AND owner_id = $2::uuid
-			   AND deleted_at IS NULL
-			   AND revision = $4`,
-			memory.ID, ownerID, revision, memory.Revision)
-		if err != nil {
-			return nil, fmt.Errorf("tombstoning the memory: %w", err)
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("counting the tombstoned memory: %w", err)
-		}
-		if affected != 1 {
-			return nil, errors.New("the locked memory changed before it was tombstoned")
-		}
-		memory.Revision = revision
-	}
-
-	scopes := make([]map[string]any, 0, 4)
-	scopes = append(scopes, map[string]any{
-		"kind":       "object",
-		"object_key": objectKey,
-		"sha256":     sha.String,
-		"size_bytes": size.Int64,
-	})
-	scopes = append(scopes, map[string]any{
-		"kind":        "artifact",
-		"artifact_id": memory.BodyArtifactID,
-	})
-	// The embedding of the revision that was current is the one that must never be
-	// served again; T063 owns `platform.memory_embeddings` (not created yet), and
-	// the deletion-job scope is how F07/T063 know which derived copy to drop. The
-	// authoritative guard is already in place: any consumer must match
-	// memories.revision and deleted_at, both of which moved here.
-	previousRevision := revision - 1
-	scopes = append(scopes, map[string]any{
-		"kind":            "embedding",
-		"memory_id":       memory.ID,
-		"memory_revision": previousRevision,
-	})
-	scopes = append(scopes, map[string]any{
-		"kind":      "memory_row",
-		"memory_id": memory.ID,
-		"revision":  revision,
-	})
-	encoded, err := json.Marshal(scopes)
-	if err != nil {
-		return nil, fmt.Errorf("encoding the deletion scopes: %w", err)
-	}
-
-	job := &DeletionJob{ID: uuid.NewString(), State: "pending", ResourceID: memory.ID}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO platform.deletion_jobs
-		       (id, owner_id, resource_type, resource_id, deletion_revision, state,
-		        remaining_scopes)
-		VALUES ($1::uuid, $2::uuid, 'memory', $3::uuid, $4, 'pending', $5::jsonb)
-		ON CONFLICT (resource_type, resource_id, deletion_revision) DO NOTHING`,
-		job.ID, ownerID, memory.ID, revision, string(encoded),
-	); err != nil {
-		return nil, fmt.Errorf("recording the deletion job: %w", err)
-	}
-	// ON CONFLICT DO NOTHING keeps a concurrent repeat from failing, but the id in
-	// this struct must be the stored one, so read it back.
-	stored, err := existingDeletionJobTx(ctx, tx, memory.ID)
-	if err != nil {
-		return nil, err
-	}
-	if stored == nil {
-		return nil, errors.New("the deletion job disappeared inside its own transaction")
-	}
-	return stored, nil
-}
-
-// lockMemoryForDelete locks the memory row whether or not it is already
-// tombstoned. A foreign/unknown row is the same 404.
-func lockMemoryForDelete(
-	ctx context.Context, tx *sql.Tx, memoryID, ownerID string,
-) (*Memory, bool, error) {
-	var (
-		memory    Memory
-		candidate sql.NullString
-		deletedAt sql.NullTime
-	)
-	err := tx.QueryRowContext(ctx, `
-		SELECT id::text, owner_id::text, application_id::text, body_artifact_id::text,
-		       candidate_id::text, revision, confirmed_at, confirmed_by::text, deleted_at
-		  FROM platform.memories
-		 WHERE id = $1::uuid
-		   AND owner_id = $2::uuid
-		 FOR UPDATE`,
-		memoryID, ownerID,
-	).Scan(
-		&memory.ID, &memory.OwnerID, &memory.ApplicationID, &memory.BodyArtifactID,
-		&candidate, &memory.Revision, &memory.ConfirmedAt, &memory.ConfirmedBy, &deletedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, failure(404, CodeResourceNotFound, "that memory does not exist")
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("reading the memory for deletion: %w", err)
-	}
-	if candidate.Valid {
-		memory.CandidateID = candidate.String
-	}
-	return &memory, deletedAt.Valid, nil
-}
-
-// existingDeletionJobTx reads the newest deletion job for one memory. The memory
-// tombstone allows exactly one non-repeated job today; ordering keeps the read
-// total if a future path (F07 retries) ever inserts another.
-func existingDeletionJobTx(ctx context.Context, tx *sql.Tx, memoryID string) (*DeletionJob, error) {
-	var job DeletionJob
-	err := tx.QueryRowContext(ctx, `
-		SELECT id::text, state, resource_id::text
-		  FROM platform.deletion_jobs
-		 WHERE resource_type = 'memory'
-		   AND resource_id = $1::uuid
-		 ORDER BY created_at DESC, id DESC
-		 LIMIT 1`, memoryID).Scan(&job.ID, &job.State, &job.ResourceID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("reading the deletion job: %w", err)
-	}
-	return &job, nil
 }
 
 // List returns the owner's active memories, newest first.
@@ -548,6 +322,7 @@ func (s *Service) List(
 		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
 		 WHERE m.owner_id = $1::uuid
 		   AND m.deleted_at IS NULL
+		   AND a.deleted_at IS NULL AND a.state = 'ready'
 		   AND ($2::uuid IS NULL OR m.application_id = $2::uuid)
 		   AND (
 		        $3::timestamptz IS NULL
