@@ -2075,8 +2075,8 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
 
 ## 批次完成记录：#84–#92 / T083–T091（2026-11-06）
 
-- 基线 `ea56392`（上一批 `integration/t068-t082` tip）→ 集成分支 tip `93ddc6b`（merge T091 `t/t091-ten-node-graph` @ `344c139`）。
-- 范围：F04B 九票（T083–T089、T091）+ F14 T090，共 10 张票（GitHub #84–#92）。
+- 基线 `ea56392`（上一批 `integration/t068-t082` tip）→ 集成分支 tip `7e44e23`（T091 `344c139` 经 `93ddc6b` 合并，复核修复 `056fd75`/`7e44e23`）。最终门禁在 `056fd75` 上跑：`tests/f04b` **89 passed in 711.99s**、`tests/f14` **13 passed in 125.25s**、`tests/tooling` **21 passed**、Go 全绿、`sync_spec` no drift；`7e44e23` 仅恢复 PROGRESS 的 LF 行尾（代码/测试无差异）。
+- 范围：本批 **9 票**（T083–T091，GitHub #84–#92）：F04B 7 票（T083/T085/T086/T087/T088/T089/T091）+ F08 T084 + F14 T090。
 - 契约/规格：未改 `contracts/**`、`docs/spec/**`、迁移编号；`python tools/sync_spec.py --check` **no drift**。
   运行时的 spec 偏离（生产是 Go 图执行、不是 LangGraph）由 **ADR 0034** 记录，不静默。
 
