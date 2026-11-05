@@ -141,7 +141,7 @@
 | AC | 结果 | 证据（真实栈） |
 |---|---|---|
 | 1. 下载/检索/缓存/恢复立即拒绝 | **proven（artifact/document/memory，四项读面）** | artifact：`test_delete_artifact_answers_202_and_tombstones_before_any_cleanup` —— 202 后立即 `GET /artifacts/{id}`、`/download`、`/content` 全 404，bytes 仍在盘（T069 未 purge）；document：`test_delete_document_stops_retrieval_citations_answers_and_the_cache` —— 先 warm cache（hit/stored 真），删后 detail 404、list 空、citation 404、retrieval items 空且 cache hit=false、answer `no_results`；memory：`test_a_deleted_memory_is_not_recalled_by_a_later_agent_turn` —— 真实 supervisor agent run 的 trace source 不含被删 memory id、模型请求无被删正文，kept memory 是阳性对照；run artifact listing：`test_deleting_a_run_linked_artifact_cancels_the_queued_run` 删后列表立即为空；恢复：`test_a_parked_runs_deleted_input_makes_recovery_refuse` 真实 `admin runs recover` 拒绝 `input_deleted` |
-| 2. 202 可查询 remaining scopes | **proven** | 三个资源测试均断言 `GET /deletions/{id}` 200、恰好 `{id,state,remaining_scopes}`、state `pending`、`remaining_scopes` 等于七项固定词表（排序稳定）；DB 行 `scope_details` 含 object/artifact 描述；`test_the_fixed_scope_vocabulary_is_the_one_documented_for_later_tickets` 钉住列注释词表 |
+| 2. 202 可查询 remaining scopes | **proven** | 三个资源测试均断言 `GET /deletions/{id}` 200、恰好 `{id,state,remaining_scopes}`、state `pending`、`remaining_scopes` 等于七项固定词表（排序稳定）；DB 行 `scope_details` 含 object/artifact 描述；`test_the_fixed_scope_vocabulary_is_the_one_documented_for_later_tickets` 钉住列注释词表；`test_the_legacy_t058_descriptor_array_is_converted_to_the_scope_vocabulary` 用真实 pre-0042 行 + 编译 `admin migrate` 重放证明旧 objects 只转换一次（object/artifact→object_store、embedding→search_index、memory_row 不成为清理 scope），第二次 migrate no-op |
 | 3. 受引用配置 artifact 返回 resource_in_use | **proven** | `test_a_recoverable_runs_manifest_artifact_is_resource_in_use`：真实调试 run 的冻结 `execution_manifest` artifact，DELETE → 409 `resource_in_use` + `details.references=["recoverable_run"]`，artifact 行 deleted_at/revision 不变、无 job、run 仍 running |
 | 4. 端到端入口 + 失败/当前授权/重试边界 | **proven（四资源）+ partial（conversation）** | 真实 cookie+CSRF / API key 请求；`test_a_delete_without_the_csrf_token_changes_nothing`（403 且行/ job 零变化）、`test_anonymous_deletes_are_401_and_admin_is_not_exempt`（匿名 401、管理员 404）、`test_api_key_scopes_gate_delete_and_the_job_read`（读 key 删 403 insufficient_scope、写 key 删 memory 403 personal_scope、他人 404、写 key 读 job 403）；重复删除同 job、并发/重复 memory 删除只 bump 一次（T058 既有用例保持绿）；取消真实 queued run → `cancelled` + `run.status` 事件；`resource_in_use` 失败不写；审计仅 ids（`test_the_deletion_audit_keeps_ids_but_no_content`）。conversation 见下行 |
 | 4a. conversation 删除 | **partial → F08/T074** | 路由已接同一 foundation：`test_conversation_delete_is_wired_but_has_no_authority_until_t074` 断言未知/格式错误 id 均 404 且不写 job；platform.conversations 表、会话读路径、会话删除的 immediate-read-refusal 由 T074 创建并证明 |
@@ -218,22 +218,24 @@ Node v24.13.0；PostgreSQL **16.4**（`python tools/pg_dev.py status` → runnin
 ### 4.1 本票套件（`--basetemp` 隔离，背靠背两轮）
 
 ```text
-$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-15
-.....................                                                    [100%]
-21 passed in 155.89s (0:02:35)
+$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-26
+......................                                                   [100%]
+22 passed in 211.28s (0:03:30)
 
-$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-16
-.....................                                                    [100%]
-21 passed in 153.96s (0:02:33)
-
-$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-22   # 合并后最终树
-.....................                                                    [100%]
-21 passed in 207.95s (0:03:27)
+$ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t069-27
+......................                                                   [100%]
+22 passed in 211.63s (0:03:30)
 ```
 
 套内细分：`test_t069_delete_api.py` 2、`test_t069_resource_deletes.py` 4、
-`test_t069_runs.py` 3、`test_t069_recall.py` 1、`test_t069_migration.py` 4、
-`test_t069_pages.py` 3、`test_t069_authz.py` 4 = 21。
+`test_t069_runs.py` 3、`test_t069_recall.py` 1、`test_t069_migration.py` 5、
+`test_t069_pages.py` 3、`test_t069_authz.py` 4 = 22。
+
+诚实说明：在加入最后的“旧 T058 objects 升级转换”用例前后，本套件还跑过 3 轮
+（21 passed 155.89s/153.96s/207.95s，均为全绿）。新增转换用例后的第一次全量运行
+（`t069-25`）有 1 个 `sandbox_failed`（真实 `cmd/supervisor` 的 WSL/runsc 沙箱瞬时失败，
+错误为 heartbeat context canceled，断言未执行；f09 历史同样记录过该已知环境抖动），
+隔离重跑 `t069-26` 与 `t069-27` 连续两轮 22 passed，故以上为最终两轮证据。
 
 ### 4.2 邻接套件（改动可破坏的）
 
@@ -291,7 +293,7 @@ $ git merge integration/t068-t082
 Already up to date.
 
 结果：无合并提交（本分支已在集成 tip `cd8ca3c` 之上，集成分支尚未包含其他同批票）。
-合并后复跑：`pytest tests/f11` 21 passed（207.95s）；`go build ./...` exit 0、
+合并后复跑：`pytest tests/f11` 22 passed（211.63s）；`go build ./...` exit 0、
 `go vet ./...` exit 0、`go test ./...` 33 ok / 0 FAIL / 14 no-test、`gofmt -l .` 空、
 `tools/sync_spec.py --check` no drift、`pytest tests/tooling` 21 passed（6.38s）。
 工作树 `git status --short` 为空（报告此行为最后一次 docs 提交后）。
@@ -316,7 +318,7 @@ Already up to date.
 | checkpoint/摘要/临时沙箱/第三方副本/备份删除账本 | **not_run（本票边界）** | **T072** |
 | 诊断授权与每次正文读审计 | **not_run（本票边界）** | **T073** |
 | 无复活回归全套 | **not_run（本票边界）** | **T076** |
-| 旧 T058 object 数组的迁移转换（有旧数据的升级库） | **not_run** | 新库/实验库无 0042 前遗留 job；迁移 SQL 已在真实链上执行且幂等，但未构造 pre-0042 行做数据级断言，故不写成 proven |
+| 旧 T058 object 数组的迁移转换（有旧数据的升级库） | **proven** | `test_the_legacy_t058_descriptor_array_is_converted_to_the_scope_vocabulary`：真实 pre-0042 行 + 删除迁移记录 + 编译 `admin migrate` 重放，断言转换内容/scope 归属/`memory_row` 不清理/第二次 migrate no-op |
 | 浏览器 DOM/真实点击 | **not_run** | 无浏览器驱动；页面纯函数由 Node 真实执行 |
 | 全量 `pytest tests` | **not_run** | BRIEF 禁止（>60min），orchestrator 合并后运行 |
 | T028/T033 之外的 f05（tool/build/sandbox） | **not_run** | 本票未改那些代码路径；只跑受删除路由影响的 artifact 套件 |

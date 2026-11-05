@@ -7,6 +7,9 @@ ticket finds its own migration by slug so the merger can renumber it.
 
 from __future__ import annotations
 
+import json
+import uuid
+
 from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -103,6 +106,79 @@ def test_deletion_jobs_carries_the_progress_retry_and_timestamp_fields(
         "AND tablename = 'deletion_jobs' ORDER BY indexname",
     )
     assert "deletion_jobs_open" in {row["indexname"] for row in indexes}, indexes
+
+
+def test_the_legacy_t058_descriptor_array_is_converted_to_the_scope_vocabulary(
+    migrated_database, go_binaries
+) -> None:
+    """An upgrade database with a T058 job is translated once, idempotently.
+
+    The test removes the 0042 ledger row, inserts a real legacy row (the T058
+    object-descriptor shape) and lets the compiled migration chain re-apply 0042
+    on the same database. The catalog/table statements are idempotent; the data
+    conversion is the part this test proves.
+    """
+    dsn, dbname = migrated_database
+    owner_id = st.sql(dbname, "SELECT id::text FROM platform.principals LIMIT 1")
+    job_id = str(uuid.uuid4())
+    resource_id = str(uuid.uuid4())
+    descriptors = [
+        {
+            "kind": "object",
+            "object_key": "sealed/legacy-t058",
+            "sha256": "a" * 64,
+            "size_bytes": 12,
+        },
+        {"kind": "artifact", "artifact_id": resource_id},
+        {"kind": "embedding", "memory_id": resource_id, "memory_revision": 1},
+        {"kind": "memory_row", "memory_id": resource_id, "revision": 2},
+    ]
+    st.sql(
+        dbname,
+        "INSERT INTO platform.deletion_jobs "
+        "(id, owner_id, resource_type, resource_id, deletion_revision, state, "
+        "remaining_scopes) VALUES ("
+        f"{st.quote_literal(job_id)}::uuid, {st.quote_literal(owner_id)}::uuid, "
+        f"'memory', {st.quote_literal(resource_id)}::uuid, 2, 'pending', "
+        f"{st.quote_literal(json.dumps(descriptors))}::jsonb)",
+    )
+    st.sql(dbname, "DELETE FROM platform.schema_migrations WHERE version = '0042'")
+
+    completed = st.run_admin(go_binaries["admin"], ["migrate"], dsn=dsn)
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+
+    row = st.sql_rows(
+        dbname,
+        "SELECT remaining_scopes::text AS remaining_scopes, "
+        "scope_details::text AS scope_details FROM platform.deletion_jobs "
+        f"WHERE id = {st.quote_literal(job_id)}::uuid",
+    )[0]
+    assert json.loads(row["remaining_scopes"]) == ["object_store", "search_index"], row
+    details = json.loads(row["scope_details"])
+    assert set(details) == {"object_store", "search_index"}, details
+    kinds = {item["kind"] for item in details["object_store"]["items"]}
+    assert kinds == {"object", "artifact"}, details["object_store"]
+    assert [item["kind"] for item in details["search_index"]["items"]] == ["embedding"], details[
+        "search_index"
+    ]
+    # `memory_row` is the no-resurrection tombstone, never a purge scope.
+    assert "memory_row" not in row["remaining_scopes"], row
+    assert "memory_row" not in row["scope_details"], row
+
+    # The second migrate is a no-op and does not re-convert or duplicate anything.
+    chain = st.migration_chain(dbname)
+    again = st.run_admin(go_binaries["admin"], ["migrate"], dsn=dsn)
+    assert again.returncode == 0, (again.stdout, again.stderr)
+    assert "no pending migrations" in (again.stdout + again.stderr), again.stdout
+    assert st.migration_chain(dbname) == chain
+    assert (
+        st.sql(
+            dbname,
+            "SELECT remaining_scopes::text FROM platform.deletion_jobs "
+            f"WHERE id = {st.quote_literal(job_id)}::uuid",
+        )
+        == '["object_store", "search_index"]'
+    )
 
 
 def test_the_fixed_scope_vocabulary_is_the_one_documented_for_later_tickets(
