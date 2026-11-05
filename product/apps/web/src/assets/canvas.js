@@ -21917,7 +21917,11 @@ Edge: ${id2}`,
     } else {
       valueEditor = h("span", { class: "hint" }, "未映射");
     }
-    return h("div", { class: "callapp-row", key: "callapp-" + row.field }, [
+    return h("div", {
+      class: "callapp-row",
+      key: "callapp-" + row.field,
+      "data-field": "inputs." + row.field
+    }, [
       h("div", { class: "callapp-row-head" }, [
         h("code", { class: "mapping-name" }, row.field),
         h("span", { class: "type-chip" }, row.type + (row.required ? " · 子应用必填" : ""))
@@ -21946,7 +21950,8 @@ Edge: ${id2}`,
     const config = node.config || {};
     const versionId = typeof config.application_version === "string" ? config.application_version : "";
     const schemas = panel.schemas;
-    const problems = callAppProblems(node, definition, schemas);
+    const loadingPinned = Boolean(versionId) && panel.loading && !schemas;
+    const problems = loadingPinned ? [] : callAppProblems(node, definition, schemas);
     const inputRows = schemas ? callAppInputRows(schemas.inputSchema, node.inputs) : [];
     const applications = state.callApp.applications;
     const versionOptions = [...panel.versions];
@@ -22030,7 +22035,7 @@ Edge: ${id2}`,
       ) : h(
         "p",
         { class: "hint", "data-field": "callApp.problems.ok" },
-        "映射与输出声明在本地检查通过；服务端校验仍是权威。"
+        loadingPinned ? "正在读取固定版本的冻结 Schema…" : "映射与输出声明在本地检查通过；服务端校验仍是权威。"
       )
     ];
   }
