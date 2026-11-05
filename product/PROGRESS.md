@@ -2022,3 +2022,21 @@ T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路
 | 边界 | 浏览器 DOM `not_run`；call_app 无 doc/span 引用 → `not_applicable`；`spawnChild` 无 required/optional 字段 → optional 子失败 `not_applicable`；真实厂商模型 `not_run` |
 
 发现（供后续票）：恢复接缝真实生效要求 supervisor 配置 `ORCHARA_OBJECT_DIR`（sealed object root）；T033 helper 未设置会让 resume 静默退化为重执行（T089 helper 已显式传入，建议补进共享 helper）。合并 T085 后 graph 调度器为 ready-queue 并发：fork 的两个 call_app 分支同时启动，首个 branch 等待时调度器取消其余在飞分支并在 drain 后提交 waiting_children；被取消的兄弟分支在 resume 后重执行（spawn 幂等键保证不产生重复 child），两个 child Run 仍完全独立。
+## F04B/T088 知识检索节点：平台 ACL 检索与真实引用（GitHub #89，2026-11-06）
+
+T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内部 ACL 检索路由 + 画布面板 + 运行视图引用链接）。
+证据：`reports/f04b/T088-retrieve-node.md`；分支 `t/t088-retrieve-node`（worktree `E:\Orchara-wt\t088`），
+基线 `111e2c2`，merge 集成分支 `b343f7b`/`f21f09a` 后在本分支提交最终报告。
+
+| 交付点 | 结果 |
+|---|---|
+| 内部检索路由（非契约） | **passed**：`POST /internal/v1/runs/{run_id}/retrieval`（worker mTLS，`internal/api/retrieval.go`）；attempt_token 复证 live attempt，owner 取 `runs.owner_id`（body 无 owner）；对每个 KB 调既有 `knowledge.Service.Query`（SQL 先 ACL/tombstone/active index/embedding revision 过滤），非 owner/不存在静默排除并计数 `requested/authorized`；多 KB 合并 score DESC + `chunk_id` 稳定 tie-break；响应仅平台字段；400/422/409/503 复用既有错误词汇 |
+| retrieve 执行器 | **passed**：`internal/presetexec/retrieve.go`；`graphNodeTypes`/`hasGraphConstructs`/dispatch 最小扩展；config 复验（uuid 数组 min1 unique、top_k 1..20、拒未知键/内联 query）；query 必须绑定为 string，缺失/非 string → `node_input_invalid` 定位 `/nodes/<i>/inputs/query`；输出 `{items,citations,count}`，citation/span 原样；无结果 `succeeded`；稳定码 `retrieve_unavailable`（503/网络）、`retrieve_denied`（调用被拒 403）、`node_output_invalid` |
+| 真实栈验收 | **passed**：`pytest tests/f04b/test_t088_retrieve.py` **6 passed in 51.63s**（全局锁、真实 PG+mTLS+supervisor+真实知识摄取）；引用与 DB chunk/citation 逐字段相等、citation 路由同源、空结果、foreign KB 静默排除 + requested/authorized 计数、撤权后 404、并行 retrieve 不串 |
+| 画布 | **passed**：`retrieve` palette「知识检索」、`{knowledge_base_ids:[],top_k:5}` 默认、KB 多选（`GET /knowledge-bases`，不可见已选保留+说明）、top_k 1..20、query 合法 string 来源绑定、`items/citations/count` 输出模板一键填入、导出 allowlist `knowledge_base_ids,top_k`；bundle `npm run build` 重建提交 |
+| 运行视图 | **passed**：retrieve data artifact 预取；行内展示「检索 N 段 · 引用 M 条」，citation 链接 `GET /api/v1/knowledge-citations/{chunk_id}`；200 展开真实来源，404 显示不可用且不显示缓存正文；`retrieve_unavailable`/`retrieve_denied` 稳定码提示 |
+| 门禁 | `pytest tests/f04b/test_t088_retrieve.py` 6 passed；`test_t083_runview.py` 7 passed（同合并树）；canvas/runview/asset 模块 15 passed；`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（no drift）全部通过 |
+| 边界/not_run | `not_applicable`：相同 child 并发不串 thread（retrieve 无 child，改写为并行 retrieve 不串结果并已真实栈验证）、节点等待交接释放槽（retrieve 不等待）；`not_run`：`pytest tests/f10` 全量（共享真实栈串行，最后窗口未取得；本票仅新增 `QueryBases`、不改知识 service/API 路由）、真实厂商 embedding、真实二次 exec 复用 retrieve 输出、浏览器 DOM/Playwright |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。首轮真实栈曾用 `t055_stack`（缺 T025 编译器环境）出现
+`compiler_unconfigured`/helper KB-id 拆分 bug，修正为 `t033_stack` + helper 归一化后 6 passed（报告 §5 如实记录）。
