@@ -108,14 +108,24 @@
 ### 4.1 真实栈验收
 
 工作目录 `E:\Orchara-wt\t088\product`；在全局 pytest 锁下、确认无其它 pytest 进程后运行
-（原始日志 `E:\Orchara\.scratch\t083-t091\T088\pytest-t088-2.log`）：
+（原始日志 `E:\Orchara\.scratch\t083-t091\T088\pytest-t088-2.log`、
+`.../pytest-t088-final.log`）：
 
 ```powershell
+# 合并 T086/T090 的树（f194aea）
 python -m pytest tests/f04b/test_t088_retrieve.py -q
-```
-```text
 ......                                                                   [100%]
 6 passed in 51.63s
+
+# 合并 T085（并发调度器）/T087（approval）/T089 后的最终树（a6cdf8e）复跑
+python -m pytest tests/f04b/test_t088_retrieve.py -q
+......                                                                   [100%]
+6 passed in 78.47s (0:01:18)
+
+# 再并入集成 tip 1cf7637（T085 skipped-facts 修复 + 各票证据合并）后的最终树（8a13ee2）
+python -m pytest tests/f04b/test_t088_retrieve.py -q
+......                                                                   [100%]
+6 passed in 74.49s (0:01:14)
 ```
 
 每个用例的真实链路：真实 draft 保存（Go workflow 编译器）→ 真实 debug 提交（封印输入）→ 编译后的
@@ -194,18 +204,21 @@ PASS 9 canvas F04B module tests      # T083 画布回归（allowlist 用例已�
 
 ### 4.4 回归门禁
 
-在合并树（`f194aea`，含 T086 model/T090）上：
+在合并树 `f194aea`（含 T086 model/T090）与最终树 `a6cdf8e`（含 T085 并发调度器/T087/T089）上：
 
 ```powershell
-python -m pytest tests/f04b/test_t083_runview.py -q          # 与 T088 同一次锁内运行
+python -m pytest tests/f04b/test_t083_runview.py -q          # f194aea，与 T088 同一次锁内运行
 python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py `
                  tests/f04b/test_t086_model_canvas.py tests/f04b/test_canvas_f04b_assets.py -q
+python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py `
+                 tests/f04b/test_canvas_f04b_assets.py -q     # 最终树 a6cdf8e
 go build ./... ; go vet ./... ; go test ./...
 ```
 ```text
 7 passed (test_t083_runview.py，真实 condition/join/skipped E2E)
-15 passed in 2.38s (canvas/runview/asset 模块测试)
-go build/vet 干净；go test ./... 全部 ok（见 T088/go-gates.log 与本次控制台）
+15 passed in 2.38s (canvas/runview/asset 模块测试，f194aea)
+11 passed in 2.28s (T088 canvas/runview/asset 模块测试，a6cdf8e)
+go build/vet 干净；go test ./... 全部 ok（最终树 a6cdf8e）
 ```
 
 **not_run**：`python -m pytest tests/f10 -q` 全量回归。原因：真实栈必须串行（同一 WSL/runsc state root +
@@ -260,27 +273,33 @@ no drift: spec copy and contract snapshot match the manifest
 
 - 分支：`t/t088-retrieve-node`，worktree `E:\Orchara-wt\t088`。
 - 开发期 merge：`integration/t083-t091` @ `b343f7b` → 本分支 `39a3099`；@ `f21f09a`（T086 model + T090）→
-  `f194aea`。冲突解决：`graphNodeTypes`/`hasGraphConstructs`/dispatch/config 复验同时保留 `model` 与 `retrieve`，
-  `approval` 仍是唯一未支持的按类型码；画布 palette/labels/positions/panels/export allowlist 同样两者并存，
-  已提交 bundle 由合并后源码重建；T083 的 unsupported-type 用例改用 `approval`。集成树上的 Go/canvas 回归全绿。
-- 本分支最终代码/证据 HEAD：`a3825cb`（`test(f04b): fix the T088 real-stack stack fixture and record the retrieve
-  evidence`）。集成分支已由编排者先行合并本分支（`7b1becd`）；本 HEAD 及随后一次 docs 提交（钉住 HEAD）由父再次 merge。
-- 门禁（合并树 `f194aea` + 最终文件）原始结果：
+  `f194aea`；@ `4851c4f`（T085 并发调度器、T087 approval、T089 call_app、T091）→ `a6cdf8e`；@ `1cf7637`
+  （T085 skipped-facts 修复 + 各票证据合并）→ `8a13ee2`（均无冲突：T087/T089/T085 已基于含本票 retrieve 的
+  集成分支开发）。更早一次冲突解决：`graphNodeTypes`/`hasGraphConstructs`/dispatch/config 复验同时保留 `model`
+  与 `retrieve`，画布 palette/labels/positions/panels/export allowlist 同样两者并存，已提交 bundle 由合并后源码
+  重建；T083 的 unsupported-type 用例改用后续剩余的未支持类型。
+- 本分支最终代码/证据 HEAD：`8a13ee2`（`Merge branch 'integration/t083-t091'`）。本文件与 `PROGRESS.md` 的最终
+  钉数 docs 提交在其后；集成分支已由编排者先行合并本分支（`7b1becd`），最终 HEAD 由父再次 merge。
+- 门禁（最终合并树 `8a13ee2`，T085/T087/T089/T091 已并入）原始结果：
 
 ```text
-# 锁下、确认无其它 pytest 进程后（日志 T088/pytest-t088-2.log）
+# 锁下、确认无其它 pytest 进程后（日志 T088/pytest-t088-final2.log）
 python -m pytest tests/f04b/test_t088_retrieve.py -q
 ......                                                                   [100%]
-6 passed in 51.63s
+6 passed in 74.49s (0:01:14)
 
-# 同一合并树、同一次锁内（日志 T088/pytest-t088.log）——T083 run-view 回归
+# 合并 T086/T090 的树（f194aea）上已跑过的回归（日志 T088/pytest-t088.log / pytest-t088-2.log）
 python -m pytest tests/f04b/test_t083_runview.py -q
 7 passed
 
-# 画布/运行视图/资产（Node 执行真实字节 + 重建比对）
 python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
                  tests/f04b/test_t086_model_canvas.py tests/f04b/test_canvas_f04b_assets.py -q
 15 passed in 2.38s
+
+# 最终树 a6cdf8e
+python -m pytest tests/f04b/test_t088_canvas.py tests/f04b/test_t088_runview.py \
+                 tests/f04b/test_canvas_f04b_assets.py -q
+11 passed in 2.28s
 
 go build ./...          # exit 0
 go vet ./...            # exit 0
@@ -291,6 +310,8 @@ no drift: spec copy and contract snapshot match the manifest
 node tests/f04b/canvas_t088.test.mjs    -> PASS 6 canvas T088 module tests
 node tests/f04b/canvas_f04b.test.mjs    -> PASS 9 canvas F04B module tests
 node tests/f04b/canvas_model.test.mjs   -> PASS 4 canvas T086 model tests
+node tests/f04b/callapp_canvas.test.mjs -> PASS 12 call_app canvas module tests
+node tests/f04b/t087_canvas.test.mjs    -> ok 1..6, exit 0
 node tests/f04b/runview.test.mjs        -> PASS 6 runview tests
 node tests/f04b/runview_t088.test.mjs   -> PASS 6 runview T088 tests
 ```
