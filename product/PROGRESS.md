@@ -1519,6 +1519,31 @@ revision）分别见各票行、报告与 ADR 0014/0009/0016。
 owner-or-admin 200。门禁与合入记录见本分支报告 §3（`pytest tests/f13a` ×2、
 `tests/tooling`、Go build/vet/test、gofmt、sync_spec）。
 
+## RV2 知识库升级与可读谓词复核修复（2026-11-05，分支 `fix/rv2-knowledge-upgrade`）
+
+外部复核第二轮确认两项 P2，本分支已修复并以真实 PG/真实二进制/真实 HTTP 回归（基线
+`8ad3bcc`；收尾合并 integration tip `cd4f7cb`，merge commit **`702b6dc`**）。
+
+| Finding | 修复 | 证据 |
+|---|---|---|
+| C（规格）从 0039 之前升级的部署把排队中的 `document_ingest` job 永久卡住 | 新迁移 `db/migrations/0041_ingest_upgrade_recovery.sql`（只修数据、无新 schema 对象、可重跑）：把无 `expected_index_version_id` 的非终态 job 置 `failed/ingest_index_unbound`（business、清租约、写 `finished_at`），并把仍处 `uploaded`/`scanning`/`indexing` 且未删除的对应文档置 `failed/ingest_index_unbound`；已有其它 live job 的文档跳过（滚动升级/重放安全），删除的文档不复活。选择“失败”而非“绑定新索引版本”的理由、运行时自愈与边界见 ADR 0018 §6。运行时：完成守卫对无绑定/索引版本缺失或非 building 的尝试结束 job 并（无其它 live 构建时）失败文档；`background.LiveDocumentBuildTx` 唯一定义“构建真的在跑”（非终态 job + 同文档同源 revision 且仍 building 的索引版本），`CreateDocument`/`ReindexDocument`/`insertIndexVersionTx` 据此自愈（放弃版本 `failed/ingest_build_abandoned`）并只在真有 live 构建时返回 409 `index_build_in_progress` | `tests/f10/test_t061_upgrade_recovery.py` 5 用例：真实 pre-0039 schema + 真实 queued job + 真实 `admin migrate`（含删 ledger 重放）+ 真实 maintenance/HTTP 重摄取到 ready；迁移后仍存活的 legacy job 由真实 handler/守卫结束；无 live job 自愈；live 构建期间重复摄取仍幂等；live 构建仍 409、其 job 死后可重建 |
+| E（标准+规格）`cache_store.go` 重抄检索/引用的“当前可读 chunk”谓词，权限条件三份会漂移 | 抽出 `internal/knowledge/readable_chunk.go::currentReadableChunkSQL(ownerParam)`（FROM/WHERE 片段，owner 占位符由调用点传入），`rankRetrieval`、`GetChunk`、`validateCachedItems` 三处共用；纯重构，谓词集合逐条不变 | 既有 `tests/f10` 全套（越权/删除/换 revision/换索引/失效引用/缓存活行投毒路径）在合并结果上 88 passed × 2 |
+
+附带（同一轮复核发现的门禁缺陷，非上述两项）：`tests/f10/test_t067_comparison.py` 的
+cache on/off 计时断言在并发套件负载下会把两个相隔数分钟的相位比反（实测 hit 14.4/13.9 ms
+vs miss 12.9/10.9 ms；同一棵树安静窗口为 3.4 vs 9.9 ms，基线 `8ad3bcc` 在同套件通过）。
+改为**成对取样**（每次先 hit 再同一 query miss，同一测量窗口）并在 summary 报告成对中位比，
+计时断言降级为文档已声明的“粗回归护栏”（hit p50 不得超过 miss 的 3 倍）；量化结论仍以记录
+的 p50/p95 为准（ADR 0015 D5）。
+
+门禁（合并结果 `702b6dc`，隔离 `--basetemp`）：`go build ./...`/`go vet ./...`/`go test ./...`
+（33 包 ok、0 FAIL）exit 0；`gofmt -l .` 空；`python tools/sync_spec.py --check` no drift；
+`pytest tests/tooling -q` **21 passed**；`pytest tests/f10 -q` **88 passed（394.34s）× 2 背靠背
+（395.62s）**。迁移编号 `0041`（tip 上 0040 之后下一个空位；按名字断言，合并重编号不误配）。
+
+报告：`reports/f10/RV2-knowledge-upgrade.md`。ADR 0018 §6（升级恢复）、ADR 0015 D2/D5 与
+ADR 0010（共享可读谓词、计时实验方法）。
+
 ## 记录模板
 
 ```text

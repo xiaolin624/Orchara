@@ -63,27 +63,50 @@ T061 的激活切换当时必须同时改三份——权限条件有漂移风险
 
 | 测试 | 断言 |
 |---|---|
-| `tests/f10/test_t061_upgrade_recovery.py::test_an_upgraded_database_ends_a_legacy_ingest_and_reingests_to_ready` | 真实 pre-0039 schema（`--migrations-dir` 截到 0038）+ 真实 T055 形状文档/queued job → 真实 `admin migrate` 到 tip：ledger 出现 `0041_ingest_upgrade_recovery.sql`（按名字、版本从 ledger 读）、job `failed/ingest_index_unbound/business/finished_at`、文档 `failed/ingest_index_unbound`、无索引版本；重复 migrate 是 no-op 且不改行；真实 API + `maintenance run --once` 不认领任何 job；同 artifact 经真实 HTTP 重摄取 → ready、revision 2、索引版本 2 active、检索命中 |
+| `tests/f10/test_t061_upgrade_recovery.py::test_an_upgraded_database_ends_a_legacy_ingest_and_reingests_to_ready` | 真实 pre-0039 schema（`--migrations-dir` 截到 0038）+ 真实 T055 形状文档/queued job → 真实 `admin migrate` 到 tip：ledger 出现 `0041_ingest_upgrade_recovery.sql`（按名字、版本从 ledger 读）、job `failed/ingest_index_unbound/business/finished_at`、文档 `failed/ingest_index_unbound`、无索引版本；重复 migrate 是 no-op 且不改行；真实 API + `maintenance run --once` 不认领任何 job；随后在**没有 maintenance 进程**时重摄取（文档 scanning、新 job ready、新索引版本 building），删掉 ledger 行让真实 runner **重放迁移**：legacy job 保持 failed、新构建不被误杀；再跑 maintenance → ready、revision 2、索引版本 1（新文档构建号从 1 重新开始）active、检索命中 |
 | `...::test_the_guard_ends_a_legacy_job_that_survived_the_migration` | 迁移之后仍存在的 legacy job 由真实 `document_ingest` handler + 完成守卫结束：job/文档都是 `ingest_index_unbound`、无索引版本；同一 artifact 重摄取 → ready |
 | `...::test_a_reingest_while_the_build_is_live_is_still_the_same_intent` | live 构建期间的重复摄取仍是 T055 幂等：同一文档、revision 1、1 个 job、1 个 building 索引版本；随后正常 ready（保护既有语义不被自愈破坏） |
 | `...::test_a_reingest_heals_a_build_that_died_without_a_live_job` | 写入 sweep 的真实终态（`lease_expired`、无文档写入）→ 重新摄取：revision 2、旧索引版本 `failed/ingest_build_abandoned`（`activated_at` NULL）、新构建 building → ready 且新版本 active |
 | `...::test_index_build_in_progress_needs_a_genuinely_live_build` | 真实 live 构建 → 409 `index_build_in_progress`；该构建的 job 死后同源重建不再 409，而是回收（v2 failed/`ingest_build_abandoned`，v1 保持 active 可读）并新建 v3 → ready，v1 superseded |
 | `tests/f10`（全部既有用例） | 检索/引用/缓存复检行为不变：越权/删除/换 revision/换索引/失效引用/命中投毒路径全部原样通过 |
 
-## 4. 门禁（`product` 目录，Go 在 PATH）
+## 4. 门禁（`product` 目录，Go 在 PATH；合并结果 `702b6dc`，隔离 `--basetemp`）
 
-（见文末"门禁原始输出"一节，命令与末尾输出按实际运行填写。）
+| 命令 | 结果 |
+|---|---|
+| `go build ./...` | exit 0（无输出） |
+| `go vet ./...` | exit 0（无输出） |
+| `go test ./...` | exit 0；33 包 `ok`、0 `FAIL` |
+| `gofmt -l .` | 空（exit 0） |
+| `python tools/sync_spec.py --check` | `no drift: spec copy and contract snapshot match the manifest`（exit 0） |
+| `python -m pytest tests/tooling -q` | `21 passed in 4.87s` |
+| `python -m pytest tests/f10 -q`（合并结果，`--basetemp=E:\orchara-temp\f10-a`） | `88 passed in 394.34s (0:06:34)` |
+| 同上，第二轮（`--basetemp=E:\orchara-temp\f10-b`） | `88 passed in 395.62s (0:06:35)` |
+| 合并前定向：`pytest tests/f10/test_t061_upgrade_recovery.py -q` | `5 passed` |
+| 合并前定向：`pytest tests/f10/test_t067_comparison.py -q`（两次） | `1 passed in 15.09s` / `1 passed in 14.79s` |
 
-- `go build ./...`、`go vet ./...`、`go test ./...`、`gofmt -l .`
-- `python tools/sync_spec.py --check`
-- `python -m pytest tests/f10 -q`（§6.1 要求背靠背两轮）
-- `python -m pytest tests/tooling -q`
-- 合并 `integration/f13a-f15a-f09-f10` 后重跑 `tests/f10`
+**合并**：`git merge integration/f13a-f15a-f09-f10` → merge commit `702b6dc`
+（父 `075cf18` + `cd4f7cb`），无冲突（integration 侧改动集中在 F09/F13A，与本分支文件不相交）。
+
+**隔离 temp 说明**：首轮门禁曾两次因并发代理的 pytest 会话清理共享
+`%TEMP%\pytest-of-<user>` 目录而中断（重跑的 `go_binaries` 二进制被删除，
+`FileNotFoundError` 不是代码失败）；按仓库既有做法改用独立 `--basetemp` 后两轮全绿。
+另有一次 T067 cache on/off 计时断言在负载下翻转（同一棵树安静窗口通过、基线
+`8ad3bcc` 在同套件通过），已按 §6.1 改为成对取样并降级为粗回归护栏（见 §5）。
 
 ## 5. not_run / 边界
 
-- 浏览器 DOM：页面本轮未改（not_run，与其他页面票同边界）。
+- 浏览器 DOM：页面本轮未改（not_run，与其他页面票同边界）。新失败码
+  `ingest_index_unbound`/`ingest_build_abandoned` 在 `/knowledge` 页面走既有 fallback
+  原样显示代码；未加中文文案（页面不属本轮复核范围，报告如实记录）。
 - 全量 `pytest tests`：按 BRIEF §3 不运行（orchestrator 负责）。
-- 租约耗尽 sweep 的文档写入：本轮不扩展（理由见 ADR 0018 §6 边界）。
+- 租约耗尽 sweep 的文档写入：本轮不扩展（理由见 ADR 0018 §6 边界：sweep 不是文档写入者，
+  `scanning` 文档由下一次摄取自愈）。
 - 真实 embedding provider：继承 T055/T067 blocked。
 - 历史失败索引/暂存 chunk 的物理清理：F07。
+- 附带修复（非上述两项）：`tests/f10/test_t067_comparison.py` 的 cache on/off 计时断言
+  在并发套件负载下不可靠（同一棵树安静窗口 hit 3.4 ms vs miss 9.9 ms；负载下
+  13.9–20.5 ms vs 10.9–12.9 ms，基线 `8ad3bcc` 在同套件通过）。改为成对取样（每次先 hit
+  再同一 query miss）并在 summary 记录成对中位比；计时断言降级为模块文档已声明的
+  “粗回归护栏”（hit p50 ≤ miss p50 × 3），量化 keep/drop 结论仍以记录的 p50/p95 为准
+  （ADR 0015 D5）。未改缓存/检索行为。
