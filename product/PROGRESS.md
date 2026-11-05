@@ -1812,6 +1812,24 @@ pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修�
 `not_run`）。门禁：`pytest tests/f11` / `tests/f08` / `tests/tooling`、5 条修复测试 ×2、
 `go build/vet/test ./...`、`gofmt -l .`、`sync_spec --check`，原始输出见报告 §3。
 
+## F04B/T083 运行时半：条件分支与 join-once（2026-11-05）
+
+T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半由另一 worktree 交付，合并后 T083 才完整）。证据：
+`reports/f04b/T083-condition-branching.md`；分支 `t/t083-graph-runtime`（worktree `E:\Orchara-wt\t083`）。
+
+| 交付点 | 结果 |
+|---|---|
+| graph 计划/调度器 | **passed**：`internal/presetexec/{graphplan,graphrun,condition}.go`；含 condition/join 的定义走新调度器，legacy/linear 选择对其它定义不变 |
+| 激活/skipped/join-once | **passed**：真实 PG+mTLS+supervisor+runsc 下条件 true/default、并行 fork、嵌套 condition；未选分支只发 `skipped`；join 每次 region 激活恰一次（1 条 data + 1 次 succeeded） |
+| 非法跨区/无激活来源 | **passed**：`POST /validate` 200 + `cross_region_edge` + `pointer=/edges/10` + `node_id`/`source->target`；debug 提交 422 同定位、零 Run/零 job；运行期 required 源全 skipped → join/run `invalid_activation` |
+| run view 数据（非契约） | **passed**：condition data=`{"port","matched_case"}`、join data=结果封套、node.status 拓扑序；owner-only SSE 重放与 DB `run_events` 一致；不新增契约端点 |
+| 恢复接缝 | **partial**：`presetexec.Deps.NodeOutputs` 接口 + `cmd/supervisor` 读取 `run_node_outputs(kind='data')`/对象根/复算 sha256 + Go 复用单测完成；真实“同一 run 第二次 exec”冒烟 not_run（本票无 waiting，留 T087/T091） |
+| Python LangGraph 证明 | **passed**：真实 `langgraph 1.1.6`，激活集合、skipped 集合、join 调用次数=1、未选分支不进屏障（超时保护） |
+
+门禁：`python -m pytest tests/f04b -q` → 14 passed；`tests/f06`/`tests/f04a`/`tests/tooling`、`go build/vet/test ./...`、
+`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check` 结果见报告 §6。无迁移；未改 `docs/spec/**`、`contracts/**`。
+**not_run**：真实二次 exec 复用观感烟测、真实厂商模型、浏览器 DOM、画布半。
+
 ## 记录模板
 
 ```text
