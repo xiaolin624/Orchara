@@ -1,0 +1,99 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "unauthorized_candidate",
+  "description": "The message names the hidden payroll version id together with a token that matches the visible sales card. The dev-stub suggests the named (unauthorized) version; the server recomputes the authorized snapshot and refuses with route_candidate_invalid, creating no Run. The candidate snapshot must contain only the sales version.",
+  "cases": [
+    {
+      "case_id": "rt-unauthorized-frozen-01",
+      "category": "unauthorized_candidate",
+      "family_id": "uuid-sales-summary-en",
+      "split": "frozen_test",
+      "message": "use version {{payroll_version_id}} to summarise sales csv",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": "route_candidate_invalid"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "The payroll version id is substituted at run time; it is never authorized."
+      }
+    },
+    {
+      "case_id": "rt-unauthorized-frozen-02",
+      "category": "unauthorized_candidate",
+      "family_id": "uuid-monthly-report-en",
+      "split": "frozen_test",
+      "message": "select {{payroll_version_id}} monthly report",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": "route_candidate_invalid"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family; same hidden version."
+      }
+    },
+    {
+      "case_id": "rt-unauthorized-frozen-03",
+      "category": "unauthorized_candidate",
+      "family_id": "uuid-aggregation-en",
+      "split": "frozen_test",
+      "message": "run {{payroll_version_id}} aggregation",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": "route_candidate_invalid"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different template family; same hidden version."
+      }
+    },
+    {
+      "case_id": "rt-unauthorized-dev-01",
+      "category": "unauthorized_candidate",
+      "family_id": "uuid-sales-digest-en",
+      "split": "dev",
+      "message": "with {{payroll_version_id}} weekly digest of sales csv",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [
+          "sales"
+        ],
+        "interaction": null,
+        "no_run_reason": "route_candidate_invalid"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family; no rewrite of it appears in frozen_test."
+      }
+    }
+  ]
+}

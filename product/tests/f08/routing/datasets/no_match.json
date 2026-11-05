@@ -1,0 +1,91 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "no_match",
+  "description": "Visible catalog exists but no card shares a token with the message: the request must fail with no_matching_application and create no Run and no interaction.",
+  "cases": [
+    {
+      "case_id": "rt-nomatch-frozen-01",
+      "category": "no_match",
+      "family_id": "poem-zh",
+      "split": "frozen_test",
+      "message": "写一首关于春天的诗",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Off-domain Chinese request; no CJK gram appears in any card."
+      }
+    },
+    {
+      "case_id": "rt-nomatch-frozen-02",
+      "category": "no_match",
+      "family_id": "weather-zh",
+      "split": "frozen_test",
+      "message": "今天天气怎么样",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Different off-domain family."
+      }
+    },
+    {
+      "case_id": "rt-nomatch-frozen-03",
+      "category": "no_match",
+      "family_id": "physics-en",
+      "split": "frozen_test",
+      "message": "explain quantum physics",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Off-domain English request."
+      }
+    },
+    {
+      "case_id": "rt-nomatch-dev-01",
+      "category": "no_match",
+      "family_id": "joke-zh",
+      "split": "dev",
+      "message": "给我讲个笑话",
+      "attachments": [],
+      "expected": {
+        "decision": "failed",
+        "application": null,
+        "candidates": [],
+        "interaction": null,
+        "no_run_reason": "no_matching_application"
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family, off-domain."
+      }
+    }
+  ]
+}
