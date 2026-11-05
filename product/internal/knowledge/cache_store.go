@@ -227,7 +227,9 @@ func (s *Service) cachedRetrieval(
 // validateCachedItems re-checks every returned chunk's document in one SQL
 // statement, using exactly the retrieval/citation predicates: owner ACL, KB and
 // document tombstones, ready + active revision, chunk revision = current revision,
-// body artifact ready/not-deleted/same owner. The body artifact's content hash and
+// body artifact ready/not-deleted/same owner. The predicate itself is
+// `currentReadableChunkSQL` (readable_chunk.go), the one definition retrieval,
+// citation open and this hit check share. The body artifact's content hash and
 // the chunk provenance must equal the stored values, so a memoized body is only
 // served while it is still the sealed body of the current chunk.
 func (s *Service) validateCachedItems(
@@ -242,20 +244,13 @@ func (s *Service) validateCachedItems(
 	}
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.body_artifact_id::text, coalesce(a.sha256, '')
-		  FROM platform.knowledge_chunks AS kc
-		  JOIN platform.knowledge_documents AS kd ON kd.id = kc.document_id
-		  JOIN platform.knowledge_index_versions AS iv ON iv.id = kd.active_index_id
-		  JOIN platform.knowledge_bases AS kb ON kb.id = kd.knowledge_base_id
-		  JOIN platform.artifacts AS a ON a.id = kc.body_artifact_id
-		 WHERE kc.id = ANY(string_to_array($1::text, ',')::uuid[])
-		   AND kb.id = $2::uuid AND kb.owner_id = $3::uuid AND kb.deleted_at IS NULL
-		   AND kd.deleted_at IS NULL
-		   AND iv.id = kc.index_version_id AND iv.state = 'ready'
-		   AND iv.document_id = kd.id
-		   AND kc.document_revision = iv.document_revision
-		   AND a.owner_id = kb.owner_id
-		   AND a.deleted_at IS NULL AND a.state = 'ready'`,
+		       kc.body_artifact_id::text, coalesce(a.sha256, '')`+
+		// The same "current readable chunk" predicate retrieval and citation open
+		// use (readable_chunk.go), so a permission condition cannot drift between
+		// the cached answer and the authoritative one. The owner is $3 here.
+		currentReadableChunkSQL(3)+`
+		   AND kc.id = ANY(string_to_array($1::text, ',')::uuid[])
+		   AND kb.id = $2::uuid`,
 		strings.Join(ids, ","), key.KnowledgeBaseID, key.PrincipalID,
 	)
 	if err != nil {

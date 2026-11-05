@@ -149,6 +149,35 @@ func insertIndexVersionTx(
 	if dimension <= 0 {
 		return "", 0, ErrEmbeddingUnavailable
 	}
+	// Fail a building version of this source revision that no live job can finish
+	// *before* inserting: the partial unique index refuses a second building row,
+	// and an orphaned one (its job died) must not make the document unrebuildable
+	// (T061 review). The index stays the race-proof backstop; this check is the
+	// liveness half of the rule.
+	var building bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM platform.knowledge_index_versions
+			 WHERE document_id = $1::uuid AND document_revision = $2
+			   AND state = 'building')`,
+		documentID, documentRevision,
+	).Scan(&building); err != nil {
+		return "", 0, fmt.Errorf("reading the building index version: %w", err)
+	}
+	if building {
+		live, err := background.LiveDocumentBuildTx(ctx, tx, documentID, documentRevision)
+		if err != nil {
+			return "", 0, err
+		}
+		if live {
+			return "", 0, ErrIndexBuildInProgress
+		}
+		if err := failAbandonedIndexBuildsTx(
+			ctx, tx, documentID, documentRevision, background.CodeIngestBuildAbandoned,
+		); err != nil {
+			return "", 0, err
+		}
+	}
 	var version int64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT coalesce(max(version), 0) + 1
@@ -174,6 +203,53 @@ func insertIndexVersionTx(
 		return "", 0, fmt.Errorf("creating the index version: %w", err)
 	}
 	return indexID, version, nil
+}
+
+// failAbandonedIndexBuildsTx ends the building index versions of one (document,
+// source revision) attempt that no live job can finish. It is the index-side half
+// of the recovery path: the version is recorded as failed with a specific code
+// (never silently deleted, so the diagnostics history stays honest) and the
+// partial unique index is freed for the replacement build.
+func failAbandonedIndexBuildsTx(
+	ctx context.Context, tx *sql.Tx, documentID string, documentRevision int64, code string,
+) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.knowledge_index_versions
+		   SET state = 'failed', error_code = $3, updated_at = now()
+		 WHERE document_id = $1::uuid AND document_revision = $2
+		   AND state = 'building'`,
+		documentID, documentRevision, code,
+	); err != nil {
+		return fmt.Errorf("failing the abandoned index builds: %w", err)
+	}
+	return nil
+}
+
+// reclaimAbandonedBuildTx ends a document's current ingestion attempt and moves
+// the document out of a pre-activation state, returning it to the state a failed
+// ingestion is expected to be in. The caller must have proved (inside this
+// transaction, with the document row locked) that no live build exists for the
+// document's current source revision; it then starts a new attempt, which is why
+// the abandoned version and the document both carry the same specific code.
+//
+// It never touches an active (ready) index, the activation pointer or an
+// active_revision, and it never touches a deleted document.
+func reclaimAbandonedBuildTx(
+	ctx context.Context, tx *sql.Tx, documentID string, documentRevision int64, code string,
+) error {
+	if err := failAbandonedIndexBuildsTx(ctx, tx, documentID, documentRevision, code); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.knowledge_documents
+		   SET state = 'failed', error_code = $2, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL
+		   AND state IN ('uploaded', 'scanning', 'indexing')`,
+		documentID, code,
+	); err != nil {
+		return fmt.Errorf("failing the abandoned document: %w", err)
+	}
+	return nil
 }
 
 // enqueueIndexBuildTx binds one document_ingest job to one index version.
@@ -275,7 +351,22 @@ func (s *Service) ReindexDocument(
 		}
 	} else {
 		if state == StateScanning || state == StateIndexing {
-			return ReindexResult{}, ErrIndexBuildInProgress
+			// The 409 is about a *genuinely live* build, not about the document's
+			// scanning state: a document left behind by an attempt whose job died
+			// (the upgrade recovery case) must become rebuildable again instead of
+			// being refused forever.
+			live, liveErr := background.LiveDocumentBuildTx(ctx, tx, documentID, revision)
+			if liveErr != nil {
+				return ReindexResult{}, liveErr
+			}
+			if live {
+				return ReindexResult{}, ErrIndexBuildInProgress
+			}
+			if err := reclaimAbandonedBuildTx(
+				ctx, tx, documentID, revision, background.CodeIngestBuildAbandoned,
+			); err != nil {
+				return ReindexResult{}, err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE platform.knowledge_documents

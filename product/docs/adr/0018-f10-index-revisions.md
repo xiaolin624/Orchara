@@ -7,7 +7,8 @@
   合并后统一为 0018）。
 - 相关：F10 / T061（GitHub #62，规划 ID F10.03）；分支 `t/t061-index-revisions`；
   报告 `product/reports/f10/T061-index-revisions.md`；
-  迁移 `product/db/migrations/0039_index_revisions.sql`；
+  迁移 `product/db/migrations/0039_index_revisions.sql`、
+  复核修复 `product/db/migrations/0041_ingest_upgrade_recovery.sql`（§6）；
   基础：T055（#56）的摄取链/完成守卫/非契约检索与诊断面（ADR 0010）、
   T059（#60，ADR 0013）、T060（#61，ADR 0016）、T064（#64，ADR 0012）、
   T067（#68，ADR 0015）；先例：ADR 0005/0007（非契约面）。
@@ -138,6 +139,45 @@ error_code,attempt_count}`。`stage` 只由 state + 是否已有暂存 chunk + j
   （源未变）；从未激活的初始失败仍按 T055 语义 bump 源 revision。
 - 可重试基础设施失败不写索引/文档状态，job 回 ready。
 
+### 6. 升级恢复：0039 之前排队的摄取尝试不得永久卡住（2026-11-05 复核修复）
+
+外部复核发现：0039 之前入队/在跑的 `document_ingest` job 没有
+`expected_index_version_id`，而 0039 只回填了已经 `ready` 的文档。升级后这类 job 被
+完成守卫以 `stale_revision` 拒绝、**却不改文档**，于是文档永远停在 `scanning`/`indexing`；
+同一 artifact 重新摄取命中 T055 幂等分支返回同一卡住文档，同源重建又被
+`index_build_in_progress` 拒绝——文档再也无法摄取，违背 #62 的"失败可重新摄取"。
+
+**决策：迁移把这类尝试"失败掉"，而不是给它们新建索引版本再绑定。**
+
+- 为什么不是绑定：同一文档可能有多条历史重试 job；它们的 `expected_revision` 可能已过期；
+  两条 job 绑到同一个 building 索引版本会把两套暂存 chunk 写进同一版本。失败掉是确定的，
+  且恰好落在"失败可重试"的既有语义上。
+- `db/migrations/0041_ingest_upgrade_recovery.sql`（幂等、可重跑、不复活删除）：
+  1. 无索引绑定的非终态（`ready`/`leased`）`document_ingest` job →
+     `failed/ingest_index_unbound`（`failure_class=business`、清租约、写 `finished_at`）；
+  2. 这些 job 的文档若仍处 `uploaded`/`scanning`/`indexing` 且未删除 →
+     `failed/ingest_index_unbound`。`ready` 文档、以及任何 `deleted_at` 非空的文档都不动。
+- 运行时自愈（不依赖迁移是否跑过）：
+  - 完成守卫遇到无绑定、索引版本缺失、索引版本属于其它文档或已非 `building` 的尝试，
+    以 `ingest_index_unbound` / `stale_revision` 结束 job，并（在没有其它 live 构建时）
+    把文档置 `failed`，下一次摄取即可新建 revision/索引版本；
+  - `CreateDocument`/`ReindexDocument`（以及 `insertIndexVersionTx` 的"每源 revision 一个
+    building"前置检查）用 `background.LiveDocumentBuildTx` 判定"构建是否真的在跑"：
+    非终态 job + 同一文档同一源 revision 且仍 `building` 的索引版本。没有 live 构建时，
+    放弃的索引版本置 `failed/ingest_build_abandoned`、文档置 failed，然后照常开始新构建；
+    **有** live 构建才 409 `index_build_in_progress`。所以"文档在 scanning"不再等于
+    "有构建在跑"。
+- 新增稳定失败码：`ingest_index_unbound`（pre-0039 job 无索引绑定）、
+  `ingest_build_abandoned`（构建已无 live job 的文档被回收）。两者都是 business，
+  不可重试，页面/诊断可见；都不是契约错误码（`background_jobs.error_code` 本来就不在契约里）。
+- 边界：完成守卫仍是唯一写 `ready`/`active_index_id`/`active_revision` 的地方；恢复路径只写
+  `failed`（且只对 `uploaded`/`scanning`/`indexing`），从不把文档变成 ready。租约耗尽
+  （sweep 以 `lease_expired` 终结 job、无文档写入者）留下的 `scanning` 文档由下一次摄取
+  自愈；sweep 本身仍不写文档状态（不在本轮复核范围）。
+- 证据：`tests/f10/test_t061_upgrade_recovery.py`（真实 pre-0039 schema → 真实 queued job →
+  真实 `admin migrate` → 真实 maintenance/HTTP 重摄取到 `ready`；迁移后仍存活的 legacy job
+  由真实 handler/守卫结束；无 live job 自愈；live 构建仍幂等、仍 409）。
+
 ## 后果
 
 - 交付：独立 revision 存储、真实后台重建、带守卫的激活切换、迟到任务拒绝
@@ -153,5 +193,6 @@ error_code,attempt_count}`。`stage` 只由 state + 是否已有暂存 chunk + j
   规模基准（继承 T064/T067 not_run）；浏览器 DOM 驱动（not_run，与既有页面票同边界）；
   删除治理 job（F07）；索引的物理 GC（后续）；`excluded_indexes` 只统计有活动索引的
   文档，不代替“缺索引”诊断。
-- 契约：`contracts/**`、`docs/spec/**` 未改；新增迁移 `0039_index_revisions.sql`、
+- 契约：`contracts/**`、`docs/spec/**` 未改；新增迁移 `0039_index_revisions.sql` 与
+  复核修复的 `0041_ingest_upgrade_recovery.sql`（只修数据，无新 schema 对象）、
   非契约 `reindex` 入口与 additive 诊断/检索元数据；`sync_spec --check` no drift。
