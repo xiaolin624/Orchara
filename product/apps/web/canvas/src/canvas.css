@@ -279,6 +279,132 @@ button.link.danger {
   font-size: 0.8rem;
 }
 
+/* ---------------------------------------------------------------------------
+ * F04B/T083: condition ports, joins and edge-level errors
+ * ------------------------------------------------------------------------- */
+
+.vue-flow__node.orchara-node {
+  padding: 0;
+}
+
+.orchara-flow-node {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 8.5rem;
+  padding: 0.45rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+}
+
+.orchara-flow-label {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.orchara-flow-type {
+  font-size: 0.68rem;
+  opacity: 0.6;
+  letter-spacing: 0.02em;
+}
+
+.orchara-node-condition {
+  border-color: #b45309;
+  border-style: dashed;
+}
+
+.orchara-node-join {
+  border-color: #0f766e;
+  border-style: double;
+}
+
+.orchara-handle {
+  width: 9px;
+  height: 9px;
+  background: #475569;
+  border: 1px solid Canvas;
+}
+
+.orchara-handle-source {
+  right: -5px;
+}
+
+.orchara-handle-target {
+  left: -5px;
+}
+
+.orchara-port-label {
+  position: absolute;
+  right: 0.8rem;
+  transform: translateY(-50%);
+  font-size: 0.68rem;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.orchara-edge-port {
+  stroke: #b45309;
+}
+
+.orchara-edge-invalid {
+  stroke: #b91c1c !important;
+  stroke-width: 3 !important;
+  stroke-dasharray: 6 4;
+}
+
+.case-row {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1.05fr) 4.2rem minmax(0, 1.15fr) 3.4rem auto auto auto;
+  gap: 0.25rem;
+  align-items: center;
+  margin: 0.15rem 0;
+}
+
+.case-row input,
+.case-row select {
+  margin: 0;
+}
+
+.case-row button {
+  padding: 0.05rem 0.2rem;
+}
+
+.case-index {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.port-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.port-chip {
+  font-size: 0.72rem;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
+.port-chip.connected {
+  border-color: #15803d;
+  color: #15803d;
+}
+
+.error-edge {
+  border-style: dashed;
+}
+
+.error-hint {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.8;
+  margin-top: 0.15rem;
+}
+
 @media (max-width: 900px) {
   .canvas-body {
     grid-template-columns: 1fr;

@@ -1,18 +1,19 @@
 /*
- * F04A/T040 canvas: a real Vue 3 + Vue Flow app bundled to a committed asset.
+ * F04B/T083 canvas: a real Vue 3 + Vue Flow app bundled to a committed asset.
  *
- * The canvas is the primary editor. It shows exactly four node types
- * (start/python/agent/end), refuses every non-linear connection with an
- * explanation, and keeps the JSON view (the page's textareas) in sync so the
- * existing save/ETag/conflict behaviour in editor.js is unchanged.
+ * The canvas authors a DAG of start/python/agent/condition/join/end nodes. A
+ * condition node fans out through named ports; a plain node may fan out only
+ * when a join declares it as its fork; only a join may merge several inputs.
+ * Illegal connections are refused with an explanation, and everything the
+ * server reports is located (node field or edge) instead of a bare 422.
  *
- * The page owns save; this app owns graph editing, the config panel, the
+ * The page owns save; this app owns graph editing, the config panels, the
  * validate call (POST /applications/{id}/validate) and export. Pure logic lives
  * in ./lib/*.js and is executed by Node tests; this file is the DOM/Vue wiring.
  */
 
-import { createApp, h, reactive, nextTick, ref } from 'vue';
-import { VueFlow, applyNodeChanges, applyEdgeChanges } from '@vue-flow/core';
+import { createApp, h, reactive, nextTick } from 'vue';
+import { VueFlow, applyNodeChanges, applyEdgeChanges, Handle, Position } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import '@vue-flow/core/dist/style.css';
@@ -21,22 +22,28 @@ import '@vue-flow/controls/dist/style.css';
 import './canvas.css';
 
 import {
+  CONDITION_OPS,
+  JOIN_MODES,
   NODE_LABELS,
   NODE_TYPES,
+  REPEATABLE_NODE_TYPES,
   addNode,
   canConnect,
+  conditionPorts,
   defaultDefinition,
   defaultLayout,
   definitionToGraph,
+  edgeIdFor,
+  edgePortOf,
   emptySchema,
   graphToDefinition,
   layoutFromGraph,
-  linearChainProblems,
+  regionProblems,
   removeNode,
 } from './lib/dsl.js';
 import { legalSources, sourceGroups, sourceType } from './lib/sources.js';
 import { mapValidationErrors } from './lib/errors.js';
-import { exportFilename, exportJSON } from './lib/export.js';
+import { exportFilename, exportPayload } from './lib/export.js';
 
 const SCHEMA_TYPES = ['string', 'integer', 'number', 'boolean', 'object', 'array'];
 
@@ -181,7 +188,9 @@ function renderMappingEditor(definition, state, node) {
   const draftKey = node.id + '.inputName';
   return [
     h('h3', {}, '输入映射'),
-    h('p', { class: 'hint' }, '只提供应用输入属性与上游节点输出属性；下游和自身不会出现在列表里。'),
+    h('p', { class: 'hint' },
+      '只提供应用输入属性与合法上游节点的输出；分支节点在 join 前只能通过 '
+      + 'node:<join>#/results/<source> 读取，自身和下游不会出现在列表里。'),
     ...(names.length === 0
       ? [h('p', { class: 'hint' }, '还没有映射。工具/Agent 的输入名需要与节点输入名一致。')]
       : names.map((name) => h('div', { class: 'mapping-row', key: 'map-' + name }, [
@@ -244,7 +253,6 @@ function renderMappingEditor(definition, state, node) {
 
 function renderOutputSchemaEditor(definition, state, node) {
   const text = JSON.stringify(node.output_schema || emptySchemaWithId(), null, 2);
-  const errorKey = node.id + '.schema';
   return [
     h('h3', {}, '输出 Schema'),
     h('textarea', {
@@ -478,51 +486,673 @@ function renderAgentPanel(definition, state, node) {
       value: tool.id,
       selected: selectedTools.includes(tool.id),
     }, tool.id))),
-    h('p', { class: 'hint' }, 'subapp_versions 固定为空数组（F04A 不支持子应用调用）。'),
+    h('p', { class: 'hint' }, 'subapp_versions 固定为空数组（本票不提供子应用调用入口）。'),
     ...renderMappingEditor(definition, state, node),
     ...renderOutputSchemaEditor(definition, state, node),
   ];
 }
 
-function renderErrorList(state) {
-  if (!state.errors.length) {
-    return h('div', { class: 'errors ok', 'data-field': 'errors' },
-      state.manifestHash
-        ? ['校验通过。服务端 manifest SHA256: ', h('code', { id: 'canvas-manifest-hash' }, state.manifestHash)]
-        : '尚未发现定位错误。');
+// ---------------------------------------------------------------------------
+// F04B: condition / join panels
+// ---------------------------------------------------------------------------
+
+function caseValueText(value) {
+  if (value === undefined) {
+    return '';
   }
-  return h('div', { class: 'errors', id: 'canvas-errors' },
-    state.errors.map((error) =>
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '';
+  }
+}
+
+function updateCase(state, node, index, patch) {
+  const cases = clone(Array.isArray(node.config.cases) ? node.config.cases : []);
+  cases[index] = { ...(cases[index] || {}), ...patch };
+  if (patch.op === 'exists' && Object.prototype.hasOwnProperty.call(cases[index], 'value')) {
+    delete cases[index].value;
+  }
+  node.config = { ...node.config, cases };
+  commit(state);
+}
+
+function renderConditionPanel(definition, state, node) {
+  const config = node.config || {};
+  const cases = Array.isArray(config.cases) ? config.cases : [];
+  const joins = definition.nodes.filter((item) => item.type === 'join');
+  const ports = conditionPorts(config);
+  const connected = new Set(
+    state.flowEdges.filter((edge) => edge.source === node.id)
+      .map((edge) => edgePortOf(edge)).filter((value) => value !== ''),
+  );
+  const inputOptions = Object.keys(node.inputs || {}).sort();
+  const rows = cases.map((item, index) => {
+    const draftKey = node.id + '.caseValue.' + index;
+    const valueText = state.caseValueDrafts[draftKey] !== undefined
+      ? state.caseValueDrafts[draftKey]
+      : caseValueText(item.value);
+    return h('div', { class: 'case-row', key: 'case-' + index, 'data-case-index': index }, [
+      h('span', { class: 'case-index' }, String(index + 1)),
+      h('input', {
+        type: 'text',
+        placeholder: '输入名',
+        list: 'condition-input-list-' + node.id,
+        value: item.input || '',
+        'data-field': 'config.cases.' + index + '.input',
+        onInput: (event) => updateCase(state, node, index, { input: event.target.value }),
+      }),
+      h('select', {
+        'data-field': 'config.cases.' + index + '.op',
+        value: item.op || 'eq',
+        onChange: (event) => updateCase(state, node, index, { op: event.target.value }),
+      }, CONDITION_OPS.map((op) => h('option', { value: op }, op))),
+      h('input', {
+        type: 'text',
+        placeholder: item.op === 'exists' ? '（exists 不需要 value）' : 'JSON 值（如 true / "x" / 3）',
+        value: valueText,
+        disabled: item.op === 'exists',
+        'data-field': 'config.cases.' + index + '.value',
+        onInput: (event) => {
+          const text = event.target.value;
+          state.caseValueDrafts[draftKey] = text;
+          if (text.trim() === '') {
+            const casesNext = clone(node.config.cases || []);
+            delete casesNext[index].value;
+            node.config = { ...node.config, cases: casesNext };
+            commit(state);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(text);
+            delete state.caseValueDrafts[draftKey];
+            updateCase(state, node, index, { value: parsed });
+          } catch (error) {
+            state.status = 'case ' + (index + 1) + ' 的 value 不是合法 JSON：' + error.message;
+            state.statusKind = 'bad';
+          }
+        },
+      }),
+      h('input', {
+        type: 'text',
+        placeholder: '端口',
+        value: item.port || '',
+        'data-field': 'config.cases.' + index + '.port',
+        onInput: (event) => updateCase(state, node, index, { port: event.target.value }),
+      }),
       h('button', {
         type: 'button',
-        class: 'error-item',
-        key: 'error-' + error.index,
-        'data-node-id': error.nodeId,
-        'data-field': 'error.' + error.index,
+        class: 'link',
+        'data-field': 'config.cases.' + index + '.up',
+        disabled: index === 0,
         onClick: () => {
-          state.selectedId = error.nodeId;
-          state.status = '[' + error.code + '] ' + error.message;
-          state.statusKind = 'bad';
-          nextTick(() => {
-            const element = fieldElement(state.root, error.field);
-            if (element && typeof element.focus === 'function') {
-              element.focus();
-            }
-          });
+          const next = clone(node.config.cases || []);
+          [next[index - 1], next[index]] = [next[index], next[index - 1]];
+          node.config = { ...node.config, cases: next };
+          commit(state);
         },
-      }, [
-        h('strong', {}, '[' + error.code + '] '),
-        error.message + ' ',
-        h('code', {}, error.pointer || error.field),
-        error.nodeId ? h('span', { class: 'hint' }, ' · 跳转到 ' + error.nodeId) : null,
-      ]),
-    ));
+      }, '↑'),
+      h('button', {
+        type: 'button',
+        class: 'link',
+        'data-field': 'config.cases.' + index + '.down',
+        disabled: index === cases.length - 1,
+        onClick: () => {
+          const next = clone(node.config.cases || []);
+          [next[index + 1], next[index]] = [next[index], next[index + 1]];
+          node.config = { ...node.config, cases: next };
+          commit(state);
+        },
+      }, '↓'),
+      h('button', {
+        type: 'button',
+        class: 'link danger',
+        'data-field': 'config.cases.' + index + '.remove',
+        onClick: () => {
+          const next = clone(node.config.cases || []);
+          next.splice(index, 1);
+          node.config = { ...node.config, cases: next };
+          commit(state);
+        },
+      }, '删除'),
+    ]);
+  });
+  return [
+    h('h3', {}, '条件分支'),
+    h('p', { class: 'hint' },
+      'cases 按顺序求值，首个匹配决定唯一出口；其余分支整段 skipped。端口必须与出边一致，每个出边都要带 port。'),
+    h('datalist', { id: 'condition-input-list-' + node.id },
+      inputOptions.map((name) => h('option', { value: name }))),
+    h('label', { class: 'field-label' }, '配对 join（join_id）'),
+    h('select', {
+      'data-field': 'config.join_id',
+      value: config.join_id || '',
+      onChange: (event) => {
+        const joinId = event.target.value;
+        node.config = { ...node.config, join_id: joinId };
+        const target = definition.nodes.find((item) => item.id === joinId && item.type === 'join');
+        if (target) {
+          target.config = { ...target.config, fork_id: node.id };
+        }
+        commit(state);
+      },
+    }, [
+      h('option', { value: '' }, joins.length ? '— 选择配对 join —' : '尚未创建 join 节点'),
+      ...joins.map((join) => h('option', { value: join.id },
+        join.id + (join.config && join.config.fork_id ? '（fork: ' + join.config.fork_id + '）' : ''))),
+    ]),
+    h('label', { class: 'field-label' }, 'default_port'),
+    h('input', {
+      type: 'text',
+      value: config.default_port || '',
+      'data-field': 'config.default_port',
+      onInput: (event) => {
+        node.config = { ...node.config, default_port: event.target.value };
+        commit(state);
+      },
+    }),
+    h('h3', {}, 'cases（顺序即优先级）'),
+    ...(rows.length ? rows : [h('p', { class: 'hint' }, '至少需要一个 case（契约要求 minItems=1）。')]),
+    h('div', { class: 'schema-row add' }, [
+      h('button', {
+        type: 'button',
+        'data-field': 'config.cases.add',
+        onClick: () => {
+          const next = clone(node.config.cases || []);
+          next.push({ input: '', op: 'eq', value: true, port: 'port' + (next.length + 1) });
+          node.config = { ...node.config, cases: next };
+          commit(state);
+        },
+      }, '添加 case'),
+    ]),
+    h('h4', {}, '端口预览'),
+    h('div', { class: 'port-preview', 'data-field': 'config.ports' },
+      ports.length
+        ? ports.map((port) => h('span', {
+            class: 'port-chip' + (connected.has(port) ? ' connected' : ''),
+            'data-port': port,
+          }, port + (connected.has(port) ? ' ✓ 已连线' : '（未连线）')))
+        : [h('span', { class: 'hint' }, '还没有可用端口：请填写 case port 或 default_port。')]),
+    ...renderMappingEditor(definition, state, node),
+    ...renderOutputSchemaEditor(definition, state, node),
+  ];
+}
+
+function renderJoinPanel(definition, state, node) {
+  const config = node.config || {};
+  const outDegree = new Map();
+  for (const edge of definition.edges || []) {
+    outDegree.set(edge.source, (outDegree.get(edge.source) || 0) + 1);
+  }
+  const forkCandidates = definition.nodes
+    .filter((item) => item.id !== node.id && item.type !== 'end' && item.type !== 'join'
+      && (outDegree.get(item.id) || 0) >= 1)
+    .sort((a, b) => (outDegree.get(b.id) || 0) - (outDegree.get(a.id) || 0));
+  const predecessors = [...new Set(
+    (definition.edges || []).filter((edge) => edge.target === node.id).map((edge) => edge.source),
+  )].sort();
+  const predecessorLabels = new Map(definition.nodes.map((item) => [item.id, item.type]));
+  const required = Array.isArray(config.required_sources) ? config.required_sources : [];
+  const optional = Array.isArray(config.optional_sources) ? config.optional_sources : [];
+  const declared = [...required, ...optional];
+  const missing = predecessors.filter((id) => !declared.includes(id));
+  const extra = declared.filter((id) => !predecessors.includes(id));
+  const selectFor = (field, selected, other, onChange) => h('select', {
+    multiple: true,
+    size: Math.min(6, Math.max(2, predecessors.length)),
+    'data-field': field,
+    onChange: (event) => {
+      onChange(Array.from(event.target.selectedOptions).map((option) => option.value));
+    },
+  }, predecessors.map((id) => h('option', {
+    value: id,
+    selected: selected.includes(id),
+  }, id + ' (' + (predecessorLabels.get(id) || '?') + ')'
+    + (other.includes(id) ? ' — 已在一侧' : ''))));
+  return [
+    h('h3', {}, '并行汇合（join）'),
+    h('p', { class: 'hint' },
+      'join 只等待已激活的分支；required 分支失败会 fail-fast，optional 仅允许纯读/计算分支。'),
+    h('label', { class: 'field-label' }, 'mode'),
+    h('input', {
+      type: 'text',
+      value: config.mode || 'all_active',
+      readonly: true,
+      'data-field': 'config.mode',
+    }),
+    h('p', { class: 'hint' }, '（契约只有 all_active 一种模式）'),
+    h('label', { class: 'field-label' }, 'fork_id（配对分叉节点）'),
+    h('select', {
+      'data-field': 'config.fork_id',
+      value: config.fork_id || '',
+      onChange: (event) => {
+        const forkId = event.target.value;
+        node.config = { ...node.config, fork_id: forkId };
+        const fork = definition.nodes.find((item) => item.id === forkId);
+        if (fork && fork.type === 'condition') {
+          fork.config = { ...fork.config, join_id: node.id };
+        }
+        commit(state);
+      },
+    }, [
+      h('option', { value: '' },
+        forkCandidates.length ? '— 选择分叉节点 —' : '画布上还没有可分叉的节点（先连一条出边）'),
+      ...forkCandidates.map((fork) => h('option', { value: fork.id },
+        fork.id + ' (' + fork.type + ')' + (fork.config && fork.config.join_id
+          ? '（paired join: ' + fork.config.join_id + '）' : ''))),
+    ]),
+    h('h4', {}, 'required_sources（必需分支）'),
+    selectFor('config.required_sources', required, optional, (values) => {
+      node.config = {
+        ...node.config,
+        required_sources: values,
+        optional_sources: optional.filter((id) => !values.includes(id)),
+      };
+      commit(state);
+    }),
+    h('h4', {}, 'optional_sources（可选分支）'),
+    selectFor('config.optional_sources', optional, required, (values) => {
+      node.config = {
+        ...node.config,
+        optional_sources: values,
+        required_sources: required.filter((id) => !values.includes(id)),
+      };
+      commit(state);
+    }),
+    h('p', {
+      class: 'hint',
+      'data-field': 'config.join_sources.coverage',
+    }, '直接前驱：' + (predecessors.length ? predecessors.join('、') : '（无）')
+      + '；未覆盖：' + (missing.length ? missing.join('、') : '无')
+      + '；多余：' + (extra.length ? extra.join('、') : '无')),
+  ];
+}
+
+function renderEdgePanel(state, edge, index) {
+  const definition = state.definition;
+  const sourceNode = definition.nodes.find((node) => node.id === edge.source);
+  const targetNode = definition.nodes.find((node) => node.id === edge.target);
+  if (!sourceNode) {
+    return [h('p', { class: 'hint' }, '这条连接引用了不存在的节点。')];
+  }
+  const isCondition = sourceNode.type === 'condition';
+  const allowed = conditionPorts(sourceNode.config || {});
+  const current = edgePortOf(edge);
+  return [
+    h('h3', {}, '连接 · ' + edge.source + ' → ' + edge.target),
+    h('p', { class: 'hint' },
+      (targetNode ? '目标类型 ' + targetNode.type + '；' : '')
+      + (isCondition ? '条件出边必须带端口。' : '非条件出边没有端口。')),
+    isCondition ? h('label', { class: 'field-label' }, 'port') : null,
+    isCondition ? h('input', {
+      type: 'text',
+      value: current,
+      'data-field': 'edge.port',
+      onInput: (event) => {
+        const port = event.target.value;
+        const next = {
+          ...edge,
+          label: port,
+          sourceHandle: port || undefined,
+          data: { ...(edge.data || {}), port },
+          class: 'orchara-edge' + (port ? ' orchara-edge-port' : ''),
+        };
+        state.flowEdges = state.flowEdges.map((item) => (item.id === edge.id ? next : item));
+        rebuild(state);
+        if (port && !allowed.includes(port)) {
+          state.status = '端口 "' + port + '" 不在该条件节点的 cases/default_port 中；可用：'
+            + (allowed.length ? allowed.join('、') : '（无）');
+          state.statusKind = 'bad';
+        } else {
+          state.status = '已更新边 ' + edge.source + ' → ' + edge.target + ' 的端口为 "' + port + '"。';
+          state.statusKind = 'ok';
+        }
+      },
+    }) : h('p', { class: 'hint' }, '端口只对条件节点的出边生效。'),
+    isCondition ? h('p', { class: 'hint', 'data-field': 'edge.ports' },
+      '可用端口：' + (allowed.length ? allowed.join('、') : '（无）')) : null,
+    h('button', {
+      type: 'button',
+      class: 'link danger',
+      'data-field': 'edge.remove',
+      onClick: () => {
+        state.flowEdges = state.flowEdges.filter((item) => item.id !== edge.id);
+        state.selectedEdgeId = '';
+        rebuild(state);
+        state.status = '已删除连接 ' + edge.source + ' → ' + edge.target + '。';
+        state.statusKind = 'ok';
+      },
+    }, '删除这条连接'),
+    h('p', { class: 'hint' }, '边 #' + index + '（definition.edges[' + index + ']）'),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// validation / export
+// ---------------------------------------------------------------------------
+
+function refreshLocalProblems(state) {
+  state.localProblems = regionProblems(state.definition);
+  return state.localProblems;
+}
+
+function renderErrorList(state) {
+  const serverErrors = state.errors;
+  if (serverErrors.length) {
+    return h('div', { class: 'errors', id: 'canvas-errors' },
+      serverErrors.map((error) =>
+        h('button', {
+          type: 'button',
+          class: 'error-item' + (error.edgeIndex !== null ? ' error-edge' : ''),
+          key: 'error-' + error.index,
+          'data-node-id': error.nodeId,
+          'data-code': error.code,
+          'data-edge-id': error.edgeId || '',
+          'data-field': 'error.' + error.index,
+          onClick: () => focusError(state, error),
+        }, [
+          h('strong', {}, '[' + error.code + '] '),
+          error.message + ' ',
+          error.source && error.target
+            ? h('code', {}, error.source + '→' + error.target + ' ')
+            : null,
+          h('code', {}, error.pointer || error.field),
+          h('span', { class: 'error-hint' }, ' 修复：' + error.hint),
+          error.nodeId ? h('span', { class: 'hint' }, ' · 定位到 ' + error.nodeId) : null,
+        ]),
+      ));
+  }
+  if (state.localProblems.length) {
+    return h('div', { class: 'errors', id: 'canvas-local-problems' },
+      state.localProblems.map((problem, index) =>
+        h('button', {
+          type: 'button',
+          class: 'error-item' + (problem.edgeIndex !== null ? ' error-edge' : ''),
+          key: 'local-' + index,
+          'data-node-id': problem.nodeId,
+          'data-code': problem.code,
+          'data-field': 'local.' + index,
+          onClick: () => focusLocalProblem(state, problem),
+        }, [
+          h('strong', {}, '[本地提示 ' + problem.code + '] '),
+          problem.message + ' ',
+          h('code', {}, problem.pointer || ''),
+          problem.nodeId ? h('span', { class: 'hint' }, ' · 定位到 ' + problem.nodeId) : null,
+        ]),
+      ));
+  }
+  return h('div', { class: 'errors ok', 'data-field': 'errors' },
+    state.manifestHash
+      ? ['校验通过。服务端 manifest SHA256: ', h('code', { id: 'canvas-manifest-hash' }, state.manifestHash)]
+      : '尚未发现定位错误。');
+}
+
+function focusError(state, error) {
+  if (error.edgeIndex !== null) {
+    const edge = state.flowEdges[error.edgeIndex] || null;
+    state.highlightedEdgeId = error.edgeId || (edge ? edge.id : '');
+    state.selectedEdgeId = state.highlightedEdgeId;
+    state.selectedId = '';
+    state.status = '[' + error.code + '] ' + (error.source && error.target
+      ? error.source + '→' + error.target + '：' : '') + error.message;
+    state.statusKind = 'bad';
+    scrollCanvasIntoView(state);
+    return;
+  }
+  state.highlightedEdgeId = '';
+  state.selectedId = error.nodeId;
+  state.selectedEdgeId = '';
+  state.status = '[' + error.code + '] ' + error.message;
+  state.statusKind = 'bad';
+  nextTick(() => {
+    const element = fieldElement(state.root, error.field);
+    if (element && typeof element.focus === 'function') {
+      element.focus();
+      scrollCanvasIntoView(state);
+    }
+  });
+}
+
+function focusLocalProblem(state, problem) {
+  focusError(state, {
+    code: problem.code,
+    message: problem.message,
+    hint: '',
+    field: problem.code === 'bad_port' || problem.code === 'cross_region_edge' ? 'edge.port' : 'config',
+    pointer: problem.pointer,
+    nodeId: problem.nodeId,
+    edgeIndex: problem.edgeIndex,
+    edgeId: problem.edgeIndex !== null && state.flowEdges[problem.edgeIndex]
+      ? state.flowEdges[problem.edgeIndex].id
+      : '',
+    source: '',
+    target: '',
+  });
+}
+
+function scrollCanvasIntoView(state) {
+  const stage = state.root && state.root.querySelector ? state.root.querySelector('.canvas-stage') : null;
+  if (stage && typeof stage.scrollIntoView === 'function') {
+    stage.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+async function validate(state) {
+  state.status = '正在请求服务端校验…';
+  state.statusKind = 'pending';
+  state.manifestHash = '';
+  const globalApi = typeof window !== 'undefined' ? window.apiFull : undefined;
+  const globalCSRF = typeof window !== 'undefined' ? window.csrf : undefined;
+  if (typeof globalApi !== 'function' || state.applicationId === '') {
+    refreshLocalProblems(state);
+    state.status = '页面 API 助手不可用，无法请求服务端校验；已显示本地规则提示。';
+    state.statusKind = 'bad';
+    return;
+  }
+  try {
+    const token = typeof globalCSRF === 'function' ? await globalCSRF() : null;
+    const result = await globalApi(
+      '/api/v1/applications/' + encodeURIComponent(state.applicationId) + '/validate',
+      { method: 'POST', csrf: token },
+    );
+    state.errors = mapValidationErrors(state.definition, result.payload && result.payload.errors);
+    if (result.payload && result.payload.valid === true) {
+      state.errors = [];
+      state.manifestHash = result.headers && typeof result.headers.get === 'function'
+        ? (result.headers.get('X-Manifest-SHA256') || '')
+        : '';
+      refreshLocalProblems(state);
+      state.status = '校验通过。' + (state.localProblems.length
+        ? '（本地仍有 ' + state.localProblems.length + ' 条提示，以服务端为准。）'
+        : (state.manifestHash ? ' manifest SHA256 已显示。' : ''));
+      state.statusKind = 'ok';
+      return;
+    }
+    state.status = '校验失败：' + state.errors.length + ' 个定位错误。点击错误跳转到节点字段或高亮连接。';
+    state.statusKind = 'bad';
+    if (state.errors.length > 0) {
+      focusError(state, state.errors[0]);
+    }
+  } catch (error) {
+    refreshLocalProblems(state);
+    state.status = '校验请求失败 [' + (error.code || 'error') + '] ' + error.message;
+    state.statusKind = 'bad';
+  }
+}
+
+function downloadExport(state) {
+  try {
+    const payload = exportPayload(state.definition, state.layout);
+    const text = JSON.stringify(payload, null, 2);
+    const link = document.createElement('a');
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = exportFilename(state.applicationId);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    const dropped = Array.isArray(payload.dropped) ? payload.dropped.length : 0;
+    state.status = '已导出 {definition, layout}（不含凭据/端点/运行输入/记忆数据）'
+      + (dropped ? '；按白名单丢弃 ' + dropped + ' 个未展示字段。' : '。');
+    state.statusKind = dropped ? 'pending' : 'ok';
+    state.lastExportDropped = payload.dropped || [];
+  } catch (error) {
+    state.status = '导出被拒绝 [' + (error.code || 'error') + '] ' + error.message;
+    state.statusKind = 'bad';
+  }
+}
+
+async function loadCatalogs(state) {
+  const globalApi = typeof window !== 'undefined' ? window.apiFull : undefined;
+  if (typeof globalApi !== 'function') {
+    state.catalogsState = 'error';
+    state.catalogsError = '页面 API 助手不可用，工具/模型选择器为空。';
+    return;
+  }
+  try {
+    const [tools, models] = await Promise.all([
+      globalApi('/api/v1/tools?limit=100'),
+      globalApi('/api/v1/models?limit=100'),
+    ]);
+    state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
+    state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
+    state.catalogsState = 'ready';
+  } catch (error) {
+    state.catalogsState = 'error';
+    state.catalogsError = '加载工具/模型目录失败 [' + (error.code || 'error') + '] ' + error.message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// graph <-> definition state
+// ---------------------------------------------------------------------------
+
+function syncGraphConfigs(state) {
+  const byId = new Map(state.definition.nodes.map((node) => [node.id, node]));
+  state.flowNodes = state.flowNodes.map((flowNode) => {
+    const definitionNode = byId.get(flowNode.id);
+    if (!definitionNode) {
+      return flowNode;
+    }
+    const data = {
+      ...flowNode.data,
+      config: clone(definitionNode.config || {}),
+    };
+    if (definitionNode.type === 'condition') {
+      data.ports = conditionPorts(definitionNode.config || {});
+    }
+    if (definitionNode.type === 'join') {
+      data.sourceLabels = [...new Set(
+        state.definition.edges
+          .filter((edge) => edge.target === definitionNode.id)
+          .map((edge) => edge.source),
+      )];
+    }
+    return { ...flowNode, data };
+  });
+}
+
+function syncLayout(state) {
+  state.layout = layoutFromGraph(state.flowNodes, state.layout);
+  emitChange(state);
+}
+
+function rebuild(state) {
+  state.definition = graphToDefinition(state.flowNodes, state.flowEdges, state.definition);
+  state.layout = layoutFromGraph(state.flowNodes, state.layout);
+  syncGraphConfigs(state);
+  refreshLocalProblems(state);
+  emitChange(state);
+}
+
+function emitChange(state) {
+  if (typeof state.options.onChange === 'function') {
+    state.options.onChange(clone(state.definition), clone(state.layout));
+  }
+}
+
+function commit(state) {
+  syncGraphConfigs(state);
+  refreshLocalProblems(state);
+  emitChange(state);
+}
+
+// ---------------------------------------------------------------------------
+// rendering
+// ---------------------------------------------------------------------------
+
+function renderFlowNode(props) {
+  const data = (props && props.data) || {};
+  const type = data.nodeType || 'python';
+  const ports = type === 'condition'
+    ? (Array.isArray(data.ports) && data.ports.length ? data.ports : conditionPorts(data.config || {}))
+    : [];
+  const handles = [];
+  if (type !== 'start') {
+    handles.push(h(Handle, {
+      type: 'target',
+      position: Position.Left,
+      id: 'in',
+      class: 'orchara-handle orchara-handle-target',
+    }));
+  }
+  if (type === 'condition') {
+    ports.forEach((port, index) => {
+      const top = ((index + 1) / (ports.length + 1)) * 100;
+      handles.push(h(Handle, {
+        type: 'source',
+        position: Position.Right,
+        id: port,
+        class: 'orchara-handle orchara-handle-source',
+        style: { top: top + '%' },
+      }));
+      handles.push(h('span', {
+        class: 'orchara-port-label',
+        style: { top: top + '%' },
+      }, port));
+    });
+  } else if (type !== 'end') {
+    handles.push(h(Handle, {
+      type: 'source',
+      position: Position.Right,
+      id: 'out',
+      class: 'orchara-handle orchara-handle-source',
+    }));
+  }
+  const height = type === 'condition'
+    ? Math.max(48, ports.length * 26 + 28)
+    : 48;
+  const sourceLabels = type === 'join' && Array.isArray(data.sourceLabels)
+    ? data.sourceLabels
+    : [];
+  return h('div', {
+    class: 'orchara-flow-node orchara-node-' + type,
+    style: { minHeight: height + 'px' },
+  }, [
+    h('span', { class: 'orchara-flow-label' }, data.label || type),
+    h('span', { class: 'orchara-flow-type' }, type),
+    sourceLabels.length
+      ? h('span', { class: 'orchara-flow-sources' }, '来源: ' + sourceLabels.join(' · '))
+      : null,
+    ...handles,
+  ]);
 }
 
 function renderApp(state) {
   const nodes = state.flowNodes;
-  const edges = state.flowEdges;
+  const edges = state.highlightedEdgeId
+    ? state.flowEdges.map((edge) => (edge.id === state.highlightedEdgeId
+      ? { ...edge, class: (edge.class || 'orchara-edge') + ' orchara-edge-invalid' }
+      : edge))
+    : state.flowEdges;
   const selected = state.definition.nodes.find((node) => node.id === state.selectedId);
+  const selectedEdgeIndex = state.selectedEdgeId
+    ? state.flowEdges.findIndex((edge) => edge.id === state.selectedEdgeId)
+    : -1;
+  const selectedEdge = selectedEdgeIndex >= 0 ? state.flowEdges[selectedEdgeIndex] : null;
+  const invalidNodeIds = new Set(state.errors.filter((error) => error.nodeId).map((error) => error.nodeId));
 
   return h('div', { class: 'orchara-canvas' }, [
     h('div', { class: 'canvas-toolbar' }, [
@@ -531,7 +1161,8 @@ function renderApp(state) {
           type: 'button',
           class: 'palette-button',
           'data-node-type': type,
-          disabled: state.definition.nodes.some((node) => node.type === type),
+          disabled: !REPEATABLE_NODE_TYPES.includes(type)
+            && state.definition.nodes.some((node) => node.type === type),
           onClick: () => {
             const result = addNode(nodes, edges, type, state.layout);
             if (!result.ok) {
@@ -542,6 +1173,9 @@ function renderApp(state) {
             state.flowNodes = [...nodes, result.node];
             rebuild(state);
             state.selectedId = result.node.id;
+            state.selectedEdgeId = '';
+            state.status = '已添加 ' + NODE_LABELS[type] + '（' + result.node.id + '）。';
+            state.statusKind = 'ok';
           },
         }, '+ ' + NODE_LABELS[type]))),
       h('div', { class: 'toolbar-actions' }, [
@@ -575,32 +1209,54 @@ function renderApp(state) {
             rebuild(state);
           },
           'onConnect': (connection) => {
-            const verdict = canConnect(nodes, edges, connection);
+            const verdict = canConnect(state.flowNodes, state.flowEdges, connection);
             if (!verdict.ok) {
               state.status = '拒绝连接：' + verdict.reason + ' [' + verdict.code + ']';
               state.statusKind = 'bad';
               return;
             }
-            state.flowEdges = [...edges, {
-              id: connection.source + '->' + connection.target + ':' + edges.length,
+            const port = verdict.port || '';
+            const edge = {
+              id: edgeIdFor({ source: connection.source, target: connection.target },
+                state.flowEdges.length),
               source: connection.source,
               target: connection.target,
-              class: 'orchara-edge',
-            }];
+              sourceHandle: port || connection.sourceHandle || undefined,
+              targetHandle: 'in',
+              label: port,
+              data: { port },
+              class: 'orchara-edge' + (port ? ' orchara-edge-port' : ''),
+            };
+            state.flowEdges = [...state.flowEdges, edge];
             rebuild(state);
-            state.status = '已连接 ' + connection.source + ' → ' + connection.target + '。';
+            state.status = '已连接 ' + connection.source + ' → ' + connection.target
+              + (port ? '（端口 ' + port + '）' : '') + '。';
             state.statusKind = 'ok';
           },
           'onNodeClick': ({ node }) => {
             state.selectedId = node.id;
+            state.selectedEdgeId = '';
+            state.highlightedEdgeId = '';
+          },
+          'onEdgeClick': ({ edge }) => {
+            state.selectedEdgeId = edge.id;
+            state.selectedId = '';
           },
           'onNodeDragStop': () => syncLayout(state),
-          'onPaneClick': () => { state.selectedId = ''; },
-        }, () => [h(Background), h(Controls)]),
+          'onPaneClick': () => {
+            state.selectedId = '';
+            state.selectedEdgeId = '';
+          },
+        }, {
+          'node-default': (props) => renderFlowNode(props),
+          default: () => [h(Background), h(Controls)],
+        }),
       ),
       h('aside', { class: 'config-panel', 'aria-live': 'polite' }, [
         h('div', { class: 'panel-head' }, [
-          h('h2', {}, selected ? (NODE_LABELS[selected.type] + ' · ' + selected.id) : '选择节点配置'),
+          h('h2', {}, selected
+            ? (NODE_LABELS[selected.type] || selected.type) + ' · ' + selected.id
+            : (selectedEdge ? '连接 · ' + selectedEdge.source + ' → ' + selectedEdge.target : '选择节点配置')),
           selected ? h('button', {
             type: 'button',
             class: 'link danger',
@@ -611,21 +1267,33 @@ function renderApp(state) {
               state.flowEdges = removed.edges;
               state.selectedId = '';
               rebuild(state);
+              state.status = '已删除节点 ' + selected.id + '；配对 join 的悬空来源已清理。';
+              state.statusKind = 'ok';
             },
           }, '删除节点') : null,
         ]),
-        !selected
+        !selected && !selectedEdge
           ? h('p', { class: 'hint' },
-              '点击画布节点进行配置。只允许 start → python → agent → end 的单条线性链；' +
-              '拖动移动节点，连接端口拉线，Delete 删除选中节点。')
+              '点击节点配置、点击连线编辑端口。条件节点按端口分出各分支，普通节点多出口前必须由 join 声明 fork；'
+              + '只有 join 可以多入。Delete 删除选中的节点或连线。')
           : h('div', { class: 'panel-fields' }, [
-              selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
-              selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
-              selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
-              selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
-              h('h3', {}, '布局'),
-              h('p', { class: 'hint' },
-                '位置保存在独立的 layout.positions，不进入执行定义，也不改变发布哈希。'),
+              selected && selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'condition' ? renderConditionPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'join' ? renderJoinPanel(state.definition, state, selected) : null,
+              selected && selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
+              selected && !NODE_TYPES.includes(selected.type)
+                ? [h('p', { class: 'hint' },
+                    '该节点类型（' + selected.type + '）不在本画布的创作面板内；定义会原样保存，'
+                    + '配置请用页面 JSON 视图编辑。')]
+                : null,
+              selectedEdge ? renderEdgePanel(state, selectedEdge, selectedEdgeIndex) : null,
+              selected ? [
+                h('h3', {}, '布局'),
+                h('p', { class: 'hint' },
+                  '位置保存在独立的 layout.positions，不进入执行定义，也不改变发布哈希。'),
+              ] : null,
             ]),
         h('div', {
           id: 'canvas-status',
@@ -636,111 +1304,6 @@ function renderApp(state) {
       ]),
     ]),
   ]);
-}
-
-function syncLayout(state) {
-  state.layout = layoutFromGraph(state.flowNodes, state.layout);
-  emitChange(state);
-}
-
-function rebuild(state) {
-  state.definition = graphToDefinition(state.flowNodes, state.flowEdges, state.definition);
-  state.layout = layoutFromGraph(state.flowNodes, state.layout);
-  emitChange(state);
-}
-
-function emitChange(state) {
-  if (typeof state.options.onChange === 'function') {
-    state.options.onChange(clone(state.definition), clone(state.layout));
-  }
-}
-
-function commit(state) {
-  emitChange(state);
-}
-
-async function validate(state) {
-  state.status = '正在请求服务端校验…';
-  state.statusKind = 'pending';
-  state.manifestHash = '';
-  const globalApi = typeof window !== 'undefined' ? window.apiFull : undefined;
-  const globalCSRF = typeof window !== 'undefined' ? window.csrf : undefined;
-  if (typeof globalApi !== 'function' || state.applicationId === '') {
-    state.status = '页面 API 助手不可用，无法校验。';
-    state.statusKind = 'bad';
-    return;
-  }
-  try {
-    const token = typeof globalCSRF === 'function' ? await globalCSRF() : null;
-    const result = await globalApi(
-      '/api/v1/applications/' + encodeURIComponent(state.applicationId) + '/validate',
-      { method: 'POST', csrf: token },
-    );
-    state.errors = mapValidationErrors(state.definition, result.payload && result.payload.errors);
-    if (result.payload && result.payload.valid === true) {
-      state.manifestHash = result.headers && typeof result.headers.get === 'function'
-        ? (result.headers.get('X-Manifest-SHA256') || '')
-        : '';
-      state.status = '校验通过。' + (state.manifestHash ? ' manifest SHA256 已显示。' : '');
-      state.statusKind = 'ok';
-      return;
-    }
-    state.status = '校验失败：' + state.errors.length + ' 个定位错误。点击错误跳转到节点字段。';
-    state.statusKind = 'bad';
-    if (state.errors.length > 0) {
-      state.selectedId = state.errors[0].nodeId || state.selectedId;
-      nextTick(() => {
-        const element = fieldElement(state.root, state.errors[0].field);
-        if (element && typeof element.focus === 'function') {
-          element.focus();
-        }
-      });
-    }
-  } catch (error) {
-    state.status = '校验请求失败 [' + (error.code || 'error') + '] ' + error.message;
-    state.statusKind = 'bad';
-  }
-}
-
-function downloadExport(state) {
-  try {
-    const text = exportJSON(state.definition, state.layout);
-    const link = document.createElement('a');
-    const blob = new Blob([text], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = exportFilename(state.applicationId);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    state.status = '已导出 {definition, layout}（不含凭据/运行输入/记忆数据）。';
-    state.statusKind = 'ok';
-  } catch (error) {
-    state.status = '导出被拒绝 [' + (error.code || 'error') + '] ' + error.message;
-    state.statusKind = 'bad';
-  }
-}
-
-async function loadCatalogs(state) {
-  const globalApi = typeof window !== 'undefined' ? window.apiFull : undefined;
-  if (typeof globalApi !== 'function') {
-    state.catalogsState = 'error';
-    state.catalogsError = '页面 API 助手不可用，工具/模型选择器为空。';
-    return;
-  }
-  try {
-    const [tools, models] = await Promise.all([
-      globalApi('/api/v1/tools?limit=100'),
-      globalApi('/api/v1/models?limit=100'),
-    ]);
-    state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
-    state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
-    state.catalogsState = 'ready';
-  } catch (error) {
-    state.catalogsState = 'error';
-    state.catalogsError = '加载工具/模型目录失败 [' + (error.code || 'error') + '] ' + error.message;
-  }
 }
 
 function initialState(root, options) {
@@ -779,9 +1342,12 @@ function initialState(root, options) {
     flowNodes: graph.nodes,
     flowEdges: graph.edges,
     selectedId: 'start',
+    selectedEdgeId: '',
+    highlightedEdgeId: '',
     status: '画布已就绪。',
     statusKind: '',
     errors: [],
+    localProblems: regionProblems(definition),
     manifestHash: '',
     tools: [],
     models: [],
@@ -791,6 +1357,8 @@ function initialState(root, options) {
     inputDrafts: {},
     schemaText: {},
     schemaErrors: {},
+    caseValueDrafts: {},
+    lastExportDropped: [],
   };
 }
 
@@ -809,13 +1377,22 @@ export function mount(root, options) {
     if (['input', 'textarea', 'select'].includes(tag)) {
       return;
     }
-    if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedId) {
-      const removed = removeNode(state.flowNodes, state.flowEdges, state.selectedId);
-      state.flowNodes = removed.nodes;
-      state.flowEdges = removed.edges;
-      state.selectedId = '';
-      rebuild(state);
-      event.preventDefault();
+    if ((event.key === 'Delete' || event.key === 'Backspace')) {
+      if (state.selectedEdgeId) {
+        state.flowEdges = state.flowEdges.filter((edge) => edge.id !== state.selectedEdgeId);
+        state.selectedEdgeId = '';
+        rebuild(state);
+        event.preventDefault();
+        return;
+      }
+      if (state.selectedId) {
+        const removed = removeNode(state.flowNodes, state.flowEdges, state.selectedId);
+        state.flowNodes = removed.nodes;
+        state.flowEdges = removed.edges;
+        state.selectedId = '';
+        rebuild(state);
+        event.preventDefault();
+      }
     }
   };
   window.addEventListener('keydown', onKeydown);
@@ -832,8 +1409,13 @@ export function mount(root, options) {
       state.flowNodes = next.flowNodes;
       state.flowEdges = next.flowEdges;
       state.selectedId = state.definition.nodes[0] ? state.definition.nodes[0].id : '';
+      state.selectedEdgeId = '';
+      state.highlightedEdgeId = '';
       state.errors = [];
+      state.localProblems = next.localProblems;
       state.manifestHash = '';
+      state.caseValueDrafts = {};
+      state.schemaText = {};
       state.status = '已加载服务器草稿。';
       state.statusKind = 'ok';
     },
@@ -845,6 +1427,9 @@ export function mount(root, options) {
     },
     exportDraft() {
       downloadExport(state);
+    },
+    regionProblems() {
+      return regionProblems(state.definition);
     },
     destroy() {
       window.removeEventListener('keydown', onKeydown);

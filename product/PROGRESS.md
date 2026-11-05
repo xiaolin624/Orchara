@@ -1812,6 +1812,45 @@ pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修�
 `not_run`）。门禁：`pytest tests/f11` / `tests/f08` / `tests/tooling`、5 条修复测试 ×2、
 `go build/vet/test ./...`、`gofmt -l .`、`sync_spec --check`，原始输出见报告 §3。
 
+## F04B/T083 画布创作半：condition/join 配置与端口（GitHub #84，2026-11-05）
+
+T083 的**画布创作半**已交付，状态 **passed**（运行视图/执行语义属其它子任务）。
+分支 `t/t083-canvas`（基线 `integration/t083-t091` @ `ea56392`，HEAD `9fd08d2`；
+结束前 merge 集成分支 `Already up to date`）。报告：`reports/f04b/T083-canvas.md`。
+
+| 项 | 内容 |
+|---|---|
+| 节点/端口 | `canvas/src/lib/dsl.js`：六类 palette（condition/join 新增，python/agent/condition/join 可多个、start/end 唯一）；`defaultNode` 的 condition `{join_id,default_port,cases}` / join `{mode,fork_id,required_sources,optional_sources}`；`definitionToGraph` 为 condition 渲染命名 source handle（`cases[].port ∪ default_port`）并在边写 `sourceHandle/data.port/label`，join 单 target handle + 来源标签；`graphToDefinition` 保留 `edge.port`、按 id 深拷贝合并 config、拓扑序（不截断丢节点）、清理 join 悬空 sources |
+| 连接规则 | 通用 DAG：只有 join 可多入（否则 `merge_without_join`）；condition 多出且同一 port 唯一（`bad_port`/`port_exists`/`no_free_port`，未指定时按 cases+default_port 自动选空闲端口）；普通节点多出必须由配对 join 的 `fork_id` 声明（`fork_requires_join`）；self/duplicate/cycle/end 无出/start 无入不变 |
+| 本地规则 | `regionProblems(definition)` 替换线性链检查：按 Go 阶段 2–4 顺序镜像 duplicate_id/unknown_endpoint/start_end_count → cycle/unreachable/cannot_reach_end/merge_without_join → invalid_region（双向配对）→ bad_port → cross_region_edge（dom/pdom）→ bad_join_sources；返回 `{code,message,pointer,nodeId,edgeIndex}`（中文定位/修复提示），阶段 5 交服务端权威 |
+| 来源 | `sources.js`：join 下游提供 `node:<join>#/results[/<source>[/value]]`；region 内分支节点不再直接暴露，join 自身不读分支输入；非支配上游不提供（避免 skipped 引用）；`sourceType` 支持封套路径 |
+| 错误定位 | `errors.js`：`/edges/<i>` → `{edgeIndex,source,target,edgeId,nodeId=source}`（condition 出边 field=`edge.port`），`fixHintForCode` 覆盖 cross_region_edge/bad_port/bad_join_sources/merge_without_join/invalid_region 等中文修复提示；`main.js` 错误项显示 code+message+source→target+修复提示，点击高亮 `orchara-edge-invalid` 并滚动画布，节点错误聚焦 `data-field` |
+| 面板 | `main.js`/`canvas.css`：palette 增 condition/join；condition 面板 `config.join_id`（同步 join.fork_id）/`config.default_port`/`config.cases.<i>.input|op|value|port`（增删/上下移/JSON value/端口预览）/输入映射；join 面板 `config.mode`（只读 all_active）/`config.fork_id`（同步 condition.join_id）/required+optional 多选互斥/覆盖提示；边选中编辑 `edge.port` |
+| 导出 | `export.js` 正向 per-node-type config allowlist（含 cases 项白名单），未知类型/键丢弃并返回 `dropped[{path,reason}]`（干净导出仍精确 `{definition,layout}`）；secret/endpoint/run_input 仍 `ExportRefused` |
+| 产物 | `apps/web/src/assets/canvas.js` SHA `4915DE69…56EB` → `618410A7…4D83`；`canvas.css` `167AAC85…C165` → `34BA780F…279B`。构建：`npm ci --offline`（added 43 packages）+ `npm run build`（751.2kb / 14.2kb）；`build.mjs` 加 `charset:'utf8'` 使提交产物中文可读 |
+| 测试 | 新 `tests/f04b/canvas_f04b.test.mjs`（Node 执行真实 `lib/*.js`，fixture 全部为 P05 corpus：端口往返、连接规则、7 个合法 fixture `regionProblems=[]`、12 个非法 fixture code+pointer 与参考实现一致、sources join 封套、export allowlist、errors 边定位，`PASS 9`）；`test_canvas_f04b_assets.py`（bundle `node --check`、condition/join marker、依赖 pin、`PASS 9`、`node_modules` 存在时重建逐字节比较后还原）；`test_t083_canvas_validate.py`（真实 PG+API：condition/parallel/optional/nested validate `valid:true`+manifest hash；跨区 `/edges/10`、bad_port `/edges/1`、bad_join_sources `/nodes/4/config/required_sources` 定位） |
+| 门禁 | `node --check` exit 0；`node tests/f04b/canvas_f04b.test.mjs` PASS 9；`pytest tests/f04b` **8 passed**（最终树 37.07s）；`pytest tests/f04a` **36 passed**（最终树 107.71s，P01 解释器用 `ORCHARA_P01_PYTHON` 指向主仓 venv）；`python tools/sync_spec.py --check` no drift。未改 Go/`internal`/`contracts`/`docs/spec`/`editor.js`/`debug.js`/`runs.js` |
+| F04A 回归调整 | `tests/f04a/canvas_modules.test.mjs` 最小同步（仍 8 例）：`linearChainProblems`→`regionProblems`；连接码 `outgoing_exists/incoming_exists`→`merge_without_join`/`fork_requires_join`；同类型多节点允许；`/edges/<i>` 改为边级定位。F04A 其它页面/资产/HTTP 用例未改 |
+| 边界/not_run | 浏览器 DOM 交互（拖拽/点击/焦点/高亮滚动）未驱动（测试栈无浏览器自动化，沿用 F04A 边界；`main.js` 由构建+`node --check`+marker+纯模块测试保证）；运行 F04B 图未跑（执行器当前拒绝 condition/join，属运行半）；本地规则只提示、不是安全边界；导出白名单仅覆盖本票六类节点（其余 F04B 类型由 T091 扩展，当前丢弃并报告）；未新增 fetch surface/未改 OpenAPI；未加 `editor.html` 的 run 挂载点 |
+
+## F04B/T083 运行时半：条件分支与 join-once（2026-11-05）
+
+T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半由另一 worktree 交付，合并后 T083 才完整）。证据：
+`reports/f04b/T083-condition-branching.md`；分支 `t/t083-graph-runtime`（worktree `E:\Orchara-wt\t083`）。
+
+| 交付点 | 结果 |
+|---|---|
+| graph 计划/调度器 | **passed**：`internal/presetexec/{graphplan,graphrun,condition}.go`；含 condition/join 的定义走新调度器，legacy/linear 选择对其它定义不变 |
+| 激活/skipped/join-once | **passed**：真实 PG+mTLS+supervisor+runsc 下条件 true/default、并行 fork、嵌套 condition；未选分支只发 `skipped`；join 每次 region 激活恰一次（1 条 data + 1 次 succeeded） |
+| 非法跨区/无激活来源 | **passed**：`POST /validate` 200 + `cross_region_edge` + `pointer=/edges/10` + `node_id`/`source->target`；debug 提交 422 同定位、零 Run/零 job；运行期 required 源全 skipped → join/run `invalid_activation` |
+| run view 数据（非契约） | **passed**：condition data=`{"port","matched_case"}`、join data=结果封套、node.status 拓扑序；owner-only SSE 重放与 DB `run_events` 一致；不新增契约端点 |
+| 恢复接缝 | **partial**：`presetexec.Deps.NodeOutputs` 接口 + `cmd/supervisor` 读取 `run_node_outputs(kind='data')`/对象根/复算 sha256 + Go 复用单测完成；真实“同一 run 第二次 exec”冒烟 not_run（本票无 waiting，留 T087/T091） |
+| Python LangGraph 证明 | **passed**：真实 `langgraph 1.1.6`，激活集合、skipped 集合、join 调用次数=1、未选分支不进屏障（超时保护） |
+
+门禁：`python -m pytest tests/f04b -q` → 14 passed；`tests/f06`/`tests/f04a`/`tests/tooling`、`go build/vet/test ./...`、
+`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check` 结果见报告 §6。无迁移；未改 `docs/spec/**`、`contracts/**`。
+**not_run**：真实二次 exec 复用观感烟测、真实厂商模型、浏览器 DOM、画布半。
+
 ## 记录模板
 
 ```text
