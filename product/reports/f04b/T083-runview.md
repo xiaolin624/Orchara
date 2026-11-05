@@ -6,7 +6,7 @@
 | 工作树 / 分支 | `E:\Orchara-wt\t083-runview` / `t/t083-runview` |
 | 基线 | `integration/t083-t091` @ `ea56392` |
 | 结束时合并 | `integration/t083-t091` @ `111e2c2`（含 T083 graph runtime + canvas），合并提交 **`a050e2f`** |
-| 本半最终 HEAD | `a050e2f` |
+| 本半最终 HEAD | **`d0d48e0`**（`a050e2f` 合并 + 报告/证据提交；功能提交 `30be9ff`） |
 | 状态 | **`partial`**：页面 + 纯函数 + 页面结构/DOM 测试 + 真实线性 Run 的 HTTP E2E 通过；**条件/join/skipped 的真实执行 E2E `not_run`**（原因见 §7，测试已就绪且 `skipif` 在合并后为假） |
 | 契约 | **未改** `contracts/**`、`docs/spec/**`、OpenAPI。条件端口 / join 结果使用既有**非契约 node data artifact** 约定（§2） |
 
@@ -29,7 +29,7 @@ status 与 value 摘要，未选分支显示 `skipped`（与 `failed` 视觉区�
 
 补充（与运行时半分的数据约定对齐）：`node.status` 是契约事件；条件 `{port,matched_case}` 与 join
 `{results:{source:{status,value,error_code}}}` 是 **node data artifact** 的既有非契约约定；读取链是
-`GET /api/v1/runs/{id}/node-results`（非契约、owner-only）找 `kind="data"` 的 artifact → 
+`GET /api/v1/runs/{id}/node-results`（非契约、owner-only）找 `kind="data"` 的 artifact →
 `GET /api/v1/artifacts/{id}/content`（契约、owner-only）。页面不解析 artifact 正文以外的敏感内容。
 
 ## 2. 数据面（非契约，显式记录）
@@ -47,6 +47,7 @@ status 与 value 摘要，未选分支显示 `skipped`（与 `failed` 视觉区�
 ### 3.1 新增 `product/apps/web/src/assets/runview.js`（不打包，页面直接加载）
 
 纯函数（Node 可执行，见 §5）：
+
 - `aggregateNodeStates(events)`：按 attempt 优先、同 attempt 按状态秩（failed > succeeded > skipped > running >
   waiting > pending）折叠；乱序/重复/Last-Event-ID 重放幂等；忽略未知 state/缺失 node_id/非 node.status；
   `error_code` 仅对 failed 状态保留，新 attempt 覆盖旧码。
@@ -153,19 +154,21 @@ exit=0
 正在使用共享 WSL/runsc 栈，请不要并发启动 pytest”的指示；条件 E2E 因此在本次交付中记为 `not_run`（§7），
 可以随时在空闲栈上直接执行（无 skip）。
 
-其他回归（本次改动前/后相关页面套件，均在无并发时单跑）：
+其他回归（本次改动前后相关页面套件，均在无并发时单跑）：
 
 ```text
 $ python -m pytest tests/f06/test_t044_pages.py -q
 4 passed in 22.27s
 $ python -m pytest tests/f03/test_t029_pages.py tests/f03/test_t031_pages.py tests/f03/test_t032_pages.py -q
 14 passed in 114.30s
-$ python -m pytest tests/f02a -q          # 见 §7：受并发 pytest 争用影响，未取得可信的全绿结果
 ```
+
+`python -m pytest tests/f02a` 全量在并发 pytest 争用（另一个 agent 的 `tests/f08` + 本机隔离 PG/WSL）下多次被
+执行器时限/进程终止打断，未取得可信的全绿或失败证据；因此不把它算作通过（见 §7）。失败先复现再定位。
 
 ## 6. 环境与合并
 
-- 分支 / HEAD：`t/t083-runview` @ `a050e2f`（合并提交；父提交 `30be9ff` 为运行视图半最终功能提交）。
+- 分支 / HEAD：`t/t083-runview` @ **`d0d48e0`**（`a050e2f` 合并提交 + 报告/证据提交；功能提交 `30be9ff`）。
 - 合并：`git merge integration/t083-t091` 唯一冲突 `product/tests/f04b/conftest.py`（add/add，双方各自新增）；
   采用集成分支版本（其中包含 worker 路径与 f04b 说明），保留本半的 `runview.test.mjs` / `test_t083_runview.py`；
   合并后树干净。
@@ -190,6 +193,7 @@ $ python -m pytest tests/f02a -q          # 见 §7：受并发 pytest 争用影
    （仓库既有页面测试惯例）。
 5. **真实失败节点 E2E**：`state=failed` 行显示 run `error_code` 的单测/页面测试已覆盖；真实失败 run 经 run-view
    未跑（`status` 事件不含 error_code 的契约缺口见风险 1）。
+6. **`pytest tests/f02a` 全量**：并发争用下多次被中断，未取得可信结果；不做通过声明。
 
 **风险 / 设计取舍**
 
