@@ -2,7 +2,7 @@
 
 - 状态：**passed**（画布创作半；运行视图与执行语义属其它票，见「边界与 not_run」）
 - 分支：`t/t083-canvas`（worktree `E:\Orchara-wt\t083-canvas`），基线 `integration/t083-t091` @ `ea56392`
-- HEAD：见文末（提交后填）
+- HEAD：`9fd08d2`（实现 + 提交产物；其后仅有 PROGRESS/报告文档提交）。结束前 `git merge integration/t083-t091` → `Already up to date`（集成 tip 仍 `ea56392`），无需再解决产物冲突。
 - 环境：Node v24.13.0 / npm 11.13.0；Python 3.12.2 + pytest；PostgreSQL 隔离集群 `127.0.0.1:55432`；离线 npm 缓存 `E:\caches\npm`
 - 范围：只改 `apps/web/canvas/src/**`、提交产物 `apps/web/src/assets/canvas.{js,css}`、画布相关测试；未改 Go、`internal/**`、`contracts/**`、`docs/spec/**`、`editor.js`/`debug.js`/`runs.js`。
 
@@ -109,7 +109,12 @@ PASS 9 canvas F04B module tests
 3 passed in 29.66s
 ```
 
-- `python -m pytest tests/f04a -q`：见 §5（回归）。
+- `python -m pytest tests/f04a -q`（`ORCHARA_P01_PYTHON` 指向主仓 P01 venv）：
+
+```text
+....................................                                     [100%]
+36 passed in 85.31s (0:01:25)
+```
 
 - `python tools/sync_spec.py --check`：
 
