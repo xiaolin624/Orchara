@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -75,6 +76,11 @@ def sales_application(stack, *, login: str | None = None):
         name="t068 sales chain",
     )
     return t029.Owner(admin=admin, creator=session, application_id=application_id)
+
+
+def minimal_application(session, *, name: str = "t068 minimal") -> str:
+    """A start -> end application. Only used where the report evidence is seeded."""
+    return t027.application_with_definition(session, t027.chain_definition([]), name=name)
 
 
 def owner_for(session, application_id: str):
@@ -243,6 +249,48 @@ def _next_ready_case(dbname: str, evaluation_id: str) -> str | None:
     return rows[0]["case_id"]
 
 
+def run_supervisor_safe(stack, env: dict[str, str], *, timeout: float = 120.0) -> dict:
+    """Run one real ``cmd/supervisor exec --once`` with process-tree isolation.
+
+    ``subprocess.run(timeout=)`` kills only the direct child; a WSL/sandbox
+    grandchild that inherited the pipes can keep it blocked forever on this host
+    when another suite is hammering the shared sandbox. This wrapper kills the
+    whole tree on timeout and returns the parsed report, so an environment stall
+    is a recorded retry instead of a hung test.
+    """
+    process = subprocess.Popen(
+        [str(stack.binaries["supervisor"]), "exec", "--once"],
+        cwd=t052.PRODUCT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdin=subprocess.DEVNULL,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        try:
+            process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:  # pragma: no cover - last resort
+            process.kill()
+        raise AssertionError(
+            f"supervisor exec exceeded {timeout}s and its process tree was killed"
+        )
+    lines = [line for line in (stdout or "").splitlines() if line.strip()]
+    if not lines:
+        raise AssertionError(f"supervisor exec printed nothing; stderr={stderr}")
+    return json.loads(lines[-1])
+
+
 def run_adaptive_evaluation(stack, owner, cases: list[dict], *, log_path: Path) -> dict:
     """Drive one real evaluation, choosing the supervisor configuration per case.
 
@@ -267,8 +315,14 @@ def run_adaptive_evaluation(stack, owner, cases: list[dict], *, log_path: Path) 
             case_id = _next_ready_case(stack.dbname, evaluation_id)
             digest = BAD_SANDBOX_DIGEST if case_id == TOOL_FAILURE_CASE else None
             env = t052.supervisor_exec_env(stack, digest=digest, timeout="60s")
-            completed = t052.run_supervisor_exec(stack, env, timeout=300)
-            exec_report = t052.exec_report(completed)
+            try:
+                exec_report = run_supervisor_safe(stack, env, timeout=150)
+            except AssertionError as failure:
+                # An environment stall: the evaluation's own case timeout will
+                # record not_run and the retry wrapper re-submits. Never a pass.
+                print(f"T068: supervisor stall for case {case_id!r}: {failure}")
+                time.sleep(0.2)
+                continue
             if exec_report.get("status") == "idle":
                 time.sleep(0.05)
         else:
@@ -388,9 +442,13 @@ def finish_crafted_report(
 
 
 def not_run_report(stack, *, login: str | None = None) -> dict:
-    """A guard-accepted ``not_run`` report (zero cases) for a real sales app."""
-    owner = sales_application(stack, login=login)
-    started = start_evaluation(stack, owner.creator, owner.application_id, one_normal_case())
+    """A guard-accepted ``not_run`` report (zero cases) for a real application."""
+    session = creator(stack, login=login or ("t068-not-run-" + f00b.new_uuid()[:8]))
+    application_id = minimal_application(session, name="t068 not run")
+    started = start_evaluation(
+        stack, session, application_id,
+        [t052.evaluation_case(case_id="never-ran", assertions=[t052.assertion_run_state("succeeded")])],
+    )
     finished = finish_crafted_report(
         stack, started, [], status="not_run", checks=["run_state"]
     )
@@ -401,8 +459,8 @@ def not_run_report(stack, *, login: str | None = None) -> dict:
     assert report["status"] == "not_run", report
     snapshot = t027.snapshot_row(stack.dbname, started["evaluation"]["snapshot_id"])
     return {
-        "session": owner.creator,
-        "application_id": owner.application_id,
+        "session": session,
+        "application_id": application_id,
         "evaluation": evaluation,
         "report": report,
         "manifest_sha256": snapshot["manifest_sha256"],
@@ -416,8 +474,12 @@ def forged_runner_report(stack, *, login: str | None = None) -> dict:
     application report that is not the real runner); it simulates a row left by an
     older/bypassed writer so the publication gate's own re-read is exercised.
     """
-    owner = sales_application(stack, login=login)
-    started = start_evaluation(stack, owner.creator, owner.application_id, one_normal_case())
+    session = creator(stack, login=login or ("t068-forged-" + f00b.new_uuid()[:8]))
+    application_id = minimal_application(session, name="t068 forged")
+    started = start_evaluation(
+        stack, session, application_id,
+        [t052.evaluation_case(case_id="forged-case", assertions=[t052.assertion_run_state("succeeded")])],
+    )
     document = t062.crafted_document(
         stack,
         started["evaluation"],
@@ -450,10 +512,144 @@ def forged_runner_report(stack, *, login: str | None = None) -> dict:
         f"WHERE id = {t052.st.quote_literal(started['evaluation']['id'])}::uuid",
     )
     return {
-        "session": owner.creator,
-        "application_id": owner.application_id,
+        "session": session,
+        "application_id": application_id,
         "report_id": report_id,
         "manifest_sha256": snapshot["manifest_sha256"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# seeded terminal runs + a guard-accepted passed report (fast review fixtures)
+# ---------------------------------------------------------------------------
+_TERMINAL_SPECS = [
+    # case id, seeded run state, seeded error code, declared author category code
+    ("author-normal-1", "succeeded", None, None),
+    ("author-normal-2", "succeeded", None, None),
+    ("author-bad-input", "failed", "node_input_invalid", "node_input_invalid"),
+    ("author-out-of-bounds", "failed", "row_limit_exceeded", "row_limit_exceeded"),
+    ("author-tool-failure", "failed", "sandbox_unavailable", "sandbox_unavailable"),
+]
+
+
+def _seed_terminal_run(stack, run_id: str, state: str, error_code: str | None) -> None:
+    """Set a real case run row to the terminal state the executor would produce.
+
+    The run row, its evaluation link, snapshot and manifest are real; only the
+    terminal state is seeded because these review-transaction fixtures must not
+    depend on the shared sandbox. The dedicated end-to-end test uses a report the
+    real runner produced. This is the same technique T070 uses for published-run
+    retention rows, and it is recorded in the T068 report.
+    """
+    error_sql = "NULL" if error_code is None else t052.st.quote_literal(error_code)
+    t052.st.sql(
+        stack.dbname,
+        "UPDATE platform.runs SET state = " + t052.st.quote_literal(state) +
+        ", error_code = " + error_sql + ", phase = 'idle', revision = revision + 1 "
+        f"WHERE id = {t052.st.quote_literal(run_id)}::uuid",
+    )
+    t052.st.sql(
+        stack.dbname,
+        "UPDATE platform.evaluation_case_runs SET state = " + t052.st.quote_literal(state) +
+        f" WHERE run_id = {t052.st.quote_literal(run_id)}::uuid",
+    )
+
+
+def seeded_passed_report(
+    stack, *, login: str | None = None, cases: int = 5,
+    session=None, application_id: str | None = None,
+) -> dict:
+    """A guard-accepted five-category report over real (seeded-terminal) runs.
+
+    Two normal runs, a bad input, an out-of-bounds input and a tool failure are
+    real evaluation case runs whose terminal states are seeded; the report then
+    travels through the real completion guard, which re-checks every passed case
+    against those run rows. Fast, and used by the submission/review fixtures; the
+    genuine runner path has its own end-to-end test.
+    """
+    session = session or creator(stack, login=login or ("t068-seeded-" + f00b.new_uuid()[:8]))
+    application_id = application_id or minimal_application(session, name="t068 seeded")
+    specs = _TERMINAL_SPECS[:cases]
+    dataset_cases = [
+        t052.evaluation_case(
+            case_id=spec[0],
+            assertions=[t052.assertion_run_state("succeeded")],
+            input_value={"seed": spec[0]},
+        )
+        for spec in specs
+    ]
+    started = start_evaluation(stack, session, application_id, dataset_cases)
+    runs: list[tuple[str, str, str | None, str | None]] = []
+    for case_id, state, error_code, category_code in specs:
+        created = t062.create_case_run(
+            started["client"], started["lease"], case_id=case_id,
+            input_value={"seed": case_id},
+        )
+        _seed_terminal_run(stack, created["run_id"], state, error_code)
+        runs.append((case_id, state, error_code, category_code))
+
+    report_cases = []
+    for case_id, state, error_code, category_code in runs:
+        facts = {
+            "run_id": None,
+            "run_state": state,
+            "run_error_code": error_code or "",
+            "effect_counts": {},
+            "citation_sources": [],
+        }
+        # Resolve the real run id from the case ledger (the bridge returned it).
+        rows = t052.st.sql_rows(
+            stack.dbname,
+            "SELECT run_id::text AS run_id FROM platform.evaluation_case_runs "
+            f"WHERE evaluation_id = {t052.st.quote_literal(started['evaluation']['id'])}::uuid "
+            f"AND case_id = {t052.st.quote_literal(case_id)}",
+        )
+        assert len(rows) == 1 and rows[0]["run_id"], rows
+        facts["run_id"] = rows[0]["run_id"]
+        assertions = [
+            {"kind": "run_state", "expected": state, "actual": state, "passed": True}
+        ]
+        if category_code is None:
+            assertions.append(
+                {"kind": "json_equals", "pointer": "", "expected": "{}", "actual": "{}", "passed": True}
+            )
+        else:
+            assertions.append(
+                {
+                    "kind": "failure_reason",
+                    "expected": category_code,
+                    "actual": error_code,
+                    "passed": True,
+                }
+            )
+        report_cases.append(
+            {
+                "id": case_id,
+                "status": "passed",
+                "verdict": "passed",
+                "assertions": assertions,
+                "facts": facts,
+            }
+        )
+    finished = finish_crafted_report(
+        stack, started, report_cases, status="passed",
+        checks=["run_state", "json_equals", "failure_reason"],
+    )
+    assert finished["result"].status == 200, finished["result"].text
+    assert finished["result"].json["state"] == "succeeded", finished["result"].json
+    evaluation = t052.evaluation_row(stack.dbname, started["evaluation"]["id"])
+    assert evaluation["report_id"], evaluation
+    report = t052.report_row(stack.dbname, evaluation["report_id"])
+    assert report["status"] == "passed", report
+    snapshot = t027.snapshot_row(stack.dbname, started["evaluation"]["snapshot_id"])
+    return {
+        "session": session,
+        "application_id": application_id,
+        "evaluation": evaluation,
+        "report": report,
+        "sealed": finished["document"],
+        "manifest_sha256": snapshot["manifest_sha256"],
+        "snapshot": snapshot,
     }
 
 

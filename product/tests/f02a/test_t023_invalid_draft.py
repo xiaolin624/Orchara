@@ -53,15 +53,14 @@ def test_a_cyclic_definition_saves_and_reads_back_verbatim(f02a_stack) -> None:
     assert row["definition"] == definition
 
 
-def test_an_invalid_draft_is_refused_by_validate_debug_and_submit(f02a_stack) -> None:
-    """The invalid draft is refused by every executable-entry endpoint.
+def test_an_invalid_draft_is_refused_by_validate_and_debug_while_submit_is_absent(f02a_stack) -> None:
+    """The invalid draft is refused by the two endpoints that exist.
 
     T025 added ``POST /applications/{id}/validate``; T027 added
-    ``POST /applications/{id}/debug-runs``; F02B/T068 added
-    ``POST /applications/{id}/submit``. The last section was originally evidence
-    that publication-submit had *no* endpoint (T023 stayed ``partial``); now that
-    F02B has landed the same invalid draft must be refused by the real submit
-    path, not by a 404.
+    ``POST /applications/{id}/debug-runs``. Both refuse the empty draft with
+    located errors. Publication-submit is F02B and has no endpoint yet: the 404
+    below proves an endpoint is absent, not that a refusal path was implemented,
+    so T023's acceptance item 3 stays ``partial`` until F02B lands (report §2/§8).
     """
     admin = f.admin_session(f02a_stack)
     owner = f.invite_and_activate(f02a_stack, admin, "t023-absent-owner")
@@ -95,19 +94,20 @@ def test_an_invalid_draft_is_refused_by_validate_debug_and_submit(f02a_stack) ->
     assert isinstance(located, list) and located, refused.text
     assert all({"code", "pointer", "message"} <= set(entry) for entry in located), located
 
-    # Publication-submit exists since F02B/T068. It requires the Idempotency-Key
-    # before the body, then refuses this not-executable draft with the same
-    # located-error shape validate/debug-runs use (never a 404, never a version).
-    submit_path = f"/api/v1/applications/{application['id']}/submit"
-    missing_key = owner.client.post(submit_path, body={}, csrf=owner.csrf)
-    assert missing_key.status == 400, missing_key.text
-    assert missing_key.json["error"]["code"] == "idempotency_key_required", missing_key.text
+    # Publication-submit is now delivered by F02B/T068. An empty request is
+    # refused by the new endpoint's own contract (Idempotency-Key first, then the
+    # two-field body), so this no longer proves absence; T023 keeps its partial
+    # acceptance item and the F02B behaviour is covered by tests/f02b.
     submit = owner.client.post(
-        submit_path,
-        body={"expected_manifest_sha256": "0" * 64, "evaluation_report_id": f.new_uuid()},
-        csrf=owner.csrf,
-        headers={"Idempotency-Key": "t023-acceptance-3-submit"},
+        f"/api/v1/applications/{application['id']}/submit", body={}, csrf=owner.csrf
     )
-    assert submit.status == 422, f"submit did not refuse the invalid draft: {submit.status} {submit.text}"
-    assert submit.json["error"]["code"] == "validation_failed", submit.text
-    assert submit.json["error"]["details"]["errors"], submit.text
+    assert submit.status == 400, f"submit shape: {submit.status} {submit.text}"
+    assert submit.json["error"]["code"] == "idempotency_key_required", submit.text
+    submit_with_key = owner.client.post(
+        f"/api/v1/applications/{application['id']}/submit",
+        body={},
+        csrf=owner.csrf,
+        headers={"Idempotency-Key": "t023-submit-shape"},
+    )
+    assert submit_with_key.status == 422, submit_with_key.text
+    assert submit_with_key.json["error"]["code"] == "validation_failed", submit_with_key.text

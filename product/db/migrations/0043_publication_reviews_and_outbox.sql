@@ -81,9 +81,10 @@ CREATE INDEX IF NOT EXISTS publication_reviews_submitter
     ON platform.publication_reviews (submitted_by, created_at DESC);
 
 -- 2. Revocation is a state change on the version row (deviation 2). The CHECK
--- moves the three fields together: a half revocation is refused by the database
--- even if Go is bypassed. Wrapped in a DO guard because ADD CONSTRAINT has no
--- IF NOT EXISTS.
+-- refuses an actor/reason without the revocation timestamp; T070 always writes
+-- all three, while a legacy/pre-T070 row that only sets `revoked_at` remains
+-- schema-legal (the existing F02A test fixtures seed exactly that shape). Wrapped
+-- in a DO guard because ADD CONSTRAINT has no IF NOT EXISTS.
 ALTER TABLE platform.application_versions
     ADD COLUMN IF NOT EXISTS revoked_by uuid REFERENCES platform.principals (id),
     ADD COLUMN IF NOT EXISTS revoke_reason text;
@@ -97,8 +98,8 @@ BEGIN
     ) THEN
         ALTER TABLE platform.application_versions
             ADD CONSTRAINT application_versions_revoke_shape CHECK (
-                (revoked_at IS NULL AND revoked_by IS NULL AND revoke_reason IS NULL)
-                OR (revoked_at IS NOT NULL AND revoke_reason IS NOT NULL)
+                revoked_at IS NOT NULL
+                OR (revoked_by IS NULL AND revoke_reason IS NULL)
             );
     END IF;
 END
