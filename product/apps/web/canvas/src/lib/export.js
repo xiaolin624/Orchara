@@ -29,6 +29,9 @@ export const CONFIG_ALLOWLIST = {
     'max_turns',
   ],
   condition: ['join_id', 'default_port', 'cases'],
+  // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
+  // query is an input binding and any inline query is dropped as unknown_config_key.
+  retrieve: ['knowledge_base_ids', 'top_k'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
   end: [],
 };

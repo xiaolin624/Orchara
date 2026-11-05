@@ -78,6 +78,24 @@ type fakeClient struct {
 	childResult   func(childRunID string) (*ChildResult, error)
 	spawnRequests []SpawnChildRequest
 	childReads    []string
+
+	// scripted retrieval seam (retrieve node tests)
+	retrieve         func(RetrieveRequest) (*RetrieveResult, error)
+	retrieveRequests []RetrieveRequest
+}
+
+// Retrieve implements Client with the test's scripted retrieval seam.
+func (f *fakeClient) Retrieve(
+	_ context.Context, _ string, _ string, request RetrieveRequest,
+) (*RetrieveResult, error) {
+	f.mu.Lock()
+	f.retrieveRequests = append(f.retrieveRequests, request)
+	handler := f.retrieve
+	f.mu.Unlock()
+	if handler == nil {
+		return nil, errors.New("no retrieval handler is scripted")
+	}
+	return handler(request)
 }
 
 // SpawnChild implements Client: the executor never creates a Run itself.

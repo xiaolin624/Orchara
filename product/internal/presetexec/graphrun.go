@@ -218,6 +218,8 @@ func (r *runner) executeGraphNode(
 		return r.executeGraphAgent(ctx, run, node)
 	case "call_app":
 		return r.executeGraphCallApp(ctx, run, node)
+	case "retrieve":
+		return r.executeGraphRetrieve(ctx, run, node)
 	case "end":
 		return r.executeEndNode(ctx, run.plan.definition, node.node,
 			run.available(), run.last, run.report), nil, true

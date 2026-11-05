@@ -402,9 +402,11 @@ test('export allowlist keeps declared config and reports dropped fields', () => 
   const tainted = JSON.parse(JSON.stringify(definition));
   tainted.nodes[1].config.foo = 'bar';
   tainted.nodes[2].config.cases[0].extra = 'nope';
+  // A type this canvas does not author (retrieve became a known type in T088, so
+  // the unknown-type case uses a genuinely unknown type).
   tainted.nodes.push({
-    id: 'retrieve1',
-    type: 'retrieve',
+    id: 'mystery1',
+    type: 'mystery',
     inputs: {},
     config: { knowledge_base_ids: ['11111111-1111-4111-8111-111111111111'] },
     output_schema: { type: 'object' },

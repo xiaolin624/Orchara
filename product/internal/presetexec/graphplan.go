@@ -62,7 +62,6 @@ const (
 	CodeMissingValue  = "missing_value"
 
 	CodeNodeUnsupportedModel    = "node_unsupported_model"
-	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
 	CodeNodeUnsupportedApproval = "node_unsupported_approval"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
@@ -75,6 +74,7 @@ const (
 )
 
 // graphNodeTypes is the closed set of node types the graph path can execute.
+// T088 added `retrieve`; T086/T087 replace `model` and `approval` here.
 var graphNodeTypes = map[string]bool{
 	"start":     true,
 	"end":       true,
@@ -83,6 +83,7 @@ var graphNodeTypes = map[string]bool{
 	"call_app":  true,
 	"condition": true,
 	"join":      true,
+	"retrieve":  true,
 }
 
 // graphPlan is the parsed and proven graph.
@@ -110,6 +111,7 @@ type graphNode struct {
 	outgoing  []*planEdge
 	condition *conditionConfig
 	join      *joinConfig
+	retrieve  *retrieveConfig
 }
 
 // planEdge is one sealed edge with its normalized exit port.
@@ -157,7 +159,8 @@ func hasGraphConstructs(manifest *manifestDocument) bool {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
-		if node.Type == "condition" || node.Type == "join" {
+		switch node.Type {
+		case "condition", "join", "retrieve":
 			return true
 		}
 	}
@@ -204,13 +207,11 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		switch node.Type {
 		case "model":
 			code = CodeNodeUnsupportedModel
-		case "retrieve":
-			code = CodeNodeUnsupportedRetrieve
 		case "approval":
 			code = CodeNodeUnsupportedApproval
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, condition and join",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, condition, join and retrieve",
 			index, node.Type))
 	}
 
@@ -301,6 +302,15 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.join = config
+		case "retrieve":
+			// F04B/T088: the retrieve config is re-proved here (stable KB ids,
+			// no inline query) before the scheduler can run the node.
+			config, err := parseRetrieveConfig(node.Config)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.retrieve = config
 		}
 	}
 

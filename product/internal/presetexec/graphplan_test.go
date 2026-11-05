@@ -354,7 +354,6 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
 	cases := map[string]string{
 		"model":    "node_unsupported_model",
-		"retrieve": "node_unsupported_retrieve",
 		"approval": "node_unsupported_approval",
 		"mystery":  "tool_unsupported_graph",
 	}
@@ -413,12 +412,16 @@ func TestBuildGraphPlanRejectsACycle(t *testing.T) {
 	}
 }
 
-func TestHasGraphConstructsOnlyFiresForConditionOrJoin(t *testing.T) {
+func TestHasGraphConstructsOnlyFiresForGraphOnlyNodeTypes(t *testing.T) {
 	if hasGraphConstructs(definitionDocument(t, parallelDefinition)) != true {
 		t.Fatal("a join graph must select the graph path")
 	}
 	if hasGraphConstructs(definitionDocument(t, flatConditionDefinition)) != true {
 		t.Fatal("a condition graph must select the graph path")
+	}
+	// F04B/T088: a retrieve node is graph-only too, even without a region.
+	if hasGraphConstructs(definitionDocument(t, retrieveDefinition)) != true {
+		t.Fatal("a retrieve graph must select the graph path")
 	}
 	linear := definitionDocument(t, `{
       "nodes":[{"id":"start","type":"start","config":{}},
