@@ -67,7 +67,18 @@ func guardDeleteContentCompletion(
 		completion.ResultArtifactID = ""
 	default:
 		completion.State = StateFailed
-		completion.ErrorCode = purgeFailureCode(result.Failure)
+		// F11/T076: a bounded attempt that expired keeps its timeout
+		// classification. The bytes are still there *because* the attempt ran out
+		// of time, and the operator alert surface must be able to tell a slow store
+		// (retryable `delete_timeout`) from a store error. The deletion job's own
+		// error code still records the evidence-derived failure, so the timeout is
+		// reported on the attempt, never used to hide the outstanding scope.
+		if completion.ErrorCode == CodeDeleteTimeout &&
+			result.Failure == deletion.PurgeObjectsPresent {
+			completion.ErrorCode = CodeDeleteTimeout
+		} else {
+			completion.ErrorCode = purgeFailureCode(result.Failure)
+		}
 		completion.ResultArtifactID = ""
 	}
 	return nil

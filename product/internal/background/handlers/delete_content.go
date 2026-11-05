@@ -48,6 +48,13 @@ func DeleteContent(ctx context.Context, work background.HandlerWork) background.
 			// gone, acting on a guessed target would be worse than failing.
 			return background.Failed(background.CodeSourceDeleted)
 		}
+		if ctx.Err() != nil {
+			// F11/T076: the bounded attempt expired before it could even read its
+			// scope set. That is the retryable timeout code (the deletion alert
+			// surface reports it), not an internal error: a slow object store must
+			// not look like a bug, and a retry with the normal deadline finishes.
+			return background.Failed(background.CodeDeleteTimeout)
+		}
 		return background.Failed(background.CodeTransientInternal)
 	}
 	if len(targets.Job.Remaining) == 0 {

@@ -16,6 +16,12 @@
 //	    without writing. A broken chain is refused before anything changes;
 //	    a second replay appends nothing.
 //
+//	orchara-admin deletion alerts [--deadline 24h] [--limit 100]
+//	    F11/T076: the read-only cleanup alert surface. It prints one JSON report
+//	    and exits 0 when no deletion/cleanup job is past its deadline or failed,
+//	    and 3 when at least one is (1 = the pass could not run, 2 = usage). It
+//	    never writes a row: the tombstone remains the read authority.
+//
 // One JSON line goes to stdout on success; a refusal goes to stderr and exits 1;
 // a usage problem exits 2. Credentials are never printed (the DSN comes from the
 // environment, like every other admin command).
@@ -37,7 +43,7 @@ import (
 	"orchara/platform/internal/deletion"
 )
 
-const deletionUsage = `usage: orchara-admin deletion <export|replay> [flags]
+const deletionUsage = `usage: orchara-admin deletion <export|replay|alerts> [flags]
 
 export:
   orchara-admin deletion export --file PATH
@@ -52,19 +58,27 @@ replay:
     decision that is still alive in this database, before reads open after a
     restore. --check-only verifies and reports what would be replayed without
     writing anything. A second replay appends nothing.
+
+alerts:
+  orchara-admin deletion alerts [--deadline 24h] [--limit 100]
+    Read-only alert surface for deletion/cleanup jobs past their deadline.
+    One JSON report on stdout. Exit 0 = no alert, 3 = at least one alert,
+    1 = the pass could not run, 2 = usage. It never writes and never deletes.
 `
 
 func runDeletion(args []string) error {
 	if len(args) == 0 {
-		return usageErrorf("missing deletion subcommand; expected 'export' or 'replay'")
+		return usageErrorf("missing deletion subcommand; expected 'export', 'replay' or 'alerts'")
 	}
 	switch args[0] {
 	case "export":
 		return runDeletionExport(args[1:])
 	case "replay":
 		return runDeletionReplay(args[1:])
+	case "alerts":
+		return runDeletionAlerts(args[1:])
 	default:
-		return usageErrorf("unknown deletion subcommand %q; expected 'export' or 'replay'", args[0])
+		return usageErrorf("unknown deletion subcommand %q; expected 'export', 'replay' or 'alerts'", args[0])
 	}
 }
 
@@ -175,6 +189,65 @@ func runDeletionReplay(args []string) error {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+// runDeletionAlerts is the F11/T076 cleanup alert surface. It prints the JSON
+// report even when it exits non-zero, so a scheduler gets the finding and the
+// signal from the same invocation.
+func runDeletionAlerts(args []string) error {
+	flags := flag.NewFlagSet("deletion alerts", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	deadline := flags.Duration(
+		"deadline", deletion.DefaultCleanupDeadline,
+		"how long after the logical delete a cleanup job may still be owed (e.g. 24h)",
+	)
+	limit := flags.Int("limit", 100, "maximum rows examined per query")
+	if err := flags.Parse(args); err != nil {
+		return usageErrorf("%v", err)
+	}
+	if flags.NArg() > 0 {
+		return usageErrorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	if *deadline <= 0 {
+		return usageErrorf("--deadline must be greater than zero")
+	}
+	if *limit < 1 || *limit > deletion.MaxAlertLimit {
+		return usageErrorf("--limit must be between 1 and %d", deletion.MaxAlertLimit)
+	}
+
+	db, err := openDeletionDatabase()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		return errors.New("cannot reach the database")
+	}
+
+	report, err := deletion.LoadAlerts(ctx, db, deletion.AlertsOptions{
+		Deadline: *deadline,
+		Limit:    *limit,
+	})
+	if err != nil {
+		return err
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+		return err
+	}
+	if len(report.Alerts) == 0 {
+		return nil
+	}
+	// A decided, non-zero signal: the pass ran and found an overdue or failed
+	// cleanup job. This is not a command failure, so it carries its own exit code.
+	return &exitCodeError{
+		code: deletion.AlertsExitCode,
+		message: fmt.Sprintf(
+			"%d deletion cleanup alert(s) within %s; run the purge/copies passes or inspect the named jobs",
+			len(report.Alerts), report.Deadline,
+		),
+	}
 }
 
 // openDeletionDatabase uses the same environment contract as every other admin
