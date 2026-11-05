@@ -84,6 +84,11 @@ const (
 	EnvRunEventRetention         = "ORCHARA_RUN_EVENT_RETENTION"
 	EnvRunEventPollInterval      = "ORCHARA_RUN_EVENT_POLL_INTERVAL"
 	EnvRunEventHeartbeatInterval = "ORCHARA_RUN_EVENT_HEARTBEAT_INTERVAL"
+	// F09/T054 memory-candidate lifetime. A proposed personal fact waits for the
+	// human decision for this long (default 7 days); expiry is always judged by
+	// the server against the stored expires_at, so the value is a deployment
+	// knob, never a per-request one.
+	EnvMemoryCandidateTTL = "ORCHARA_MEMORY_CANDIDATE_TTL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -119,6 +124,9 @@ const (
 	EnvDatasetWaitTimeout     = "ORCHARA_MAINTENANCE_DATASET_WAIT_TIMEOUT"
 	EnvEvaluationPollInterval = "ORCHARA_MAINTENANCE_EVALUATION_POLL_INTERVAL"
 	EnvReportWaitTimeout      = "ORCHARA_MAINTENANCE_REPORT_WAIT_TIMEOUT"
+	// EnvEvaluationCaseTimeout bounds how long one evaluation case's run may take
+	// to reach a rest state before the case is recorded as not_run (F13A/T052).
+	EnvEvaluationCaseTimeout = "ORCHARA_MAINTENANCE_EVALUATION_CASE_TIMEOUT"
 
 	// F05/T030 trusted preset tool. PythonPath is the interpreter used for the
 	// fixed tool script (default: "python" on Windows, "python3" elsewhere);
@@ -140,6 +148,9 @@ const (
 	DefaultDatasetWaitTimeout     = 60 * time.Second
 	DefaultEvaluationPollInterval = 100 * time.Millisecond
 	DefaultReportWaitTimeout      = 60 * time.Second
+	// DefaultEvaluationCaseTimeout bounds one evaluation case's run to a rest
+	// state. A timeout is recorded as not_run, never passed (F13A/T052).
+	DefaultEvaluationCaseTimeout = 2 * time.Minute
 	// DefaultToolRunTimeout bounds one trusted preset-tool subprocess. It is
 	// longer than a normal run (Python startup + a 20 MiB sheet) and short
 	// enough that a wedged tool cannot hold a work slot indefinitely.
@@ -180,6 +191,14 @@ const (
 	maxRunEventRetention = 365 * 24 * time.Hour
 	maxRunEventPoll      = 5 * time.Minute
 	maxRunEventHeartbeat = time.Hour
+
+	// F09/T054: how long a proposed personal-memory candidate waits for the human
+	// decision. Seven days is long enough for a weekly user and short enough that
+	// an ignored proposal does not sit forever; the bounds keep a typo from making
+	// every candidate stillborn or effectively eternal.
+	DefaultMemoryCandidateTTL = 7 * 24 * time.Hour
+	minMemoryCandidateTTL     = time.Minute
+	maxMemoryCandidateTTL     = 365 * 24 * time.Hour
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -245,6 +264,8 @@ type Config struct {
 	RunEventRetention         time.Duration
 	RunEventPollInterval      time.Duration
 	RunEventHeartbeatInterval time.Duration
+	// MemoryCandidateTTL is the F09/T054 candidate lifetime (7 days by default).
+	MemoryCandidateTTL time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -288,6 +309,9 @@ type MaintenanceConfig struct {
 	DatasetWaitTimeout     time.Duration
 	EvaluationPollInterval time.Duration
 	ReportWaitTimeout      time.Duration
+	// EvaluationCaseTimeout bounds one evaluation case's run to a rest state
+	// (F13A/T052). A timeout is recorded as not_run.
+	EvaluationCaseTimeout time.Duration
 	// F05/T030: the trusted preset tool's interpreter, product root (the fixed
 	// script lives under it) and per-run timeout.
 	PythonPath       string
@@ -470,6 +494,18 @@ func Load(lookup Lookup) (*Config, error) {
 	cfg.RunEventRetention = retention
 	cfg.RunEventPollInterval = eventPoll
 	cfg.RunEventHeartbeatInterval = eventHeartbeat
+	// F09/T054: the personal-memory candidate lifetime. A candidate is a proposal
+	// awaiting a human, so only a sane positive window is accepted; a zero/negative
+	// value would make every candidate stillborn.
+	memoryTTL, err := parseDuration(lookup, EnvMemoryCandidateTTL, DefaultMemoryCandidateTTL)
+	if err != nil {
+		return nil, err
+	}
+	if memoryTTL < minMemoryCandidateTTL || memoryTTL > maxMemoryCandidateTTL {
+		return nil, invalid(EnvMemoryCandidateTTL,
+			fmt.Sprintf("must be between %s and %s", minMemoryCandidateTTL, maxMemoryCandidateTTL))
+	}
+	cfg.MemoryCandidateTTL = memoryTTL
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.
@@ -601,6 +637,10 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	caseTimeout, err := parseHandlerDuration(lookup, EnvEvaluationCaseTimeout, DefaultEvaluationCaseTimeout)
+	if err != nil {
+		return nil, err
+	}
 	pythonPath := value(lookup, EnvPython)
 	if pythonPath == "" {
 		// The default interpreter for this OS. It is a configured executable
@@ -650,6 +690,7 @@ func LoadMaintenance(lookup Lookup) (*MaintenanceConfig, error) {
 		DatasetWaitTimeout:     datasetWait,
 		EvaluationPollInterval: pollInterval,
 		ReportWaitTimeout:      reportWait,
+		EvaluationCaseTimeout:  caseTimeout,
 		PythonPath:             pythonPath,
 		ProductRoot:            productRoot,
 		ToolTimeout:            toolTimeout,

@@ -1,0 +1,573 @@
+{
+  "probe": "f15a-s3-compat",
+  "probe_version": "1.0.0",
+  "ticket": "T053/F15A",
+  "scope": "candidate-s3",
+  "run_id": "4adfe24e001924f5",
+  "started_at": "2026-11-04T09:07:10.169+00:00",
+  "environment": {
+    "python": "3.12.2",
+    "python_implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "probe_version": "1.0.0"
+  },
+  "config": {
+    "endpoint": "http://127.0.0.1:60076",
+    "endpoint_host": "127.0.0.1:60076",
+    "scheme": "http",
+    "bucket": "probe-bucket",
+    "region": "us-east-1",
+    "tenant_prefix": "orchara-probe",
+    "addressing_style": "path",
+    "short_ttl_seconds": 5,
+    "expiry_skew_seconds": 0.0,
+    "timeout_seconds": 10.0,
+    "retries": 2,
+    "ca_file_configured": false,
+    "credentials_present": {
+      "runtime": true,
+      "provisioning": true
+    },
+    "profile": "fixture"
+  },
+  "assertions": [
+    {
+      "id": "anonymous_read_denied",
+      "title": "anonymous GET of a sealed key is denied and never returns the body",
+      "status": "failed",
+      "reason": "failed checks: denied_with_401_or_403, no_object_body",
+      "checks": [
+        {
+          "name": "denied_with_401_or_403",
+          "ok": false,
+          "detail": {
+            "status": 200
+          }
+        },
+        {
+          "name": "no_object_body",
+          "ok": false,
+          "detail": {
+            "response_body_sha256": "912b83e8cac48f0fc88d3518e846e75cbe0403915c996b1bcb8ddbdb4b1d5911",
+            "object_sha256": "912b83e8cac48f0fc88d3518e846e75cbe0403915c996b1bcb8ddbdb4b1d5911",
+            "response_body_bytes": 96
+          }
+        },
+        {
+          "name": "not_a_listing",
+          "ok": true,
+          "detail": {
+            "body_is_listing": false
+          }
+        }
+      ],
+      "evidence": {
+        "sealed_key": "orchara-probe/sealed/2d9353b3932ef1e8ad4865735384f927e9332a7fbe1831acfca83b5e46894e48",
+        "http_status": 200,
+        "response_body_sha256": "912b83e8cac48f0fc88d3518e846e75cbe0403915c996b1bcb8ddbdb4b1d5911",
+        "response_body_bytes": 96,
+        "object_sha256": "912b83e8cac48f0fc88d3518e846e75cbe0403915c996b1bcb8ddbdb4b1d5911"
+      },
+      "duration_ms": 47
+    },
+    {
+      "id": "anonymous_put_denied",
+      "title": "unsigned PUT is denied and creates no staging object",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "denied_with_401_or_403",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "object_was_not_created",
+          "ok": true,
+          "detail": {
+            "signed_get_status_after_anonymous_put": 404
+          }
+        }
+      ],
+      "evidence": {
+        "staging_key": "orchara-probe/staging/5fab72b4c41723b206aee448062cace2559fefc8d204bd1ede7aa81b1d79c8f2",
+        "http_status": 403,
+        "follow_up_signed_get_status": 404
+      },
+      "duration_ms": 14
+    },
+    {
+      "id": "anonymous_list_denied",
+      "title": "unsigned bucket listing is denied and returns no key list",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "denied_with_401_or_403",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "no_listing_body",
+          "ok": true,
+          "detail": {
+            "body_bytes": 123
+          }
+        }
+      ],
+      "evidence": {
+        "http_status": 403,
+        "body_bytes": 123
+      },
+      "duration_ms": 0
+    },
+    {
+      "id": "out_of_range_key_denied",
+      "title": "keys outside the tenant prefix, traversal and cross-key URLs are contained",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "outside_prefix_put_denied",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "outside_prefix_not_created",
+          "ok": true,
+          "detail": {
+            "provisioning_get_status": 404
+          }
+        },
+        {
+          "name": "sibling_prefix_put_denied",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "sibling_prefix_not_created",
+          "ok": true,
+          "detail": {
+            "provisioning_get_status": 404
+          }
+        },
+        {
+          "name": "traversal_cannot_write_the_sealed_namespace",
+          "ok": true,
+          "detail": {
+            "traversal_put_status": 204,
+            "sealed_target_get_status": 404,
+            "note": "a literal-key store may answer 2xx and keep the literal key; only escape into the sealed key is a violation"
+          }
+        },
+        {
+          "name": "absolute_key_put_denied",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "absolute_key_not_created",
+          "ok": true,
+          "detail": {
+            "provisioning_get_status": 404
+          }
+        },
+        {
+          "name": "signed_url_for_one_key_cannot_fetch_another",
+          "ok": true,
+          "detail": {
+            "http_status": 403,
+            "returned_other_objects_body": false
+          }
+        }
+      ],
+      "evidence": {
+        "tenant_prefix": "orchara-probe",
+        "cases": {
+          "outside_prefix": {
+            "put_status": 403,
+            "object_after": 404
+          },
+          "sibling_prefix": {
+            "put_status": 403,
+            "object_after": 404
+          },
+          "traversal": {
+            "put_status": 204,
+            "sealed_target_get_status": 404
+          },
+          "absolute": {
+            "put_status": 403,
+            "object_after": 404
+          },
+          "cross_key_signed_url": {
+            "http_status": 403,
+            "other_key_body_returned": false
+          }
+        }
+      },
+      "duration_ms": 94
+    },
+    {
+      "id": "sealed_put_denied",
+      "title": "the runtime credential cannot PUT into the sealed prefix",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "runtime_put_denied",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "sealed_object_was_not_created",
+          "ok": true,
+          "detail": {
+            "provisioning_get_status": 404
+          }
+        }
+      ],
+      "evidence": {
+        "sealed_key": "orchara-probe/sealed/7612520bbf0aabf2e59a43edc6c12aa7fe3a4211584dbbc836907b0f51ff04d0",
+        "http_status": 403,
+        "object_after": 404
+      },
+      "duration_ms": 0
+    },
+    {
+      "id": "staging_overwrite_preserves_sealed",
+      "title": "overwriting a staging key with different bytes cannot change the sealed object",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "sealed_seeded_and_readable",
+          "ok": true,
+          "detail": {
+            "status": 200
+          }
+        },
+        {
+          "name": "staging_overwrite_accepted",
+          "ok": true,
+          "detail": {
+            "first_put_status": 204,
+            "second_put_status": 204
+          }
+        },
+        {
+          "name": "sealed_bytes_unchanged",
+          "ok": true,
+          "detail": {
+            "sealed_sha256_before": "0c0f23ac2d5aaf073a1f7f8f57ce51f6af633fe4047dd0befeb640a41ac4af5a",
+            "sealed_sha256_after": "0c0f23ac2d5aaf073a1f7f8f57ce51f6af633fe4047dd0befeb640a41ac4af5a"
+          }
+        },
+        {
+          "name": "staging_holds_the_latest_bytes",
+          "ok": true,
+          "detail": {
+            "staging_get_status": 200,
+            "staging_sha256": "5e0d4583e433779aac3321662a8e7087fc17377f812aece868dbaa01fa7aa278"
+          }
+        }
+      ],
+      "evidence": {
+        "staging_key": "orchara-probe/staging/656ecfaea2093d82f2ee97869349ced18f9db14b763f08a7b84aa4414c173fd8",
+        "sealed_key": "orchara-probe/sealed/656ecfaea2093d82f2ee97869349ced18f9db14b763f08a7b84aa4414c173fd8",
+        "sealed_sha256": "0c0f23ac2d5aaf073a1f7f8f57ce51f6af633fe4047dd0befeb640a41ac4af5a",
+        "staging_first_sha256": "8c8d503ca6b96532711ef90b07f1ee9563c2e0c4cda0b6fbf5f3119a72f29c7f",
+        "staging_second_sha256": "5e0d4583e433779aac3321662a8e7087fc17377f812aece868dbaa01fa7aa278",
+        "sealed_get_status": 200,
+        "staging_get_status": 200
+      },
+      "duration_ms": 77
+    },
+    {
+      "id": "short_lived_signature_expiry",
+      "title": "a presigned GET works within its TTL and is rejected after it expires",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "accepted_before_expiry",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "body_sha256": "61ccf4039da54ca3882a3c1a2ce92e25f5108b4c0ae6d2d977c7cda2a53c98ed",
+            "seconds_before_expiry_when_accepted": 4.442
+          }
+        },
+        {
+          "name": "rejected_after_expiry",
+          "ok": true,
+          "detail": {
+            "status": 403,
+            "waited_seconds": 5.942
+          }
+        },
+        {
+          "name": "no_body_after_expiry",
+          "ok": true,
+          "detail": {
+            "body_sha256": "6fcccc43af7368e53f9a9159268002f98dea7a85eb0676725cf4bf53a0eba059"
+          }
+        }
+      ],
+      "evidence": {
+        "sealed_key": "orchara-probe/sealed/3af56e4f40c0c50498095335fed89c05e3ed18ecd11e151a91938881bdbb3231",
+        "ttl_seconds": 5,
+        "clock_skew_allowance_seconds": 0.0,
+        "expires_at_unix": 1793783235.0,
+        "seconds_before_expiry_when_accepted": 4.442,
+        "waited_past_expiry_seconds": 5.942,
+        "before_status": 200,
+        "after_status": 403
+      },
+      "duration_ms": 5985
+    },
+    {
+      "id": "proxy_download_boundary",
+      "title": "size/Content-Length and Range behaviour are reproducible for a proxy download",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "head_reports_content_length",
+          "ok": true,
+          "detail": {
+            "content_length": 20972544,
+            "expected": 20972544
+          }
+        },
+        {
+          "name": "head_content_length_is_exact",
+          "ok": true,
+          "detail": {
+            "content_length": 20972544,
+            "expected": 20972544
+          }
+        },
+        {
+          "name": "proxy_refuses_an_oversized_object",
+          "ok": true,
+          "detail": {
+            "decision": {
+              "decidable": true,
+              "allowed": false,
+              "reason": "object is 20972544 bytes, over the 20971520 byte cap"
+            },
+            "product_cap_bytes": 20971520,
+            "note": "the probe never streams the full oversized body"
+          }
+        },
+        {
+          "name": "range_request_returns_206_and_exact_bytes",
+          "ok": true,
+          "detail": {
+            "status": 206,
+            "content_range": "bytes 0-1023/20972544",
+            "body_bytes": 1024
+          }
+        },
+        {
+          "name": "unsatisfiable_range_returns_416",
+          "ok": true,
+          "detail": {
+            "status": 416,
+            "content_range": "bytes */20972544"
+          }
+        }
+      ],
+      "evidence": {
+        "sealed_key": "orchara-probe/sealed/1ea8eaee0cabdfda288eec69261046503e340ab55097b1feeb74226a39cd6922",
+        "object_bytes": 20972544,
+        "product_cap_bytes": 20971520,
+        "head_status": 200,
+        "head_content_length": 20972544,
+        "proxy_decision": {
+          "decidable": true,
+          "allowed": false,
+          "reason": "object is 20972544 bytes, over the 20971520 byte cap"
+        },
+        "range_status": 206,
+        "range_content_range": "bytes 0-1023/20972544",
+        "unsatisfiable_range_status": 416,
+        "pre_expiry_url_revocation": {
+          "delete_status": 204,
+          "get_after_delete_status": 404,
+          "rewrite_status": 204,
+          "get_after_rewrite_status": 200,
+          "pre_expiry_url_still_authorizes_key": true,
+          "conclusion": "a leaked pre-expiry URL cannot be revoked while the key is servable; the platform must proxy downloads to enforce immediate revocation",
+          "requires_proxy_download": true
+        }
+      },
+      "duration_ms": 264
+    },
+    {
+      "id": "delete_semantics",
+      "title": "delete needs credentials, is idempotent, yields 404 and spares sibling keys",
+      "status": "passed",
+      "reason": "all checks held",
+      "checks": [
+        {
+          "name": "runtime_cannot_delete_sealed",
+          "ok": true,
+          "detail": {
+            "status": 403
+          }
+        },
+        {
+          "name": "first_delete_succeeds",
+          "ok": true,
+          "detail": {
+            "status": 204
+          }
+        },
+        {
+          "name": "deleted_object_is_404",
+          "ok": true,
+          "detail": {
+            "get_status": 404
+          }
+        },
+        {
+          "name": "repeated_delete_is_idempotent",
+          "ok": true,
+          "detail": {
+            "second_status": 204,
+            "get_status": 404
+          }
+        },
+        {
+          "name": "sibling_sealed_object_is_untouched",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "body_sha256": "608f06916d037a0e14cc8c4d530732d7297b744823c09de06d2efcf1cf794188"
+          }
+        }
+      ],
+      "evidence": {
+        "deleted_key": "orchara-probe/sealed/edf0285ea78a70b8f7fe622cb42268c5f7209e4f1b0237a9dea4d88c3ed04f88",
+        "sibling_key": "orchara-probe/sealed/0eddc3ae8ec94cadb9309e48dee47ae09c69fe45c31c97f3bf637250eec1da1b",
+        "runtime_delete_status": 403,
+        "first_delete_status": 204,
+        "get_after_delete_status": 404,
+        "second_delete_status": 204,
+        "sibling_get_status": 200,
+        "sibling_sha256": "608f06916d037a0e14cc8c4d530732d7297b744823c09de06d2efcf1cf794188"
+      },
+      "duration_ms": 30
+    },
+    {
+      "id": "versions_immutable",
+      "title": "object versioning, when offered, keeps previous sealed bytes addressable",
+      "status": "not_run",
+      "reason": "bucket versioning is not enabled; a candidate without versioning is not rejected for it",
+      "checks": [],
+      "evidence": {
+        "versioning_status": 200,
+        "versioning_enabled": false
+      },
+      "duration_ms": 16
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "failed": 1,
+    "blocked": 0,
+    "not_run": 1
+  },
+  "client_stats": {
+    "requests": 68,
+    "retries": 0
+  },
+  "cleanup": {
+    "attempted": 27,
+    "deleted": 27,
+    "failed": []
+  },
+  "limits": [
+    "a passing run is a compatibility observation, not a licence, backup/restore or capacity review",
+    "TLS, proxy and signature behaviour is only what the configured endpoint actually did",
+    "IAM policy is asserted only for the two configured credentials; other roles are untested",
+    "object versioning is asserted only when the candidate exposes it (otherwise not_run)",
+    "backup/restore, cross-region replication and server-side encryption are not exercised"
+  ],
+  "input_hashes": {
+    "anonymous-put": {
+      "sha256": "f334c799649ca18c4288055f82cb10aec918fe67ccad12739b11c70989f2edce",
+      "bytes": 64
+    },
+    "anonymous-read": {
+      "sha256": "912b83e8cac48f0fc88d3518e846e75cbe0403915c996b1bcb8ddbdb4b1d5911",
+      "bytes": 96
+    },
+    "cross-key-a": {
+      "sha256": "6258b4e8a69c3e8dfe1c668399a32fdf8d57a8fdb2e061a8d5ce6118768d465b",
+      "bytes": 64
+    },
+    "cross-key-b": {
+      "sha256": "c3fdf92070332237df3f291d02638fbd680502e4b42179b9e9e5fad9a5d46eec",
+      "bytes": 64
+    },
+    "delete-a": {
+      "sha256": "be22343650e1baf28f6ca6df32db25c71a8ef89589343c09cf7ec139631762b8",
+      "bytes": 64
+    },
+    "delete-b": {
+      "sha256": "608f06916d037a0e14cc8c4d530732d7297b744823c09de06d2efcf1cf794188",
+      "bytes": 96
+    },
+    "oversized": {
+      "sha256": "8f1d9cb32d3509b0136f8396f899b679e71b39f271f8170124412b30e5330559",
+      "bytes": 20972544
+    },
+    "revocation": {
+      "sha256": "0f159066d7f474582071c45c55cff2461bf2d7653059302c713955d7c252ac53",
+      "bytes": 64
+    },
+    "revocation-rewritten": {
+      "sha256": "7a1d357a525367c7e022f0d452695991faeb8380a6bbef45905747da147983d4",
+      "bytes": 80
+    },
+    "sealed-put": {
+      "sha256": "16ce5961b0d905a3f2178379e07ea0e412f90db3314ba0fd3f2985e5dd321351",
+      "bytes": 80
+    },
+    "sealed-stable": {
+      "sha256": "0c0f23ac2d5aaf073a1f7f8f57ce51f6af633fe4047dd0befeb640a41ac4af5a",
+      "bytes": 128
+    },
+    "short-ttl": {
+      "sha256": "61ccf4039da54ca3882a3c1a2ce92e25f5108b4c0ae6d2d977c7cda2a53c98ed",
+      "bytes": 96
+    },
+    "staging-first": {
+      "sha256": "8c8d503ca6b96532711ef90b07f1ee9563c2e0c4cda0b6fbf5f3119a72f29c7f",
+      "bytes": 80
+    },
+    "staging-second": {
+      "sha256": "5e0d4583e433779aac3321662a8e7087fc17377f812aece868dbaa01fa7aa278",
+      "bytes": 144
+    }
+  },
+  "finished_at": "2026-11-04T09:07:17.042+00:00",
+  "duration_ms": 6875,
+  "status": "failed",
+  "exit_code": 1
+}

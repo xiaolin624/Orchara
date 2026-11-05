@@ -126,6 +126,25 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// dependency lock, manifest identity). Non-contract internal extension; the
 	// handler never reads the tool row itself.
 	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/tool-build", s.handleInternalToolBuild)
+	// F10/T055: the job-scoped document-ingest binding (document, revision, bound
+	// source artifact/hash/media type, parser revision). Non-contract internal
+	// extension; the handler never reads the document row itself.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/document-ingest", s.handleInternalDocumentIngestBinding)
+	// F13A/T052: the evaluation runner's run bridge. Maintenance-capacity and
+	// job-scoped; it creates the per-case run as the evaluation's owner and
+	// reads the independent truth (run state, sealed output, real operation
+	// ledger, citations). Non-contract; see internal/api/evaluation_runs.go and
+	// ADR 0011.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs", s.handleInternalEvaluationRun)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs/{run_id}/facts",
+		s.handleInternalEvaluationRunFacts)
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-runs/{run_id}/interactions",
+		s.handleInternalEvaluationRunInteraction)
+	// F13A/T065: the runner's per-case progress report. Job-scoped and
+	// maintenance-capacity only; it persists a decision the runner already made
+	// and never a verdict the server would accept from the handler.
+	mux.HandleFunc("POST /internal/v1/background/jobs/{job_id}/evaluation-progress",
+		s.handleInternalEvaluationCaseOutcome)
 
 	// F03/T029: the execution protocol. Claim and attempt exit are supervisor
 	// capacities; heartbeat may be served by either the supervisor or the worker
@@ -178,6 +197,12 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// authorization as invokeCapability; every frame carries operation/generation
 	// identity. The durable run-event SSE is a different endpoint and is untouched.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/model-stream", s.handleInternalModelStream)
+	// F09/T054: the contract proposeMemoryCandidate. Worker-only (a supervisor or
+	// maintenance certificate is refused), and the attempt token in the body is
+	// re-proved against the run in the path. The application scope is derived from
+	// the run's frozen snapshot, never from the worker.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/memory-candidates",
+		s.handleInternalProposeMemoryCandidate)
 }
 
 type internalClaimRequest struct {

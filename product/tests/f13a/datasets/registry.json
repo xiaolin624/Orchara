@@ -1,0 +1,26 @@
+{
+  "schema": "orchara.t056-fixtures/1",
+  "note": "T056 committed evaluation datasets. The dataset SHA-256 pins the exact case document; each case pins its task_input fixture by sha256 and media type. The over-limit and timeout inputs are generated deterministically by tests/support/t056.py (too large to commit); expected_values.json is the independent Decimal truth table.",
+  "datasets": {
+    "bad_inputs.json": {
+      "sha256": "fca4f82dfce184da9de70ff5c975c5097f9ba6c67d811e4e3e26778b026200f1",
+      "size_bytes": 5176
+    },
+    "frozen_boundary.json": {
+      "sha256": "38ceb888054ba65557f5800c2ed50c890f4deee58b76e5803cbc566006081f06",
+      "size_bytes": 1532
+    },
+    "sales_happy_csv.json": {
+      "sha256": "43f553f59ef25dadfe04023b2dac61d985e0c98e488bedca9a7aefc284ae1822",
+      "size_bytes": 1484
+    },
+    "sales_happy_xlsx.json": {
+      "sha256": "b2b7d78df3d76776a8a83c1fcd7c1b1d97fd03f82f856dc51924fe5fd5c918c5",
+      "size_bytes": 1543
+    },
+    "timeout.json": {
+      "sha256": "f2f889160ce3503371a49be364c9cb962d28e1db1238830858ab97833899e878",
+      "size_bytes": 1050
+    }
+  }
+}

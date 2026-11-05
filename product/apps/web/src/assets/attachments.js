@@ -345,6 +345,22 @@ function toolRunArtifact(run, purpose) {
   return run.artifacts.find((artifact) => artifact.purpose === purpose) || null;
 }
 
+/**
+ * F15A/T057: the tool_run failure path publishes its diagnostics *best effort*
+ * and reports the failure immediately, so the artifact can still be `scanning`
+ * when the run is already terminal. Wait (bounded) for the real artifact state
+ * instead of reading the content at that instant and showing a 409 as the
+ * "explanation". `artifactIsTerminal` covers the quarantined/deleted verdicts,
+ * which no amount of waiting can turn into readable content.
+ */
+function shouldPollToolArtifact(artifact, attempts, maxAttempts) {
+  const state = artifact && artifact.state ? String(artifact.state) : '';
+  if (!state || state === 'ready' || artifactIsTerminal(state)) {
+    return false;
+  }
+  return attempts < maxAttempts;
+}
+
 function toolDownloadLinks(run) {
   const links = [];
   const csv = toolRunArtifact(run, TOOL_ARTIFACT_PURPOSE);
@@ -485,13 +501,41 @@ function initTools() {
     setStatus('统计成功；结果金额是服务器校验过的 Decimal 字符串。', 'ok');
   }
 
+  /**
+   * Wait (bounded) for the diagnostics artifact's real state to become `ready`.
+   * The failure is reported before the best-effort diagnostics upload has
+   * necessarily been finalized, so reading the content immediately would show a
+   * 409 artifact_not_ready instead of the rejection explanation.
+   */
+  async function waitForToolArtifactReady(artifact) {
+    let current = artifact;
+    let attempts = 0;
+    while (current && current.state !== 'ready') {
+      if (!shouldPollToolArtifact(current, attempts, 60)) {
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      current = await fetchArtifact(current.id);
+      attempts += 1;
+    }
+    return current;
+  }
+
   async function loadDiagnostics(run) {
     const artifact = toolRunArtifact(run, TOOL_DIAGNOSTICS_PURPOSE);
     if (!artifact) {
       setStatus('运行失败 [' + (run.error_code || 'unknown') + ']，但没有诊断附件。', 'bad');
       return;
     }
-    const fields = diagnosticsFields(await fetchToolArtifactJSON(artifact.id));
+    const ready = await waitForToolArtifactReady(artifact);
+    if (!ready) {
+      setStatus(
+        '运行失败 [' + (run.error_code || 'unknown') + ']，诊断附件仍在封存或不可读，请稍后刷新。',
+        'bad',
+      );
+      return;
+    }
+    const fields = diagnosticsFields(await fetchToolArtifactJSON(ready.id));
     if (!fields) {
       setStatus('诊断附件不是合法对象，已停止渲染。', 'bad');
       return;

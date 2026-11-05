@@ -38,6 +38,7 @@ import (
 	"orchara/platform/internal/connectors"
 	"orchara/platform/internal/health"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/knowledge"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
@@ -138,6 +139,19 @@ func run(logger *log.Logger) error {
 	// resolved inside Go from the deployer's env/file root; no request value can
 	// name a credential or an endpoint.
 	connectorService := connectors.New(db, objects, config.FromEnv(), cfg.SecretDir)
+	// F10/T064: the labelled answer generator. No model provider exists in this
+	// build, so generation is the extractive stub; the documented dev-stub fault
+	// switch is refused outside a stub profile (fail closed at startup).
+	answerer, err := knowledge.AnswererFromEnv(cfg.Profile, config.FromEnv(), logger)
+	if err != nil {
+		return fmt.Errorf("answer generator rejected: %w", err)
+	}
+	// F10/T067: the PostgreSQL retrieval cache. The switch is deployment
+	// configuration; an unknown value refuses startup instead of guessing.
+	retrievalCache, err := knowledge.CacheOptionsFromEnv(config.FromEnv())
+	if err != nil {
+		return fmt.Errorf("retrieval cache rejected: %w", err)
+	}
 	apiServer := api.New(api.Deps{
 		Service:           identityService,
 		WebDir:            cfg.WebDir,
@@ -148,6 +162,8 @@ func run(logger *log.Logger) error {
 		Providers:         providers,
 		Catalog:           modelCatalog,
 		Connectors:        connectorService,
+		Answerer:          answerer,
+		RetrievalCache:    &retrievalCache,
 		PublicURL:         cfg.PublicURL,
 		RetryBackoff:      cfg.RetryBackoff,
 		ExecutionLeaseTTL: cfg.ExecutionLeaseTTL,
@@ -157,6 +173,8 @@ func run(logger *log.Logger) error {
 		RunEventRetention:         cfg.RunEventRetention,
 		RunEventPollInterval:      cfg.RunEventPollInterval,
 		RunEventHeartbeatInterval: cfg.RunEventHeartbeatInterval,
+		// F09/T054: how long a memory candidate waits for the human decision.
+		MemoryCandidateTTL: cfg.MemoryCandidateTTL,
 	})
 	apiServer.Register(mux)
 

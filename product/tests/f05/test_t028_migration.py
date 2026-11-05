@@ -85,7 +85,9 @@ def test_the_migration_chain_ends_at_0015(migrated_database) -> None:
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'platform'",
         )
     }
-    assert not ({"deletion_jobs", "deletion_scopes", "requests", "conversations"} & existing), existing
+    # deletion_jobs arrived later with T058 (0036_memory_revision_and_deletion.sql)
+    # and is covered by that suite; T028's migration must still not bring the rest.
+    assert not ({"deletion_scopes", "requests", "conversations"} & existing), existing
     assert "artifact_admissions" in existing, existing
 
 

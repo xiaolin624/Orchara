@@ -254,7 +254,31 @@ func TestLinearChainRefusesOutputThatViolatesTheNodeSchema(t *testing.T) {
 		}
 	}
 	if len(client.registers) != 0 {
-		t.Fatalf("a violating tool output was registered: %+v", client.registers)
+		// F13A/T056 links the safe failure evidence (the log and the diagnostics
+		// document) to the run so a per-case result can offer the actual
+		// attachments of a failed case. Tool data/files must still never be
+		// registered.
+		purposeOf := map[string]string{}
+		contentOf := map[string][]byte{}
+		for _, upload := range client.uploads {
+			purposeOf[upload.Artifact] = upload.Request.Purpose
+			contentOf[upload.Artifact] = upload.Content
+		}
+		for _, registration := range client.registers {
+			purpose := purposeOf[registration.ArtifactID]
+			switch purpose {
+			case "log":
+			case "node_output":
+				var document map[string]any
+				if json.Unmarshal(contentOf[registration.ArtifactID], &document) != nil ||
+					document["diagnostics_version"] == nil {
+					t.Fatalf("a violating tool output was registered as data: %+v", registration)
+				}
+			default:
+				t.Fatalf("a violating tool output was registered as %q: %+v",
+					purpose, registration)
+			}
+		}
 	}
 	if len(client.nodeResults) != 0 {
 		t.Fatalf("node results recorded for a schema violation: %+v", client.nodeResults)

@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/capabilities"
+	agentcontext "orchara/platform/internal/context"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
 	"orchara/platform/internal/uuid"
@@ -203,6 +204,24 @@ type InputSource interface {
 	Inputs(ctx context.Context, runID string) ([]InputArtifact, error)
 }
 
+// RunScope is the trusted owner/application identity of one run. It is the
+// authorization scope of personal-memory recall: an agent can only ever recall
+// the run owner's memories for the run's own application. It is read from the
+// database identity (runs.owner_id + the frozen execution snapshot), never from
+// the sealed manifest or a request body.
+type RunScope struct {
+	OwnerID       string
+	ApplicationID string
+}
+
+// RunIdentity is the optional trusted read-only identity source a configured
+// Memory source is scoped by. A process that wires Memory without RunIdentity
+// recalls nothing: the empty scope is refused by the recall source and the trace
+// reports unavailable, which is the honest outcome rather than guessing a scope.
+type RunIdentity interface {
+	RunScope(ctx context.Context, runID string) (RunScope, error)
+}
+
 // Sandbox is the execution unit. The real implementation is *sandbox.Executor.
 type Sandbox interface {
 	Run(ctx context.Context, request sandbox.Request, control sandbox.Control) (sandbox.Outcome, error)
@@ -291,9 +310,16 @@ type Deps struct {
 	Sandbox Sandbox
 	// Facts is the trusted read-only capability catalog. Agent nodes require it;
 	// the T042 python chain does not.
-	Facts   Facts
-	Options Options
-	Logger  *log.Logger
+	Facts Facts
+	// Memory is the F09 confirmed-memory source of the agent context. Nil means
+	// no source is wired and the trace reports memory_state=not_run.
+	Memory agentcontext.MemorySource
+	// RunIdentity scopes Memory to the run owner+application. It is required for
+	// a real recall; without it the source receives an empty scope and recalls
+	// nothing.
+	RunIdentity RunIdentity
+	Options     Options
+	Logger      *log.Logger
 }
 
 // runner owns one execution's mutable state.
@@ -1097,8 +1123,14 @@ func (r *runner) waitReady(
 	}
 }
 
-// uploadFailureEvidence uploads the safe diagnostics/log of a failed attempt. It
-// is best effort: a storage failure must not replace the real failure code.
+// uploadFailureEvidence uploads the safe diagnostics/log of a failed attempt and
+// links them to the run. It is best effort: a storage failure must not replace the
+// real failure code.
+//
+// F13A/T056 links the failure evidence through the same Register path as a
+// success artifact, so a per-case result can offer the actual diagnostics/log
+// attachments of a failed case instead of only a state code. The bytes stay the
+// attempt's own: Register re-proves the live attempt token.
 func (r *runner) uploadFailureEvidence(
 	ctx context.Context,
 	code, message string,
@@ -1110,9 +1142,7 @@ func (r *runner) uploadFailureEvidence(
 		// The log is uploaded even when the streams are empty: the header proves
 		// the platform captured them, and an empty log is a fact too.
 		logContent := buildLog(outcome.Stdout, outcome.Stderr, r.options.MaxLogBytes)
-		if _, err := r.uploadArtifact(ctx, "log", "text/plain", logContent, "log"); err != nil {
-			r.logger.Printf("run_id=%s: failed to upload the sandbox log: %v", r.lease.RunID, err)
-		}
+		r.uploadFailureArtifact(ctx, "log", "text/plain", logContent, "log")
 	}
 	document := diagnostics
 	if document == nil {
@@ -1126,8 +1156,26 @@ func (r *runner) uploadFailureEvidence(
 	if len(payload) > sandbox.MaxArtifactBytes {
 		return
 	}
-	if _, err := r.uploadArtifact(ctx, "node_output", "application/json", payload, "artifact"); err != nil {
-		r.logger.Printf("run_id=%s: failed to upload diagnostics: %v", r.lease.RunID, err)
+	r.uploadFailureArtifact(ctx, "node_output", "application/json", payload, "artifact")
+}
+
+// uploadFailureArtifact uploads one piece of failure evidence and registers it to
+// the run. Both halves are best effort and separately logged: a missing link must
+// not mask the failure code, and it must not look like a produced result either.
+func (r *runner) uploadFailureArtifact(
+	ctx context.Context, purpose, mediaType string, content []byte, relation string,
+) {
+	artifactID, err := r.uploadArtifact(ctx, purpose, mediaType, content, relation)
+	if err != nil {
+		r.logger.Printf("run_id=%s: uploading the %s failure evidence failed: %v",
+			r.lease.RunID, purpose, err)
+		return
+	}
+	if _, err := r.deps.Client.Register(
+		ctx, r.lease.RunID, r.lease.AttemptToken, artifactID, relation,
+	); err != nil {
+		r.logger.Printf("run_id=%s: registering the %s failure evidence failed: %v",
+			r.lease.RunID, purpose, err)
 	}
 }
 

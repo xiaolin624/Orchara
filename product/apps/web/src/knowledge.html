@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchara 知识库（F10 摄取与检索）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
+    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .75rem; }
+    h3 { font-size: .92rem; margin: .9rem 0 .3rem; }
+    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .86rem; margin: .7rem 0 .25rem; }
+    input[type="text"], input[type="number"], input[type="file"], select { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
+    .hint { font-size: .82rem; opacity: .7; }
+    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .status.pending { color: #a16207; }
+    button { margin-top: .55rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
+    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
+    dl.facts dt { opacity: .7; }
+    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    ul.bases { list-style: none; padding: 0; margin: .3rem 0 0; font-size: .88rem; }
+    ul.bases li { padding: .2rem 0; border-bottom: 1px solid rgba(128,128,128,.18); }
+    article.chunk { border-left: 3px solid rgba(37,99,235,.55); padding: .35rem .75rem; margin: .7rem 0; }
+    article.chunk p { margin: .25rem 0; font-size: .87rem; white-space: pre-wrap; }
+    .meta { font-size: .8rem; opacity: .75; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    .bad-citation { border-left-color: #b91c1c; }
+    pre#citation-text { white-space: pre-wrap; font-size: .86rem; background: rgba(128,128,128,.08); padding: .6rem; border-radius: .4rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">状态</a>
+    <a href="/apps">应用目录</a>
+    <a href="/attachments">附件</a>
+    <a href="/knowledge">知识库</a>
+    <a href="/tools">工具</a>
+    <a href="/login">登录</a>
+  </nav>
+
+  <h1>知识库：上传文本、表格或 PDF 资料并检索到可追溯片段</h1>
+  <p class="sub">
+    本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
+    <code>txt/md/csv/xlsx/pdf</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
+    分块、生成确定性 embedding 与每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为
+    <strong>可检索</strong>。CSV/XLSX 片段在引用里保留表头行与行范围（CSV 为逻辑记录行，
+    XLSX 为工作表自身的行号）；PDF 片段保留页码与页内字符范围，没有文字层的页会被如实记为空白页，
+    扫描件不会被当作 OCR 成功。单元格公式一律不执行。解析为空或失败会显示具体失败码与位置，
+    绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档版本过滤，再排序取前 K；点击引用会
+    重新校验当前可读性后返回片段正文。
+  </p>
+  <p class="hint">
+    只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
+    <code>textContent</code> 渲染服务端文本，不把凭据或签名 URL 写入浏览器存储。
+  </p>
+
+  <section class="card">
+    <h2>1. 创建知识库</h2>
+    <form id="kb-form" method="post">
+      <label for="kb-name">知识库名称</label>
+      <input id="kb-name" name="name" type="text" autocomplete="off" maxlength="200" required />
+      <button id="kb-submit" type="submit">创建</button>
+      <p id="kb-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <h3>我的知识库</h3>
+    <ul id="kb-list" class="bases" aria-live="polite"></ul>
+    <label for="kb-select">当前知识库</label>
+    <select id="kb-select"></select>
+  </section>
+
+  <section class="card">
+    <h2>2. 上传 txt/md/csv/xlsx/pdf 并封存</h2>
+    <form id="upload-form" method="post">
+      <label for="knowledge-file">文件（.txt / .md / .csv / .xlsx / .pdf，字节上限 20 MiB）</label>
+      <input id="knowledge-file" name="file" type="file"
+             accept=".txt,.md,.csv,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
+             required />
+      <button id="upload-submit" type="submit">上传并封存</button>
+      <p id="upload-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="artifact-panel" hidden aria-live="polite">
+      <h3>附件状态</h3>
+      <dl class="facts">
+        <dt>artifact id</dt><dd id="artifact-id"></dd>
+        <dt>状态</dt><dd id="artifact-state"></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3. 开始摄取并查看进度</h2>
+    <form id="ingest-form" method="post">
+      <label for="ingest-artifact">已就绪的附件 artifact id（上传成功后自动填入）</label>
+      <input id="ingest-artifact" type="text" autocomplete="off" spellcheck="false" />
+      <button id="ingest-submit" type="submit">开始摄取</button>
+      <p id="ingest-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="document-panel" hidden aria-live="polite">
+      <h3>文档状态</h3>
+      <dl class="facts">
+        <dt>document id</dt><dd id="document-id"></dd>
+        <dt>状态</dt><dd id="document-state"></dd>
+        <dt>失败码</dt><dd id="document-error-code"></dd>
+        <dt>片段数</dt><dd id="document-chunks"></dd>
+      </dl>
+      <p id="document-diagnostics" class="status" role="status" aria-live="polite"></p>
+    </div>
+    <div id="index-panel" hidden aria-live="polite">
+      <h3>索引版本、进度与激活切换</h3>
+      <dl class="facts">
+        <dt>当前激活索引</dt><dd id="index-active"></dd>
+      </dl>
+      <pre id="index-progress" class="meta"></pre>
+      <ul id="index-versions" class="bases"></ul>
+      <form id="reindex-form" method="post">
+        <p class="hint">
+          重建会创建<strong>新的索引版本</strong>并排队后台任务；构建期间旧的活动索引仍然可读。
+          只有服务器在激活事务里重新核对源版本、索引版本与删除标记后，激活指针才会切换；
+          旧任务晚到只会得到 <code>stale_revision</code>/<code>source_deleted</code>，不会覆盖新版本，
+          也不会复活已删除文档。失败的重建保留旧活动索引，可再次提交。
+        </p>
+        <button id="reindex-submit" type="submit">重建当前资料的索引</button>
+        <p id="reindex-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>4. 检索并打开可追溯片段</h2>
+    <form id="query-form" method="post">
+      <label for="query-text">问题</label>
+      <input id="query-text" type="text" autocomplete="off" maxlength="2000" required />
+      <label for="query-top-k">返回片段数 top_k（1..50，默认 8）</label>
+      <input id="query-top-k" type="number" min="1" max="50" step="1" value="8" />
+      <button id="query-submit" type="submit">检索</button>
+      <p id="query-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <p id="retrieval-meta" class="meta"></p>
+    <div id="results" aria-live="polite"></div>
+    <div id="citation-panel" hidden>
+      <h3>引用详情（重新校验当前可读性）</h3>
+      <p id="citation-meta" class="meta"></p>
+      <pre id="citation-text"></pre>
+      <p id="citation-status" class="status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>5. 就知识库提问（回答只引用本次检索且当前可读的资料）</h2>
+    <p class="hint">
+      服务端先做与检索相同的 ACL/当前版本过滤，再用抽取式 stub 组合作答（本构建
+      <strong>未配置模型 provider</strong>，回答都标注生成方式，不会冒充模型答案）。返回前逐个校验：
+      引用必须属于本次检索，且必须在当前授权与当前文档版本下可读；否则整条回答被拒绝。
+      没有检索到资料时返回空答案（不是错误）。点击引用会重新打开
+      <code>GET /knowledge-citations/{id}</code>；撤销或删除后显示“引用不可用”，绝不回放旧正文。
+    </p>
+    <form id="answer-form" method="post">
+      <label for="answer-query">问题</label>
+      <input id="answer-query" type="text" autocomplete="off" maxlength="2000" required />
+      <label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
+      <input id="answer-top-k" type="number" min="1" max="50" step="1" value="8" />
+      <button id="answer-submit" type="submit">提问</button>
+      <p id="answer-status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <div id="answer-panel" hidden aria-live="polite">
+      <h3>回答</h3>
+      <p id="answer-generation" class="meta"></p>
+      <pre id="answer-text"></pre>
+      <p id="answer-retrieval" class="meta"></p>
+      <h3>引用（点击重新校验当前可读性）</h3>
+      <ul id="answer-citations" class="bases"></ul>
+      <div id="answer-citation-panel" hidden>
+        <p id="answer-citation-meta" class="meta"></p>
+        <pre id="answer-citation-text"></pre>
+        <p id="answer-citation-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+
+  <script src="/assets/app.js"></script>
+  <script src="/assets/knowledge.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      let csrfToken = '';
+      let currentBase = '';
+      let currentArtifact = '';
+      let currentDocument = '';
+      let currentFile = null;
+
+      const el = (id) => document.getElementById(id);
+
+      function setStatus(node, text, kind) {
+        if (!node) {
+          return;
+        }
+        node.textContent = String(text || '');
+        node.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function clear(node) {
+        while (node && node.firstChild) {
+          node.removeChild(node.firstChild);
+        }
+      }
+
+      async function sha256Hex(buffer) {
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        return Array.from(new Uint8Array(digest))
+          .map((value) => value.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      async function loadBases(preferredId) {
+        const payload = await api(knowledgeBasesPath());
+        const items = Array.isArray(payload && payload.items) ? payload.items : [];
+        const list = el('kb-list');
+        const select = el('kb-select');
+        clear(list);
+        clear(select);
+        items.forEach((base) => {
+          const row = document.createElement('li');
+          row.textContent = String(base.name || '') + ' · revision ' + String(base.revision || 1)
+            + ' · ' + String(base.id || '');
+          list.appendChild(row);
+
+          const option = document.createElement('option');
+          option.value = String(base.id || '');
+          option.textContent = String(base.name || base.id || '');
+          select.appendChild(option);
+        });
+        if (items.length === 0) {
+          const empty = document.createElement('li');
+          empty.textContent = '还没有知识库';
+          list.appendChild(empty);
+          currentBase = '';
+          return;
+        }
+        const wanted = String(preferredId || currentBase || '');
+        const match = items.find((base) => String(base.id) === wanted) || items[0];
+        select.value = String(match.id);
+        currentBase = String(match.id);
+      }
+
+      function renderArtifact(artifact) {
+        el('artifact-panel').hidden = false;
+        el('artifact-id').textContent = String(artifact.id || '');
+        el('artifact-state').textContent = String(artifact.state || '');
+        if (artifact.state === 'ready') {
+          currentArtifact = String(artifact.id);
+          el('ingest-artifact').value = currentArtifact;
+        }
+      }
+
+      function renderDocument(document) {
+        const view = describeDocument(document);
+        el('document-panel').hidden = false;
+        el('document-id').textContent = view.id;
+        el('document-state').textContent = view.stateText;
+        return view;
+      }
+
+      function renderDiagnostics(diagnostics) {
+        const view = describeDiagnostics(diagnostics);
+        el('document-chunks').textContent = String(view.chunkCount);
+        el('document-error-code').textContent = view.errorCode
+          ? view.errorCode + ' — ' + view.errorText
+          : '';
+        const lines = [
+          '状态：' + view.stateText + '（revision ' + view.revision + '）',
+          '已写入片段：' + view.chunkCount,
+        ];
+        if (view.activeRevision !== null) {
+          lines.push('激活版本：' + view.activeRevision);
+        }
+        if (view.parserVersion) {
+          lines.push('解析器：' + view.parserVersion);
+        }
+        if (view.chunkerVersion) {
+          lines.push('分块器：' + view.chunkerVersion);
+        }
+        if (view.embeddingModelRevision) {
+          lines.push('embedding：' + view.embeddingModelRevision);
+        }
+        if (view.jobState) {
+          lines.push('后台任务：' + view.jobState + ' · 尝试 ' + view.jobAttempts + ' 次');
+        }
+        el('document-diagnostics').textContent = lines.join('\n');
+        const indexes = describeIndexes(diagnostics);
+        el('index-panel').hidden = false;
+        el('index-active').textContent = indexes.activeText;
+        el('index-progress').textContent = indexes.text;
+        clear(el('index-versions'));
+        indexes.items.forEach((item) => {
+          const row = document.createElement('li');
+          row.textContent = item.line;
+          el('index-versions').appendChild(row);
+        });
+        return view;
+      }
+
+      async function pollDocument(documentId) {
+        for (;;) {
+          const document = await api(knowledgeDocumentPath(documentId));
+          const view = renderDocument(document);
+          let diagnostics = null;
+          try {
+            diagnostics = await api(knowledgeDocumentDiagnosticsPath(documentId));
+            renderDiagnostics(diagnostics);
+          } catch (error) {
+            if (error.status === 404) {
+              throw error;
+            }
+          }
+          if (!shouldPollDocument(view.state)) {
+            return { document: view, diagnostics: diagnostics };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      async function pollArtifact(artifactId) {
+        for (;;) {
+          const artifact = await api('/api/v1/artifacts/' + encodeURIComponent(artifactId));
+          renderArtifact(artifact);
+          if (artifact.state === 'ready' || artifact.state === 'quarantined'
+            || artifact.state === 'deleted') {
+            return artifact;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+
+      el('kb-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('kb-status');
+        const built = buildKnowledgeBaseBody(el('kb-name').value);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '创建中…', 'pending');
+          const result = await apiFull(knowledgeBasesPath(), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          el('kb-name').value = '';
+          await loadBases(result.payload.id);
+          setStatus(status, '已创建 ' + String(result.payload.id) + '（' + String(result.payload.state) + '）', 'ok');
+        } catch (error) {
+          setStatus(status, '创建失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      el('kb-select').addEventListener('change', () => {
+        currentBase = String(el('kb-select').value || '');
+        currentDocument = '';
+        el('document-panel').hidden = true;
+        clearAnswerPanel();
+      });
+
+      el('knowledge-file').addEventListener('change', () => {
+        currentFile = el('knowledge-file').files && el('knowledge-file').files[0]
+          ? el('knowledge-file').files[0]
+          : null;
+      });
+
+      el('upload-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('upload-status');
+        const file = currentFile
+          || (el('knowledge-file').files && el('knowledge-file').files[0]);
+        if (!file) {
+          setStatus(status, '请选择 txt/md/csv/xlsx/pdf 文件', 'bad');
+          return;
+        }
+        const media = mediaTypeForKnowledgeFile(file.name);
+        if (!media.ok) {
+          setStatus(status, media.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '计算 SHA-256 并预分配…', 'pending');
+          const bytes = await file.arrayBuffer();
+          const digest = await sha256Hex(bytes);
+          const ticket = await api('/api/v1/artifacts/uploads', {
+            method: 'POST',
+            body: {
+              media_type: media.mediaType,
+              size_bytes: bytes.byteLength,
+              purpose: 'knowledge',
+            },
+            csrf: csrfToken,
+          });
+          setStatus(status, '上传到签名地址…', 'pending');
+          const put = await fetch(ticket.upload_url, {
+            method: 'PUT',
+            body: bytes,
+            credentials: 'omit',
+            cache: 'no-store',
+            redirect: 'error',
+            headers: { 'Content-Type': 'application/octet-stream' },
+          });
+          if (put.status !== 204) {
+            throw new Error('签名上传返回 ' + put.status);
+          }
+          setStatus(status, '提交 SHA-256 并等待封存…', 'pending');
+          await api('/api/v1/artifacts/' + encodeURIComponent(ticket.artifact_id) + '/complete', {
+            method: 'POST',
+            body: { sha256: digest },
+            csrf: csrfToken,
+          });
+          const artifact = await pollArtifact(ticket.artifact_id);
+          if (artifact.state === 'ready') {
+            setStatus(status, '已封存，可开始摄取', 'ok');
+          } else {
+            setStatus(status, '封存未通过：' + String(artifact.state), 'bad');
+          }
+        } catch (error) {
+          setStatus(status, '上传失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      el('ingest-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('ingest-status');
+        if (!currentBase) {
+          setStatus(status, '请先创建或选择知识库', 'bad');
+          return;
+        }
+        currentArtifact = String(el('ingest-artifact').value || currentArtifact).trim();
+        const built = buildIngestBody(currentArtifact);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '提交摄取…', 'pending');
+          const accepted = await api(knowledgeDocumentsPath(currentBase), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          currentDocument = String(accepted.id || '');
+          el('document-panel').hidden = false;
+          setStatus(status, '已排队（' + String(accepted.state) + '），轮询进度…', 'pending');
+          const result = await pollDocument(currentDocument);
+          if (result.document.searchable) {
+            setStatus(status, '摄取完成：可检索', 'ok');
+          } else {
+            setStatus(status, '摄取未完成：' + result.document.stateText
+              + (result.diagnostics && result.diagnostics.errorCode
+                ? ' · ' + result.diagnostics.errorCode
+                : ''), 'bad');
+          }
+        } catch (error) {
+          setStatus(status, '摄取失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      el('reindex-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('reindex-status');
+        if (!currentDocument) {
+          setStatus(status, '请先摄取一个文档', 'bad');
+          return;
+        }
+        const built = buildReindexBody('');
+        try {
+          setStatus(status, '创建新的索引版本…', 'pending');
+          const accepted = await api(reindexDocumentPath(currentDocument), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          setStatus(status,
+            '已排队索引 v' + String(accepted.index_version)
+            + ' · embedding=' + String(accepted.embedding_model_revision),
+            'pending');
+          const result = await pollDocument(currentDocument);
+          if (result.document.searchable) {
+            setStatus(status, '重建完成：新索引已激活', 'ok');
+          } else {
+            setStatus(status, '重建未激活：' + result.document.stateText
+              + (result.diagnostics && result.diagnostics.errorCode
+                ? ' · ' + result.diagnostics.errorCode
+                : ''), 'bad');
+          }
+        } catch (error) {
+          setStatus(status, '重建失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      function renderResults(payload) {
+        const view = describeRetrieval(payload);
+        clear(el('results'));
+        el('retrieval-meta').textContent = view.empty
+          ? ''
+          : 'embedding=' + view.embeddingModelRevision + ' · ' + view.indexText
+            + ' · top_k=' + view.topK + ' · acl_epoch=' + view.aclEpoch;
+        if (view.empty) {
+          const empty = document.createElement('p');
+          empty.className = 'hint';
+          empty.textContent = view.emptyText;
+          el('results').appendChild(empty);
+          return view;
+        }
+        view.items.forEach((item) => {
+          const article = document.createElement('article');
+          article.className = 'chunk' + (item.citationOk ? '' : ' bad-citation');
+
+          const meta = document.createElement('p');
+          meta.className = 'meta';
+          meta.textContent = item.citationText + ' · score ' + item.score.toFixed(4);
+          article.appendChild(meta);
+
+          const body = document.createElement('p');
+          body.textContent = item.text;
+          article.appendChild(body);
+
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = '打开引用';
+          open.addEventListener('click', async () => {
+            const panel = el('citation-panel');
+            const citationStatus = el('citation-status');
+            panel.hidden = false;
+            setStatus(citationStatus, '读取引用…', 'pending');
+            try {
+              const chunk = await api(knowledgeCitationPath(item.chunkId));
+              const opened = describeChunk(chunk);
+              el('citation-meta').textContent = opened.citationText;
+              el('citation-text').textContent = opened.text;
+              setStatus(citationStatus, opened.citationOk ? '引用当前可读' : '引用不一致',
+                opened.citationOk ? 'ok' : 'bad');
+            } catch (error) {
+              el('citation-meta').textContent = '';
+              el('citation-text').textContent = '';
+              setStatus(citationStatus, '引用不可用 ' + describeFailure(error), 'bad');
+            }
+          });
+          article.appendChild(open);
+          el('results').appendChild(article);
+        });
+        return view;
+      }
+
+      el('query-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('query-status');
+        if (!currentBase) {
+          setStatus(status, '请先创建或选择知识库', 'bad');
+          return;
+        }
+        const built = buildRetrievalBody(el('query-text').value, el('query-top-k').value);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '检索中…', 'pending');
+          const payload = await api(retrievalQueriesPath(currentBase), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          const view = renderResults(payload);
+          setStatus(status, view.empty ? '没有可读片段（空结果不是错误）'
+            : '返回 ' + view.items.length + ' 个片段', 'ok');
+        } catch (error) {
+          setStatus(status, '检索失败 ' + describeFailure(error), 'bad');
+        }
+      });
+
+      function clearAnswerPanel() {
+        el('answer-panel').hidden = true;
+        el('answer-generation').textContent = '';
+        el('answer-text').textContent = '';
+        el('answer-retrieval').textContent = '';
+        clear(el('answer-citations'));
+        el('answer-citation-panel').hidden = true;
+        el('answer-citation-meta').textContent = '';
+        el('answer-citation-text').textContent = '';
+        setStatus(el('answer-citation-status'), '', '');
+      }
+
+      function openAnswerCitation(citation) {
+        const panel = el('answer-citation-panel');
+        panel.hidden = false;
+        el('answer-citation-meta').textContent = citation.citationText;
+        el('answer-citation-text').textContent = '';
+        setStatus(el('answer-citation-status'), '读取引用并重新校验…', 'pending');
+        api(knowledgeCitationPath(citation.chunkId)).then((chunk) => {
+          const opened = describeChunk(chunk);
+          el('answer-citation-meta').textContent = opened.citationText;
+          el('answer-citation-text').textContent = opened.text;
+          setStatus(el('answer-citation-status'),
+            opened.citationOk ? '引用当前可读' : '引用不一致：不展示为该片段的来源',
+            opened.citationOk ? 'ok' : 'bad');
+        }).catch((error) => {
+          // Never fall back to the answer's cached citation text: a revoked or
+          // deleted source is unavailable, not a stale body.
+          el('answer-citation-text').textContent = '';
+          setStatus(el('answer-citation-status'),
+            '引用不可用 ' + describeFailure(error), 'bad');
+        });
+      }
+
+      function renderAnswer(payload) {
+        const view = describeAnswer(payload);
+        clearAnswerPanel();
+        el('answer-panel').hidden = false;
+        el('answer-generation').textContent = view.generation.text;
+        el('answer-retrieval').textContent = view.retrieval.text;
+        el('answer-text').textContent = view.empty
+          ? '（没有检索到可读资料：空答案，不是错误）'
+          : view.text;
+        view.citations.forEach((citation) => {
+          const row = document.createElement('li');
+          row.className = citation.citationOk ? '' : 'bad-citation';
+          const meta = document.createElement('p');
+          meta.className = 'meta';
+          meta.textContent = citation.citationText + ' · score ' + citation.score.toFixed(4);
+          row.appendChild(meta);
+          const quote = document.createElement('p');
+          quote.textContent = citation.text;
+          row.appendChild(quote);
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = '打开引用';
+          open.addEventListener('click', () => openAnswerCitation(citation));
+          row.appendChild(open);
+          el('answer-citations').appendChild(row);
+        });
+        return view;
+      }
+
+      el('answer-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const status = el('answer-status');
+        if (!currentBase) {
+          setStatus(status, '请先创建或选择知识库', 'bad');
+          return;
+        }
+        const built = buildAnswerBody(el('answer-query').value, el('answer-top-k').value);
+        if (!built.ok) {
+          setStatus(status, built.error, 'bad');
+          return;
+        }
+        try {
+          setStatus(status, '检索并逐个校验引用…', 'pending');
+          const payload = await api(knowledgeAnswerPath(currentBase), {
+            method: 'POST',
+            body: built.body,
+            csrf: csrfToken,
+          });
+          const view = renderAnswer(payload);
+          setStatus(status, answerOutcomeText(view.outcome), 'ok');
+        } catch (error) {
+          const refusal = describeAnswerRefusal(error);
+          clearAnswerPanel();
+          setStatus(status, refusal.outcomeText
+            + '（' + refusal.code + (refusal.chunkID ? ' · ' + refusal.chunkID : '') + '）', 'bad');
+        }
+      });
+
+      (async () => {
+        try {
+          await requireLogin();
+          csrfToken = await csrf();
+          await loadBases();
+        } catch (error) {
+          if (error.status === 401) {
+            window.location.assign('/login');
+            return;
+          }
+          setStatus(el('kb-status'), '初始化失败 ' + describeFailure(error), 'bad');
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

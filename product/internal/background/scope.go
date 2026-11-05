@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"orchara/platform/internal/evaluation"
 )
 
 // JobScope is how a compiled handler reaches job-scoped platform data.
@@ -34,10 +36,38 @@ type JobScope interface {
 	// declare. The server resolves all of them; the handler supplies only its
 	// lease proof.
 	Evaluation(ctx context.Context, jobID, attemptToken string) (EvaluationBinding, error)
+	// EvaluationRun creates (or returns) the platform run that executes one
+	// evaluation case, as the evaluation's owner, from the evaluation's frozen
+	// snapshot. The handler supplies the case input bytes; the server seals them,
+	// creates the run and its start job, and re-proves the owner's access. A
+	// non-nil taskInput asks the server to bind the owner's own fixture to the
+	// run as its task_input artifact (F13A/T056). It is the F13A/T052 bridge
+	// (ADR 0011, extended by ADR 0017).
+	EvaluationRun(ctx context.Context, jobID, attemptToken, caseID string, input []byte, taskInput *evaluation.TaskInputBinding) (EvaluationRunRef, error)
+	// EvaluationRunFacts reads the independent truth of one evaluation case run:
+	// its state, its sealed output artifact, the real operation ledger counts and
+	// the citation sources that output declares. It is a platform read, never the
+	// model's trace.
+	EvaluationRunFacts(ctx context.Context, jobID, attemptToken, runID string) (EvaluationRunFacts, error)
+	// EvaluationRunInteraction performs one predefined interaction on the case
+	// run as the evaluation's owner (this build performs cancel only).
+	EvaluationRunInteraction(ctx context.Context, jobID, attemptToken, runID, interaction string) error
+	// EvaluationCaseOutcome records one case's decision through the job-scoped
+	// progress bridge (F13A/T065). The runner decides; the server persists the
+	// decision on the case row and recomputes the evaluation's counters. It is
+	// a live progress fact, never the report's verdict authority.
+	EvaluationCaseOutcome(
+		ctx context.Context, jobID, attemptToken, caseID string,
+		ordinal int, verdict, reasonCode string,
+	) error
 	// ToolBuild returns the job-scoped build binding (T037): the admitted source
 	// artifact/hash and the canonical dependency lock. The handler never reads
 	// the tool row itself.
 	ToolBuild(ctx context.Context, jobID, attemptToken string) (ToolBuildBinding, error)
+	// DocumentIngest returns the job-scoped ingestion binding (T055): the
+	// document/revision and the exact source artifact/hash/media type to parse.
+	// The handler never reads the document row itself.
+	DocumentIngest(ctx context.Context, jobID, attemptToken string) (DocumentIngestBinding, error)
 	// FetchURL reads a signed GET link into memory, capped at maxBytes.
 	FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, error)
 	// PutURL writes body to a signed PUT link.
@@ -66,6 +96,21 @@ type ArtifactView struct {
 	SizeBytes int64
 }
 
+// DocumentIngestBinding is the T055/T061 job-scoped ingestion binding.
+type DocumentIngestBinding struct {
+	DocumentID             string
+	KnowledgeBaseID        string
+	DocumentRevision       int64
+	IndexVersionID         string
+	IndexVersion           int64
+	EmbeddingModelRevision string
+	EmbeddingDimension     int
+	SourceArtifactID       string
+	SourceSHA256           string
+	SourceMediaType        string
+	ParserVersion          string
+}
+
 // ToolBuildBinding is the T037 job-scoped tool build binding. DependencyLock is
 // the canonical JSON the sandbox must receive.
 type ToolBuildBinding struct {
@@ -92,4 +137,35 @@ type ModelCallResult struct {
 	State            string
 	ResultArtifactID *string
 	Data             map[string]any
+}
+
+// EvaluationRunRef is one evaluation case's platform run, as the bridge
+// answers it (F13A/T052).
+type EvaluationRunRef struct {
+	RunID   string
+	Created bool
+}
+
+// EvaluationRunFacts is the independent truth of one case run. Each *Collected
+// flag separates "the platform said none" from "the fact could not be read":
+// the checker treats an uncollected fact as a failure, never as zero.
+type EvaluationRunFacts struct {
+	RunID              string
+	State              string
+	ErrorCode          string
+	OutputArtifactID   *string
+	OutputSHA256       string
+	Output             json.RawMessage
+	OutputCollected    bool
+	Effects            map[string]int64
+	EffectsCollected   bool
+	EffectEvidence     string
+	Citations          []string
+	CitationsCollected bool
+	// F13A/T056: the caller fixture bound to the run, by artifact id and hash.
+	TaskInputArtifactID string
+	TaskInputSHA256     string
+	Provenance          evaluation.RunProvenance
+	StartedAt           *time.Time
+	FinishedAt          *time.Time
 }

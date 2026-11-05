@@ -222,6 +222,40 @@ const (
 	CodeToolArtifactCount    = "tool_artifact_count_exceeded"
 	CodeToolInputInvalid     = "tool_input_invalid"
 
+	// document_ingest failure codes (T055). Empty parse, unsupported/corrupt
+	// input and a handler failure must end in document failed with one of these
+	// specific codes; none of them can ever produce ready. The chunk-artifact
+	// wait and transient storage/internal failures are the only retryable ones.
+	CodeIngestEmptyContent             = "ingest_empty_content"
+	CodeIngestUnsupportedMediaType     = "ingest_unsupported_media_type"
+	CodeIngestInvalidEncoding          = "ingest_invalid_encoding"
+	CodeIngestSourceUnavailable        = "ingest_source_unavailable"
+	CodeIngestSourceChanged            = "ingest_source_changed"
+	CodeIngestTooManyChunks            = "ingest_too_many_chunks"
+	CodeIngestChunkArtifactTimeout     = "ingest_chunk_artifact_timeout"
+	CodeIngestIncomplete               = "ingest_incomplete"
+	CodeIngestCitationInvalid          = "ingest_citation_invalid"
+	CodeIngestCancelled                = "ingest_cancelled"
+	CodeEmbeddingProviderNotConfigured = "embedding_provider_not_configured"
+	// T061: activation refusals. A job whose source revision moved, whose index
+	// version is no longer the building one, or whose deployment embedding model
+	// changed between enqueue and execution must never activate anything. These
+	// are business failures: the newer revision owns the document.
+	CodeStaleRevision         = "stale_revision"
+	CodeEmbeddingModelChanged = "embedding_model_changed"
+	// T061 upgrade recovery. `ingest_index_unbound` is a pre-0039 document_ingest
+	// job: it was created before `expected_index_version_id` existed, so it has no
+	// build to stage into and can never activate. The migration 0041 repair and
+	// the completion guard both end such an attempt with this code and leave the
+	// document failed-and-re-ingestable instead of stuck in scanning/indexing.
+	CodeIngestIndexUnbound = "ingest_index_unbound"
+	// `ingest_build_abandoned` marks a document whose index build can no longer be
+	// finished (no non-terminal job is bound to a still-building index version).
+	// The recovery path writes it on the orphaned index version and on the
+	// document before a new build starts, so the abandoned attempt is a named
+	// fact rather than a silent scanning state.
+	CodeIngestBuildAbandoned = "ingest_build_abandoned"
+
 	// tool_build failure codes (T037). The handler reports the safe code; the
 	// completion guard stores the same closed vocabulary on tool_versions.
 	// Only the three transient codes are retryable; every build rejection is
@@ -297,6 +331,17 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeToolTimeout:        true,
 		CodeToolCrash:          true,
 	},
+	// document_ingest (T055): waiting for the chunk-body artifacts to be
+	// finalized can recover, as can transient storage/internal/lease failures. A
+	// parse rejection, an unbound/deleted source or an incomplete staged set is
+	// deterministic and is never retried; an unknown code stays business
+	// (fail safe), so a document can never be retried into ready by accident.
+	KindDocumentIngest: {
+		CodeTransientStorageIO:         true,
+		CodeTransientInternal:          true,
+		CodeLeaseExpired:               true,
+		CodeIngestChunkArtifactTimeout: true,
+	},
 	// tool_build (T037): transient storage/internal/lease failures are retried;
 	// a dependency-unavailable, unsafe-source or sandbox refusal is deterministic
 	// and business. An unknown code classifies as business (fail safe).
@@ -329,28 +374,33 @@ func ClassifyFailure(kind Kind, code string) FailureClass {
 // Job is one row of platform.background_jobs. It is the controller's internal
 // model; the HTTP layer projects the contract's smaller BackgroundJob shape.
 type Job struct {
-	ID                string
-	Kind              Kind
-	TargetID          string
-	OwnerID           string
-	ExpectedRevision  *int64
-	ExpectedSHA256    *string
-	DedupKey          string
-	InputArtifactID   *string
-	ResultArtifactID  *string
-	State             State
-	AvailableAt       time.Time
-	LeaseToken        *string
-	LeaseDeadline     *time.Time
-	WorkerID          *string
-	AttemptCount      int
-	ResultEventID     *string
-	ResultEventDigest *string
-	ErrorCode         *string
-	CreatedAt         time.Time
-	FinishedAt        *time.Time
-	FailureClass      *string
-	LastErrorAt       *time.Time
+	ID               string
+	Kind             Kind
+	TargetID         string
+	OwnerID          string
+	ExpectedRevision *int64
+	// ExpectedIndexVersionID binds a document_ingest job to one
+	// platform.knowledge_index_versions row (T061). The completion guard uses it
+	// to verify the staged chunk set and the activation decision for the same
+	// build; a job without it never activates an index.
+	ExpectedIndexVersionID *string
+	ExpectedSHA256         *string
+	DedupKey               string
+	InputArtifactID        *string
+	ResultArtifactID       *string
+	State                  State
+	AvailableAt            time.Time
+	LeaseToken             *string
+	LeaseDeadline          *time.Time
+	WorkerID               *string
+	AttemptCount           int
+	ResultEventID          *string
+	ResultEventDigest      *string
+	ErrorCode              *string
+	CreatedAt              time.Time
+	FinishedAt             *time.Time
+	FailureClass           *string
+	LastErrorAt            *time.Time
 }
 
 // ErrNotFound is "the row does not exist" and is deliberately the same error
@@ -395,6 +445,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		kind        string
 		state       string
 		expected    sql.NullInt64
+		expectedIdx sql.NullString
 		expSHA      sql.NullString
 		input       sql.NullString
 		result      sql.NullString
@@ -409,7 +460,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		lastError   sql.NullTime
 	)
 	if err := row.Scan(
-		&job.ID, &kind, &job.TargetID, &job.OwnerID, &expected, &expSHA, &job.DedupKey,
+		&job.ID, &kind, &job.TargetID, &job.OwnerID, &expected, &expectedIdx, &expSHA, &job.DedupKey,
 		&input, &result, &state, &job.AvailableAt, &token, &deadline, &worker,
 		&job.AttemptCount, &event, &eventDigest, &errorCode, &job.CreatedAt, &finished, &failure, &lastError,
 	); err != nil {
@@ -421,6 +472,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 		value := expected.Int64
 		job.ExpectedRevision = &value
 	}
+	job.ExpectedIndexVersionID = nullString(expectedIdx)
 	job.ExpectedSHA256 = nullString(expSHA)
 	job.InputArtifactID = nullString(input)
 	job.ResultArtifactID = nullString(result)
@@ -455,7 +507,8 @@ func nullString(value sql.NullString) *string {
 
 // selectJobColumns is the single projection scanJob expects.
 const selectJobColumns = `
-	id::text, kind, target_id::text, owner_id::text, expected_revision, expected_sha256,
+	id::text, kind, target_id::text, owner_id::text, expected_revision,
+	expected_index_version_id::text, expected_sha256,
 	dedup_key, input_artifact_id::text, result_artifact_id::text, state, available_at,
 	lease_token::text, lease_deadline, worker_id, attempt_count, result_event_id::text,
 	result_event_digest, error_code, created_at, finished_at, failure_class, last_error_at`

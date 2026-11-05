@@ -298,6 +298,25 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	// bindings; the builder owns the token budget and the protected facts.
 	authorizedInputs := resolvedAgentInputs(run.plan, node, bindings)
 	contextScope := agentContextScope(run.plan, node)
+	// F09/T063: personal memory is scoped by this run's trusted owner and
+	// application. The identity read is the same read-only database identity the
+	// input/facts readers use; a failure degrades recall to unavailable in the
+	// trace instead of guessing a scope or failing an otherwise valid run.
+	memorySource := agentcontext.MemorySource(agentcontext.NoMemorySource{})
+	if r.deps.Memory != nil {
+		memorySource = r.deps.Memory
+		if r.deps.RunIdentity == nil {
+			r.logger.Printf(
+				"run_id=%s: a memory source is wired without a run identity; recall stays empty",
+				r.lease.RunID)
+		} else if identity, identityErr := r.deps.RunIdentity.RunScope(ctx, r.lease.RunID); identityErr != nil {
+			r.logger.Printf("run_id=%s: reading the memory scope failed: %v",
+				r.lease.RunID, identityErr)
+		} else {
+			contextScope.OwnerID = identity.OwnerID
+			contextScope.ApplicationID = identity.ApplicationID
+		}
+	}
 	modelBudget := modelContextBudget(modelFact)
 	authorizedTools := make([]agentcontext.DeclaredTool, 0, len(config.ToolVersions))
 	declared := make([]map[string]string, 0, len(config.ToolVersions))
@@ -329,10 +348,9 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			History: history,
 			Tools:   authorizedTools,
 			Model:   modelBudget,
-			// F09 personal-memory storage does not exist in this batch. The
-			// production seam therefore reads nothing and the trace records
-			// memory_state=not_run; no canned memory is injected.
-			Memory: agentcontext.NoMemorySource{},
+			// F09/T063: the confirmed memories of this run's owner+application.
+			// The builder applies the memory budget and records the sources.
+			Memory: memorySource,
 		})
 		if buildErr != nil {
 			return nil, r.failAgent(ctx, run, contextFailureCode(buildErr),

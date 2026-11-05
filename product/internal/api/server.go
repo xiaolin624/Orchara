@@ -16,8 +16,11 @@ import (
 	"orchara/platform/internal/compiler"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/connectors"
+	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/identity"
+	"orchara/platform/internal/knowledge"
+	"orchara/platform/internal/memory"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
@@ -36,6 +39,10 @@ type Server struct {
 	artifacts *background.ArtifactStore
 	// execution owns the F03 claim/heartbeat/attempt-exit primitive.
 	execution *execution.Service
+	// evaluationRuns is F13A/T052's job-scoped evaluation run bridge: it creates
+	// a case's run as the evaluation owner and reads the independent truth the
+	// checker decides on.
+	evaluationRuns *execution.EvaluationRuns
 	// runArtifacts owns F05/T033's run-bound upload/download/status/register:
 	// the supervisor may claim an attempt, but only the live attempt that
 	// reserved an artifact can complete and register it.
@@ -43,6 +50,9 @@ type Server struct {
 	// userArtifacts is the T028 user-facing artifact service (distinct from the
 	// job-scoped ArtifactStore above: different purposes, different ACL).
 	userArtifacts *artifacts.Service
+	// knowledge is the F10/T055 owner-scoped knowledge base/document/retrieval
+	// service. It never activates a document; the background completion guard does.
+	knowledge *knowledge.Service
 	// toolRuns is the T030 preset-tool run service (non-contract bridge).
 	toolRuns *toolruns.Service
 	// toolVersions is the F05/T037 submission/build/review service.
@@ -59,6 +69,10 @@ type Server struct {
 	// preview is the F06/T044 temporary in-process model stream preview hub. It
 	// is not persisted and not shared across processes.
 	preview *previewHub
+	// memory is the F09/T054 personal memory store (candidates + confirmed
+	// memories). Its nil-ness is not a supported state: the store is always
+	// built, and a process without an object store fails closed per request.
+	memory  *memory.Service
 	objects *objectstore.Store
 	signer  *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
@@ -104,6 +118,19 @@ type Deps struct {
 	// Catalog is the deployer-registered model endpoint/credential catalog. Nil
 	// means the documented dev-stub default, never an open catalog.
 	Catalog *modelregistry.Catalog
+	// Embedder is the F10 embedding seam. Nil means the process reads
+	// ORCHARA_EMBEDDING_PROVIDER/ORCHARA_EMBEDDING_MODEL (empty = the
+	// deterministic local embedder recorded as local-hash-v1). A configured real
+	// provider without an adapter fails closed, never as a silent stub.
+	Embedder *embedding.Service
+	// Answerer is the F10/T064 labelled answer generator. Nil means the
+	// extractive stub wired by knowledge.New (no model provider exists here).
+	Answerer knowledge.AnswerGenerator
+	// RetrievalCache is the F10/T067 retrieval cache configuration. Nil means the
+	// knowledge.New default (enabled, 15 minutes); cmd/api always passes the
+	// value derived from ORCHARA_KNOWLEDGE_RETRIEVAL_CACHE (an unknown value is a
+	// startup error there, never a silent default).
+	RetrievalCache *knowledge.CacheOptions
 	// PublicURL is the absolute base URL signed links are minted against.
 	PublicURL string
 	// RetryBackoff is the background-job retry base delay.
@@ -127,6 +154,10 @@ type Deps struct {
 	// RunEventHeartbeatInterval is the idle SSE comment cadence. Zero falls back
 	// to the documented 15s.
 	RunEventHeartbeatInterval time.Duration
+	// MemoryCandidateTTL is how long a proposed personal-memory candidate waits
+	// for the human decision (ORCHARA_MEMORY_CANDIDATE_TTL). Zero falls back to
+	// memory.DefaultCandidateTTL (7 days).
+	MemoryCandidateTTL time.Duration
 }
 
 // New builds the HTTP surface. See Deps for each dependency's contract.
@@ -165,23 +196,41 @@ func New(deps Deps) *Server {
 	capabilityService.Reconciler = executionService
 	approvalService := approvals.New(deps.Service.DB, deps.Objects, executionService)
 	capabilityService.Approvals = approvalService
+	embedder := deps.Embedder
+	if embedder == nil {
+		embedder = embedding.FromEnv()
+	}
+	jobsController := background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier)
+	knowledgeService := knowledge.New(deps.Service.DB, deps.Objects, embedder)
+	if deps.Answerer != nil {
+		knowledgeService.Answerer = deps.Answerer
+	}
+	if deps.RetrievalCache != nil {
+		knowledgeService.Cache = *deps.RetrievalCache
+	}
 	return &Server{
-		service:           deps.Service,
-		policy:            authorizer,
-		catalog:           catalog.New(deps.Service.DB, authorizer),
-		jobs:              background.New(deps.Service.DB, deps.Objects, deps.RetryBackoff, notifier),
-		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		execution:         executionService,
-		runArtifacts:      execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
-		userArtifacts:     artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
-		toolRuns:          toolruns.New(deps.Service.DB, notifier),
-		toolVersions:      toolversions.New(deps.Service.DB),
-		models:            modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
-		modelRegistry:     modelRegistry,
-		capabilities:      capabilityService,
-		connectors:        deps.Connectors,
-		approvals:         approvalService,
-		preview:           newPreviewHub(),
+		service:        deps.Service,
+		policy:         authorizer,
+		catalog:        catalog.New(deps.Service.DB, authorizer),
+		jobs:           jobsController,
+		artifacts:      background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		execution:      executionService,
+		evaluationRuns: execution.NewEvaluationRuns(deps.Service.DB, deps.Objects, jobsController),
+		runArtifacts:   execution.NewRunArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
+		userArtifacts:  artifacts.New(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL),
+		knowledge:      knowledgeService,
+		toolRuns:       toolruns.New(deps.Service.DB, notifier),
+		toolVersions:   toolversions.New(deps.Service.DB),
+		models:         modelproxy.NewService(deps.Service.DB, deps.Objects, deps.Providers, catalogRefs),
+		modelRegistry:  modelRegistry,
+		capabilities:   capabilityService,
+		connectors:     deps.Connectors,
+		approvals:      approvalService,
+		preview:        newPreviewHub(),
+		memory: memory.New(
+			deps.Service.DB, deps.Objects,
+			catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
+		),
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -217,11 +266,22 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/admin/users", s.handleInviteUser)
 
 	// T020: named service accounts, scoped bearer keys and the personal-data
-	// boundary of the memory endpoint F09 will implement.
+	// boundary shared by every memory endpoint (F09/T054).
 	mux.HandleFunc("POST /api/v1/admin/service-accounts", s.handleCreateServiceAccount)
 	mux.HandleFunc("POST /api/v1/admin/api-keys", s.handleCreateAPIKey)
 	mux.HandleFunc("DELETE /api/v1/admin/api-keys/{key_id}", s.handleRevokeAPIKey)
+	// F09/T054: the real personal-memory read/write model. A service credential
+	// is refused with 403 personal_scope_forbidden on every one of them.
+	// F09/T058 adds the revisioned detail/update/delete surface; the detail read
+	// is the only strong-ETag read on a memory.
+	mux.HandleFunc("POST /api/v1/memories", s.handleCreateMemory)
 	mux.HandleFunc("GET /api/v1/memories", s.handleListMemories)
+	mux.HandleFunc("GET /api/v1/memories/{memory_id}", s.handleGetMemory)
+	mux.HandleFunc("PATCH /api/v1/memories/{memory_id}", s.handleUpdateMemory)
+	mux.HandleFunc("DELETE /api/v1/memories/{memory_id}", s.handleDeleteMemory)
+	mux.HandleFunc("GET /api/v1/memory-candidates", s.handleListMemoryCandidates)
+	mux.HandleFunc("POST /api/v1/memory-candidates/{candidate_id}/decision",
+		s.handleDecideMemoryCandidate)
 
 	// T021: disable/enable a principal. Disabling revokes the principal's
 	// sessions and API keys (including the keys of service accounts it is
@@ -292,6 +352,33 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// the report read never returns the report body or an artifact path.
 	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}", s.handleGetEvaluation)
 	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}", s.handleGetEvaluationReport)
+	// F13A/T056: the per-case view of one sealed report (the documented
+	// non-contract extension: artifact ids only). It is owner-only: an
+	// administrator is a non-owner of the private result bodies and gets the
+	// same 404 as a missing report (DATA-POLICY.md visibility rule; ADR 0017).
+	mux.HandleFunc("GET /api/v1/evaluation-reports/{report_id}/cases", s.handleGetEvaluationCases)
+
+	// F13A/T065: the non-contract async progress read (ADR 0019). It returns the
+	// honest per-case counters and the business-vs-infrastructure failure class,
+	// never a percentage guessed from the evaluation state. Same owner-or-admin
+	// authorization as the contract read above.
+	mux.HandleFunc("GET /api/v1/evaluations/{evaluation_id}/progress",
+		s.handleGetEvaluationProgress)
+
+	// F13A/T062: the administrator-only, non-contract attribution read. It
+	// exposes the account, cancellation outcome and the snapshot/manifest/
+	// dataset/compiler/worker identity behind a report, and never a sealed object
+	// key, a report body or another user's content (ADR 0014). Non-admins get 403
+	// before any lookup.
+	mux.HandleFunc("GET /api/v1/admin/evaluations/{evaluation_id}/attribution",
+		s.handleGetEvaluationAttribution)
+
+	// F13A/T052: the contract's evaluateDraft. The creator names a frozen draft
+	// revision and an uploaded, sealed evaluation dataset; the platform freezes
+	// the execution snapshot, queues the trusted runner and returns the queued
+	// evaluation. A caller can never attest its own verdict: only the completion
+	// guard writes a report row.
+	mux.HandleFunc("POST /api/v1/applications/{application_id}/evaluations", s.handleSubmitEvaluation)
 
 	// F00B/T024: presigned object transfers. There is deliberately no session
 	// requirement here (the HMAC token is the whole authority) and no list
@@ -347,6 +434,23 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// automatic resend exists on this path.
 	mux.HandleFunc("POST /api/v1/operations/{operation_id}/reconcile", s.handleReconcileOperation)
 
+	// F10/T055: knowledge bases, ingestion and the non-contract retrieval and
+	// citation reads (ADR 0010). Every route is owner-only; ACL misses are 404.
+	mux.HandleFunc("POST /api/v1/knowledge-bases", s.handleCreateKnowledgeBase)
+	mux.HandleFunc("GET /api/v1/knowledge-bases", s.handleListKnowledgeBases)
+	mux.HandleFunc("GET /api/v1/knowledge-bases/{knowledge_base_id}", s.handleGetKnowledgeBase)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/documents", s.handleIngestDocument)
+	mux.HandleFunc("GET /api/v1/knowledge-bases/{knowledge_base_id}/documents", s.handleListKnowledgeDocuments)
+	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}", s.handleGetKnowledgeDocument)
+	mux.HandleFunc("GET /api/v1/knowledge-documents/{document_id}/diagnostics", s.handleKnowledgeDocumentDiagnostics)
+	// F10/T061: the non-contract rebuild entry (ADR 0018). It creates a new
+	// index version and one document_ingest job; only the completion guard can
+	// move the activation pointer.
+	mux.HandleFunc("POST /api/v1/knowledge-documents/{document_id}/reindex", s.handleReindexKnowledgeDocument)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/retrieval-queries", s.handleKnowledgeRetrievalQuery)
+	mux.HandleFunc("POST /api/v1/knowledge-bases/{knowledge_base_id}/answer", s.handleKnowledgeAnswer)
+	mux.HandleFunc("GET /api/v1/knowledge-citations/{chunk_id}", s.handleGetKnowledgeCitation)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -363,9 +467,20 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps/{application_id}/edit", s.staticPage("editor.html"))
 	// F02A/T027: the debug entry is served per application for the same reason.
 	mux.HandleFunc("GET /apps/{application_id}/debug", s.staticPage("debug.html"))
+	// F13A/T056: the creator evaluation page. The application id comes from the
+	// path; the page never invents one. Its helpers are served as a separate
+	// asset so the Node page test executes the same bytes a browser receives.
+	mux.HandleFunc("GET /apps/{application_id}/evaluate", s.staticPage("evaluate.html"))
+	mux.HandleFunc("GET /assets/evaluate.js", s.staticPage(filepath.Join("assets", "evaluate.js")))
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
+	// the path so a refresh is the same shareable view; the page reads the
+	// non-contract progress surface (ADR 0019).
+	mux.HandleFunc("GET /evaluations/{evaluation_id}", s.staticPage("evaluations.html"))
+	mux.HandleFunc("GET /assets/evaluations.js",
+		s.staticPage(filepath.Join("assets", "evaluations.js")))
 	// F06/T050: the approval queue/detail page. Static, compile-time path.
 	mux.HandleFunc("GET /approvals", s.staticPage("approvals.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
@@ -373,8 +488,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	mux.HandleFunc("GET /assets/attachments.js", s.staticPage(filepath.Join("assets", "attachments.js")))
 	mux.HandleFunc("GET /assets/tools.js", s.staticPage(filepath.Join("assets", "tools.js")))
+	mux.HandleFunc("GET /knowledge", s.staticPage("knowledge.html"))
+	mux.HandleFunc("GET /assets/knowledge.js", s.staticPage(filepath.Join("assets", "knowledge.js")))
 	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
+	// F09/T054: the personal-memory candidate page and its logic.
+	mux.HandleFunc("GET /memories", s.staticPage("memories.html"))
+	mux.HandleFunc("GET /assets/memories.js", s.staticPage(filepath.Join("assets", "memories.js")))
 	// F06/T050: the approval page helpers (proposal rendering, no defaults).
 	mux.HandleFunc("GET /assets/approvals.js", s.staticPage(filepath.Join("assets", "approvals.js")))
 	// F06/T044: the shared temporary model preview helpers loaded by /debug and /runs.

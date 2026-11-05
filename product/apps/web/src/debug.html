@@ -105,9 +105,41 @@
     <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
   </section>
 
+  <section id="evaluation-progress-entry" class="card">
+    <h2>评测进展（异步评测）</h2>
+    <p class="hint">
+      异步评测在后台逐例运行。把评测提交返回的 evaluation id 粘贴到下面，打开可刷新、可分享的
+      <code>/evaluations/{id}</code> 进展页；页面会说明「报告 <code>failed</code>（业务判定）」
+      与「任务 <code>failed</code>（设施失败、没有报告）」的区别，并在报告存在后显示其不可变内容。
+    </p>
+    <label for="evaluation-id-input">evaluation id（UUID）</label>
+    <input id="evaluation-id-input" type="text" spellcheck="false" autocomplete="off" />
+    <button id="open-evaluation-progress" type="button">打开评测进展页</button>
+    <p id="evaluation-id-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <script src="/assets/app.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
   <script src="/assets/debug.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var button = document.getElementById('open-evaluation-progress');
+      var input = document.getElementById('evaluation-id-input');
+      var status = document.getElementById('evaluation-id-status');
+      button.addEventListener('click', function () {
+        var id = String(input.value || '').trim();
+        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)) {
+          status.textContent = '需要评测 id（UUID）';
+          status.className = 'status bad';
+          return;
+        }
+        status.textContent = '打开评测进展页…';
+        status.className = 'status pending';
+        window.location.assign('/evaluations/' + encodeURIComponent(id));
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/background"
+	"orchara/platform/internal/evaluation"
 )
 
 // jobScope is the maintenance process's implementation of the handler seam.
@@ -123,10 +124,16 @@ func (s *jobScope) Evaluation(
 		return background.EvaluationBinding{}, err
 	}
 	return background.EvaluationBinding{
-		EvaluationID:      binding.EvaluationID,
-		Kind:              binding.Kind,
-		DatasetArtifactID: binding.DatasetArtifactID,
-		ManifestSHA256:    binding.ManifestSHA256,
+		EvaluationID:       binding.EvaluationID,
+		Kind:               binding.Kind,
+		DatasetArtifactID:  binding.DatasetArtifactID,
+		ManifestSHA256:     binding.ManifestSHA256,
+		SnapshotID:         binding.SnapshotID,
+		ApplicationID:      binding.ApplicationID,
+		DraftRevision:      binding.DraftRevision,
+		CompilerVersion:    binding.CompilerVersion,
+		WorkerImageDigest:  binding.WorkerImageDigest,
+		StateSchemaVersion: binding.StateSchemaVersion,
 	}, nil
 }
 
@@ -146,6 +153,122 @@ func (s *jobScope) ToolBuild(
 		DependencyLock:   binding.DependencyLock,
 		ManifestSHA256:   binding.ManifestSHA256,
 	}, nil
+}
+
+// DocumentIngest resolves the job-scoped ingestion binding (T055).
+func (s *jobScope) DocumentIngest(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (background.DocumentIngestBinding, error) {
+	binding, err := s.client.documentIngestBinding(ctx, jobID, attemptToken)
+	if err != nil {
+		return background.DocumentIngestBinding{}, err
+	}
+	return background.DocumentIngestBinding{
+		DocumentID:             binding.DocumentID,
+		KnowledgeBaseID:        binding.KnowledgeBaseID,
+		DocumentRevision:       binding.DocumentRevision,
+		IndexVersionID:         binding.IndexVersionID,
+		IndexVersion:           binding.IndexVersion,
+		EmbeddingModelRevision: binding.EmbeddingModelRevision,
+		EmbeddingDimension:     binding.EmbeddingDimension,
+		SourceArtifactID:       binding.SourceArtifactID,
+		SourceSHA256:           binding.SourceSHA256,
+		SourceMediaType:        binding.SourceMediaType,
+		ParserVersion:          binding.ParserVersion,
+	}, nil
+}
+
+// EvaluationRun creates (or returns) the platform run for one evaluation case
+// as the evaluation's owner (F13A/T052). The handler supplies the canonical case
+// input; the server seals it, creates the run and its start job, and re-proves
+// the owner's current access.
+func (s *jobScope) EvaluationRun(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	input []byte,
+	taskInput *evaluation.TaskInputBinding,
+) (background.EvaluationRunRef, error) {
+	var raw json.RawMessage
+	if err := json.Unmarshal(input, &raw); err != nil {
+		return background.EvaluationRunRef{}, errors.New("the case input is not valid JSON")
+	}
+	ref, err := s.client.evaluationRun(ctx, jobID, attemptToken, caseID, raw, taskInput)
+	if err != nil {
+		return background.EvaluationRunRef{}, err
+	}
+	return background.EvaluationRunRef{RunID: ref.RunID, Created: ref.Created}, nil
+}
+
+// EvaluationRunFacts reads the independent truth of one case run.
+func (s *jobScope) EvaluationRunFacts(
+	ctx context.Context,
+	jobID, attemptToken, runID string,
+) (background.EvaluationRunFacts, error) {
+	payload, err := s.client.evaluationRunFacts(ctx, jobID, attemptToken, runID)
+	if err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	facts := background.EvaluationRunFacts{
+		RunID:               payload.RunID,
+		State:               payload.State,
+		ErrorCode:           payload.ErrorCode,
+		OutputArtifactID:    payload.OutputArtifactID,
+		OutputSHA256:        payload.OutputSHA256,
+		Output:              payload.Output,
+		OutputCollected:     payload.OutputCollected,
+		Effects:             payload.EffectCounts,
+		EffectsCollected:    payload.EffectsCollected,
+		EffectEvidence:      payload.EffectEvidence,
+		Citations:           payload.Citations,
+		CitationsCollected:  payload.CitationsCollected,
+		TaskInputArtifactID: payload.TaskInputArtifactID,
+		TaskInputSHA256:     payload.TaskInputSHA256,
+		Provenance:          payload.Provenance,
+	}
+	if facts.StartedAt, err = parseOptionalTime(payload.StartedAt); err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	if facts.FinishedAt, err = parseOptionalTime(payload.FinishedAt); err != nil {
+		return background.EvaluationRunFacts{}, err
+	}
+	return facts, nil
+}
+
+// EvaluationRunInteraction performs one predefined interaction on a case run as
+// the evaluation's owner.
+func (s *jobScope) EvaluationRunInteraction(
+	ctx context.Context,
+	jobID, attemptToken, runID, interaction string,
+) error {
+	return s.client.evaluationRunInteraction(ctx, jobID, attemptToken, runID, interaction)
+}
+
+// EvaluationCaseOutcome records one case's decision through the job-scoped
+// progress bridge (F13A/T065). The decision is the runner's; the server persists
+// it and re-proves the lease and the owner's access.
+func (s *jobScope) EvaluationCaseOutcome(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	ordinal int,
+	verdict, reasonCode string,
+) error {
+	return s.client.evaluationCaseOutcome(
+		ctx, jobID, attemptToken, caseID, ordinal, verdict, reasonCode,
+	)
+}
+
+// parseOptionalTime decodes an RFC 3339 timestamp the server omitted (empty) or
+// sent.
+func parseOptionalTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil, errors.New("the evaluation run facts carry an invalid timestamp")
+	}
+	return &parsed, nil
 }
 
 // FetchURL reads one signed GET link, capped at maxBytes.
@@ -255,10 +378,32 @@ type modelCallPayload struct {
 
 // evaluationBindingPayload is the non-contract internal evaluation read (T026).
 type evaluationBindingPayload struct {
-	EvaluationID      string `json:"evaluation_id"`
-	Kind              string `json:"kind"`
-	DatasetArtifactID string `json:"dataset_artifact_id"`
-	ManifestSHA256    string `json:"manifest_sha256"`
+	EvaluationID       string `json:"evaluation_id"`
+	Kind               string `json:"kind"`
+	DatasetArtifactID  string `json:"dataset_artifact_id"`
+	ManifestSHA256     string `json:"manifest_sha256"`
+	SnapshotID         string `json:"snapshot_id"`
+	ApplicationID      string `json:"application_id"`
+	DraftRevision      int64  `json:"draft_revision"`
+	CompilerVersion    string `json:"compiler_version"`
+	WorkerImageDigest  string `json:"worker_image_digest"`
+	StateSchemaVersion string `json:"state_schema_version"`
+}
+
+// documentIngestBindingPayload is the non-contract internal document-ingest
+// binding (T055/T061).
+type documentIngestBindingPayload struct {
+	DocumentID             string `json:"document_id"`
+	KnowledgeBaseID        string `json:"knowledge_base_id"`
+	DocumentRevision       int64  `json:"document_revision"`
+	IndexVersionID         string `json:"index_version_id"`
+	IndexVersion           int64  `json:"index_version"`
+	EmbeddingModelRevision string `json:"embedding_model_revision"`
+	EmbeddingDimension     int    `json:"embedding_dimension"`
+	SourceArtifactID       string `json:"source_artifact_id"`
+	SourceSHA256           string `json:"source_sha256"`
+	SourceMediaType        string `json:"source_media_type"`
+	ParserVersion          string `json:"parser_version"`
 }
 
 // toolBuildBindingPayload is the non-contract internal tool-build binding (T037).
@@ -395,6 +540,27 @@ func (c *internalClient) toolBuildBinding(
 	return response, nil
 }
 
+// documentIngestBinding is the T055 job-scoped ingestion read.
+func (c *internalClient) documentIngestBinding(
+	ctx context.Context,
+	jobID, attemptToken string,
+) (documentIngestBindingPayload, error) {
+	var response documentIngestBindingPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/document-ingest",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return documentIngestBindingPayload{}, err
+	}
+	if status != http.StatusOK {
+		return documentIngestBindingPayload{}, fmt.Errorf("document-ingest binding returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
 // evaluationBinding is the T026 job-scoped evaluation read. The job id and the
 // attempt token are the whole request; the server resolves everything else.
 func (c *internalClient) evaluationBinding(
@@ -415,4 +581,144 @@ func (c *internalClient) evaluationBinding(
 		return evaluationBindingPayload{}, fmt.Errorf("evaluation binding returned unexpected status %d", status)
 	}
 	return response, nil
+}
+
+// evaluationRunPayload is the T052 bridge's create answer.
+type evaluationRunPayload struct {
+	RunID   string `json:"run_id"`
+	Created bool   `json:"created"`
+}
+
+// evaluationRunFactsPayload is the T052 bridge's independent-truth answer.
+type evaluationRunFactsPayload struct {
+	RunID               string                   `json:"run_id"`
+	State               string                   `json:"state"`
+	ErrorCode           string                   `json:"error_code"`
+	OutputArtifactID    *string                  `json:"output_artifact_id"`
+	OutputSHA256        string                   `json:"output_sha256"`
+	Output              json.RawMessage          `json:"output"`
+	OutputCollected     bool                     `json:"output_collected"`
+	EffectCounts        map[string]int64         `json:"effect_counts"`
+	EffectsCollected    bool                     `json:"effects_collected"`
+	EffectEvidence      string                   `json:"effect_evidence"`
+	Citations           []string                 `json:"citations"`
+	CitationsCollected  bool                     `json:"citations_collected"`
+	TaskInputArtifactID string                   `json:"task_input_artifact_id"`
+	TaskInputSHA256     string                   `json:"task_input_sha256"`
+	Provenance          evaluation.RunProvenance `json:"provenance"`
+	StartedAt           string                   `json:"started_at"`
+	FinishedAt          string                   `json:"finished_at"`
+}
+
+// evaluationRun creates (or returns) one case's platform run.
+func (c *internalClient) evaluationRun(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	input json.RawMessage,
+	taskInput *evaluation.TaskInputBinding,
+) (evaluationRunPayload, error) {
+	body := map[string]any{
+		"attempt_token": attemptToken,
+		"case_id":       caseID,
+		"input":         input,
+	}
+	if taskInput != nil {
+		body["task_input"] = map[string]string{
+			"sha256":     taskInput.SHA256,
+			"media_type": taskInput.MediaType,
+		}
+	}
+	var response evaluationRunPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs",
+		body,
+		&response,
+	)
+	if err != nil {
+		return evaluationRunPayload{}, err
+	}
+	if status != http.StatusOK {
+		return evaluationRunPayload{}, fmt.Errorf("evaluation-runs returned unexpected status %d", status)
+	}
+	if response.RunID == "" {
+		return evaluationRunPayload{}, errors.New("evaluation-runs returned no run id")
+	}
+	return response, nil
+}
+
+// evaluationRunFacts reads one case run's independent truth.
+func (c *internalClient) evaluationRunFacts(
+	ctx context.Context,
+	jobID, attemptToken, runID string,
+) (evaluationRunFactsPayload, error) {
+	var response evaluationRunFactsPayload
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs/"+
+			url.PathEscape(runID)+"/facts",
+		map[string]string{"attempt_token": attemptToken},
+		&response,
+	)
+	if err != nil {
+		return evaluationRunFactsPayload{}, err
+	}
+	if status != http.StatusOK {
+		return evaluationRunFactsPayload{}, fmt.Errorf("evaluation-run facts returned unexpected status %d", status)
+	}
+	return response, nil
+}
+
+// evaluationRunInteraction performs one predefined interaction on a case run.
+func (c *internalClient) evaluationRunInteraction(
+	ctx context.Context,
+	jobID, attemptToken, runID, interaction string,
+) error {
+	body := map[string]string{"attempt_token": attemptToken, "interaction": interaction}
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-runs/"+
+			url.PathEscape(runID)+"/interactions",
+		body,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("evaluation-run interaction returned unexpected status %d", status)
+	}
+	return nil
+}
+
+// evaluationCaseOutcome records one case's decision through the job-scoped
+// progress bridge (F13A/T065).
+func (c *internalClient) evaluationCaseOutcome(
+	ctx context.Context,
+	jobID, attemptToken, caseID string,
+	ordinal int,
+	verdict, reasonCode string,
+) error {
+	var response struct {
+		Recorded bool `json:"recorded"`
+	}
+	status, err := c.post(
+		ctx,
+		"/internal/v1/background/jobs/"+url.PathEscape(jobID)+"/evaluation-progress",
+		map[string]any{
+			"attempt_token": attemptToken,
+			"case_id":       caseID,
+			"ordinal":       ordinal,
+			"verdict":       verdict,
+			"reason_code":   reasonCode,
+		},
+		&response,
+	)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK || !response.Recorded {
+		return fmt.Errorf("evaluation progress returned unexpected status %d", status)
+	}
+	return nil
 }

@@ -1,0 +1,14 @@
+# Isolated experiment dependencies for T066 (Mem0 comparison only).
+#
+# This file is NOT a product runtime dependency set: mem0ai must never be added to
+# the product's runtime lock, and nothing under product/internal may import it.
+# The lock is generated from a real pip resolution:
+#
+#   .venv/Scripts/python -m pip install --dry-run --ignore-installed \
+#       --report pip-report.json -r requirements.in
+#   python ../../probes/agent_min/lock.py pip-report.json requirements.lock.txt
+#
+# Install into the dedicated venv:
+#   python -m venv .venv
+#   .venv/Scripts/python -m pip install --require-hashes -r requirements.lock.txt
+mem0ai==2.2.1

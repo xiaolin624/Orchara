@@ -1,0 +1,239 @@
+{
+  "ticket": "T060 (#61)",
+  "candidate": "docling-native",
+  "status": "measured",
+  "reason": "",
+  "command": "E:\\orchara-worktrees\\t060\\.scratch\\docling-venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --no-input docling",
+  "venv": "E:\\orchara-worktrees\\t060\\.scratch\\docling-venv",
+  "pip_log": "reports\\f10\\t060-docling-pip.log",
+  "installed": true,
+  "note": "Docling ran in its own isolated environment. Page text is reconstructed from text-item provenance; the document-level export itself does not expose pages.",
+  "pip_exit": 0,
+  "pip_elapsed_s": 306.5,
+  "env_adaptation": "NO_PROXY=localhost,127.0.0.1 (host value contains '[::1]', which httpx rejects)",
+  "worker_exit": 0,
+  "worker_elapsed_s": 97.6,
+  "environment": {
+    "python": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+    "executable": "E:\\orchara-worktrees\\t060\\.scratch\\docling-venv\\Scripts\\python.exe",
+    "platform": "Windows-11-10.0.26200-SP0"
+  },
+  "packages": {
+    "docling": "2.146.0",
+    "docling-core": "2.105.0",
+    "docling-parse": "7.24.2",
+    "torch": "2.15.0"
+  },
+  "pipeline": "DocumentConverter (Docling Native) + HierarchicalChunker",
+  "fixtures": {
+    "t060_plain.pdf": {
+      "sha256": "21907eb06c072d2682c1c0dad7f69c266e4fd08d1d61e90175c5655ad46f2109",
+      "wall_s": 19.574,
+      "docling_version": "2.146.0",
+      "page_count": 3,
+      "page_texts_available": true,
+      "page_text_source": "TextItem provenance reconstruction (not a native page export)",
+      "word_coverage": 1.0,
+      "char_ratio": 1.0,
+      "page_exact_count": 3,
+      "page_exact": [
+        true,
+        true,
+        true
+      ],
+      "page_attribution": {
+        "correct": 4,
+        "total": 4,
+        "ratio": 1.0
+      },
+      "chunk_count": 4,
+      "chunk_chars": {
+        "count": 4,
+        "min": 67,
+        "median": 123.0,
+        "max": 134,
+        "mean": 111.8
+      },
+      "chunks": [
+        {
+          "text": "Quarterly Sales Report Prepared for the regional operations review.",
+          "page": 1
+        },
+        {
+          "text": "North region revenue reached 1234.50 yuan across 42 orders. East region revenue reached 987.25 yuan across 31 orders.",
+          "page": 1
+        },
+        {
+          "text": "Refund policy A refund may be requested within 30 days after the order is completed. Requests after that window are not accepted.",
+          "page": 2
+        },
+        {
+          "text": "Operations notes The October close is scheduled for the first business day of November. All figures in this report are stated in yuan.",
+          "page": 3
+        }
+      ],
+      "pages": [
+        "Quarterly Sales Report Prepared for the regional operations review.\nNorth region revenue reached 1234.50 yuan across 42 orders. East region revenue reached 987.25 yuan across 31 orders.",
+        "Refund policy A refund may be requested within 30 days after the order is completed. Requests after that window are not accepted.",
+        "Operations notes The October close is scheduled for the first business day of November. All figures in this report are stated in yuan."
+      ],
+      "pages_without_text": []
+    },
+    "t060_layout.pdf": {
+      "sha256": "e81e076cc714a8774817ef3d25ad624931c97e277a83523263ad11c6017b1d4f",
+      "wall_s": 3.982,
+      "docling_version": "2.146.0",
+      "page_count": 1,
+      "page_texts_available": true,
+      "page_text_source": "TextItem provenance reconstruction (not a native page export)",
+      "word_coverage": 1.0,
+      "char_ratio": 1.0,
+      "page_exact_count": 1,
+      "page_exact": [
+        true
+      ],
+      "page_attribution": {
+        "correct": 1,
+        "total": 1,
+        "ratio": 1.0
+      },
+      "chunk_count": 1,
+      "chunk_chars": {
+        "count": 1,
+        "min": 99,
+        "median": 99,
+        "max": 99,
+        "mean": 99.0
+      },
+      "chunks": [
+        {
+          "text": "Order ID Region Amount A-1001 North 120.50 A-1002 East 987.25 A-1003 South 450.00 A-1004 West 88.10",
+          "page": 1
+        }
+      ],
+      "pages": [
+        "Order ID Region Amount A-1001 North 120.50 A-1002 East 987.25 A-1003 South 450.00 A-1004 West 88.10"
+      ],
+      "pages_without_text": []
+    },
+    "t060_scanned.pdf": {
+      "sha256": "ddeb26336fc626abefc8487d9a0f5f9efaa0893a2680e34ab0b943e33d0dc770",
+      "wall_s": 13.318,
+      "docling_version": "2.146.0",
+      "page_count": 1,
+      "page_texts_available": true,
+      "page_text_source": "TextItem provenance reconstruction (not a native page export)",
+      "word_coverage": 1.0,
+      "char_ratio": 1.0,
+      "page_exact_count": 1,
+      "page_exact": [
+        true
+      ],
+      "page_attribution": {
+        "correct": 0,
+        "total": 0,
+        "ratio": null
+      },
+      "chunk_count": 0,
+      "chunk_chars": {
+        "count": 0,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "chunks": [],
+      "pages": [
+        ""
+      ],
+      "pages_without_text": [
+        1
+      ]
+    },
+    "t060_partial.pdf": {
+      "sha256": "2d5b7793a9f21028a89320367f3a6b7f0370326cbfb980199828aa4ea0768bbc",
+      "wall_s": 14.377,
+      "docling_version": "2.146.0",
+      "page_count": 3,
+      "page_texts_available": true,
+      "page_text_source": "TextItem provenance reconstruction (not a native page export)",
+      "word_coverage": 1.0,
+      "char_ratio": 1.0,
+      "page_exact_count": 3,
+      "page_exact": [
+        true,
+        true,
+        true
+      ],
+      "page_attribution": {
+        "correct": 2,
+        "total": 2,
+        "ratio": 1.0
+      },
+      "chunk_count": 2,
+      "chunk_chars": {
+        "count": 2,
+        "min": 72,
+        "median": 81.5,
+        "max": 91,
+        "mean": 81.5
+      },
+      "chunks": [
+        {
+          "text": "Archive cover sheet This document was assembled from three source pages.",
+          "page": 1
+        },
+        {
+          "text": "Archive continuation The middle page is kept as an image because its text layer is missing.",
+          "page": 3
+        }
+      ],
+      "pages": [
+        "Archive cover sheet This document was assembled from three source pages.",
+        "",
+        "Archive continuation The middle page is kept as an image because its text layer is missing."
+      ],
+      "pages_without_text": [
+        2
+      ]
+    },
+    "t060_short.pdf": {
+      "sha256": "1cbaf751412fd9cb663353579b5285e84cccb6c7b71741b30d8ce25aa743a463",
+      "wall_s": 4.806,
+      "docling_version": "2.146.0",
+      "page_count": 1,
+      "page_texts_available": true,
+      "page_text_source": "TextItem provenance reconstruction (not a native page export)",
+      "word_coverage": 1.0,
+      "char_ratio": 1.0,
+      "page_exact_count": 1,
+      "page_exact": [
+        true
+      ],
+      "page_attribution": {
+        "correct": 1,
+        "total": 1,
+        "ratio": 1.0
+      },
+      "chunk_count": 1,
+      "chunk_chars": {
+        "count": 1,
+        "min": 27,
+        "median": 27,
+        "max": 27,
+        "mean": 27.0
+      },
+      "chunks": [
+        {
+          "text": "Scan from the office copier",
+          "page": 1
+        }
+      ],
+      "pages": [
+        "Scan from the office copier"
+      ],
+      "pages_without_text": []
+    }
+  },
+  "peak_rss_mb": 1890.29
+}

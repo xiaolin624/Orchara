@@ -557,3 +557,41 @@ func TestRunEventStreamDefaultsAndBounds(t *testing.T) {
 		})
 	}
 }
+
+// F09/T054: the memory candidate lifetime is a validated deployment knob.
+func TestMemoryCandidateTTLDefaultsToSevenDays(t *testing.T) {
+	cfg, err := Load(lookupFrom(validStubEnv()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MemoryCandidateTTL != DefaultMemoryCandidateTTL {
+		t.Fatalf("ttl = %s, want %s", cfg.MemoryCandidateTTL, DefaultMemoryCandidateTTL)
+	}
+	if DefaultMemoryCandidateTTL != 7*24*time.Hour {
+		t.Fatalf("DefaultMemoryCandidateTTL = %s", DefaultMemoryCandidateTTL)
+	}
+}
+
+func TestMemoryCandidateTTLAcceptsASaneOverride(t *testing.T) {
+	env := validStubEnv()
+	env[EnvMemoryCandidateTTL] = "90m"
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MemoryCandidateTTL != 90*time.Minute {
+		t.Fatalf("ttl = %s", cfg.MemoryCandidateTTL)
+	}
+}
+
+func TestMemoryCandidateTTLRejectsAStillbornOrAbsurdWindow(t *testing.T) {
+	for _, value := range []string{"0s", "-1h", "1s", "8761h", "not-a-duration"} {
+		env := validStubEnv()
+		env[EnvMemoryCandidateTTL] = value
+		_, err := Load(lookupFrom(env))
+		var invalidErr *ValidationError
+		if !errors.As(err, &invalidErr) || invalidErr.Variable != EnvMemoryCandidateTTL {
+			t.Fatalf("value %q: expected a validated %s error, got %v", value, EnvMemoryCandidateTTL, err)
+		}
+	}
+}

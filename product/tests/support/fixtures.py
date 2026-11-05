@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from support import stack as st
-from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033
+from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033, t055
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
 
 
@@ -485,4 +485,70 @@ __all__ = [
     "t030_stack",
     "t032_stack",
     "t033_stack",
+    "t055_stack",
+    "t059_stack",
+    "t060_stack",
 ]
+
+
+def build_knowledge_stack(*, tmp_path, dsn, dbname, go_binaries, api_server):
+    """The T028-shaped F10 stack over one *already migrated* database.
+
+    It needs the compiled API with the real object store and signed links, the
+    internal mTLS listener (the ingestion binding/claim assertions use it) and the
+    compiled maintenance process that runs the real document_ingest and
+    artifact_finalize handlers. Migration/bootstrap are the caller's business: the
+    T061 upgrade test seeds a pre-0039 database before the chain runs.
+    """
+    object_dir = tmp_path / "objects"
+    object_dir.mkdir(exist_ok=True)
+    internal_addr, _port = unique_internal_addr()
+    certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
+    signing_key = t024.new_signing_key()
+    server = api_server(
+        dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    )
+
+    stack = t055.T055Stack(
+        server=server,
+        dsn=dsn,
+        dbname=dbname,
+        object_dir=object_dir,
+        certificates=certificates,
+        binaries=go_binaries,
+        signing_key=signing_key,
+    )
+    f00b.wait_for_internal(stack)
+    return stack
+
+
+def _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server):
+    """A T028-shaped stack shared by the F10 knowledge tickets (T055/T059)."""
+    dsn, dbname = fresh_database
+    st.migrate_or_fail(go_binaries["admin"], dsn)
+    st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
+    return build_knowledge_stack(
+        tmp_path=tmp_path,
+        dsn=dsn,
+        dbname=dbname,
+        go_binaries=go_binaries,
+        api_server=api_server,
+    )
+
+
+@pytest.fixture
+def t055_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The F10/T055 real stack (txt/md ingestion and retrieval)."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)
+
+
+@pytest.fixture
+def t059_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The same real stack for the F10/T059 tabular ingestion path."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)
+
+
+@pytest.fixture
+def t060_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t055.T055Stack:
+    """The same real stack for the F10/T060 plain-text PDF ingestion path."""
+    return _build_knowledge_stack(tmp_path, fresh_database, go_binaries, api_server)

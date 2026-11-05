@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"orchara/platform/internal/embedding"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/sandbox"
 	"orchara/platform/internal/tools"
@@ -26,6 +27,11 @@ type HandlerWork struct {
 	Store        *objectstore.Store
 	DB           *sql.DB
 	Heartbeat    func(ctx context.Context) error
+	// Embedder is the process's embedding seam (T055). The maintenance process
+	// constructs it once from deployment configuration; a nil value means the
+	// handler cannot embed and fails closed with
+	// embedding_provider_not_configured instead of inventing vectors.
+	Embedder *embedding.Service
 	// Settings carries the maintenance process's operator-tunable handler
 	// timeouts (T026). A zero value means "use the handler's documented default";
 	// tests and deployments set short values explicitly rather than waiting a
@@ -64,9 +70,19 @@ type HandlerSettings struct {
 	// ReportWaitTimeout bounds how long a handler waits for its own report
 	// artifact to be finalized by the system_io pool.
 	ReportWaitTimeout time.Duration
+	// EvaluationCaseTimeout bounds how long one evaluation case's run may take to
+	// reach a rest state. A timeout is recorded as not_run, never passed.
+	EvaluationCaseTimeout time.Duration
 	// ToolBuildTimeout bounds one sandboxed tool build (T037). A zero value means
 	// the handler's documented default.
 	ToolBuildTimeout time.Duration
+	// ArtifactReadyTimeout bounds how long document_ingest waits for its staged
+	// chunk-body artifacts to be activated by the system_io pool (T055). Zero
+	// means the handler's documented default.
+	ArtifactReadyTimeout time.Duration
+	// ArtifactReadyPoll is the interval between those status checks. Zero means
+	// the documented default.
+	ArtifactReadyPoll time.Duration
 }
 
 // Outcome is what a handler reports. State is succeeded (the guard then decides
