@@ -1,0 +1,511 @@
+{
+  "dsl_version": "1.0",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "requires_approval": {
+        "type": "boolean"
+      },
+      "task": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "requires_approval",
+      "task"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "branch_yes": {
+        "type": "object"
+      },
+      "branch_no": {
+        "type": "object"
+      },
+      "retrieval": {
+        "type": "array"
+      },
+      "child": {
+        "type": "string"
+      },
+      "approval": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "branch_yes",
+      "branch_no",
+      "retrieval",
+      "child",
+      "approval"
+    ],
+    "additionalProperties": false
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "inputs": {},
+      "output_schema": {
+        "type": "object"
+      },
+      "config": {}
+    },
+    {
+      "id": "choose",
+      "type": "condition",
+      "inputs": {
+        "requires_approval": {
+          "ref": "input#/requires_approval"
+        }
+      },
+      "output_schema": {
+        "type": "object"
+      },
+      "config": {
+        "join_id": "join1",
+        "default_port": "no",
+        "cases": [
+          {
+            "input": "requires_approval",
+            "op": "eq",
+            "value": true,
+            "port": "yes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "approve",
+      "type": "approval",
+      "inputs": {
+        "proposal": {
+          "literal": {
+            "subject": "order-42",
+            "amount": "1250.00"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "approval_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "params_sha256": {
+            "type": "string"
+          },
+          "proposal": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "approval_id",
+          "decision",
+          "decided_at",
+          "params_sha256",
+          "proposal"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "title": "Approve the order",
+        "expires_seconds": 3600
+      }
+    },
+    {
+      "id": "direct",
+      "type": "model",
+      "inputs": {
+        "task": {
+          "ref": "input#/task"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "model_profile_version": "22222222-2222-4222-8222-222222222222",
+        "prompt_template": "Summarize {{task}}",
+        "response_mode": "json"
+      }
+    },
+    {
+      "id": "fork",
+      "type": "python",
+      "inputs": {
+        "file": {
+          "ref": "node:start#/artifact"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "string"
+          },
+          "regions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "order_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "regions",
+          "order_count"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "tool_version": "11111111-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "id": "py",
+      "type": "python",
+      "inputs": {
+        "file": {
+          "ref": "node:start#/artifact"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "string"
+          },
+          "regions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "order_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "regions",
+          "order_count"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "tool_version": "11111111-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "id": "agent",
+      "type": "agent",
+      "inputs": {
+        "artifact": {
+          "ref": "node:start#/artifact"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "model_profile_version": "22222222-2222-4222-8222-222222222222",
+        "instructions": "Summarise the validated sales statistics.",
+        "max_turns": 2,
+        "tool_versions": [],
+        "subapp_versions": []
+      }
+    },
+    {
+      "id": "join2",
+      "type": "join",
+      "inputs": {},
+      "output_schema": {
+        "type": "object"
+      },
+      "config": {
+        "mode": "all_active",
+        "fork_id": "fork",
+        "required_sources": [
+          "agent"
+        ],
+        "optional_sources": [
+          "py"
+        ]
+      }
+    },
+    {
+      "id": "join1",
+      "type": "join",
+      "inputs": {},
+      "output_schema": {
+        "type": "object"
+      },
+      "config": {
+        "mode": "all_active",
+        "fork_id": "choose",
+        "required_sources": [
+          "join2",
+          "direct"
+        ],
+        "optional_sources": []
+      }
+    },
+    {
+      "id": "retrieve",
+      "type": "retrieve",
+      "inputs": {
+        "query": {
+          "literal": "regional sales"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chunk_id": {
+                  "type": "string"
+                },
+                "document_id": {
+                  "type": "string"
+                },
+                "document_revision": {
+                  "type": "integer"
+                },
+                "span": {
+                  "type": "object"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "chunk_id",
+                "document_id",
+                "document_revision",
+                "span",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "citations",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "knowledge_base_ids": [
+          "__KNOWLEDGE_BASE_ID__"
+        ],
+        "top_k": 3
+      }
+    },
+    {
+      "id": "approve2",
+      "type": "approval",
+      "inputs": {
+        "proposal": {
+          "literal": {
+            "stage": "final",
+            "subject": "order-42"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "approval_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "params_sha256": {
+            "type": "string"
+          },
+          "proposal": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "approval_id",
+          "decision",
+          "decided_at",
+          "params_sha256",
+          "proposal"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "title": "Approve the final result",
+        "expires_seconds": 1800
+      }
+    },
+    {
+      "id": "child",
+      "type": "call_app",
+      "inputs": {
+        "source": {
+          "literal": "fixture"
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "echo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "echo"
+        ],
+        "additionalProperties": false
+      },
+      "config": {
+        "application_version": "__CHILD_VERSION__"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "inputs": {
+        "branch_yes": {
+          "ref": "node:join1#/results/join2/value"
+        },
+        "branch_no": {
+          "ref": "node:join1#/results/direct"
+        },
+        "retrieval": {
+          "ref": "node:retrieve#/citations"
+        },
+        "child": {
+          "ref": "node:child#/echo"
+        },
+        "approval": {
+          "ref": "node:approve2#/approval_id"
+        }
+      },
+      "output_schema": {
+        "type": "object"
+      },
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "source": "start",
+      "target": "choose"
+    },
+    {
+      "source": "choose",
+      "target": "approve",
+      "port": "yes"
+    },
+    {
+      "source": "choose",
+      "target": "direct",
+      "port": "no"
+    },
+    {
+      "source": "approve",
+      "target": "fork"
+    },
+    {
+      "source": "fork",
+      "target": "py"
+    },
+    {
+      "source": "fork",
+      "target": "agent"
+    },
+    {
+      "source": "py",
+      "target": "join2"
+    },
+    {
+      "source": "agent",
+      "target": "join2"
+    },
+    {
+      "source": "join2",
+      "target": "join1"
+    },
+    {
+      "source": "direct",
+      "target": "join1"
+    },
+    {
+      "source": "join1",
+      "target": "retrieve"
+    },
+    {
+      "source": "retrieve",
+      "target": "approve2"
+    },
+    {
+      "source": "approve2",
+      "target": "child"
+    },
+    {
+      "source": "child",
+      "target": "end"
+    }
+  ],
+  "policy": {
+    "max_active_seconds": 900,
+    "max_child_depth": 3,
+    "max_child_calls": 12,
+    "budget_limit": "1.00",
+    "currency": "USD"
+  }
+}

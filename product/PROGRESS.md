@@ -2040,3 +2040,24 @@ T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内�
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。首轮真实栈曾用 `t055_stack`（缺 T025 编译器环境）出现
 `compiler_unconfigured`/helper KB-id 拆分 bug，修正为 `t033_stack` + helper 归一化后 6 passed（报告 §5 如实记录）。
+
+## F04B/T091 十节点工作流：保存/恢复、两次审批与嵌套汇合（GitHub #92，2026-11-06）
+
+T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保存/校验 + 真实两次审批嵌套汇合 + optional/required/未知不降级）。
+证据：`reports/f04b/T091-ten-node-workflow.md`；分支 `t/t091-ten-node-graph`（worktree `E:\Orchara-wt\t091`），
+基线 `integration/t083-t091` @ `15db973`，结束前 merge 集成分支 @ `bd4d791`（含 T085 skip 政策 `9a302f2`、T088 收尾）。
+
+| 交付点 | 结果 |
+|---|---|
+| 十类 palette/面板/allowlist | **passed**：`NODE_TYPES`/`CONFIG_ALLOWLIST` 十类；`ten_node_canvas.test.mjs` 12 用例整组钉住 palette、每类默认 config 与契约白名单、真实 fixture 逐字节 graph↔definition 往返、来源选择器（join 按来源/retrieve 数组/call_app 映射/approval proposal）、导出 allowlist+dropped+secret 拒绝、十类错误定位；画布源码无需改，重建 bundle 逐字节一致 |
+| 十类 fixture 保存/校验 | **passed**：`tests/f04b/fixtures/ten_node_definition.json`（13 节点/十类/condition 内嵌 parallel fork+join/条件端口/join-by-source/固定 model+tool+child+KB）；真实 `PUT /draft`（保存不是校验门）→ GET 结构相等且读取/再保存逐字节稳定 → `POST /validate` valid:true + `X-Manifest-SHA256` → debug 提交冻结 manifest（十类/端口/`subapp_versions=[child]`） |
+| 非法变体定位 | **passed**：跨区边/坏端口/坏 join sources/type_mismatch/cycle/注入未展示能力键（`response_schema`+`api_key`）/未知节点类型 → `valid:false` 精确 pointer；跨区变体真实 debug 422 `validation_failed` + pointer、零 Run/零 Job |
+| 两次审批 + 嵌套汇合（真实栈） | **passed**：exec1 waiting（approve1 pending、无 resume）→ 决定 → exec2 新进程跑到 approve2 waiting（join2/join1 各一次）→ 决定 → exec3 succeeded；两个 approval/两个 resume、每节点 data 恰 1 条、join 每 attempt 至多一次 succeeded、capability 操作 2 条各 1 attempt、预算不重置；end 按来源读 join 封套；SSE 重连/node-results 重建 run view 数据面 |
+| optional/required/unknown | **passed**：optional py `node_output_invalid` 收敛进 join 封套（run succeeded、end 把失败当数据）；required py 失败 fail-fast（run failed、join/end skipped、无 join 行、无第二审批）；optional agent 撤销 profile `model_profile_unavailable` 不降级（run failed） |
+| 保存/恢复 | **passed**：run 使用冻结 snapshot/manifest；草稿被替换后 resume 仍执行原两次审批图；run snapshot 与 manifest hash 不变 |
+| 集成对齐（T087 wait skip） | 旧基线 `15db973` 上 T087 两审批因 T085 wait-skip 变红；集成分支 `9a302f2` 已修（waiting 不发 skip、failed/cancelled 终态前按拓扑发一次）。本票 merge 后采用上游实现，不重复改 `graphrun.go`，仅新增 Go 回归 `TestGraphRunWaitingAttemptDoesNotReportFutureNodesAsSkipped` |
+| run view（P1） | **passed**：`runview.js` 审批行显示「等待人工审批」/「审批已通过 · id · decided_at」，approval data artifact 纳入预取；`runview_t091.test.mjs` PASS 4 |
+| 门禁 | `pytest tests/f04b -q` **89 passed in 678.89s**、`pytest tests/f06 -q` **173 passed in 1311.21s**、`pytest tests/tooling -q` **21 passed**、`go build/vet/test ./...` 全绿（38 包）、`gofmt` 空、`sync_spec --check` no drift、`node --check` + 4 个 Node 套件全绿（tail 见报告 §4） |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：浏览器 DOM/Playwright、真实厂商模型/嵌入（仅 dev-stub）、
+跨版本 checkpoint 恢复（本批不做）、无关全量套件（f05/f08 等）。

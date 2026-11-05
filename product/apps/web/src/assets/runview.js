@@ -63,6 +63,11 @@ const RUNVIEW_TYPE_TEXT = {
 
 const RUNVIEW_TERMINAL_STATES = { succeeded: true, failed: true, cancelled: true };
 
+// F04B/T091: an approval node's first attempt parks at the Run's
+// `waiting_approval` state without a node-level terminal state, so the table
+// names the wait explicitly instead of showing a bare "运行中".
+const RUNVIEW_APPROVAL_WAITING_TEXT = '等待人工审批（审批通过后由审批人恢复同一运行）';
+
 // F04B/T085: an optional source's explicit pure-read/compute failure is folded
 // into the join envelope as error data. The run (and the other branches) are not
 // failed by it, so the run view names it differently from a failed branch/Run.
@@ -353,6 +358,36 @@ function runViewDescribeJoin(row, config) {
     (convergedErrors > 0 ? '；其中 ' + convergedErrors + ' 个 optional 分支错误已收敛' : '');
 }
 
+/**
+ * Fill an approval row from its data artifact (the documented T087 output
+ * `{approval_id, decision, decided_at, params_sha256, proposal}`) or, while the
+ * Run is `waiting_approval`, name the pending human decision. The row never
+ * invents a decision: an empty artifact simply leaves the wait text.
+ */
+function runViewDescribeApproval(row, runState) {
+  if (!row.approval) {
+    return;
+  }
+  if (row.content && typeof row.content === 'object' && !Array.isArray(row.content)) {
+    const decision = typeof row.content.decision === 'string' ? row.content.decision : '';
+    const approvalID = typeof row.content.approval_id === 'string' ? row.content.approval_id : '';
+    const decidedAt = typeof row.content.decided_at === 'string' ? row.content.decided_at : '';
+    if (decision !== '') {
+      const decisionText = decision === 'approved' ? '已通过' : decision;
+      row.approvalText =
+        '审批' + decisionText +
+        (approvalID === '' ? '' : ' · ' + runViewTruncate(approvalID, 12)) +
+        (decidedAt === '' ? '' : ' · ' + decidedAt);
+      return;
+    }
+  }
+  if (runState === 'waiting_approval' && row.observed &&
+      (row.state === 'pending' || row.state === 'running')) {
+    row.approvalWaiting = true;
+    row.approvalText = RUNVIEW_APPROVAL_WAITING_TEXT;
+  }
+}
+
 /** The documented owner route that opens one retrieved citation. */
 function runViewCitationPath(chunkID) {
   return '/api/v1/knowledge-citations/' + encodeURIComponent(String(chunkID || ''));
@@ -602,6 +637,9 @@ async function runViewOpenCitation(link, citation) {
       retrieveCount: 0,
       retrieveCitations: [],
       retrieveText: '',
+      approval: type === 'approval',
+      approvalText: '',
+      approvalWaiting: false,
       convergedErrors: 0,
       artifactId: dataRow ? String(dataRow.artifact_id || '') : '',
       artifactKind: dataRow ? String(dataRow.kind || '') : '',
@@ -612,6 +650,7 @@ async function runViewOpenCitation(link, citation) {
     runViewDescribeCondition(row);
     runViewDescribeJoin(row, config);
     runViewDescribeRetrieve(row);
+    runViewDescribeApproval(row, runState);
     rows.push(row);
   }
 
@@ -654,7 +693,9 @@ async function runViewOpenCitation(link, citation) {
     text: text,
     sourceText:
       '节点状态来自已提交的 node.status 事件；条件端口与 join 结果来自节点 data artifact' +
-      '（非契约数据面，owner 可见）；知识检索的引用来自 retrieve 节点 data artifact，' +
+      '（非契约数据面，owner 可见）；人工审批的决定（approval_id/decision/决定时间）来自' +
+      '审批节点 data artifact，Run 等待审批时节点行标注等待；' +
+      '知识检索的引用来自 retrieve 节点 data artifact，' +
       '点击引用会通过 GET /api/v1/knowledge-citations/{chunk_id} 打开真实来源，撤权/删除后显示不可用。',
   };
 }
@@ -882,6 +923,12 @@ function runViewBranchCell(details) {
     port.textContent = details.branchText;
     cell.appendChild(port);
   }
+  if (details.approvalText !== '') {
+    const approval = document.createElement('p');
+    approval.className = 'hint run-node-approval' + (details.approvalWaiting ? ' state-waiting' : '');
+    approval.textContent = details.approvalText;
+    cell.appendChild(approval);
+  }
   if (details.retrieveText !== '') {
     const summary = document.createElement('p');
     summary.className = 'hint';
@@ -1045,7 +1092,7 @@ async function loadRunViewDefinition(view) {
   renderRunView(view);
 }
 
-/** Fetch the data artifact content of condition/join/retrieve nodes, at most once each. */
+/** Fetch the data artifact content of condition/join/retrieve/approval nodes, at most once each. */
 async function refreshRunViewArtifacts(view) {
   const definition = view.definition;
   const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
@@ -1053,7 +1100,8 @@ async function refreshRunViewArtifacts(view) {
   for (const node of nodes) {
     if (
       node &&
-      (node.type === 'condition' || node.type === 'join' || node.type === 'retrieve')
+      (node.type === 'condition' || node.type === 'join' || node.type === 'retrieve' ||
+        node.type === 'approval')
     ) {
       byID[String(node.id || '')] = String(node.type);
     }

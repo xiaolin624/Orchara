@@ -293,3 +293,83 @@ func TestGraphRunApprovalNodeWithAChangedProposalAsksAgain(t *testing.T) {
 		t.Fatalf("prepare proposal = %+v", client.nodeApprovalRequests[0].Proposal)
 	}
 }
+
+// approvalThenPythonDefinition is start -> approve1(approval) -> stats(python) -> end.
+// It exists to prove that a waiting hand-over does not report the nodes after the
+// wait as `skipped`: they have not been decided yet and really run on the resume
+// attempt (F04B/T091's two approvals converge on this behaviour).
+const approvalThenPythonDefinition = `{
+  "dsl_version": "1.0",
+  "input_schema": {"type":"object"},
+  "output_schema": {"type":"object"},
+  "nodes": [
+    {"id":"start","type":"start","inputs":{},"config":{},"output_schema":{"type":"object"}},
+    {"id":"approve1","type":"approval",
+     "inputs":{"proposal":{"literal":{"subject":"order-42"}}},
+     "config":{"title":"Approve the order","expires_seconds":600},
+     "output_schema":{"type":"object"}},
+    {"id":"stats","type":"python","inputs":{"file":{"ref":"node:start#/artifact"}},
+     "config":{"tool_version":"11111111-1111-4111-8111-111111111111"},
+     "output_schema":{"type":"object"}},
+    {"id":"end","type":"end","inputs":{"stats":{"ref":"node:stats#"},
+                                       "decision":{"ref":"node:approve1#/decision"}},
+     "config":{},"output_schema":{"type":"object"}}
+  ],
+  "edges": [
+    {"source":"start","target":"approve1"},
+    {"source":"approve1","target":"stats"},
+    {"source":"stats","target":"end"}
+  ],
+  "policy": {"max_active_seconds":900,"max_child_depth":3,"max_child_calls":12,
+             "budget_limit":"1.00","currency":"USD"}
+}`
+
+func TestGraphRunWaitingAttemptDoesNotReportFutureNodesAsSkipped(t *testing.T) {
+	client, box, report := runApprovalAttempt(t, approvalThenPythonDefinition, `{}`,
+		[]*NodeApproval{{
+			ID:           "11111111-1111-4111-8111-111111111111",
+			State:        "pending",
+			ParamsSHA256: strings.Repeat("a", 64),
+			ExpiresAt:    time.Now().Add(10 * time.Minute),
+		}})
+	if report.Outcome != "waiting_approval" || report.ErrorCode != CodeApprovalRequired {
+		t.Fatalf("report = %+v", report)
+	}
+	if box.calls != 0 {
+		t.Fatalf("sandbox calls = %d; the run parked before the python node", box.calls)
+	}
+	observed := observedNodeStates(client)
+	if got := strings.Join(observed["approve1"], ","); got != "pending,running" {
+		t.Fatalf("approve1 states = %v", observed["approve1"])
+	}
+	for _, nodeID := range []string{"stats", "end"} {
+		if states, present := observed[nodeID]; present {
+			t.Fatalf("%s emitted %v on a waiting attempt; future nodes are not skipped",
+				nodeID, states)
+		}
+	}
+
+	// The resume attempt with the approval already decided runs stats exactly once
+	// and finishes the same graph.
+	resumedClient, resumedBox, resumed := runApprovalAttempt(t, approvalThenPythonDefinition, `{}`,
+		[]*NodeApproval{{
+			ID:           "11111111-1111-4111-8111-111111111111",
+			State:        "approved",
+			ParamsSHA256: strings.Repeat("a", 64),
+			ExpiresAt:    time.Now().Add(10 * time.Minute),
+			DecidedAt:    decidedAtValue(),
+		}})
+	if resumed.Outcome != "succeeded" {
+		t.Fatalf("resumed report = %+v", resumed)
+	}
+	if resumedBox.calls != 1 {
+		t.Fatalf("sandbox calls on the resumed attempt = %d", resumedBox.calls)
+	}
+	resumedStates := observedNodeStates(resumedClient)
+	if got := strings.Join(resumedStates["stats"], ","); got != "pending,running,succeeded" {
+		t.Fatalf("stats states on the resumed attempt = %v", resumedStates["stats"])
+	}
+	if got := strings.Join(resumedStates["end"], ","); got != "pending,running,succeeded" {
+		t.Fatalf("end states on the resumed attempt = %v", resumedStates["end"])
+	}
+}
