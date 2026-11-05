@@ -2,7 +2,8 @@
 
 - 任务：F14 / GitHub Issue #91（票 `T090`），feature 分支 `t/t090-routing-baseline`，
   worktree `E:\Orchara-wt\t090`（产品代码 `product/`），基线 `integration/t083-t091`
-  @ `0deeab9` → 结束前 merge `491cb78`（合并提交 `1d94984`）。
+  @ `0deeab9` → 结束前 merge `491cb78`（合并提交 `1d94984`）；代码/证据提交 `4c10b22`，
+  证据运行 head `0deeab9`。
 - 状态：**`blocked`**。不依赖模型的全部必交项已真实执行并留证；**同基模强提示基线、
   规则 vs 强提示比较、任何训练都不可在本机运行**（无模型凭据/端点/权重、无训练 GPU）。
   本报告不声称训练已运行，也不把 dev-stub 冒充强提示基线。
@@ -291,7 +292,28 @@ Windows 11 (AMD64)、git head `0deeab9`；控制模型 id/`validation_state=pass
 
 ### 7.3 门禁
 
-<!-- GATES -->
+```text
+$ cd E:\Orchara-wt\t090\product
+$ python -m pytest tests/f14 -q
+.............                                                            [100%]
+13 passed in 73.36s (0:01:13)
+
+$ python -m pytest tests/f08/test_t084_corpus.py -q
+....                                                                     [100%]
+4 passed in 0.20s
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+- `pytest tests/f14 -q` = 12 个纯 Python 冻结/泄漏断言 + 1 个真实栈基线用例
+  （该次运行未设 `T090_ROUTING_REPORT`，只写 pytest tmp，不改仓库证据 JSON）。
+- **全量 `pytest tests/f08 -q`：`not_run`**。理由：本票未改 `product/` 生产代码、未改
+  T084 语料/runner（见 `git diff --stat` 仅 tests/f14 + experiments + reports + PROGRESS）；
+  T084 语料回归 4 passed，且 registry/dataset 摘要逐字节锚定 T084 证据 JSON；共享
+  WSL/runsc 栈在收尾期间被其它集成任务连续占用（等待锁超过 1 小时），不并发跑 16 分钟
+  真实栈。T084 自身最终树的全量 f08 门禁也是 `not_run`（其报告修正）。
+- Go 门禁不适用：无 `internal/`/`cmd/` 改动；`docs/spec/**`、`contracts/**`、迁移均未改。
 
 ## 8. 边界与风险
 

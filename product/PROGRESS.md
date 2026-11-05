@@ -1919,7 +1919,7 @@ T090-freeze.{json,md}`；分支 `t/t090-routing-baseline`（worktree `E:\Orchara
 | 泄漏检查 | 独立检查器 `tests/f14/routing_freeze.py`：26 family 不跨 split/单元格；跨 split 225 对消息完全/规范化重复 0；近重复阈值 0.75、实测最大 0.5、0 对；34/34 `self_created`+`not_applicable`，附件为公开样例逐字节副本 |
 | 两臂基线 | 复用 T084 runner + `t079` 真实 REST/maintenance。臂 A（复现 T084 目录）frozen 25/25、dev 9/9，accuracy 1.0、误自动执行 0、澄清 13/13、候选召回 1.0，`t084_comparison.identical=true`；臂 B（仅换产品模板 sales 卡）frozen 21/25、dev 8/9，5 个错误全部 retrieval 类（4 例工资单意图被“生成”2-gram 过度召回为 sales，1 例模板卡缺 `aggregation` 未召回），无 false auto、`payroll` 版本零泄漏 |
 | 错误分类/stop-go | `model_semantic=not_measured`（无模型）；`stop_training_fix_the_measured_layers_first`（provisional），依据 `TRAINING-EXPERIMENT.md:40/:48`、`ROUTING-MEMORY-KNOWLEDGE.md:49`；未虚增语料规模（25 < EVALUATION 建议 100，明写） |
-| 门禁 | `pytest tests/f14` 见下；`pytest tests/f08/test_t084_corpus.py` **4 passed**（T084 语料未破坏）；`python tools/sync_spec.py --check` **no drift**；未改 `product/` 生产代码、`docs/spec/**`、`contracts/**` |
+| 门禁 | `python -m pytest tests/f14 -q` **13 passed in 73.36s**（12 冻结/泄漏 + 1 真实栈两臂基线）；`pytest tests/f08/test_t084_corpus.py -q` **4 passed**（T084 语料未破坏）；`python tools/sync_spec.py --check` **no drift**；全量 `pytest tests/f08` **not_run**（未改产品代码/T084 语料，共享 runsc 栈被其它集成任务长期占用）；无 Go/契约/spec/迁移改动 |
 | 边界/not_run | 同基模强提示基线 `blocked`（无凭据/端点/权重/预算）；规则 vs 强提示比较 `not_run`；训练 `not_run`（无 GPU/基模）；T068 真实发布未重跑（T084 证据）；全量 `pytest tests/f08` 与浏览器 DOM、sandbox 执行 `not_run/not_used` |
 
 ## 记录模板
