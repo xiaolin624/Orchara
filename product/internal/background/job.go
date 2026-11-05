@@ -378,6 +378,15 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,
 	},
+	// route_request (T079): a temporarily unavailable control model or a transient
+	// internal failure can recover; the request stays in `routing` while the job is
+	// retried, so the conversation slot is not stranded. A candidate/authorization
+	// refusal is committed on the Request by the server, so it never reaches here.
+	KindRouteRequest: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+	},
 }
 
 // Retryable reports whether code is retryable for kind.

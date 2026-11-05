@@ -89,8 +89,18 @@ func TestRetryClassificationIsFixedPerKind(t *testing.T) {
 		}
 	}
 	// An unknown kind has no retry table: everything is business (fail safe).
-	if Retryable(KindRouteRequest, CodeTransientStorageIO) {
+	if Retryable(Kind("not_a_registered_kind"), CodeTransientStorageIO) {
 		t.Fatal("an unregistered kind must not inherit another kind's retry table")
+	}
+	// route_request is registered by F08/T079: a transient control-model failure is
+	// retryable, a deterministic refusal is business.
+	for _, code := range retryable {
+		if !Retryable(KindRouteRequest, code) {
+			t.Fatalf("%q should be retryable for route_request", code)
+		}
+	}
+	if Retryable(KindRouteRequest, "route_refused") {
+		t.Fatal("a deterministic route refusal must not be retried")
 	}
 }
 

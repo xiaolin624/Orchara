@@ -78,6 +78,19 @@
           <button type="button" id="chat-cancel">取消该请求</button>
         </section>
 
+        <section id="interaction-panel" hidden>
+          <h3>需要你的确认</h3>
+          <p id="interaction-prompt"></p>
+          <p id="interaction-missing" class="hint"></p>
+          <p id="interaction-expires" class="hint"></p>
+          <ul id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
+          <button type="button" id="interaction-select" hidden>使用所选候选继续</button>
+          <label for="interaction-message">补充信息（可选，最多 32000 字）</label>
+          <textarea id="interaction-message" rows="3" maxlength="32000"></textarea>
+          <button type="button" id="interaction-reply">提交答复</button>
+          <span id="interaction-status" class="status"></span>
+        </section>
+
         <section id="queue-panel">
           <h3>会话队列</h3>
           <ol id="queue-list"></ol>
