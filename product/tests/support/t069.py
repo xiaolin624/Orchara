@@ -78,11 +78,12 @@ def delete_resource(
     client=None,
     csrf: str | None = None,
 ):
-    target = client or session.client
+    target = client or getattr(session, "client", session)
+    csrf_value = getattr(session, "csrf", None) if csrf is None else csrf
     return target.request(
         "DELETE",
         resource_path(resource_type, resource_id),
-        csrf=session.csrf if csrf is None else csrf,
+        csrf=csrf_value,
     )
 
 

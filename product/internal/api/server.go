@@ -507,6 +507,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F03/T029: the owner-only runs view. Like every static route, the path is a
 	// compile-time constant and no request input participates in it.
 	mux.HandleFunc("GET /runs", s.staticPage("runs.html"))
+	// F11/T069: the personal-data page that starts a delete and shows the real
+	// deletion-job state/remaining scopes. Static, compile-time paths.
+	mux.HandleFunc("GET /personal-data", s.staticPage("personal-data.html"))
+	mux.HandleFunc("GET /assets/personal-data.js",
+		s.staticPage(filepath.Join("assets", "personal-data.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).
