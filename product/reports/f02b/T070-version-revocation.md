@@ -1,4 +1,4 @@
-﻿# F02B T070 验收：撤销问题版本并阻止陈旧目录继续启动
+# F02B T070 验收：撤销问题版本并阻止陈旧目录继续启动
 
 - 任务：F02B / GitHub Issue #71（票 `T070`，规划 ID F02B.04），分支
   `t/t070-version-revocation`（worktree `E:\orchara-worktrees\t070`，从 T068 发布分支
@@ -140,7 +140,82 @@
 
 ## 3. 门禁命令与原始输出
 
-（待填：见下方运行结果）
+环境：Windows；PostgreSQL 16.4（用户态集群 `127.0.0.1:55432`，`python tools/pg_dev.py status`
+确认 server_version 16.4）；Go 工具链 `E:\orchara-toolchains\go\bin`（GOCACHE/GOMODCACHE 同根）；
+Node 24；真实 `cmd/api`/`cmd/maintenance`/`cmd/supervisor` 由测试 fixture 从当前树编译。命令均在
+`E:\orchara-worktrees\t070\product` 执行。**以下为合并 `t/t068-publication-review`（T068 最终
+`b30128b`：0043 迁移、publish/reviews 页面、T068 报告）之后的树**上重跑：
+
+### 3.1 `pytest tests/t070` 两次背靠背
+
+```
+python -m pytest tests/t070 -q --basetemp=E:\orchara-tmp\t070-final-1
+............                                                             [100%]
+12 passed in 153.08s (0:02:33)
+
+python -m pytest tests/t070 -q --basetemp=E:\orchara-tmp\t070-final-2
+............                                                             [100%]
+12 passed in 150.00s (0:02:30)
+```
+
+（同一内容在合并 T068 之前的树上也跑过两轮：149.24s / 148.37s，均 12 passed。）
+
+### 3.2 `pytest tests/tooling`
+
+```
+.....................                                                    [100%]
+21 passed in 6.72s
+```
+
+### 3.3 `pytest tests/f02a`（版本读模型邻接套件）
+
+```
+........................................................................ [ 69%]
+................................                                         [100%]
+104 passed in 1107.33s (0:18:27)
+```
+
+### 3.4 Go 门禁
+
+```
+go build ./...    -> exit 0（无输出）
+go vet ./...      -> exit 0（无输出）
+go test ./...     -> exit 0（全部包 ok；internal/api 1.019s、internal/catalog 0.997s、
+                     internal/execution cached 等，无 FAIL）
+gofmt -l .        -> 空
+```
+
+### 3.5 `python tools/sync_spec.py --check`
+
+```
+no drift: spec copy and contract snapshot match the manifest
+```
+
+### 3.6 合并与迁移编号
+
+- **本票无新迁移**：撤销只更新 T068 `0043_publication_reviews_and_outbox.sql` 建立的
+  `revoked_at/revoked_by/revoke_reason` 三列与 CHECK，以及同迁移的 `platform.outbox`。
+- 合并 T068 最终分支时，基线里的 `0042_publication_reviews_and_outbox.sql` 被 T068 重编号为
+  `0043_…`，从而不与 T069 已合并的 `0042_deletion_foundation.sql` 重号（迁移 runner 对重复编号
+  直接报错：`duplicate migration version 0042`）。T070 的测试只断言续链/名字，不钉编号。
+- 合并冲突只在 `tests/f02a/test_t023_invalid_draft.py` 与 `test_t023_migration.py` 两处，
+  取 T068 最终版（两版语义相同；T068 的文案更贴近其交付）。
+
+### 3.7 f02a 邻接破坏的修复（如实）
+
+在合并 T068 最终提交之前，基线（`b9acfa7`，已有 T068 代码但没有它对邻接测试的更新）上
+`tests/f02a` 有 4 个失败，全部由 T068 的交付引起、与本票实现无关：
+
+1. `test_t023_invalid_draft…` 仍断言 `/api/v1/applications/{id}/submit` 不存在（T068 已交付）；
+2. `test_t023_migration…` 断言 `publication_reviews` 恰好 3 个 FK（0042/0043 加了 4 个冻结绑定）；
+3. `tests/support/t025.py::seed_published_version(revoked=True)` 只写 `revoked_at`，违反 0042 的
+   `application_versions_revoke_shape` CHECK（三列必须一起动）；
+4. `test_t023_pages…` 断言 `/apps` 页面仍含字面 `active_version_id`（本票改用 helper 文案后的
+   真实破坏）。
+
+处理：第 3、4 项由 T070 修复（seeder 写全三列；`apps.html` 保留
+`dataset.activeVersionId = application.active_version_id`，既保留契约字段标记又不是死代码）；
+第 1、2 项由 T068 最终分支修复，合并时采用 T068 版本。合并后的 `tests/f02a` 见 §3.3。
 
 ## 4. not_run / blocked / 边界
 
