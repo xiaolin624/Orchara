@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -230,6 +231,21 @@ func New(deps Deps) *Server {
 	deletionService.Register(artifacts.NewDeletionTarget(userArtifactService))
 	deletionService.Register(memory.NewDeletionTarget(memoryService))
 	deletionService.Register(knowledge.NewDeletionTarget(knowledgeService))
+	// F11/T071: the physical purge unit of work is enqueued in the delete
+	// transaction. The seam keeps internal/deletion independent of
+	// internal/background (whose completion guard consumes the deletion package),
+	// and (kind=delete_content, dedup_key) makes it exactly one job per deletion.
+	deletionService.PurgeEnqueue = func(
+		ctx context.Context, tx *sql.Tx, deletionID, ownerID string,
+	) error {
+		_, _, err := background.EnqueueTx(ctx, tx, background.EnqueueParams{
+			Kind:     background.KindDeleteContent,
+			TargetID: deletionID,
+			OwnerID:  ownerID,
+			DedupKey: deletion.PurgeDedupKey(deletionID),
+		})
+		return err
+	}
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
