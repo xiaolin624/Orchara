@@ -28,6 +28,26 @@ package memory
 // `memory_state=unavailable` and injects nothing. A partial memory view would be
 // indistinguishable from "the user never told me that", which is the failure this
 // ticket exists to prevent.
+//
+// Recency alone is not a completeness rule. A user negation ("禁止外发") may be
+// older than the newest `RecallRowLimit` rows, and dropping it before the context
+// builder's protection detection runs would let the model act as if the user
+// never stated the constraint. Recall is therefore protection-aware:
+//
+//  1. the newest `RecallRowLimit` rows are selected exactly as before (the
+//     ordinary recall read, whose recency order is the relevance proxy);
+//  2. older rows of exactly the same owner+application scope are then scanned in
+//     `RecallScanBatch`-row keyset batches, up to `RecallScanRowLimit` rows, and
+//     every row carrying a protection marker joins the read. The vocabulary is
+//     the builder's own `IsProtectionSensitive`, not a second marker list;
+//  3. if the scan stops at `RecallScanRowLimit` with the scope not exhausted, the
+//     read reports `Scan.Truncated`; the context trace records
+//     `memory_scan_truncated` with the scanned/limit counts. The bound is a hard
+//     limit on purpose, and reaching it is visible, never silent.
+//
+// The scan also fails closed on an unreadable older body: a row that cannot be
+// inspected might be the protected negation the scan exists to find, so skipping
+// it would be the same silent loss in a different disguise.
 
 import (
 	"context"
@@ -41,11 +61,54 @@ import (
 	"orchara/platform/internal/uuid"
 )
 
-// RecallRowLimit bounds one recall read. Personal memory is user-visible prose
-// (at most 4000 characters per row), and the context builder applies its own
-// budget afterwards; the limit exists so a pathological account cannot make one
-// agent turn read an unbounded result set.
-const RecallRowLimit = 200
+const (
+	// RecallRowLimit bounds one ordinary recall read. Personal memory is
+	// user-visible prose (at most 4000 characters per row), and the context
+	// builder applies its own budget afterwards; the limit exists so a
+	// pathological account cannot make one agent turn read an unbounded result
+	// set.
+	RecallRowLimit = 200
+	// RecallScanBatch is how many older rows one protection-scan query reads.
+	RecallScanBatch = 200
+	// RecallScanBatches is how many older-row batches one recall may scan. The
+	// two constants document the hard bound together: 10 batches x 200 rows.
+	RecallScanBatches = 10
+	// RecallScanRowLimit is the hard bound of the older-row protection scan: at
+	// most this many rows beyond the newest `RecallRowLimit` are examined per
+	// recall. Reaching it without exhausting the scope is reported, not ignored.
+	RecallScanRowLimit = RecallScanBatch * RecallScanBatches
+)
+
+// The newest-page read and the older keyset page share one row shape and one
+// ordering `(confirmed_at DESC, id DESC)`, so the boundary of the newest page is
+// exactly the first row the older scan must not repeat.
+const (
+	recallSelectColumns = `
+		SELECT m.id::text, m.owner_id::text, m.application_id::text, m.revision,
+		       m.confirmed_at, COALESCE(m.candidate_id::text, ''),
+		       COALESCE(c.source_run_id::text, ''), a.object_key,
+		       COALESCE(a.sha256, '')`
+	recallFromTables = `
+		  FROM platform.memories AS m
+		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
+		  LEFT JOIN platform.memory_candidates AS c ON c.id = m.candidate_id`
+	recallScopePredicate = `
+		 WHERE m.owner_id = $1::uuid
+		   AND m.application_id = $2::uuid
+		   AND m.deleted_at IS NULL
+		   AND a.state = 'ready'
+		   AND a.deleted_at IS NULL`
+	recallOrder = `
+		 ORDER BY m.confirmed_at DESC, m.id DESC`
+
+	recallNewestQuery = recallSelectColumns + recallFromTables + recallScopePredicate +
+		recallOrder + `
+		 LIMIT $3`
+	recallOlderQuery = recallSelectColumns + recallFromTables + recallScopePredicate + `
+		   AND (m.confirmed_at, m.id) < ($3::timestamptz, $4::uuid)` +
+		recallOrder + `
+		 LIMIT $5`
+)
 
 // RecallSource is the production F09 MemorySource. It reads the current row and
 // sealed body from PostgreSQL/the object store on every call (no cache), which is
@@ -63,74 +126,139 @@ func NewRecallSource(db *sql.DB, objects *objectstore.Store) *RecallSource {
 	return &RecallSource{DB: db, Objects: objects}
 }
 
+// recallRow is one row read from PostgreSQL before its sealed body is loaded.
+// The body is not carried in the SQL result: the object is the content authority,
+// and the row's sha256 is what verifies it.
+type recallRow struct {
+	memory    agentcontext.Memory
+	objectKey string
+	digest    string
+}
+
 // ConfirmedMemories returns the current confirmed memories of exactly one human
-// owner and one application, newest first. The result is not the final model
-// selection: the context builder owns the token budget and the truncation order.
+// owner and one application: the newest `RecallRowLimit` rows plus any older row
+// of the same scope whose body carries a protection marker. The result is not the
+// final model selection: the context builder owns the token budget and the
+// truncation order.
 func (s *RecallSource) ConfirmedMemories(
 	ctx context.Context, ownerID, applicationID string,
-) ([]agentcontext.Memory, error) {
+) (agentcontext.MemoryRead, error) {
 	owner := strings.TrimSpace(ownerID)
 	application := strings.TrimSpace(applicationID)
 	if !uuid.Valid(owner) || !uuid.Valid(application) {
 		// An empty scope is not "everything": a mis-wired caller must fail
 		// closed rather than read the wrong user's personal memory.
-		return nil, errors.New(
+		return agentcontext.MemoryRead{}, errors.New(
 			"memory recall requires this run's owner_id and application_id")
 	}
 	if s == nil || s.DB == nil {
-		return nil, errors.New("the memory store is not configured")
+		return agentcontext.MemoryRead{}, errors.New("the memory store is not configured")
 	}
-	rows, err := s.DB.QueryContext(ctx, `
-		SELECT m.id::text, m.owner_id::text, m.application_id::text, m.revision,
-		       m.confirmed_at, COALESCE(m.candidate_id::text, ''),
-		       COALESCE(c.source_run_id::text, ''), a.object_key,
-		       COALESCE(a.sha256, '')
-		  FROM platform.memories AS m
-		  JOIN platform.artifacts AS a ON a.id = m.body_artifact_id
-		  LEFT JOIN platform.memory_candidates AS c ON c.id = m.candidate_id
-		 WHERE m.owner_id = $1::uuid
-		   AND m.application_id = $2::uuid
-		   AND m.deleted_at IS NULL
-		   AND a.state = 'ready'
-		   AND a.deleted_at IS NULL
-		 ORDER BY m.confirmed_at DESC, m.id DESC
-		 LIMIT $3`, owner, application, RecallRowLimit)
+	newest, err := s.queryRows(ctx, recallNewestQuery, owner, application, RecallRowLimit)
+	if err != nil {
+		return agentcontext.MemoryRead{}, err
+	}
+	if err := loadRecallBodies(s.Objects, newest); err != nil {
+		return agentcontext.MemoryRead{}, err
+	}
+	read := agentcontext.MemoryRead{
+		Rows: memoriesOf(newest),
+		Scan: agentcontext.MemoryScan{Limit: RecallScanRowLimit},
+	}
+	if len(newest) < RecallRowLimit {
+		// Fewer rows than the recency limit came back, so the scope is
+		// exhausted: there is no older row to protect-scan and nothing to hide.
+		return read, nil
+	}
+	boundary := newest[len(newest)-1].memory
+	exhausted := false
+	for read.Scan.Scanned < RecallScanRowLimit {
+		batch := RecallScanBatch
+		if remaining := RecallScanRowLimit - read.Scan.Scanned; remaining < batch {
+			batch = remaining
+		}
+		older, queryErr := s.queryRows(
+			ctx, recallOlderQuery, owner, application, boundary.ConfirmedAt, boundary.ID, batch)
+		if queryErr != nil {
+			return agentcontext.MemoryRead{}, queryErr
+		}
+		if len(older) == 0 {
+			exhausted = true
+			break
+		}
+		read.Scan.Scanned += len(older)
+		// A body that cannot be read might be the protected row this scan
+		// exists to find; skipping it would be a silent loss, so fail closed.
+		if bodyErr := loadRecallBodies(s.Objects, older); bodyErr != nil {
+			return agentcontext.MemoryRead{}, bodyErr
+		}
+		for _, row := range older {
+			if !agentcontext.IsProtectionSensitive(row.memory.Text) {
+				continue
+			}
+			read.Scan.Protected++
+			read.Rows = append(read.Rows, row.memory)
+		}
+		if len(older) < batch {
+			exhausted = true
+			break
+		}
+		boundary = older[len(older)-1].memory
+	}
+	read.Scan.Truncated = !exhausted
+	return read, nil
+}
+
+// queryRows runs one of the two recall queries and scans its rows in order. The
+// SQL is a package constant so the newest page and the older keyset page can
+// never drift in columns or ordering.
+func (s *RecallSource) queryRows(
+	ctx context.Context, query string, args ...any,
+) ([]recallRow, error) {
+	rows, err := s.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading the recalled memories: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]agentcontext.Memory, 0, 8)
-	keys := make([]string, 0, 8)
-	digests := make([]string, 0, 8)
+	items := make([]recallRow, 0, 8)
 	for rows.Next() {
-		var (
-			memory    agentcontext.Memory
-			sha       string
-			objectKey string
-		)
+		var row recallRow
 		if err := rows.Scan(
-			&memory.ID, &memory.OwnerID, &memory.ApplicationID, &memory.Revision,
-			&memory.ConfirmedAt, &memory.CandidateID, &memory.SourceRunID,
-			&objectKey, &sha,
+			&row.memory.ID, &row.memory.OwnerID, &row.memory.ApplicationID,
+			&row.memory.Revision, &row.memory.ConfirmedAt, &row.memory.CandidateID,
+			&row.memory.SourceRunID, &row.objectKey, &row.digest,
 		); err != nil {
 			return nil, fmt.Errorf("scanning a recalled memory: %w", err)
 		}
-		memory.State = "active"
-		memory.Confirmed = true
-		items = append(items, memory)
-		keys = append(keys, objectKey)
-		digests = append(digests, sha)
+		row.memory.State = "active"
+		row.memory.Confirmed = true
+		items = append(items, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("reading the recalled memories: %w", err)
 	}
-	for index := range items {
-		text, readErr := readSealedBody(s.Objects, keys[index], digests[index])
-		if readErr != nil {
-			return nil, fmt.Errorf("reading recalled memory %s: %w", items[index].ID, readErr)
-		}
-		items[index].Text = text
-	}
 	return items, nil
+}
+
+// loadRecallBodies reads and verifies every sealed body of the batch. One
+// unreadable body fails the whole recall closed.
+func loadRecallBodies(objects *objectstore.Store, rows []recallRow) error {
+	for index := range rows {
+		text, err := readSealedBody(objects, rows[index].objectKey, rows[index].digest)
+		if err != nil {
+			return fmt.Errorf("reading recalled memory %s: %w", rows[index].memory.ID, err)
+		}
+		rows[index].memory.Text = text
+	}
+	return nil
+}
+
+// memoriesOf strips the row metadata that only the body read needs.
+func memoriesOf(rows []recallRow) []agentcontext.Memory {
+	items := make([]agentcontext.Memory, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.memory)
+	}
+	return items
 }
