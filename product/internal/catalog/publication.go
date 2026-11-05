@@ -1065,8 +1065,7 @@ func (r *Reader) approvePublicationReview(
 	// Durable catalog signal. There is no dispatcher in this build; T077/T082
 	// own delivery and the catalog index, so delivered_at/attempts stay untouched
 	// and no report claims the projection was consumed.
-	outboxID := uuid.NewString()
-	payload, err := json.Marshal(struct {
+	if _, err := insertOutboxTx(ctx, tx, PublicationOutboxKind, versionID, struct {
 		Op                      string  `json:"op"`
 		ApplicationID           string  `json:"application_id"`
 		VersionID               string  `json:"version_id"`
@@ -1078,16 +1077,8 @@ func (r *Reader) approvePublicationReview(
 		Op: "publish", ApplicationID: review.applicationID, VersionID: versionID,
 		VersionNo: nextVersionNo, ManifestSHA256: review.manifestSHA256,
 		PreviousActiveVersionID: stringPtrOrNil(active), ActiveVersionID: versionID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("encoding the publication outbox payload: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO platform.outbox (id, kind, aggregate_id, payload)
-		VALUES ($1::uuid, $2, $3::uuid, $4::jsonb)`,
-		outboxID, PublicationOutboxKind, versionID, string(payload),
-	); err != nil {
-		return nil, fmt.Errorf("recording the publication outbox row: %w", err)
+	}); err != nil {
+		return nil, err
 	}
 
 	actor := adminID

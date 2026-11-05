@@ -106,9 +106,10 @@ def test_versions_are_one_per_review_and_design_revocation_as_state(
     checks = " ".join(
         row["definition"] for row in constraints if row["contype"] == "c"
     )
-    # The revocation fields move together: revoked_at revoked_by (nullable)
-    # revoke_reason, or all three NULL. The database refuses a half revocation.
-    assert "revoked_at IS NULL" in checks and "revoke_reason IS NOT NULL" in checks, checks
+    # A revocation agent/reason cannot exist without the revocation timestamp;
+    # a legacy row that only sets revoked_at stays valid (pre-T070 seeds).
+    assert "revoked_at IS NOT NULL" in checks, checks
+    assert "revoked_by IS NULL" in checks and "revoke_reason IS NULL" in checks, checks
 
 
 def test_outbox_exists_with_the_contract_shape(t068_stack) -> None:

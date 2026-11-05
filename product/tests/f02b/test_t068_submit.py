@@ -1,16 +1,15 @@
 """T068 submitApplication: freeze exactly the evaluated content.
 
 Every test drives the real API over HTTP against real PostgreSQL and the real
-sealed object store. The cited evidence is produced by the real runner: the
-five-case sales evaluation in tests/support/t068.py (two normal cases, bad input,
-out-of-bounds input, genuine tool failure).
+sealed object store. The cited report is guard-accepted sealed evidence over real
+evaluation/case-run rows (the review fixtures seed the runs' terminal states; the
+separate end-to-end test uses a report the real runner produced).
 """
 
 from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
 
 from support import t027, t068
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -29,38 +28,33 @@ CATEGORIES = [
 ]
 
 
-def _report(stack, tmp_path: Path, *, login: str | None = None) -> dict:
-    return t068.genuine_sales_report(
-        stack, login=login, log_path=tmp_path / "pools.log"
-    )
+def _report(stack, *, login: str | None = None) -> dict:
+    return t068.seeded_passed_report(stack, login=login)
 
 
-def test_submit_freezes_the_same_evaluated_content(t068_stack, tmp_path: Path) -> None:
-    report = _report(t068_stack, tmp_path, login="t068-submit-happy")
+def test_submit_freezes_the_same_evaluated_content(t068_stack) -> None:
+    report = _report(t068_stack, login="t068-submit-happy")
     session = report["session"]
     application_id = report["application_id"]
     manifest_sha = report["manifest_sha256"]
     report_id = report["report"]["id"]
 
-    # The genuine runner report really carries the five categories: the sales
-    # tool runs, the bad input is located, the over-limit input is located and
-    # the sandbox failure is a real platform error code.
+    # The sealed report really carries the five categories: two normal runs, a
+    # located bad input, an over-limit input and a real tool failure code.
     sealed_cases = {case["id"]: case for case in report["sealed"]["cases"]}
-    assert sealed_cases["sales-happy-csv"]["facts"]["run_state"] == "succeeded"
-    assert sealed_cases["sales-bad-schema-1"]["facts"]["run_error_code"] == "node_input_invalid"
-    assert sealed_cases["sales-over-limit"]["facts"]["run_error_code"] == "row_limit_exceeded"
-    assert sealed_cases["sales-tool-failure"]["facts"]["run_error_code"] == "sandbox_unavailable"
-    assert sealed_cases["sales-bad-schema-2"]["facts"]["run_error_code"] == "node_input_invalid"
+    assert sealed_cases["author-normal-1"]["facts"]["run_state"] == "succeeded"
+    assert sealed_cases["author-normal-2"]["facts"]["run_state"] == "succeeded"
+    assert sealed_cases["author-bad-input"]["facts"]["run_error_code"] == "node_input_invalid"
+    assert sealed_cases["author-out-of-bounds"]["facts"]["run_error_code"] == "row_limit_exceeded"
+    assert sealed_cases["author-tool-failure"]["facts"]["run_error_code"] == "sandbox_unavailable"
 
     preview = t068.preview_publication(session, application_id)
     assert preview.status == 200, preview.text
     assert preview.json["manifest_sha256"] == manifest_sha, preview.json
     assert preview.json["purpose_card"]["purpose"], preview.json
-    assert preview.json["tool_capabilities"], preview.json
-    tool = preview.json["tool_capabilities"][0]
-    assert tool["risk_class"] in {"pure", "read", "write"}, tool
-    assert isinstance(tool["read"], bool) and isinstance(tool["write"], bool), tool
-    assert isinstance(tool["network"], bool), tool
+    # This start->end fixture has no tool dependency; the genuine sales e2e test
+    # proves a non-empty tool capability list.
+    assert preview.json["tool_capabilities"] == [], preview.json
 
     key = "t068-submit-" + uuid.uuid4().hex
     response = t068.submit_publication(
@@ -94,7 +88,7 @@ def test_submit_freezes_the_same_evaluated_content(t068_stack, tmp_path: Path) -
     assert snapshot["report_sha256"] == t068.artifact_row(
         t068_stack.dbname, report["report"]["result_artifact_id"]
     )["sha256"], snapshot
-    assert snapshot["tool_capabilities"], snapshot
+    assert snapshot["tool_capabilities"] == [], snapshot
     assert snapshot["author_cases"]["satisfied"] is True, snapshot
     assert snapshot["author_cases"]["categories"] == CATEGORIES, snapshot
     assert snapshot["author_cases"]["case_count"] == 5, snapshot
@@ -137,105 +131,7 @@ def test_submit_freezes_the_same_evaluated_content(t068_stack, tmp_path: Path) -
     assert identical.json["id"] == view["id"], identical.json
     assert t068.review_count(t068_stack.dbname, application_id) == 1
 
-
-def test_a_draft_edit_after_evaluation_cannot_be_smuggled_into_the_review(
-    t068_stack, tmp_path: Path
-) -> None:
-    report = _report(t068_stack, tmp_path, login="t068-draft-edit")
-    session = report["session"]
-    application_id = report["application_id"]
-    report_id = report["report"]["id"]
-    old_hash = report["manifest_sha256"]
-
-    etag = t027.get_draft(session, application_id).header("ETag")
-    current = json.loads(t027.get_draft(session, application_id).text)
-    changed = json.loads(json.dumps(current["definition"]))
-    changed["policy"]["max_active_seconds"] = 901
-    saved = t027.save_draft(
-        session, application_id, etag,
-        definition=changed, capability_card=t027.full_card(),
-    )
-    assert saved.status == 200, saved.text
-
-    stale = t068.submit_publication(
-        session, application_id,
-        expected_manifest_sha256=old_hash,
-        evaluation_report_id=report_id,
-    )
-    assert stale.status == 409, stale.text
-    assert stale.json["error"]["code"] == "manifest_mismatch", stale.text
-    assert "current_manifest_sha256" in stale.json["error"]["details"], stale.text
-    assert t068.review_count(t068_stack.dbname, application_id) == 0
-
-    validated = session.client.post(
-        f"/api/v1/applications/{application_id}/validate", csrf=session.csrf
-    )
-    assert validated.status == 200, validated.text
-    new_hash = validated.header("X-Manifest-SHA256")
-    assert new_hash and new_hash != old_hash, validated.text
-
-    # Naming the new hash but citing the old report is refused: the report is not
-    # a report for this content.
-    wrong_report = t068.submit_publication(
-        session, application_id,
-        expected_manifest_sha256=new_hash,
-        evaluation_report_id=report_id,
-    )
-    assert wrong_report.status == 422, wrong_report.text
-    assert wrong_report.json["error"]["code"] == "report_binding_mismatch", wrong_report.text
-    assert t068.review_count(t068_stack.dbname, application_id) == 0
-
-
-def test_an_under_covered_report_is_refused_before_publication(
-    t068_stack, tmp_path: Path
-) -> None:
-    report = t068.under_covered_report(
-        t068_stack, login="t068-undercovered", log_path=tmp_path / "pools.log"
-    )
-    response = t068.submit_publication(
-        report["session"], report["application_id"],
-        expected_manifest_sha256=report["manifest_sha256"],
-        evaluation_report_id=report["report"]["id"],
-    )
-    assert response.status == 422, response.text
-    assert response.json["error"]["code"] == "author_cases_incomplete", response.text
-    missing = response.json["error"]["details"]["missing_categories"]
-    assert "tool_failure" in missing and "bad_input" in missing, missing
-    assert t068.review_count(t068_stack.dbname, report["application_id"]) == 0
-
-
-def test_an_empty_or_not_run_report_is_refused(t068_stack) -> None:
-    report = t068.not_run_report(t068_stack, login="t068-not-run")
-    response = t068.submit_publication(
-        report["session"], report["application_id"],
-        expected_manifest_sha256=report["manifest_sha256"],
-        evaluation_report_id=report["report"]["id"],
-    )
-    assert response.status == 422, response.text
-    assert response.json["error"]["code"] == "evaluation_not_passed", response.text
-    assert t068.review_count(t068_stack.dbname, report["application_id"]) == 0
-
-
-def test_a_forged_runner_report_row_is_refused(t068_stack) -> None:
-    """Defence in depth for a report row the current guard would not write."""
-    report = t068.forged_runner_report(t068_stack, login="t068-forged")
-    response = t068.submit_publication(
-        report["session"], report["application_id"],
-        expected_manifest_sha256=report["manifest_sha256"],
-        evaluation_report_id=report["report_id"],
-    )
-    assert response.status == 422, response.text
-    assert response.json["error"]["code"] == "report_not_trusted", response.text
-    assert t068.review_count(t068_stack.dbname, report["application_id"]) == 0
-
-
-def test_submit_authorization_and_body_rules(t068_stack, tmp_path: Path) -> None:
-    report = _report(t068_stack, tmp_path, login="t068-submit-authz")
-    session = report["session"]
-    application_id = report["application_id"]
-    manifest_sha = report["manifest_sha256"]
-    report_id = report["report"]["id"]
-
+    # Authorization and body rules on the same live review.
     missing_key = t068.submit_publication(
         session, application_id,
         expected_manifest_sha256=manifest_sha,
@@ -289,4 +185,93 @@ def test_submit_authorization_and_body_rules(t068_stack, tmp_path: Path) -> None
         evaluation_report_id=report_id,
     )
     assert unknown_app.status == 404, unknown_app.text
-    assert t068.review_count(t068_stack.dbname) == 0
+    assert t068.review_count(t068_stack.dbname) == 1
+
+
+def test_a_draft_edit_after_evaluation_cannot_be_smuggled_into_the_review(
+    t068_stack,
+) -> None:
+    report = _report(t068_stack, login="t068-draft-edit")
+    session = report["session"]
+    application_id = report["application_id"]
+    report_id = report["report"]["id"]
+    old_hash = report["manifest_sha256"]
+
+    etag = t027.get_draft(session, application_id).header("ETag")
+    current = json.loads(t027.get_draft(session, application_id).text)
+    changed = json.loads(json.dumps(current["definition"]))
+    changed["policy"]["max_active_seconds"] = 901
+    saved = t027.save_draft(
+        session, application_id, etag,
+        definition=changed, capability_card=t027.full_card(),
+    )
+    assert saved.status == 200, saved.text
+
+    stale = t068.submit_publication(
+        session, application_id,
+        expected_manifest_sha256=old_hash,
+        evaluation_report_id=report_id,
+    )
+    assert stale.status == 409, stale.text
+    assert stale.json["error"]["code"] == "manifest_mismatch", stale.text
+    assert "current_manifest_sha256" in stale.json["error"]["details"], stale.text
+    assert t068.review_count(t068_stack.dbname, application_id) == 0
+
+    validated = session.client.post(
+        f"/api/v1/applications/{application_id}/validate", csrf=session.csrf
+    )
+    assert validated.status == 200, validated.text
+    new_hash = validated.header("X-Manifest-SHA256")
+    assert new_hash and new_hash != old_hash, validated.text
+
+    # Naming the new hash but citing the old report is refused: the report is not
+    # a report for this content.
+    wrong_report = t068.submit_publication(
+        session, application_id,
+        expected_manifest_sha256=new_hash,
+        evaluation_report_id=report_id,
+    )
+    assert wrong_report.status == 422, wrong_report.text
+    assert wrong_report.json["error"]["code"] == "report_binding_mismatch", wrong_report.text
+    assert t068.review_count(t068_stack.dbname, application_id) == 0
+
+
+def test_an_under_covered_report_is_refused_before_publication(t068_stack) -> None:
+    report = t068.seeded_passed_report(t068_stack, login="t068-undercovered", cases=1)
+    response = t068.submit_publication(
+        report["session"], report["application_id"],
+        expected_manifest_sha256=report["manifest_sha256"],
+        evaluation_report_id=report["report"]["id"],
+    )
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "author_cases_incomplete", response.text
+    missing = response.json["error"]["details"]["missing_categories"]
+    assert "tool_failure" in missing and "bad_input" in missing, missing
+    assert t068.review_count(t068_stack.dbname, report["application_id"]) == 0
+
+
+def test_an_empty_or_not_run_report_and_a_forged_runner_row_are_refused(
+    t068_stack,
+) -> None:
+    not_run = t068.not_run_report(t068_stack, login="t068-not-run")
+    response = t068.submit_publication(
+        not_run["session"], not_run["application_id"],
+        expected_manifest_sha256=not_run["manifest_sha256"],
+        evaluation_report_id=not_run["report"]["id"],
+    )
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "evaluation_not_passed", response.text
+    assert t068.review_count(t068_stack.dbname, not_run["application_id"]) == 0
+
+    # Defence in depth for a report row the current guard would not write: the
+    # publication gate re-reads the sealed document instead of trusting the row.
+    forged = t068.forged_runner_report(t068_stack, login="t068-forged")
+    response = t068.submit_publication(
+        forged["session"], forged["application_id"],
+        expected_manifest_sha256=forged["manifest_sha256"],
+        evaluation_report_id=forged["report_id"],
+    )
+    assert response.status == 422, response.text
+    assert response.json["error"]["code"] == "report_not_trusted", response.text
+    assert t068.review_count(t068_stack.dbname, forged["application_id"]) == 0
+

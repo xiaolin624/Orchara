@@ -1,4 +1,4 @@
-# ADR 0021 — F08 conversation/request aggregate, the logical slot and non-contract facts
+﻿# ADR 0023 — F08 conversation/request aggregate, the logical slot and non-contract facts
 
 - 状态：accepted
 - 日期：2026-11-05
