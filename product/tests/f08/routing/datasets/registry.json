@@ -1,0 +1,196 @@
+{
+  "schema": "orchara.routing-corpus-registry/1",
+  "corpus_version": "1.0.0",
+  "frozen_at": "2026-11-05",
+  "source": {
+    "origin": "self_created",
+    "reference": "docs/spec/examples/sales/input.csv",
+    "license_review": "not_applicable",
+    "note": "Public repository sample only; no user data and no third-party corpus."
+  },
+  "catalogs": {
+    "base": {
+      "visible_to_second_user": [
+        "sales",
+        "forecast",
+        "inventory",
+        "invoice",
+        "alpha",
+        "beta"
+      ],
+      "hidden_from_second_user": [
+        "payroll"
+      ],
+      "note": "sales is published through the real T068 submit/review/approve path; the other versions are real compiler manifests published with the documented F08/T077 version-row shape."
+    }
+  },
+  "families": [
+    {
+      "family_id": "contract-review-clause-zh",
+      "cell": "ambiguous",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "contract-review-dev-zh",
+      "cell": "ambiguous",
+      "split": "dev"
+    },
+    {
+      "family_id": "contract-review-zh",
+      "cell": "ambiguous",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "contract-risk-zh",
+      "cell": "ambiguous",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "forecast-quarter-zh",
+      "cell": "missing_input",
+      "split": "dev"
+    },
+    {
+      "family_id": "forecast-trend-zh",
+      "cell": "missing_input",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "inventory-reconcile-zh",
+      "cell": "missing_input",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "inventory-stocktake-zh",
+      "cell": "missing_input",
+      "split": "dev"
+    },
+    {
+      "family_id": "invoice-matching-en",
+      "cell": "missing_input",
+      "split": "dev"
+    },
+    {
+      "family_id": "invoice-reconcile-en",
+      "cell": "missing_input",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "joke-zh",
+      "cell": "no_match",
+      "split": "dev"
+    },
+    {
+      "family_id": "payroll-calc-zh",
+      "cell": "unseen_application",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "payroll-generate-zh",
+      "cell": "unseen_application",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "payroll-monthly-zh",
+      "cell": "unseen_application",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "payroll-salary-zh",
+      "cell": "unseen_application",
+      "split": "dev"
+    },
+    {
+      "family_id": "physics-en",
+      "cell": "no_match",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "poem-zh",
+      "cell": "no_match",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "sales-aggregation-en",
+      "cell": "unique",
+      "split": "dev"
+    },
+    {
+      "family_id": "sales-digest-en",
+      "cell": "unique",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "sales-monthly-report-en",
+      "cell": "unique",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "sales-summary-csv-en",
+      "cell": "unique",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "uuid-aggregation-en",
+      "cell": "unauthorized_candidate",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "uuid-monthly-report-en",
+      "cell": "unauthorized_candidate",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "uuid-sales-digest-en",
+      "cell": "unauthorized_candidate",
+      "split": "dev"
+    },
+    {
+      "family_id": "uuid-sales-summary-en",
+      "cell": "unauthorized_candidate",
+      "split": "frozen_test"
+    },
+    {
+      "family_id": "weather-zh",
+      "cell": "no_match",
+      "split": "frozen_test"
+    }
+  ],
+  "files": [
+    {
+      "path": "ambiguous.json",
+      "sha256": "73433b4d8313a237391078f463bd7b41e6ceb34ac071aea0da20aa8794704e04",
+      "size": 4013
+    },
+    {
+      "path": "missing_input.json",
+      "sha256": "9d8ee8d09ff8840307549ed739d7dc6cfe5e08f8d79d97e29911dd3768bebbc5",
+      "size": 6144
+    },
+    {
+      "path": "no_match.json",
+      "sha256": "1032c870b670dcf9cba81aca4d9d5b0186ad12861d713f864dd8efac37050997",
+      "size": 2852
+    },
+    {
+      "path": "unauthorized_candidate.json",
+      "sha256": "6701dabaee58b2d7fdd90013055e5462fd1d9127e8d091c81ea17d7d17a9f76d",
+      "size": 3463
+    },
+    {
+      "path": "unique.json",
+      "sha256": "389b5acddf74a821383e50cc580aa815aef126aeed54b5188a4bdac49f6fead2",
+      "size": 6543
+    },
+    {
+      "path": "unseen_application.json",
+      "sha256": "947c52b7ec8bd9995d0079de723f6ef8120061dfce173dcb89320f7d1f2698a9",
+      "size": 3826
+    },
+    {
+      "path": "inputs/sales_sample.csv",
+      "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+      "size": 114
+    }
+  ]
+}
