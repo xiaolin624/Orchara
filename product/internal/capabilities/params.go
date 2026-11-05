@@ -113,8 +113,11 @@ func validateModelParams(params map[string]any, profile *ModelProfile, tools map
 	validated := &ModelParams{MaxOutputTokens: int64(maxOutputTokensFor(profile))}
 	if raw, present := params["task"]; present {
 		task, ok := raw.(string)
-		if !ok || task != "agent" {
-			return nil, validationFailure("params/task", `task must be "agent" when present`)
+		// F04B/T086: a workflow model node declares `task: "model"`; the agent
+		// node keeps `task: "agent"`. Both are one controlled capability call; the
+		// dev stub answers either from the messages, and the projection is the same.
+		if !ok || (task != "agent" && task != "model") {
+			return nil, validationFailure("params/task", `task must be "agent" or "model" when present`)
 		}
 	}
 	messages, err := validateMessages(params["messages"])

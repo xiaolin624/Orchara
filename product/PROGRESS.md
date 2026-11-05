@@ -1931,6 +1931,24 @@ executor 竞态伪装成租约丢失，修复后该用例单测重跑 **1 passed
 真实启动失败保持原错误类型并提供确定性 Go 回归测试（T083/T085 真实栈偶发失败的根因）。
 **not_run**：race detector、真实 resume join-once、graph 并发下的真实 waiting hand-over、浏览器 DOM/Playwright、真实厂商模型。
 
+## F14/T090 冻结动态候选路由的基线（dev-stub 真实控制面）（2026-11-06）
+
+T090（GitHub #91，F14）已交付全部**不依赖模型**的必交项，状态 **`blocked`**：本机无模型
+凭据/端点/权重、无训练 GPU，同基模强提示基线与任何训练不可运行；不声称训练已运行。
+证据：`reports/f14/T090-routing-baseline.md` / `.json`、`experiments/routing_sft/freeze/
+T090-freeze.{json,md}`；分支 `t/t090-routing-baseline`（worktree `E:\Orchara-wt\t090`），
+基线 `0deeab9`，merge `integration/t083-t091`（`491cb78`）→ 合并提交 `1d94984`。
+
+| 项 | 内容 |
+|---|---|
+| 冻结清单 | 复用 T084 语料不复制：`registry_sha256=491e4f25…`、`dataset_digest=9128080a…`、逐文件 sha256；held-out=frozen_test 25 例（18 family，禁止调参）、dev 9 例仅观察；显式 `retrieval.not_used=true`（无 KB/embedding，不伪造 revision）；dev-stub 逐处标注；环境 git head/Python 3.12.2/Go 1.27.3/OS + 运行时 PG 16.4 |
+| 目录卡 | 冻结两套：T084 实际目录（sales 卡=`f02a.full_card()`，purpose `summarise sales`）与产品模板卡探针（`templates.CapabilityCard`）；逐卡 sha256、`definitions_sha256`；版本 UUID/manifest sha 由真实编译器生成，记在基线 JSON |
+| 泄漏检查 | 独立检查器 `tests/f14/routing_freeze.py`：26 family 不跨 split/单元格；跨 split 225 对消息完全/规范化重复 0；近重复阈值 0.75、实测最大 0.5、0 对；34/34 `self_created`+`not_applicable`，附件为公开样例逐字节副本 |
+| 两臂基线 | 复用 T084 runner + `t079` 真实 REST/maintenance。臂 A（复现 T084 目录）frozen 25/25、dev 9/9，accuracy 1.0、误自动执行 0、澄清 13/13、候选召回 1.0，`t084_comparison.identical=true`；臂 B（仅换产品模板 sales 卡）frozen 21/25、dev 8/9，5 个错误全部 retrieval 类（4 例工资单意图被“生成”2-gram 过度召回为 sales，1 例模板卡缺 `aggregation` 未召回），无 false auto、`payroll` 版本零泄漏 |
+| 错误分类/stop-go | `model_semantic=not_measured`（无模型）；`stop_training_fix_the_measured_layers_first`（provisional），依据 `TRAINING-EXPERIMENT.md:40/:48`、`ROUTING-MEMORY-KNOWLEDGE.md:49`；未虚增语料规模（25 < EVALUATION 建议 100，明写） |
+| 门禁 | `python -m pytest tests/f14 -q` **13 passed in 73.36s**（12 冻结/泄漏 + 1 真实栈两臂基线）；merge `integration/t083-t091`（`b343f7b` → `9c062ec`）后复跑 **13 passed in 76.66s**；`pytest tests/f08/test_t084_corpus.py -q` **4 passed**（T084 语料未破坏）；`python tools/sync_spec.py --check` **no drift**；全量 `pytest tests/f08` **not_run**（未改产品代码/T084 语料，共享 runsc 栈被其它集成任务长期占用）；无 Go/契约/spec/迁移改动 |
+| 边界/not_run | 同基模强提示基线 `blocked`（无凭据/端点/权重/预算）；规则 vs 强提示比较 `not_run`；训练 `not_run`（无 GPU/基模）；T068 真实发布未重跑（T084 证据）；全量 `pytest tests/f08` 与浏览器 DOM、sandbox 执行 `not_run/not_used` |
+
 ## 记录模板
 
 ```text
@@ -1942,3 +1960,21 @@ observed result (stub / real 分开):
 remaining blockers + independent next tasks:
 spec changes + reason:
 ```
+
+## F04B/T086 模型节点：单次受控生成与结构输出校验（2026-11-06）
+
+T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。证据：`reports/f04b/T086-model-node.md`；分支 `t/t086-model-node`（worktree `E:\Orchara-wt\t086`）。
+
+| 交付点 | 结果 |
+|---|---|
+| graph 路径 model 节点 | **passed**：`hasGraphConstructs` 纳入 `model`；`graphNodeTypes` + `parseModelConfig` 复验闭集 config（多键/缺键/非 UUID/非法 response_mode → `bad_config`）；移除 `node_unsupported_model` |
+| 一次受控生成 | **passed**：一次 `InvokeCapability(kind=model)`（`task=model`、`messages`，json 模式 `response_schema=node.output_schema`），无 tools/循环/隐藏重试；真实栈 `platform.operations` 恰 1 条、`operation_attempts` 恰 1 条 |
+| prompt 严格 `{{name}}` | **passed**：只替换已绑定输入；属性链/表达式/未绑定/不配对 → `node_prompt_invalid` 定位 `/nodes/<i>/config/prompt_template`，零 operation；真实栈证明 run 的其它授权输入不进入 prompt |
+| 输出与 Schema 失败独立 | **passed**：text `{text}` / json `structured` 都由平台按 `node.output_schema` 复验；失败 → `node_output_invalid`、无 data artifact、end skipped、run failed、不重试 |
+| 固定 profile | **passed**：执行前 `Facts.ModelProfile` 复验 passed/未撤销（`model_profile_unavailable`，零 operation）；真实栈中途撤销 profile 用例通过；已撤销 profile 的新草稿在 validate/debug 提交被 `dependency_revoked`/422 拒绝 |
+| 预算/usage | **passed（ledger）**：`usage_ledger` 三行（reserve/release/charge，零价 dev stub 金额 0）；`usage.updated` SSE 事件本构建无 emitter → `not_run` |
+| 恢复接缝 | **passed（接口+Go 单测）**：已完成 model 节点 data 复用、0 次 capability 调用；真实 resume 场景留 T087/T091 |
+| 画布 | **passed**：`model` palette/panel（固定 profile、prompt 编辑+插入变量、response_mode、响应 Schema=output_schema）、导出白名单 `model_profile_version,prompt_template,response_mode`；bundle 已重建提交 |
+| 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。

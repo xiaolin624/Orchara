@@ -44,17 +44,18 @@ package presetexec
 // still fails the run.
 //
 // Node execution itself is the linear executor's node code: executeStartNode,
-// executePythonNode, executeEndNode and —through a synthetic linear view —the
-// agent and call_app segments. The scheduler owns activation, concurrency, skip
-// propagation and the condition/join outputs, and it owns the run-result commit for
-// every terminal node decision (see graphNodeAttempt).
+// executePythonNode, executeEndNode and — through a synthetic linear view — the
+// agent and call_app segments. F04B/T086's model node owns its own one-call
+// generation in modelnode.go. The scheduler owns activation, concurrency, skip
+// propagation and the condition/join outputs, and it owns the run-result commit
+// for every terminal node decision (see graphNodeAttempt).
 //
 // Concurrency-safety: the scheduler goroutine is the single owner of graphRun
-// (state/outputs/taken/position are never mutated concurrently). Node goroutines
-// receive immutable snapshots (graphNodeView) and report back over a buffered
-// channel; they never read scheduler-owned maps. The only shared runner state a
-// node goroutine mutates is the heartbeat counter (atomic), the operator artifact
-// list (mutex) and the protocol client (concurrency-safe by contract).
+// (state/outputs/taken are never mutated concurrently). Node goroutines receive
+// immutable snapshots (graphNodeView) and report back over a buffered channel;
+// they never read scheduler-owned maps. The only shared runner state a node
+// goroutine mutates is the heartbeat counter (atomic), the operator artifact list
+// (mutex) and the protocol client (concurrency-safe by contract).
 
 import (
 	"context"
@@ -850,6 +851,14 @@ func (r *runner) executeGraphNodeSegment(
 		return executionOutcome{}, output, false
 	case "call_app":
 		output, outcome, done := r.executeGraphCallApp(ctx, plan, inputs, node, view, attempt)
+		if done {
+			return outcome, nil, true
+		}
+		return executionOutcome{}, output, false
+	case "model":
+		// F04B/T086: one controlled generation; the platform validates the output
+		// against node.output_schema and a schema failure is independent.
+		output, outcome, done := r.executeGraphModel(ctx, node, view, attempt)
 		if done {
 			return outcome, nil, true
 		}
