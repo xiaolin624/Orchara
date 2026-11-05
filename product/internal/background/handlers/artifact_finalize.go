@@ -25,8 +25,8 @@ import (
 // kind that is absent here is never claimed, even if it is a whitelisted kind.
 // T022 implemented artifact_finalize; T024 adds model_validate; T026 adds
 // application_evaluate; T030 adds tool_run; T037 adds tool_build; T055 adds
-// document_ingest; F11/T071 adds delete_content. The remaining whitelisted kinds
-// stay ready until their ticket lands (T027/F03/F05/F07/F13A).
+// document_ingest; T077 adds catalog_index; F11/T071 adds delete_content.
+// route_request stays ready until its handler ticket (T079).
 var Registry = background.Registry{
 	background.KindArtifactFinalize:    ArtifactFinalize,
 	background.KindModelValidate:       ModelValidate,
@@ -38,6 +38,8 @@ var Registry = background.Registry{
 	// F11/T071: the physical content purge (object store, search index, retrieval
 	// cache) of a T069 deletion job.
 	background.KindDeleteContent: DeleteContent,
+	// T077: one authoritative re-read and one catalog projection reconciliation.
+	background.KindCatalogIndex: CatalogIndex,
 }
 
 // artifactFinalizeRow is what the finalize handler needs from

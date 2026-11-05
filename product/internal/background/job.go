@@ -370,6 +370,14 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeLeaseExpired:       true,
 		CodeDeleteTimeout:      true,
 	},
+	// catalog_index (T077): the projection write can be retried after transient
+	// storage/internal/lease failures. A card/source refusal is deterministic (the
+	// same authority row produces the same refusal), so it is a business failure.
+	KindCatalogIndex: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+	},
 }
 
 // Retryable reports whether code is retryable for kind.

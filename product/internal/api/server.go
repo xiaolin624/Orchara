@@ -365,6 +365,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/versions/{version_id}/revoke", s.handleRevokeVersion)
 	mux.HandleFunc("GET /api/v1/versions/{version_id}/runnable", s.handleResolveRunnableVersion)
 
+	// F08/T077: authorized purpose-catalog search. Non-contract (ADR 0026) because
+	// the contract's Application/listApplications schema has no search member; the
+	// path is additive and listApplications is untouched. ACL and publication
+	// filters run in the SQL before ranking/LIMIT; a stale index falls back to the
+	// authorized full text and re-checks each row.
+	mux.HandleFunc("GET /api/v1/catalog/search", s.handleCatalogSearch)
+
 	// F02B/T068: publication review. submit/decision are idempotent state-changing
 	// POSTs (cookie sessions need CSRF; an API key needs application:write for a
 	// submission and the admin role for a decision, which an API key never has).
@@ -596,6 +603,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// select control, never in the URL, so no request input reaches a file path.
 	mux.HandleFunc("GET /chat", s.staticPage("chat.html"))
 	mux.HandleFunc("GET /assets/chat.js", s.staticPage(filepath.Join("assets", "chat.js")))
+	// F08/T077: the authorized purpose-catalog browse/search page and its pure client
+	// helpers. Static, compile-time paths; the query lives in the page's own field
+	// and is always encoded by the helper before it reaches the URL.
+	mux.HandleFunc("GET /catalog", s.staticPage("catalog.html"))
+	mux.HandleFunc("GET /assets/catalog.js", s.staticPage(filepath.Join("assets", "catalog.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).
