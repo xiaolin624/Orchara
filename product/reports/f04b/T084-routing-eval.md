@@ -147,8 +147,8 @@ A 读 B 的 Run/产物得到同一 404。34 条冻结路由案例全部得到期
 - 五个 fixture 应用的版本行使用文档化的 F08/T077 形状（真实编译 manifest + 真实
   review/version 行）；**只有销售应用**走真实 T068 发布事务。JSON 中逐应用标注
   `publication`，`t068_real` 与 `t077_fixture` 分开。
-- `git_head`/`generated_at` 是生成时点；重跑会重写 JSON（字节随 id/时间变化），
-  但汇总率与断言可复现。
+- `git_head`/`generated_at` 是生成时点的 HEAD（评测文件当时在工作树、随后以 `78f67d5`
+  提交）；重跑会重写 JSON（字节随 id/时间变化），但汇总率与断言可复现。
 - published Run 的执行入口把聊天正文按原字节封存为 Run 输入，销售链 start 节点要求
   JSON 对象；因此**旅程消息是 JSON 任务文档**。同一销售应用的**自然语言**消息会路由成功
   但在执行时 `node_input_invalid`（本次探针实测，未写成语料）；这是 F08 对话入口与
@@ -180,9 +180,27 @@ $ python -m pytest tests/f08/test_t084_corpus.py tests/f08/test_t084_states.py -
 7 passed in 46.93s
 ```
 
-门禁（完整套件）原始输出尾部见 `.scratch/t083-t091/T084-REPORT.md` 与本报告 §5.1
-（最终合并后复跑）。`node --check apps/web/src/assets/chat.js` 通过；
-`python tools/sync_spec.py --check` 无漂移；`docs/spec/**`、`contracts/**` 未改。
+门禁（完整套件）原始输出尾部：
+
+```text
+$ python -m pytest tests/f08 -q          # 合并 integration/t083-t091 (08af658) 之后
+........................................................................ [ 91%]
+.......                                                                  [100%]
+79 passed in 948.05s (0:15:48)
+
+$ go build ./... ; go vet ./... ; go test ./... ; gofmt -l internal cmd tools
+build_exit=0  vet_exit=0  test_exit=0
+gofmt -l internal cmd tools: (empty)
+
+$ node --check apps/web/src/assets/chat.js
+exit 0
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+```
+
+`docs/spec/**`、`contracts/**` 未改；`product/PROGRESS.md` 的合并冲突保留 T083 与 T084
+两个小节。
 
 ## 6. 未运行 / 边界（not_run，不用 0 冒充）
 
