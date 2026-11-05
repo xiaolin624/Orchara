@@ -1909,8 +1909,8 @@ HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** �
 
 T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 因本票无 waiting `not_run`）。
 证据：`reports/f04b/T085-parallel-optional.md`；分支 `t/t085-parallel-optional`（worktree `E:\Orchara-wt\t085`），基线
-`integration/t083-t091` @ `111e2c2`，结束合并 `f21f09a`（含 T086 model node；冲突解决与 bundle 重建见报告 §7）；
-功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，合并 `982a1b0`。无迁移；未改 `docs/spec/**`、`contracts/**`。
+`integration/t083-t091` @ `111e2c2`，结束合并 `15db973`（T087/T088/T089 + 集成方对并发调度器的适配，merge `723760b`）；
+功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`、`9a302f2`（skip 事实每次 attempt 只发布一次，waiting hand-over 不发布）。无迁移；未改 `docs/spec/**`、`contracts/**`。
 
 | 交付点 | 结果 |
 |---|---|
@@ -1922,11 +1922,13 @@ T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机�
 | join-once / replay | **passed（Go 单测）**：fake `NodeOutputSource` 回放 start/choose/left/join → join 只发一条 succeeded、无新 data 行、无 sandbox、final output=复用封套；真实二次 exec 冒烟 `not_run`（无 waiting，留 T087/T091） |
 | 运行视图 / 画布提示（P1） | **passed**：run view 把 optional failed 显示为「已收敛的错误」（`state-converged`，与 failed 区分）+ 图例；画布 join 面板逐个标记 optional、列出已选 optional 并提示"只有纯读/计算错误会收敛；写/越权/预算/审批失败不降级"；`npm ci --offline && npm run build` 重建并提交 canvas bundle |
 
-门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **34 passed in 162.35s**（含本票 5 例与 T083 全部回归；
-`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；`pytest tests/f05` **149 passed**（sandbox 修复回归）；
-`pytest tests/tooling` **21 passed**；`pytest tests/f06` **172 passed / 1 failed**（T047 的 sandbox 启动失败被旧
-executor 竞态伪装成租约丢失，修复后该用例单测重跑 **1 passed**，见报告 §6.1）；
-`go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
+门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **43 passed in 239.44s**（含 T086 合并；本票 5 例、T083 全回归、
+T086 model-node 9 例；`test_t085_parallel_optional.py` 单跑 **5 passed in 54.34s**）；合并 T087/T088/T089 后定向复跑
+**30 passed / 1 failed in 376.48s**（`test_t085_parallel_optional`、`test_t083_condition_runtime`、`test_t087_approval_node`、
+`test_t089_callapp`、`test_t086_model_node`；唯一失败是 T089 的双 call_app 子调用创建顺序断言，并发下非契约顺序）；
+`pytest tests/f05` **149 passed**（sandbox 修复回归）；`pytest tests/tooling` **21 passed**；
+`pytest tests/f06` **172 passed / 1 failed**（T047 的 sandbox 启动失败被旧 executor 竞态伪装成租约丢失，修复后该用例单测重跑
+**1 passed**，见报告 §6.1）；`go build/vet/test ./...` 全绿；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
 `go test -race ./internal/presetexec` **not_run**（`cgo: C compiler "gcc" not found`，原始输出见报告 §6）。
 附带修复：`internal/sandbox/executor.go`（`78d09db`）不再把"进程退出后自己的取消失败"记成租约丢失，
 真实启动失败保持原错误类型并提供确定性 Go 回归测试（T083/T085 真实栈偶发失败的根因）。
@@ -1979,3 +1981,62 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 | 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。
+
+## F04B/T087 人工审批节点：服务端业务审批与重启后继续原决定（2026-11-06）
+
+T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈）。
+证据：`reports/f04b/T087-approval-node.md`；分支 `t/t087-approval-node`（worktree `E:\Orchara-wt\t087`），
+基线 `integration/t083-t091` @ `491cb78`，结束前 merge `f21f09a` → 合并提交 `b086419`（+ 文档提交）。
+
+| 交付点 | 结果 |
+|---|---|
+| 节点审批 = 业务决定 | **passed**：`platform.approvals` 行 `operation_id NULL`、`node_key="node:<id>"`、approver=run owner；无 `platform.operations`/capability grant；后续真实 write-risk connector 仍 `awaiting_approval` 并创建自己的 operation 审批 |
+| 服务端提案 | **passed**：`internal/approvals/node.go` 从 sealed manifest（逐字节复算 hash）+ run/snapshot 事实构建 JCS proposal 文档，`params_sha256=sha256(JCS(proposal))`；title/expires(60..86400)/proposal 对象与尺寸校验；内部路由 `POST /internal/v1/runs/{id}/node-approvals`（worker mTLS） |
+| 幂等/重放 | **passed**：同一 canonical proposal 重放返回原行（同 attempt 与恢复后的第二次 exec 均验证）；approvals 恰 1 行、`approval.required` 恰 1 条、resume job 恰 1 个；不同 proposal = 新 approval 行，旧决定不复用（旧 hash 决定新行 409 `approval_params_mismatch`） |
+| 等待桥 | **passed**：`approval:<approval_id>` checkpoint 的 adopt 分支与既有 `capability:<operation_id>` 分支并列，capability 行为未变；rejected/expired → Run `approval_rejected`/`approval_expired`，无 resume；resume 仍由唯一 `maybeEnqueueResumeTx` 创建 |
+| 执行器 | **passed**：graph `approval` 类型/触发/config 复验/`proposal` 输入；pending → `waiting_approval` + `approval:<id>` + ConfirmExit 不继续；approved → data artifact `{approval_id,decision,decided_at,params_sha256,proposal}` 并继续；invalidated/拒绝/过期稳定码；真实二次 exec 同一 Run 恢复成功 |
+| 两次审批（T091 预演） | **passed**：`start→a1→a2→end` 两次等待/两次决定/第三次 exec 汇合；2 条独立 approval、2 个 resume job、a1/a2 各 1 条 data artifact（a1 由恢复接缝复用）、最终输出含两 id |
+| 画布 | **passed**：`approval` palette/panel（title、expires_seconds、proposal 来源绑定/JSON 字面量编辑器、“审批不授权后续外部写”说明）、export allowlist `title,expires_seconds`；bundle 已重建提交 |
+| 审批页 | **passed**：`approvals.js` 识别 `kind=node_approval`，经既有 artifact-content ACL 显示真实 title/节点/来源/proposal；capability 提案渲染不变（T050 页面测试通过） |
+| 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 7 用例（真实 PG/API/mTLS/supervisor/审批 API/唯一 resume）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票 9 passed in 57.79s |
+| 回归子集 | **passed**：`pytest tests/f06/test_t050_approval.py tests/f06/test_t050_pages.py tests/f06/test_t043_agent_node.py -q` **27 passed in 178.74s**（首跑 1 个 sandbox lease-lost 环境 flake，隔离重跑通过后整套复跑通过） |
+| Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过；合并后真实栈关键 3 用例（服务端幂等/批准恢复/两次审批）**3 passed in 58.54s** |
+| 既有测试缺陷 | **修复（2 行，测试代码）**：`tests/f04b/test_t083_runview.py` 条件/join 真实栈用例在 `491cb78` 上把 items 列表当 body 使用（该用例在 graph runtime 合并前一直 skip，从未跑过）；修复后 7 passed，产品断言不变 |
+| 边界/not_run | 全量 `pytest tests/f06` 与合并后全量 `pytest tests/f04b` 未重跑（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件；审批/等待子集 27 passed，合并后关键 3 用例真实栈 3 passed）；自动过期 sweeper 不存在（过期经 decision 路径观察）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`（`sync_spec --check` no drift）。
+
+## F04B/T089 画布调用固定子应用并映射结果（GitHub #90，2026-11-06）
+
+T089 已交付，状态 **`passed`**（画布 call_app 节点/面板 + graph 路径真实栈 E2E；无 Go 运行时改动）。证据：`reports/f04b/T089-callapp-node.md`；分支 `t/t089-callapp-node`（worktree `E:\Orchara-wt\t089`，基线 `b343f7b`，结束前合入 `4851c4f`）。
+
+| 交付点 | 结果 |
+|---|---|
+| 画布 call_app | **passed**：palette `call_app` + `defaultNode={config:{application_version:''}}`；面板只列 ACL-filtered 应用与已发布版本（UUID 过滤，无 latest），显示 version id/manifest sha256，按子版本冻结 `input_schema` 逐字段映射（literal/input/node），子 `output_schema` 只读、父输出可编辑并默认取子 schema；本地提示缺失/未知字段/类型不符/非法来源；`lib/callapp.js` 纯逻辑（editor sidebar 纯逻辑的复制，经典脚本不能 import ESM；editor.js 未改）；`export.js` allowlist `call_app:['application_version']` |
+| 单 child 等待/恢复 | **passed**：`waiting_children` + confirm exit → child 独立 Run（独立 snapshot/thread）→ 唯一 resume → 父 succeeded，父节点 data=子结构化结果（label `child-run:<id>`），`GET /runs/{id}/children` 1 条，无第二 child |
+| 并行/顺序同 child | **passed**：两个 child Run、不同 invocation key（`call_app:<node id>`）/thread/snapshot/结果；同版本顺序两次调用不按 app id 去重；join 两源独立 |
+| 执行槽交接 | **passed**：等待 exit 后 `global/execution_slots` 释放（used=0）；child 只占独立 child pool（global+parent）；resume 重新占用 1 槽、终态释放一次；`assert_slot_consistent` |
+| 失败/映射定位 | **passed**：required 子失败传播 child 稳定码（`child_output_schema_invalid`）；`io_mapping_type_mismatch` `/nodes/2/inputs/source`、`io_mapping_missing_field` `/nodes/{2,3}/inputs/region`、debug 422；执行器运行期绑定 `node_input_invalid`（report 定位 `child.source`） |
+| 测试 | 新增 `tests/f04b/callapp_canvas.test.mjs`（12 Node 用例）、`test_t089_callapp_canvas.py`（4 passed）、`test_t089_callapp.py`（真实栈 7 passed）、`tests/support/t089.py`；定向回归 T078+T083 `15 passed` |
+| 合并/门禁 | merge `f21f09a`（T086/T090）→ 画布冲突解决 + 从合并源重建 bundle；merge `aced554`（T087/T088）→ 画布 23 passed（含逐字节重建校验）；merge `4851c4f`（T085 并发调度器/optional）→ 并发语义下重跑本票真实栈 **7 passed in 110.27s**；`go build/vet/test ./...`、`gofmt -l`（空）、`sync_spec --check` no drift |
+| 边界 | 浏览器 DOM `not_run`；call_app 无 doc/span 引用 → `not_applicable`；`spawnChild` 无 required/optional 字段 → optional 子失败 `not_applicable`；真实厂商模型 `not_run` |
+
+发现（供后续票）：恢复接缝真实生效要求 supervisor 配置 `ORCHARA_OBJECT_DIR`（sealed object root）；T033 helper 未设置会让 resume 静默退化为重执行（T089 helper 已显式传入，建议补进共享 helper）。合并 T085 后 graph 调度器为 ready-queue 并发：fork 的两个 call_app 分支同时启动，首个 branch 等待时调度器取消其余在飞分支并在 drain 后提交 waiting_children；被取消的兄弟分支在 resume 后重执行（spawn 幂等键保证不产生重复 child），两个 child Run 仍完全独立。
+## F04B/T088 知识检索节点：平台 ACL 检索与真实引用（GitHub #89，2026-11-06）
+
+T088（GitHub #89）已交付，状态 **`passed`**（运行时 retrieve + 内部 ACL 检索路由 + 画布面板 + 运行视图引用链接）。
+证据：`reports/f04b/T088-retrieve-node.md`；分支 `t/t088-retrieve-node`（worktree `E:\Orchara-wt\t088`），
+基线 `111e2c2`，merge 集成分支 `b343f7b`/`f21f09a`/`4851c4f`（T085 并发调度器、T086/T087/T089/T090）后在本分支提交最终报告。
+
+| 交付点 | 结果 |
+|---|---|
+| 内部检索路由（非契约） | **passed**：`POST /internal/v1/runs/{run_id}/retrieval`（worker mTLS，`internal/api/retrieval.go`）；attempt_token 复证 live attempt，owner 取 `runs.owner_id`（body 无 owner）；对每个 KB 调既有 `knowledge.Service.Query`（SQL 先 ACL/tombstone/active index/embedding revision 过滤），非 owner/不存在静默排除并计数 `requested/authorized`；多 KB 合并 score DESC + `chunk_id` 稳定 tie-break；响应仅平台字段；400/422/409/503 复用既有错误词汇 |
+| retrieve 执行器 | **passed**：`internal/presetexec/retrieve.go`；`graphNodeTypes`/`hasGraphConstructs`/dispatch 最小扩展；config 复验（uuid 数组 min1 unique、top_k 1..20、拒未知键/内联 query）；query 必须绑定为 string，缺失/非 string → `node_input_invalid` 定位 `/nodes/<i>/inputs/query`；输出 `{items,citations,count}`，citation/span 原样；无结果 `succeeded`；稳定码 `retrieve_unavailable`（503/网络）、`retrieve_denied`（调用被拒 403）、`node_output_invalid` |
+| 真实栈验收 | **passed**：`pytest tests/f04b/test_t088_retrieve.py` **6 passed in 51.63s**（T086/T090 合并树）+ **6 passed in 78.47s**（T085 并发调度器/T087/T089 合并树）+ **6 passed in 74.49s**（最终树 `8a13ee2`，再并入 skipped-facts 修复；全局锁、真实 PG+mTLS+supervisor+真实知识摄取）；引用与 DB chunk/citation 逐字段相等、citation 路由同源、空结果、foreign KB 静默排除 + requested/authorized 计数、撤权后 404、并行 retrieve 不串 |
+| 画布 | **passed**：`retrieve` palette「知识检索」、`{knowledge_base_ids:[],top_k:5}` 默认、KB 多选（`GET /knowledge-bases`，不可见已选保留+说明）、top_k 1..20、query 合法 string 来源绑定、`items/citations/count` 输出模板一键填入、导出 allowlist `knowledge_base_ids,top_k`；bundle `npm run build` 重建提交 |
+| 运行视图 | **passed**：retrieve data artifact 预取；行内展示「检索 N 段 · 引用 M 条」，citation 链接 `GET /api/v1/knowledge-citations/{chunk_id}`；200 展开真实来源，404 显示不可用且不显示缓存正文；`retrieve_unavailable`/`retrieve_denied` 稳定码提示 |
+| 门禁 | `pytest tests/f04b/test_t088_retrieve.py` 6 passed（最终树复跑）；`test_t083_runview.py` 7 passed（T086/T090 合并树）；canvas/runview/asset 模块 15 passed + 最终树 11 passed；`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（no drift）全部通过 |
+| 边界/not_run | `not_applicable`：相同 child 并发不串 thread（retrieve 无 child，改写为并行 retrieve 不串结果并已真实栈验证）、节点等待交接释放槽（retrieve 不等待）；`not_run`：`pytest tests/f10` 全量（共享真实栈串行，最后窗口未取得；本票仅新增 `QueryBases`、不改知识 service/API 路由）、真实厂商 embedding、真实二次 exec 复用 retrieve 输出、浏览器 DOM/Playwright |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。首轮真实栈曾用 `t055_stack`（缺 T025 编译器环境）出现
+`compiler_unconfigured`/helper KB-id 拆分 bug，修正为 `t033_stack` + helper 归一化后 6 passed（报告 §5 如实记录）。

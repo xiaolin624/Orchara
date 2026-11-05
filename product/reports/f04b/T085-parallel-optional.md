@@ -195,21 +195,49 @@ error:    the attempt lease was lost while the sandbox ran: ... Post ".../heartb
 
 ## 7. 合并与 HEAD
 
-- 基线 `111e2c2` → 本票合并三次集成分支：`f6e7e5b`（T083 runview + T084）、`a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）、`982a1b0`（T086 model node @ `f21f09a`）。
+- 基线 `111e2c2` → 本票合并集成分支：`f6e7e5b`（T083 runview + T084）、`a74ac9d`（T083 runview 条件 E2E @ `b343f7b`）、`982a1b0`（T086 model node @ `f21f09a`）、`723760b`（集成 tip `15db973`：T087 approval + T088 retrieve + T089 call_app + 集成方对并发调度器的适配）。
 - T086 冲突解决：`graphrun.go` 的 `model` 分派并入并发调度器（`executeGraphModel(ctx, node, view, attempt)`），`modelnode.go` 改为读不可变 `graphNodeView`、失败/取消/waiting 走 `graphNodeAttempt` capture（等价于 T086 的单次生成、schema 独立失败、非重试语义）；`PROGRESS.md` 两侧小节都保留；T086 改了画布 source，**重建并提交** `canvas.js`/`canvas.css`。合并后 `go build/vet/test ./...` 全绿、Node 纯模块测试（runview/canvas/model）全绿。
-- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`，合并 `982a1b0`，报告提交为分支 tip（`git log -1`）。
+- T087/T088/T089 合并后语义修复（`9a302f2`）：跳过事实改为**每次 attempt 只发布一次、在 attempt 得出终局时发布**（成功时在 end 节点提交结果之前；失败/取消时在提交之前；**waiting hand-over 不发布**，未到达的节点保持 unsettled，与线性等待语义一致）。这是并发调度器与 T087/T089 等待/恢复观测语义的冲突点，修复后 T087 三例、T089 等待/恢复用例通过（见 §8.2）。
+- 分支 / HEAD：`t/t085-parallel-optional`；功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`、`9a302f2`，合并 `982a1b0`、`723760b`，报告提交为分支 tip（`git log -1`）。
 - 无迁移；`product/docs/spec/**`、`product/contracts/**` 未改。
 
 ## 8. 最终树门禁状态
 
-最终代码树（含 `78d09db` 与 T086 合并）上：`tests/f04b` **34 passed**（合并 T086 前；T086 的 f04b 真实栈用例见下方复跑）、
-`tests/f05` **149 passed**、`tests/tooling` **21 passed**、`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；
+最终代码树（含 `78d09db`、T086 合并）上：`tests/f04b` **43 passed in 239.44s**（合并 T086 后，含 T085 5 例、
+T083 全回归、T086 model-node 9 例，见 §8.1）、`tests/f05` **149 passed**、`tests/tooling` **21 passed**、
+`go build/vet/test ./...` 全绿、`gofmt` 干净、`sync_spec --check` no drift；
 `tests/f06` **172 passed / 1 failed**（§6.1 的环境性 sandbox 启动失败，修复后该用例单测重跑 **1 passed**）。
 按编排者队列要求（T088/T089 使用共享栈），本轮之后未再次占用共享栈；合并 T086 后的 `tests/f04b` 复跑与原始输出见 §8.1。
 
 ### 8.1 合并 T086 后的复跑
 
-（见文末：最终 `tests/f04b` 原始输出尾部与 HEAD。）
+```text
+$ python -m pytest tests/f04b -q          # 合并 T086（model node）后、全局 pytest 锁、最终树
+...........................................                              [100%]
+43 passed in 239.44s (0:03:59)
+exit=0
+```
+
+43 = 合并前 34 + T086 的 model-node 用例 9（真实栈单次生成/schema 独立失败/prompt/等待/复用）。
+合并后另跑：`node tests/f04b/{runview,canvas_f04b,canvas_model}.test.mjs` → PASS 6 / PASS 9 / PASS 4；
+`pytest tests/f04b/{test_canvas_f04b_assets,test_t086_model_canvas,test_t083_canvas_validate}.py` → 12 passed；
+`go build/vet/test ./...` 全绿、`gofmt` 空、`sync_spec --check` no drift。
+
+### 8.2 合并 T087/T088/T089 后的复核（`9a302f2`）
+
+```text
+$ python -m pytest tests/f04b/test_t085_parallel_optional.py tests/f04b/test_t083_condition_runtime.py \
+    tests/f04b/test_t087_approval_node.py tests/f04b/test_t089_callapp.py tests/f04b/test_t086_model_node.py -q
+1 failed, 30 passed in 376.48s (0:06:16)
+# 唯一失败：tests/f04b/test_t089_callapp.py::test_parallel_call_apps_create_two_independent_children_and_join_both
+#   断言 children 行的 parent_invocation_key == ["call_app:a","call_app:b"]，真实并发下 DB 返回 ["b","a"]
+#   （两个并行 call_app 子调用同时创建，顺序不是契约；测试应排序/按集合比较，非调度器缺陷）。
+```
+
+- T087 三例（审批等待→恢复、拒绝、两次等待后汇合）**全部通过**（`9a302f2` 之前失败于 waiting attempt 多发的 `skipped`）。
+- T089 的等待/恢复与 required-child 失败用例通过；仅剩上述**顺序断言**（并发创建顺序非确定）。
+- T085 5 例、T083 condition runtime 7 例、T086 model-node 9 例：**全部通过**。
+- 另：合并后的完整 `tests/f04b` 曾为 62 passed/13 failed；其中 T088 的 6 例失败是 `compiler_unconfigured`（`ORCHARA_WORKER_IMAGE_DIGEST` 未在该套件的 stack fixture 环境里注入，属 T088 环境/夹具问题），`test_t083_runview.py::test_the_real_run_view...` 是集成侧测试自身 bug（`node_results` 被包成 `{items:…}` 后又按 list 迭代 → `TypeError`）；两者都不在 T085 代码路径。集成方已在 15db973 合并本票调度器，建议由其收口上述两处。
 
 ## 9. 变更文件
 
