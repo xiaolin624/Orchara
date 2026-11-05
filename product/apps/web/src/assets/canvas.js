@@ -9394,11 +9394,11 @@ Expected function or array of functions, received type ${typeof value}.`
       target = defaultWindow,
       eventName = "keydown",
       passive = false,
-      dedupe = false
+      dedupe: dedupe2 = false
     } = options;
     const predicate = createKeyPredicate$1(key);
     const listener = (e) => {
-      if (e.repeat && toValue2(dedupe))
+      if (e.repeat && toValue2(dedupe2))
         return;
       if (predicate(e))
         handler(e);
@@ -9411,7 +9411,7 @@ Expected function or array of functions, received type ${typeof value}.`
   function useVModel(props, key, emit2, options = {}) {
     var _a, _b, _c;
     const {
-      clone: clone3 = false,
+      clone: clone4 = false,
       passive = false,
       eventName,
       deep = false,
@@ -9427,7 +9427,7 @@ Expected function or array of functions, received type ${typeof value}.`
       }
     }
     event = event || `update:${key.toString()}`;
-    const cloneFn = (val) => !clone3 ? val : typeof clone3 === "function" ? clone3(val) : cloneFnJSON(val);
+    const cloneFn = (val) => !clone4 ? val : typeof clone4 === "function" ? clone4(val) : cloneFnJSON(val);
     const getValue = () => isDef$1(props[key]) ? cloneFn(props[key]) : defaultValue;
     const triggerEmit = (value) => {
       if (shouldEmit) {
@@ -10127,12 +10127,12 @@ Expected function or array of functions, received type ${typeof value}.`
     return this.each(remove2);
   }
   function selection_cloneShallow() {
-    var clone3 = this.cloneNode(false), parent = this.parentNode;
-    return parent ? parent.insertBefore(clone3, this.nextSibling) : clone3;
+    var clone4 = this.cloneNode(false), parent = this.parentNode;
+    return parent ? parent.insertBefore(clone4, this.nextSibling) : clone4;
   }
   function selection_cloneDeep() {
-    var clone3 = this.cloneNode(true), parent = this.parentNode;
-    return parent ? parent.insertBefore(clone3, this.nextSibling) : clone3;
+    var clone4 = this.cloneNode(true), parent = this.parentNode;
+    return parent ? parent.insertBefore(clone4, this.nextSibling) : clone4;
   }
   function selection_clone(deep) {
     return this.select(deep ? selection_cloneDeep : selection_cloneShallow);
@@ -19232,13 +19232,17 @@ Edge: ${id2}`,
   });
 
   // src/lib/dsl.js
-  var NODE_TYPES = ["start", "python", "agent", "end"];
+  var NODE_TYPES = ["start", "python", "agent", "condition", "join", "end"];
   var NODE_LABELS = {
-    start: "\u5F00\u59CB",
-    python: "Python \u5DE5\u5177",
+    start: "开始",
+    python: "Python 工具",
     agent: "Agent",
-    end: "\u7ED3\u675F"
+    condition: "条件分支",
+    join: "并行汇合",
+    end: "结束"
   };
+  var REPEATABLE_NODE_TYPES = ["python", "agent", "condition", "join"];
+  var CONDITION_OPS = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "exists"];
   function emptySchema() {
     return { type: "object", properties: {} };
   }
@@ -19250,6 +19254,26 @@ Edge: ${id2}`,
       max_child_calls: 0,
       max_child_depth: 0
     };
+  }
+  function conditionPorts(config) {
+    const ports = [];
+    const seen = /* @__PURE__ */ new Set();
+    const add = (port) => {
+      if (typeof port === "string" && port !== "" && !seen.has(port)) {
+        seen.add(port);
+        ports.push(port);
+      }
+    };
+    const cases = config && Array.isArray(config.cases) ? config.cases : [];
+    for (const item of cases) {
+      if (item && typeof item === "object") {
+        add(item.port);
+      }
+    }
+    if (config && typeof config === "object") {
+      add(config.default_port);
+    }
+    return ports;
   }
   function defaultNode(type, id2) {
     const base = {
@@ -19268,6 +19292,19 @@ Edge: ${id2}`,
         model_profile_version: "",
         subapp_versions: [],
         tool_versions: []
+      };
+    } else if (type === "condition") {
+      base.config = {
+        join_id: "",
+        default_port: "no",
+        cases: [{ input: "", op: "eq", value: true, port: "yes" }]
+      };
+    } else if (type === "join") {
+      base.config = {
+        mode: "all_active",
+        fork_id: "",
+        required_sources: [],
+        optional_sources: []
       };
     }
     return base;
@@ -19295,6 +19332,8 @@ Edge: ${id2}`,
     start: { x: 40, y: 160 },
     python: { x: 280, y: 160 },
     agent: { x: 520, y: 160 },
+    condition: { x: 280, y: 320 },
+    join: { x: 600, y: 320 },
     end: { x: 760, y: 160 }
   };
   function defaultLayout(definition) {
@@ -19329,32 +19368,113 @@ Edge: ${id2}`,
     }
     return result;
   }
+  function edgeIdFor(edge, index) {
+    return String(edge && edge.source) + "->" + String(edge && edge.target) + ":" + index;
+  }
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+  function configOf(node) {
+    return node && node.config && typeof node.config === "object" && !Array.isArray(node.config) ? node.config : {};
+  }
+  function typeOfNode(node) {
+    return node && node.data && node.data.nodeType || node && node.type || "";
+  }
   function definitionToGraph(definition, layout) {
     const positions = positionsOf(definition, layout);
-    const nodes = (definition.nodes || []).map((node) => ({
-      id: node.id,
-      type: "default",
-      label: NODE_LABELS[node.type] || node.type,
-      class: "orchara-node orchara-node-" + node.type,
-      position: positions[node.id] || { x: 0, y: 0 },
-      data: { label: NODE_LABELS[node.type] || node.type, nodeType: node.type }
-    }));
-    const edges = (definition.edges || []).map((edge, index) => ({
-      id: edge.source + "->" + edge.target + ":" + index,
-      source: edge.source,
-      target: edge.target,
-      class: "orchara-edge"
-    }));
+    const sourceNodes = definition.nodes || [];
+    const sourceEdges = definition.edges || [];
+    const typeById = new Map(sourceNodes.map((node) => [node.id, node.type]));
+    const incoming = /* @__PURE__ */ new Map();
+    for (const edge of sourceEdges) {
+      if (!incoming.has(edge.target)) {
+        incoming.set(edge.target, []);
+      }
+      incoming.get(edge.target).push(edge.source);
+    }
+    const nodes = sourceNodes.map((node) => {
+      const type = node.type;
+      const data = {
+        label: NODE_LABELS[type] || type,
+        nodeType: type,
+        config: clone(configOf(node))
+      };
+      if (type === "condition") {
+        data.ports = conditionPorts(configOf(node));
+      }
+      if (type === "join") {
+        data.sourceLabels = [...incoming.get(node.id) || []];
+      }
+      return {
+        id: node.id,
+        type: "default",
+        label: NODE_LABELS[type] || type,
+        class: "orchara-node orchara-node-" + type,
+        position: positions[node.id] || { x: 0, y: 0 },
+        data
+      };
+    });
+    const edges = sourceEdges.map((edge, index) => {
+      const port = typeof edge.port === "string" && edge.port !== "" ? edge.port : "";
+      const isConditionSource = typeById.get(edge.source) === "condition";
+      const handle = isConditionSource ? port : "";
+      return {
+        id: edgeIdFor(edge, index),
+        source: edge.source,
+        target: edge.target,
+        class: "orchara-edge" + (port ? " orchara-edge-port" : ""),
+        label: handle,
+        sourceHandle: handle || void 0,
+        targetHandle: "in",
+        data: { port }
+      };
+    });
     return { nodes, edges };
   }
+  function topologicalOrder(items, edges, idOf) {
+    const ids = items.map(idOf);
+    const index = new Map(ids.map((id2, position) => [id2, position]));
+    const adjacency = new Map(ids.map((id2) => [id2, []]));
+    const indegree = new Map(ids.map((id2) => [id2, 0]));
+    for (const edge of edges || []) {
+      if (!index.has(edge.source) || !index.has(edge.target)) {
+        continue;
+      }
+      const targets = adjacency.get(edge.source);
+      if (targets.includes(edge.target)) {
+        continue;
+      }
+      targets.push(edge.target);
+      indegree.set(edge.target, indegree.get(edge.target) + 1);
+    }
+    for (const targets of adjacency.values()) {
+      targets.sort((a, b) => index.get(a) - index.get(b));
+    }
+    const queue2 = ids.filter((id2) => indegree.get(id2) === 0);
+    const order = [];
+    while (queue2.length > 0) {
+      const current = queue2.shift();
+      order.push(current);
+      for (const target of adjacency.get(current)) {
+        indegree.set(target, indegree.get(target) - 1);
+        if (indegree.get(target) === 0) {
+          queue2.push(target);
+        }
+      }
+    }
+    return order.length === ids.length ? order : ids;
+  }
   function graphToDefinition(graphNodes, graphEdges, previous) {
-    const previousById = new Map((previous && previous.nodes ? previous.nodes : []).map((n) => [n.id, n]));
+    const previousById = new Map(
+      (previous && previous.nodes ? previous.nodes : []).map((node) => [node.id, node])
+    );
     const sourceNodes = Array.isArray(graphNodes) ? graphNodes : [];
     const sourceEdges = Array.isArray(graphEdges) ? graphEdges : [];
+    const typeById = new Map(sourceNodes.map((node) => [node.id, typeOfNode(node)]));
     const byId = /* @__PURE__ */ new Map();
     for (const flowNode of sourceNodes) {
       const id2 = flowNode.id;
-      const nodeType = flowNode.data && flowNode.data.nodeType || previousById.get(id2)?.type || "python";
+      const nodeType = typeOfNode(flowNode) || previousById.get(id2)?.type || "python";
       const old = previousById.get(id2) || defaultNode(nodeType, id2);
       byId.set(id2, {
         id: id2,
@@ -19384,38 +19504,42 @@ Edge: ${id2}`,
       draft.nodes.push(node);
     }
     const known = new Set(draft.nodes.map((node) => node.id));
+    for (const node of draft.nodes) {
+      if (node.type !== "join" || !node.config || typeof node.config !== "object") {
+        continue;
+      }
+      const required = Array.isArray(node.config.required_sources) ? node.config.required_sources : [];
+      const optional = Array.isArray(node.config.optional_sources) ? node.config.optional_sources : [];
+      const keptRequired = required.filter((id2) => known.has(id2) && id2 !== node.id);
+      const keptOptional = optional.filter(
+        (id2) => known.has(id2) && id2 !== node.id && !keptRequired.includes(id2)
+      );
+      node.config = {
+        ...node.config,
+        required_sources: [...new Set(keptRequired)],
+        optional_sources: [...new Set(keptOptional)]
+      };
+    }
     for (const edge of sourceEdges) {
       if (known.has(edge.source) && known.has(edge.target)) {
-        draft.edges.push({ source: edge.source, target: edge.target });
+        const out = { source: edge.source, target: edge.target };
+        let port = "";
+        if (edge.data && typeof edge.data.port === "string") {
+          port = edge.data.port;
+        }
+        if (port === "" && typeById.get(edge.source) === "condition" && typeof edge.sourceHandle === "string" && edge.sourceHandle !== "out") {
+          port = edge.sourceHandle;
+        }
+        if (port !== "") {
+          out.port = port;
+        }
+        draft.edges.push(out);
       }
     }
     return draft;
   }
   function chainOrderFromGraph(nodes, edges) {
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    const start2 = nodes.find((node) => (node.data && node.data.nodeType) === "start");
-    const outgoing = /* @__PURE__ */ new Map();
-    for (const edge of edges) {
-      if (!outgoing.has(edge.source)) {
-        outgoing.set(edge.source, []);
-      }
-      outgoing.get(edge.source).push(edge.target);
-    }
-    const order = [];
-    const seen = /* @__PURE__ */ new Set();
-    let current = start2 ? start2.id : null;
-    while (current && byId.has(current) && !seen.has(current)) {
-      seen.add(current);
-      order.push(current);
-      const next = outgoing.get(current) || [];
-      current = next.length === 1 ? next[0] : null;
-    }
-    for (const node of nodes) {
-      if (!seen.has(node.id)) {
-        order.push(node.id);
-      }
-    }
-    return order;
+    return topologicalOrder(nodes || [], edges || [], (node) => node.id);
   }
   function layoutFromGraph(graphNodes, previousLayout) {
     const base = previousLayout && typeof previousLayout === "object" ? previousLayout : {};
@@ -19428,44 +19552,113 @@ Edge: ${id2}`,
     }
     return { ...base, version: 1, positions };
   }
+  function flowConfig(node) {
+    return node && node.data && node.data.config && typeof node.data.config === "object" ? node.data.config : {};
+  }
+  function declaredForkIds(nodes) {
+    const declared = /* @__PURE__ */ new Set();
+    for (const node of nodes || []) {
+      if (typeOfNode(node) !== "join") {
+        continue;
+      }
+      const forkId = flowConfig(node).fork_id;
+      if (typeof forkId === "string" && forkId !== "") {
+        declared.add(forkId);
+      }
+    }
+    return declared;
+  }
+  function edgePortOf(edge) {
+    if (edge && edge.data && typeof edge.data.port === "string" && edge.data.port !== "") {
+      return edge.data.port;
+    }
+    if (edge && typeof edge.sourceHandle === "string" && edge.sourceHandle !== "" && edge.sourceHandle !== "out") {
+      return edge.sourceHandle;
+    }
+    return "";
+  }
   function connectionProblem(nodes, edges, connection) {
     const source = connection && connection.source;
     const target = connection && connection.target;
     if (!source || !target) {
-      return { code: "invalid_connection", reason: "\u8FDE\u63A5\u7F3A\u5C11\u8D77\u70B9\u6216\u7EC8\u70B9\u3002" };
+      return { code: "invalid_connection", reason: "连接缺少起点或终点。" };
     }
     if (source === target) {
-      return { code: "self_loop", reason: "\u8282\u70B9\u4E0D\u80FD\u8FDE\u63A5\u5230\u81EA\u5DF1\u3002" };
+      return { code: "self_loop", reason: "节点不能连接到自己。" };
     }
-    const byId = new Map((nodes || []).map((node) => [node.id, node]));
+    const nodeList = nodes || [];
+    const edgeList = edges || [];
+    const byId = new Map(nodeList.map((node) => [node.id, node]));
     const sourceNode = byId.get(source);
     const targetNode = byId.get(target);
     if (!sourceNode || !targetNode) {
-      return { code: "unknown_node", reason: "\u8FDE\u63A5\u5F15\u7528\u4E86\u4E0D\u5B58\u5728\u7684\u8282\u70B9\u3002" };
+      return { code: "unknown_node", reason: "连接引用了不存在的节点。" };
     }
-    if (sourceNode.data && sourceNode.data.nodeType === "end") {
-      return { code: "end_has_no_output", reason: "\u7ED3\u675F\u8282\u70B9\u6CA1\u6709\u8F93\u51FA\uFF0C\u4E0D\u80FD\u8FDE\u51FA\u3002" };
+    const sourceType2 = typeOfNode(sourceNode);
+    const targetType = typeOfNode(targetNode);
+    if (sourceType2 === "end") {
+      return { code: "end_has_no_output", reason: "结束节点没有输出，不能连出。" };
     }
-    if (targetNode.data && targetNode.data.nodeType === "start") {
-      return { code: "start_has_no_input", reason: "\u5F00\u59CB\u8282\u70B9\u6CA1\u6709\u8F93\u5165\uFF0C\u4E0D\u80FD\u8FDE\u5165\u3002" };
+    if (targetType === "start") {
+      return { code: "start_has_no_input", reason: "开始节点没有输入，不能连入。" };
     }
-    if ((edges || []).some((edge) => edge.source === source && edge.target === target)) {
-      return { code: "duplicate_edge", reason: "\u8FD9\u6761\u8FDE\u63A5\u5DF2\u7ECF\u5B58\u5728\u3002" };
+    const requested = typeof connection.sourceHandle === "string" && connection.sourceHandle !== "" && connection.sourceHandle !== "out" ? connection.sourceHandle : typeof connection.port === "string" ? connection.port : "";
+    const outgoing = edgeList.filter((edge) => edge.source === source);
+    const sameTarget = edgeList.filter((edge) => edge.source === source && edge.target === target);
+    let port = "";
+    if (sourceType2 === "condition") {
+      const allowed = conditionPorts(flowConfig(sourceNode));
+      if (requested !== "") {
+        if (!allowed.includes(requested)) {
+          return {
+            code: "bad_port",
+            reason: '端口 "' + requested + '" 不在该条件节点的 cases/default_port 中；可用端口：' + (allowed.length ? allowed.join("、") : "（无）") + "。"
+          };
+        }
+        port = requested;
+      } else {
+        const used = new Set(outgoing.map(edgePortOf).filter((value) => value !== ""));
+        port = allowed.find((candidate) => !used.has(candidate)) || "";
+        if (port === "") {
+          return {
+            code: "no_free_port",
+            reason: "该条件节点的所有端口都已连线；请新增 case 端口或删除一条出边。"
+          };
+        }
+      }
+      if (outgoing.some((edge) => edgePortOf(edge) === port)) {
+        return {
+          code: "port_exists",
+          reason: '端口 "' + port + '" 已经用于另一条出边了；同一个条件端口只能连接一条边。'
+        };
+      }
+    } else if (sameTarget.length > 0) {
+      return { code: "duplicate_edge", reason: "这条连接已经存在。" };
     }
-    if ((edges || []).some((edge) => edge.source === source)) {
-      return { code: "outgoing_exists", reason: "F04A \u53EA\u5141\u8BB8\u4E00\u6761\u7EBF\u6027\u94FE\uFF1A\u6E90\u8282\u70B9\u5DF2\u6709\u552F\u4E00\u8F93\u51FA\u4E86\u3002" };
+    const incoming = edgeList.filter((edge) => edge.target === target);
+    if (incoming.length >= 1 && targetType !== "join") {
+      return {
+        code: "merge_without_join",
+        reason: "目标节点 " + target + " 已有输入，只有 join 可以多入；请先创建配对 join 合并分支。"
+      };
     }
-    if ((edges || []).some((edge) => edge.target === target)) {
-      return { code: "incoming_exists", reason: "F04A \u53EA\u5141\u8BB8\u4E00\u6761\u7EBF\u6027\u94FE\uFF1A\u76EE\u6807\u8282\u70B9\u5DF2\u6709\u552F\u4E00\u8F93\u5165\u4E86\u3002" };
+    if (sourceType2 !== "condition") {
+      const declared = declaredForkIds(nodeList);
+      if (outgoing.length >= 1 && !declared.has(source)) {
+        return {
+          code: "fork_requires_join",
+          reason: "多出口需要唯一配对 join 声明 fork：请先创建 join 并把 fork_id 设为 " + source + "，或只保留一条出边。"
+        };
+      }
     }
-    if (createsCycle(edges, source, target)) {
-      return { code: "cycle", reason: "\u8FD9\u6761\u8FDE\u63A5\u4F1A\u5F62\u6210\u73AF\uFF0C\u7EBF\u6027\u94FE\u5FC5\u987B\u65E0\u73AF\u3002" };
+    if (createsCycle(edgeList, source, target)) {
+      return { code: "cycle", reason: "这条连接会形成环，工作流必须是无环图。" };
     }
-    return { ok: true, code: "ok", reason: "" };
+    return { ok: true, code: "ok", reason: "", port: sourceType2 === "condition" ? port : "" };
   }
   function canConnect(nodes, edges, connection) {
-    const problem = connectionProblem(nodes, edges, connection);
-    return problem.ok === true ? { ok: true, code: "ok", reason: "" } : problem;
+    const problem2 = connectionProblem(nodes, edges, connection);
+    return problem2.ok === true ? problem2 : { ...problem2, ok: false };
   }
   function createsCycle(edges, source, target) {
     const adjacency = /* @__PURE__ */ new Map();
@@ -19492,13 +19685,477 @@ Edge: ${id2}`,
     }
     return false;
   }
+  function buildGraph(nodes, edges) {
+    const index = /* @__PURE__ */ new Map();
+    nodes.forEach((node, position) => index.set(node.id, position));
+    const adjacency = new Map(nodes.map((node) => [node.id, /* @__PURE__ */ new Set()]));
+    const reverse = new Map(nodes.map((node) => [node.id, /* @__PURE__ */ new Set()]));
+    for (const edge of edges || []) {
+      if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) {
+        continue;
+      }
+      adjacency.get(edge.source).add(edge.target);
+      reverse.get(edge.target).add(edge.source);
+    }
+    const indegree = new Map(nodes.map((node) => [node.id, reverse.get(node.id).size]));
+    const queue2 = nodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
+    const topo = [];
+    while (queue2.length > 0) {
+      const current = queue2.shift();
+      topo.push(current);
+      const targets = [...adjacency.get(current)].sort((a, b) => index.get(a) - index.get(b));
+      for (const target of targets) {
+        indegree.set(target, indegree.get(target) - 1);
+        if (indegree.get(target) === 0) {
+          queue2.push(target);
+        }
+      }
+    }
+    const dom = /* @__PURE__ */ new Map();
+    const pdom = /* @__PURE__ */ new Map();
+    if (topo.length === nodes.length) {
+      for (const id2 of topo) {
+        const parents = [...reverse.get(id2)];
+        if (parents.length === 0) {
+          dom.set(id2, /* @__PURE__ */ new Set([id2]));
+          continue;
+        }
+        let common = null;
+        for (const parent of parents) {
+          const values = dom.get(parent);
+          common = common === null ? new Set(values) : new Set([...common].filter((value) => values.has(value)));
+        }
+        common.add(id2);
+        dom.set(id2, common);
+      }
+      for (const id2 of [...topo].reverse()) {
+        const children2 = [...adjacency.get(id2)];
+        if (children2.length === 0) {
+          pdom.set(id2, /* @__PURE__ */ new Set([id2]));
+          continue;
+        }
+        let common = null;
+        for (const child of children2) {
+          const values = pdom.get(child);
+          common = common === null ? new Set(values) : new Set([...common].filter((value) => values.has(value)));
+        }
+        common.add(id2);
+        pdom.set(id2, common);
+      }
+    }
+    return { index, adjacency, reverse, topo, dom, pdom };
+  }
+  function reachableFrom(adjacency, id2) {
+    const seen = /* @__PURE__ */ new Set();
+    const pending = [id2];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      for (const next of adjacency.get(current) || []) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          pending.push(next);
+        }
+      }
+    }
+    return seen;
+  }
+  function reaches(adjacency, id2, target) {
+    return reachableFrom(adjacency, id2).has(target);
+  }
+  function regionPairs(definition) {
+    const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
+    const edges = definition && Array.isArray(definition.edges) ? definition.edges : [];
+    if (nodes.length === 0) {
+      return [];
+    }
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const graph = buildGraph(nodes, edges);
+    const complete = graph.topo.length === nodes.length;
+    const pairs = [];
+    for (const joinNode of nodes) {
+      if (joinNode.type !== "join") {
+        continue;
+      }
+      let forkId = configOf(joinNode).fork_id;
+      if (typeof forkId !== "string" || forkId === "" || !byId.has(forkId)) {
+        const pairedCondition = nodes.find(
+          (node) => node.type === "condition" && configOf(node).join_id === joinNode.id
+        );
+        forkId = pairedCondition ? pairedCondition.id : "";
+      }
+      if (forkId === "" || !byId.has(forkId) || forkId === joinNode.id) {
+        continue;
+      }
+      const inside = /* @__PURE__ */ new Set();
+      for (const node of nodes) {
+        if (node.id === forkId || node.id === joinNode.id) {
+          continue;
+        }
+        let isInside;
+        if (complete && graph.dom.has(node.id) && graph.pdom.has(node.id)) {
+          isInside = graph.dom.get(node.id).has(forkId) && graph.pdom.get(node.id).has(joinNode.id);
+        } else {
+          isInside = reaches(graph.adjacency, forkId, node.id) && reaches(graph.reverse, joinNode.id, node.id);
+        }
+        if (isInside) {
+          inside.add(node.id);
+        }
+      }
+      pairs.push({ forkId, joinId: joinNode.id, inside });
+    }
+    return pairs;
+  }
+  function dominanceOf(definition) {
+    const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
+    const edges = definition && Array.isArray(definition.edges) ? definition.edges : [];
+    if (nodes.length === 0) {
+      return null;
+    }
+    const graph = buildGraph(nodes, edges);
+    if (graph.topo.length !== nodes.length) {
+      return null;
+    }
+    return graph.dom;
+  }
+  function branchNodeIds(definition) {
+    const branch = /* @__PURE__ */ new Set();
+    for (const pair of regionPairs(definition)) {
+      for (const id2 of pair.inside) {
+        branch.add(id2);
+      }
+    }
+    return branch;
+  }
+  function problem(code, pointer2, message, extra) {
+    return {
+      code,
+      pointer: pointer2 || "",
+      message,
+      nodeId: extra && extra.nodeId ? extra.nodeId : "",
+      edgeIndex: extra && typeof extra.edgeIndex === "number" ? extra.edgeIndex : null
+    };
+  }
+  function sortedStrings(values) {
+    return [...values].sort();
+  }
+  function sameList(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  function invalidDefinition() {
+    return [problem("bad_document", "", "画布定义必须包含 nodes 与 edges 数组。")];
+  }
+  function regionProblems(definition) {
+    const problems = [];
+    if (!definition || typeof definition !== "object" || !Array.isArray(definition.nodes) || !Array.isArray(definition.edges)) {
+      return invalidDefinition();
+    }
+    const nodes = definition.nodes;
+    const edges = definition.edges;
+    const seen = /* @__PURE__ */ new Set();
+    let identityBroken = false;
+    nodes.forEach((node, position) => {
+      const id2 = node && node.id;
+      if (typeof id2 !== "string" || id2 === "") {
+        problems.push(problem("bad_id", "/nodes/" + position, "节点缺少合法的 id。"));
+        identityBroken = true;
+        return;
+      }
+      if (seen.has(id2)) {
+        problems.push(problem(
+          "duplicate_id",
+          "/nodes/" + position,
+          '节点 id "' + id2 + '" 重复了；每个节点必须有唯一 id。',
+          { nodeId: id2 }
+        ));
+        identityBroken = true;
+      }
+      seen.add(id2);
+    });
+    edges.forEach((edge, position) => {
+      if (!edge || !seen.has(edge.source) || !seen.has(edge.target)) {
+        problems.push(problem(
+          "unknown_endpoint",
+          "/edges/" + position,
+          "边 #" + position + " 引用了不存在的节点。",
+          {
+            nodeId: edge && seen.has(edge.source) ? edge.source : "",
+            edgeIndex: position
+          }
+        ));
+        identityBroken = true;
+      }
+    });
+    if (identityBroken) {
+      return problems;
+    }
+    const starts = nodes.filter((node) => node.type === "start");
+    const ends = nodes.filter((node) => node.type === "end");
+    if (starts.length !== 1 || ends.length !== 1) {
+      problems.push(problem(
+        "start_end_count",
+        "",
+        "画布必须恰好有一个开始节点和一个结束节点（当前 " + starts.length + " 个开始、" + ends.length + " 个结束）。"
+      ));
+      return problems;
+    }
+    const graph = buildGraph(nodes, edges);
+    if (graph.topo.length !== nodes.length) {
+      problems.push(problem("cycle", "", "连接形成了环；工作流必须是有向无环图。"));
+      return problems;
+    }
+    const reachable = reachableFrom(graph.adjacency, starts[0].id);
+    const canReachEnd = reachableFrom(graph.reverse, ends[0].id);
+    nodes.forEach((node, position) => {
+      if (node.id !== starts[0].id && !reachable.has(node.id)) {
+        problems.push(problem(
+          "unreachable_node",
+          "/nodes/" + position,
+          "节点 " + node.id + " 无法从开始节点到达。",
+          { nodeId: node.id }
+        ));
+      }
+      if (node.id !== ends[0].id && !canReachEnd.has(node.id)) {
+        problems.push(problem(
+          "cannot_reach_end",
+          "/nodes/" + position,
+          "节点 " + node.id + " 无法到达结束节点。",
+          { nodeId: node.id }
+        ));
+      }
+      if (graph.reverse.get(node.id).size >= 2 && node.type !== "join") {
+        problems.push(problem(
+          "merge_without_join",
+          "/nodes/" + position,
+          "节点 " + node.id + " 有多个上游分支；需要先创建配对 join 汇合，不能直接在普通节点合并。",
+          { nodeId: node.id }
+        ));
+      }
+    });
+    if (problems.length > 0) {
+      return problems;
+    }
+    const index = graph.index;
+    const declaredForks = /* @__PURE__ */ new Set();
+    for (const node of nodes) {
+      if (node.type !== "join") {
+        continue;
+      }
+      const forkId = configOf(node).fork_id;
+      if (typeof forkId === "string" && forkId !== "") {
+        declaredForks.add(forkId);
+      }
+    }
+    nodes.forEach((node, position) => {
+      if (node.type !== "condition") {
+        return;
+      }
+      const joinId = configOf(node).join_id;
+      const joinPosition = index.get(joinId);
+      let valid = joinPosition !== void 0;
+      if (valid) {
+        const joinNode = nodes[joinPosition];
+        if (joinNode.type !== "join" || configOf(joinNode).fork_id !== node.id) {
+          valid = false;
+        }
+      }
+      if (!valid) {
+        problems.push(problem(
+          "invalid_region",
+          "/nodes/" + position + "/config/join_id",
+          "条件节点 " + node.id + " 的 join_id 必须指向唯一配对 join，且该 join 的 fork_id 必须指回 " + node.id + "（双向配对）。",
+          { nodeId: node.id }
+        ));
+      }
+    });
+    nodes.forEach((node, position) => {
+      if (node.type !== "join") {
+        return;
+      }
+      const at = "/nodes/" + position + "/config/fork_id";
+      const forkId = configOf(node).fork_id;
+      const forkPosition = index.get(forkId);
+      if (forkPosition === void 0 || forkId === node.id) {
+        problems.push(problem(
+          "invalid_region",
+          at,
+          "join " + node.id + " 的 fork_id 必须指向一个真实存在的分叉节点。",
+          { nodeId: node.id }
+        ));
+        return;
+      }
+      const forkNode = nodes[forkPosition];
+      if (forkNode.type === "condition") {
+        if (configOf(forkNode).join_id !== node.id) {
+          problems.push(problem(
+            "invalid_region",
+            at,
+            "join " + node.id + " 声明 fork_id=" + forkId + "，但该条件节点的 join_id 没有指回 " + node.id + "（双向配对）。",
+            { nodeId: node.id }
+          ));
+        }
+      } else if (graph.adjacency.get(forkId).size < 2) {
+        problems.push(problem(
+          "invalid_region",
+          at,
+          "join " + node.id + " 声明的 fork_id=" + forkId + " 只有一条出边；普通 fork 必须至少分出两条分支。",
+          { nodeId: node.id }
+        ));
+      }
+    });
+    nodes.forEach((node, position) => {
+      if (node.type === "condition" || node.type === "join") {
+        return;
+      }
+      if (graph.adjacency.get(node.id).size >= 2 && !declaredForks.has(node.id)) {
+        problems.push(problem(
+          "invalid_region",
+          "/nodes/" + position,
+          "节点 " + node.id + " 有多条出边，但没有任何 join 把 fork_id 声明为它；请创建配对 join。",
+          { nodeId: node.id }
+        ));
+      }
+    });
+    if (problems.length > 0) {
+      return problems;
+    }
+    const conditionEdges = [];
+    nodes.forEach((node, position) => {
+      if (node.type !== "condition") {
+        return;
+      }
+      const config = configOf(node);
+      const allowed = conditionPorts(config);
+      const allowedSet = new Set(allowed);
+      const actual = /* @__PURE__ */ new Set();
+      edges.forEach((edge, edgePosition) => {
+        if (edge.source !== node.id) {
+          return;
+        }
+        const port = typeof edge.port === "string" && edge.port !== "" ? edge.port : "default";
+        actual.add(port);
+        if (!allowedSet.has(port)) {
+          problems.push(problem(
+            "bad_port",
+            "/edges/" + edgePosition,
+            "边 " + node.id + "→" + edge.target + ' 的端口 "' + port + '" 与 cases/default_port 不一致；可用端口：' + (allowed.length ? allowed.join("、") : "（无）") + "。",
+            { nodeId: node.id, edgeIndex: edgePosition }
+          ));
+        }
+      });
+      for (const port of sortedStrings(allowedSet)) {
+        if (!actual.has(port)) {
+          problems.push(problem(
+            "bad_port",
+            "/nodes/" + position + "/config/cases",
+            "条件节点 " + node.id + ' 的端口 "' + port + '" 没有对应出边；每个 case 端口和 default_port 都必须连线。',
+            { nodeId: node.id }
+          ));
+        }
+      }
+    });
+    edges.forEach((edge, edgePosition) => {
+      const sourceNode = nodes[index.get(edge.source)];
+      if (!sourceNode || sourceNode.type === "condition") {
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(edge, "port") && edge.port !== "default") {
+        problems.push(problem(
+          "bad_port",
+          "/edges/" + edgePosition,
+          "只有条件节点的出边可以设置 port；" + edge.source + " 的这条出边应删除端口。",
+          { nodeId: edge.source, edgeIndex: edgePosition }
+        ));
+      }
+    });
+    if (problems.length > 0) {
+      return problems;
+    }
+    const regions = nodes.filter((node) => node.type === "join").map((node) => [configOf(node).fork_id, node.id]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+    for (const [forkId, joinId] of regions) {
+      const inside = /* @__PURE__ */ new Set();
+      for (const nodeId of index.keys()) {
+        if (nodeId === forkId || nodeId === joinId) {
+          continue;
+        }
+        if (graph.dom.get(nodeId).has(forkId) && graph.pdom.get(nodeId).has(joinId)) {
+          inside.add(nodeId);
+        }
+      }
+      edges.forEach((edge, edgePosition) => {
+        const sourceInside = inside.has(edge.source);
+        const targetInside = inside.has(edge.target);
+        let illegal = false;
+        if (sourceInside && !targetInside && edge.target !== joinId) {
+          illegal = true;
+        } else if (targetInside && !sourceInside && edge.source !== forkId) {
+          illegal = true;
+        } else if (edge.source === forkId && edge.target !== joinId && !targetInside) {
+          illegal = true;
+        } else if (edge.target === joinId && edge.source !== forkId && !sourceInside) {
+          illegal = true;
+        }
+        if (illegal) {
+          problems.push(problem(
+            "cross_region_edge",
+            "/edges/" + edgePosition,
+            "边 " + edge.source + "→" + edge.target + " 跨越了 region 边界：它必须连到配对 join（" + joinId + "），或在 join 前汇合；region 的入口是 " + forkId + "。",
+            { nodeId: edge.source, edgeIndex: edgePosition }
+          ));
+        }
+      });
+    }
+    if (problems.length > 0) {
+      return problems;
+    }
+    nodes.forEach((node, position) => {
+      if (node.type !== "join") {
+        return;
+      }
+      const config = configOf(node);
+      const required = Array.isArray(config.required_sources) ? config.required_sources : [];
+      const optional = Array.isArray(config.optional_sources) ? config.optional_sources : [];
+      const declared = [...required, ...optional];
+      const actual = sortedStrings(new Set(
+        edges.filter((edge) => edge.target === node.id).map((edge) => edge.source)
+      ));
+      const uniqueDeclared = new Set(declared);
+      const overlap = required.some((id2) => optional.includes(id2));
+      if (declared.length !== uniqueDeclared.size || overlap || !sameList(sortedStrings(uniqueDeclared), actual)) {
+        problems.push(problem(
+          "bad_join_sources",
+          "/nodes/" + position + "/config/required_sources",
+          "join " + node.id + " 的 required_sources/optional_sources 必须恰好覆盖所有直接前驱且互斥；当前声明 " + JSON.stringify(declared) + "，直接前驱是 " + JSON.stringify(actual) + "。",
+          { nodeId: node.id }
+        ));
+      }
+    });
+    return problems;
+  }
+  function nextNodeId(nodes, type) {
+    const used = new Set((nodes || []).map((node) => node.id));
+    let counter = (nodes || []).length + 1;
+    let id2 = type + counter;
+    while (used.has(id2)) {
+      counter += 1;
+      id2 = type + counter;
+    }
+    return id2;
+  }
   function addNode(graphNodes, graphEdges, type, layout) {
     const nodes = graphNodes || [];
-    const id2 = type === "start" || type === "end" ? type : type + (nodes.length + 1);
-    if (nodes.some((node) => node.data && node.data.nodeType === type)) {
-      return { ok: false, code: "node_exists", reason: "F04A \u53EA\u5141\u8BB8\u6BCF\u79CD\u8282\u70B9\u5404\u4E00\u4E2A\u3002" };
+    if (!NODE_TYPES.includes(type)) {
+      return { ok: false, code: "unknown_type", reason: "画布不支持节点类型 " + type + "。" };
     }
-    const position = DEFAULT_POSITIONS[type] || { x: 280 + 240 * nodes.length, y: 320 };
+    if (!REPEATABLE_NODE_TYPES.includes(type) && nodes.some((node) => typeOfNode(node) === type)) {
+      return {
+        ok: false,
+        code: "node_exists",
+        reason: "画布只允许一个" + (NODE_LABELS[type] || type) + "节点。"
+      };
+    }
+    const id2 = type === "start" || type === "end" ? type : nextNodeId(nodes, type);
+    const sameType = nodes.filter((node) => typeOfNode(node) === type).length;
+    const position = DEFAULT_POSITIONS[type] ? { ...DEFAULT_POSITIONS[type], y: DEFAULT_POSITIONS[type].y + 120 * sameType } : { x: 280 + 240 * nodes.length, y: 320 };
     return {
       ok: true,
       node: {
@@ -19506,8 +20163,13 @@ Edge: ${id2}`,
         type: "default",
         label: NODE_LABELS[type],
         class: "orchara-node orchara-node-" + type,
-        position: { ...position },
-        data: { label: NODE_LABELS[type], nodeType: type }
+        position,
+        data: {
+          label: NODE_LABELS[type],
+          nodeType: type,
+          config: clone(defaultNode(type, id2).config),
+          ...type === "condition" ? { ports: conditionPorts(defaultNode(type, id2).config) } : {}
+        }
       },
       layout
     };
@@ -19528,11 +20190,11 @@ Edge: ${id2}`,
   }
   function schemaProperties(schema, baseRef, basePath, out) {
     if (!schema || typeof schema !== "object") {
-      return;
+      return out;
     }
     const properties = schema.properties;
     if (!properties || typeof properties !== "object") {
-      return;
+      return out;
     }
     for (const name of Object.keys(properties).sort()) {
       const child = properties[name];
@@ -19593,6 +20255,55 @@ Edge: ${id2}`,
     order.sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0));
     return order;
   }
+  function joinEnvelopeSources(definition, nodeId) {
+    const entries = [];
+    const nodes = definition.nodes || [];
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const ancestors = new Set(upstreamNodeIds(definition, nodeId));
+    const dom = dominanceOf(definition);
+    for (const pair of regionPairs(definition)) {
+      if (!ancestors.has(pair.joinId) || !byId.has(pair.joinId)) {
+        continue;
+      }
+      if (dom !== null && !(dom.get(nodeId) || /* @__PURE__ */ new Set()).has(pair.joinId)) {
+        continue;
+      }
+      const joinLabel = "join " + pair.joinId;
+      entries.push({
+        ref: "node:" + pair.joinId + "#/results",
+        path: "results",
+        label: pair.joinId + "#/results（汇合封套）",
+        type: "object",
+        source: joinLabel,
+        sourceNodeId: pair.joinId
+      });
+      const predecessors = [...new Set(
+        (definition.edges || []).filter((edge) => edge.target === pair.joinId).map((edge) => edge.source)
+      )];
+      for (const sourceId of predecessors) {
+        const sourceNode = byId.get(sourceId);
+        const sourceType2 = sourceNode ? sourceNode.type : "node";
+        const valueType = describeType(sourceNode && sourceNode.output_schema);
+        entries.push({
+          ref: "node:" + pair.joinId + "#/results/" + escapePointer(sourceId),
+          path: "results." + sourceId,
+          label: pair.joinId + "#/results/" + sourceId + "（" + sourceType2 + " 结果封套）",
+          type: "object",
+          source: joinLabel,
+          sourceNodeId: pair.joinId
+        });
+        entries.push({
+          ref: "node:" + pair.joinId + "#/results/" + escapePointer(sourceId) + "/value",
+          path: "results." + sourceId + ".value",
+          label: pair.joinId + "#/results/" + sourceId + "/value（" + sourceType2 + "）",
+          type: valueType,
+          source: joinLabel,
+          sourceNodeId: pair.joinId
+        });
+      }
+    }
+    return entries;
+  }
   function legalSources(definition, nodeId) {
     const sources = [];
     if (!definition || !Array.isArray(definition.nodes)) {
@@ -19605,9 +20316,17 @@ Edge: ${id2}`,
     for (const entry of schemaProperties(definition.input_schema, "input#", "", [])) {
       sources.push({ ...entry, source: "application input", sourceNodeId: "" });
     }
+    const branch = branchNodeIds(definition);
+    const dom = dominanceOf(definition);
     for (const upstreamId of upstreamNodeIds(definition, nodeId)) {
       const upstream = definition.nodes.find((item) => item.id === upstreamId);
       if (!upstream) {
+        continue;
+      }
+      if (branch.has(upstreamId)) {
+        continue;
+      }
+      if (dom !== null && !(dom.get(nodeId) || /* @__PURE__ */ new Set()).has(upstreamId)) {
         continue;
       }
       for (const entry of schemaProperties(upstream.output_schema, "node:" + upstreamId + "#", "", [])) {
@@ -19618,7 +20337,22 @@ Edge: ${id2}`,
         });
       }
     }
-    return sources;
+    for (const entry of joinEnvelopeSources(definition, nodeId)) {
+      sources.push(entry);
+    }
+    return dedupe(sources);
+  }
+  function dedupe(entries) {
+    const seen = /* @__PURE__ */ new Set();
+    const result = [];
+    for (const entry of entries) {
+      if (seen.has(entry.ref)) {
+        continue;
+      }
+      seen.add(entry.ref);
+      result.push(entry);
+    }
+    return result;
   }
   function sourceType(definition, ref2) {
     if (typeof ref2 !== "string") {
@@ -19629,7 +20363,23 @@ Edge: ${id2}`,
       return "unknown";
     }
     const head = ref2.slice(0, hash);
-    const pointer2 = ref2.slice(hash + 1);
+    const tokens = ref2.slice(hash + 1).split("/").filter((part) => part !== "").map(unescapePointer);
+    if (head.startsWith("node:")) {
+      const node = (definition.nodes || []).find((item) => item.id === head.slice(5));
+      if (node && node.type === "join" && tokens.length > 0 && tokens[0] === "results") {
+        if (tokens.length === 1) {
+          return "object";
+        }
+        if (tokens.length === 2) {
+          return "object";
+        }
+        if (tokens.length === 3 && tokens[2] === "value") {
+          const source = (definition.nodes || []).find((item) => item.id === tokens[1]);
+          return describeType(source && source.output_schema);
+        }
+        return "unknown";
+      }
+    }
     let schema;
     if (head === "input") {
       schema = definition.input_schema;
@@ -19637,13 +20387,13 @@ Edge: ${id2}`,
       const node = (definition.nodes || []).find((item) => item.id === head.slice(5));
       schema = node ? node.output_schema : null;
     }
-    for (const token of pointer2.split("/").filter((part) => part !== "")) {
+    for (const token of tokens) {
       if (!schema || typeof schema !== "object") {
         return "unknown";
       }
       const properties = schema.properties;
-      if (properties && Object.prototype.hasOwnProperty.call(properties, unescapePointer(token))) {
-        schema = properties[unescapePointer(token)];
+      if (properties && Object.prototype.hasOwnProperty.call(properties, token)) {
+        schema = properties[token];
         continue;
       }
       if (schema.type === "array" && /^\d+$/.test(token) && schema.items) {
@@ -19672,13 +20422,25 @@ Edge: ${id2}`,
     const match = /^\/nodes\/(\d+)(?:\/|$)/.exec(String(pointer2 || ""));
     return match ? Number(match[1]) : null;
   }
+  function edgeIndexFromPointer(pointer2) {
+    const match = /^\/edges\/(\d+)(?:\/|$)/.exec(String(pointer2 || ""));
+    return match ? Number(match[1]) : null;
+  }
   function nodeIdForError(definition, error) {
     const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
     if (error && error.node_id) {
       return nodes.some((node) => node.id === error.node_id) ? error.node_id : "";
     }
     const index = nodeIndexFromPointer(error && error.pointer);
-    return index !== null && index >= 0 && index < nodes.length ? nodes[index].id : "";
+    if (index !== null && index >= 0 && index < nodes.length) {
+      return nodes[index].id;
+    }
+    const edgeIndex = edgeIndexFromPointer(error && error.pointer);
+    const edges = definition && Array.isArray(definition.edges) ? definition.edges : [];
+    if (edgeIndex !== null && edgeIndex >= 0 && edgeIndex < edges.length) {
+      return edges[edgeIndex].source || "";
+    }
+    return "";
   }
   function fieldForError(pointer2) {
     const text = String(pointer2 || "");
@@ -19702,24 +20464,103 @@ Edge: ${id2}`,
     }
     return parts.join(".");
   }
+  function fixHintForCode(code) {
+    switch (String(code || "")) {
+      case "cross_region_edge":
+        return "这条连接跨越了 region 边界；请连到配对 join 或删除这条边。";
+      case "invalid_region":
+        return "条件节点与 join 必须双向配对（condition.join_id ↔ join.fork_id）；请检查配对面板。";
+      case "bad_port":
+        return "端口与 cases/default_port 不一致；请让每条出边的端口都出现在条件端口列表里。";
+      case "bad_join_sources":
+        return "join 来源必须覆盖所有直接前驱且 required/optional 互斥；请勾选完整。";
+      case "merge_without_join":
+        return "多个上游分支不能直接合并；请先创建配对 join 再连入。";
+      case "fork_requires_join":
+        return "多出口需要唯一配对 join 声明 fork；请创建 join 并把 fork_id 指向该节点。";
+      case "port_exists":
+        return "同一个条件端口只能连接一条出边；请换一个端口。";
+      case "no_free_port":
+        return "条件节点的端口都已连线；请新增 case/default_port 或删除一条出边。";
+      case "missing_value":
+        return "这个值在某些执行路径上可能没有被赋值；请改读 join 后按来源区分的结果。";
+      case "start_end_count":
+        return "画布必须恰好有一个开始节点和一个结束节点。";
+      case "cycle":
+        return "连接形成了环；工作流必须是有向无环图，请删除回边。";
+      case "unreachable_node":
+        return "该节点无法从开始节点到达；请补上入口连接。";
+      case "cannot_reach_end":
+        return "该节点无法到达结束节点；请补上通往 join/结束节点的连接。";
+      case "dependency_not_ready":
+        return "引用的工具/模型/子应用版本未就绪；请选择 ready 且已批准的固定版本。";
+      case "duplicate_id":
+        return "节点 id 重复；请删除重复节点或重新添加。";
+      case "unknown_endpoint":
+        return "连接引用了不存在的节点；请删除这条边并重新连接。";
+      case "non_ancestor_ref":
+        return "只能引用当前节点上游的值；请改用合法来源。";
+      case "unknown_ref":
+        return "引用的节点或字段不存在；请重新选择合法来源。";
+      case "bad_pointer":
+        return "引用的字段不在上游输出 Schema 中；请检查指针或补全输出 Schema。";
+      case "type_mismatch":
+        return "比较值的类型与输入不一致；条件比较不做类型强转。";
+      default:
+        return "请按服务端给出的 pointer 定位节点/边并修正配置；画布不会代替服务端校验。";
+    }
+  }
   function mapValidationErrors(definition, errors) {
     const list = Array.isArray(errors) ? errors : [];
+    const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes : [];
+    const edges = definition && Array.isArray(definition.edges) ? definition.edges : [];
     return list.map((error, index) => {
+      const pointer2 = error && error.pointer ? error.pointer : "";
+      const edgeIndex = edgeIndexFromPointer(pointer2);
+      const edge = edgeIndex !== null && edgeIndex >= 0 && edgeIndex < edges.length ? edges[edgeIndex] : null;
       const nodeId = nodeIdForError(definition, error);
+      let field = fieldForError(pointer2);
+      if (edge) {
+        const sourceNode = nodes.find((node) => node.id === edge.source);
+        field = sourceNode && sourceNode.type === "condition" ? "edge.port" : "edge";
+      }
       return {
         index,
         nodeId,
-        field: fieldForError(error && error.pointer),
-        pointer: error && error.pointer ? error.pointer : "",
+        field,
+        pointer: pointer2,
         code: error && error.code || "validation_failed",
-        message: error && error.message || "the server refused this definition",
-        documentLevel: nodeId === ""
+        message: error && error.message || "服务端拒绝了这个定义",
+        hint: fixHintForCode(error && error.code),
+        edgeIndex: edge ? edgeIndex : null,
+        edgeId: edge ? edgeIdFor(edge, edgeIndex) : "",
+        source: edge ? edge.source : "",
+        target: edge ? edge.target : "",
+        documentLevel: nodeId === "" && edge === null
       };
     });
   }
 
   // src/lib/export.js
-  var SENSITIVE_KEY = /(secret|token|password|passwd|api[_-]?key|credential|bearer|oauth|memory|personal|run[_-]?input)/i;
+  var SENSITIVE_KEY = /(secret|token|password|passwd|api[_-]?key|credential|bearer|oauth|memory|personal|run[_-]?input|endpoint)/i;
+  var CONFIG_ALLOWLIST = {
+    start: [],
+    python: ["tool_version"],
+    agent: [
+      "model_profile_version",
+      "instructions",
+      "tool_versions",
+      "subapp_versions",
+      "max_turns"
+    ],
+    condition: ["join_id", "default_port", "cases"],
+    join: ["mode", "fork_id", "required_sources", "optional_sources"],
+    end: []
+  };
+  var TOP_LEVEL_KEYS = ["dsl_version", "input_schema", "output_schema", "nodes", "edges", "policy"];
+  var NODE_KEYS = ["id", "type", "inputs", "output_schema", "config"];
+  var EDGE_KEYS = ["source", "target", "port"];
+  var CASE_KEYS = ["input", "op", "value", "port"];
   var ExportRefused = class extends Error {
     constructor(code, path, message) {
       super(message);
@@ -19746,7 +20587,7 @@ Edge: ${id2}`,
         throw new ExportRefused(
           "sensitive_key",
           path,
-          "\u5BFC\u51FA\u88AB\u62D2\u7EDD\uFF1Adefinition \u542B\u6709\u51ED\u636E/\u8FD0\u884C\u8F93\u5165/\u8BB0\u5FC6\u7C7B\u5B57\u6BB5 " + JSON.stringify(key) + "\u3002"
+          "导出被拒绝：definition 含有凭据/端点/运行输入/记忆类字段 " + JSON.stringify(key) + "。"
         );
       }
     });
@@ -19755,25 +20596,109 @@ Edge: ${id2}`,
         throw new ExportRefused(
           "sensitive_key",
           path,
-          "\u5BFC\u51FA\u88AB\u62D2\u7EDD\uFF1Alayout \u542B\u6709\u51ED\u636E/\u8FD0\u884C\u8F93\u5165/\u8BB0\u5FC6\u7C7B\u5B57\u6BB5 " + JSON.stringify(key) + "\u3002"
+          "导出被拒绝：layout 含有凭据/端点/运行输入/记忆类字段 " + JSON.stringify(key) + "。"
         );
       }
     });
     return true;
   }
-  function clone(value) {
+  function clone2(value) {
     return JSON.parse(JSON.stringify(value));
   }
-  function exportPayload(definition, layout) {
-    const payload = {
-      definition: clone(definition && typeof definition === "object" ? definition : {}),
-      layout: clone(layout && typeof layout === "object" ? layout : {})
-    };
-    assertExportSafe(payload.definition, payload.layout);
-    return payload;
+  function sanitizeCase(item, path, dropped) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return item;
+    }
+    const cleaned = {};
+    for (const key of Object.keys(item)) {
+      if (CASE_KEYS.includes(key)) {
+        cleaned[key] = item[key];
+      } else {
+        dropped.push({ path: path + "/" + escapePointer(key), reason: "unknown_config_key" });
+      }
+    }
+    return cleaned;
   }
-  function exportJSON(definition, layout) {
-    return JSON.stringify(exportPayload(definition, layout), null, 2);
+  function sanitizeDefinition(definition) {
+    const dropped = [];
+    const source = definition && typeof definition === "object" && !Array.isArray(definition) ? definition : {};
+    const cleaned = {};
+    for (const key of Object.keys(source)) {
+      if (TOP_LEVEL_KEYS.includes(key)) {
+        cleaned[key] = source[key];
+      } else {
+        dropped.push({ path: "/" + escapePointer(key), reason: "unknown_field" });
+      }
+    }
+    const sourceNodes = Array.isArray(source.nodes) ? source.nodes : [];
+    cleaned.nodes = sourceNodes.map((node, index) => {
+      const target = {};
+      const entry = node && typeof node === "object" && !Array.isArray(node) ? node : {};
+      for (const key of Object.keys(entry)) {
+        if (NODE_KEYS.includes(key)) {
+          target[key] = entry[key];
+        } else {
+          dropped.push({ path: "/nodes/" + index + "/" + escapePointer(key), reason: "unknown_field" });
+        }
+      }
+      const type = typeof entry.type === "string" ? entry.type : "";
+      const allow = CONFIG_ALLOWLIST[type];
+      const config = entry.config && typeof entry.config === "object" && !Array.isArray(entry.config) ? entry.config : {};
+      const cleanConfig = {};
+      for (const key of Object.keys(config).sort()) {
+        if (!allow) {
+          dropped.push({
+            path: "/nodes/" + index + "/config/" + escapePointer(key),
+            reason: "unknown_node_type"
+          });
+          continue;
+        }
+        if (!allow.includes(key)) {
+          dropped.push({
+            path: "/nodes/" + index + "/config/" + escapePointer(key),
+            reason: "unknown_config_key"
+          });
+          continue;
+        }
+        cleanConfig[key] = config[key];
+      }
+      if (allow && type === "condition" && Array.isArray(cleanConfig.cases)) {
+        cleanConfig.cases = cleanConfig.cases.map((item, position) => sanitizeCase(item, "/nodes/" + index + "/config/cases/" + position, dropped));
+      }
+      if (Object.prototype.hasOwnProperty.call(entry, "config")) {
+        target.config = cleanConfig;
+      }
+      return target;
+    });
+    const sourceEdges = Array.isArray(source.edges) ? source.edges : [];
+    cleaned.edges = sourceEdges.map((edge, index) => {
+      const entry = edge && typeof edge === "object" && !Array.isArray(edge) ? edge : {};
+      const target = {};
+      for (const key of Object.keys(entry)) {
+        if (EDGE_KEYS.includes(key)) {
+          target[key] = entry[key];
+        } else {
+          dropped.push({ path: "/edges/" + index + "/" + escapePointer(key), reason: "unknown_field" });
+        }
+      }
+      if (!Object.prototype.hasOwnProperty.call(target, "port")) {
+        delete target.port;
+      }
+      return target;
+    });
+    return { definition: cleaned, dropped };
+  }
+  function exportPayload(definition, layout) {
+    assertExportSafe(definition, layout);
+    const sanitized = sanitizeDefinition(definition);
+    const payload = {
+      definition: sanitized.definition,
+      layout: clone2(layout && typeof layout === "object" ? layout : {})
+    };
+    if (sanitized.dropped.length > 0) {
+      payload.dropped = sanitized.dropped;
+    }
+    return payload;
   }
   function exportFilename(applicationId) {
     return "orchara-canvas-" + (applicationId || "draft") + ".json";
@@ -19781,7 +20706,7 @@ Edge: ${id2}`,
 
   // src/main.js
   var SCHEMA_TYPES = ["string", "integer", "number", "boolean", "object", "array"];
-  function clone2(value) {
+  function clone3(value) {
     return JSON.parse(JSON.stringify(value));
   }
   function applicationIdFromPath(pathname) {
@@ -19805,7 +20730,7 @@ Edge: ${id2}`,
     return raw;
   }
   function setSchemaProperty(schema, name, type, required) {
-    const next = clone2(schema || emptySchemaWithId());
+    const next = clone3(schema || emptySchemaWithId());
     next.type = "object";
     next.properties = next.properties && typeof next.properties === "object" ? next.properties : {};
     next.properties[name] = { ...next.properties[name] || {}, type };
@@ -19819,7 +20744,7 @@ Edge: ${id2}`,
     return next;
   }
   function removeSchemaProperty(schema, name) {
-    const next = clone2(schema || emptySchemaWithId());
+    const next = clone3(schema || emptySchemaWithId());
     if (next.properties) {
       delete next.properties[name];
     }
@@ -19858,16 +20783,16 @@ Edge: ${id2}`,
           class: "link danger",
           "data-field": "schema." + name + ".remove",
           onClick: () => options.onRemove(name)
-        }, "\u5220\u9664")
+        }, "删除")
       ])
     );
     const draftName = state.schemaDrafts[options.draftKey] || "";
     return [
-      ...rows.length ? rows : [h("p", { class: "hint" }, "\u5C1A\u672A\u58F0\u660E\u4EFB\u4F55\u5B57\u6BB5\u3002")],
+      ...rows.length ? rows : [h("p", { class: "hint" }, "尚未声明任何字段。")],
       h("div", { class: "schema-row add" }, [
         h("input", {
           type: "text",
-          placeholder: "\u65B0\u5B57\u6BB5\u540D",
+          placeholder: "新字段名",
           value: draftName,
           "data-field": options.draftKey + ".new",
           onInput: (event) => {
@@ -19879,32 +20804,32 @@ Edge: ${id2}`,
           onClick: () => {
             const name = String(state.schemaDrafts[options.draftKey] || "").trim();
             if (!name) {
-              state.status = "\u5B57\u6BB5\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002";
+              state.status = "字段名不能为空。";
               state.statusKind = "bad";
               return;
             }
             state.schemaDrafts[options.draftKey] = "";
             options.onAdd(name);
           }
-        }, "\u6DFB\u52A0\u5B57\u6BB5")
+        }, "添加字段")
       ])
     ];
   }
   function renderSourceSelect(definition, nodeId, value, onChange, fieldName) {
     const groups = sourceGroups(definition, nodeId);
-    const options = [h("option", { value: "" }, "\u2014 \u9009\u62E9\u5408\u6CD5\u6765\u6E90 \u2014")];
+    const options = [h("option", { value: "" }, "— 选择合法来源 —")];
     for (const group of groups) {
       const children2 = group.options.map(
         (entry) => h(
           "option",
           { value: entry.ref },
-          entry.label + " (" + entry.type + ") \u2014 " + group.label
+          entry.label + " (" + entry.type + ") — " + group.label
         )
       );
       options.push(h("optgroup", { label: group.label }, children2));
     }
     if (value && !groups.some((group) => group.options.some((entry) => entry.ref === value))) {
-      options.push(h("option", { value, disabled: true }, value + "\uFF08\u4E0D\u518D\u5408\u6CD5\uFF09"));
+      options.push(h("option", { value, disabled: true }, value + "（不再合法）"));
     }
     return h("select", {
       value: value || "",
@@ -19917,16 +20842,20 @@ Edge: ${id2}`,
     const names = Object.keys(inputs).sort();
     const draftKey = node.id + ".inputName";
     return [
-      h("h3", {}, "\u8F93\u5165\u6620\u5C04"),
-      h("p", { class: "hint" }, "\u53EA\u63D0\u4F9B\u5E94\u7528\u8F93\u5165\u5C5E\u6027\u4E0E\u4E0A\u6E38\u8282\u70B9\u8F93\u51FA\u5C5E\u6027\uFF1B\u4E0B\u6E38\u548C\u81EA\u8EAB\u4E0D\u4F1A\u51FA\u73B0\u5728\u5217\u8868\u91CC\u3002"),
-      ...names.length === 0 ? [h("p", { class: "hint" }, "\u8FD8\u6CA1\u6709\u6620\u5C04\u3002\u5DE5\u5177/Agent \u7684\u8F93\u5165\u540D\u9700\u8981\u4E0E\u8282\u70B9\u8F93\u5165\u540D\u4E00\u81F4\u3002")] : names.map((name) => h("div", { class: "mapping-row", key: "map-" + name }, [
+      h("h3", {}, "输入映射"),
+      h(
+        "p",
+        { class: "hint" },
+        "只提供应用输入属性与合法上游节点的输出；分支节点在 join 前只能通过 node:<join>#/results/<source> 读取，自身和下游不会出现在列表里。"
+      ),
+      ...names.length === 0 ? [h("p", { class: "hint" }, "还没有映射。工具/Agent 的输入名需要与节点输入名一致。")] : names.map((name) => h("div", { class: "mapping-row", key: "map-" + name }, [
         h("code", { class: "mapping-name" }, name),
         renderSourceSelect(
           definition,
           node.id,
           inputs[name] && inputs[name].ref,
           (ref2) => {
-            const next = clone2(node.inputs || {});
+            const next = clone3(node.inputs || {});
             if (ref2) {
               next[name] = { ref: ref2 };
             } else {
@@ -19947,17 +20876,17 @@ Edge: ${id2}`,
           class: "link danger",
           "data-field": "inputs." + name + ".remove",
           onClick: () => {
-            const next = clone2(node.inputs || {});
+            const next = clone3(node.inputs || {});
             delete next[name];
             node.inputs = next;
             commit(state);
           }
-        }, "\u5220\u9664")
+        }, "删除")
       ])),
       h("div", { class: "schema-row add" }, [
         h("input", {
           type: "text",
-          placeholder: "\u65B0\u8F93\u5165\u540D",
+          placeholder: "新输入名",
           value: state.inputDrafts[draftKey] || "",
           "data-field": "inputs.new",
           onInput: (event) => {
@@ -19969,7 +20898,7 @@ Edge: ${id2}`,
           onClick: () => {
             const name = String(state.inputDrafts[draftKey] || "").trim();
             if (!name) {
-              state.status = "\u8F93\u5165\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002";
+              state.status = "输入名不能为空。";
               state.statusKind = "bad";
               return;
             }
@@ -19977,15 +20906,14 @@ Edge: ${id2}`,
             node.inputs = { ...node.inputs || {}, [name]: { ref: "" } };
             commit(state);
           }
-        }, "\u6DFB\u52A0\u8F93\u5165")
+        }, "添加输入")
       ])
     ];
   }
   function renderOutputSchemaEditor(definition, state, node) {
     const text = JSON.stringify(node.output_schema || emptySchemaWithId(), null, 2);
-    const errorKey = node.id + ".schema";
     return [
-      h("h3", {}, "\u8F93\u51FA Schema"),
+      h("h3", {}, "输出 Schema"),
       h("textarea", {
         class: "schema-json",
         spellcheck: "false",
@@ -19997,24 +20925,24 @@ Edge: ${id2}`,
           try {
             const parsed = JSON.parse(value);
             if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-              throw new Error("\u5FC5\u987B\u662F JSON \u5BF9\u8C61");
+              throw new Error("必须是 JSON 对象");
             }
             node.output_schema = parsed;
             state.schemaErrors[node.id] = "";
             commit(state);
           } catch (error) {
-            state.schemaErrors[node.id] = "\u8F93\u51FA Schema \u4E0D\u662F\u5408\u6CD5 JSON \u5BF9\u8C61\uFF1A" + error.message;
+            state.schemaErrors[node.id] = "输出 Schema 不是合法 JSON 对象：" + error.message;
           }
         }
       }),
-      state.schemaErrors[node.id] ? h("p", { class: "error-text", "data-field": "output_schema.error" }, state.schemaErrors[node.id]) : h("p", { class: "hint" }, "\u8F93\u51FA Schema \u662F\u5BF9\u8C61\u7C7B\u578B\uFF0C\u5C5E\u6027\u540D\u5C31\u662F\u4E0B\u6E38\u53EF\u5F15\u7528\u7684\u5B57\u6BB5\u3002")
+      state.schemaErrors[node.id] ? h("p", { class: "error-text", "data-field": "output_schema.error" }, state.schemaErrors[node.id]) : h("p", { class: "hint" }, "输出 Schema 是对象类型，属性名就是下游可引用的字段。")
     ];
   }
   function renderStartPanel(definition, state, node) {
     const schema = definition.input_schema || emptySchemaWithId();
     return [
-      h("h3", {}, "\u5E94\u7528\u8F93\u5165 Schema"),
-      h("p", { class: "hint" }, "\u5F00\u59CB\u8282\u70B9\u6CA1\u6709\u8F93\u5165\uFF1B\u8FD9\u91CC\u58F0\u660E\u5E94\u7528\u8FD0\u884C\u65F6\u53EF\u4EE5\u63D0\u4F9B\u7684\u8F93\u5165\u5B57\u6BB5\u3002"),
+      h("h3", {}, "应用输入 Schema"),
+      h("p", { class: "hint" }, "开始节点没有输入；这里声明应用运行时可以提供的输入字段。"),
       ...renderSchemaRows(definition, state.root, state, schema, {
         draftKey: "input_schema",
         onAdd: (name) => {
@@ -20026,7 +20954,7 @@ Edge: ${id2}`,
           if (!trimmed || trimmed === name) {
             return;
           }
-          const nextSchema = clone2(definition.input_schema || emptySchemaWithId());
+          const nextSchema = clone3(definition.input_schema || emptySchemaWithId());
           nextSchema.properties = nextSchema.properties || {};
           nextSchema.properties[trimmed] = nextSchema.properties[name];
           delete nextSchema.properties[name];
@@ -20063,8 +20991,8 @@ Edge: ${id2}`,
     const schema = definition.output_schema || emptySchemaWithId();
     const properties = schema.properties && typeof schema.properties === "object" ? schema.properties : {};
     return [
-      h("h3", {}, "\u5E94\u7528\u8F93\u51FA\u58F0\u660E"),
-      h("p", { class: "hint" }, "\u7ED3\u675F\u8282\u70B9\u628A\u4E0A\u6E38\u5B57\u6BB5\u6620\u5C04\u6210\u5E94\u7528\u8F93\u51FA\uFF1B\u58F0\u660E\u7684\u5FC5\u586B\u8F93\u51FA\u5FC5\u987B\u5168\u90E8\u6620\u5C04\u3002"),
+      h("h3", {}, "应用输出声明"),
+      h("p", { class: "hint" }, "结束节点把上游字段映射成应用输出；声明的必填输出必须全部映射。"),
       ...renderSchemaRows(definition, state.root, state, schema, {
         draftKey: "output_schema",
         onAdd: (name) => {
@@ -20076,7 +21004,7 @@ Edge: ${id2}`,
           if (!trimmed || trimmed === name) {
             return;
           }
-          const nextSchema = clone2(definition.output_schema || emptySchemaWithId());
+          const nextSchema = clone3(definition.output_schema || emptySchemaWithId());
           nextSchema.properties[trimmed] = nextSchema.properties[name];
           delete nextSchema.properties[name];
           nextSchema.required = (nextSchema.required || []).map((item) => item === name ? trimmed : item);
@@ -20106,7 +21034,7 @@ Edge: ${id2}`,
           commit(state);
         }
       }),
-      h("h3", {}, "\u8F93\u51FA\u6620\u5C04\uFF08\u6765\u81EA\u5408\u6CD5\u4E0A\u6E38\u5B57\u6BB5\uFF09"),
+      h("h3", {}, "输出映射（来自合法上游字段）"),
       ...Object.keys(properties).sort().map((name) => h("div", { class: "mapping-row", key: "out-" + name }, [
         h("code", { class: "mapping-name" }, name),
         renderSourceSelect(
@@ -20114,7 +21042,7 @@ Edge: ${id2}`,
           node.id,
           node.inputs[name] && node.inputs[name].ref,
           (ref2) => {
-            const next = clone2(node.inputs || {});
+            const next = clone3(node.inputs || {});
             if (ref2) {
               next[name] = { ref: ref2 };
             } else {
@@ -20128,7 +21056,7 @@ Edge: ${id2}`,
         h(
           "span",
           { class: "type-chip" },
-          node.inputs[name] && node.inputs[name].ref ? sourceType(definition, node.inputs[name].ref) : "\u672A\u6620\u5C04"
+          node.inputs[name] && node.inputs[name].ref ? sourceType(definition, node.inputs[name].ref) : "未映射"
         )
       ]))
     ];
@@ -20138,8 +21066,8 @@ Edge: ${id2}`,
     const selected = node.config.tool_version || "";
     const tool = tools.find((item) => item.id === selected);
     return [
-      h("h3", {}, "Python \u5DE5\u5177\u7248\u672C"),
-      h("p", { class: "hint" }, "\u53EA\u5217\u51FA ready \u4E14\u5DF2\u6279\u51C6\u7684\u5DE5\u5177\u7248\u672C\uFF08GET /api/v1/tools\uFF09\u3002"),
+      h("h3", {}, "Python 工具版本"),
+      h("p", { class: "hint" }, "只列出 ready 且已批准的工具版本（GET /api/v1/tools）。"),
       h("select", {
         "data-field": "config.tool_version",
         value: selected,
@@ -20152,7 +21080,7 @@ Edge: ${id2}`,
           commit(state);
         }
       }, [
-        h("option", { value: "" }, state.catalogsState === "loading" ? "\u6B63\u5728\u52A0\u8F7D\u5DE5\u5177\u2026" : "\u2014 \u9009\u62E9\u5DE5\u5177 \u2014"),
+        h("option", { value: "" }, state.catalogsState === "loading" ? "正在加载工具…" : "— 选择工具 —"),
         ...tools.map((item) => h(
           "option",
           { value: item.id },
@@ -20161,9 +21089,9 @@ Edge: ${id2}`,
       ]),
       state.catalogsError ? h("p", { class: "error-text" }, state.catalogsError) : null,
       tool ? h("div", { class: "schema-preview" }, [
-        h("h4", {}, "\u5DE5\u5177\u8F93\u5165 Schema\uFF08\u53EA\u8BFB\uFF09"),
+        h("h4", {}, "工具输入 Schema（只读）"),
         h("pre", {}, JSON.stringify(tool.input_schema || {}, null, 2)),
-        h("h4", {}, "\u5DE5\u5177\u8F93\u51FA Schema\uFF08\u53EA\u8BFB\uFF09"),
+        h("h4", {}, "工具输出 Schema（只读）"),
         h("pre", {}, JSON.stringify(tool.output_schema || {}, null, 2))
       ]) : null,
       ...renderMappingEditor(definition, state, node),
@@ -20175,8 +21103,8 @@ Edge: ${id2}`,
     const tools = state.tools.filter((tool) => tool.state === "ready" && tool.approved === true);
     const selectedTools = Array.isArray(node.config.tool_versions) ? node.config.tool_versions : [];
     return [
-      h("h3", {}, "\u6A21\u578B Profile"),
-      h("p", { class: "hint" }, "\u53EA\u5217\u51FA validation_state=passed \u7684\u6A21\u578B\uFF08GET /api/v1/models\uFF09\u3002"),
+      h("h3", {}, "模型 Profile"),
+      h("p", { class: "hint" }, "只列出 validation_state=passed 的模型（GET /api/v1/models）。"),
       h("select", {
         "data-field": "config.model_profile_version",
         value: node.config.model_profile_version || "",
@@ -20185,7 +21113,7 @@ Edge: ${id2}`,
           commit(state);
         }
       }, [
-        h("option", { value: "" }, state.catalogsState === "loading" ? "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026" : "\u2014 \u9009\u62E9\u6A21\u578B \u2014"),
+        h("option", { value: "" }, state.catalogsState === "loading" ? "正在加载模型…" : "— 选择模型 —"),
         ...models.map((model) => h(
           "option",
           { value: model.id },
@@ -20213,7 +21141,7 @@ Edge: ${id2}`,
           commit(state);
         }
       }),
-      h("label", { class: "field-label" }, "\u5141\u8BB8\u7684\u5DE5\u5177\u7248\u672C\uFF08ready+approved\uFF09"),
+      h("label", { class: "field-label" }, "允许的工具版本（ready+approved）"),
       h("select", {
         multiple: true,
         size: Math.min(5, Math.max(2, tools.length)),
@@ -20227,63 +21155,634 @@ Edge: ${id2}`,
         value: tool.id,
         selected: selectedTools.includes(tool.id)
       }, tool.id))),
-      h("p", { class: "hint" }, "subapp_versions \u56FA\u5B9A\u4E3A\u7A7A\u6570\u7EC4\uFF08F04A \u4E0D\u652F\u6301\u5B50\u5E94\u7528\u8C03\u7528\uFF09\u3002"),
+      h("p", { class: "hint" }, "subapp_versions 固定为空数组（本票不提供子应用调用入口）。"),
       ...renderMappingEditor(definition, state, node),
       ...renderOutputSchemaEditor(definition, state, node)
     ];
   }
+  function caseValueText(value) {
+    if (value === void 0) {
+      return "";
+    }
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return "";
+    }
+  }
+  function updateCase(state, node, index, patch) {
+    const cases = clone3(Array.isArray(node.config.cases) ? node.config.cases : []);
+    cases[index] = { ...cases[index] || {}, ...patch };
+    if (patch.op === "exists" && Object.prototype.hasOwnProperty.call(cases[index], "value")) {
+      delete cases[index].value;
+    }
+    node.config = { ...node.config, cases };
+    commit(state);
+  }
+  function renderConditionPanel(definition, state, node) {
+    const config = node.config || {};
+    const cases = Array.isArray(config.cases) ? config.cases : [];
+    const joins = definition.nodes.filter((item) => item.type === "join");
+    const ports = conditionPorts(config);
+    const connected = new Set(
+      state.flowEdges.filter((edge) => edge.source === node.id).map((edge) => edgePortOf(edge)).filter((value) => value !== "")
+    );
+    const inputOptions = Object.keys(node.inputs || {}).sort();
+    const rows = cases.map((item, index) => {
+      const draftKey = node.id + ".caseValue." + index;
+      const valueText = state.caseValueDrafts[draftKey] !== void 0 ? state.caseValueDrafts[draftKey] : caseValueText(item.value);
+      return h("div", { class: "case-row", key: "case-" + index, "data-case-index": index }, [
+        h("span", { class: "case-index" }, String(index + 1)),
+        h("input", {
+          type: "text",
+          placeholder: "输入名",
+          list: "condition-input-list-" + node.id,
+          value: item.input || "",
+          "data-field": "config.cases." + index + ".input",
+          onInput: (event) => updateCase(state, node, index, { input: event.target.value })
+        }),
+        h("select", {
+          "data-field": "config.cases." + index + ".op",
+          value: item.op || "eq",
+          onChange: (event) => updateCase(state, node, index, { op: event.target.value })
+        }, CONDITION_OPS.map((op) => h("option", { value: op }, op))),
+        h("input", {
+          type: "text",
+          placeholder: item.op === "exists" ? "（exists 不需要 value）" : 'JSON 值（如 true / "x" / 3）',
+          value: valueText,
+          disabled: item.op === "exists",
+          "data-field": "config.cases." + index + ".value",
+          onInput: (event) => {
+            const text = event.target.value;
+            state.caseValueDrafts[draftKey] = text;
+            if (text.trim() === "") {
+              const casesNext = clone3(node.config.cases || []);
+              delete casesNext[index].value;
+              node.config = { ...node.config, cases: casesNext };
+              commit(state);
+              return;
+            }
+            try {
+              const parsed = JSON.parse(text);
+              delete state.caseValueDrafts[draftKey];
+              updateCase(state, node, index, { value: parsed });
+            } catch (error) {
+              state.status = "case " + (index + 1) + " 的 value 不是合法 JSON：" + error.message;
+              state.statusKind = "bad";
+            }
+          }
+        }),
+        h("input", {
+          type: "text",
+          placeholder: "端口",
+          value: item.port || "",
+          "data-field": "config.cases." + index + ".port",
+          onInput: (event) => updateCase(state, node, index, { port: event.target.value })
+        }),
+        h("button", {
+          type: "button",
+          class: "link",
+          "data-field": "config.cases." + index + ".up",
+          disabled: index === 0,
+          onClick: () => {
+            const next = clone3(node.config.cases || []);
+            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+            node.config = { ...node.config, cases: next };
+            commit(state);
+          }
+        }, "↑"),
+        h("button", {
+          type: "button",
+          class: "link",
+          "data-field": "config.cases." + index + ".down",
+          disabled: index === cases.length - 1,
+          onClick: () => {
+            const next = clone3(node.config.cases || []);
+            [next[index + 1], next[index]] = [next[index], next[index + 1]];
+            node.config = { ...node.config, cases: next };
+            commit(state);
+          }
+        }, "↓"),
+        h("button", {
+          type: "button",
+          class: "link danger",
+          "data-field": "config.cases." + index + ".remove",
+          onClick: () => {
+            const next = clone3(node.config.cases || []);
+            next.splice(index, 1);
+            node.config = { ...node.config, cases: next };
+            commit(state);
+          }
+        }, "删除")
+      ]);
+    });
+    return [
+      h("h3", {}, "条件分支"),
+      h(
+        "p",
+        { class: "hint" },
+        "cases 按顺序求值，首个匹配决定唯一出口；其余分支整段 skipped。端口必须与出边一致，每个出边都要带 port。"
+      ),
+      h(
+        "datalist",
+        { id: "condition-input-list-" + node.id },
+        inputOptions.map((name) => h("option", { value: name }))
+      ),
+      h("label", { class: "field-label" }, "配对 join（join_id）"),
+      h("select", {
+        "data-field": "config.join_id",
+        value: config.join_id || "",
+        onChange: (event) => {
+          const joinId = event.target.value;
+          node.config = { ...node.config, join_id: joinId };
+          const target = definition.nodes.find((item) => item.id === joinId && item.type === "join");
+          if (target) {
+            target.config = { ...target.config, fork_id: node.id };
+          }
+          commit(state);
+        }
+      }, [
+        h("option", { value: "" }, joins.length ? "— 选择配对 join —" : "尚未创建 join 节点"),
+        ...joins.map((join) => h(
+          "option",
+          { value: join.id },
+          join.id + (join.config && join.config.fork_id ? "（fork: " + join.config.fork_id + "）" : "")
+        ))
+      ]),
+      h("label", { class: "field-label" }, "default_port"),
+      h("input", {
+        type: "text",
+        value: config.default_port || "",
+        "data-field": "config.default_port",
+        onInput: (event) => {
+          node.config = { ...node.config, default_port: event.target.value };
+          commit(state);
+        }
+      }),
+      h("h3", {}, "cases（顺序即优先级）"),
+      ...rows.length ? rows : [h("p", { class: "hint" }, "至少需要一个 case（契约要求 minItems=1）。")],
+      h("div", { class: "schema-row add" }, [
+        h("button", {
+          type: "button",
+          "data-field": "config.cases.add",
+          onClick: () => {
+            const next = clone3(node.config.cases || []);
+            next.push({ input: "", op: "eq", value: true, port: "port" + (next.length + 1) });
+            node.config = { ...node.config, cases: next };
+            commit(state);
+          }
+        }, "添加 case")
+      ]),
+      h("h4", {}, "端口预览"),
+      h(
+        "div",
+        { class: "port-preview", "data-field": "config.ports" },
+        ports.length ? ports.map((port) => h("span", {
+          class: "port-chip" + (connected.has(port) ? " connected" : ""),
+          "data-port": port
+        }, port + (connected.has(port) ? " ✓ 已连线" : "（未连线）"))) : [h("span", { class: "hint" }, "还没有可用端口：请填写 case port 或 default_port。")]
+      ),
+      ...renderMappingEditor(definition, state, node),
+      ...renderOutputSchemaEditor(definition, state, node)
+    ];
+  }
+  function renderJoinPanel(definition, state, node) {
+    const config = node.config || {};
+    const outDegree = /* @__PURE__ */ new Map();
+    for (const edge of definition.edges || []) {
+      outDegree.set(edge.source, (outDegree.get(edge.source) || 0) + 1);
+    }
+    const forkCandidates = definition.nodes.filter((item) => item.id !== node.id && item.type !== "end" && item.type !== "join" && (outDegree.get(item.id) || 0) >= 1).sort((a, b) => (outDegree.get(b.id) || 0) - (outDegree.get(a.id) || 0));
+    const predecessors = [...new Set(
+      (definition.edges || []).filter((edge) => edge.target === node.id).map((edge) => edge.source)
+    )].sort();
+    const predecessorLabels = new Map(definition.nodes.map((item) => [item.id, item.type]));
+    const required = Array.isArray(config.required_sources) ? config.required_sources : [];
+    const optional = Array.isArray(config.optional_sources) ? config.optional_sources : [];
+    const declared = [...required, ...optional];
+    const missing = predecessors.filter((id2) => !declared.includes(id2));
+    const extra = declared.filter((id2) => !predecessors.includes(id2));
+    const selectFor = (field, selected, other, onChange) => h("select", {
+      multiple: true,
+      size: Math.min(6, Math.max(2, predecessors.length)),
+      "data-field": field,
+      onChange: (event) => {
+        onChange(Array.from(event.target.selectedOptions).map((option) => option.value));
+      }
+    }, predecessors.map((id2) => h("option", {
+      value: id2,
+      selected: selected.includes(id2)
+    }, id2 + " (" + (predecessorLabels.get(id2) || "?") + ")" + (other.includes(id2) ? " — 已在一侧" : ""))));
+    return [
+      h("h3", {}, "并行汇合（join）"),
+      h(
+        "p",
+        { class: "hint" },
+        "join 只等待已激活的分支；required 分支失败会 fail-fast，optional 仅允许纯读/计算分支。"
+      ),
+      h("label", { class: "field-label" }, "mode"),
+      h("input", {
+        type: "text",
+        value: config.mode || "all_active",
+        readonly: true,
+        "data-field": "config.mode"
+      }),
+      h("p", { class: "hint" }, "（契约只有 all_active 一种模式）"),
+      h("label", { class: "field-label" }, "fork_id（配对分叉节点）"),
+      h("select", {
+        "data-field": "config.fork_id",
+        value: config.fork_id || "",
+        onChange: (event) => {
+          const forkId = event.target.value;
+          node.config = { ...node.config, fork_id: forkId };
+          const fork = definition.nodes.find((item) => item.id === forkId);
+          if (fork && fork.type === "condition") {
+            fork.config = { ...fork.config, join_id: node.id };
+          }
+          commit(state);
+        }
+      }, [
+        h(
+          "option",
+          { value: "" },
+          forkCandidates.length ? "— 选择分叉节点 —" : "画布上还没有可分叉的节点（先连一条出边）"
+        ),
+        ...forkCandidates.map((fork) => h(
+          "option",
+          { value: fork.id },
+          fork.id + " (" + fork.type + ")" + (fork.config && fork.config.join_id ? "（paired join: " + fork.config.join_id + "）" : "")
+        ))
+      ]),
+      h("h4", {}, "required_sources（必需分支）"),
+      selectFor("config.required_sources", required, optional, (values) => {
+        node.config = {
+          ...node.config,
+          required_sources: values,
+          optional_sources: optional.filter((id2) => !values.includes(id2))
+        };
+        commit(state);
+      }),
+      h("h4", {}, "optional_sources（可选分支）"),
+      selectFor("config.optional_sources", optional, required, (values) => {
+        node.config = {
+          ...node.config,
+          optional_sources: values,
+          required_sources: required.filter((id2) => !values.includes(id2))
+        };
+        commit(state);
+      }),
+      h("p", {
+        class: "hint",
+        "data-field": "config.join_sources.coverage"
+      }, "直接前驱：" + (predecessors.length ? predecessors.join("、") : "（无）") + "；未覆盖：" + (missing.length ? missing.join("、") : "无") + "；多余：" + (extra.length ? extra.join("、") : "无"))
+    ];
+  }
+  function renderEdgePanel(state, edge, index) {
+    const definition = state.definition;
+    const sourceNode = definition.nodes.find((node) => node.id === edge.source);
+    const targetNode = definition.nodes.find((node) => node.id === edge.target);
+    if (!sourceNode) {
+      return [h("p", { class: "hint" }, "这条连接引用了不存在的节点。")];
+    }
+    const isCondition = sourceNode.type === "condition";
+    const allowed = conditionPorts(sourceNode.config || {});
+    const current = edgePortOf(edge);
+    return [
+      h("h3", {}, "连接 · " + edge.source + " → " + edge.target),
+      h(
+        "p",
+        { class: "hint" },
+        (targetNode ? "目标类型 " + targetNode.type + "；" : "") + (isCondition ? "条件出边必须带端口。" : "非条件出边没有端口。")
+      ),
+      isCondition ? h("label", { class: "field-label" }, "port") : null,
+      isCondition ? h("input", {
+        type: "text",
+        value: current,
+        "data-field": "edge.port",
+        onInput: (event) => {
+          const port = event.target.value;
+          const next = {
+            ...edge,
+            label: port,
+            sourceHandle: port || void 0,
+            data: { ...edge.data || {}, port },
+            class: "orchara-edge" + (port ? " orchara-edge-port" : "")
+          };
+          state.flowEdges = state.flowEdges.map((item) => item.id === edge.id ? next : item);
+          rebuild(state);
+          if (port && !allowed.includes(port)) {
+            state.status = '端口 "' + port + '" 不在该条件节点的 cases/default_port 中；可用：' + (allowed.length ? allowed.join("、") : "（无）");
+            state.statusKind = "bad";
+          } else {
+            state.status = "已更新边 " + edge.source + " → " + edge.target + ' 的端口为 "' + port + '"。';
+            state.statusKind = "ok";
+          }
+        }
+      }) : h("p", { class: "hint" }, "端口只对条件节点的出边生效。"),
+      isCondition ? h(
+        "p",
+        { class: "hint", "data-field": "edge.ports" },
+        "可用端口：" + (allowed.length ? allowed.join("、") : "（无）")
+      ) : null,
+      h("button", {
+        type: "button",
+        class: "link danger",
+        "data-field": "edge.remove",
+        onClick: () => {
+          state.flowEdges = state.flowEdges.filter((item) => item.id !== edge.id);
+          state.selectedEdgeId = "";
+          rebuild(state);
+          state.status = "已删除连接 " + edge.source + " → " + edge.target + "。";
+          state.statusKind = "ok";
+        }
+      }, "删除这条连接"),
+      h("p", { class: "hint" }, "边 #" + index + "（definition.edges[" + index + "]）")
+    ];
+  }
+  function refreshLocalProblems(state) {
+    state.localProblems = regionProblems(state.definition);
+    return state.localProblems;
+  }
   function renderErrorList(state) {
-    if (!state.errors.length) {
+    const serverErrors = state.errors;
+    if (serverErrors.length) {
       return h(
         "div",
-        { class: "errors ok", "data-field": "errors" },
-        state.manifestHash ? ["\u6821\u9A8C\u901A\u8FC7\u3002\u670D\u52A1\u7AEF manifest SHA256: ", h("code", { id: "canvas-manifest-hash" }, state.manifestHash)] : "\u5C1A\u672A\u53D1\u73B0\u5B9A\u4F4D\u9519\u8BEF\u3002"
+        { class: "errors", id: "canvas-errors" },
+        serverErrors.map(
+          (error) => h("button", {
+            type: "button",
+            class: "error-item" + (error.edgeIndex !== null ? " error-edge" : ""),
+            key: "error-" + error.index,
+            "data-node-id": error.nodeId,
+            "data-code": error.code,
+            "data-edge-id": error.edgeId || "",
+            "data-field": "error." + error.index,
+            onClick: () => focusError(state, error)
+          }, [
+            h("strong", {}, "[" + error.code + "] "),
+            error.message + " ",
+            error.source && error.target ? h("code", {}, error.source + "→" + error.target + " ") : null,
+            h("code", {}, error.pointer || error.field),
+            h("span", { class: "error-hint" }, " 修复：" + error.hint),
+            error.nodeId ? h("span", { class: "hint" }, " · 定位到 " + error.nodeId) : null
+          ])
+        )
+      );
+    }
+    if (state.localProblems.length) {
+      return h(
+        "div",
+        { class: "errors", id: "canvas-local-problems" },
+        state.localProblems.map(
+          (problem2, index) => h("button", {
+            type: "button",
+            class: "error-item" + (problem2.edgeIndex !== null ? " error-edge" : ""),
+            key: "local-" + index,
+            "data-node-id": problem2.nodeId,
+            "data-code": problem2.code,
+            "data-field": "local." + index,
+            onClick: () => focusLocalProblem(state, problem2)
+          }, [
+            h("strong", {}, "[本地提示 " + problem2.code + "] "),
+            problem2.message + " ",
+            h("code", {}, problem2.pointer || ""),
+            problem2.nodeId ? h("span", { class: "hint" }, " · 定位到 " + problem2.nodeId) : null
+          ])
+        )
       );
     }
     return h(
       "div",
-      { class: "errors", id: "canvas-errors" },
-      state.errors.map(
-        (error) => h("button", {
-          type: "button",
-          class: "error-item",
-          key: "error-" + error.index,
-          "data-node-id": error.nodeId,
-          "data-field": "error." + error.index,
-          onClick: () => {
-            state.selectedId = error.nodeId;
-            state.status = "[" + error.code + "] " + error.message;
-            state.statusKind = "bad";
-            nextTick(() => {
-              const element = fieldElement(state.root, error.field);
-              if (element && typeof element.focus === "function") {
-                element.focus();
-              }
-            });
-          }
-        }, [
-          h("strong", {}, "[" + error.code + "] "),
-          error.message + " ",
-          h("code", {}, error.pointer || error.field),
-          error.nodeId ? h("span", { class: "hint" }, " \xB7 \u8DF3\u8F6C\u5230 " + error.nodeId) : null
-        ])
-      )
+      { class: "errors ok", "data-field": "errors" },
+      state.manifestHash ? ["校验通过。服务端 manifest SHA256: ", h("code", { id: "canvas-manifest-hash" }, state.manifestHash)] : "尚未发现定位错误。"
     );
+  }
+  function focusError(state, error) {
+    if (error.edgeIndex !== null) {
+      const edge = state.flowEdges[error.edgeIndex] || null;
+      state.highlightedEdgeId = error.edgeId || (edge ? edge.id : "");
+      state.selectedEdgeId = state.highlightedEdgeId;
+      state.selectedId = "";
+      state.status = "[" + error.code + "] " + (error.source && error.target ? error.source + "→" + error.target + "：" : "") + error.message;
+      state.statusKind = "bad";
+      scrollCanvasIntoView(state);
+      return;
+    }
+    state.highlightedEdgeId = "";
+    state.selectedId = error.nodeId;
+    state.selectedEdgeId = "";
+    state.status = "[" + error.code + "] " + error.message;
+    state.statusKind = "bad";
+    nextTick(() => {
+      const element = fieldElement(state.root, error.field);
+      if (element && typeof element.focus === "function") {
+        element.focus();
+        scrollCanvasIntoView(state);
+      }
+    });
+  }
+  function focusLocalProblem(state, problem2) {
+    focusError(state, {
+      code: problem2.code,
+      message: problem2.message,
+      hint: "",
+      field: problem2.code === "bad_port" || problem2.code === "cross_region_edge" ? "edge.port" : "config",
+      pointer: problem2.pointer,
+      nodeId: problem2.nodeId,
+      edgeIndex: problem2.edgeIndex,
+      edgeId: problem2.edgeIndex !== null && state.flowEdges[problem2.edgeIndex] ? state.flowEdges[problem2.edgeIndex].id : "",
+      source: "",
+      target: ""
+    });
+  }
+  function scrollCanvasIntoView(state) {
+    const stage = state.root && state.root.querySelector ? state.root.querySelector(".canvas-stage") : null;
+    if (stage && typeof stage.scrollIntoView === "function") {
+      stage.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+  async function validate(state) {
+    state.status = "正在请求服务端校验…";
+    state.statusKind = "pending";
+    state.manifestHash = "";
+    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
+    const globalCSRF = typeof window !== "undefined" ? window.csrf : void 0;
+    if (typeof globalApi !== "function" || state.applicationId === "") {
+      refreshLocalProblems(state);
+      state.status = "页面 API 助手不可用，无法请求服务端校验；已显示本地规则提示。";
+      state.statusKind = "bad";
+      return;
+    }
+    try {
+      const token = typeof globalCSRF === "function" ? await globalCSRF() : null;
+      const result = await globalApi(
+        "/api/v1/applications/" + encodeURIComponent(state.applicationId) + "/validate",
+        { method: "POST", csrf: token }
+      );
+      state.errors = mapValidationErrors(state.definition, result.payload && result.payload.errors);
+      if (result.payload && result.payload.valid === true) {
+        state.errors = [];
+        state.manifestHash = result.headers && typeof result.headers.get === "function" ? result.headers.get("X-Manifest-SHA256") || "" : "";
+        refreshLocalProblems(state);
+        state.status = "校验通过。" + (state.localProblems.length ? "（本地仍有 " + state.localProblems.length + " 条提示，以服务端为准。）" : state.manifestHash ? " manifest SHA256 已显示。" : "");
+        state.statusKind = "ok";
+        return;
+      }
+      state.status = "校验失败：" + state.errors.length + " 个定位错误。点击错误跳转到节点字段或高亮连接。";
+      state.statusKind = "bad";
+      if (state.errors.length > 0) {
+        focusError(state, state.errors[0]);
+      }
+    } catch (error) {
+      refreshLocalProblems(state);
+      state.status = "校验请求失败 [" + (error.code || "error") + "] " + error.message;
+      state.statusKind = "bad";
+    }
+  }
+  function downloadExport(state) {
+    try {
+      const payload = exportPayload(state.definition, state.layout);
+      const text = JSON.stringify(payload, null, 2);
+      const link = document.createElement("a");
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = exportFilename(state.applicationId);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      const dropped = Array.isArray(payload.dropped) ? payload.dropped.length : 0;
+      state.status = "已导出 {definition, layout}（不含凭据/端点/运行输入/记忆数据）" + (dropped ? "；按白名单丢弃 " + dropped + " 个未展示字段。" : "。");
+      state.statusKind = dropped ? "pending" : "ok";
+      state.lastExportDropped = payload.dropped || [];
+    } catch (error) {
+      state.status = "导出被拒绝 [" + (error.code || "error") + "] " + error.message;
+      state.statusKind = "bad";
+    }
+  }
+  async function loadCatalogs(state) {
+    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
+    if (typeof globalApi !== "function") {
+      state.catalogsState = "error";
+      state.catalogsError = "页面 API 助手不可用，工具/模型选择器为空。";
+      return;
+    }
+    try {
+      const [tools, models] = await Promise.all([
+        globalApi("/api/v1/tools?limit=100"),
+        globalApi("/api/v1/models?limit=100")
+      ]);
+      state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
+      state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
+      state.catalogsState = "ready";
+    } catch (error) {
+      state.catalogsState = "error";
+      state.catalogsError = "加载工具/模型目录失败 [" + (error.code || "error") + "] " + error.message;
+    }
+  }
+  function syncGraphConfigs(state) {
+    const byId = new Map(state.definition.nodes.map((node) => [node.id, node]));
+    state.flowNodes = state.flowNodes.map((flowNode) => {
+      const definitionNode = byId.get(flowNode.id);
+      if (!definitionNode) {
+        return flowNode;
+      }
+      const data = {
+        ...flowNode.data,
+        config: clone3(definitionNode.config || {})
+      };
+      if (definitionNode.type === "condition") {
+        data.ports = conditionPorts(definitionNode.config || {});
+      }
+      return { ...flowNode, data };
+    });
+  }
+  function syncLayout(state) {
+    state.layout = layoutFromGraph(state.flowNodes, state.layout);
+    emitChange(state);
+  }
+  function rebuild(state) {
+    state.definition = graphToDefinition(state.flowNodes, state.flowEdges, state.definition);
+    state.layout = layoutFromGraph(state.flowNodes, state.layout);
+    syncGraphConfigs(state);
+    refreshLocalProblems(state);
+    emitChange(state);
+  }
+  function emitChange(state) {
+    if (typeof state.options.onChange === "function") {
+      state.options.onChange(clone3(state.definition), clone3(state.layout));
+    }
+  }
+  function commit(state) {
+    syncGraphConfigs(state);
+    refreshLocalProblems(state);
+    emitChange(state);
+  }
+  function renderFlowNode(props) {
+    const data = props && props.data || {};
+    const type = data.nodeType || "python";
+    const ports = type === "condition" ? Array.isArray(data.ports) && data.ports.length ? data.ports : conditionPorts(data.config || {}) : [];
+    const handles = [];
+    if (type !== "start") {
+      handles.push(h(_sfc_main$f, {
+        type: "target",
+        position: Position.Left,
+        id: "in",
+        class: "orchara-handle orchara-handle-target"
+      }));
+    }
+    if (type === "condition") {
+      ports.forEach((port, index) => {
+        const top = (index + 1) / (ports.length + 1) * 100;
+        handles.push(h(_sfc_main$f, {
+          type: "source",
+          position: Position.Right,
+          id: port,
+          class: "orchara-handle orchara-handle-source",
+          style: { top: top + "%" }
+        }));
+        handles.push(h("span", {
+          class: "orchara-port-label",
+          style: { top: top + "%" }
+        }, port));
+      });
+    } else if (type !== "end") {
+      handles.push(h(_sfc_main$f, {
+        type: "source",
+        position: Position.Right,
+        id: "out",
+        class: "orchara-handle orchara-handle-source"
+      }));
+    }
+    const height = type === "condition" ? Math.max(48, ports.length * 26 + 28) : 48;
+    return h("div", {
+      class: "orchara-flow-node orchara-node-" + type,
+      style: { minHeight: height + "px" }
+    }, [
+      h("span", { class: "orchara-flow-label" }, data.label || type),
+      h("span", { class: "orchara-flow-type" }, type),
+      ...handles
+    ]);
   }
   function renderApp(state) {
     const nodes = state.flowNodes;
-    const edges = state.flowEdges;
+    const edges = state.highlightedEdgeId ? state.flowEdges.map((edge) => edge.id === state.highlightedEdgeId ? { ...edge, class: (edge.class || "orchara-edge") + " orchara-edge-invalid" } : edge) : state.flowEdges;
     const selected = state.definition.nodes.find((node) => node.id === state.selectedId);
+    const selectedEdgeIndex = state.selectedEdgeId ? state.flowEdges.findIndex((edge) => edge.id === state.selectedEdgeId) : -1;
+    const selectedEdge = selectedEdgeIndex >= 0 ? state.flowEdges[selectedEdgeIndex] : null;
+    const invalidNodeIds = new Set(state.errors.filter((error) => error.nodeId).map((error) => error.nodeId));
     return h("div", { class: "orchara-canvas" }, [
       h("div", { class: "canvas-toolbar" }, [
         h(
           "div",
-          { class: "palette", role: "group", "aria-label": "\u8282\u70B9\u9762\u677F" },
+          { class: "palette", role: "group", "aria-label": "节点面板" },
           NODE_TYPES.map((type) => h("button", {
             type: "button",
             class: "palette-button",
             "data-node-type": type,
-            disabled: state.definition.nodes.some((node) => node.type === type),
+            disabled: !REPEATABLE_NODE_TYPES.includes(type) && state.definition.nodes.some((node) => node.type === type),
             onClick: () => {
               const result = addNode(nodes, edges, type, state.layout);
               if (!result.ok) {
@@ -20294,6 +21793,9 @@ Edge: ${id2}`,
               state.flowNodes = [...nodes, result.node];
               rebuild(state);
               state.selectedId = result.node.id;
+              state.selectedEdgeId = "";
+              state.status = "已添加 " + NODE_LABELS[type] + "（" + result.node.id + "）。";
+              state.statusKind = "ok";
             }
           }, "+ " + NODE_LABELS[type]))
         ),
@@ -20303,12 +21805,12 @@ Edge: ${id2}`,
             id: "canvas-validate",
             class: "primary",
             onClick: () => validate(state)
-          }, "\u6821\u9A8C\u8349\u7A3F"),
+          }, "校验草稿"),
           h("button", {
             type: "button",
             id: "canvas-export",
             onClick: () => downloadExport(state)
-          }, "\u5BFC\u51FA {definition, layout}")
+          }, "导出 {definition, layout}")
         ])
       ]),
       h("div", { class: "canvas-body" }, [
@@ -20330,34 +21832,53 @@ Edge: ${id2}`,
               rebuild(state);
             },
             "onConnect": (connection) => {
-              const verdict = canConnect(nodes, edges, connection);
+              const verdict = canConnect(state.flowNodes, state.flowEdges, connection);
               if (!verdict.ok) {
-                state.status = "\u62D2\u7EDD\u8FDE\u63A5\uFF1A" + verdict.reason + " [" + verdict.code + "]";
+                state.status = "拒绝连接：" + verdict.reason + " [" + verdict.code + "]";
                 state.statusKind = "bad";
                 return;
               }
-              state.flowEdges = [...edges, {
-                id: connection.source + "->" + connection.target + ":" + edges.length,
+              const port = verdict.port || "";
+              const edge = {
+                id: edgeIdFor(
+                  { source: connection.source, target: connection.target },
+                  state.flowEdges.length
+                ),
                 source: connection.source,
                 target: connection.target,
-                class: "orchara-edge"
-              }];
+                sourceHandle: port || connection.sourceHandle || void 0,
+                targetHandle: "in",
+                label: port,
+                data: { port },
+                class: "orchara-edge" + (port ? " orchara-edge-port" : "")
+              };
+              state.flowEdges = [...state.flowEdges, edge];
               rebuild(state);
-              state.status = "\u5DF2\u8FDE\u63A5 " + connection.source + " \u2192 " + connection.target + "\u3002";
+              state.status = "已连接 " + connection.source + " → " + connection.target + (port ? "（端口 " + port + "）" : "") + "。";
               state.statusKind = "ok";
             },
             "onNodeClick": ({ node }) => {
               state.selectedId = node.id;
+              state.selectedEdgeId = "";
+              state.highlightedEdgeId = "";
+            },
+            "onEdgeClick": ({ edge }) => {
+              state.selectedEdgeId = edge.id;
+              state.selectedId = "";
             },
             "onNodeDragStop": () => syncLayout(state),
             "onPaneClick": () => {
               state.selectedId = "";
+              state.selectedEdgeId = "";
             }
-          }, () => [h(_sfc_main2), h(_sfc_main3)])
+          }, {
+            "node-default": (props) => renderFlowNode(props),
+            default: () => [h(_sfc_main2), h(_sfc_main3)]
+          })
         ),
         h("aside", { class: "config-panel", "aria-live": "polite" }, [
           h("div", { class: "panel-head" }, [
-            h("h2", {}, selected ? NODE_LABELS[selected.type] + " \xB7 " + selected.id : "\u9009\u62E9\u8282\u70B9\u914D\u7F6E"),
+            h("h2", {}, selected ? (NODE_LABELS[selected.type] || selected.type) + " · " + selected.id : selectedEdge ? "连接 · " + selectedEdge.source + " → " + selectedEdge.target : "选择节点配置"),
             selected ? h("button", {
               type: "button",
               class: "link danger",
@@ -20368,133 +21889,49 @@ Edge: ${id2}`,
                 state.flowEdges = removed.edges;
                 state.selectedId = "";
                 rebuild(state);
+                state.status = "已删除节点 " + selected.id + "；配对 join 的悬空来源已清理。";
+                state.statusKind = "ok";
               }
-            }, "\u5220\u9664\u8282\u70B9") : null
+            }, "删除节点") : null
           ]),
-          !selected ? h(
+          !selected && !selectedEdge ? h(
             "p",
             { class: "hint" },
-            "\u70B9\u51FB\u753B\u5E03\u8282\u70B9\u8FDB\u884C\u914D\u7F6E\u3002\u53EA\u5141\u8BB8 start \u2192 python \u2192 agent \u2192 end \u7684\u5355\u6761\u7EBF\u6027\u94FE\uFF1B\u62D6\u52A8\u79FB\u52A8\u8282\u70B9\uFF0C\u8FDE\u63A5\u7AEF\u53E3\u62C9\u7EBF\uFF0CDelete \u5220\u9664\u9009\u4E2D\u8282\u70B9\u3002"
+            "点击节点配置、点击连线编辑端口。条件节点按端口分出各分支，普通节点多出口前必须由 join 声明 fork；只有 join 可以多入。Delete 删除选中的节点或连线。"
           ) : h("div", { class: "panel-fields" }, [
-            selected.type === "start" ? renderStartPanel(state.definition, state, selected) : null,
-            selected.type === "python" ? renderPythonPanel(state.definition, state, selected) : null,
-            selected.type === "agent" ? renderAgentPanel(state.definition, state, selected) : null,
-            selected.type === "end" ? renderEndPanel(state.definition, state, selected) : null,
-            h("h3", {}, "\u5E03\u5C40"),
-            h(
+            selected && selected.type === "start" ? renderStartPanel(state.definition, state, selected) : null,
+            selected && selected.type === "python" ? renderPythonPanel(state.definition, state, selected) : null,
+            selected && selected.type === "agent" ? renderAgentPanel(state.definition, state, selected) : null,
+            selected && selected.type === "condition" ? renderConditionPanel(state.definition, state, selected) : null,
+            selected && selected.type === "join" ? renderJoinPanel(state.definition, state, selected) : null,
+            selected && selected.type === "end" ? renderEndPanel(state.definition, state, selected) : null,
+            selected && !NODE_TYPES.includes(selected.type) ? [h(
               "p",
               { class: "hint" },
-              "\u4F4D\u7F6E\u4FDD\u5B58\u5728\u72EC\u7ACB\u7684 layout.positions\uFF0C\u4E0D\u8FDB\u5165\u6267\u884C\u5B9A\u4E49\uFF0C\u4E5F\u4E0D\u6539\u53D8\u53D1\u5E03\u54C8\u5E0C\u3002"
-            )
+              "该节点类型（" + selected.type + "）不在本画布的创作面板内；定义会原样保存，配置请用页面 JSON 视图编辑。"
+            )] : null,
+            selectedEdge ? renderEdgePanel(state, selectedEdge, selectedEdgeIndex) : null,
+            selected ? [
+              h("h3", {}, "布局"),
+              h(
+                "p",
+                { class: "hint" },
+                "位置保存在独立的 layout.positions，不进入执行定义，也不改变发布哈希。"
+              )
+            ] : null
           ]),
           h("div", {
             id: "canvas-status",
             class: "status " + (state.statusKind || ""),
             role: "status"
-          }, state.status || "\u753B\u5E03\u5DF2\u5C31\u7EEA\u3002"),
+          }, state.status || "画布已就绪。"),
           renderErrorList(state)
         ])
       ])
     ]);
   }
-  function syncLayout(state) {
-    state.layout = layoutFromGraph(state.flowNodes, state.layout);
-    emitChange(state);
-  }
-  function rebuild(state) {
-    state.definition = graphToDefinition(state.flowNodes, state.flowEdges, state.definition);
-    state.layout = layoutFromGraph(state.flowNodes, state.layout);
-    emitChange(state);
-  }
-  function emitChange(state) {
-    if (typeof state.options.onChange === "function") {
-      state.options.onChange(clone2(state.definition), clone2(state.layout));
-    }
-  }
-  function commit(state) {
-    emitChange(state);
-  }
-  async function validate(state) {
-    state.status = "\u6B63\u5728\u8BF7\u6C42\u670D\u52A1\u7AEF\u6821\u9A8C\u2026";
-    state.statusKind = "pending";
-    state.manifestHash = "";
-    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
-    const globalCSRF = typeof window !== "undefined" ? window.csrf : void 0;
-    if (typeof globalApi !== "function" || state.applicationId === "") {
-      state.status = "\u9875\u9762 API \u52A9\u624B\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u6821\u9A8C\u3002";
-      state.statusKind = "bad";
-      return;
-    }
-    try {
-      const token = typeof globalCSRF === "function" ? await globalCSRF() : null;
-      const result = await globalApi(
-        "/api/v1/applications/" + encodeURIComponent(state.applicationId) + "/validate",
-        { method: "POST", csrf: token }
-      );
-      state.errors = mapValidationErrors(state.definition, result.payload && result.payload.errors);
-      if (result.payload && result.payload.valid === true) {
-        state.manifestHash = result.headers && typeof result.headers.get === "function" ? result.headers.get("X-Manifest-SHA256") || "" : "";
-        state.status = "\u6821\u9A8C\u901A\u8FC7\u3002" + (state.manifestHash ? " manifest SHA256 \u5DF2\u663E\u793A\u3002" : "");
-        state.statusKind = "ok";
-        return;
-      }
-      state.status = "\u6821\u9A8C\u5931\u8D25\uFF1A" + state.errors.length + " \u4E2A\u5B9A\u4F4D\u9519\u8BEF\u3002\u70B9\u51FB\u9519\u8BEF\u8DF3\u8F6C\u5230\u8282\u70B9\u5B57\u6BB5\u3002";
-      state.statusKind = "bad";
-      if (state.errors.length > 0) {
-        state.selectedId = state.errors[0].nodeId || state.selectedId;
-        nextTick(() => {
-          const element = fieldElement(state.root, state.errors[0].field);
-          if (element && typeof element.focus === "function") {
-            element.focus();
-          }
-        });
-      }
-    } catch (error) {
-      state.status = "\u6821\u9A8C\u8BF7\u6C42\u5931\u8D25 [" + (error.code || "error") + "] " + error.message;
-      state.statusKind = "bad";
-    }
-  }
-  function downloadExport(state) {
-    try {
-      const text = exportJSON(state.definition, state.layout);
-      const link = document.createElement("a");
-      const blob = new Blob([text], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = exportFilename(state.applicationId);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      state.status = "\u5DF2\u5BFC\u51FA {definition, layout}\uFF08\u4E0D\u542B\u51ED\u636E/\u8FD0\u884C\u8F93\u5165/\u8BB0\u5FC6\u6570\u636E\uFF09\u3002";
-      state.statusKind = "ok";
-    } catch (error) {
-      state.status = "\u5BFC\u51FA\u88AB\u62D2\u7EDD [" + (error.code || "error") + "] " + error.message;
-      state.statusKind = "bad";
-    }
-  }
-  async function loadCatalogs(state) {
-    const globalApi = typeof window !== "undefined" ? window.apiFull : void 0;
-    if (typeof globalApi !== "function") {
-      state.catalogsState = "error";
-      state.catalogsError = "\u9875\u9762 API \u52A9\u624B\u4E0D\u53EF\u7528\uFF0C\u5DE5\u5177/\u6A21\u578B\u9009\u62E9\u5668\u4E3A\u7A7A\u3002";
-      return;
-    }
-    try {
-      const [tools, models] = await Promise.all([
-        globalApi("/api/v1/tools?limit=100"),
-        globalApi("/api/v1/models?limit=100")
-      ]);
-      state.tools = Array.isArray(tools.payload && tools.payload.items) ? tools.payload.items : [];
-      state.models = Array.isArray(models.payload && models.payload.items) ? models.payload.items : [];
-      state.catalogsState = "ready";
-    } catch (error) {
-      state.catalogsState = "error";
-      state.catalogsError = "\u52A0\u8F7D\u5DE5\u5177/\u6A21\u578B\u76EE\u5F55\u5931\u8D25 [" + (error.code || "error") + "] " + error.message;
-    }
-  }
   function initialState(root2, options) {
-    const definition = options && options.definition && typeof options.definition === "object" ? clone2(options.definition) : defaultDefinition();
+    const definition = options && options.definition && typeof options.definition === "object" ? clone3(options.definition) : defaultDefinition();
     if (!Array.isArray(definition.nodes) || definition.nodes.length === 0) {
       const fresh = defaultDefinition();
       definition.nodes = fresh.nodes;
@@ -20512,7 +21949,7 @@ Edge: ${id2}`,
     if (!definition.policy || typeof definition.policy !== "object") {
       definition.policy = defaultDefinition().policy;
     }
-    const layout = options && options.layout && typeof options.layout === "object" && Object.keys(options.layout).length > 0 ? clone2(options.layout) : null;
+    const layout = options && options.layout && typeof options.layout === "object" && Object.keys(options.layout).length > 0 ? clone3(options.layout) : null;
     const effectiveLayout = layout && layout.positions ? layout : defaultLayout(definition);
     const graph = definitionToGraph(definition, effectiveLayout);
     return {
@@ -20524,9 +21961,12 @@ Edge: ${id2}`,
       flowNodes: graph.nodes,
       flowEdges: graph.edges,
       selectedId: "start",
-      status: "\u753B\u5E03\u5DF2\u5C31\u7EEA\u3002",
+      selectedEdgeId: "",
+      highlightedEdgeId: "",
+      status: "画布已就绪。",
       statusKind: "",
       errors: [],
+      localProblems: regionProblems(definition),
       manifestHash: "",
       tools: [],
       models: [],
@@ -20535,7 +21975,9 @@ Edge: ${id2}`,
       schemaDrafts: {},
       inputDrafts: {},
       schemaText: {},
-      schemaErrors: {}
+      schemaErrors: {},
+      caseValueDrafts: {},
+      lastExportDropped: []
     };
   }
   function mount(root2, options) {
@@ -20552,13 +21994,22 @@ Edge: ${id2}`,
       if (["input", "textarea", "select"].includes(tag)) {
         return;
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && state.selectedId) {
-        const removed = removeNode(state.flowNodes, state.flowEdges, state.selectedId);
-        state.flowNodes = removed.nodes;
-        state.flowEdges = removed.edges;
-        state.selectedId = "";
-        rebuild(state);
-        event.preventDefault();
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (state.selectedEdgeId) {
+          state.flowEdges = state.flowEdges.filter((edge) => edge.id !== state.selectedEdgeId);
+          state.selectedEdgeId = "";
+          rebuild(state);
+          event.preventDefault();
+          return;
+        }
+        if (state.selectedId) {
+          const removed = removeNode(state.flowNodes, state.flowEdges, state.selectedId);
+          state.flowNodes = removed.nodes;
+          state.flowEdges = removed.edges;
+          state.selectedId = "";
+          rebuild(state);
+          event.preventDefault();
+        }
       }
     };
     window.addEventListener("keydown", onKeydown);
@@ -20574,19 +22025,27 @@ Edge: ${id2}`,
         state.flowNodes = next.flowNodes;
         state.flowEdges = next.flowEdges;
         state.selectedId = state.definition.nodes[0] ? state.definition.nodes[0].id : "";
+        state.selectedEdgeId = "";
+        state.highlightedEdgeId = "";
         state.errors = [];
+        state.localProblems = next.localProblems;
         state.manifestHash = "";
-        state.status = "\u5DF2\u52A0\u8F7D\u670D\u52A1\u5668\u8349\u7A3F\u3002";
+        state.caseValueDrafts = {};
+        state.schemaText = {};
+        state.status = "已加载服务器草稿。";
         state.statusKind = "ok";
       },
       getDraft() {
-        return { definition: clone2(state.definition), layout: clone2(state.layout) };
+        return { definition: clone3(state.definition), layout: clone3(state.layout) };
       },
       validate() {
         return validate(state);
       },
       exportDraft() {
         downloadExport(state);
+      },
+      regionProblems() {
+        return regionProblems(state.definition);
       },
       destroy() {
         window.removeEventListener("keydown", onKeydown);
