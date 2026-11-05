@@ -108,6 +108,7 @@ type EvaluationRunFacts struct {
 	OutputCollected    bool
 	Effects            map[string]int64
 	EffectsCollected   bool
+	EffectEvidence     string
 	Citations          []string
 	CitationsCollected bool
 	// F13A/T056: the caller fixture bound to the run, by artifact id and
@@ -688,13 +689,17 @@ func (e *EvaluationRuns) Facts(
 	facts.TaskInputArtifactID = taskInputID
 	facts.TaskInputSHA256 = taskInputSHA
 
-	// The real side-effect ledger: one row per attempted controlled call.
-	effects, collected, err := e.effectCounts(ctx, runID)
+	// The real side-effect ledger: confirmed effects only. A run with an
+	// unknown/dispatching row has no collected effect truth at all (see
+	// effectCounts); the reason travels with the facts so the checker and the
+	// report can record why, and no number is invented.
+	effects, collected, evidence, err := e.effectCounts(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
 	facts.Effects = effects
 	facts.EffectsCollected = collected
+	facts.EffectEvidence = evidence
 
 	// Worker provenance of the latest attempt, if any. A run that was never
 	// claimed has no attempt; a failed read is not "no attempt".
@@ -733,6 +738,7 @@ func (e *EvaluationRuns) Facts(
 		OutputCollected:     facts.OutputCollected,
 		Effects:             facts.Effects,
 		EffectsCollected:    facts.EffectsCollected,
+		EffectEvidence:      facts.EffectEvidence,
 		Citations:           facts.Citations,
 		CitationsCollected:  facts.CitationsCollected,
 		TaskInputArtifactID: facts.TaskInputArtifactID,
@@ -835,19 +841,45 @@ func (e *EvaluationRuns) workerProvenanceOf(
 	return workerID, executionUnitID, nil
 }
 
-// effectCounts counts the run's real controlled-capability calls per capability.
+// Effect-evidence limitation codes. They are stable, safe and never provider
+// text: they are recorded only when a ledger row could mean a real effect
+// happened without a confirmed outcome.
+const (
+	EffectEvidenceUnknown     = "unconfirmed_unknown"
+	EffectEvidenceDispatching = "unconfirmed_dispatching"
+)
+
+// effectCounts reads the run's confirmed side effects from the real
+// platform.operations ledger.
+//
+// The count is per capability version, and the key is the exact
+// capability_version string the platform recorded (the capability request names
+// it, the writer lowercases/validates it as a UUID). A case's `capability` is
+// that same version id; the checker normalises both sides with
+// evaluation.NormalizeCapabilityKey, so the report exposes the same key the
+// assertion names.
+//
+// Only state='succeeded' is a confirmed effect. prepared/awaiting_approval/
+// authorized/failed rows contribute zero confirmed effects: no dispatch or a
+// failed dispatch is not an effect. unknown/dispatching is different: it could
+// mean an effect happened with no confirmed outcome, so the effect evidence for
+// the whole run is *not collected* (no count at all, and a reason) rather than
+// reporting a partial or invented number. That is what keeps expected=0 from
+// failing spuriously on an attempted operation while still never passing on an
+// unconfirmed one.
 func (e *EvaluationRuns) effectCounts(
 	ctx context.Context, runID string,
-) (map[string]int64, bool, error) {
+) (map[string]int64, bool, string, error) {
 	rows, err := e.DB.QueryContext(ctx, `
 		SELECT capability_version, count(*)
 		  FROM platform.operations
 		 WHERE run_id = $1::uuid
-		 GROUP BY capability_version`, runID)
+		   AND state = 'succeeded'
+		 GROUP BY capability_version
+		 ORDER BY capability_version`, runID)
 	if err != nil {
-		return nil, false, fmt.Errorf("reading the operation ledger: %w", err)
+		return nil, false, "", fmt.Errorf("reading the operation ledger: %w", err)
 	}
-	defer rows.Close()
 	counts := make(map[string]int64)
 	for rows.Next() {
 		var (
@@ -855,14 +887,66 @@ func (e *EvaluationRuns) effectCounts(
 			count      int64
 		)
 		if err := rows.Scan(&capability, &count); err != nil {
-			return nil, false, fmt.Errorf("reading the operation ledger: %w", err)
+			_ = rows.Close()
+			return nil, false, "", fmt.Errorf("reading the operation ledger: %w", err)
 		}
-		counts[capability] = count
+		counts[evaluation.NormalizeCapabilityKey(capability)] = count
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false, fmt.Errorf("reading the operation ledger: %w", err)
+		_ = rows.Close()
+		return nil, false, "", fmt.Errorf("reading the operation ledger: %w", err)
 	}
-	return counts, true, nil
+	if err := rows.Close(); err != nil {
+		return nil, false, "", fmt.Errorf("reading the operation ledger: %w", err)
+	}
+
+	evidence, err := e.unconfirmedEffectEvidence(ctx, runID)
+	if err != nil {
+		return nil, false, "", err
+	}
+	if evidence != "" {
+		// No partial number: the run's effect truth is uncollected.
+		return nil, false, evidence, nil
+	}
+	return counts, true, "", nil
+}
+
+// unconfirmedEffectEvidence reports why a run's effect evidence is uncollected,
+// or "" when every attempted operation has a confirmed outcome. unknown and
+// dispatching are the two states in which an external effect may have happened
+// without a recorded outcome; both are reported, sorted and joined, so the
+// reason is deterministic when a run carries both.
+func (e *EvaluationRuns) unconfirmedEffectEvidence(
+	ctx context.Context, runID string,
+) (string, error) {
+	rows, err := e.DB.QueryContext(ctx, `
+		SELECT state
+		  FROM platform.operations
+		 WHERE run_id = $1::uuid
+		   AND state IN ('unknown', 'dispatching')
+		 GROUP BY state
+		 ORDER BY state`, runID)
+	if err != nil {
+		return "", fmt.Errorf("reading the unconfirmed operation ledger states: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	reasons := make([]string, 0, 2)
+	for rows.Next() {
+		var state string
+		if err := rows.Scan(&state); err != nil {
+			return "", fmt.Errorf("reading the unconfirmed operation ledger states: %w", err)
+		}
+		switch state {
+		case "unknown":
+			reasons = append(reasons, EffectEvidenceUnknown)
+		case "dispatching":
+			reasons = append(reasons, EffectEvidenceDispatching)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("reading the unconfirmed operation ledger states: %w", err)
+	}
+	return strings.Join(reasons, "+"), nil
 }
 
 // citationsOf reads the citation source ids out of a run output document. The

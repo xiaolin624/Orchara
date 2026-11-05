@@ -39,11 +39,20 @@ type Facts struct {
 	// from, so the report's evidence is traceable to a real platform artifact.
 	OutputArtifactID *string
 	OutputSHA256     string
-	// Effects is the platform's real side-effect ledger for this run, keyed by
-	// capability version (for example "test.send"). It is read from
-	// platform.operations, never counted from model text.
+	// Effects is the platform's real *confirmed* side-effect ledger for this run,
+	// keyed by the exact capability_version the platform recorded (a lowercase
+	// UUID such as a tool version id; a case's `capability` names that same
+	// value). Only platform.operations rows in state 'succeeded' are counted:
+	// prepared/awaiting_approval/authorized/failed rows are not effects, and
+	// unknown/dispatching rows make the whole evidence uncollected instead of
+	// contributing an unconfirmed number. It is never counted from model text.
 	Effects          map[string]int64
 	EffectsCollected bool
+	// EffectEvidence is the stable reason the effect evidence could not be
+	// collected (for example "unconfirmed_unknown" or
+	// "unconfirmed_dispatching"). It is empty exactly when the evidence was
+	// collected, so an uncollected count can never be mistaken for zero.
+	EffectEvidence string
 	// Citations are the source ids the run's output declares. They are read
 	// from the same sealed output document, under /citations.
 	Citations          []string
@@ -160,6 +169,16 @@ func ValidDecimalString(value string) bool {
 	return fraction > 0 && index == len(value)
 }
 
+// NormalizeCapabilityKey normalises a capability-version key on both sides of
+// the effect_count lookup. The platform records the exact capability_version the
+// capability request named, lowercased when the writer validates it (a UUID);
+// a case's `capability` member is that same version id. Trimming and lowercasing
+// keeps a hand-written capitalised id from silently counting zero while still
+// keying the count by capability rather than by the run's total.
+func NormalizeCapabilityKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
 // EvaluateAssertions runs the declared checker for one case against the facts
 // collected for its run. A case with no assertions yields no outcomes; the
 // caller (and the completion guard) treats that as "no checker", never as a
@@ -206,9 +225,14 @@ func evaluateOne(assertion Assertion, facts Facts) Outcome {
 		}
 		if !facts.EffectsCollected {
 			outcome.Detail = "the platform operation ledger for this run was not collected; an uncollected count is never 0"
+			if facts.EffectEvidence != "" {
+				// Locate why: an unknown/dispatching row could mean an effect
+				// happened without a confirmed outcome, so no number is honest.
+				outcome.Detail += " (effect_evidence=" + facts.EffectEvidence + ")"
+			}
 			return outcome
 		}
-		count := facts.Effects[assertion.Capability]
+		count := facts.Effects[NormalizeCapabilityKey(assertion.Capability)]
 		outcome.Actual = fmt.Sprintf("%d", count)
 		if count == assertion.ExpectedCount {
 			outcome.Passed = true

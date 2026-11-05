@@ -186,6 +186,7 @@ func (r *evaluationRunner) CaseRunFacts(ctx context.Context, runID string) (eval
 		OutputSHA256:        facts.OutputSHA256,
 		Effects:             facts.Effects,
 		EffectsCollected:    facts.EffectsCollected,
+		EffectEvidence:      facts.EffectEvidence,
 		Citations:           facts.Citations,
 		CitationsCollected:  facts.CitationsCollected,
 		TaskInputArtifactID: facts.TaskInputArtifactID,
@@ -288,7 +289,10 @@ func (r *evaluationRunner) document(
 			"published_version targets are not executable in this build (no publication path; F02B #69 / F07); " +
 				"such a case is recorded as blocked/unsupported_target, never passed",
 			"effect_count.source=stub_ledger is served by the platform's real effect ledger " +
-				"(platform.operations rows attributable to the case's run); no separate stub ledger exists",
+				"(confirmed state='succeeded' platform.operations rows attributable to the case's run, " +
+				"keyed by the exact capability_version the case names); no separate stub ledger exists, " +
+				"prepared/awaiting_approval/authorized/failed rows are not effects, and an " +
+				"unknown/dispatching row makes the evidence uncollected instead of counting it",
 			"no judge adapter is installed: the quality field is informational and never gates the verdict",
 			"predefined interactions: only cancel exists in this build (F06 approvals are out of this slice)",
 		},

@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -129,6 +130,51 @@ func TestEffectCountWithoutACollectedLedgerNeverPasses(t *testing.T) {
 	}
 	if outcomes[0].Actual != "not_collected" {
 		t.Fatalf("the outcome must say the fact was not collected, got %q", outcomes[0].Actual)
+	}
+}
+
+// Finding 2 of the eval-integrity review: the ledger key is the exact
+// capability_version the platform recorded, and only confirmed effects are
+// counted. A case names that same version id; normalising both sides keeps a
+// capitalised id from silently counting zero, and an assertion for a different
+// version is keyed per capability, not the run's total.
+func TestEffectCountLooksUpTheStoredCapabilityVersionKey(t *testing.T) {
+	const version = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+	const other = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	facts := factsFrom(t, `{}`)
+	facts.Effects = map[string]int64{version: 2}
+	outcomes := EvaluateAssertions([]Assertion{
+		{Kind: "effect_count", Capability: "  " + strings.ToUpper(version) + "  ", ExpectedCount: 2},
+		{Kind: "effect_count", Capability: other, ExpectedCount: 0},
+		{Kind: "effect_count", Capability: version, ExpectedCount: 1},
+	}, facts)
+	if !outcomes[0].Passed || outcomes[0].Actual != "2" {
+		t.Fatalf("a capitalised capability id must match the stored lowercase version: %+v", outcomes[0])
+	}
+	if !outcomes[1].Passed || outcomes[1].Actual != "0" {
+		t.Fatalf("the count is per capability version, not the run total: %+v", outcomes[1])
+	}
+	if outcomes[2].Passed {
+		t.Fatalf("the stored count must fail a different expectation: %+v", outcomes[2])
+	}
+}
+
+// An unconfirmed ledger row (unknown/dispatching) means the effect evidence for
+// the run was not collected. The outcome must carry the reason so a curator can
+// see why the fact is missing; it can never pass, even with expected=0.
+func TestEffectCountUncollectedCarriesTheLedgerEvidenceReason(t *testing.T) {
+	facts := factsFrom(t, `{}`)
+	facts.Effects = nil
+	facts.EffectsCollected = false
+	facts.EffectEvidence = "unconfirmed_unknown"
+	outcomes := EvaluateAssertions([]Assertion{
+		{Kind: "effect_count", Capability: "test.send", ExpectedCount: 0},
+	}, facts)
+	if outcomes[0].Passed || outcomes[0].Actual != "not_collected" {
+		t.Fatalf("unconfirmed evidence must never pass: %+v", outcomes[0])
+	}
+	if !strings.Contains(outcomes[0].Detail, "effect_evidence=unconfirmed_unknown") {
+		t.Fatalf("the outcome detail must record the ledger evidence reason: %q", outcomes[0].Detail)
 	}
 }
 
