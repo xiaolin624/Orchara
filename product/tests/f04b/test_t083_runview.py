@@ -703,7 +703,9 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert detail.status == 200, detail.text
     run_body = detail.json
     assert run_body["state"] == "succeeded", run_body
-    node_results = t083.node_results(owner.creator, run["id"], expected=6)
+    # `t083.node_results` returns the projection's item list; the page's
+    # `node-results` body is `{items, next_cursor, generated_at}`, so wrap it.
+    node_results = {"items": items}
 
     # The owner-only SSE replay is the surface the page consumes: the same
     # committed node.status events, with their real seq numbers.
