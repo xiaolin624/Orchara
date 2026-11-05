@@ -41,6 +41,7 @@ type linearRun struct {
 	start   map[string]any
 	python  map[string]any
 	agent   map[string]any
+	callApp map[string]any
 	outcome sandbox.Outcome
 	report  *SandboxReport
 }
@@ -64,17 +65,26 @@ func (r *runner) executeLinear(ctx context.Context, plan *linearPlan) executionO
 	}
 	run.start = startOutput
 
-	pythonOutput, pythonOutcome, done := r.runPythonNode(ctx, run)
-	if done {
-		return pythonOutcome
+	if plan.python != nil {
+		pythonOutput, pythonOutcome, done := r.runPythonNode(ctx, run)
+		if done {
+			return pythonOutcome
+		}
+		run.python = pythonOutput
 	}
-	run.python = pythonOutput
 	if plan.agent != nil {
 		agentOutput, agentOutcome, done := r.runAgentNode(ctx, run)
 		if done {
 			return agentOutcome
 		}
 		run.agent = agentOutput
+	}
+	if plan.callApp != nil {
+		childOutput, childOutcome, done := r.runCallAppNode(ctx, run)
+		if done {
+			return childOutcome
+		}
+		run.callApp = childOutput
 	}
 	return r.runEndNode(ctx, run)
 }
@@ -419,12 +429,17 @@ func (r *runner) runEndNode(ctx context.Context, run *linearRun) executionOutcom
 	r.emitNode(ctx, node.ID, "running")
 
 	available := map[string]any{
-		"input":            run.start,
-		run.plan.start.ID:  run.start,
-		run.plan.python.ID: run.python,
+		"input":           run.start,
+		run.plan.start.ID: run.start,
+	}
+	if run.plan.python != nil {
+		available[run.plan.python.ID] = run.python
 	}
 	if run.plan.agent != nil {
 		available[run.plan.agent.ID] = run.agent
+	}
+	if run.plan.callApp != nil {
+		available[run.plan.callApp.ID] = run.callApp
 	}
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {

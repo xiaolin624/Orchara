@@ -221,6 +221,18 @@
       </p>
     </details>
 
+    <details id="children-panel" class="card" open>
+      <summary>独立子运行（F07/T078：委派、结果与重放）</summary>
+      <p id="children-status" class="status" role="status" aria-live="polite">正在加载子运行…</p>
+      <ul id="children-list" aria-live="polite"></ul>
+      <p class="hint">
+        子运行是独立 Run：有自己的 id、attempt、checkpoint thread 和结构化结果；点击“查看”打开它的详情。
+        本页只显示服务端返回的 Run/结果，未进入终态的子运行不会显示为成功。
+        同一父调用键重放会复用原 child；不同 invocation key 的并发调用是两个独立 Run，
+        不会按应用 ID 合并。子运行使用父 Run 的 owner 执行；父版本未固定的子版本不可调用。
+      </p>
+    </details>
+
     <p id="detail-note" class="hint"></p>
     <p id="detail-preview" class="hint" data-preview="not_run">
       临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带

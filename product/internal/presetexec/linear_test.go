@@ -352,7 +352,11 @@ func TestLegacyAgentGraphStillTakesTheLegacyPath(t *testing.T) {
 	}
 }
 
-func TestAgentOnlyGraphIsRefusedWithTheStableCode(t *testing.T) {
+// TestAgentOnlyGraphWithoutPythonIsAcceptedByTheLinearPlan pins F07/T078's
+// relaxation: an agent node no longer requires a preset python node in front of
+// it. This graph's agent config is empty, so the node is refused with the stable
+// agent code before any sandbox starts, not with a graph-shape code.
+func TestAgentOnlyGraphWithoutPythonIsAcceptedByTheLinearPlan(t *testing.T) {
 	definition := map[string]any{
 		"nodes": []any{
 			map[string]any{"id": "start", "type": "start", "config": map[string]any{}},
@@ -369,9 +373,9 @@ func TestAgentOnlyGraphIsRefusedWithTheStableCode(t *testing.T) {
 	client := linearClient(t, lease, manifest, input, []byte(salesCSV))
 	box := successSandbox()
 	report := Run(context.Background(), baseDeps(t, client, &fakeInputs{inputs: client.inputs}, box))
-	// There is no preset python node, so the legacy path cannot serve this graph
-	// and the linear plan refuses it before any sandbox starts.
-	if report.Outcome != "refused" || report.ErrorCode != CodeToolUnsupportedGraph {
+	// There is no preset python node; the linear plan accepts the shape and the
+	// agent config validation refuses it before any sandbox starts.
+	if report.Outcome != "refused" || report.ErrorCode != CodeAgentConfigInvalid {
 		t.Fatalf("report = %+v", report)
 	}
 	if box.calls != 0 {

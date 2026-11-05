@@ -1,10 +1,10 @@
-# ADR 0025 — F08/T079 路由控制面：候选快照、受记账的控制调用与 interaction 答复
+# ADR 0029 — F08/T079 路由控制面：候选快照、受记账的控制调用与 interaction 答复
 
 - 状态：accepted
 - 日期：2026-11-05
 - 责任票：T079（GitHub #80，父 F08）；复用 ADR 0023（T074 会话/请求/队列）、
   ADR 0022（T070 撤销）、ADR 0026（T077 授权目录）
-- 影响范围：`db/migrations/0046_router_interactions.sql`、`internal/routing/`、
+- 影响范围：`db/migrations/0050_router_interactions.sql`、`internal/routing/`、
   `internal/requests/{reply,store,submit}.go`、`internal/modelproxy/{routecontrol,provider}.go`、
   `internal/background/{scope,job,handlers/route_request}.go`、`internal/api/{route,requests,server}.go`、
   `cmd/maintenance/scope.go`、`apps/web/src/{chat.html,assets/chat.js}`
@@ -84,7 +84,7 @@ artifact_ids?}`，`anyOf` 三选一，`additionalProperties:false`），返回 2
    artifact 并校验。瞬态模型失败映射 `transient_internal` 由重试表约束；确定性拒绝已在
    请求上提交并返回 200。路由在后台 job 执行（非同步）：保留 T074 的排队/恢复语义，进程
    失联由 job 租约恢复，请求不会永久卡 `routing`。
-8. **迁移 0046 的非契约偏差与边界。** 新增
+8. **迁移 0050 的非契约偏差与边界。** 新增
    `request_routing_candidates`、`request_routing_decisions` 与
    `requests.selected_version_id`，均不在 `contracts/database.sql`；0011 的
    `platform_model_calls.request_id` 仍只作延迟 FK 的一半（XOR 下不双写），决策行用

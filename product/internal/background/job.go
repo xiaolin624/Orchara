@@ -175,6 +175,15 @@ const (
 	CodeAttemptsExhausted        = "attempts_exhausted"
 	CodeArtifactStateNotScanning = "artifact_state_not_scanning"
 
+	// delete_content failure codes (F11/T071). A still-present named object is a
+	// retryable storage fact; a shared object (a live document/memory still reads
+	// it) is a deliberate, non-retryable over-deletion refusal. The handler's
+	// bounded wait reports delete_timeout, which is retryable so a wedged object
+	// store cannot burn the job in one attempt.
+	CodeDeleteTimeout          = "delete_timeout"
+	CodeObjectSharedReference  = "object_shared_reference"
+	CodePurgeUnsupportedTarget = "purge_unsupported_target"
+
 	// T028 format admission codes. Both are content refusals: the artifact can
 	// never become ready, so the completion guard quarantines it. They are
 	// deliberately not retryable — the same bytes cannot pass a later attempt.
@@ -349,6 +358,17 @@ var retryableByKind = map[Kind]map[string]bool{
 		CodeTransientStorageIO: true,
 		CodeTransientInternal:  true,
 		CodeLeaseExpired:       true,
+	},
+	// delete_content (F11/T071): a still-present object or a storage read error
+	// can recover (the object store may be temporarily unavailable, the object may
+	// be released); a timeout can too. A shared-reference refusal and a target
+	// this build cannot purge are deliberately absent: retrying the same facts
+	// cannot help, so they fail the job and leave the deletion visibly incomplete.
+	KindDeleteContent: {
+		CodeTransientStorageIO: true,
+		CodeTransientInternal:  true,
+		CodeLeaseExpired:       true,
+		CodeDeleteTimeout:      true,
 	},
 	// catalog_index (T077): the projection write can be retried after transient
 	// storage/internal/lease failures. A card/source refusal is deterministic (the

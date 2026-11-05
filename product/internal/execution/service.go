@@ -727,6 +727,19 @@ func (s *Service) finalizeRunTx(
 			outcome = runOutcome{State: "needs_reconciliation", ErrorCode: &code}
 			break
 		}
+		// F07/T078: a delegated child's result must conform to the output schema
+		// frozen in the child version it was spawned from. A violation fails the
+		// child (child_output_schema_invalid), never the parent, and never parks
+		// it for reconciliation: the content is known to be invalid, not unknown.
+		if err := s.validateRunResult(ctx, tx, input.RunID, *proposal.OutputArtifactID); err != nil {
+			var invalid *InvalidRunResultError
+			if errors.As(err, &invalid) {
+				code := invalid.Code
+				outcome = runOutcome{State: "failed", ErrorCode: &code, Finished: true}
+				break
+			}
+			return false, err
+		}
 		outcome = runOutcome{
 			State:            "succeeded",
 			OutputArtifactID: proposal.OutputArtifactID,

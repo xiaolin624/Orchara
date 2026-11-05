@@ -86,6 +86,20 @@ type agentConfig struct {
 	Instructions        string
 	MaxTurns            int
 	ToolVersions        []string
+	// Subapps is the sealed fixed sub-application allowed set. Each entry is one
+	// tool the model may call; the executor maps it to spawnChild with the fixed
+	// child version, never to a locally created Run.
+	Subapps []agentSubapp
+}
+
+// subappTool finds the declared sub-application tool by the name the model used.
+func (c *agentConfig) subappTool(name string) (agentSubapp, bool) {
+	for _, sub := range c.Subapps {
+		if sub.Name == name {
+			return sub, true
+		}
+	}
+	return agentSubapp{}, false
 }
 
 // ModelFact is the read-only model-profile fact the executor needs before the
@@ -139,6 +153,7 @@ func validateAgentNode(node *manifestNode, manifest *manifestDocument) (*agentCo
 		return nil, &planError{code: CodeAgentConfigInvalid,
 			message: "the agent node model_profile_version must be a UUID"}
 	}
+	subapps := make([]agentSubapp, 0, len(raw.SubappVersions))
 	if strings.TrimSpace(raw.Instructions) == "" {
 		return nil, &planError{code: CodeAgentConfigInvalid,
 			message: "the agent node instructions must not be empty"}
@@ -151,9 +166,37 @@ func validateAgentNode(node *manifestNode, manifest *manifestDocument) (*agentCo
 		return nil, &planError{code: CodeAgentConfigInvalid,
 			message: fmt.Sprintf("the agent node max_turns must be between 1 and %d", maxAgentTurns)}
 	}
-	if len(raw.SubappVersions) != 0 {
-		return nil, &planError{code: CodeAgentSubappUnsupported,
-			message: "the agent node declares subapp_versions; sub-application nodes are not executable in F04A"}
+	if len(raw.SubappVersions) > 0 {
+		// F07/T078: an agent may delegate to the fixed sub-applications its sealed
+		// manifest carries. The callable name is derived here from the declaration
+		// order, so the model can never name an arbitrary application; spawnChild
+		// re-proves the frozen closure and the current ACL.
+		allowed := make(map[string]bool, len(manifest.SubappVersions))
+		for _, id := range manifest.SubappVersions {
+			allowed[strings.ToLower(strings.TrimSpace(id))] = true
+		}
+		seen := make(map[string]bool, len(raw.SubappVersions))
+		for _, value := range raw.SubappVersions {
+			version := strings.ToLower(strings.TrimSpace(value))
+			if !uuid.Valid(version) {
+				return nil, &planError{code: CodeAgentConfigInvalid,
+					message: "every agent subapp_versions entry must be a UUID"}
+			}
+			if seen[version] {
+				return nil, &planError{code: CodeAgentConfigInvalid,
+					message: "the agent node repeats sub-application version " + version}
+			}
+			seen[version] = true
+			if !allowed[version] {
+				return nil, &planError{code: CodeAgentSubappUnsupported,
+					message: "the agent node references sub-application version " + version +
+						", which is not in the sealed manifest's fixed sub-application closure"}
+			}
+			subapps = append(subapps, agentSubapp{
+				Name:      fmt.Sprintf("call_app_%d", len(subapps)+1),
+				VersionID: version,
+			})
+		}
 	}
 	if len(raw.ToolVersions) > 1 {
 		// Only the fixed preset tool is executable and every declaration uses its
@@ -203,6 +246,7 @@ func validateAgentNode(node *manifestNode, manifest *manifestDocument) (*agentCo
 		Instructions:        raw.Instructions,
 		MaxTurns:            *raw.MaxTurns,
 		ToolVersions:        versions,
+		Subapps:             subapps,
 	}, nil
 }
 
@@ -256,9 +300,11 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	r.emitNode(ctx, node.ID, "running")
 
 	available := map[string]any{
-		"input":            run.start,
-		run.plan.start.ID:  run.start,
-		run.plan.python.ID: run.python,
+		"input":           run.start,
+		run.plan.start.ID: run.start,
+	}
+	if run.plan.python != nil {
+		available[run.plan.python.ID] = run.python
 	}
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {
@@ -318,14 +364,25 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 		}
 	}
 	modelBudget := modelContextBudget(modelFact)
-	authorizedTools := make([]agentcontext.DeclaredTool, 0, len(config.ToolVersions))
-	declared := make([]map[string]string, 0, len(config.ToolVersions))
+	authorizedTools := make([]agentcontext.DeclaredTool, 0, len(config.ToolVersions)+len(config.Subapps))
+	declared := make([]map[string]string, 0, len(config.ToolVersions)+len(config.Subapps))
 	for _, version := range config.ToolVersions {
 		authorizedTools = append(authorizedTools, agentcontext.DeclaredTool{
 			Name: PresetToolName, CapabilityVersion: version,
 		})
 		declared = append(declared, map[string]string{
 			"name": PresetToolName, "capability_version": version,
+		})
+	}
+	// F07/T078: one fixed delegation tool per sealed sub-application version. The
+	// capability server accepts the version only because it is in the run's frozen
+	// manifest closure; the executor maps the call to spawnChild.
+	for _, sub := range config.Subapps {
+		authorizedTools = append(authorizedTools, agentcontext.DeclaredTool{
+			Name: sub.Name, CapabilityVersion: sub.VersionID,
+		})
+		declared = append(declared, map[string]string{
+			"name": sub.Name, "capability_version": sub.VersionID,
 		})
 	}
 	history := make([]agentcontext.HistoryMessage, 0, 4)
@@ -448,14 +505,28 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 					"the model repeated tool-call id "+call.ID), true
 			}
 			seenCallIDs[call.ID] = true
-			if call.Name != PresetToolName || len(config.ToolVersions) == 0 {
+			subapp, isSubapp := config.subappTool(call.Name)
+			isPresetTool := call.Name == PresetToolName && len(config.ToolVersions) > 0
+			if !isSubapp && !isPresetTool {
 				return nil, r.failAgent(ctx, run, CodeToolUnsupportedTool,
 					"the model called tool "+call.Name+", which this agent node did not declare"), true
 			}
 			if stopped, outcome, done := r.agentStopped(ctx, run, node, turns); done {
 				return nil, outcome, stopped
 			}
-			message, results, callErr, failOutcome := r.executeAgentTool(ctx, run, node, call)
+			var (
+				message     string
+				results     []NodeResult
+				callErr     error
+				failOutcome *executionOutcome
+			)
+			if isSubapp {
+				message, results, callErr, failOutcome = r.executeAgentSubapp(
+					ctx, run, node, subapp, call,
+				)
+			} else {
+				message, results, callErr, failOutcome = r.executeAgentTool(ctx, run, node, call)
+			}
 			if callErr != nil {
 				return nil, *failOutcome, true
 			}

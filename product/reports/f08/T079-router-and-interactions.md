@@ -15,8 +15,8 @@
   必填输入判定是“每项 required_inputs 需要一个显式附件”的保守确定性规则。跨应用交接 UI 属
   T082；子 Run 属 T078；T082 所需的 queue/interaction 接缝已保留。浏览器 DOM 驱动页面仍
   `not_run`（与 T023/T027/T033/T074 同一边界）；全量 `tests` 未运行。
-- 迁移：`db/migrations/0046_router_interactions.sql`（本 worktree 基线最大 0045）。
-- 决策：`docs/adr/0025-t079-router-interactions.md`（非契约候选快照/决策表/选中列、控制模型
+- 迁移：`db/migrations/0050_router_interactions.sql`（合并后基线 tail 为 0049；本票原编号 0046 与 T072 的 `0046_deletion_copy_ledger.sql` 撞号，最终 merge 时按 BRIEF §5 重编号为 0050；测试按 slug 断言，不 pin 编号）。
+- 决策：`docs/adr/0029-t079-router-interactions.md`（非契约候选快照/决策表/选中列、控制模型
   解析、预算口径、handler 协议与过期语义）。契约与 `docs/spec/**` 未改动，
   `python tools/sync_spec.py --check` 无漂移。
 
@@ -29,7 +29,7 @@
    `internal/api/{server,internal,jobdata}.go`、`tests/support/{stack,f08,t077,t024}.py`、
    `0044/0045` 迁移与契约 `replyInteraction`/`Request`/`InteractionReply`。
 2. TDD 垂直切片（先写失败测试、再最小实现）：
-   - 迁移 0046（候选快照/决策/selected 列 + 零授权）→ 4 个迁移测试；
+   - 迁移 0050（候选快照/决策/selected 列 + 零授权）→ 4 个迁移测试；
    - 单候选 + 输入满足 → 唯一 Run（真实 published version、真实 route handler、真实账本）；
    - 缺输入 → 不建 Run；答复补附件 → 恰好一个 Run；
    - 多候选 → `awaiting_selection`，全部候选可见，显式 `candidate_version_id` 才派发；
@@ -42,12 +42,12 @@
    - 路由 job 终止失败 → completion guard 失败请求并推进队列；
    - 页面结构 + Node 纯函数（候选序号、缺字段、答复体/幂等 key）。
 3. 跑门禁（§3）：`go build/vet/test`、`gofmt -l`、`sync_spec --check`、`tests/f08` 两次背靠背
-   （54 passed）、`tests/tooling`、`tests/f11`；写本报告/ADR 0025/PROGRESS 行；未推送、未关
+   （54 passed）、`tests/tooling`、`tests/f11`；写本报告/ADR 0029/PROGRESS 行；未推送、未关
    issue、未改契约/规格；最终合并 `integration/t068-t082`。
 
 ## 1. 交付内容
 
-### 1.1 数据模型（`0046_router_interactions.sql`）
+### 1.1 数据模型（`0050_router_interactions.sql`）
 
 - `platform.request_routing_candidates`：每轮候选快照；`rank` 是 1 基**序号**（无
   score/probability 列），`capability_card` + `card_sha256`，主键 `(request_id, version_id)`。
@@ -108,7 +108,7 @@
 - `KindRouteRequest` handler（`handlers/route_request.go`）：只提交 lease，调用
   `POST /internal/v1/background/jobs/{job_id}/route`；服务端完成候选/模型/校验/写入。
   **偏离 notes §6.6 两方法草案**：用户正文与候选都不交给 handler（JobScope 文档要求 handler
-  不读写业务表），因此没有可伪造的 decision 入参；ADR 0025 §7 记录理由。
+  不读写业务表），因此没有可伪造的 decision 入参；ADR 0029 §7 记录理由。
 - 重试表新增 `route_request`（transient storage/internal/lease）；瞬态模型失败 → handler
   `transient_internal` 有界重试；确定性拒绝已在请求上提交 → job succeeded。
 - completion guard：job **终止失败**（重试表耗尽/协议拒绝）且请求仍在 `routing` → 请求
@@ -178,8 +178,8 @@ $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t079-23
   的真实路径。故“真实模型质量/真实 provider 路由”`not_run`；控制模型仍是真实注册候选 +
   真实账本 + 服务端校验。
 - 语义/向量召回与中文分词质量：T064/T067 范围；本票只做授权 SQL + 字面/全文候选。
-- 必填输入按“每项 required_inputs 一个附件”计数，消息正文不抽取类型化值（ADR 0025）。
-- 控制预算是物理尝试数（失败尝试也计一行），不是“成功调用数”（ADR 0025）。
+- 必填输入按“每项 required_inputs 一个附件”计数，消息正文不抽取类型化值（ADR 0029）。
+- 控制预算是物理尝试数（失败尝试也计一行），不是“成功调用数”（ADR 0029）。
 - 浏览器 DOM、SSE、全量 `pytest tests`；T082 交接 UI、T078 子 Run。
 - 未推送、未创建/关闭 GitHub issue、未修改 `docs/spec/**` 或 `contracts/**`。
 
@@ -199,4 +199,4 @@ $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t079-23
   `runs.request_id` UNIQUE 是“一请求一主 Run”的数据库事实。
 - 页面纯函数：`requestReplyPath`、`describeInteraction`、`candidateLines`、`interactionMode`、
   `interactionReplyBody`、`newInteractionAttempt`、`interactionReplyHeaders`。
-- 迁移/ADR：`0046_router_interactions.sql`、ADR 0025；合并时若 0046 撞号按名称断言重编号。
+- 迁移/ADR：`0050_router_interactions.sql`（因 T072 占用 0046 而重编号）、ADR 0029；测试按 slug 断言。

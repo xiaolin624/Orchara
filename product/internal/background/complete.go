@@ -197,6 +197,10 @@ var completionGuards = map[Kind]CompletionGuard{
 	// F08/T079: a terminally failed route job must fail its still-routing request
 	// and release the conversation slot instead of stranding the conversation.
 	KindRouteRequest: guardRouteRequestCompletion,
+	// F11/T071: the physical purge's evidence transaction (scope clearing and the
+	// no-resurrection read predicates are re-checked before a completion is
+	// accepted).
+	KindDeleteContent: guardDeleteContentCompletion,
 }
 
 // retryAllowed is the single retry decision: the code must be in the kind's
