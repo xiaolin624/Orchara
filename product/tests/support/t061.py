@@ -82,6 +82,94 @@ def reindex(
 
 
 # ---------------------------------------------------------------------------
+# the upgrade seam: pre-0039-shaped rows and the migration chain
+# ---------------------------------------------------------------------------
+def migration_version(name_fragment: str, dbname: str) -> str:
+    """The applied version of the one migration whose file name has the fragment.
+
+    The version number is assigned against the worktree tip and a merge may
+    renumber it, so tests pin the *name* and read the version from the ledger.
+    """
+    names = st.migration_chain(dbname)
+    matches = [version for version, name in names.items() if name_fragment in name]
+    assert len(matches) == 1, (name_fragment, names)
+    return matches[0]
+
+
+def seed_knowledge_base(dbname: str, owner_id: str, name: str = "t061 seeded base") -> str:
+    """Insert one real owner-scoped knowledge base and return its id."""
+    base_id = f00b.new_uuid()
+    st.sql(
+        dbname,
+        "INSERT INTO platform.knowledge_bases (id, name, owner_id) "
+        f"VALUES ({st.quote_literal(base_id)}::uuid, {st.quote_literal(name)}, "
+        f"{st.quote_literal(owner_id)}::uuid)",
+    )
+    return base_id
+
+
+def seed_ingest_attempt(
+    dbname: str,
+    *,
+    owner_id: str,
+    base_id: str,
+    source_artifact_id: str,
+    revision: int = 1,
+    document_state: str = "scanning",
+    parser_version: str = "orchara-text-parser/1",
+) -> tuple[str, str]:
+    """Seed one T055-shaped ingestion attempt exactly as the pre-0039 API wrote it.
+
+    The document is mid-ingestion (``scanning``/``indexing``) and the queued
+    ``document_ingest`` job uses the T055 ``documentDedupKey`` shape
+    (``knowledge-doc:<source artifact>:<artifact revision>:<document>:<revision>``).
+    Created before migration 0039, the job has no ``expected_index_version_id``;
+    that NULL is the upgrade defect these tests reproduce. Returns
+    ``(document_id, job_id)``.
+    """
+    document_id = f00b.new_uuid()
+    job_id = f00b.new_uuid()
+    st.sql(
+        dbname,
+        "INSERT INTO platform.knowledge_documents "
+        "(id, knowledge_base_id, source_artifact_id, revision, state, parser_version) "
+        f"VALUES ({st.quote_literal(document_id)}::uuid, "
+        f"{st.quote_literal(base_id)}::uuid, "
+        f"{st.quote_literal(source_artifact_id)}::uuid, {int(revision)}, "
+        f"{st.quote_literal(document_state)}, {st.quote_literal(parser_version)})",
+    )
+    dedup_key = f"knowledge-doc:{source_artifact_id}:1:{document_id}:{int(revision)}"
+    st.sql(
+        dbname,
+        "INSERT INTO platform.background_jobs "
+        "(id, kind, target_id, owner_id, expected_revision, dedup_key, "
+        " input_artifact_id, state, available_at) "
+        f"VALUES ({st.quote_literal(job_id)}::uuid, 'document_ingest', "
+        f"{st.quote_literal(document_id)}::uuid, {st.quote_literal(owner_id)}::uuid, "
+        f"{int(revision)}, {st.quote_literal(dedup_key)}, "
+        f"{st.quote_literal(source_artifact_id)}::uuid, 'ready', now())",
+    )
+    return document_id, job_id
+
+
+def abandon_job_like_the_lease_sweep(dbname: str, job_id: str) -> None:
+    """Leave the state ``recoverExpiredTx`` leaves when the last attempt expires.
+
+    The sweep fails the job with ``lease_expired`` and has no document writer, so
+    a document whose only job died this way stays ``scanning`` forever until an
+    ingest heals it. This writes exactly that terminal job row.
+    """
+    st.sql(
+        dbname,
+        "UPDATE platform.background_jobs "
+        "SET state = 'failed', lease_token = NULL, lease_deadline = NULL, "
+        "worker_id = NULL, error_code = 'lease_expired', "
+        "failure_class = 'infrastructure', last_error_at = now(), finished_at = now() "
+        f"WHERE id = {st.quote_literal(job_id)}::uuid",
+    )
+
+
+# ---------------------------------------------------------------------------
 # database truth
 # ---------------------------------------------------------------------------
 def index_rows(dbname: str, document_id: str) -> list[dict]:
