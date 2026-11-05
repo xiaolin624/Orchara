@@ -1793,6 +1793,25 @@ T073/T076 的 OTel/metrics/trace 导出（本构建无 SDK）；T075 的 F04A Vu
 `pytest tests`（>60 分钟）未作为单次门禁运行，以逐套件证据为准。T069 的 conversation scope
 由 T074 建表后闭环并测试。
 
+## 复核后修复（post-review fixes，2026-11-05，分支 `t/post-review-fixes`）
+
+独立复核在批次 tip `c755012` 上复现 **2 个 P1 + 3 个 P2**，本分支全部修复；每条先在
+pre-fix `c755012`（detached worktree）上以回归测试复现失败，再修复并跑绿。无新迁移、未改
+`docs/spec/**`/`contracts/**`、未改票状态（T068–T082 仍为各自已交付状态）。报告：
+`reports/review/POST-REVIEW-FIXES.md`。
+
+| # | 级别 | 复核发现 | 修复 | 回归测试 |
+|---|---|---|---|---|
+| 1 | P1 | 会话 DELETE 202 后正文 artifact 仍 200 | 会话 tombstone 同事务 tombstone 其 artifact 闭包（请求正文/附件、run input/output/`run_artifacts`、interaction、handoff 摘要）；live 共享引用不 tombstone | `tests/f08/test_t074_delete.py::test_deleted_conversation_body_is_unreadable_through_every_artifact_entry` |
+| 2 | P1 | 清理 A 删掉 B 仍在用的共享附件 | `sharedArtifacts` 覆盖 request/run/`run_artifacts`/handoff/interaction 引用（引用方会话须 live），`object_shared_reference` business/non-retryable | `tests/f11/test_t071_conversation.py::test_a_shared_attachment_survives_another_conversations_delete_and_purge` |
+| 3 | P2 | 撤销版本后同 key/body 幂等重放 409 `version_revoked` | receipt 读取先于版本/授权检查（会话 liveness 仍最前）；异体仍 409、新 key 仍拒、删除会话仍 404 | `tests/f08/test_t074_submit.py::test_a_committed_request_replays_after_its_version_is_revoked` |
+| 4 | P2 | 重开会话不恢复交互面板/轮询、队列不可点 | 加载后恢复持槽请求的面板/候选并重新轮询；队列行可点切换且有取消按钮 | `tests/f08/test_postreview_pages.py::test_reopening_a_conversation_restores_the_pending_request_and_an_actionable_queue` |
+| 5 | P2 | 缺输入答复不带已上传附件 | 答复携带页面已上传 artifact ids（服务端仍校验），交互面板加提示 | `tests/f08/test_postreview_pages.py::test_the_reply_carries_the_uploaded_missing_input_artifact` |
+
+页面两条用 Node 24 + 最小 DOM shim 执行真实 `chat.js` 字节与真实事件处理（浏览器 DOM 仍
+`not_run`）。门禁：`pytest tests/f11` / `tests/f08` / `tests/tooling`、5 条修复测试 ×2、
+`go build/vet/test ./...`、`gofmt -l .`、`sync_spec --check`，原始输出见报告 §3。
+
 ## 记录模板
 
 ```text

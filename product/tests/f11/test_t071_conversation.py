@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import uuid
 
-from support import f00b, f08, t069, t071
+from support import f00b, f08, t028, t069, t071
 from support import stack as st
 
 
@@ -106,3 +106,78 @@ def test_conversation_purge_and_unknown_resource_fail_safe(t069_stack) -> None:
     background = f00b.job_row(stack.dbname, report["job_id"])
     assert background["state"] == "failed", background
     assert background["failure_class"] == "business", background
+
+
+def test_a_shared_attachment_survives_another_conversations_delete_and_purge(
+    t069_stack,
+) -> None:
+    """Post-review finding [P1]: the purge guard must honour request/run/handoff refs.
+
+    The reviewer's reproduction shared one attachment between conversations A and B:
+    after A was deleted and purged, B's conversation was readable but its attachment
+    answered 404. The explicit reference relations (request input/attachments, run
+    input/run_artifacts, handoff summary/attachments) must keep the object with the
+    non-retryable business code ``object_shared_reference``.
+    """
+    stack = t069_stack
+    owner = f08.account(stack)
+    conversation_a = f08.conversation(owner.session)
+    conversation_b = f08.conversation(owner.session)
+    content = b"t071 post-review shared attachment: B still needs these bytes\n"
+    attachment = f08.public_attachment(stack, owner.session, content)
+    request_a = f08.request_of(
+        f08.submit_request(
+            owner.session, conversation_a, "A share the attachment",
+            artifact_ids=[attachment], key=f00b.new_uuid(),
+        )
+    )
+    request_b = f08.request_of(
+        f08.submit_request(
+            owner.session, conversation_b, "B still uses the attachment",
+            artifact_ids=[attachment], key=f00b.new_uuid(),
+        )
+    )
+    row = t071.artifact_row(stack.dbname, attachment)
+    object_key = row["object_key"]
+    assert t071.object_exists(stack, object_key)
+
+    job = t069.deletion_of(
+        t069.delete_resource(owner.session, t069.RESOURCE_CONVERSATION, conversation_a)
+    )
+    # B's attachment is still readable right after A's tombstone: a live other
+    # conversation keeps it.
+    assert t028.read_content(owner.session, attachment).status == 200
+
+    _completed, reports = t071.purge_once(stack)
+
+    # B's attachment is untouched: the row is live, the bytes are on disk and every
+    # read entry still serves it. B's request and conversation are readable. This
+    # is the reviewer's observable: the purge must not delete another conversation's
+    # attachment behind it.
+    for entry in (t028.get_artifact, t028.download_artifact, t028.read_content):
+        response = entry(owner.session, attachment)
+        assert response.status == 200, (entry.__name__, response.status, response.text)
+    assert t028.read_content(owner.session, attachment).raw == content
+    survives = t071.artifact_row(stack.dbname, attachment)
+    assert survives["deleted_at"] is None, survives
+    assert survives["purged_at"] is None, survives
+    assert t071.object_exists(stack, object_key)
+    assert f08.get_request(owner.session, request_b["id"]).status == 200
+    assert f08.list_messages(owner.session, conversation_b).status == 200
+
+    report = t071.purge_report(reports)
+    assert report["result"] == "failed", report
+    assert report["error_code"] == t071.ERROR_OBJECT_SHARED, report
+    stored = t071.deletion_job(stack.dbname, job["id"])
+    assert stored["state"] == "failed", stored
+    assert stored["error_code"] == t071.ERROR_OBJECT_SHARED, stored
+    assert "object_store" in t071.remaining(stored), stored
+    assert "object_store" not in t071.completed(stored), stored
+
+    # A's own message was tombstoned at the same DELETE and its bytes are gone;
+    # only the shared object blocked the job.
+    message_a = f08.request_row(stack.dbname, request_a["id"])["input_artifact_id"]
+    purged = t071.artifact_row(stack.dbname, message_a)
+    assert purged["deleted_at"] is not None, purged
+    assert purged["purged_at"] is not None, purged
+    assert not t071.object_exists(stack, purged["object_key"])

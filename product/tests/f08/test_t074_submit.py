@@ -278,3 +278,58 @@ def test_submit_validates_the_contract_body_and_the_referenced_artifacts(f08_sta
     )
     assert ok.status == 202, ok.text
     assert len(f08.request_rows(stack.dbname, conversation_id)) == 1
+
+
+def test_a_committed_request_replays_after_its_version_is_revoked(f08_stack) -> None:
+    """Post-review finding [P2]: a committed receipt wins over the version check.
+
+    #75 requires the same idempotency key + same body to replay the committed
+    request. The reviewer reached 202 first, revoked the version, and got 409
+    ``version_revoked`` on the identical retry. The receipt must be read before the
+    version/authorisation checks, while a new key on the revoked version must still
+    refuse and a deleted conversation must still refuse.
+    """
+    stack = f08_stack
+    owner = f08.account(stack)
+    conversation_id = f08.conversation(owner.session)
+    published = f08.publish_version(stack, owner.session)
+    message = "post-review: replay the committed request"
+    key = f00b.new_uuid()
+
+    first = f08.submit_request(
+        owner.session, conversation_id, message,
+        version_id=published.version_id, key=key,
+    )
+    committed = f08.request_of(first)
+    assert committed["run_id"], committed
+
+    f08.revoke_version(stack.dbname, published.version_id, owner.principal_id)
+
+    replay = f08.submit_request(
+        owner.session, conversation_id, message,
+        version_id=published.version_id, key=key,
+    )
+    assert replay.status == 202, replay.text
+    assert replay.json == first.json, (replay.json, first.json)
+    rows = f08.request_rows(stack.dbname, conversation_id)
+    assert [row["id"] for row in rows] == [committed["id"]], rows
+    runs = f08.run_rows(stack.dbname, conversation_id)
+    assert [run["id"] for run in runs] == [committed["run_id"]], runs
+
+    # The same key with a different canonical body is still the idempotency
+    # conflict, not a version refusal: the receipt is read first.
+    conflict = f08.submit_request(
+        owner.session, conversation_id, message + " changed",
+        version_id=published.version_id, key=key,
+    )
+    st.assert_error(conflict, 409, f08.ERROR_IDEMPOTENCY_CONFLICT)
+    assert len(f08.request_rows(stack.dbname, conversation_id)) == 1
+
+    # A new key is a new intention: the revoked version can never start a Run.
+    fresh = f08.submit_request(
+        owner.session, conversation_id, message,
+        version_id=published.version_id, key=f00b.new_uuid(),
+    )
+    st.assert_error(fresh, 409, f08.ERROR_VERSION_REVOKED)
+    assert len(f08.request_rows(stack.dbname, conversation_id)) == 1
+    assert len(f08.run_rows(stack.dbname, conversation_id)) == 1

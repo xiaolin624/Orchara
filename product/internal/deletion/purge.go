@@ -16,11 +16,13 @@ package deletion
 // Safety rule (BACKGROUND-JOBS.md §26 / F11 notes §4.4): an object is deleted only
 // when the job's own scope_details names it (plus the memory-body revisions the
 // schema cannot name, which are discovered only through the `memory_body` purpose
-// and a live-memory exclusion). A named object that a *live* knowledge document,
-// knowledge chunk or memory still references is never deleted: the object_store
-// scope stays outstanding with the business code object_shared_reference, and the
-// artifact row stays live. Over-deletion is impossible; an incomplete purge is
-// visible.
+// and a live-memory exclusion). A named object that a *live* resource still
+// references — a knowledge document/chunk, memory/candidate, another live
+// conversation's request, run or handoff, or an interaction proposal/reply — is
+// never deleted: the object_store scope stays outstanding with the business code
+// object_shared_reference, and the artifact row stays live. Over-deletion is
+// impossible; an incomplete purge is visible. The conversation tombstone uses the
+// same predicate (LiveArtifactReferences) before it tombstones a shared artifact.
 //
 // The engine is deliberately not a second state machine: `remaining_scopes` /
 // `completed_scopes` on the T069 job row are the only progress record, and every
@@ -112,6 +114,13 @@ type PurgeTargets struct {
 type queries interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// Queryer is the narrower read surface the live-reference predicate needs. It is
+// exported so the conversation deletion adapter can ask the same question as the
+// purge guard before it tombstones an artifact.
+type Queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 // PurgeDedupKey is the (kind=delete_content, dedup_key) identity of the one purge
@@ -549,13 +558,22 @@ func derivePurgeTargets(
 
 // sharedArtifacts returns the named artifact ids a live resource still reads:
 // a knowledge document's source, a live document's chunk body, a live memory's
-// body or a pending memory candidate's body. Chunks named by this same job are
-// excluded because the job removes them in the search_index scope (a deleted
-// chunk-body artifact therefore cannot block its own purge). Tombstoned
-// documents/memories are never references: their rows are the no-resurrection
-// authority, not a live reader.
+// body or a pending memory candidate's body, and every explicit conversation
+// reference — request input/attachments, run input/run_artifacts/output, the
+// interaction proposal/reply artifacts and the handoff summary/attachments. A
+// reference only counts while its conversation is live: the conversation being
+// deleted/purged is the reason the copy is being removed, never a reader of it
+// (a run without a conversation keeps counting: nothing else owns it). A
+// conversation reference also only protects an artifact that is still readable:
+// after an explicit artifact DELETE the reference is dangling and cannot make the
+// tombstoned bytes un-purgeable.
+//
+// Chunks named by this same job are excluded because the job removes them in the
+// search_index scope (a deleted chunk-body artifact therefore cannot block its own
+// purge). Tombstoned documents/memories are never references: their rows are the
+// no-resurrection authority, not a live reader.
 func sharedArtifacts(
-	ctx context.Context, db queries, artifactIDs, jobChunkIDs []string,
+	ctx context.Context, db Queryer, artifactIDs, jobChunkIDs []string,
 ) (map[string]bool, error) {
 	shared := make(map[string]bool)
 	if len(artifactIDs) == 0 {
@@ -578,6 +596,38 @@ func sharedArtifacts(
 		                 WHERE m.body_artifact_id = a.id AND m.deleted_at IS NULL)
 		     OR EXISTS (SELECT 1 FROM platform.memory_candidates AS c
 		                 WHERE c.body_artifact_id = a.id AND c.state = 'pending')
+		     -- Conversation references only protect a still-readable artifact.
+		     -- Once the artifact row itself is tombstoned (an explicit artifact
+		     -- DELETE), the reference is dangling and must not make the bytes
+		     -- un-purgeable; a shared attachment used by another live conversation
+		     -- is never tombstoned (the conversation delete skips it), so it still
+		     -- lands here with a.deleted_at IS NULL.
+		     OR (a.deleted_at IS NULL AND (
+		          EXISTS (SELECT 1 FROM platform.requests AS r
+		                   JOIN platform.conversations AS c ON c.id = r.conversation_id
+		                  WHERE c.deleted_at IS NULL
+		                    AND (r.input_artifact_id = a.id
+		                         OR a.id = ANY(r.artifact_ids)))
+		       OR EXISTS (SELECT 1 FROM platform.runs AS r
+		                   LEFT JOIN platform.conversations AS c ON c.id = r.conversation_id
+		                  WHERE r.deleted_at IS NULL
+		                    AND (r.conversation_id IS NULL OR c.deleted_at IS NULL)
+		                    AND (r.input_artifact_id = a.id
+		                         OR r.output_artifact_id = a.id
+		                         OR EXISTS (SELECT 1 FROM platform.run_artifacts AS ra
+		                                     WHERE ra.run_id = r.id AND ra.artifact_id = a.id)))
+		       OR EXISTS (SELECT 1 FROM platform.request_handoffs AS h
+		                   JOIN platform.conversations AS c ON c.id = h.conversation_id
+		                  WHERE c.deleted_at IS NULL
+		                    AND (h.summary_artifact_id = a.id
+		                         OR a.id = ANY(h.artifact_ids)))
+		       OR EXISTS (SELECT 1 FROM platform.interactions AS i
+		                   JOIN platform.requests AS r ON r.id = i.request_id
+		                   JOIN platform.conversations AS c ON c.id = r.conversation_id
+		                  WHERE c.deleted_at IS NULL
+		                    AND (i.proposal_artifact_id = a.id
+		                         OR i.response_artifact_id = a.id))
+		     ))
 		   )`, uuidArrayArg(artifactIDs), uuidArrayArg(jobChunkIDs))
 	if err != nil {
 		return nil, fmt.Errorf("reading the live artifact references: %w", err)
@@ -594,6 +644,17 @@ func sharedArtifacts(
 		return nil, fmt.Errorf("reading the live artifact references: %w", err)
 	}
 	return shared, nil
+}
+
+// LiveArtifactReferences is the exported face of the same guard, used by the
+// conversation deletion adapter: an artifact another live resource still
+// references must stay readable when its own conversation is tombstoned. Sharing
+// one SQL predicate is what keeps the immediate tombstone and the later purge
+// from disagreeing about what "still referenced" means.
+func LiveArtifactReferences(
+	ctx context.Context, db Queryer, artifactIDs []string,
+) (map[string]bool, error) {
+	return sharedArtifacts(ctx, db, artifactIDs, nil)
 }
 
 // clearObjectStore verifies every named object is gone and, only then, marks the

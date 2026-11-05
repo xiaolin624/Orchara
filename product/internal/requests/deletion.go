@@ -101,12 +101,124 @@ func (t *DeletionTarget) Delete(
 		return deletion.Plan{}, fmt.Errorf("invalidating the conversation interactions: %w", err)
 	}
 
+	// Post-review fix (SECURITY §5): the tombstone must close the artifact read
+	// entries in this same transaction. The conversation's sealed bodies (request
+	// inputs, attachments, run inputs/outputs, interaction proposals/replies and
+	// handoff summaries) are tombstoned now, so GET artifact / signed download /
+	// content all refuse immediately through the existing deleted_at predicate.
+	// An artifact another live resource still explicitly references (an attachment
+	// shared with another conversation, a handoff crossing into a live one) is not
+	// this conversation's to erase: it keeps the row (and the purge guard later
+	// reports object_shared_reference for it).
+	if !deleted.Valid {
+		if err := t.tombstoneArtifactsTx(ctx, tx, conversationID); err != nil {
+			return deletion.Plan{}, err
+		}
+	}
+
 	details, err := t.detailsTx(ctx, tx, conversationID)
 	if err != nil {
 		return deletion.Plan{}, err
 	}
 	plan.Details = details
 	return plan, nil
+}
+
+// conversationArtifact is one artifact named by the conversation's object scope.
+type conversationArtifact struct {
+	ID        string
+	ObjectKey string
+	Purpose   string
+}
+
+// conversationArtifactsTx is the exact artifact closure of one conversation: the
+// sealed message of every request, its attachments, the run inputs and outputs,
+// the interaction proposals/replies and the confirmed handover summaries. It is
+// the one query both the immediate tombstone and the purge descriptor use, so the
+// two can never disagree about which copies belong to the conversation.
+func (t *DeletionTarget) conversationArtifactsTx(
+	ctx context.Context, tx *sql.Tx, conversationID string,
+) ([]conversationArtifact, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT a.id::text, a.object_key, a.purpose
+		  FROM platform.artifacts AS a
+		 WHERE a.id IN (
+		        SELECT input_artifact_id FROM platform.requests
+		         WHERE conversation_id = $1::uuid
+		        UNION SELECT unnest(artifact_ids) FROM platform.requests
+		         WHERE conversation_id = $1::uuid
+		        UNION SELECT input_artifact_id FROM platform.runs
+		         WHERE conversation_id = $1::uuid
+		        UNION SELECT output_artifact_id FROM platform.runs
+		         WHERE conversation_id = $1::uuid AND output_artifact_id IS NOT NULL
+		        UNION SELECT ra.artifact_id FROM platform.run_artifacts AS ra
+		         JOIN platform.runs AS r ON r.id = ra.run_id
+		         WHERE r.conversation_id = $1::uuid
+		        UNION SELECT summary_artifact_id FROM platform.request_handoffs
+		         WHERE conversation_id = $1::uuid
+		        UNION SELECT i.proposal_artifact_id FROM platform.interactions AS i
+		         JOIN platform.requests AS r ON r.id = i.request_id
+		         WHERE r.conversation_id = $1::uuid
+		        UNION SELECT i.response_artifact_id FROM platform.interactions AS i
+		         JOIN platform.requests AS r ON r.id = i.request_id
+		         WHERE r.conversation_id = $1::uuid AND i.response_artifact_id IS NOT NULL
+		       )
+		 ORDER BY a.id`, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the conversation object scope: %w", err)
+	}
+	defer rows.Close()
+	artifacts := make([]conversationArtifact, 0, 8)
+	for rows.Next() {
+		var artifact conversationArtifact
+		if err := rows.Scan(&artifact.ID, &artifact.ObjectKey, &artifact.Purpose); err != nil {
+			return nil, fmt.Errorf("reading the conversation object scope: %w", err)
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return artifacts, nil
+}
+
+// tombstoneArtifactsTx tombstones every conversation artifact no live resource
+// still references. It writes only deleted_at/state/revision: the real bytes stay
+// until the F11/T071 purge, exactly like the T069 artifact tombstone.
+func (t *DeletionTarget) tombstoneArtifactsTx(
+	ctx context.Context, tx *sql.Tx, conversationID string,
+) error {
+	artifacts, err := t.conversationArtifactsTx(ctx, tx, conversationID)
+	if err != nil {
+		return err
+	}
+	if len(artifacts) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		ids = append(ids, artifact.ID)
+	}
+	shared, err := deletion.LiveArtifactReferences(ctx, tx, ids)
+	if err != nil {
+		return fmt.Errorf("checking the conversation artifacts for live references: %w", err)
+	}
+	unshared := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !shared[id] {
+			unshared = append(unshared, id)
+		}
+	}
+	if len(unshared) == 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE platform.artifacts
+		   SET deleted_at = now(), state = 'deleted', revision = revision + 1
+		 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, unshared); err != nil {
+		return fmt.Errorf("tombstoning the conversation artifacts: %w", err)
+	}
+	return nil
 }
 
 // affectedRunsTx selects every non-terminal Run of the conversation, top-level or
@@ -143,50 +255,17 @@ func (t *DeletionTarget) affectedRunsTx(
 func (t *DeletionTarget) detailsTx(
 	ctx context.Context, tx *sql.Tx, conversationID string,
 ) (map[deletion.Scope]any, error) {
-	objectRows, err := tx.QueryContext(ctx, `
-		SELECT a.id::text, a.object_key, a.purpose
-		  FROM platform.artifacts AS a
-		 WHERE a.id IN (
-		        SELECT input_artifact_id FROM platform.requests
-		         WHERE conversation_id = $1::uuid
-		        UNION SELECT unnest(artifact_ids) FROM platform.requests
-		         WHERE conversation_id = $1::uuid
-		        UNION SELECT input_artifact_id FROM platform.runs
-		         WHERE conversation_id = $1::uuid
-		        UNION SELECT output_artifact_id FROM platform.runs
-		         WHERE conversation_id = $1::uuid AND output_artifact_id IS NOT NULL
-		        UNION SELECT summary_artifact_id FROM platform.request_handoffs
-		         WHERE conversation_id = $1::uuid
-		        UNION SELECT i.proposal_artifact_id FROM platform.interactions AS i
-		         JOIN platform.requests AS r ON r.id = i.request_id
-		         WHERE r.conversation_id = $1::uuid
-		        UNION SELECT i.response_artifact_id FROM platform.interactions AS i
-		         JOIN platform.requests AS r ON r.id = i.request_id
-		         WHERE r.conversation_id = $1::uuid AND i.response_artifact_id IS NOT NULL
-		       )
-		 ORDER BY a.id`, conversationID)
+	conversationObjects, err := t.conversationArtifactsTx(ctx, tx, conversationID)
 	if err != nil {
-		return nil, fmt.Errorf("reading the conversation object scope: %w", err)
-	}
-	defer objectRows.Close()
-	objects := make([]map[string]any, 0, 8)
-	for objectRows.Next() {
-		var (
-			artifactID string
-			objectKey  string
-			purpose    string
-		)
-		if err := objectRows.Scan(&artifactID, &objectKey, &purpose); err != nil {
-			return nil, fmt.Errorf("reading the conversation object scope: %w", err)
-		}
-		objects = append(objects, map[string]any{
-			"artifact_id": artifactID,
-			"object_key":  objectKey,
-			"purpose":     purpose,
-		})
-	}
-	if err := objectRows.Err(); err != nil {
 		return nil, err
+	}
+	objects := make([]map[string]any, 0, len(conversationObjects))
+	for _, artifact := range conversationObjects {
+		objects = append(objects, map[string]any{
+			"artifact_id": artifact.ID,
+			"object_key":  artifact.ObjectKey,
+			"purpose":     artifact.Purpose,
+		})
 	}
 
 	requestIDs, err := t.stringColumnTx(ctx, tx, `
