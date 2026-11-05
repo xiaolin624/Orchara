@@ -1277,6 +1277,27 @@ var (
 func (r *Reader) ResolveRunnableVersion(
 	ctx context.Context, callerID, versionID string,
 ) (*Version, error) {
+	return r.resolveRunnableVersion(ctx, nil, callerID, versionID)
+}
+
+// ResolveRunnableVersionTx is ResolveRunnableVersion inside a caller-owned
+// transaction. It takes a shared row lock on the version and its application, so a
+// concurrent T070 revocation either commits first (this read then sees
+// revoked_at and refuses) or waits until the Run insert commits (the history keeps
+// its frozen version reference). A dispatch therefore cannot bind a version that
+// was revoked before its own commit.
+func (r *Reader) ResolveRunnableVersionTx(
+	ctx context.Context, tx *sql.Tx, callerID, versionID string,
+) (*Version, error) {
+	if tx == nil {
+		return nil, errors.New("a transaction is required")
+	}
+	return r.resolveRunnableVersion(ctx, tx, callerID, versionID)
+}
+
+func (r *Reader) resolveRunnableVersion(
+	ctx context.Context, tx *sql.Tx, callerID, versionID string,
+) (*Version, error) {
 	if !uuid.Valid(versionID) {
 		return nil, ErrNotVisible
 	}
@@ -1287,14 +1308,29 @@ func (r *Reader) ResolveRunnableVersion(
 		revoked  sql.NullTime
 		archived sql.NullTime
 	)
-	err := r.DB.QueryRowContext(ctx, `
+	query := `
 		SELECT v.id::text, v.application_id::text, v.version_no, v.manifest_sha256,
-		       v.manifest::text, a.owner_id::text, v.revoked_at, a.archived_at
+		       v.manifest::text, a.owner_id::text, v.revoked_at, a.archived_at,
+		       v.manifest_artifact_id::text, v.compiler_version,
+		       v.worker_image_digest, v.state_schema_version
 		  FROM platform.application_versions AS v
 		  JOIN platform.applications AS a ON a.id = v.application_id
-		 WHERE v.id = $1::uuid`, versionID,
-	).Scan(&version.ID, &version.ApplicationID, &version.VersionNo, &version.ManifestSHA256,
-		&manifest, &ownerID, &revoked, &archived)
+		 WHERE v.id = $1::uuid`
+	var err error
+	if tx != nil {
+		query += ` FOR SHARE OF v, a`
+		err = tx.QueryRowContext(ctx, query, versionID).Scan(
+			&version.ID, &version.ApplicationID, &version.VersionNo, &version.ManifestSHA256,
+			&manifest, &ownerID, &revoked, &archived, &version.ManifestArtifactID,
+			&version.CompilerVersion, &version.WorkerImageDigest, &version.StateSchemaVersion,
+		)
+	} else {
+		err = r.DB.QueryRowContext(ctx, query, versionID).Scan(
+			&version.ID, &version.ApplicationID, &version.VersionNo, &version.ManifestSHA256,
+			&manifest, &ownerID, &revoked, &archived, &version.ManifestArtifactID,
+			&version.CompilerVersion, &version.WorkerImageDigest, &version.StateSchemaVersion,
+		)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotVisible
 	}
@@ -1316,4 +1352,11 @@ func (r *Reader) ResolveRunnableVersion(
 	}
 	version.Manifest = json.RawMessage(manifest)
 	return &version, nil
+}
+
+// RunPolicy exposes the run budget/currency/active-time limit extraction to the
+// published-run path (F08/T074). It reuses the debug path's validation so the two
+// run kinds cannot disagree about what a definition's policy means.
+func RunPolicy(definition map[string]any) (string, string, int64, *ExecutableError) {
+	return debugPolicy(definition)
 }

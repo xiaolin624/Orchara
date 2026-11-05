@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>会话与请求 · Orchara</title>
+    <link rel="stylesheet" href="/assets/canvas.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <strong>Orchara</strong>
+      <nav>
+        <a href="/apps">应用</a>
+        <a href="/chat">会话</a>
+        <a href="/runs">运行</a>
+        <a href="/personal-data">个人数据</a>
+        <a href="/login" id="logout-link">退出</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="panel" id="conversation-panel">
+        <h1>会话</h1>
+        <p class="hint">
+          每个会话只有一个逻辑执行槽：最早的未完成请求占槽，后续普通请求按顺序排队。
+          固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。
+        </p>
+        <div class="row">
+          <button type="button" id="conversation-create">新建会话</button>
+          <span id="conversation-status" class="status"></span>
+        </div>
+        <ul id="conversation-list" aria-label="我的会话"></ul>
+      </section>
+
+      <section class="panel" id="chat-panel" hidden>
+        <h2>当前会话 <code id="chat-conversation-id"></code></h2>
+
+        <div class="row">
+          <label for="chat-version-id">固定版本（可选）</label>
+          <input id="chat-version-id" type="text" placeholder="application_version_id" />
+          <span class="hint">填写后直接使用该发布版本，不经过模型匹配。</span>
+        </div>
+
+        <form id="chat-message-form">
+          <label for="chat-message">需求</label>
+          <textarea id="chat-message" rows="4" maxlength="32000" required></textarea>
+
+          <fieldset id="chat-handoff">
+            <legend>交接确认（可选，仅跨应用时使用）</legend>
+            <label for="chat-handoff-source-runs">来源 Run（逗号分隔）</label>
+            <input id="chat-handoff-source-runs" type="text" />
+            <label for="chat-handoff-summary">交接摘要（最多 8000 字）</label>
+            <textarea id="chat-handoff-summary" rows="2" maxlength="8000"></textarea>
+            <label class="checkbox">
+              <input id="chat-handoff-confirmed" type="checkbox" />
+              我确认只交接上面列出的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
+            </label>
+          </fieldset>
+
+          <fieldset id="chat-attachments">
+            <legend>附件（最多 5 个，均为真实上传并封存的 artifact）</legend>
+            <input id="chat-attachment-input" type="file" />
+            <button type="button" id="chat-attachment-upload">上传附件</button>
+            <span id="chat-attachment-status" class="status"></span>
+            <ul id="chat-attachment-lines"></ul>
+          </fieldset>
+
+          <button type="submit" id="chat-submit">提交需求</button>
+          <span id="chat-submit-status" class="status"></span>
+        </form>
+
+        <section id="request-panel" hidden>
+          <h3>请求</h3>
+          <p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
+          <p id="chat-handling"></p>
+          <p id="chat-run-link"></p>
+          <p id="chat-queue-status"></p>
+          <button type="button" id="chat-cancel">取消该请求</button>
+        </section>
+
+        <section id="queue-panel">
+          <h3>会话队列</h3>
+          <ol id="queue-list"></ol>
+        </section>
+
+        <section id="messages-panel">
+          <h3>会话消息</h3>
+          <ul id="chat-messages"></ul>
+        </section>
+      </section>
+    </main>
+
+    <script src="/assets/app.js"></script>
+    <script src="/assets/attachments.js"></script>
+    <script src="/assets/chat.js"></script>
+  </body>
+</html>

@@ -28,6 +28,7 @@ import (
 	"orchara/platform/internal/modelregistry"
 	"orchara/platform/internal/objectstore"
 	"orchara/platform/internal/policy"
+	"orchara/platform/internal/requests"
 	"orchara/platform/internal/toolruns"
 	"orchara/platform/internal/toolversions"
 )
@@ -80,8 +81,12 @@ type Server struct {
 	// deleted resource revision, the tombstone transaction and the affected-run
 	// cancellation fan-out. Purge execution is T071/T072's.
 	deletions *deletion.Service
-	objects   *objectstore.Store
-	signer    *objectstore.Signer
+	// requests is the F08/T074 conversation/request aggregate: the ordered
+	// per-conversation slot, idempotent submission, the explicit fixed-version
+	// dispatch and the message projection.
+	requests *requests.Service
+	objects  *objectstore.Store
+	signer   *objectstore.Signer
 	// manifest carries the deployment inputs (worker image digest, runtime lock
 	// path) the validate endpoint needs. Absent inputs are not a startup error;
 	// the endpoint answers 503 compiler_unconfigured instead.
@@ -178,6 +183,7 @@ func New(deps Deps) *Server {
 		notifier = background.NopNotifier{}
 	}
 	authorizer := policy.New(deps.Service.DB)
+	catalogReader := catalog.New(deps.Service.DB, authorizer)
 	executionService := execution.New(
 		deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, deps.ExecutionLeaseTTL,
 	)
@@ -220,6 +226,14 @@ func New(deps Deps) *Server {
 		deps.Service.DB, deps.Objects,
 		catalog.New(deps.Service.DB, authorizer), deps.MemoryCandidateTTL,
 	)
+	// F08/T074: the conversation/request aggregate. Its cancel seam is the same
+	// F03/T036 path the deletion foundation uses, so cancelling a dispatched
+	// request and deleting a conversation cannot diverge.
+	requestService := requests.New(deps.Service.DB, catalogReader, deps.Objects)
+	requestService.CancelRun = func(ctx context.Context, callerID, runID string) error {
+		_, err := executionService.Cancel(ctx, callerID, runID)
+		return err
+	}
 	// F11/T069: the one deletion foundation every resource type registers with.
 	// Cancellation is the existing F03/T036 path (Owner-only, idempotent); the
 	// foundation does not reimplement the cancel state machine.
@@ -231,6 +245,9 @@ func New(deps Deps) *Server {
 	deletionService.Register(artifacts.NewDeletionTarget(userArtifactService))
 	deletionService.Register(memory.NewDeletionTarget(memoryService))
 	deletionService.Register(knowledge.NewDeletionTarget(knowledgeService))
+	// F08/T074: conversations now have an authority, so the T069 conversation
+	// route stops being a permanent 404 and becomes a real tombstone+job.
+	deletionService.Register(requests.NewDeletionTarget(requestService))
 	// F11/T071: the physical purge unit of work is enqueued in the delete
 	// transaction. The seam keeps internal/deletion independent of
 	// internal/background (whose completion guard consumes the deletion package),
@@ -249,7 +266,7 @@ func New(deps Deps) *Server {
 	return &Server{
 		service:           deps.Service,
 		policy:            authorizer,
-		catalog:           catalog.New(deps.Service.DB, authorizer),
+		catalog:           catalogReader,
 		jobs:              jobsController,
 		artifacts:         background.NewArtifactStore(deps.Service.DB, deps.Objects, deps.Signer, deps.PublicURL, notifier),
 		execution:         executionService,
@@ -267,6 +284,7 @@ func New(deps Deps) *Server {
 		preview:           newPreviewHub(),
 		memory:            memoryService,
 		deletions:         deletionService,
+		requests:          requestService,
 		objects:           deps.Objects,
 		signer:            deps.Signer,
 		manifest:          deps.Manifest,
@@ -519,6 +537,19 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/conversations/{conversation_id}", s.handleDeleteConversation)
 	mux.HandleFunc("GET /api/v1/deletions/{deletion_id}", s.handleGetDeletion)
 
+	// F08/T074: conversations, the ordered request queue and the message timeline.
+	// The create/submit/cancel POSTs need CSRF (cookie) and the application:write
+	// scope (API key); the reads need application:read. The extra facts the
+	// additionalProperties:false schemas have no field for travel as documented
+	// response headers (X-Request-*).
+	mux.HandleFunc("POST /api/v1/conversations", s.handleCreateConversation)
+	mux.HandleFunc("GET /api/v1/conversations", s.handleListConversations)
+	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}", s.handleGetConversation)
+	mux.HandleFunc("GET /api/v1/conversations/{conversation_id}/messages", s.handleListMessages)
+	mux.HandleFunc("POST /api/v1/requests", s.handleSubmitRequest)
+	mux.HandleFunc("GET /api/v1/requests/{request_id}", s.handleGetRequest)
+	mux.HandleFunc("POST /api/v1/requests/{request_id}/cancel", s.handleCancelRequest)
+
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
@@ -560,6 +591,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /personal-data", s.staticPage("personal-data.html"))
 	mux.HandleFunc("GET /assets/personal-data.js",
 		s.staticPage(filepath.Join("assets", "personal-data.js")))
+	// F08/T074: the conversation/queue page and its pure client helpers. The page
+	// path is a compile-time constant; the conversation id lives in the page's own
+	// select control, never in the URL, so no request input reaches a file path.
+	mux.HandleFunc("GET /chat", s.staticPage("chat.html"))
+	mux.HandleFunc("GET /assets/chat.js", s.staticPage(filepath.Join("assets", "chat.js")))
 	// F13A/T065: the creator's evaluation progress page. The evaluation id is in
 	// the path so a refresh is the same shareable view; the page reads the
 	// non-contract progress surface (ADR 0019).
