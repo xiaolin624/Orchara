@@ -2,9 +2,10 @@
 
 - 任务：T076 / GitHub #77（父 F11），"删除后恢复与组件历史不能让内容复活"
 - 分支：`t/t076-no-resurrection`；基线 `integration/t068-t082` @ `affc12c`；
-  合并提交见 §5
+  合并提交 `6b85d1a`（集成 tip `d24cacb`，含 T079/T080）
 - 状态：**passed**（OTel/metrics 专用行 **partial**：本仓库无 tracer/metrics SDK，
-  交付的是只读 operator 告警面 + 退出码，见 ADR 0032 §2）
+  交付的是只读 operator 告警面 + 退出码，见 ADR 0032 §2；ADR 因集成树已占用
+  0029/0031 而按名重编号为 0032）
 - 边界：第三方组件自有存储、备份介质、用户已下载副本**不由平台擦除**；T072 只把
   它们登记为 external/not_erasable，本票的告警报文重复该边界（§1.4）。备份工具本身
   属 T072，本票不做恢复工具。
@@ -175,12 +176,16 @@ python -m pytest tests/tooling tests/f03/test_t038_recover.py tests/f03/test_t03
 Go/规格门禁：
 
 ```
-go build ./...            -> exit 0
+go build ./...            -> exit 0（合并前后各一次）
 go vet ./...              -> exit 0
-go test ./...             -> exit 0（35 ok / 6 no-test / 0 FAIL；internal/deletion 无 Go 单测，由真实栈用例覆盖）
+go test ./...             -> exit 0（35 ok / 6 no-test / 0 FAIL；无 FAIL 行；internal/deletion 无 Go 单测，由真实栈用例覆盖）
 gofmt -l .                -> 无输出（clean）
 python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot match the manifest"，exit 0
 ```
+
+合并后复跑（merge commit `6b85d1a`）：`pytest tests/f11` **81 passed in 803.59s**
+（13:23）；`go build ./...` / `go vet ./...` / `go test ./...` / `gofmt -l .` /
+`sync_spec --check` 全部 exit 0 / clean。
 
 ## 4 not_run / blocked
 
@@ -194,7 +199,13 @@ python tools/sync_spec.py --check -> "no drift: spec copy and contract snapshot 
 
 ## 5 合并
 
-见最终汇报（`git merge integration/t068-t082` 的 merge commit）。
+最终 `git merge integration/t068-t082` 的 merge commit 为 **`6b85d1a`**（集成 tip
+`d24cacb`，含 T079/T080）。唯一冲突在 `product/PROGRESS.md`：保留双方新增的 T079 与
+T076 行，并保留集成侧已移动的 T078 小节（丢弃本分支旧位置的重复副本）；本票 ADR 因
+集成树已占用 0029（T079）与 0031（T080）而重编号为 **0032**（文件名
+`docs/adr/0032-no-resurrection-and-cleanup-alerts.md`，merger 可按名再编号）。迁移
+无冲突：T079 已占 `0050_router_interactions.sql`，本票不新增迁移。合并后树干净，
+`go build ./...` exit 0，`pytest tests/f11` 复跑见 §3.z 末尾。
 
 ## 6 与后续票的接口
 
