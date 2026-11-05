@@ -192,8 +192,17 @@ def validate(record: object) -> list[str]:
             cleanup = system.get("cleanup")
             if not isinstance(cleanup, dict):
                 errors.append(f"systems.{name}.cleanup is missing")
-            elif not isinstance(cleanup.get("residual_body_copies"), list):
-                errors.append(f"systems.{name}.cleanup.residual_body_copies must be a list")
+            else:
+                if not isinstance(cleanup.get("residual_body_copies"), list):
+                    errors.append(f"systems.{name}.cleanup.residual_body_copies must be a list")
+                if "unverifiable_copies" in cleanup and not isinstance(
+                    cleanup.get("unverifiable_copies"), list
+                ):
+                    errors.append(f"systems.{name}.cleanup.unverifiable_copies must be a list")
+                if "deletion_sufficient" in cleanup and not isinstance(
+                    cleanup.get("deletion_sufficient"), bool
+                ):
+                    errors.append(f"systems.{name}.cleanup.deletion_sufficient must be a boolean")
             if not system.get("commands"):
                 errors.append(f"systems.{name}.commands must record the commands that produced it")
         else:
@@ -222,9 +231,20 @@ def validate(record: object) -> list[str]:
             if system.get("status") != "run":
                 errors.append(f"adopt requires systems.{name} to have run")
                 continue
-            residual = (system.get("cleanup") or {}).get("residual_body_copies")
+            cleanup = system.get("cleanup") if isinstance(system.get("cleanup"), dict) else {}
+            residual = cleanup.get("residual_body_copies")
             if residual:
                 errors.append(f"adopt is refused because systems.{name} still holds body copies: {residual}")
+            unverifiable = cleanup.get("unverifiable_copies")
+            if unverifiable:
+                errors.append(
+                    f"adopt is refused because systems.{name} cannot prove its body copies purgeable: "
+                    f"{unverifiable}"
+                )
+            if cleanup.get("deletion_sufficient") is False:
+                errors.append(
+                    f"adopt is refused because systems.{name} declares its deletion insufficient"
+                )
         mem0 = systems.get("mem0") if isinstance(systems.get("mem0"), dict) else {}
         if mem0.get("evidence_level") != "real":
             errors.append("adopt requires real (not stub) evidence for Mem0")
@@ -232,6 +252,39 @@ def validate(record: object) -> list[str]:
         f11 = gates.get("f11") if isinstance(gates.get("f11"), dict) else {}
         if f11.get("passed") is not True:
             errors.append("adopt requires the F11 deletion-governance gate to have passed")
+        component = (
+            gates.get("f11_component_deletion")
+            if isinstance(gates.get("f11_component_deletion"), dict)
+            else {}
+        )
+        if component.get("passed") is not True:
+            errors.append(
+                "adopt requires the F11 component-deletion gate to have passed: the "
+                "component's own stores must be provably purgeable"
+            )
+
+    # A record cannot both enumerate body copies it could not purge and claim the
+    # component deletion gate passed: the two facts contradict each other. This is
+    # the F11.05/T076 rule made executable on the record itself, not only on the
+    # verdict.
+    decision_gates = decision.get("gates") if isinstance(decision.get("gates"), dict) else {}
+    component_gate = (
+        decision_gates.get("f11_component_deletion")
+        if isinstance(decision_gates.get("f11_component_deletion"), dict)
+        else {}
+    )
+    if component_gate.get("passed") is True:
+        for name in ("pg", "mem0"):
+            system = systems.get(name) if isinstance(systems.get(name), dict) else {}
+            cleanup = system.get("cleanup") if isinstance(system.get("cleanup"), dict) else {}
+            unpurged = list(cleanup.get("residual_body_copies") or []) + list(
+                cleanup.get("unverifiable_copies") or []
+            )
+            if unpurged:
+                errors.append(
+                    "decision.gates.f11_component_deletion cannot pass while "
+                    f"systems.{name} still holds unpurged body copies: {unpurged}"
+                )
 
     stub_real = record.get("stub_real")
     if not isinstance(stub_real, dict):

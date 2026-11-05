@@ -49,7 +49,7 @@ commands:
   bootstrap        create the first local administrator (password read from stdin)
   handover         move unfinished service-account responsibility to another administrator
   background-jobs  enqueue fixed-handler background work (background-jobs enqueue --help)
-  deletion         export and replay the append-only backup deletion ledger (deletion --help)
+  deletion         export/replay the backup deletion ledger, and the cleanup alert surface (deletion --help)
   evaluations      enqueue one evaluation and its application_evaluate job (evaluations enqueue --help)
   runs             park expired leases and recover a parked Run with audited evidence (runs --help)
   catalog          rebuild/index/status the authorized purpose-catalog projection (catalog --help)
@@ -104,12 +104,27 @@ func usageErrorf(format string, args ...any) error {
 	return &usageError{message: fmt.Sprintf(format, args...) + "\n\n" + usage}
 }
 
+// exitCodeError carries a decided process exit code that is not a failure. The
+// F11/T076 alert surface uses it: "the pass ran and found an alert" is a signal
+// (exit 3), distinct from a command failure (1) and a usage problem (2).
+type exitCodeError struct {
+	code    int
+	message string
+}
+
+func (e *exitCodeError) Error() string { return e.message }
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		var usageProblem *usageError
 		if errors.As(err, &usageProblem) {
 			fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", usageProblem)
 			os.Exit(2)
+		}
+		var decided *exitCodeError
+		if errors.As(err, &decided) {
+			fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", decided.message)
+			os.Exit(decided.code)
 		}
 		fmt.Fprintf(os.Stderr, "orchara-admin: %v\n", err)
 		os.Exit(1)
