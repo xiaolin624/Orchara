@@ -1,4 +1,4 @@
-﻿# ADR 0010：F10 知识摄取的存储偏差、非契约检索面与激活边界
+# ADR 0010：F10 知识摄取的存储偏差、非契约检索面与激活边界
 
 - 状态：已接受
 - 日期：2026-11-04
@@ -103,6 +103,9 @@ GET /api/v1/knowledge-citations/{chunk_id}
   任一不满足都是同一个 **404 `resource_not_found`**，不带正文、不区分"不存在/已撤销/
   旧版本/他人的"，避免枚举。这是 ROUTING §3"文档撤销后打开引用显示不可用、不继续提供
   缓存正文"的直接实现。
+  （T061 起该谓词改为"活动索引版本"形状，见 ADR 0018 §4；2026-11-05 复核后它只由
+  `internal/knowledge/readable_chunk.go` 的 `currentReadableChunkSQL` 定义，检索、
+  引用打开与 T067 缓存命中复检共用同一片段，避免权限条件三处漂移。）
 
 ```
 GET /api/v1/knowledge-documents/{document_id}/diagnostics

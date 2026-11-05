@@ -70,11 +70,16 @@ T055 交付了"SQL 先做 ACL/当前版本过滤，再对有界候选集排序"�
 4. 行的组件与重算键逐项比较；不同 → 丢弃整行 → miss（`components_changed`）。
 5. 过期 → 删除 → miss（`expired`）。**TTL 不是权限保证**：未过期也要执行第 6 步。
 6. 对 `items` 中**每一个** chunk 执行一条 SQL 复检（与检索/引用谓词一致）：
-   owner ACL、KB/文档 tombstone、`state='ready'`、`kd.active_revision = kd.revision`、
-   `kc.document_revision = kd.revision`、body artifact ready/未删除/与 KB 同 owner；
+   owner ACL、KB/文档 tombstone、`state='ready'`、`kd.active_index_id` 指向的索引版本
+   `ready` 且 `iv.id = kc.index_version_id`、`kc.document_revision = iv.document_revision`、
+   body artifact ready/未删除/与 KB 同 owner；
    并要求 body artifact 的 `sha256` 与 chunk 的 document/revision/chunk_no/artifact id
    ｜全部等于缓存行记录的值。任一不满足（缺行、重复、字段不一致）→ 删除整行 → miss
    （`item_unreadable`/`item_mismatch`）。
+   该谓词自 2026-11-05 复核修复起由 `internal/knowledge/readable_chunk.go` 的
+   `currentReadableChunkSQL` **唯一定义**，检索（`rankRetrieval`）与引用打开（`GetChunk`）
+   复用同一片段——此前三处各抄一份，T061 激活切换时须同时改三份，权限条件有漂移风险。
+   缓存这一处只多传 owner 参数位（`$3`）与自己的候选集条件。
 7. 只有全部通过才返回缓存正文，并 `hit_count+1`/`last_hit_at=now()`。
 
 因此：**异步驱逐只是优化**。删除/撤权先在权威表生效，旧键不再被查找；即使旧行还在
