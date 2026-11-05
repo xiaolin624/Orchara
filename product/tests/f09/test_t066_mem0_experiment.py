@@ -355,7 +355,9 @@ def test_the_pg_baseline_measures_recall_latency_storage_and_deletion_cleanup(
     assert cleanup["logical"]["hits"] == [], cleanup["logical"]
     assert cleanup["tombstone"]["deleted_at"], cleanup["tombstone"]
     assert cleanup["deletion_job"]["state"] == "pending"
-    assert "object" in cleanup["deletion_job"]["remaining_scopes"]
+    # F11/T069: the product's remaining scopes are the contract vocabulary; the
+    # experiment still shows the sealed object as the outstanding copy.
+    assert "object_store" in cleanup["deletion_job"]["remaining_scopes"]
     # The sealed body is still one real file: T058 stops recall synchronously and
     # leaves the physical purge to F07. The experiment must show that, not hide it.
     assert cleanup["object_files"], cleanup
