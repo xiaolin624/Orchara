@@ -1881,28 +1881,47 @@ T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半�
 
 ## F04B/T083 运行视图半：调试页节点状态表（condition 端口 / skipped / join）（2026-11-05）
 
-T083（GitHub #84）运行视图半已交付，状态 **`partial`**：页面、纯函数、页面结构与 DOM 测试、真实线性 Run 的
-HTTP E2E 通过；**真实条件/join/skipped 执行 E2E `not_run`**（合并运行时后测试就绪，但编排者要求避免与另一个
-agent 的 `pytest tests/f08` 并发使用共享 WSL/runsc 栈）。证据：`reports/f04b/T083-runview.md`；分支
-`t/t083-runview`（worktree `E:\Orchara-wt\t083-runview`），基线 `ea56392`，结束合并集成分支 `111e2c2`
-→ 合并提交 **`a050e2f`**。
+T083（GitHub #84）运行视图半已交付，状态 **`passed`**：页面、纯函数、页面结构与 DOM 测试、真实线性 Run 的
+HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** 全部通过（`pytest tests/f04b/test_t083_runview.py`
+**7 passed in 42.69s**，全局 pytest 锁下真实 PG/API/mTLS/supervisor/runsc）。证据：`reports/f04b/T083-runview.md`；
+分支 `t/t083-runview`（worktree `E:\Orchara-wt\t083-runview`），基线 `ea56392`，结束合并集成分支 `111e2c2`
+→ 合并提交 **`a050e2f`**，随后 fast-forward 到 `491cb78`（含 run-view 合并 `c21d45e` 与 T084）。
 
 | 交付点 | 结果 |
 |---|---|
 | 节点状态表 | **passed**：`apps/web/src/assets/runview.js` 新纯函数 `aggregateNodeStates`（attempt 优先 + 状态秩、乱序/重放幂等、skipped 独立）/`buildRunViewModel`（拓扑序、每节点一行、attempt、错误码、定义外节点追加）；`debug.html` 表格 6 列 |
-| condition 端口 / join 信封 | **passed（渲染层）**：条件 data artifact `{port,matched_case}` → “端口 yes（第 1 个 case/默认分支）”；join 信封按 required+optional 顺序显示 `source=status/value 摘要(<details>)/error_code`；真实条件 Run E2E `not_run`（同上） |
-| skipped 视觉 | **passed（渲染层）**：`state-skipped`（灰/⏭/降透明）vs `state-failed`（红/✕/加粗）+ 图例；真实 skipped 事件 E2E `not_run` |
+| condition 端口 / join 信封 | **passed**：条件 data artifact `{port,matched_case}` → “端口 yes（第 1 个 case/默认分支）”；join 信封按 required+optional 顺序显示 `source=status/value 摘要(<details>)/error_code`；**真实条件 Run E2E**：`port=yes/matched_case=0`、`left:succeeded(value)/right:skipped`、`left=成功`/`right=已跳过`、join `succeeded` 恰一次 |
+| skipped 视觉 | **passed**：`state-skipped`（灰/⏭/降透明）vs `state-failed`（红/✕/加粗）+ 图例；**真实 E2E** 的 owner-only SSE 回放中 `right=skipped` 且 `left` 无 skipped |
 | run 失败/取消 | **passed**：`formatRunError`（state/稳定码/severity/已知码提示；202 永不写成 stopped）；取消按钮 `POST /runs/{id}/cancel` + CSRF，DOM harness 断言 202 意图文案与终态禁用；`/runs` 链接 |
 | 断线/410 | **partial**：复用既有 `runs.js` SSE（`Last-Event-ID` 续传/去重/410 snapshot 文案），仅加可选 `onEvent` 钩子；事件缺失时表格用持久 node-results 并标注“由节点结果推断/无状态事件”，不伪造历史；真实 410 过期 E2E `not_run` |
 | 数据面 | **非契约**：`node.status` 契约事件 + condition/join **node data artifact** 约定；读取链 `node-results`(非契约) → `artifacts/{id}/content`(契约)。未改 OpenAPI/`contracts/**`/`docs/spec/**`；新增仅 `GET /assets/runview.js` 静态路由 |
 
 门禁：`node --check`（debug/runview/runs）exit 0；`node tests/f04b/runview.test.mjs` **PASS 6**；
-`pytest tests/f04b` 合并前 **6 passed, 1 skipped in 46.34s**（含真实线性 start→python→end Run 的 HTTP E2E，
-真实 PG/API/mTLS/supervisor/runsc；1 skip = 条件 E2E，当时运行时未合入）；`sync_spec --check` no drift；
-`go build ./...`、`go test ./internal/api`、`gofmt -l internal cmd tools` 干净；相关页面回归
-`tests/f06/test_t044_pages.py` 4 passed、`tests/f03` 三个页面模块 14 passed。合并 `111e2c2` 后 fast/Go 门禁复跑全绿。
-**not_run**：真实条件/join/skipped E2E（禁止并发 pytest，命令已给）、真实 410 过期、真实取消 E2E（T036 已覆盖）、
-浏览器 DOM/Playwright（P2，非门禁）、真实失败节点经 run-view 的 E2E。
+合并前 `pytest tests/f04b` **6 passed, 1 skipped in 46.34s**（含真实线性 start→python→end Run 的 HTTP E2E；
+1 skip = 条件 E2E，当时运行时未合入）；**合并后**（`491cb78`，全局 pytest 锁）
+`pytest tests/f04b/test_t083_runview.py -q -rs` **7 passed in 42.69s**（含真实条件/join/skipped E2E）；
+`sync_spec --check` no drift；`go build ./...`、`go test ./internal/api`、`gofmt -l internal cmd tools` 干净；
+相关页面回归 `tests/f06/test_t044_pages.py` 4 passed、`tests/f03` 三个页面模块 14 passed。
+**not_run**：真实 410 过期、真实取消 E2E（T036 已覆盖）、浏览器 DOM/Playwright（P2，非门禁）、
+真实失败节点经 run-view 的 E2E、`pytest tests/f02a` 全量（并发争用下未取得可信结果）。
+
+## F14/T090 冻结动态候选路由的基线（dev-stub 真实控制面）（2026-11-06）
+
+T090（GitHub #91，F14）已交付全部**不依赖模型**的必交项，状态 **`blocked`**：本机无模型
+凭据/端点/权重、无训练 GPU，同基模强提示基线与任何训练不可运行；不声称训练已运行。
+证据：`reports/f14/T090-routing-baseline.md` / `.json`、`experiments/routing_sft/freeze/
+T090-freeze.{json,md}`；分支 `t/t090-routing-baseline`（worktree `E:\Orchara-wt\t090`），
+基线 `0deeab9`，merge `integration/t083-t091`（`491cb78`）→ 合并提交 `1d94984`。
+
+| 项 | 内容 |
+|---|---|
+| 冻结清单 | 复用 T084 语料不复制：`registry_sha256=491e4f25…`、`dataset_digest=9128080a…`、逐文件 sha256；held-out=frozen_test 25 例（18 family，禁止调参）、dev 9 例仅观察；显式 `retrieval.not_used=true`（无 KB/embedding，不伪造 revision）；dev-stub 逐处标注；环境 git head/Python 3.12.2/Go 1.27.3/OS + 运行时 PG 16.4 |
+| 目录卡 | 冻结两套：T084 实际目录（sales 卡=`f02a.full_card()`，purpose `summarise sales`）与产品模板卡探针（`templates.CapabilityCard`）；逐卡 sha256、`definitions_sha256`；版本 UUID/manifest sha 由真实编译器生成，记在基线 JSON |
+| 泄漏检查 | 独立检查器 `tests/f14/routing_freeze.py`：26 family 不跨 split/单元格；跨 split 225 对消息完全/规范化重复 0；近重复阈值 0.75、实测最大 0.5、0 对；34/34 `self_created`+`not_applicable`，附件为公开样例逐字节副本 |
+| 两臂基线 | 复用 T084 runner + `t079` 真实 REST/maintenance。臂 A（复现 T084 目录）frozen 25/25、dev 9/9，accuracy 1.0、误自动执行 0、澄清 13/13、候选召回 1.0，`t084_comparison.identical=true`；臂 B（仅换产品模板 sales 卡）frozen 21/25、dev 8/9，5 个错误全部 retrieval 类（4 例工资单意图被“生成”2-gram 过度召回为 sales，1 例模板卡缺 `aggregation` 未召回），无 false auto、`payroll` 版本零泄漏 |
+| 错误分类/stop-go | `model_semantic=not_measured`（无模型）；`stop_training_fix_the_measured_layers_first`（provisional），依据 `TRAINING-EXPERIMENT.md:40/:48`、`ROUTING-MEMORY-KNOWLEDGE.md:49`；未虚增语料规模（25 < EVALUATION 建议 100，明写） |
+| 门禁 | `python -m pytest tests/f14 -q` **13 passed in 73.36s**（12 冻结/泄漏 + 1 真实栈两臂基线）；merge `integration/t083-t091`（`b343f7b` → `9c062ec`）后复跑 **13 passed in 76.66s**；`pytest tests/f08/test_t084_corpus.py -q` **4 passed**（T084 语料未破坏）；`python tools/sync_spec.py --check` **no drift**；全量 `pytest tests/f08` **not_run**（未改产品代码/T084 语料，共享 runsc 栈被其它集成任务长期占用）；无 Go/契约/spec/迁移改动 |
+| 边界/not_run | 同基模强提示基线 `blocked`（无凭据/端点/权重/预算）；规则 vs 强提示比较 `not_run`；训练 `not_run`（无 GPU/基模）；T068 真实发布未重跑（T084 证据）；全量 `pytest tests/f08` 与浏览器 DOM、sandbox 执行 `not_run/not_used` |
 
 ## 记录模板
 
@@ -1915,3 +1934,21 @@ observed result (stub / real 分开):
 remaining blockers + independent next tasks:
 spec changes + reason:
 ```
+
+## F04B/T086 模型节点：单次受控生成与结构输出校验（2026-11-06）
+
+T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。证据：`reports/f04b/T086-model-node.md`；分支 `t/t086-model-node`（worktree `E:\Orchara-wt\t086`）。
+
+| 交付点 | 结果 |
+|---|---|
+| graph 路径 model 节点 | **passed**：`hasGraphConstructs` 纳入 `model`；`graphNodeTypes` + `parseModelConfig` 复验闭集 config（多键/缺键/非 UUID/非法 response_mode → `bad_config`）；移除 `node_unsupported_model` |
+| 一次受控生成 | **passed**：一次 `InvokeCapability(kind=model)`（`task=model`、`messages`，json 模式 `response_schema=node.output_schema`），无 tools/循环/隐藏重试；真实栈 `platform.operations` 恰 1 条、`operation_attempts` 恰 1 条 |
+| prompt 严格 `{{name}}` | **passed**：只替换已绑定输入；属性链/表达式/未绑定/不配对 → `node_prompt_invalid` 定位 `/nodes/<i>/config/prompt_template`，零 operation；真实栈证明 run 的其它授权输入不进入 prompt |
+| 输出与 Schema 失败独立 | **passed**：text `{text}` / json `structured` 都由平台按 `node.output_schema` 复验；失败 → `node_output_invalid`、无 data artifact、end skipped、run failed、不重试 |
+| 固定 profile | **passed**：执行前 `Facts.ModelProfile` 复验 passed/未撤销（`model_profile_unavailable`，零 operation）；真实栈中途撤销 profile 用例通过；已撤销 profile 的新草稿在 validate/debug 提交被 `dependency_revoked`/422 拒绝 |
+| 预算/usage | **passed（ledger）**：`usage_ledger` 三行（reserve/release/charge，零价 dev stub 金额 0）；`usage.updated` SSE 事件本构建无 emitter → `not_run` |
+| 恢复接缝 | **passed（接口+Go 单测）**：已完成 model 节点 data 复用、0 次 capability 调用；真实 resume 场景留 T087/T091 |
+| 画布 | **passed**：`model` palette/panel（固定 profile、prompt 编辑+插入变量、response_mode、响应 Schema=output_schema）、导出白名单 `model_profile_version,prompt_template,response_mode`；bundle 已重建提交 |
+| 回归/门禁 | `pytest tests/f04b/test_t086_model_node.py tests/f04b/test_t086_model_canvas.py`、`pytest tests/f06`、`go build/vet/test ./...`、`gofmt -l internal cmd tools`、`python tools/sync_spec.py --check`（原始 tail 见报告 §6） |
+
+无迁移；未改 `docs/spec/**`、`contracts/**`。**not_run**：真实厂商模型、`usage.updated` 事件、T087 审批拒绝/过期、真实二次 exec resume、浏览器 DOM。

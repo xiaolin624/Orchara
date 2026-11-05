@@ -1,0 +1,863 @@
+{
+  "schema": "orchara.t090-routing-freeze/1",
+  "ticket": "T090",
+  "github_issue": 91,
+  "feature": "F14",
+  "status": "blocked",
+  "generated_at": "2026-11-06T00:34:22+0800",
+  "scope": {
+    "target": "dynamic, authorization-scoped capability-card routing decisions (select / clarify / no_match), not fixed application-id classification",
+    "delivered_without_a_model": [
+      "frozen corpus + held-out isolation + freeze manifest",
+      "paraphrase/duplicate leakage checks",
+      "per-case dev/frozen baseline through the real REST routing control plane",
+      "error taxonomy and a provisional stop/go recommendation"
+    ],
+    "blocked_without_a_model": [
+      "same-base-model strong-prompt arm",
+      "rule/retrieval-prompt vs strong-prompt comparison",
+      "any training run (no GPU, no base-model weights)"
+    ]
+  },
+  "corpus": {
+    "source_dir": "product/tests/f08/routing/datasets",
+    "registry_path": "product/tests/f08/routing/datasets/registry.json",
+    "corpus_version": "1.0.0",
+    "frozen_at": "2026-11-05",
+    "registry_sha256": "491e4f25b6f8fbf91a8d345d1c260e2f576411978058cb3ab02e21351e39e42e",
+    "dataset_digest": "9128080ae557062f6ff5c0e2c96d999bad0e5bb8e52a0061cf554fb0e13071d2",
+    "case_count": 34,
+    "splits": [
+      "dev",
+      "frozen_test"
+    ],
+    "cells": [
+      "unique",
+      "ambiguous",
+      "missing_input",
+      "no_match",
+      "unseen_application",
+      "unauthorized_candidate"
+    ],
+    "files": [
+      {
+        "path": "ambiguous.json",
+        "sha256": "73433b4d8313a237391078f463bd7b41e6ceb34ac071aea0da20aa8794704e04",
+        "size": 4013
+      },
+      {
+        "path": "inputs/sales_sample.csv",
+        "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+        "size": 114
+      },
+      {
+        "path": "missing_input.json",
+        "sha256": "9d8ee8d09ff8840307549ed739d7dc6cfe5e08f8d79d97e29911dd3768bebbc5",
+        "size": 6144
+      },
+      {
+        "path": "no_match.json",
+        "sha256": "1032c870b670dcf9cba81aca4d9d5b0186ad12861d713f864dd8efac37050997",
+        "size": 2852
+      },
+      {
+        "path": "unauthorized_candidate.json",
+        "sha256": "6701dabaee58b2d7fdd90013055e5462fd1d9127e8d091c81ea17d7d17a9f76d",
+        "size": 3463
+      },
+      {
+        "path": "unique.json",
+        "sha256": "389b5acddf74a821383e50cc580aa815aef126aeed54b5188a4bdac49f6fead2",
+        "size": 6543
+      },
+      {
+        "path": "unseen_application.json",
+        "sha256": "947c52b7ec8bd9995d0079de723f6ef8120061dfce173dcb89320f7d1f2698a9",
+        "size": 3826
+      }
+    ],
+    "split_counts": {
+      "dev": {
+        "cases": 9,
+        "families": 8,
+        "cells": {
+          "ambiguous": {
+            "cases": 1,
+            "families": 1
+          },
+          "missing_input": {
+            "cases": 3,
+            "families": 3
+          },
+          "no_match": {
+            "cases": 1,
+            "families": 1
+          },
+          "unauthorized_candidate": {
+            "cases": 1,
+            "families": 1
+          },
+          "unique": {
+            "cases": 2,
+            "families": 1
+          },
+          "unseen_application": {
+            "cases": 1,
+            "families": 1
+          }
+        }
+      },
+      "frozen_test": {
+        "cases": 25,
+        "families": 18,
+        "cells": {
+          "ambiguous": {
+            "cases": 4,
+            "families": 3
+          },
+          "missing_input": {
+            "cases": 5,
+            "families": 3
+          },
+          "no_match": {
+            "cases": 3,
+            "families": 3
+          },
+          "unauthorized_candidate": {
+            "cases": 3,
+            "families": 3
+          },
+          "unique": {
+            "cases": 6,
+            "families": 3
+          },
+          "unseen_application": {
+            "cases": 4,
+            "families": 3
+          }
+        }
+      }
+    },
+    "families": [
+      {
+        "family_id": "contract-review-clause-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "contract-review-dev-zh",
+        "cell": "ambiguous",
+        "split": "dev"
+      },
+      {
+        "family_id": "contract-review-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "contract-risk-zh",
+        "cell": "ambiguous",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "forecast-quarter-zh",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "forecast-trend-zh",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "inventory-reconcile-zh",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "inventory-stocktake-zh",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "invoice-matching-en",
+        "cell": "missing_input",
+        "split": "dev"
+      },
+      {
+        "family_id": "invoice-reconcile-en",
+        "cell": "missing_input",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "joke-zh",
+        "cell": "no_match",
+        "split": "dev"
+      },
+      {
+        "family_id": "payroll-calc-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-generate-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-monthly-zh",
+        "cell": "unseen_application",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "payroll-salary-zh",
+        "cell": "unseen_application",
+        "split": "dev"
+      },
+      {
+        "family_id": "physics-en",
+        "cell": "no_match",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "poem-zh",
+        "cell": "no_match",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-aggregation-en",
+        "cell": "unique",
+        "split": "dev"
+      },
+      {
+        "family_id": "sales-digest-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-monthly-report-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "sales-summary-csv-en",
+        "cell": "unique",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-aggregation-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-monthly-report-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "uuid-sales-digest-en",
+        "cell": "unauthorized_candidate",
+        "split": "dev"
+      },
+      {
+        "family_id": "uuid-sales-summary-en",
+        "cell": "unauthorized_candidate",
+        "split": "frozen_test"
+      },
+      {
+        "family_id": "weather-zh",
+        "cell": "no_match",
+        "split": "frozen_test"
+      }
+    ],
+    "held_out": {
+      "split": "frozen_test",
+      "cases": 25,
+      "families": 18,
+      "tuning_allowed": false,
+      "policy": "T084 frozen_test is the held-out set; it must not be used for any tuning, prompt iteration or training-data selection. dev is the only observation split.",
+      "scale_note": "25 held-out cases are the delivered starting scale; EVALUATION.md:35 suggests 100 and states that the numbers are a starting scale, not statistical sufficiency. T090 did not inflate the corpus."
+    },
+    "dev": {
+      "split": "dev",
+      "cases": 9,
+      "families": 8,
+      "role": "observation only, never reported as the held-out result"
+    }
+  },
+  "evidence_anchor": {
+    "report": "product/reports/f04b/T084-routing-eval.json",
+    "schema": "orchara.t084-routing-eval/1",
+    "generated_at": "2026-11-05T23:20:33+0800",
+    "git_head": "7c0e456d41f1392e0c8d9fc5e20425753845e048",
+    "corpus_version": "1.0.0",
+    "registry_sha256": "491e4f25b6f8fbf91a8d345d1c260e2f576411978058cb3ab02e21351e39e42e",
+    "dataset_digest": "9128080ae557062f6ff5c0e2c96d999bad0e5bb8e52a0061cf554fb0e13071d2",
+    "case_count": 34,
+    "note": "T084's real-stack evaluator run is the evidence that this corpus was replayed through the routing control plane; T090 re-validates its hashes and does not modify the 25 frozen held-out cases."
+  },
+  "leakage": {
+    "family_isolation": {
+      "families": {
+        "contract-review-clause-zh": {
+          "split": "frozen_test",
+          "cell": "ambiguous",
+          "cases": [
+            "rt-ambiguous-frozen-04"
+          ]
+        },
+        "contract-review-dev-zh": {
+          "split": "dev",
+          "cell": "ambiguous",
+          "cases": [
+            "rt-ambiguous-dev-01"
+          ]
+        },
+        "contract-review-zh": {
+          "split": "frozen_test",
+          "cell": "ambiguous",
+          "cases": [
+            "rt-ambiguous-frozen-01",
+            "rt-ambiguous-frozen-02"
+          ]
+        },
+        "contract-risk-zh": {
+          "split": "frozen_test",
+          "cell": "ambiguous",
+          "cases": [
+            "rt-ambiguous-frozen-03"
+          ]
+        },
+        "forecast-quarter-zh": {
+          "split": "dev",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-dev-03"
+          ]
+        },
+        "forecast-trend-zh": {
+          "split": "frozen_test",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-frozen-04",
+            "rt-missing-frozen-05"
+          ]
+        },
+        "inventory-reconcile-zh": {
+          "split": "frozen_test",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-frozen-01",
+            "rt-missing-frozen-02"
+          ]
+        },
+        "inventory-stocktake-zh": {
+          "split": "dev",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-dev-01"
+          ]
+        },
+        "invoice-matching-en": {
+          "split": "dev",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-dev-02"
+          ]
+        },
+        "invoice-reconcile-en": {
+          "split": "frozen_test",
+          "cell": "missing_input",
+          "cases": [
+            "rt-missing-frozen-03"
+          ]
+        },
+        "joke-zh": {
+          "split": "dev",
+          "cell": "no_match",
+          "cases": [
+            "rt-nomatch-dev-01"
+          ]
+        },
+        "payroll-calc-zh": {
+          "split": "frozen_test",
+          "cell": "unseen_application",
+          "cases": [
+            "rt-unseen-frozen-03"
+          ]
+        },
+        "payroll-generate-zh": {
+          "split": "frozen_test",
+          "cell": "unseen_application",
+          "cases": [
+            "rt-unseen-frozen-01",
+            "rt-unseen-frozen-02"
+          ]
+        },
+        "payroll-monthly-zh": {
+          "split": "frozen_test",
+          "cell": "unseen_application",
+          "cases": [
+            "rt-unseen-frozen-04"
+          ]
+        },
+        "payroll-salary-zh": {
+          "split": "dev",
+          "cell": "unseen_application",
+          "cases": [
+            "rt-unseen-dev-01"
+          ]
+        },
+        "physics-en": {
+          "split": "frozen_test",
+          "cell": "no_match",
+          "cases": [
+            "rt-nomatch-frozen-03"
+          ]
+        },
+        "poem-zh": {
+          "split": "frozen_test",
+          "cell": "no_match",
+          "cases": [
+            "rt-nomatch-frozen-01"
+          ]
+        },
+        "sales-aggregation-en": {
+          "split": "dev",
+          "cell": "unique",
+          "cases": [
+            "rt-unique-dev-01",
+            "rt-unique-dev-02"
+          ]
+        },
+        "sales-digest-en": {
+          "split": "frozen_test",
+          "cell": "unique",
+          "cases": [
+            "rt-unique-frozen-05",
+            "rt-unique-frozen-06"
+          ]
+        },
+        "sales-monthly-report-en": {
+          "split": "frozen_test",
+          "cell": "unique",
+          "cases": [
+            "rt-unique-frozen-03",
+            "rt-unique-frozen-04"
+          ]
+        },
+        "sales-summary-csv-en": {
+          "split": "frozen_test",
+          "cell": "unique",
+          "cases": [
+            "rt-unique-frozen-01",
+            "rt-unique-frozen-02"
+          ]
+        },
+        "uuid-aggregation-en": {
+          "split": "frozen_test",
+          "cell": "unauthorized_candidate",
+          "cases": [
+            "rt-unauthorized-frozen-03"
+          ]
+        },
+        "uuid-monthly-report-en": {
+          "split": "frozen_test",
+          "cell": "unauthorized_candidate",
+          "cases": [
+            "rt-unauthorized-frozen-02"
+          ]
+        },
+        "uuid-sales-digest-en": {
+          "split": "dev",
+          "cell": "unauthorized_candidate",
+          "cases": [
+            "rt-unauthorized-dev-01"
+          ]
+        },
+        "uuid-sales-summary-en": {
+          "split": "frozen_test",
+          "cell": "unauthorized_candidate",
+          "cases": [
+            "rt-unauthorized-frozen-01"
+          ]
+        },
+        "weather-zh": {
+          "split": "frozen_test",
+          "cell": "no_match",
+          "cases": [
+            "rt-nomatch-frozen-02"
+          ]
+        }
+      },
+      "family_count": 26,
+      "violations": []
+    },
+    "similarity": {
+      "checked": true,
+      "threshold": 0.75,
+      "threshold_note": "pre-registered: a cross-split pair with token Jaccard >= threshold is a near duplicate and must be reviewed and listed in the report",
+      "tokenizer": "normalize_message (NFKC + casefold + alnum/space + whitespace collapse); tokens = latin/digit runs and, for Han runs, the run plus its 2-grams; intentionally not the router's messageTokens",
+      "exact_duplicate_pairs": [],
+      "normalized_duplicate_pairs": [],
+      "near_duplicate_pairs": [],
+      "max_cross_split_similarity": 0.5,
+      "pairs_compared": 225,
+      "top_pairs": [
+        {
+          "dev": "rt-unauthorized-dev-01",
+          "frozen_test": "rt-unique-frozen-05",
+          "jaccard": 0.5
+        },
+        {
+          "dev": "rt-unseen-dev-01",
+          "frozen_test": "rt-unseen-frozen-02",
+          "jaccard": 0.5
+        },
+        {
+          "dev": "rt-ambiguous-dev-01",
+          "frozen_test": "rt-ambiguous-frozen-01",
+          "jaccard": 0.470588
+        },
+        {
+          "dev": "rt-unique-dev-02",
+          "frozen_test": "rt-unique-frozen-05",
+          "jaccard": 0.428571
+        },
+        {
+          "dev": "rt-unauthorized-dev-01",
+          "frozen_test": "rt-unauthorized-frozen-01",
+          "jaccard": 0.416667
+        }
+      ]
+    },
+    "provenance": {
+      "cases": 34,
+      "origins": {
+        "self_created": 34
+      },
+      "license_reviews": {
+        "not_applicable": 34
+      },
+      "violations": [],
+      "note": "the corpus is self-created diagnostic data: the only attachment is the public repository sample docs/spec/examples/sales/input.csv copied byte for byte; no user data and no third-party corpus"
+    },
+    "manual_review": {
+      "required": false,
+      "reviewed": [],
+      "note": "every cross-split pair at or above the threshold must be reviewed and justified in reports/f14/T090-routing-baseline.md §leakage"
+    }
+  },
+  "catalog": {
+    "source": {
+      "fixture_cards": "tests/f08/routing/runner.py:FIXTURE_APPS (T084 frozen catalog)",
+      "t084_sales_card": "tests/support/f02a.py:full_card() — the generic card T084's T068-published sales application actually carried (the T084 report records its catalog purpose as 'summarise sales')",
+      "product_sales_card": "internal/templates/templates.go::CapabilityCard",
+      "publication_note": "T084 published its sales app through the real T068 path; both T090 arms re-publish the same card content through the documented F08/T077 fixture path so the routing baseline needs no sandbox execution. The baseline report records this distinction instead of claiming a second T068 run."
+    },
+    "frozen_t084_catalog": {
+      "definitions_sha256": "62a2e50edc935b255b9ecff606582731a68daa54373274b84f1679f0e66c1398",
+      "cards": {
+        "alpha": {
+          "card_sha256": "bbab16fae20dda5c30a3c07797a0b25c325828e0b03c9715c88a4df9625232c9",
+          "purpose": "合同条款审阅",
+          "required_inputs": []
+        },
+        "beta": {
+          "card_sha256": "429edb67c549fe1af8d0994888ba090228f45cbaed0a929b9384db5bfb8bc99a",
+          "purpose": "合同风险审阅",
+          "required_inputs": []
+        },
+        "forecast": {
+          "card_sha256": "474f351e28daae5c606a51c9130f1ea85a36afae85f0174f6707a50f29b147db",
+          "purpose": "收入趋势预测",
+          "required_inputs": [
+            "历史收入数据"
+          ]
+        },
+        "inventory": {
+          "card_sha256": "36d9d6e26974b4321c5258b268ac1cdcea2c39e361295b50d12ec80d3a726fd2",
+          "purpose": "库存流水核对",
+          "required_inputs": [
+            "库存流水文件"
+          ]
+        },
+        "invoice": {
+          "card_sha256": "10fe5fa41e52ef12ed7b1c062d7945308584e8fc7f936c9021f7d932bdb383c8",
+          "purpose": "invoice reconciliation",
+          "required_inputs": [
+            "invoice pdf"
+          ]
+        },
+        "payroll": {
+          "card_sha256": "723926d1d8606021f58de26c930f692e2ceab2a895478a47b30294fe1f8fdfed",
+          "purpose": "生成本月工资单",
+          "required_inputs": [
+            "员工名单"
+          ]
+        },
+        "sales": {
+          "card_sha256": "8c1cdba7987d87f249b9436cba5b3f4af6e97bfce579fe9dbea586c4297c41c8",
+          "purpose": "summarise sales",
+          "required_inputs": [
+            "sales csv"
+          ]
+        }
+      }
+    },
+    "product_template_card_probe": {
+      "definitions_sha256": "01295c2ad5525e238a07dfde04f2ac27cf53a2ef69fb82e5734c73dbee603399",
+      "cards": {
+        "alpha": {
+          "card_sha256": "bbab16fae20dda5c30a3c07797a0b25c325828e0b03c9715c88a4df9625232c9",
+          "purpose": "合同条款审阅",
+          "required_inputs": []
+        },
+        "beta": {
+          "card_sha256": "429edb67c549fe1af8d0994888ba090228f45cbaed0a929b9384db5bfb8bc99a",
+          "purpose": "合同风险审阅",
+          "required_inputs": []
+        },
+        "forecast": {
+          "card_sha256": "474f351e28daae5c606a51c9130f1ea85a36afae85f0174f6707a50f29b147db",
+          "purpose": "收入趋势预测",
+          "required_inputs": [
+            "历史收入数据"
+          ]
+        },
+        "inventory": {
+          "card_sha256": "36d9d6e26974b4321c5258b268ac1cdcea2c39e361295b50d12ec80d3a726fd2",
+          "purpose": "库存流水核对",
+          "required_inputs": [
+            "库存流水文件"
+          ]
+        },
+        "invoice": {
+          "card_sha256": "10fe5fa41e52ef12ed7b1c062d7945308584e8fc7f936c9021f7d932bdb383c8",
+          "purpose": "invoice reconciliation",
+          "required_inputs": [
+            "invoice pdf"
+          ]
+        },
+        "payroll": {
+          "card_sha256": "723926d1d8606021f58de26c930f692e2ceab2a895478a47b30294fe1f8fdfed",
+          "purpose": "生成本月工资单",
+          "required_inputs": [
+            "员工名单"
+          ]
+        },
+        "sales": {
+          "card_sha256": "7f337a8ae7a37a8d1d7974366d7eba5e5415111b361427402756f16bef1e6e19",
+          "purpose": "把 CSV/XLSX 销售明细汇总为已验证统计，并生成只引用这些数字的报告正文。",
+          "required_inputs": [
+            "order_id,date,region,amount 四列的 CSV 或 XLSX"
+          ]
+        }
+      },
+      "status": "measured supplementary probe",
+      "why": "the frozen corpus was written against the generic T084 card; the product's real sales template card shares the generic token '生成' with the payroll messages, so this arm measures a card-content effect that the T084 catalog cannot show. It does not change any corpus case."
+    },
+    "runtime_instances": {
+      "recorded_in": "product/reports/f14/T090-routing-baseline.json",
+      "note": "application/version UUIDs and manifest sha256 are created by the real compiler inside a throwaway PostgreSQL cluster, so the authoritative record is the baseline report's catalog; `evidence_run` below embeds that run's rows with the same caveat"
+    },
+    "evidence_run": {
+      "available": true,
+      "source": "product/reports/f14/T090-routing-baseline.json",
+      "generated_at": "2026-11-06T00:17:34+0800",
+      "git_head": "0deeab93389b46368a9dda69fa5464c628dbbe5a",
+      "note": "these rows are the evidence run's real compiler output in a throwaway cluster (run-scoped UUIDs and manifest hashes); they document the catalog the baseline measured and must not be read as stable identifiers",
+      "frozen_t084_catalog": {
+        "alpha": {
+          "application_id": "580900ac-4e7f-4240-9401-337d4a16bbe6",
+          "application_version_id": "26082842-1d5d-4c20-b3f7-4a327f8e5dfc",
+          "version_no": 1,
+          "manifest_sha256": "d09368354ace72213a3a9d5ae78e22afb18258788bd2d8012efa644a99e9c5eb",
+          "card_sha256": "bbab16fae20dda5c30a3c07797a0b25c325828e0b03c9715c88a4df9625232c9",
+          "purpose": "合同条款审阅",
+          "publication": "t077_fixture"
+        },
+        "beta": {
+          "application_id": "cab8a957-c2b4-486a-b5a4-a4202f26c133",
+          "application_version_id": "1114f805-4e3d-4bdc-af04-8ec58719df84",
+          "version_no": 1,
+          "manifest_sha256": "72533dd3dd96924efb413e5fd1a86b407335045d01471a7ce4952212bd92ed40",
+          "card_sha256": "429edb67c549fe1af8d0994888ba090228f45cbaed0a929b9384db5bfb8bc99a",
+          "purpose": "合同风险审阅",
+          "publication": "t077_fixture"
+        },
+        "forecast": {
+          "application_id": "209cd57e-2b98-477a-8604-46567a857685",
+          "application_version_id": "eec83f65-5a93-4d69-b362-a013c9b752b4",
+          "version_no": 1,
+          "manifest_sha256": "ae75f93ab2865cc57932298d7d102a6157d0fce6905d20c08c0ba4ec873f22d5",
+          "card_sha256": "474f351e28daae5c606a51c9130f1ea85a36afae85f0174f6707a50f29b147db",
+          "purpose": "收入趋势预测",
+          "publication": "t077_fixture"
+        },
+        "inventory": {
+          "application_id": "34dd8ef0-d0b5-4ba7-9348-90852e343e91",
+          "application_version_id": "b2ee0e81-1d98-4549-84fc-b01060ca02cf",
+          "version_no": 1,
+          "manifest_sha256": "40f6885a97b380b39dbe735ba5c0dd19390f94987fd7fdc76662cf4cad6fa2c4",
+          "card_sha256": "36d9d6e26974b4321c5258b268ac1cdcea2c39e361295b50d12ec80d3a726fd2",
+          "purpose": "库存流水核对",
+          "publication": "t077_fixture"
+        },
+        "invoice": {
+          "application_id": "c4a151ab-9d83-4bd4-85e2-74bb499e7719",
+          "application_version_id": "2099b164-de81-41a4-8c7b-e4b618f03096",
+          "version_no": 1,
+          "manifest_sha256": "883b5cbcafbbcc0741fcdbf2b53140b826cbce1feec74945886085f25da3abd7",
+          "card_sha256": "10fe5fa41e52ef12ed7b1c062d7945308584e8fc7f936c9021f7d932bdb383c8",
+          "purpose": "invoice reconciliation",
+          "publication": "t077_fixture"
+        },
+        "payroll": {
+          "application_id": "a43e8c99-0ce9-480d-bb7c-9b7cd44a8c1e",
+          "application_version_id": "23bebfeb-baaf-4ff9-a6c4-9a48f2c05902",
+          "version_no": 1,
+          "manifest_sha256": "45b8c2190c8b6474fff384f4dfe2f5f9cc97fc4201e013781316137a916f4285",
+          "card_sha256": "723926d1d8606021f58de26c930f692e2ceab2a895478a47b30294fe1f8fdfed",
+          "purpose": "生成本月工资单",
+          "publication": "t077_fixture"
+        },
+        "sales": {
+          "application_id": "f2fa585a-a964-4ce3-8aa7-9d58775a6dcb",
+          "application_version_id": "272da17f-f55b-4aa3-933b-f13280960d6d",
+          "version_no": 1,
+          "manifest_sha256": "ed7e2cae5e1cf6c1952400fe9893250e5db3e0212db89804e88367e1ac4f6760",
+          "card_sha256": "8c1cdba7987d87f249b9436cba5b3f4af6e97bfce579fe9dbea586c4297c41c8",
+          "purpose": "summarise sales",
+          "publication": "t077_fixture_t084_generic_card"
+        }
+      },
+      "product_template_card_probe": {
+        "alpha": {
+          "application_id": "580900ac-4e7f-4240-9401-337d4a16bbe6",
+          "application_version_id": "26082842-1d5d-4c20-b3f7-4a327f8e5dfc",
+          "version_no": 1,
+          "manifest_sha256": "d09368354ace72213a3a9d5ae78e22afb18258788bd2d8012efa644a99e9c5eb",
+          "card_sha256": "bbab16fae20dda5c30a3c07797a0b25c325828e0b03c9715c88a4df9625232c9",
+          "purpose": "合同条款审阅",
+          "publication": "t077_fixture"
+        },
+        "beta": {
+          "application_id": "cab8a957-c2b4-486a-b5a4-a4202f26c133",
+          "application_version_id": "1114f805-4e3d-4bdc-af04-8ec58719df84",
+          "version_no": 1,
+          "manifest_sha256": "72533dd3dd96924efb413e5fd1a86b407335045d01471a7ce4952212bd92ed40",
+          "card_sha256": "429edb67c549fe1af8d0994888ba090228f45cbaed0a929b9384db5bfb8bc99a",
+          "purpose": "合同风险审阅",
+          "publication": "t077_fixture"
+        },
+        "forecast": {
+          "application_id": "209cd57e-2b98-477a-8604-46567a857685",
+          "application_version_id": "eec83f65-5a93-4d69-b362-a013c9b752b4",
+          "version_no": 1,
+          "manifest_sha256": "ae75f93ab2865cc57932298d7d102a6157d0fce6905d20c08c0ba4ec873f22d5",
+          "card_sha256": "474f351e28daae5c606a51c9130f1ea85a36afae85f0174f6707a50f29b147db",
+          "purpose": "收入趋势预测",
+          "publication": "t077_fixture"
+        },
+        "inventory": {
+          "application_id": "34dd8ef0-d0b5-4ba7-9348-90852e343e91",
+          "application_version_id": "b2ee0e81-1d98-4549-84fc-b01060ca02cf",
+          "version_no": 1,
+          "manifest_sha256": "40f6885a97b380b39dbe735ba5c0dd19390f94987fd7fdc76662cf4cad6fa2c4",
+          "card_sha256": "36d9d6e26974b4321c5258b268ac1cdcea2c39e361295b50d12ec80d3a726fd2",
+          "purpose": "库存流水核对",
+          "publication": "t077_fixture"
+        },
+        "invoice": {
+          "application_id": "c4a151ab-9d83-4bd4-85e2-74bb499e7719",
+          "application_version_id": "2099b164-de81-41a4-8c7b-e4b618f03096",
+          "version_no": 1,
+          "manifest_sha256": "883b5cbcafbbcc0741fcdbf2b53140b826cbce1feec74945886085f25da3abd7",
+          "card_sha256": "10fe5fa41e52ef12ed7b1c062d7945308584e8fc7f936c9021f7d932bdb383c8",
+          "purpose": "invoice reconciliation",
+          "publication": "t077_fixture"
+        },
+        "payroll": {
+          "application_id": "a43e8c99-0ce9-480d-bb7c-9b7cd44a8c1e",
+          "application_version_id": "23bebfeb-baaf-4ff9-a6c4-9a48f2c05902",
+          "version_no": 1,
+          "manifest_sha256": "45b8c2190c8b6474fff384f4dfe2f5f9cc97fc4201e013781316137a916f4285",
+          "card_sha256": "723926d1d8606021f58de26c930f692e2ceab2a895478a47b30294fe1f8fdfed",
+          "purpose": "生成本月工资单",
+          "publication": "t077_fixture"
+        },
+        "sales": {
+          "application_id": "9b7d9b8b-24a7-4e81-bb98-d56b0b9f99bd",
+          "application_version_id": "67d2e22e-327f-4af7-8e04-3c32f521abb4",
+          "version_no": 1,
+          "manifest_sha256": "f89c27cdef65ef4979ac421b9fb93847b7b6c1ef47272cec07c7ad33bcc8b7c8",
+          "card_sha256": "7f337a8ae7a37a8d1d7974366d7eba5e5415111b361427402756f16bef1e6e19",
+          "purpose": "把 CSV/XLSX 销售明细汇总为已验证统计，并生成只引用这些数字的报告正文。",
+          "publication": "t077_fixture_product_template_card"
+        }
+      }
+    }
+  },
+  "retrieval": {
+    "not_used": true,
+    "reason": "the frozen routing corpus exercises capability-card retrieval only: authorized SQL candidate selection plus literal card/token matching. No knowledge-base document, embedding model, chunker, parser or vector index participates, so there is no retrieval revision to freeze.",
+    "embedding_model_revision": null,
+    "chunker_version": null,
+    "kb_document_revision": null,
+    "index_revision": null,
+    "acl_epoch": null,
+    "what_is_frozen_instead": "the authorized catalog card definitions (catalog.definitions_sha256) and the candidate snapshot persisted by the router per case (platform.request_routing_candidates.card_sha256)"
+  },
+  "control_model": {
+    "provider": "stub",
+    "stub": true,
+    "model_id": "stub-route-control",
+    "validation_state": "passed",
+    "profile": "dev-stub",
+    "registration": "tests/support/t079.py:seed_route_control_model registers a real model_profile_versions row (provider=stub, validation_state=passed, config.route_control=true); the baseline report records the actual row id",
+    "semantic_baseline_allowed": false,
+    "note": "not a vendor model and not a semantic router: it cannot produce a strong-prompt arm, a paraphrase-sensitive answer or any model-quality signal; every routing assertion is owned by server policy and SQL rows"
+  },
+  "environment": {
+    "recorded_at": "2026-11-06T00:34:23+0800",
+    "git_head": "1d9498461e19a41eee69c38bb985d724e1552ba8",
+    "git_branch": "t/t090-routing-baseline",
+    "python": "3.12.2",
+    "os": "Windows 11 (AMD64)",
+    "go": "go version go1.27.3 windows/amd64",
+    "postgres": "recorded at run time in the baseline report environment (real isolated PostgreSQL 16 cluster on 127.0.0.1:55432 created by tests/support/stack.py)",
+    "profile": "dev-stub (the only model path on this host; no vendor credential)"
+  },
+  "strong_prompt_arm": {
+    "status": "blocked",
+    "executed": false,
+    "not_run": [
+      "model provider credential (the workspace `.env.local` holds only ORCHARA_PG_PASSWORD)",
+      "approved model endpoint/profile of the base model (no ORCHARA_MODEL_ENDPOINT or secret ref is configured)",
+      "base-model weights, tokenizer and inference revision (no local weights/Ollama/HF cache on this host)",
+      "training-capable GPU (RTX 3050 Laptop, 4 GiB, does not satisfy a training run)",
+      "budget/price configuration and context/token-limit validation for a strong-prompt arm"
+    ],
+    "cannot_substitute": "the dev-stub is not a model and must not be reported as a strong-prompt baseline; no rule-vs-strong-prompt comparison is claimed"
+  },
+  "training": {
+    "status": "not_run",
+    "executed": false,
+    "reason": "no training-capable GPU and no base-model weights/config on this host; TRAINING-EXPERIMENT.md:42's model gate and :44's command preconditions are unmet. No training data was generated and no adapter exists.",
+    "artifacts": [
+      "experiments/routing_sft/requirements-train.in/.lock.txt (dependency resolution only)"
+    ]
+  },
+  "replay": {
+    "freeze_check": "python -m pytest tests/f14/test_t090_freeze.py -q",
+    "baseline": "python -m pytest tests/f14/test_t090_baseline.py -q -s",
+    "regenerate_manifest": "python -m tests.f14.routing_freeze",
+    "report_paths": [
+      "product/experiments/routing_sft/freeze/T090-freeze.json",
+      "product/reports/f14/T090-routing-baseline.json",
+      "reports/f14/T090-routing-baseline.md",
+      "reports/f04b/T084-routing-eval.json (reused evidence anchor; not modified)"
+    ]
+  }
+}

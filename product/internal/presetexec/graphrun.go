@@ -28,7 +28,8 @@ package presetexec
 // Node execution itself is the linear executor's node code: executeStartNode,
 // executePythonNode, executeEndNode and — through a synthetic linear view — the
 // agent and call_app segments. The graph only owns activation, skip propagation
-// and the condition/join outputs.
+// and the condition/join outputs; F04B/T086's model node owns its own one-call
+// generation in modelnode.go.
 
 import (
 	"context"
@@ -220,6 +221,10 @@ func (r *runner) executeGraphNode(
 		return r.executeGraphAgent(ctx, run, node)
 	case "call_app":
 		return r.executeGraphCallApp(ctx, run, node)
+	case "model":
+		// F04B/T086: one controlled generation; the platform validates the output
+		// against node.output_schema and a schema failure is independent.
+		return r.executeGraphModel(ctx, run, node)
 	case "end":
 		return r.executeEndNode(ctx, run.plan.definition, node.node,
 			run.available(), run.last, run.report), nil, true

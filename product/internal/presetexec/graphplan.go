@@ -4,10 +4,10 @@ package presetexec
 //
 // The linear executor (plan.go) proves one chain over the node types F04A and
 // F05 gave it. This file adds the second plan the graph path uses when the sealed
-// definition contains a `condition` or `join` node: it parses the whole DAG,
-// proves the structured regions the scheduler is about to activate, and keeps the
-// raw nodes so the scheduler binds and validates every node exactly like the
-// linear path does.
+// definition contains a `condition`, `join` or `model` node: it parses the whole
+// DAG, proves the structured regions the scheduler is about to activate, and
+// keeps the raw nodes so the scheduler binds and validates every node exactly
+// like the linear path does.
 //
 // The executor deliberately re-proves the structure instead of trusting the
 // publish validator: the manifest is read from an object store, and a stale or
@@ -20,7 +20,9 @@ package presetexec
 // `condition_operand_invalid` (a condition operand has the wrong JSON type),
 // `invalid_activation` (spec-named: a join region with no activated required
 // source) and the per-type `node_unsupported_<type>` codes so a run view can tell
-// "this build does not run model nodes yet" from "this graph is broken".
+// "this build does not run this node type yet" from "this graph is broken".
+// F04B/T086 made `model` executable and moved its closed config into the same
+// defensive re-verification (`parseModelConfig`).
 //
 // What the plan proves:
 //   - exactly one start and one end, a DAG, every node reachable from start and
@@ -44,8 +46,9 @@ import (
 )
 
 // Graph-path refusal codes. The region codes are the validator's frozen
-// vocabulary; the unsupported-node codes are this build's per-type refusals until
-// T086 (model) and T088 (retrieve) replace them.
+// vocabulary; the remaining per-type refusal is `retrieve` until T088 replaces
+// it. F04B/T086 made `model` executable and F04B/T087 made `approval`
+// executable, so their old `node_unsupported_*` refusals are gone.
 const (
 	CodeInvalidRegion = "invalid_region"
 	CodeCrossRegion   = "cross_region_edge"
@@ -61,7 +64,6 @@ const (
 	CodeStartEndCount = "start_end_count"
 	CodeMissingValue  = "missing_value"
 
-	CodeNodeUnsupportedModel    = "node_unsupported_model"
 	CodeNodeUnsupportedRetrieve = "node_unsupported_retrieve"
 
 	// CodeConditionOperandInvalid is a condition operand whose JSON type cannot
@@ -83,6 +85,7 @@ var graphNodeTypes = map[string]bool{
 	"condition": true,
 	"join":      true,
 	"approval":  true,
+	"model":     true,
 }
 
 // graphPlan is the parsed and proven graph.
@@ -111,6 +114,7 @@ type graphNode struct {
 	condition *conditionConfig
 	join      *joinConfig
 	approval  *approvalConfig
+	model     *modelNodeConfig
 }
 
 // planEdge is one sealed edge with its normalized exit port.
@@ -152,13 +156,15 @@ func planRefusal(code, message string) *planError {
 
 // hasGraphConstructs reports whether the sealed definition carries a construct
 // only the graph plan can execute. The legacy and linear paths keep their exact
-// previous selection for every other definition.
+// previous selection for every other definition. F04B/T086 added `model` (one
+// controlled generation, no branch) and T087 added `approval` (a human wait).
 func hasGraphConstructs(manifest *manifestDocument) bool {
 	if manifest == nil {
 		return false
 	}
 	for _, node := range manifest.Definition.Nodes {
-		if node.Type == "condition" || node.Type == "join" || node.Type == "approval" {
+		switch node.Type {
+		case "condition", "join", "model", "approval":
 			return true
 		}
 	}
@@ -203,13 +209,11 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		}
 		code := CodeToolUnsupportedGraph
 		switch node.Type {
-		case "model":
-			code = CodeNodeUnsupportedModel
 		case "retrieve":
 			code = CodeNodeUnsupportedRetrieve
 		}
 		return nil, planRefusal(code, fmt.Sprintf(
-			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, condition, join and approval",
+			"/nodes/%d: the sealed definition contains a %q node; this executor runs start, end, python, agent, call_app, model, condition, join and approval",
 			index, node.Type))
 	}
 
@@ -281,7 +285,7 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 		}
 	}
 
-	// 7. Parse the two structured-region configs.
+	// 7. Parse the structured-region configs and the model node's closed config.
 	for index := range definition.Nodes {
 		node := &definition.Nodes[index]
 		entry := plan.nodes[node.ID]
@@ -307,6 +311,16 @@ func buildGraphPlan(manifest *manifestDocument) (*graphPlan, error) {
 					fmt.Sprintf("/nodes/%d/config: %v", index, err))
 			}
 			entry.approval = config
+		case "model":
+			// F04B/T086: the publish validator already checked the closed config
+			// set; the executor re-proves it on the frozen bytes, before any node
+			// of this attempt runs.
+			config, err := parseModelConfig(node, index)
+			if err != nil {
+				return nil, planRefusal(CodeBadConfig,
+					fmt.Sprintf("/nodes/%d/config: %v", index, err))
+			}
+			entry.model = config
 		}
 	}
 

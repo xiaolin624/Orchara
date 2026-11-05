@@ -28,6 +28,8 @@ export const CONFIG_ALLOWLIST = {
     'subapp_versions',
     'max_turns',
   ],
+  // F04B/T086: the response schema is node.output_schema, never a config key.
+  model: ['model_profile_version', 'prompt_template', 'response_mode'],
   condition: ['join_id', 'default_port', 'cases'],
   join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
   // T087: an approval node carries exactly the title and the expiry window; the
