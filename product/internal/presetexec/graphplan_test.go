@@ -352,8 +352,10 @@ func TestBuildGraphPlanRejectsIncompleteJoinSources(t *testing.T) {
 }
 
 func TestBuildGraphPlanRejectsUnsupportedNodeTypesWithDistinctCodes(t *testing.T) {
+	// F04B/T086 made `model` executable and F04B/T088 made `retrieve` executable;
+	// the remaining per-type refusal keeps its own stable code until T087
+	// (approval) replaces it.
 	cases := map[string]string{
-		"model":    "node_unsupported_model",
 		"approval": "node_unsupported_approval",
 		"mystery":  "tool_unsupported_graph",
 	}
@@ -412,12 +414,17 @@ func TestBuildGraphPlanRejectsACycle(t *testing.T) {
 	}
 }
 
-func TestHasGraphConstructsOnlyFiresForGraphOnlyNodeTypes(t *testing.T) {
+func TestHasGraphConstructsOnlyFiresForGraphOnlyNodes(t *testing.T) {
 	if hasGraphConstructs(definitionDocument(t, parallelDefinition)) != true {
 		t.Fatal("a join graph must select the graph path")
 	}
 	if hasGraphConstructs(definitionDocument(t, flatConditionDefinition)) != true {
 		t.Fatal("a condition graph must select the graph path")
+	}
+	// F04B/T086: a model node is only executable by the graph scheduler, so its
+	// presence must select that path even without a region.
+	if hasGraphConstructs(modelGraphDocument(t, nil)) != true {
+		t.Fatal("a model graph must select the graph path")
 	}
 	// F04B/T088: a retrieve node is graph-only too, even without a region.
 	if hasGraphConstructs(definitionDocument(t, retrieveDefinition)) != true {

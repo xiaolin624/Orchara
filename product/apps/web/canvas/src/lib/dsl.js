@@ -10,14 +10,22 @@
  * may have several incoming edges. The Go validator is still the authority:
  * ``regionProblems`` mirrors the same rules locally so the canvas can explain
  * where a connection is illegal and how to repair it.
+ *
+ * F04B/T086 adds the ``model`` node: one controlled generation whose fixed
+ * profile, strict ``{{name}}`` prompt and response mode live in its config, and
+ * whose "response schema" is the ordinary ``output_schema`` (there is no
+ * ``response_schema`` config key).
  */
 
-export const NODE_TYPES = ['start', 'python', 'agent', 'retrieve', 'condition', 'join', 'end'];
+export const NODE_TYPES = [
+  'start', 'python', 'agent', 'model', 'retrieve', 'condition', 'join', 'end',
+];
 
 export const NODE_LABELS = {
   start: '开始',
   python: 'Python 工具',
   agent: 'Agent',
+  model: '模型',
   retrieve: '知识检索',
   condition: '条件分支',
   join: '并行汇合',
@@ -25,13 +33,18 @@ export const NODE_LABELS = {
 };
 
 /** Types the palette may add more than once; start and end stay unique. */
-export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'retrieve', 'condition', 'join'];
+export const REPEATABLE_NODE_TYPES = [
+  'python', 'agent', 'model', 'retrieve', 'condition', 'join',
+];
 
 /** The comparison vocabulary of a condition case (workflow.schema.json). */
 export const CONDITION_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'exists'];
 
 /** The only join mode in the contract. */
 export const JOIN_MODES = ['all_active'];
+
+/** The model node's response modes (workflow.schema.json config enum). */
+export const MODEL_RESPONSE_MODES = ['json', 'text'];
 
 export function emptySchema() {
   return { type: 'object', properties: {} };
@@ -153,6 +166,14 @@ export function defaultNode(type, id) {
       subapp_versions: [],
       tool_versions: [],
     };
+  } else if (type === 'model') {
+    // The contract's closed model config set. The response schema is the node's
+    // output_schema, so it is deliberately absent here.
+    base.config = {
+      model_profile_version: '',
+      prompt_template: '',
+      response_mode: 'json',
+    };
   } else if (type === 'condition') {
     base.config = {
       join_id: '',
@@ -198,6 +219,7 @@ export const DEFAULT_POSITIONS = {
   start: { x: 40, y: 160 },
   python: { x: 280, y: 160 },
   agent: { x: 520, y: 160 },
+  model: { x: 400, y: 320 },
   retrieve: { x: 280, y: 240 },
   condition: { x: 280, y: 320 },
   join: { x: 600, y: 320 },

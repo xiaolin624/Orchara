@@ -28,6 +28,8 @@ export const CONFIG_ALLOWLIST = {
     'subapp_versions',
     'max_turns',
   ],
+  // F04B/T086: the response schema is node.output_schema, never a config key.
+  model: ['model_profile_version', 'prompt_template', 'response_mode'],
   condition: ['join_id', 'default_port', 'cases'],
   // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
   // query is an input binding and any inline query is dropped as unknown_config_key.
