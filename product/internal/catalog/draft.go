@@ -559,6 +559,13 @@ func executableDocument(draft Draft) (map[string]any, []ExecutableError, error) 
 		if message == "" {
 			message = "the definition violates the " + problem.Code + " rule"
 		}
+		// F04B/T083: edge-level errors (cross_region_edge, bad_port) add the
+		// offending source->target text. The contract error item has no edge_id and
+		// the frozen rules.json meaning stays generic, so the exact endpoints are
+		// carried in the message next to the exact /edges/<i> pointer.
+		if endpoints := edgeEndpointsAt(document, problem.Pointer); endpoints != "" {
+			message += ": " + endpoints
+		}
 		located = append(located, ExecutableError{
 			NodeID:  nodeIDAt(document, problem.Pointer),
 			Code:    problem.Code,
@@ -569,28 +576,86 @@ func executableDocument(draft Draft) (map[string]any, []ExecutableError, error) 
 	return document, located, nil
 }
 
-// nodeIDAt resolves a `/nodes/<index>/...` pointer to the node's id. Other
-// pointers (document-level errors such as a cycle) have no single node, so the
-// node_id stays empty rather than being guessed.
-func nodeIDAt(document map[string]any, pointer string) string {
-	const prefix = "/nodes/"
+// edgeEndpointsAt renders `source->target` for an `/edges/<index>...` pointer.
+func edgeEndpointsAt(document map[string]any, pointer string) string {
+	const prefix = "/edges/"
 	if !strings.HasPrefix(pointer, prefix) {
 		return ""
 	}
-	rest := pointer[len(prefix):]
-	indexText, _, _ := strings.Cut(rest, "/")
-	index, err := strconv.Atoi(indexText)
-	if err != nil || index < 0 {
-		return ""
-	}
-	nodes, ok := document["nodes"].([]any)
-	if !ok || index >= len(nodes) {
-		return ""
-	}
-	node, ok := nodes[index].(map[string]any)
+	index, ok := arrayIndexBeforeNextSlash(pointer[len(prefix):])
 	if !ok {
 		return ""
 	}
-	id, _ := node["id"].(string)
-	return id
+	edges, ok := document["edges"].([]any)
+	if !ok || index >= len(edges) {
+		return ""
+	}
+	edge, ok := edges[index].(map[string]any)
+	if !ok {
+		return ""
+	}
+	source, _ := edge["source"].(string)
+	target, _ := edge["target"].(string)
+	if source == "" && target == "" {
+		return ""
+	}
+	return source + "->" + target
+}
+
+// nodeIDAt resolves a `/nodes/<index>/...` pointer to the node's id and an
+// `/edges/<index>...` pointer to the edge's source node. Other pointers
+// (document-level errors such as a cycle) have no single node, so the node_id
+// stays empty rather than being guessed.
+//
+// F04B/T083: locate edge-level errors (`cross_region_edge`, `bad_port`) on the
+// source node as well. The contract's error item only carries node_id/code/
+// pointer/message, so the pointer stays the edge's exact position and the
+// message keeps naming both endpoints; the node_id is what a canvas can jump to.
+func nodeIDAt(document map[string]any, pointer string) string {
+	const nodePrefix = "/nodes/"
+	if strings.HasPrefix(pointer, nodePrefix) {
+		index, ok := arrayIndexBeforeNextSlash(pointer[len(nodePrefix):])
+		if !ok {
+			return ""
+		}
+		nodes, ok := document["nodes"].([]any)
+		if !ok || index >= len(nodes) {
+			return ""
+		}
+		node, ok := nodes[index].(map[string]any)
+		if !ok {
+			return ""
+		}
+		id, _ := node["id"].(string)
+		return id
+	}
+	const edgePrefix = "/edges/"
+	if strings.HasPrefix(pointer, edgePrefix) {
+		index, ok := arrayIndexBeforeNextSlash(pointer[len(edgePrefix):])
+		if !ok {
+			return ""
+		}
+		edges, ok := document["edges"].([]any)
+		if !ok || index >= len(edges) {
+			return ""
+		}
+		edge, ok := edges[index].(map[string]any)
+		if !ok {
+			return ""
+		}
+		source, _ := edge["source"].(string)
+		return source
+	}
+	return ""
+}
+
+// arrayIndexBeforeNextSlash parses the array index at the head of a definition
+// pointer tail such as "3/config/join_id".
+func arrayIndexBeforeNextSlash(rest string) (int, bool) {
+	indexText, _, _ := strings.Cut(rest, "/")
+	index, err := strconv.Atoi(indexText)
+	if err != nil || index < 0 {
+		return 0, false
+	}
+	return index, true
 }
