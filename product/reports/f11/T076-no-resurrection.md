@@ -4,7 +4,7 @@
 - 分支：`t/t076-no-resurrection`；基线 `integration/t068-t082` @ `affc12c`；
   合并提交见 §5
 - 状态：**passed**（OTel/metrics 专用行 **partial**：本仓库无 tracer/metrics SDK，
-  交付的是只读 operator 告警面 + 退出码，见 ADR 0029 §2）
+  交付的是只读 operator 告警面 + 退出码，见 ADR 0032 §2）
 - 边界：第三方组件自有存储、备份介质、用户已下载副本**不由平台擦除**；T072 只把
   它们登记为 external/not_erasable，本票的告警报文重复该边界（§1.4）。备份工具本身
   属 T072，本票不做恢复工具。

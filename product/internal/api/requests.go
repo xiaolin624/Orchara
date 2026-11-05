@@ -300,6 +300,59 @@ func (s *Server) handleCancelRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, acceptedResponse{ID: request.ID, State: request.State})
 }
 
+// handleReplyInteraction answers one pending input/selection interaction. The
+// contract's InteractionReply anyOf and additionalProperties:false are enforced by
+// requests.ParseReply; the Idempotency-Key is required and scoped to this exact
+// request path, so a key can never be borrowed by another request's reply.
+func (s *Server) handleReplyInteraction(w http.ResponseWriter, r *http.Request) {
+	caller, ok := s.authorize(w, r, "")
+	if !ok {
+		return
+	}
+	if failure := s.requireRequestWrite(caller); failure != nil {
+		writeError(w, r, failure.Status, failure.Code, failure.Message)
+		return
+	}
+	values := r.Header.Values("Idempotency-Key")
+	key := ""
+	if len(values) == 1 {
+		key = strings.TrimSpace(values[0])
+	}
+	if len(values) != 1 || key == "" {
+		writeErrorWithDetails(w, r, http.StatusBadRequest, "idempotency_key_required",
+			"the Idempotency-Key header is required and must be one non-empty value",
+			map[string]any{"header": "Idempotency-Key"})
+		return
+	}
+	requestID := strings.ToLower(strings.TrimSpace(r.PathValue("request_id")))
+	fields, ok := readSubmitBody(w, r)
+	if !ok {
+		return
+	}
+	input, parseErr := requests.ParseReply(fields)
+	if parseErr != nil {
+		s.writeRequestFailure(w, r, parseErr)
+		return
+	}
+	outcome, err := s.requests.ReplyInteraction(r.Context(), caller.PrincipalID, requestID,
+		requests.IdempotencyScope{
+			PrincipalID: caller.PrincipalID,
+			Method:      http.MethodPost,
+			Path:        requests.ReplyPath(requestID),
+			Key:         key,
+		}, input)
+	if err != nil {
+		s.writeRequestFailure(w, r, err)
+		return
+	}
+	if outcome == nil || outcome.Request == nil {
+		s.internalError(w, r, errors.New("the interaction reply produced no request"))
+		return
+	}
+	s.writeRequestHeaders(w, r, caller.PrincipalID, outcome.Request)
+	writeJSON(w, http.StatusAccepted, outcome.Request)
+}
+
 // writeRequestHeaders computes the documented non-contract facts for a request
 // write response; a failure to read them is logged, not fatal: the contract body
 // is already authoritative.

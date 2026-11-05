@@ -1,11 +1,14 @@
-# ADR 0029 — No-resurrection regression, cleanup alerts and the component deletion gate
+# ADR 0032 — No-resurrection regression, cleanup alerts and the component deletion gate
 
 - Status: Accepted (F11/T076, issue #77)
 - Date: 2026-11-05
 - Extends: ADR 0020 (the tombstone is the read authority), ADR 0027 (copy cleanup +
   hash-chained ledger), ADR 0028 §6 (no tracer/metrics SDK in this build), ADR 0009
   (the T066/Q45 Mem0 adoption gate)
-- Numbering: the orchestrator reserved 0029 for this ticket. No migration is needed:
+- Numbering: the orchestrator reserved 0029 for this ticket, but the concurrent
+  F08/T079 merge already claimed `0029-t079-router-interactions.md` (and T080 claimed
+  0031), so this ADR took the next free number **0032** on the merge tree; the merger
+  may renumber by name, as BRIEF §5 requires. No migration is needed:
   every fact this ticket reads already exists (`platform.deletion_jobs`,
   `platform.background_jobs`, `platform.deletion_ledger`,
   `platform.diagnostic_grants`); the next free migration number on this branch is
