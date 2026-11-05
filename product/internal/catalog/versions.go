@@ -18,12 +18,21 @@ import (
 // Version is one immutable published row of the contract's Version schema. It
 // never carries a draft definition/layout: only the published manifest and its
 // hash are readable through this model.
+//
+// ManifestArtifactID/CompilerVersion/WorkerImageDigest/StateSchemaVersion are the
+// frozen execution identity F08/T074 copies into a published Run's
+// execution_snapshot. They are populated by ResolveRunnableVersion(\.Tx) only; the
+// contract's Version view (api.versionView) never serialises them.
 type Version struct {
-	ID             string
-	ApplicationID  string
-	VersionNo      int64
-	ManifestSHA256 string
-	Manifest       json.RawMessage
+	ID                 string
+	ApplicationID      string
+	VersionNo          int64
+	ManifestSHA256     string
+	Manifest           json.RawMessage
+	ManifestArtifactID string
+	CompilerVersion    string
+	WorkerImageDigest  string
+	StateSchemaVersion string
 }
 
 // EncodeVersionCursor serialises the keyset position (version_no, id) as an
