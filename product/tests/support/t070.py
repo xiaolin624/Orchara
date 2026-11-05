@@ -254,10 +254,30 @@ def seed_published_run(
     application_id = version["application_id"]
     snapshot_id = f00b.new_uuid()
     run_id = f00b.new_uuid()
+    conversation_id = f00b.new_uuid()
+    request_id = f00b.new_uuid()
     input_artifact = seal_bytes_artifact(
         stack, owner_id, purpose="run_input", content=input_bytes
     )
     terminal = state in TERMINAL_RUN_STATES
+    # T074 (#75) completed the deferred `runs.request_id`/`runs.conversation_id`
+    # foreign keys. A seeded published Run therefore needs the real parent rows the
+    # FK names; the Request is the run's own dispatched request and the conversation
+    # is scoped to this one run (so the live-top-run index cannot collide).
+    t025.sql_utf8(
+        dbname,
+        "INSERT INTO platform.conversations (id, owner_id, revision) VALUES ("
+        f"{t025._literal(conversation_id)}::uuid, {t025._literal(owner_id)}::uuid, 1)",
+    )
+    t025.sql_utf8(
+        dbname,
+        "INSERT INTO platform.requests "
+        "(id, conversation_id, owner_id, input_artifact_id, artifact_ids, state, revision, "
+        " requested_version_id) VALUES ("
+        f"{t025._literal(request_id)}::uuid, {t025._literal(conversation_id)}::uuid, "
+        f"{t025._literal(owner_id)}::uuid, {t025._literal(input_artifact)}::uuid, '{{}}'::uuid[], "
+        f"'dispatched', 1, {t025._literal(version['id'])}::uuid)",
+    )
     t025.sql_utf8(
         dbname,
         "INSERT INTO platform.execution_snapshots "
@@ -283,8 +303,8 @@ def seed_published_run(
         " output_artifact_id, checkpoint_thread_id, state, revision, next_event_seq, "
         " budget_limit, currency, phase, active_elapsed_ms, cancel_requested_at, error_code, "
         " started_at, finished_at, deleted_at) VALUES ("
-        f"{t025._literal(run_id)}::uuid, {t025._literal(f00b.new_uuid())}::uuid, "
-        f"{t025._literal(f00b.new_uuid())}::uuid, NULL, NULL, "
+        f"{t025._literal(run_id)}::uuid, {t025._literal(request_id)}::uuid, "
+        f"{t025._literal(conversation_id)}::uuid, NULL, NULL, "
         f"{t025._literal(owner_id)}::uuid, 'published', "
         f"{t025._literal(snapshot_id)}::uuid, {t025._literal(version['id'])}::uuid, "
         f"{t025._literal(version['manifest_sha256'])}, {t025._literal(input_artifact)}::uuid, "
@@ -295,6 +315,8 @@ def seed_published_run(
     )
     return {
         "id": run_id,
+        "request_id": request_id,
+        "conversation_id": conversation_id,
         "application_version_id": version["id"],
         "execution_snapshot_id": snapshot_id,
         "manifest_sha256": version["manifest_sha256"],
