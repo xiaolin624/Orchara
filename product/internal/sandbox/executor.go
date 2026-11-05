@@ -188,7 +188,7 @@ func (e *Executor) Run(ctx context.Context, request Request, control Control) (O
 	if err != nil {
 		return Outcome{}, err
 	}
-	hostWorkspace, err := options.workspacePath()
+	hostWorkspace, err := options.workspacePath(sandboxID)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("creating the sandbox staging directory: %w", err)
 	}

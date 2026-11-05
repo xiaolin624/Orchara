@@ -713,6 +713,23 @@ func LoadSweep(lookup Lookup) (*SweepConfig, error) {
 	return &SweepConfig{ObjectDir: objectDir, DBDSN: dsn}, nil
 }
 
+// CopyCleanupConfig is the F11/T072 copy-cleanup pass input. Only the database
+// identity is configuration here: the sandbox staging root, its age gate and the
+// deployment's third-party component list are operator flags on
+// `cmd/maintenance copies` (they are inventory facts, not secrets).
+type CopyCleanupConfig struct {
+	DBDSN string
+}
+
+// LoadCopyCleanup reads the one environment input the copy-cleanup pass needs.
+func LoadCopyCleanup(lookup Lookup) (*CopyCleanupConfig, error) {
+	dsn := value(lookup, EnvMaintenanceDSN)
+	if dsn == "" {
+		return nil, invalid(EnvMaintenanceDSN, "is required for cmd/maintenance copies")
+	}
+	return &CopyCleanupConfig{DBDSN: dsn}, nil
+}
+
 // parseSlots reads a positive worker-slot count with a hard upper bound: a typo
 // must not start hundreds of claim loops against one database.
 func parseSlots(lookup Lookup, key string, fallback int) (int, error) {

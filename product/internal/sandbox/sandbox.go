@@ -289,6 +289,10 @@ func OptionsFromEnv(productRoot string) (Options, error) {
 		StateRoot:            envOr("ORCHARA_SANDBOX_STATE_ROOT", DefaultStateRoot),
 		Rootfs:               envOr("ORCHARA_SANDBOX_PYTHON_ROOTFS", DefaultRootfs),
 		ExpectedRootfsDigest: strings.TrimSpace(os.Getenv("ORCHARA_SANDBOX_ROOTFS_DIGEST")),
+		// The host staging root is where the per-attempt workspace is created and
+		// removed. Empty keeps the OS temp directory; a deployment that pins it
+		// must give the same value to cmd/maintenance copies (F11/T072).
+		WorkspaceRoot: strings.TrimSpace(os.Getenv("ORCHARA_SANDBOX_WORKSPACE_ROOT")),
 		ToolScript: envOr("ORCHARA_SANDBOX_TOOL",
 			filepath.Join(productRoot, "worker", "platform_worker", "nodes", "sales_stats.py")),
 		ProbeScript: envOr("ORCHARA_SANDBOX_PROBE",
@@ -404,8 +408,14 @@ func NewSandboxID(executionUnitID string) (string, error) {
 }
 
 // workspacePath is the host temp path for one staging directory.
-func (o Options) workspacePath() (string, error) {
-	return os.MkdirTemp(o.WorkspaceRoot, "orchara-sandbox-")
+//
+// The sandbox id is part of the directory name (F11/T072): the workspace is
+// removed per attempt in the same process, but a crashed attempt leaves a
+// leftover behind, and the cleanup pass can only attribute a leftover to the
+// deleted run through the attempt's execution unit id -> sandbox id. Do not
+// shorten the name to a random suffix.
+func (o Options) workspacePath(sandboxID string) (string, error) {
+	return os.MkdirTemp(o.WorkspaceRoot, "orchara-sandbox-"+sandboxID+"-")
 }
 
 // toolPathFor returns the host path of the fixed program the request names.

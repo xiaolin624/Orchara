@@ -231,6 +231,24 @@ func (s *Service) Delete(
 	if err := audit.Record(ctx, tx, &actor, "deletion.requested", string(resourceType), &id, metadata); err != nil {
 		return nil, err
 	}
+	// F11/T072: the independently retainable ledger records the decision in the
+	// *same* transaction as the tombstone and the job. A restore replays this
+	// record before reads open (OPERATIONS.md §46); a repeated DELETE reuses the
+	// job and must not append a second decision.
+	if created {
+		if _, err := AppendLedgerTx(ctx, tx, LedgerAppend{
+			DeletionJobID:    job.ID,
+			ResourceType:     string(resourceType),
+			ResourceID:       id,
+			DeletionRevision: plan.Revision,
+			EntryKind:        EntryTombstone,
+			Record: TombstoneRecord(
+				resourceType, id, plan.Revision, derivedDocumentIDsOf(plan),
+			),
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the deletion: %w", err)
 	}

@@ -6,6 +6,8 @@
 //	run     F00B/T022 maintenance client: claim fixed kinds, heartbeat,
 //	        execute the compiled handlers, submit results
 //	sweep   F00B/T026 object-store orphan cleanup
+//	copies  F11/T072 copy-class cleanup (checkpoint/summary/sandbox/third-party)
+//	        and backup deletion-ledger registration for deletion jobs
 //
 // The no-argument behaviour is deliberately unchanged: it proves the maintenance
 // identity can reach the database and read the state the worker writes. The
@@ -25,11 +27,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const usage = `usage: orchara-maintenance [run|sweep]
+const usage = `usage: orchara-maintenance [run|sweep|copies]
 
   (no argument)  connectivity and visibility pass; prints one JSON report
   run            claim and execute background jobs over the internal mTLS API
   sweep          delete orphaned staging objects (sealed bytes are never touched)
+  copies         clear the F11/T072 copy classes of deletion jobs and register
+                 the backup deletion ledger
 
 run flags:
   --once                 drain every pool until idle, then exit
@@ -61,6 +65,19 @@ sweep flags:
   never deleted by this command; it reports unreferenced ones as
   sealed_deferred for F07/F13A, which must coordinate registration and deletion
   with a lock.
+
+copies flags:
+  --sandbox-temp-root PATH   host staging root (default: ORCHARA_SANDBOX_WORKSPACE_ROOT
+                             or the OS temp directory the supervisor uses)
+  --sandbox-age 1h           only remove sandbox leftovers at least this old
+  --third-party-components a,b   deployed third-party memory/RAG components
+                             (default: none; the committed T066 decision is do_not_adopt)
+  --limit 100                maximum deletion jobs handled by this pass
+
+  copies needs ORCHARA_MAINTENANCE_DSN only. It clears the four T069 scopes
+  checkpoints|sandbox_temp|third_party_history|backup_catalog, records one ledger
+  outcome per copy class, and writes the backup deletion ledger. It never claims a
+  vendor copy, an already-downloaded copy or backup media was erased.
 `
 
 type report struct {
@@ -82,6 +99,8 @@ func main() {
 		runMaintenance(os.Args[2:])
 	case "sweep":
 		runSweep(os.Args[2:])
+	case "copies":
+		runCopies(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 	default:

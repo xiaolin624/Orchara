@@ -10,6 +10,7 @@
 //	bootstrap        create the first local administrator (password on stdin only)
 //	handover         move unfinished service-account responsibility to another admin
 //	background-jobs  the formal control interface for fixed-handler background work
+//	deletion         export/replay the append-only backup deletion ledger
 //	evaluations      enqueue one evaluation and its application_evaluate job
 //	runs             conservative recovery: park expired leases, recover with evidence
 //	seed-sales-template  create/update the F04A sales template source draft
@@ -47,6 +48,7 @@ commands:
   bootstrap        create the first local administrator (password read from stdin)
   handover         move unfinished service-account responsibility to another administrator
   background-jobs  enqueue fixed-handler background work (background-jobs enqueue --help)
+  deletion         export and replay the append-only backup deletion ledger (deletion --help)
   evaluations      enqueue one evaluation and its application_evaluate job (evaluations enqueue --help)
   runs             park expired leases and recover a parked Run with audited evidence (runs --help)
   seed-sales-template  create/update the F04A sales template source draft
@@ -114,7 +116,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'evaluations', 'runs' or 'seed-sales-template'")
+		return errors.New("missing command; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs' or 'seed-sales-template'")
 	}
 	switch args[0] {
 	case "migrate":
@@ -125,6 +127,8 @@ func run(args []string) error {
 		return runHandover(args[1:])
 	case "background-jobs":
 		return runBackgroundJobs(args[1:])
+	case "deletion":
+		return runDeletion(args[1:])
 	case "evaluations":
 		return runEvaluations(args[1:])
 	case "runs":
@@ -135,7 +139,7 @@ func run(args []string) error {
 		fmt.Fprint(os.Stdout, usage)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'evaluations', 'runs' or 'seed-sales-template'", args[0])
+		return fmt.Errorf("unknown command %q; expected 'migrate', 'bootstrap', 'handover', 'background-jobs', 'deletion', 'evaluations', 'runs' or 'seed-sales-template'", args[0])
 	}
 }
 
