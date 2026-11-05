@@ -1971,8 +1971,8 @@ T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + �
 | 审批页 | **passed**：`approvals.js` 识别 `kind=node_approval`，经既有 artifact-content ACL 显示真实 title/节点/来源/proposal；capability 提案渲染不变（T050 页面测试通过） |
 | 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 7 用例（真实 PG/API/mTLS/supervisor/审批 API/唯一 resume）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票 9 passed in 57.79s |
 | 回归子集 | **passed**：`pytest tests/f06/test_t050_approval.py tests/f06/test_t050_pages.py tests/f06/test_t043_agent_node.py -q` **27 passed in 178.74s**（首跑 1 个 sandbox lease-lost 环境 flake，隔离重跑通过后整套复跑通过） |
-| Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过 |
+| Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过；合并后真实栈关键 3 用例（服务端幂等/批准恢复/两次审批）**3 passed in 58.54s** |
 | 既有测试缺陷 | **修复（2 行，测试代码）**：`tests/f04b/test_t083_runview.py` 条件/join 真实栈用例在 `491cb78` 上把 items 列表当 body 使用（该用例在 graph runtime 合并前一直 skip，从未跑过）；修复后 7 passed，产品断言不变 |
-| 边界/not_run | 全量 `pytest tests/f06` 与合并后 T087/f06 真实栈重跑 `not_run`（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件）；自动过期 sweeper 不存在（过期经 decision 路径观察）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
+| 边界/not_run | 全量 `pytest tests/f06` 与合并后全量 `pytest tests/f04b` 未重跑（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件；审批/等待子集 27 passed，合并后关键 3 用例真实栈 3 passed）；自动过期 sweeper 不存在（过期经 decision 路径观察）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`（`sync_spec --check` no drift）。
