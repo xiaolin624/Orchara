@@ -637,6 +637,15 @@ button.link.danger {
   border-color: #0f766e;
   border-style: double;
 }
+.orchara-node-approval {
+  border-color: #a21caf;
+  border-style: solid;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(162, 28, 175, 0.08),
+      transparent);
+}
 .orchara-handle {
   width: 9px;
   height: 9px;

@@ -71,10 +71,10 @@ func runApprovalAttempt(
 
 func TestGraphRunApprovalNodeParksAtTheServerApprovalWithTheFixedCheckpoint(t *testing.T) {
 	client, box, report := runApprovalAttempt(t, approvalDefinition, `{}`, []*NodeApproval{{
-		ID:            "11111111-1111-4111-8111-111111111111",
-		State:         "pending",
-		ParamsSHA256:  strings.Repeat("a", 64),
-		ExpiresAt:     time.Now().Add(10 * time.Minute),
+		ID:                 "11111111-1111-4111-8111-111111111111",
+		State:              "pending",
+		ParamsSHA256:       strings.Repeat("a", 64),
+		ExpiresAt:          time.Now().Add(10 * time.Minute),
 		ProposalArtifactID: "22222222-2222-4222-8222-222222222222",
 	}})
 	if report.Outcome != "waiting_approval" || report.ErrorCode != CodeApprovalRequired {
@@ -182,11 +182,11 @@ func TestGraphRunApprovedNodePublishesTheDecisionAndContinues(t *testing.T) {
 
 func TestGraphRunRejectedNodeApprovalFailsWithoutPublishingOutput(t *testing.T) {
 	client, _, report := runApprovalAttempt(t, approvalDefinition, `{}`, []*NodeApproval{{
-		ID:            "11111111-1111-4111-8111-111111111111",
-		State:         "rejected",
-		ParamsSHA256:  strings.Repeat("a", 64),
-		ExpiresAt:     time.Now().Add(10 * time.Minute),
-		DecidedAt:     decidedAtValue(),
+		ID:           "11111111-1111-4111-8111-111111111111",
+		State:        "rejected",
+		ParamsSHA256: strings.Repeat("a", 64),
+		ExpiresAt:    time.Now().Add(10 * time.Minute),
+		DecidedAt:    decidedAtValue(),
 	}})
 	if report.ErrorCode != CodeApprovalRejected {
 		t.Fatalf("report = %+v", report)

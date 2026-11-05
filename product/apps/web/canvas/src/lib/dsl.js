@@ -12,7 +12,7 @@
  * where a connection is illegal and how to repair it.
  */
 
-export const NODE_TYPES = ['start', 'python', 'agent', 'condition', 'join', 'end'];
+export const NODE_TYPES = ['start', 'python', 'agent', 'condition', 'join', 'approval', 'end'];
 
 export const NODE_LABELS = {
   start: '开始',
@@ -20,11 +20,12 @@ export const NODE_LABELS = {
   agent: 'Agent',
   condition: '条件分支',
   join: '并行汇合',
+  approval: '人工审批',
   end: '结束',
 };
 
 /** Types the palette may add more than once; start and end stay unique. */
-export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'condition', 'join'];
+export const REPEATABLE_NODE_TYPES = ['python', 'agent', 'condition', 'join', 'approval'];
 
 /** The comparison vocabulary of a condition case (workflow.schema.json). */
 export const CONDITION_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'exists'];
@@ -98,6 +99,12 @@ export function defaultNode(type, id) {
       required_sources: [],
       optional_sources: [],
     };
+  } else if (type === 'approval') {
+    // Contract config is exactly {title, expires_seconds}; the proposal is a
+    // bound input, never a config field. The default is an (editable) empty
+    // object literal so the node is complete on the canvas.
+    base.inputs = { proposal: { literal: {} } };
+    base.config = { title: '', expires_seconds: 3600 };
   }
   return base;
 }
@@ -128,6 +135,7 @@ export const DEFAULT_POSITIONS = {
   agent: { x: 520, y: 160 },
   condition: { x: 280, y: 320 },
   join: { x: 600, y: 320 },
+  approval: { x: 420, y: 440 },
   end: { x: 760, y: 160 },
 };
 

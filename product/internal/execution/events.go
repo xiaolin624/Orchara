@@ -138,6 +138,46 @@ func AppendRunStatusTx(ctx context.Context, tx *sql.Tx, runID string) (*Event, e
 	return insertNextEventTx(ctx, tx, runID, "", facts, EventTypeRunStatus, raw)
 }
 
+// EventTypeApprovalRequired is the contract's durable approval notice. T087
+// emits it from the same transaction that inserts the node approval (a pending
+// human decision is a committed fact, not an SSE guess).
+const EventTypeApprovalRequired = "approval.required"
+
+// ApprovalRequiredPayload is the exact event.schema.json payload for
+// `approval.required`: the approval identity and its real deadline.
+type ApprovalRequiredPayload struct {
+	ApprovalID string `json:"approval_id"`
+	ExpiresAt  string `json:"expires_at"`
+}
+
+// AppendApprovalRequiredTx appends one `approval.required` event for a newly
+// created approval in the caller's transaction. A replay/reprepare of the same
+// approval must not call it: the first committed row is the one durable notice.
+func AppendApprovalRequiredTx(
+	ctx context.Context, tx *sql.Tx, runID, approvalID string, expiresAt time.Time,
+) error {
+	if !uuid.Valid(strings.TrimSpace(runID)) || !uuid.Valid(strings.TrimSpace(approvalID)) {
+		return errors.New("an approval.required event needs the run and approval UUIDs")
+	}
+	facts, err := lockEventRunTx(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(ApprovalRequiredPayload{
+		ApprovalID: approvalID,
+		ExpiresAt:  expiresAt.UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		return fmt.Errorf("encoding the approval.required payload: %w", err)
+	}
+	if _, err := insertNextEventTx(
+		ctx, tx, runID, "", facts, EventTypeApprovalRequired, raw,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
 // eventRunFacts is the locked Run state the event allocator reads.
 type eventRunFacts struct {
 	State     string

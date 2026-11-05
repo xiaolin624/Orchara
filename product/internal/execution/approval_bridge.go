@@ -33,47 +33,78 @@ const (
 )
 
 // adoptApprovalDecisionTx copies a decision that was stored before the waiting
-// result into the waiting row. The decision must belong to the operation named by
-// the waiting checkpoint (`capability:<operation_id>`), otherwise a Run that has
-// already completed an earlier approval could adopt its stale decision and resume
-// without the current operation's human decision. Only a committed decision state
-// is adopted; an invalidated approval is not a decision and must not resume.
+// result into the waiting row. The decision must belong to the wait the worker
+// named:
+//
+//   - `capability:<operation_id>` (F06/T050) adopts the decision of that parked
+//     operation, otherwise a Run that has already completed an earlier approval
+//     could adopt its stale decision and resume without the current operation's
+//     human decision;
+//   - `approval:<approval_id>` (F04B/T087) adopts the decision of that exact node
+//     approval (`operation_id IS NULL`), so a capability approval with the same
+//     id namespace can never be adopted by a node wait either.
+//
+// Only a committed decision state is adopted; an invalidated approval is not a
+// decision and must not resume.
 func adoptApprovalDecisionTx(
 	ctx context.Context, tx *sql.Tx, runID, checkpointID string,
 ) error {
-	operationID, ok := approvalOperationFromCheckpoint(checkpointID)
-	if !ok {
-		return nil
+	if operationID, ok := approvalOperationFromCheckpoint(checkpointID); ok {
+		var (
+			state      string
+			approvalID string
+		)
+		err := tx.QueryRowContext(ctx, `
+			SELECT state, id::text
+			  FROM platform.approvals
+			 WHERE run_id = $1::uuid
+			   AND operation_id = $2::uuid
+			   AND state IN ('approved', 'rejected', 'expired')
+			 ORDER BY decided_at DESC NULLS LAST, id DESC
+			 LIMIT 1`, runID, operationID,
+		).Scan(&state, &approvalID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading the approval decision: %w", err)
+		}
+		return adoptDecisionTx(ctx, tx, runID, state, approvalID)
 	}
-	var (
-		state      string
-		approvalID string
-	)
-	err := tx.QueryRowContext(ctx, `
-		SELECT state, id::text
-		  FROM platform.approvals
-		 WHERE run_id = $1::uuid
-		   AND operation_id = $2::uuid
-		   AND state IN ('approved', 'rejected', 'expired')
-		 ORDER BY decided_at DESC NULLS LAST, id DESC
-		 LIMIT 1`, runID, operationID,
-	).Scan(&state, &approvalID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+	if approvalID, ok := nodeApprovalFromCheckpoint(checkpointID); ok {
+		var state string
+		err := tx.QueryRowContext(ctx, `
+			SELECT state
+			  FROM platform.approvals
+			 WHERE id = $1::uuid
+			   AND run_id = $2::uuid
+			   AND operation_id IS NULL
+			   AND state IN ('approved', 'rejected', 'expired')`, approvalID, runID,
+		).Scan(&state)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading the node approval decision: %w", err)
+		}
+		return adoptDecisionTx(ctx, tx, runID, state, approvalID)
 	}
-	if err != nil {
-		return fmt.Errorf("reading the approval decision: %w", err)
-	}
-	resolution := WaitingResolution{
-		Kind: WaitingKindApproval, Outcome: state, Reference: approvalID,
-	}
-	document, err := canonicalWaitingDecision(resolution)
+	return nil
+}
+
+// adoptDecisionTx stores one already-committed approval decision as the waiting
+// decision. The first stored decision wins; adopting is best effort only for the
+// decision-before-waiting-result order.
+func adoptDecisionTx(
+	ctx context.Context, tx *sql.Tx, runID, outcome, approvalID string,
+) error {
+	document, err := canonicalWaitingDecision(WaitingResolution{
+		Kind: WaitingKindApproval, Outcome: outcome, Reference: approvalID,
+	})
 	if err != nil {
 		return err
 	}
 	if err := storeWaitingDecisionTx(ctx, tx, runID, WaitingKindApproval, document); err != nil {
-		// A decision already in the waiting row wins; adopting is best effort
-		// only for the decision-before-waiting-result order.
 		if errors.Is(err, ErrEventConflict) {
 			return nil
 		}
@@ -96,6 +127,21 @@ func approvalOperationFromCheckpoint(checkpointID string) (string, bool) {
 		return "", false
 	}
 	return operationID, true
+}
+
+// nodeApprovalFromCheckpoint extracts the approval id from the T087 executor's
+// stable checkpoint `approval:<approval_id>`.
+func nodeApprovalFromCheckpoint(checkpointID string) (string, bool) {
+	const prefix = "approval:"
+	value := strings.TrimSpace(checkpointID)
+	if !strings.HasPrefix(value, prefix) {
+		return "", false
+	}
+	approvalID := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, prefix)))
+	if !uuid.Valid(approvalID) {
+		return "", false
+	}
+	return approvalID, true
 }
 
 // approvalDecisionRefusesTx reports whether a rejected/expired waiting decision
