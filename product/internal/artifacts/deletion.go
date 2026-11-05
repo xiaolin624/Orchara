@@ -259,11 +259,18 @@ func (t *DeletionTarget) linkedRunsTx(
 	return runs, nil
 }
 
+// nonTerminalRuns selects the runs that must enter the existing cancel path.
+//
+// Parked runs (`recovery_pending`, `needs_reconciliation`) are deliberately not
+// cancelled: they already cannot execute, and the F03/T038 recovery gate re-reads
+// the tombstoned input and refuses with `input_deleted`. Cancelling them here
+// would mask that defence-in-depth proof. Every run that could still make progress
+// (queued/running/waiting/cancelling) is cancelled.
 func nonTerminalRuns(runs []linkedRun) []deletion.AffectedRun {
 	affected := make([]deletion.AffectedRun, 0, len(runs))
 	for _, run := range runs {
 		switch run.State {
-		case "succeeded", "failed", "cancelled":
+		case "succeeded", "failed", "cancelled", "recovery_pending", "needs_reconciliation":
 			continue
 		}
 		affected = append(affected, deletion.AffectedRun{RunID: run.ID, State: run.State})
