@@ -1661,7 +1661,7 @@ T079（GitHub #80）已交付，状态 **`passed`**。证据：
 | interaction/答复 | proposal 封存 artifact + correlation id + 15 分钟 TTL，`Request.interaction.proposal` 投影；答复路径级幂等 receipt；精确 CAS `state='pending' AND expires_at > now()`；0 行回滚 receipt 后独立事务 expired+`failed(interaction_expired)`+推进队列 → 409 `interaction_closed`，旧答复不复活任务；显式 `candidate_version_id` 记录到 `requests.selected_version_id`，恢复轮不重调模型但复核快照/ACL/输入 |
 | job/守卫 | 真实 `route_request` handler（维护 mTLS + live lease）执行服务端一轮；重试表含 transient；终止失败的 completion guard 把仍 `routing` 的请求置 `failed(route_failed)` 并经 T074 接缝释放会话槽 |
 | 页面 | `/chat` 交互面板显示提问/缺失字段/过期提示/候选（序号仅为顺序），可单选候选或补充说明答复；Node 纯函数执行路径/候选/答复体/幂等 key，并断言无概率词 |
-| 测试 | `tests/f08` **54 passed ×2 背靠背**（949.35s/842.00s；T079 19 = 路由 3 + 交互/预算 8 + job guard 2 + 迁移 4 + 页面 2，另 Go `internal/routing` 单测）；`tests/tooling` 21 passed、`tests/f11` 22 passed（conversation 删除线）；`go build/vet/test`/`gofmt -l`/`sync_spec --check` 全绿；真实 PG 16.4 + 编译 API/admin/maintenance + 真实 HTTP+CSRF/mTLS + 真实封存字节 + Node 24 |
+| 测试 | `tests/f08` **54 passed ×2 背靠背**（949.35s/842.00s）+ 最终 merge `085d025` 后 **54 passed**（779.55s；T079 19 = 路由 3 + 交互/预算 8 + job guard 2 + 迁移 4 + 页面 2，另 Go `internal/routing` 单测）；`tests/tooling` 21 passed、`tests/f11` 22 passed（conversation 删除线）；`go build/vet/test`/`gofmt -l`/`sync_spec --check` 全绿；真实 PG 16.4 + 编译 API/admin/maintenance + 真实 HTTP+CSRF/mTLS + 真实封存字节 + Node 24 |
 | 边界/not_run | 真实 vendor 模型 adapter/凭据（F06）；语义/中文分词召回质量（T064/T067）；T082 交接 UI（保留 queue/interaction 接缝）；T078 子 Run；浏览器 DOM；全量 pytest；未 push/未关 issue、未改 docs/spec/contracts |
 
 ## F11 异步清理对象和索引并可观察失败重试（T071，2026-11-05）

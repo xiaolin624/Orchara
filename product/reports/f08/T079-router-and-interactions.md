@@ -17,8 +17,12 @@
   `not_run`（与 T023/T027/T033/T074 同一边界）；全量 `tests` 未运行。
 - 迁移：`db/migrations/0050_router_interactions.sql`（合并后基线 tail 为 0049；本票原编号 0046 与 T072 的 `0046_deletion_copy_ledger.sql` 撞号，最终 merge 时按 BRIEF §5 重编号为 0050；测试按 slug 断言，不 pin 编号）。
 - 决策：`docs/adr/0029-t079-router-interactions.md`（非契约候选快照/决策表/选中列、控制模型
-  解析、预算口径、handler 协议与过期语义）。契约与 `docs/spec/**` 未改动，
-  `python tools/sync_spec.py --check` 无漂移。
+  解析、预算口径、handler 协议与过期语义；因集成树 T078 已占用 0025，本票 ADR 重编号为
+  0029）。契约与 `docs/spec/**` 未改动，`python tools/sync_spec.py --check` 无漂移。
+- 最终合并：`integration/t068-t082` 合并时点 `2aba23c`（带入 T071/T072 删除清理、T073 诊断、
+  T078 子运行），合并提交 **`085d025`**；合并冲突保留双方（后台 guard 同时注册
+  `route_request` 与 `delete_content`，Server 同时装配 routing 与 children），迁移重编号
+  0046→0050、ADR 0025→0029；合并后 `tests/f08` 复跑见 §3。
 
 ## 0. 工作记录（简短）
 
@@ -170,6 +174,10 @@ $ python -m pytest tests/tooling -q --basetemp=E:\orchara-tmp\t079-22
 
 $ python -m pytest tests/f11 -q --basetemp=E:\orchara-tmp\t079-23
 22 passed in 273.67s (0:04:33)   （含 conversation 删除线）
+
+# 最终合并 integration/t068-t082（merge commit 085d025）后复跑目标套件：
+$ python -m pytest tests/f08 -q --basetemp=E:\orchara-tmp\t079-24
+54 passed in 779.55s (0:12:59)
 ```
 
 ## 4. not_run / 限制
