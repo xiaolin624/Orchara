@@ -6,6 +6,11 @@ not adoption:
 * Mem0 did not run                -> ``insufficient_evidence`` (never adoption);
 * its deletion still holds copies -> ``do_not_adopt`` (the governance gate fails,
   and unclean deletion alone disqualifies formal adoption);
+* it cannot prove its own stores purgeable (``cleanup.unverifiable_copies`` or
+  ``cleanup.deletion_sufficient: false``)
+                                  -> ``do_not_adopt`` (F11.05/T076: "we saw no copy"
+  is not "the copy is gone"; a component with no deletion path is refused even when
+  the post-delete enumeration happens to be empty);
 * no recall or latency benefit    -> ``do_not_adopt`` (keep PostgreSQL);
 * a benefit seen only in stub mode-> ``insufficient_evidence`` (a no-model,
   ``infer=False``, local-embedder run cannot justify a vendor dependency);
@@ -22,7 +27,43 @@ F11_GATE = (
     "model-data egress approval for a vendor memory store"
 )
 
+F11_COMPONENT_DELETION_GATE = (
+    "F11 deletion governance, component half: every body copy the component keeps in its "
+    "own stores (history, docstore, vector store, cache, logs) must be provably purgeable "
+    "by the platform, not merely absent from one post-delete enumeration"
+)
+
 LATENCY_GAIN_RATIO = 0.8  # a 20%+ p95 improvement is the minimum measurable win
+
+
+def deletion_proof(cleanup: dict) -> dict:
+    """The F11.05/T076 deletion test for one component.
+
+    Two independent facts make a component deletion-insufficient:
+
+    ``residual_body_copies``
+        what the post-delete enumeration actually found still present;
+    ``unverifiable_copies``
+        what the component cannot prove it purged -- an opaque store, a log or cache
+        with no deletion path, or an explicit ``deletion_sufficient: false``.
+
+    Either one fails the component gate. A negative enumeration alone is not proof:
+    a store nobody can read is still a store the platform cannot purge after a user
+    deletes their data.
+    """
+    if not isinstance(cleanup, dict):
+        cleanup = {}
+    residual = [str(item) for item in (cleanup.get("residual_body_copies") or [])]
+    unverifiable = [str(item) for item in (cleanup.get("unverifiable_copies") or [])]
+    if cleanup.get("deletion_sufficient") is False and not unverifiable:
+        unverifiable = ["deletion_sufficient:false"]
+    evidence = residual + unverifiable
+    return {
+        "sufficient": not evidence,
+        "residual_body_copies": residual,
+        "unverifiable_body_copies": unverifiable,
+        "evidence": evidence,
+    }
 
 
 def _metric(system: dict, key: str, default: float = 0.0) -> float:
@@ -54,7 +95,9 @@ def decide(
     f11_reason: str = F11_GATE,
 ) -> dict:
     """Return the decision record for one comparison."""
-    gates = {"f11": {"passed": bool(f11_gate_passed), "reason": f11_reason}}
+    gates = {
+        "f11": {"passed": bool(f11_gate_passed), "reason": f11_reason},
+    }
     remaining_gates = ["F11"] if not f11_gate_passed else []
 
     if not isinstance(pg, dict) or pg.get("status") != "run":
@@ -110,17 +153,33 @@ def decide(
     }
 
     residual = list((mem0.get("cleanup") or {}).get("residual_body_copies") or [])
+    proof = deletion_proof(mem0.get("cleanup"))
+    gates["f11_component_deletion"] = {
+        "passed": proof["sufficient"],
+        "reason": F11_COMPONENT_DELETION_GATE,
+        "evidence": proof["evidence"],
+    }
     governance = {
-        "clean": not residual,
+        "clean": not proof["evidence"],
         "residual_body_copies": residual,
+        "unverifiable_body_copies": proof["unverifiable_body_copies"],
+        "deletion_sufficient": proof["sufficient"],
         "evidence_level": mem0.get("evidence_level"),
     }
-    if residual:
-        reasons = [
-            "deletion still leaves body copies in Mem0's own stores: "
-            + ", ".join(str(item) for item in residual)
-            + "; a memory store that cannot show a clean copy purge is disqualified"
-        ]
+    if proof["evidence"]:
+        if residual:
+            reasons = [
+                "deletion still leaves body copies in Mem0's own stores: "
+                + ", ".join(str(item) for item in residual)
+                + "; a memory store that cannot show a clean copy purge is disqualified"
+            ]
+        else:
+            reasons = [
+                "Mem0 cannot prove that its own stores are purgeable: "
+                + ", ".join(str(item) for item in proof["unverifiable_body_copies"])
+                + "; a store the platform cannot purge is a deletion hole even when one "
+                "post-delete enumeration finds no copy, so the F11 component gate fails"
+            ]
         if not recall_gain and not latency_gain:
             reasons.append(
                 "Mem0 also shows no measurable benefit: recall is not better and p95 is "
