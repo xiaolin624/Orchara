@@ -52,7 +52,12 @@
     不创建审核记录。审核内容只包含共享定义与封存报告证据，不包含任何使用者的会话、文件或正文。
   </p>
 
-  <section class="card">
+  <p class="hint">
+    发布预览与提交都需要 <code>creator</code> 角色；没有该角色时服务端返回
+    <code>403 creator_role_required</code>，下面的预览/提交区域不会显示。
+  </p>
+
+  <section class="card" data-requires-role="creator" hidden>
     <h2>1. 发布摘要（用途 / 风险 / 固定依赖）</h2>
     <button id="publish-preview" type="button">加载当前草稿的发布摘要</button>
     <p id="publish-preview-status" class="status" role="status" aria-live="polite"></p>
@@ -85,7 +90,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" data-requires-role="creator" hidden>
     <h2>2. 绑定已评测内容并提交</h2>
     <form id="publish-form" method="post">
       <label for="publish-expected-hash">expected_manifest_sha256（64 位十六进制；摘要加载后自动填入）</label>
@@ -107,6 +112,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/publish.js"></script>
 </body>
 </html>

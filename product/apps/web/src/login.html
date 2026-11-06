@@ -22,7 +22,7 @@
     [hidden] { display: none !important; }
   </style>
 </head>
-<body>
+<body data-auth="optional">
   <nav>
     <a href="/">状态</a>
     <a href="/activate">激活账号</a>
@@ -53,22 +53,34 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script>
     const loginForm = document.getElementById('login-form');
     const loginStatus = document.getElementById('login-status');
 
-    // The two failures this page exists to explain, in the API's own terms.
+    // The failures this page exists to explain, in the API's own terms.
     const LOGIN_MESSAGES = {
       invalid_credentials: '登录名或密码不正确（invalid_credentials）。',
       rate_limited:
         '失败次数过多，已被暂时限流（rate_limited）。服务端要求约 60 秒后再试；' +
         '被限流期间即使是正确密码也会被拒绝。',
       principal_disabled: '这个账号已被禁用（principal_disabled），请联系管理员。',
+      // A page whose session ended redirects here with ?error=<stable code>.
+      session_revoked: '会话已被撤销（session_revoked），请重新登录。',
+      session_expired: '会话已过期（session_expired），请重新登录。',
     };
 
     function setStatus(message, kind) {
       loginStatus.textContent = message;
       loginStatus.className = 'status ' + (kind || '');
+    }
+
+    // Session failures redirect here with ?error=principal_disabled so the page
+    // can explain why the previous action was refused instead of showing a blank
+    // form. The reason vocabulary is exactly the API's error code.
+    const entryReason = new URLSearchParams(window.location.search).get('error');
+    if (entryReason && LOGIN_MESSAGES[entryReason]) {
+      setStatus(LOGIN_MESSAGES[entryReason], 'bad');
     }
 
     loginForm.addEventListener('submit', async (event) => {
@@ -83,10 +95,14 @@
           },
         });
         document.getElementById('password').value = '';
-        // The response set the HttpOnly session cookie. The admin page restores
-        // the identity from GET /api/v1/auth/me, so nothing is kept here.
-        setStatus('登录成功，正在进入管理台…', 'ok');
-        window.location.assign('/admin');
+        // The login response carries no roles. Read the identity and land on the
+        // page this role can actually use: sending every account to /admin left
+        // a plain user on a page whose panels were all hidden.
+        const current = await identity(true);
+        const isAdmin =
+          Array.isArray(current.roles) && current.roles.indexOf('admin') !== -1;
+        setStatus(isAdmin ? '登录成功，正在进入管理台…' : '登录成功，正在进入应用目录…', 'ok');
+        window.location.assign(isAdmin ? '/admin' : '/apps');
       } catch (error) {
         setStatus(
           LOGIN_MESSAGES[error.code] || `登录失败 [${error.code}] ${error.message}`,

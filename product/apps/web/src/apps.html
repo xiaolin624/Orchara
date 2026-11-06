@@ -49,7 +49,7 @@
     <code>403 creator_role_required</code>，本页会原样显示该错误码。
   </p>
 
-  <section class="card">
+  <section class="card" id="create-app-card" data-requires-role="creator" hidden>
     <h2>新建应用</h2>
     <form id="create-app-form" method="post">
       <label for="create-app-name">应用名称</label>
@@ -62,12 +62,12 @@
   <section class="card">
     <h2>可见应用</h2>
     <p id="apps-status" class="status" role="status" aria-live="polite">正在加载应用…</p>
-    <ul id="apps-list"></ul>
+    <ul id="apps-list" data-auth-content></ul>
     <p id="apps-empty" class="hint" hidden>当前没有可见的应用：你既不是任何应用的所有者，也没有收到有效的 read 授权。</p>
     <button id="apps-next" type="button" hidden>下一页</button>
   </section>
 
-  <section class="card">
+  <section class="card" id="template-card" data-requires-role="creator" hidden>
     <h2>从销售模板创建（F04A/T049）</h2>
     <p class="hint">
       复制服务端受控销售模板到你的账号：CSV/XLSX → 已验证统计（summary.json / summary.csv）→
@@ -79,6 +79,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/versions.js"></script>
   <script>
     const listElement = document.getElementById('apps-list');
@@ -90,6 +91,16 @@
 
     let nextCursor = null;
     let rendered = 0;
+    let identityState = null;
+
+    // Writing to an application is a creator capability. The server checks the
+    // role on every write (403 creator_role_required), so the page must not
+    // render a link that can only end in that refusal. The versions page stays
+    // available: reading versions is an owner-or-read-grant operation.
+    // nav.js is the single role vocabulary; pages ask it instead of re-testing
+    // `roles.includes` locally.
+    const canWrite = () =>
+      typeof OrcharaNav !== 'undefined' && OrcharaNav.hasRole(identityState, 'creator');
 
     function setStatus(message, kind) {
       statusElement.textContent = message;
@@ -117,25 +128,31 @@
       // field has no separate availability/state member).
       version.dataset.activeVersionId = application.active_version_id || '';
       version.textContent = describeCatalogAvailability(application);
-      const edit = document.createElement('a');
-      edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
-      edit.textContent = '编辑草稿';
-      const debug = document.createElement('a');
-      debug.href = '/apps/' + encodeURIComponent(application.id) + '/debug';
-      debug.textContent = '调试';
+      item.append(name, ' ', id, ' ', version);
+      if (canWrite()) {
+        const edit = document.createElement('a');
+        edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
+        edit.textContent = '编辑草稿';
+        const debug = document.createElement('a');
+        debug.href = '/apps/' + encodeURIComponent(application.id) + '/debug';
+        debug.textContent = '调试';
+        item.append(' ', edit, ' ', debug);
+      }
       const versions = document.createElement('a');
       versions.href = '/apps/' + encodeURIComponent(application.id) + '/versions';
       versions.textContent = '版本与撤销';
-      item.append(name, ' ', id, ' ', version, ' ', edit, ' ', debug, ' ', versions);
+      item.append(' ', versions);
       listElement.appendChild(item);
     }
 
     async function loadPage(cursor) {
       setStatus('正在加载应用…', 'pending');
       try {
-        // Identity is read from the HttpOnly cookie; a 401 sends the browser to
-        // /login instead of rendering an empty page that looks authorized.
-        await requireLogin();
+        // Identity is read from the HttpOnly cookie; a 401/403 session failure
+        // sends the browser to /login instead of rendering an empty page that
+        // looks authorized. A refresh is a new page load, so this is the
+        // current role set, never a remembered one.
+        identityState = await requireLogin();
         const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
         const page = await api('/api/v1/applications' + query);
         const items = page.items || [];
@@ -153,8 +170,12 @@
           'ok',
         );
       } catch (error) {
-        if (error.status === 401) {
-          window.location.assign('/login');
+        if (handleAuthFailure(error)) {
+          // The shared handler has already emptied [data-auth-content]; keep the
+          // status truthful instead of leaving a stale "loaded N applications".
+          nextButton.hidden = true;
+          emptyElement.hidden = true;
+          setStatus('身份已失效，请重新登录。', 'bad');
           return;
         }
         setStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
@@ -174,8 +195,8 @@
         });
         window.location.assign('/apps/' + encodeURIComponent(created.id) + '/edit');
       } catch (error) {
-        if (error.status === 401) {
-          window.location.assign('/login');
+        if (handleAuthFailure(error)) {
+          setCreateStatus('身份已失效，请重新登录。', 'bad');
           return;
         }
         setCreateStatus('创建失败 [' + error.code + '] ' + error.message, 'bad');
@@ -209,8 +230,8 @@
         });
         window.location.assign('/apps/' + encodeURIComponent(created.id) + '/debug');
       } catch (error) {
-        if (error.status === 401) {
-          window.location.assign('/login');
+        if (handleAuthFailure(error)) {
+          setTemplateStatus('身份已失效，请重新登录。', 'bad');
           return;
         }
         setTemplateStatus('创建失败 [' + error.code + '] ' + error.message, 'bad');

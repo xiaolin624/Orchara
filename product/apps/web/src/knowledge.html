@@ -69,7 +69,7 @@
       <p id="kb-status" class="status" role="status" aria-live="polite"></p>
     </form>
     <h3>我的知识库</h3>
-    <ul id="kb-list" class="bases" aria-live="polite"></ul>
+    <ul id="kb-list" class="bases" data-auth-content aria-live="polite"></ul>
     <label for="kb-select">当前知识库</label>
     <select id="kb-select"></select>
   </section>
@@ -184,6 +184,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/knowledge.js"></script>
   <script>
     (() => {
@@ -220,8 +221,20 @@
       }
 
       async function loadBases(preferredId) {
-        const payload = await api(knowledgeBasesPath());
-        const items = Array.isArray(payload && payload.items) ? payload.items : [];
+        // The list contract is items + next_cursor; the page used to read only
+        // the first page, so a knowledge-base list past the default limit was
+        // silently truncated. Follow the cursor before rendering.
+        let items = [];
+        let cursor = null;
+        for (let page = 0; page < 100; page += 1) {
+          const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+          const payload = await api(knowledgeBasesPath() + query);
+          items = items.concat(Array.isArray(payload && payload.items) ? payload.items : []);
+          cursor = (payload && payload.next_cursor) || null;
+          if (!cursor) {
+            break;
+          }
+        }
         const list = el('kb-list');
         const select = el('kb-select');
         clear(list);

@@ -122,7 +122,12 @@
     <div id="callapp-errors"></div>
   </section>
 
-  <form id="draft-form" method="post">
+  <p class="hint" id="editor-role-hint">
+    保存与校验需要 <code>creator</code> 角色，且只有该应用的所有者能写入（read 授权不是写授权）；
+    不满足时服务端返回 <code>403</code>，所以没有该角色时下面的编辑表单不显示（画布仍可查看）。
+  </p>
+
+  <form id="draft-form" method="post" data-requires-role="creator" hidden>
     <section class="card">
       <h2>用途卡（capability card）</h2>
       <p class="hint">
@@ -174,6 +179,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/canvas.js"></script>
   <script src="/assets/editor.js"></script>
 </body>

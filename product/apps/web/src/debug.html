@@ -89,7 +89,12 @@
     <p id="debug-status" class="status" role="status" aria-live="polite">正在加载当前草稿 revision…</p>
   </section>
 
-  <form id="debug-form" method="post">
+  <p class="hint" id="debug-role-hint">
+    创建私有调试 Run 需要 <code>creator</code> 角色；没有该角色时服务端返回
+    <code>403 creator_role_required</code>，本页不会显示提交表单（只读查看草稿 revision）。
+  </p>
+
+  <form id="debug-form" method="post" data-requires-role="creator" hidden>
     <section class="card">
       <h2>测试输入</h2>
       <label for="debug-revision">要冻结的草稿 revision（draft_revision）</label>
@@ -147,7 +152,7 @@
           <th>错误码</th>
         </tr>
       </thead>
-      <tbody id="run-node-rows"></tbody>
+      <tbody id="run-node-rows" data-auth-content></tbody>
     </table>
     <p id="runview-legend" class="hint">
       <span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
@@ -186,6 +191,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/runview.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>

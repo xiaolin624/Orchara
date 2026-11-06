@@ -20,7 +20,7 @@
     code { font-size: .8rem; opacity: .8; }
   </style>
 </head>
-<body>
+<body data-auth="optional">
   <h1>Orchara 平台状态</h1>
   <nav style="margin:.25rem 0 .75rem;font-size:.9rem">
     <a href="/login" style="margin-right:1rem">登录</a>
@@ -60,6 +60,8 @@
 
   <p class="sub" style="margin-top:1.5rem" id="stamp"></p>
 
+  <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script>
     const liveEl = document.getElementById('live');
     const readyEl = document.getElementById('ready');

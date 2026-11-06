@@ -20,9 +20,19 @@
  *     browser keeps, nothing is remembered in the page or in storage;
  *   - `csrf()` returns the token from that identity. It is sent as the
  *     X-CSRF-Token header on every unsafe request, never in a URL;
- *   - `requireLogin()` redirects to /login when the session is gone;
+ *   - `requireLogin()` sends the browser to /login when the session is gone;
+ *   - `handleAuthFailure()` is the shared 401/403 exit: a session that is gone,
+ *     a disabled principal and a disabled responsible user all leave the page
+ *     instead of leaving stale rows on screen. It is also called from `apiFull`
+ *     for data requests, so a page that forgot its own 401 branch still cannot
+ *     present a refused read as success;
  *   - `logout()` posts /api/v1/auth/logout with the CSRF token and clears the
  *     cached identity.
+ *
+ * A 403 that is a *role* refusal (`forbidden`, `creator_role_required`) is not a
+ * session failure: the caller stays on the page, but the navigation is asked to
+ * re-read the identity and re-render (nav.js `refresh()`), so an entry the
+ * server has just refused stops being advertised.
  *
  * `escapeHTML` exists for the places a page has to build markup; prefer
  * textContent where possible.
@@ -62,6 +72,11 @@ async function apiFull(path, options = {}) {
     failure.status = response.status;
     failure.requestId = detail.request_id || null;
     failure.details = detail.details || null;
+    // Central exit for data requests: a lost session or a disabled principal
+    // must leave the page (and drop the rows it was showing) even when the
+    // calling page has no 401 branch of its own. Role refusals stay on the page
+    // but ask the navigation to re-read the identity.
+    handleApiAuthFailure(path, failure);
     throw failure;
   }
   return { payload, status: response.status, headers: response.headers };
@@ -70,6 +85,134 @@ async function apiFull(path, options = {}) {
 async function api(path, options = {}) {
   const result = await apiFull(path, options);
   return result.payload;
+}
+
+/** One rejection that means the browser must go back to /login. */
+function isAuthFailure(error) {
+  if (!error) {
+    return false;
+  }
+  if (error.status === 401) {
+    return true;
+  }
+  return (
+    error.status === 403 &&
+    (error.code === 'principal_disabled' || error.code === 'responsible_disabled')
+  );
+}
+
+/**
+ * The login URL for one auth failure. A disabled principal gets a reason the
+ * login page can explain; a revoked or expired session gets its own stable code
+ * so the login page can say why the previous page stopped, instead of leaving
+ * the user to guess.
+ */
+function loginURLFor(error) {
+  if (
+    error &&
+    error.status === 403 &&
+    (error.code === 'principal_disabled' || error.code === 'responsible_disabled')
+  ) {
+    return '/login?error=principal_disabled';
+  }
+  if (
+    error &&
+    error.status === 401 &&
+    (error.code === 'session_revoked' || error.code === 'session_expired')
+  ) {
+    return '/login?error=' + encodeURIComponent(error.code);
+  }
+  return '/login';
+}
+
+/**
+ * Empty every region a page marked as session data. A refused read must not
+ * leave the rows from the previous successful read on screen.
+ */
+function clearAuthenticatedContent() {
+  if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') {
+    return;
+  }
+  const regions = document.querySelectorAll('[data-auth-content]');
+  for (const region of regions) {
+    if (typeof region.replaceChildren === 'function') {
+      region.replaceChildren();
+    }
+    // One-time secrets (an activation token, an API key) live in form values
+    // rather than child nodes; clear those too.
+    if (typeof region.value === 'string') {
+      region.value = '';
+    }
+    region.hidden = true;
+  }
+}
+
+let authFailureHandled = false;
+
+/**
+ * Handle a 401 / disabled-principal rejection once per page lifetime.
+ *
+ * Returns true when the rejection is an auth failure (whether or not the
+ * navigation was already started), so a caller can stop rendering. Multi-page
+ * flows (requireLogin, the page's own catch, the shared apiFull exit) all funnel
+ * through here; the browser navigates at most once.
+ */
+function handleAuthFailure(error) {
+  if (!isAuthFailure(error)) {
+    return false;
+  }
+  if (!authFailureHandled) {
+    authFailureHandled = true;
+    clearAuthenticatedContent();
+    window.location.assign(loginURLFor(error));
+  }
+  return true;
+}
+
+/** 403 codes that mean "your role changed", not "your session ended". */
+const ROLE_REFUSAL_CODES = ['forbidden', 'creator_role_required', 'admin_role_required'];
+
+/**
+ * Ask the navigation to re-read GET /api/v1/auth/me after a role refusal.
+ *
+ * This is the in-session half of AC3: after an administrator removes a role, the
+ * next refused action makes the page converge to the current identity instead of
+ * keeping the old entries until a manual refresh.
+ */
+function refreshNavigationAfterRefusal() {
+  if (typeof window === 'undefined' || !window.OrcharaNav) {
+    return;
+  }
+  if (typeof window.OrcharaNav.refresh !== 'function') {
+    return;
+  }
+  try {
+    window.OrcharaNav.refresh().catch(() => {
+      // The page already displays the refusal; a failed re-read is not a second
+      // error to surface.
+    });
+  } catch (error) {
+    // Rendering the refusal is the caller's job; scheduling must not throw.
+  }
+}
+
+/**
+ * The apiFull exit: auth failures navigate, role refusals re-render.
+ *
+ * The authentication endpoints are excluded: /login must be able to *show*
+ * `invalid_credentials` or `principal_disabled` instead of redirecting to
+ * itself.
+ */
+function handleApiAuthFailure(path, failure) {
+  if (/^\/api\/v1\/auth\//.test(String(path || ''))) {
+    return;
+  }
+  if (handleAuthFailure(failure)) {
+    return;
+  }
+  if (failure.status === 403 && ROLE_REFUSAL_CODES.indexOf(failure.code) !== -1) {
+    refreshNavigationAfterRefusal();
+  }
 }
 
 function escapeHTML(value) {
@@ -112,17 +255,16 @@ async function csrf() {
 /**
  * The identity a page needs before it may render account data.
  *
- * A 401 means the session is gone: the browser is sent to the login page, and
- * the promise still rejects so the caller stops rendering. Any other failure
- * (a 5xx, a network error) is left to the caller to display.
+ * A session failure (401, or a 403 for a disabled principal) sends the browser
+ * to the login page through the shared handleAuthFailure, and the promise still
+ * rejects so the caller stops rendering. Any other failure (a 5xx, a network
+ * error) is left to the caller to display.
  */
 async function requireLogin() {
   try {
     return await identity();
   } catch (error) {
-    if (error.status === 401) {
-      window.location.assign('/login');
-    }
+    handleAuthFailure(error);
     throw error;
   }
 }

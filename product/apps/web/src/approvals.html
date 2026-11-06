@@ -55,12 +55,12 @@
   <section class="card">
     <h2>待我审批</h2>
     <p id="approvals-status" class="status" role="status" aria-live="polite">正在加载审批…</p>
-    <ul id="approvals-list"></ul>
+    <ul id="approvals-list" data-auth-content></ul>
     <p id="approvals-empty" class="hint" hidden>当前没有指定给你的待审批操作。</p>
     <button id="approvals-next" type="button" hidden>下一页</button>
   </section>
 
-  <section id="approval-detail" class="card" hidden aria-live="polite">
+  <section id="approval-detail" class="card" data-auth-content hidden aria-live="polite">
     <h2>审批详情</h2>
     <dl class="proposal">
       <dt>审批 id</dt><dd id="detail-id"></dd>
@@ -88,6 +88,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/approvals.js"></script>
 </body>
 </html>

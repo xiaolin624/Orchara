@@ -14,7 +14,7 @@
         <a href="/chat">会话</a>
         <a href="/runs">运行</a>
         <a href="/personal-data">个人数据</a>
-        <a href="/login" id="logout-link">退出</a>
+        <a href="/login" id="logout-link" data-orchara-logout="true">退出</a>
       </nav>
     </header>
 
@@ -29,7 +29,7 @@
           <button type="button" id="conversation-create">新建会话</button>
           <span id="conversation-status" class="status"></span>
         </div>
-        <ul id="conversation-list" aria-label="我的会话"></ul>
+        <ul id="conversation-list" data-auth-content aria-label="我的会话"></ul>
       </section>
 
       <section class="panel" id="chat-panel" hidden>
@@ -125,7 +125,27 @@
     </main>
 
     <script src="/assets/app.js"></script>
+    <script src="/assets/nav.js"></script>
     <script src="/assets/attachments.js"></script>
     <script src="/assets/chat.js"></script>
+    <script>
+      /*
+       * catalog.js links "/chat?version=<application_version_id>" here (the
+       * catalog's "用这个版本提交" action). The chat page used to ignore the
+       * query string, so the link arrived without the fixed version and looked
+       * broken. Pre-fill the real input the submit handler reads; the parameter
+       * is validated as a UUID and written with .value, never as markup.
+       */
+      (function () {
+        const version = new URLSearchParams(window.location.search).get('version');
+        if (!version || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(version)) {
+          return;
+        }
+        const field = document.getElementById('chat-version-id');
+        if (field) {
+          field.value = version;
+        }
+      })();
+    </script>
   </body>
 </html>
