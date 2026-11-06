@@ -208,17 +208,17 @@ func run(logger *log.Logger) error {
 	if _, err := os.Stat(indexPath); err != nil {
 		return fmt.Errorf("web entry not found at %s (set ORCHARA_WEB_DIR)", indexPath)
 	}
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
+	// T093: an exact root pattern, not a catch-all. A catch-all would answer a
+	// method mismatch on a real API path with its own 404 before the mux could
+	// report 405; `GET /{$}` lets net/http own 404/405 and ContractErrors
+	// normalise those two answers into the contract envelope.
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, indexPath)
 	})
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.WithRequestLogging(logger, api.WithRequestID(mux)),
+		Handler:           api.WithRequestLogging(logger, api.WithRequestID(api.ContractErrors(mux))),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -243,7 +243,7 @@ func run(logger *log.Logger) error {
 		}
 		internalServer = &http.Server{
 			Handler: api.WithRequestLogging(logger,
-				api.WithRequestID(api.RequireInternalMTLS(internalMux))),
+				api.WithRequestID(api.RequireInternalMTLS(api.ContractErrors(internalMux)))),
 			ReadHeaderTimeout: 5 * time.Second,
 			TLSConfig:         tlsConfig,
 		}

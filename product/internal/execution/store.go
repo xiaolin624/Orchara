@@ -304,6 +304,16 @@ func markParentChildClaimedTx(ctx context.Context, tx *sql.Tx, parentRunID strin
 	return nil
 }
 
+// contractTimestamp renders one timestamptz column as UTC RFC3339.
+//
+// API.md §1 fixes timestamps as UTC RFC3339. `::text` returns the database
+// session's local zone in the "2006-01-02 15:04:05+08" shape, which is neither
+// UTC nor RFC3339; every lease/deadline value that reaches a contract response
+// goes through this expression instead.
+func contractTimestamp(column string) string {
+	return `to_char(` + column + ` AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+}
+
 // insertAttemptTx writes the one live attempt row for this claim and returns the
 // lease facts read back from the database.
 //
@@ -323,7 +333,9 @@ func insertAttemptTx(
 		     lease_deadline, heartbeat_at)
 		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5,
 		        now() + make_interval(secs => $6::double precision), now())
-		RETURNING lease_deadline::text, heartbeat_at::text, started_at::text`,
+		RETURNING `+contractTimestamp("lease_deadline")+`,
+		          `+contractTimestamp("heartbeat_at")+`,
+		          `+contractTimestamp("started_at"),
 		token, candidate.JobID, candidate.RunID, workerID, executionUnitID, leaseTTLSeconds,
 	).Scan(&leaseDeadline, &heartbeatAt, &startedAt)
 	if err != nil {
@@ -450,7 +462,7 @@ func renewLeaseTx(
 		   AND exited_at IS NULL
 		   AND revoked_at IS NULL
 		   AND lease_deadline > now()
-		RETURNING lease_deadline::text`,
+		RETURNING `+contractTimestamp("lease_deadline"),
 		token, leaseTTLSeconds, nullableBytes(checkpointConnections),
 	).Scan(&deadline)
 	if errors.Is(err, sql.ErrNoRows) {
