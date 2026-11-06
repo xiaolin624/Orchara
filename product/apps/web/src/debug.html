@@ -24,6 +24,31 @@
     dl.run dt { opacity: .7; }
     dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
     button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
+    table.run-node-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .5rem; }
+    table.run-node-table th, table.run-node-table td { text-align: left; padding: .3rem .45rem; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
+    table.run-node-table th { font-weight: 600; opacity: .8; }
+    .node-state { display: inline-block; padding: .05rem .4rem; border-radius: .35rem; white-space: nowrap; }
+    .run-node-row.state-skipped td { opacity: .65; }
+    .run-node-row.state-skipped .node-state { color: #6b7280; background: rgba(107,114,128,.14); }
+    .run-node-row.state-skipped .node-state::before { content: "⏭ "; }
+    .run-node-row.state-failed .node-state { color: #b91c1c; background: rgba(185,28,28,.14); font-weight: 600; }
+    .run-node-row.state-failed .node-state::before { content: "✕ "; }
+    .run-node-row.state-succeeded .node-state { color: #15803d; background: rgba(21,128,61,.12); }
+    .run-node-row.state-running .node-state, .run-node-row.state-pending .node-state { color: #a16207; background: rgba(161,98,7,.12); }
+    .run-node-row.state-unknown .node-state { opacity: .7; }
+    .legend-skipped { color: #6b7280; font-weight: 600; }
+    .legend-failed { color: #b91c1c; font-weight: 600; }
+    .legend-converged { color: #a16207; font-weight: 600; }
+    /* F04B/T085: an optional branch's folded error is error data, not a failure. */
+    .run-node-join-source.state-converged { color: #92400e; }
+    .run-node-join-source { margin: .15rem 0; }
+    .run-node-join-source.state-skipped { opacity: .65; }
+    .run-node-branch details { margin: .25rem 0 .25rem 1rem; }
+    .run-node-branch pre { max-height: 12rem; overflow: auto; }
+    .run-node-citation { display: block; margin: .15rem 0; font-size: .82rem; word-break: break-all; }
+    .run-node-citation.unavailable { color: #b91c1c; text-decoration: line-through; }
+    .run-node-citation-status { display: block; margin: .15rem 0 .15rem 1rem; font-size: .82rem; }
+    .run-node-citation-status.state-failed { color: #b91c1c; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -105,6 +130,48 @@
     <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
   </section>
 
+  <section id="runview-panel" class="card" hidden aria-live="polite">
+    <h2>节点状态（按草稿定义顺序）</h2>
+    <p id="runview-status" class="status" role="status" aria-live="polite">未开始</p>
+    <p id="runview-run-state" class="hint"></p>
+    <p id="runview-error" class="status" role="status" aria-live="polite"></p>
+    <p id="runview-summary" class="hint"></p>
+    <table id="run-node-table" class="run-node-table">
+      <thead>
+        <tr>
+          <th>节点</th>
+          <th>类型</th>
+          <th>状态</th>
+          <th>attempt</th>
+          <th>分支 / join 来源</th>
+          <th>错误码</th>
+        </tr>
+      </thead>
+      <tbody id="run-node-rows"></tbody>
+    </table>
+    <p id="runview-legend" class="hint">
+      <span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
+      <span class="legend-failed">失败</span> 表示节点本身失败；
+      <span class="legend-converged">已收敛的错误</span> 表示
+      <strong>optional 分支</strong>的纯读/计算错误已被汇合为<strong>错误数据</strong>
+      （Run 仍然成功；写操作/越权/预算/审批失败不会被降级，仍会让 Run 失败）。
+      条件节点的选中端口来自它的
+      data artifact（<code>port</code> / <code>matched_case</code>）；汇合节点的每个来源来自
+      data artifact 信封（<code>results.&lt;source&gt;.status</code> / <code>value</code> /
+      <code>error_code</code>）。这些是<strong>非契约</strong>数据面：owner 通过
+      <code>GET /api/v1/runs/{id}/node-results</code> 找到 <code>kind=&quot;data&quot;</code>
+      的 artifact，再读 <code>GET /api/v1/artifacts/{id}/content</code>。
+    </p>
+    <p class="hint">
+      节点表按<strong>当前草稿定义</strong>排序；实际执行的是提交时冻结的 revision。
+      事件流断线会按 <code>Last-Event-ID</code> 续传；<strong>410</strong>（保留窗口过期）时
+      本表只显示持久 node-results 能证明的事实，并标注「由节点结果推断」，不伪造历史事件。
+    </p>
+    <button id="runview-cancel" type="button" disabled>取消 Run</button>
+    <p id="runview-cancel-status" class="status" role="status" aria-live="polite"></p>
+    <p class="hint"><a id="runview-runs-link" href="/runs">在运行列表查看这个 Run</a></p>
+  </section>
+
   <section id="evaluation-progress-entry" class="card">
     <h2>评测进展（异步评测）</h2>
     <p class="hint">
@@ -119,6 +186,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/runview.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
   <script src="/assets/debug.js"></script>

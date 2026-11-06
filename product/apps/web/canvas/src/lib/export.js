@@ -1,14 +1,53 @@
 /*
- * F04A/T040 export sanitizer.
+ * F04B/T083 export sanitizer.
  *
- * Export downloads exactly what the page would PUT: {definition, layout}. The
- * definition contract has no field for secrets, run inputs, memory or personal
- * data, but the check is explicit so a future config field cannot smuggle a
- * credential into an export unnoticed. Layout is view-only and never part of
- * the execution hash.
+ * Export downloads {definition, layout} as before, but now with a *positive*
+ * allowlist: only the contract's per-node-type config keys survive. Unknown
+ * node types and unknown config keys are dropped and reported in ``dropped``
+ * (path + reason) instead of being smuggled into the downloaded draft, so the
+ * export cannot carry a capability the canvas never displayed (UX U5/U6).
+ *
+ * The negative secret denylist stays as a second line of defence: a credential,
+ * endpoint or run-input key anywhere in the document refuses the export
+ * outright. The filter is not an authorization boundary (the server still
+ * validates everything it receives).
  */
 
-const SENSITIVE_KEY = /(secret|token|password|passwd|api[_-]?key|credential|bearer|oauth|memory|personal|run[_-]?input)/i;
+import { escapePointer } from './sources.js';
+
+const SENSITIVE_KEY = /(secret|token|password|passwd|api[_-]?key|credential|bearer|oauth|memory|personal|run[_-]?input|endpoint)/i;
+
+/** Contract config keys per node type; T091 extends this table for the rest. */
+export const CONFIG_ALLOWLIST = {
+  start: [],
+  python: ['tool_version'],
+  agent: [
+    'model_profile_version',
+    'instructions',
+    'tool_versions',
+    'subapp_versions',
+    'max_turns',
+  ],
+  // F04B/T086: the response schema is node.output_schema, never a config key.
+  model: ['model_profile_version', 'prompt_template', 'response_mode'],
+  condition: ['join_id', 'default_port', 'cases'],
+  // F04B/T088: the retrieve config is exactly the stable KB ids and top_k; the
+  // query is an input binding and any inline query is dropped as unknown_config_key.
+  retrieve: ['knowledge_base_ids', 'top_k'],
+  join: ['mode', 'fork_id', 'required_sources', 'optional_sources'],
+  // T087: an approval node carries exactly the title and the expiry window; the
+  // proposal is a bound input (definition.inputs), not a config field.
+  approval: ['title', 'expires_seconds'],
+  // T089: a call_app node pins one fixed child application version; the I/O
+  // mapping lives on the node's inputs, not in config.
+  call_app: ['application_version'],
+  end: [],
+};
+
+const TOP_LEVEL_KEYS = ['dsl_version', 'input_schema', 'output_schema', 'nodes', 'edges', 'policy'];
+const NODE_KEYS = ['id', 'type', 'inputs', 'output_schema', 'config'];
+const EDGE_KEYS = ['source', 'target', 'port'];
+const CASE_KEYS = ['input', 'op', 'value', 'port'];
 
 export class ExportRefused extends Error {
   constructor(code, path, message) {
@@ -38,7 +77,7 @@ export function assertExportSafe(definition, layout) {
       throw new ExportRefused(
         'sensitive_key',
         path,
-        '导出被拒绝：definition 含有凭据/运行输入/记忆类字段 ' + JSON.stringify(key) + '。',
+        '导出被拒绝：definition 含有凭据/端点/运行输入/记忆类字段 ' + JSON.stringify(key) + '。',
       );
     }
   });
@@ -47,7 +86,7 @@ export function assertExportSafe(definition, layout) {
       throw new ExportRefused(
         'sensitive_key',
         path,
-        '导出被拒绝：layout 含有凭据/运行输入/记忆类字段 ' + JSON.stringify(key) + '。',
+        '导出被拒绝：layout 含有凭据/端点/运行输入/记忆类字段 ' + JSON.stringify(key) + '。',
       );
     }
   });
@@ -58,12 +97,113 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function sanitizeCase(item, path, dropped) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    return item;
+  }
+  const cleaned = {};
+  for (const key of Object.keys(item)) {
+    if (CASE_KEYS.includes(key)) {
+      cleaned[key] = item[key];
+    } else {
+      dropped.push({ path: path + '/' + escapePointer(key), reason: 'unknown_config_key' });
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Strip a definition down to the documented shape. Returns the cleaned
+ * definition and a deterministic ``dropped`` report (document order, then
+ * sorted config keys) so the caller can show exactly what was omitted.
+ */
+export function sanitizeDefinition(definition) {
+  const dropped = [];
+  const source = definition && typeof definition === 'object' && !Array.isArray(definition)
+    ? definition
+    : {};
+  const cleaned = {};
+  for (const key of Object.keys(source)) {
+    if (TOP_LEVEL_KEYS.includes(key)) {
+      cleaned[key] = source[key];
+    } else {
+      dropped.push({ path: '/' + escapePointer(key), reason: 'unknown_field' });
+    }
+  }
+
+  const sourceNodes = Array.isArray(source.nodes) ? source.nodes : [];
+  cleaned.nodes = sourceNodes.map((node, index) => {
+    const target = {};
+    const entry = node && typeof node === 'object' && !Array.isArray(node) ? node : {};
+    for (const key of Object.keys(entry)) {
+      if (NODE_KEYS.includes(key)) {
+        target[key] = entry[key];
+      } else {
+        dropped.push({ path: '/nodes/' + index + '/' + escapePointer(key), reason: 'unknown_field' });
+      }
+    }
+    const type = typeof entry.type === 'string' ? entry.type : '';
+    const allow = CONFIG_ALLOWLIST[type];
+    const config = entry.config && typeof entry.config === 'object' && !Array.isArray(entry.config)
+      ? entry.config
+      : {};
+    const cleanConfig = {};
+    for (const key of Object.keys(config).sort()) {
+      if (!allow) {
+        dropped.push({
+          path: '/nodes/' + index + '/config/' + escapePointer(key),
+          reason: 'unknown_node_type',
+        });
+        continue;
+      }
+      if (!allow.includes(key)) {
+        dropped.push({
+          path: '/nodes/' + index + '/config/' + escapePointer(key),
+          reason: 'unknown_config_key',
+        });
+        continue;
+      }
+      cleanConfig[key] = config[key];
+    }
+    if (allow && type === 'condition' && Array.isArray(cleanConfig.cases)) {
+      cleanConfig.cases = cleanConfig.cases.map((item, position) =>
+        sanitizeCase(item, '/nodes/' + index + '/config/cases/' + position, dropped));
+    }
+    if (Object.prototype.hasOwnProperty.call(entry, 'config')) {
+      target.config = cleanConfig;
+    }
+    return target;
+  });
+
+  const sourceEdges = Array.isArray(source.edges) ? source.edges : [];
+  cleaned.edges = sourceEdges.map((edge, index) => {
+    const entry = edge && typeof edge === 'object' && !Array.isArray(edge) ? edge : {};
+    const target = {};
+    for (const key of Object.keys(entry)) {
+      if (EDGE_KEYS.includes(key)) {
+        target[key] = entry[key];
+      } else {
+        dropped.push({ path: '/edges/' + index + '/' + escapePointer(key), reason: 'unknown_field' });
+      }
+    }
+    if (!Object.prototype.hasOwnProperty.call(target, 'port')) {
+      delete target.port;
+    }
+    return target;
+  });
+  return { definition: cleaned, dropped };
+}
+
 export function exportPayload(definition, layout) {
+  assertExportSafe(definition, layout);
+  const sanitized = sanitizeDefinition(definition);
   const payload = {
-    definition: clone(definition && typeof definition === 'object' ? definition : {}),
+    definition: sanitized.definition,
     layout: clone(layout && typeof layout === 'object' ? layout : {}),
   };
-  assertExportSafe(payload.definition, payload.layout);
+  if (sanitized.dropped.length > 0) {
+    payload.dropped = sanitized.dropped;
+  }
   return payload;
 }
 

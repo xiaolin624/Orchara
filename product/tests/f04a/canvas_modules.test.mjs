@@ -17,7 +17,7 @@ import {
   definitionToGraph,
   graphToDefinition,
   layoutFromGraph,
-  linearChainProblems,
+  regionProblems,
   removeNode,
 } from '../../apps/web/canvas/src/lib/dsl.js';
 import {
@@ -132,12 +132,11 @@ test('dsl -> graph -> dsl preserves ids, order, config and layout', () => {
   assert.deepEqual(savedLayout.positions.start, { x: 10, y: 20 });
 });
 
-test('a fresh draft has exactly one of each F04A node and a linear chain', () => {
+test('a fresh draft has exactly one of each F04A node and no local region problem', () => {
   const definition = defaultDefinition();
   assert.deepEqual(definition.nodes.map((node) => node.type), ['start', 'python', 'agent', 'end']);
   assert.equal(definition.edges.length, 3);
-  assert.deepEqual(linearChainProblems(definitionToGraph(definition, defaultLayout(definition)).nodes,
-    definitionToGraph(definition, defaultLayout(definition)).edges), []);
+  assert.deepEqual(regionProblems(definition), []);
 });
 
 test('legal sources are application input plus upstream nodes only', () => {
@@ -162,7 +161,7 @@ test('legal sources are application input plus upstream nodes only', () => {
   assert.equal(describeType({ type: 'array', items: { type: 'integer' } }), 'array<integer>');
 });
 
-test('connection rules refuse everything that is not one linear chain', () => {
+test('connection rules keep the F04A chain legal under the F04B DAG rules', () => {
   const definition = configured();
   const graph = definitionToGraph(definition, defaultLayout(definition));
   const openEdges = graph.edges.filter(
@@ -174,13 +173,15 @@ test('connection rules refuse everything that is not one linear chain', () => {
     'self_loop');
   assert.equal(canConnect(graph.nodes, graph.edges, { source: 'start', target: 'python1' }).code,
     'duplicate_edge');
+  // A second incoming edge on a non-join node is a merge: F04B explains it as
+  // "needs a paired join" instead of the old linear-chain wording.
   assert.equal(canConnect(graph.nodes, graph.edges, { source: 'start', target: 'agent1' }).code,
-    'outgoing_exists');
+    'merge_without_join');
   assert.equal(canConnect(graph.nodes, graph.edges, { source: 'python1', target: 'end' }).code,
-    'outgoing_exists');
+    'merge_without_join');
   const openStart = graph.edges.filter((edge) => edge.source !== 'start');
   assert.equal(canConnect(graph.nodes, openStart, { source: 'start', target: 'end' }).code,
-    'incoming_exists');
+    'merge_without_join');
   assert.equal(canConnect(graph.nodes, graph.edges, { source: 'end', target: 'python1' }).code,
     'end_has_no_output');
   assert.equal(canConnect(graph.nodes, graph.edges, { source: 'python1', target: 'start' }).code,
@@ -189,24 +190,22 @@ test('connection rules refuse everything that is not one linear chain', () => {
     'self_loop');
 });
 
-test('a branch or join is reported as a non-linear chain', () => {
+test('a branch without a paired join is reported as a located region problem', () => {
   const definition = configured();
-  const graph = definitionToGraph(definition, defaultLayout(definition));
-  const branched = graph.edges.concat([{ source: 'start', target: 'agent1' }]);
-  const problems = linearChainProblems(graph.nodes, branched);
-  assert.ok(problems.some((problem) => problem.code === 'not_linear_chain'));
+  definition.edges.push({ source: 'start', target: 'agent1' });
+  const problems = regionProblems(definition);
+  assert.ok(problems.some((problem) => problem.code === 'merge_without_join'));
 });
 
-test('add/remove keep the four-node palette honest', () => {
+test('add/remove honour F04B palette cardinality', () => {
   const definition = configured();
   const graph = definitionToGraph(definition, defaultLayout(definition));
-  assert.equal(addNode(graph.nodes, graph.edges, 'agent').code, 'node_exists');
-  const added = addNode(
-    graph.nodes.filter((node) => node.id !== 'agent1'),
-    graph.edges.filter((edge) => edge.source !== 'agent1' && edge.target !== 'agent1'),
-    'agent',
-  );
+  // start/end stay unique; the authorable worker types may repeat.
+  assert.equal(addNode(graph.nodes, graph.edges, 'start').code, 'node_exists');
+  assert.equal(addNode(graph.nodes, graph.edges, 'end').code, 'node_exists');
+  const added = addNode(graph.nodes, graph.edges, 'agent');
   assert.equal(added.ok, true);
+  assert.ok(!graph.nodes.some((node) => node.id === added.node.id));
   const removed = removeNode(graph.nodes, graph.edges, 'agent1');
   assert.ok(!removed.nodes.some((node) => node.id === 'agent1'));
   assert.ok(!removed.edges.some((edge) => edge.source === 'agent1' || edge.target === 'agent1'));
@@ -227,9 +226,12 @@ test('server errors map to node and config field', () => {
   assert.equal(mapped[1].field, 'inputs.text');
   assert.equal(mapped[2].nodeId, '');
   assert.equal(mapped[2].documentLevel, true);
-  assert.equal(mapped[3].documentLevel, true);
+  // F04B: /edges/<i> resolves to the source node and the canvas edge id.
+  assert.equal(mapped[3].nodeId, 'agent1');
+  assert.equal(mapped[3].documentLevel, false);
+  assert.equal(mapped[3].edgeIndex, 2);
   assert.equal(mapped[4].nodeId, '');
-  assert.equal(documentLevelErrors(mapped).length, 3);
+  assert.equal(documentLevelErrors(mapped).length, 2);
   assert.equal(nodeIdForError(definition, { pointer: '/nodes/99/config' }), '');
   assert.equal(fieldForError('/nodes/2/config/max_turns'), 'config.max_turns');
   assert.equal(fieldForError('/nodes/2/output_schema/properties/summary/type'),

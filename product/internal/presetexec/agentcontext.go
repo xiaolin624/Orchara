@@ -28,8 +28,8 @@ const (
 // agentContextScope is the run-derived authorization scope: only the sealed
 // nodes of this one attempt, and no free-standing artifact ids. The agent never
 // receives another run's data because it cannot name one.
-func agentContextScope(plan *linearPlan, node *manifestNode) agentcontext.Scope {
-	ids := make([]string, 0, 3)
+func agentContextScope(plan *linearPlan, node *manifestNode, extraIDs []string) agentcontext.Scope {
+	ids := make([]string, 0, 3+len(extraIDs))
 	seen := map[string]bool{}
 	for _, candidate := range []*manifestNode{plan.start, plan.python, node} {
 		if candidate == nil || candidate.ID == "" || seen[candidate.ID] {
@@ -37,6 +37,16 @@ func agentContextScope(plan *linearPlan, node *manifestNode) agentcontext.Scope 
 		}
 		seen[candidate.ID] = true
 		ids = append(ids, candidate.ID)
+	}
+	// A graph-owned agent node may read any already-succeeded sealed node of the
+	// same attempt; the graph scheduler passes those node ids here. The scope is
+	// still this run's sealed nodes only, never another run's data.
+	for _, id := range extraIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
 	}
 	return agentcontext.Scope{
 		NodeIDs:     ids,

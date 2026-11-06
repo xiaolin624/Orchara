@@ -81,6 +81,9 @@ func validateCallAppNode(node *manifestNode) (*callAppConfig, error) {
 // availableBeforeCallApp is the output namespace the node's bindings resolve
 // against: the start input plus the admitted upstream nodes.
 func availableBeforeCallApp(run *linearRun) map[string]any {
+	if run.available != nil {
+		return run.available
+	}
 	available := map[string]any{
 		"input":           run.start,
 		run.plan.start.ID: run.start,
@@ -208,6 +211,13 @@ func (r *runner) waitForChild(
 		CheckpointID:   "child:" + child.ID,
 		ErrorCode:      "children_pending",
 	}
+	if captureGraphWaiting(ctx, proposal, "waiting_children", run.outcome,
+		r.exitEvidence(r.heartbeatCount(), run.outcome, nil), CodeChildSpawnFailed) {
+		// The graph scheduler hands the run over only after the other branches
+		// stopped.
+		return executionOutcome{outcome: "waiting_children", code: "children_pending",
+			sandbox: sandboxReportOf(run.outcome)}
+	}
 	if err := r.deps.Client.SubmitResult(
 		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
 	); err != nil {
@@ -276,10 +286,10 @@ func (r *runner) failDelegation(
 ) executionOutcome {
 	if run.plan.callApp != nil {
 		r.emitNode(ctx, run.plan.callApp.ID, "failed")
-		r.skipRemaining(ctx, run.plan, run.plan.callApp.ID)
+		r.skipAfter(ctx, run, run.plan.callApp.ID)
 	} else if run.plan.agent != nil {
 		r.emitNode(ctx, run.plan.agent.ID, "failed")
-		r.skipRemaining(ctx, run.plan, run.plan.agent.ID)
+		r.skipAfter(ctx, run, run.plan.agent.ID)
 	}
 	return r.failAfterStart(ctx, code, message, run.outcome,
 		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))

@@ -1953,10 +1953,18 @@ function beginRunTimeline(runId, elements) {
     isCancelled: isCancelled,
     onStatus: setStatus,
     onEvent: (events, event) => {
-      if (isCancelled() || !list) {
+      if (isCancelled()) {
         return;
       }
       recordNodeStatus(event);
+      // F04B/T083: a page that renders more than the event list (the debug page's
+      // node-state table) can observe the same deduped, ordered events here.
+      if (typeof elements.onEvent === 'function') {
+        elements.onEvent(events, event);
+      }
+      if (!list) {
+        return;
+      }
       // One line per committed event; describeRunEvent never renders payload
       // content, and the seq dedupe above already suppressed replays.
       const item = document.createElement('li');

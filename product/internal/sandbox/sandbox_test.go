@@ -565,6 +565,48 @@ func TestExecutorLostLeaseStopsTheUnit(t *testing.T) {
 	}
 }
 
+// TestExecutorDoesNotMaskAPreStartRefusalAsALeaseLoss pins the T085 gate's
+// finding: when the unit process finishes first, the executor's own post-run
+// cancel can cancel a heartbeat that is still in flight. That error is "our
+// cancel", not a lost lease, and the driver's real refusal must survive.
+func TestExecutorDoesNotMaskAPreStartRefusalAsALeaseLoss(t *testing.T) {
+	options, _ := testProfile(t)
+	runner := &fakeRunner{handlers: []func(context.Context, []string) (CommandResult, error){
+		func(context.Context, []string) (CommandResult, error) {
+			// Give the control ticker time to put a heartbeat in flight, then
+			// answer with the driver's pre-start refusal document.
+			time.Sleep(40 * time.Millisecond)
+			return CommandResult{Stdout: []byte(
+				`{"ok":false,"error":"runsc is not installed in the guest"}`)}, nil
+		},
+	}}
+	executor, _ := NewExecutor(options)
+	executor.WithRunner(runner)
+	var calls int
+	var mu sync.Mutex
+	control := Control{HeartbeatInterval: 5 * time.Millisecond,
+		Heartbeat: func(ctx context.Context) (HeartbeatState, error) {
+			mu.Lock()
+			calls++
+			first := calls == 1
+			mu.Unlock()
+			if first {
+				return HeartbeatState{}, nil
+			}
+			// A blocking heartbeat models the in-flight HTTP request the
+			// executor's own cancel interrupts after the process exited.
+			<-ctx.Done()
+			return HeartbeatState{}, ctx.Err()
+		}}
+	outcome, runErr := executor.Run(context.Background(), toolRequest(), control)
+	if !errors.Is(runErr, ErrSandboxRefused) {
+		t.Fatalf("Run error = %v, want ErrSandboxRefused (outcome %+v)", runErr, outcome)
+	}
+	if errors.Is(runErr, ErrHeartbeat) {
+		t.Fatal("a heartbeat cancelled by our own post-run cancel was misread as a lost lease")
+	}
+}
+
 func TestExecutorTreatsADriverRefusalAsPreStart(t *testing.T) {
 	options, _ := testProfile(t)
 	runner := &fakeRunner{handlers: []func(context.Context, []string) (CommandResult, error){

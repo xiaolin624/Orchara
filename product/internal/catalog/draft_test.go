@@ -159,11 +159,25 @@ func TestCheckExecutableResolvesANodePointerToItsID(t *testing.T) {
 			map[string]any{"id": "start", "type": "start"},
 			map[string]any{"id": "stats", "type": "python"},
 		},
+		"edges": []any{
+			map[string]any{"source": "start", "target": "stats"},
+		},
 	}
 	if got := nodeIDAt(document, "/nodes/1/config/tool_version"); got != "stats" {
 		t.Fatalf("nodeIDAt = %q, want stats", got)
 	}
-	for _, pointer := range []string{"", "/nodes", "/nodes/9/value", "/policy/x", "/nodes/x/value"} {
+	// F04B/T083: an edge-level error carries the edge's source node so the canvas
+	// can highlight both the edge (pointer /edges/<i>) and a node panel.
+	if got := nodeIDAt(document, "/edges/0"); got != "start" {
+		t.Fatalf("nodeIDAt(/edges/0) = %q, want the edge source", got)
+	}
+	if got := nodeIDAt(document, "/edges/0/port"); got != "start" {
+		t.Fatalf("nodeIDAt(/edges/0/port) = %q, want the edge source", got)
+	}
+	for _, pointer := range []string{
+		"", "/nodes", "/nodes/9/value", "/policy/x", "/nodes/x/value",
+		"/edges/9", "/edges/x", "/edges",
+	} {
 		if got := nodeIDAt(document, pointer); got != "" {
 			t.Fatalf("nodeIDAt(%q) = %q, want empty", pointer, got)
 		}

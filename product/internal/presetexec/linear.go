@@ -34,7 +34,10 @@ import (
 	"orchara/platform/internal/uuid"
 )
 
-// linearRun is one linear attempt's state.
+// linearRun is one linear attempt's state. The graph scheduler also uses it as a
+// view for one node (agent / call_app), which is why the optional scheduler hooks
+// exist: the node execution code stays shared, while failure/skip observable
+// semantics stay the scheduler's.
 type linearRun struct {
 	plan    *linearPlan
 	inputs  []InputArtifact
@@ -44,6 +47,58 @@ type linearRun struct {
 	callApp map[string]any
 	outcome sandbox.Outcome
 	report  *SandboxReport
+	// available overrides the upstream-output namespace for a graph-owned node.
+	// Nil means the linear chain's own start/python/agent map.
+	available map[string]any
+	// skip skips every unsettled node of the owning scheduler. Nil means the
+	// linear chain's own skipRemaining.
+	skip func()
+	// scopeIDs extends the agent context scope with the owning graph's other
+	// sealed nodes (the linear chain's start/python are always included).
+	scopeIDs []string
+}
+
+// nodeHost is the scheduler-specific observable surface of one node failure:
+// mark the node failed and skip the scheduler's remaining nodes.
+type nodeHost struct {
+	failed func()
+	skip   func()
+	// sandboxUnit overrides the runsc unit id for this node. The concurrent graph
+	// scheduler gives every branch its own id so two sandboxes can run at once;
+	// the linear chain leaves it empty and keeps the attempt's unit id.
+	sandboxUnit string
+}
+
+func (h nodeHost) nodeFailed() {
+	if h.failed != nil {
+		h.failed()
+	}
+}
+
+// executionUnit is the request's runsc unit id: the node's own id on the graph
+// schedule, the attempt's id on the linear chain.
+func (h nodeHost) executionUnit(attemptUnit string) string {
+	if h.sandboxUnit != "" {
+		return h.sandboxUnit
+	}
+	return attemptUnit
+}
+
+func (h nodeHost) skipRemaining() {
+	if h.skip != nil {
+		h.skip()
+	}
+}
+
+// skipAfter calls the scheduler's skip hook when one is installed and otherwise
+// keeps the linear chain's documented "skip everything after this node"
+// behaviour.
+func (r *runner) skipAfter(ctx context.Context, run *linearRun, after string) {
+	if run.skip != nil {
+		run.skip()
+		return
+	}
+	r.skipRemaining(ctx, run.plan, after)
 }
 
 // executeLinear runs the proven chain and returns the attempt outcome.
@@ -93,12 +148,18 @@ func (r *runner) executeLinear(ctx context.Context, plan *linearPlan) executionO
 // input (the graph itself is fine).
 var errRunInputUnavailable = errors.New("the run input is unavailable")
 
-// runStartNode publishes the validated run input and, when exactly one
+// runStartNode publishes the validated run input for the linear chain.
+func (r *runner) runStartNode(ctx context.Context, run *linearRun) (map[string]any, error) {
+	return r.executeStartNode(ctx, run.plan.start, run.plan.definition, run.inputs)
+}
+
+// executeStartNode publishes the validated run input and, when exactly one
 // CSV/XLSX task_input artifact is linked, its server facts under the documented
 // `artifact` key. Nothing from the client is trusted: the facts come from the
 // database row, not from input JSON.
-func (r *runner) runStartNode(ctx context.Context, run *linearRun) (map[string]any, error) {
-	node := run.plan.start
+func (r *runner) executeStartNode(
+	ctx context.Context, node *manifestNode, definition *manifestDefinition, inputs []InputArtifact,
+) (map[string]any, error) {
 	r.emitNode(ctx, node.ID, "pending")
 	r.emitNode(ctx, node.ID, "running")
 
@@ -121,12 +182,12 @@ func (r *runner) runStartNode(ctx context.Context, run *linearRun) (map[string]a
 	if !ok {
 		return nil, &locatedError{Pointer: "#", Message: "the run input must be a JSON object"}
 	}
-	if err := validateSchema(run.plan.definition.InputSchema, object, "#"); err != nil {
+	if err := validateSchema(definition.InputSchema, object, "#"); err != nil {
 		return nil, &locatedError{Pointer: "#", Message: "input_schema: " + err.Error()}
 	}
 
 	taskInputs := make([]InputArtifact, 0, 1)
-	for _, input := range run.inputs {
+	for _, input := range inputs {
 		if input.Purpose == "task_input" {
 			taskInputs = append(taskInputs, input)
 		}
@@ -152,40 +213,67 @@ func (r *runner) runStartNode(ctx context.Context, run *linearRun) (map[string]a
 	return object, nil
 }
 
-// runPythonNode resolves the node bindings, runs the fixed tool, validates its
-// output and registers data/files/log. done=true means the returned outcome is
-// terminal and the chain stops.
+// runPythonNode executes the linear chain's python node. The work itself lives in
+// executePythonNode so the graph scheduler runs exactly the same node semantics.
 func (r *runner) runPythonNode(
 	ctx context.Context, run *linearRun,
 ) (map[string]any, executionOutcome, bool) {
-	node := run.plan.python
-	r.emitNode(ctx, node.ID, "pending")
-	r.emitNode(ctx, node.ID, "running")
-
 	available := map[string]any{
 		"input":           run.start,
 		run.plan.start.ID: run.start,
 	}
+	execution := r.executePythonNode(ctx, run.plan.python, available, run.inputs, nodeHost{
+		failed: func() { r.emitNode(ctx, run.plan.python.ID, "failed") },
+		skip:   func() { r.skipRemaining(ctx, run.plan, run.plan.python.ID) },
+	})
+	run.outcome = execution.sandbox
+	run.report = execution.report
+	if execution.terminal != nil {
+		return nil, *execution.terminal, true
+	}
+	return execution.output, executionOutcome{}, false
+}
+
+// pythonExecution is one python node attempt's result. A handled failure has
+// already submitted the run's failed/cancelled proposal and lives in terminal;
+// output is set only when the node succeeded.
+type pythonExecution struct {
+	output   map[string]any
+	sandbox  sandbox.Outcome
+	report   *SandboxReport
+	terminal *executionOutcome
+}
+
+// executePythonNode resolves the node bindings, runs the fixed tool, validates its
+// output and registers data/files/log. The host callback owns the scheduler's
+// observable failure/skip facts so the linear and graph paths stay identical.
+func (r *runner) executePythonNode(
+	ctx context.Context, node *manifestNode, available map[string]any,
+	inputs []InputArtifact, host nodeHost,
+) pythonExecution {
+	r.emitNode(ctx, node.ID, "pending")
+	r.emitNode(ctx, node.ID, "running")
+
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {
-		return nil, r.failLinearBeforeSandbox(ctx, run.plan, CodeNodeInputInvalid, err.Error(), node), true
+		return pythonTerminal(r.failNodeBeforeSandbox(ctx, node, host, CodeNodeInputInvalid, err.Error()))
 	}
-	input, err := r.bindPythonFile(ctx, run, bindings)
+	input, err := r.bindPythonFile(bindings, inputs)
 	if err != nil {
-		return nil, r.failLinearBeforeSandbox(ctx, run.plan, CodeNodeInputInvalid, err.Error(), node), true
+		return pythonTerminal(r.failNodeBeforeSandbox(ctx, node, host, CodeNodeInputInvalid, err.Error()))
 	}
 
 	inputBytes, err := r.downloadInput(ctx, input)
 	if err != nil {
-		return nil, r.failLinearBeforeSandbox(ctx, run.plan, CodeInputIntegrity, err.Error(), node), true
+		return pythonTerminal(r.failNodeBeforeSandbox(ctx, node, host, CodeInputIntegrity, err.Error()))
 	}
 	inputName, err := sandbox.InputNameForMediaType(input.MediaType)
 	if err != nil {
-		return nil, r.failLinearBeforeSandbox(ctx, run.plan, CodeToolInputInvalid, err.Error(), node), true
+		return pythonTerminal(r.failNodeBeforeSandbox(ctx, node, host, CodeToolInputInvalid, err.Error()))
 	}
 	inputDocument, err := buildInputDocument(input, inputName)
 	if err != nil {
-		return nil, r.failLinearBeforeSandbox(ctx, run.plan, CodeToolInputInvalid, err.Error(), node), true
+		return pythonTerminal(r.failNodeBeforeSandbox(ctx, node, host, CodeToolInputInvalid, err.Error()))
 	}
 
 	outcome, sandboxErr := r.runSandbox(ctx, sandbox.Request{
@@ -193,35 +281,42 @@ func (r *runner) runPythonNode(
 		MediaType:       strings.ToLower(strings.TrimSpace(input.MediaType)),
 		Input:           inputBytes,
 		InputJSON:       inputDocument,
-		ExecutionUnitID: r.options.ExecutionUnitID,
+		ExecutionUnitID: host.executionUnit(r.options.ExecutionUnitID),
 	}, r.heartbeatControl())
-	run.outcome = outcome
-	run.report = sandboxReportOf(outcome)
+	report := sandboxReportOf(outcome)
 	evidence := r.exitEvidence(r.heartbeatCount(), outcome, sandboxErr)
 
 	switch {
 	case errors.Is(sandboxErr, sandbox.ErrCancelled):
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		if err := r.confirmExit(ctx, outcome.SandboxStarted, evidence); err != nil {
-			return nil, executionOutcome{outcome: "cancelled", code: "cancel_requested",
-				err: err.Error(), sandbox: run.report, failedStatus: true}, true
+		host.nodeFailed()
+		host.skipRemaining()
+		if captureGraphCancellation(ctx, outcome, evidence) {
+			// The graph scheduler confirms the exit only after the other branches
+			// stopped, so a cancelled branch never races their cleanup.
+			return pythonExecution{sandbox: outcome, report: report,
+				terminal: &executionOutcome{outcome: "cancelled", code: "cancel_requested",
+					sandbox: report}}
 		}
-		return nil, executionOutcome{outcome: "cancelled", code: "cancel_requested",
-			runState: r.readRunState(ctx), sandbox: run.report}, true
+		if err := r.confirmExit(ctx, outcome.SandboxStarted, evidence); err != nil {
+			return pythonExecution{sandbox: outcome, report: report,
+				terminal: &executionOutcome{outcome: "cancelled", code: "cancel_requested",
+					err: err.Error(), sandbox: report, failedStatus: true}}
+		}
+		return pythonExecution{sandbox: outcome, report: report,
+			terminal: &executionOutcome{outcome: "cancelled", code: "cancel_requested",
+				runState: r.readRunState(ctx), sandbox: report}}
 
 	case errors.Is(sandboxErr, sandbox.ErrHeartbeat):
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, executionOutcome{outcome: "error", code: CodeSandboxFailed,
-			err:     "the attempt lease was lost while the sandbox ran: " + errString(sandboxErr),
-			sandbox: run.report, failedStatus: true}, true
+		host.nodeFailed()
+		host.skipRemaining()
+		return pythonExecution{sandbox: outcome, report: report,
+			terminal: &executionOutcome{outcome: "error", code: CodeSandboxFailed,
+				err:     "the attempt lease was lost while the sandbox ran: " + errString(sandboxErr),
+				sandbox: report, failedStatus: true}}
 
 	case errors.Is(sandboxErr, sandbox.ErrTimeout):
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, CodeToolTimeout,
-			"the preset tool exceeded its sandbox timeout", outcome, sandboxErr, evidence, nil, input), true
+		return pythonTerminal(r.failPythonRun(ctx, node, host, CodeToolTimeout,
+			"the preset tool exceeded its sandbox timeout", outcome, sandboxErr, evidence, nil, input))
 
 	case errors.Is(sandboxErr, sandbox.ErrRootfsUnavailable),
 		errors.Is(sandboxErr, sandbox.ErrToolUnavailable),
@@ -229,23 +324,17 @@ func (r *runner) runPythonNode(
 		errors.Is(sandboxErr, sandbox.ErrSandboxRefused),
 		errors.Is(sandboxErr, sandbox.ErrDriverReport),
 		errors.Is(sandboxErr, sandbox.ErrDigestMismatch):
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, CodeSandboxUnavailable,
-			"the sandbox could not be started or trusted", outcome, sandboxErr, evidence, nil, input), true
+		return pythonTerminal(r.failPythonRun(ctx, node, host, CodeSandboxUnavailable,
+			"the sandbox could not be started or trusted", outcome, sandboxErr, evidence, nil, input))
 
 	case errors.Is(sandboxErr, sandbox.ErrOrphan):
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, CodeSandboxOrphan,
+		return pythonTerminal(r.failPythonRun(ctx, node, host, CodeSandboxOrphan,
 			"the sandbox cleanup could not prove that every process exited", outcome,
-			sandboxErr, evidence, nil, input), true
+			sandboxErr, evidence, nil, input))
 
 	case sandboxErr != nil:
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, CodeSandboxFailed, "the sandbox failed", outcome,
-			sandboxErr, evidence, nil, input), true
+		return pythonTerminal(r.failPythonRun(ctx, node, host, CodeSandboxFailed,
+			"the sandbox failed", outcome, sandboxErr, evidence, nil, input))
 	}
 
 	switch outcome.ExitCode {
@@ -253,29 +342,24 @@ func (r *runner) runPythonNode(
 	case 3:
 		rejection, rejectionErr := tools.ParseRejectionPayload(outcome.OutputJSON)
 		if rejectionErr != nil {
-			r.emitNode(ctx, node.ID, "failed")
-			r.skipRemaining(ctx, run.plan, node.ID)
-			return nil, r.failRun(ctx, CodeToolOutputInvalid,
+			return pythonTerminal(r.failPythonRun(ctx, node, host, CodeToolOutputInvalid,
 				"the tool rejected the input with an unreadable document", outcome,
-				rejectionErr, evidence, nil, input), true
+				rejectionErr, evidence, nil, input))
 		}
 		diagnostics := diagnosticsDocument(rejection.Code, rejection.Message, rejection.Fix,
 			rejectionLocation(rejection), input)
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, rejection.Code, rejection.Message, outcome, nil,
-			evidence, diagnostics, input), true
+		return pythonTerminal(r.failPythonRun(ctx, node, host, rejection.Code, rejection.Message,
+			outcome, nil, evidence, diagnostics, input))
 	default:
-		r.emitNode(ctx, node.ID, "failed")
-		r.skipRemaining(ctx, run.plan, node.ID)
-		return nil, r.failRun(ctx, CodeToolCrash,
+		return pythonTerminal(r.failPythonRun(ctx, node, host, CodeToolCrash,
 			"the preset tool exited with code "+fmt.Sprint(outcome.ExitCode),
-			outcome, nil, evidence, nil, input), true
+			outcome, nil, evidence, nil, input))
 	}
 
 	data, names, err := sandbox.ParseOutputDocument(outcome.OutputJSON)
 	if err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeToolOutputInvalid, err.Error(), outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeToolOutputInvalid,
+			err.Error(), outcome, err))
 	}
 	collected := make(map[string][]byte, len(outcome.Artifacts))
 	for _, artifact := range outcome.Artifacts {
@@ -283,33 +367,34 @@ func (r *runner) runPythonNode(
 	}
 	admitted, err := sandbox.AdmitArtifacts(names, collected)
 	if err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeToolArtifactInvalid, err.Error(), outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeToolArtifactInvalid,
+			err.Error(), outcome, err))
 	}
 	dataValue, err := decodeJSONDocument(data)
 	if err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeToolOutputInvalid,
-			"output.json.data is not a JSON document", outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeToolOutputInvalid,
+			"output.json.data is not a JSON document", outcome, err))
 	}
 	dataObject, ok := dataValue.(map[string]any)
 	if !ok {
-		return nil, r.pythonFailure(ctx, run, CodeToolOutputInvalid,
-			"output.json.data is not an object", outcome, nil), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeToolOutputInvalid,
+			"output.json.data is not an object", outcome, nil))
 	}
 	if err := validateSchema(node.OutputSchema, dataObject, "#/data"); err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeNodeOutputInvalid,
-			"output.json.data does not match the node output_schema: "+err.Error(), outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeNodeOutputInvalid,
+			"output.json.data does not match the node output_schema: "+err.Error(), outcome, err))
 	}
 	canonical, err := jcs.CanonicalizeBytes(data)
 	if err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeToolOutputInvalid,
-			"output.json.data cannot be canonicalized", outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeToolOutputInvalid,
+			"output.json.data cannot be canonicalized", outcome, err))
 	}
 
 	results := make([]NodeResult, 0, len(admitted)+2)
 	dataID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
 	if err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeSandboxFailed,
-			"registering output.json.data failed: "+err.Error(), outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeSandboxFailed,
+			"registering output.json.data failed: "+err.Error(), outcome, err))
 	}
 	results = append(results, NodeResult{NodeID: node.ID, Kind: "data", ArtifactID: dataID, Label: "data"})
 
@@ -318,9 +403,9 @@ func (r *runner) runPythonNode(
 			ctx, "node_output", mediaTypeForArtifact(artifact.Name), artifact.Content, "artifact",
 		)
 		if uploadErr != nil {
-			return nil, r.pythonFailure(ctx, run, CodeSandboxFailed,
+			return pythonTerminal(r.pythonFailure(ctx, node, host, CodeSandboxFailed,
 				"registering the tool artifact "+artifact.Name+" failed: "+uploadErr.Error(),
-				outcome, uploadErr), true
+				outcome, uploadErr))
 		}
 		results = append(results, NodeResult{
 			NodeID: node.ID, Kind: "file", ArtifactID: artifactID, Label: artifact.Name,
@@ -342,21 +427,46 @@ func (r *runner) runPythonNode(
 	if err := r.deps.Client.RecordNodeResults(
 		ctx, r.lease.RunID, r.lease.AttemptToken, results,
 	); err != nil {
-		return nil, r.pythonFailure(ctx, run, CodeSandboxFailed,
-			"recording the node results failed: "+err.Error(), outcome, err), true
+		return pythonTerminal(r.pythonFailure(ctx, node, host, CodeSandboxFailed,
+			"recording the node results failed: "+err.Error(), outcome, err))
 	}
 	r.emitNode(ctx, node.ID, "succeeded")
-	return dataObject, executionOutcome{}, false
+	return pythonExecution{output: dataObject, sandbox: outcome, report: report}
 }
 
-// pythonFailure marks the node failed, skips the rest of the chain and produces
-// the failed-run outcome after the sandbox already ran.
+func pythonTerminal(outcome executionOutcome) pythonExecution {
+	return pythonExecution{terminal: &outcome}
+}
+
+// failNodeBeforeSandbox refuses a node before any sandbox ran: the node's failed
+// fact, the scheduler's skips, then the run's deterministic refusal.
+func (r *runner) failNodeBeforeSandbox(
+	ctx context.Context, node *manifestNode, host nodeHost, code, message string,
+) executionOutcome {
+	host.nodeFailed()
+	host.skipRemaining()
+	return r.refuse(ctx, code, message)
+}
+
+// failPythonRun marks the node failed, skips the scheduler's remaining nodes and
+// produces the failed-run outcome after the sandbox already ran.
+func (r *runner) failPythonRun(
+	ctx context.Context, node *manifestNode, host nodeHost, code, message string,
+	outcome sandbox.Outcome, sandboxErr error, evidence map[string]any,
+	diagnostics map[string]any, input *InputArtifact,
+) executionOutcome {
+	host.nodeFailed()
+	host.skipRemaining()
+	return r.failRun(ctx, code, message, outcome, sandboxErr, evidence, diagnostics, input)
+}
+
+// pythonFailure is the post-sandbox failure path with the default evidence.
 func (r *runner) pythonFailure(
-	ctx context.Context, run *linearRun, code, message string,
+	ctx context.Context, node *manifestNode, host nodeHost, code, message string,
 	outcome sandbox.Outcome, err error,
 ) executionOutcome {
-	r.emitNode(ctx, run.plan.python.ID, "failed")
-	r.skipRemaining(ctx, run.plan, run.plan.python.ID)
+	host.nodeFailed()
+	host.skipRemaining()
 	return r.failRun(ctx, code, message, outcome, err,
 		r.exitEvidence(r.heartbeatCount(), outcome, nil), nil, nil)
 }
@@ -365,7 +475,7 @@ func (r *runner) pythonFailure(
 // artifact's server facts. A path, a bare artifact id or a mismatching fact is a
 // located node_input_invalid failure; the binding can never name a client path.
 func (r *runner) bindPythonFile(
-	ctx context.Context, run *linearRun, bindings map[string]any,
+	bindings map[string]any, inputs []InputArtifact,
 ) (*InputArtifact, error) {
 	raw, found := bindings["file"]
 	if !found {
@@ -384,9 +494,9 @@ func (r *runner) bindPythonFile(
 			Message: "the `file` binding lacks artifact_id/media_type"}
 	}
 	var linked *InputArtifact
-	for index := range run.inputs {
-		if run.inputs[index].ID == artifactID {
-			linked = &run.inputs[index]
+	for index := range inputs {
+		if inputs[index].ID == artifactID {
+			linked = &inputs[index]
 			break
 		}
 	}
@@ -421,13 +531,8 @@ func (r *runner) bindPythonFile(
 	return linked, nil
 }
 
-// runEndNode maps the definition output from upstream outputs, validates it,
-// seals it as final_output and proposes the result.
+// runEndNode maps the linear chain's definition output from its upstream outputs.
 func (r *runner) runEndNode(ctx context.Context, run *linearRun) executionOutcome {
-	node := run.plan.end
-	r.emitNode(ctx, node.ID, "pending")
-	r.emitNode(ctx, node.ID, "running")
-
 	available := map[string]any{
 		"input":           run.start,
 		run.plan.start.ID: run.start,
@@ -441,46 +546,59 @@ func (r *runner) runEndNode(ctx context.Context, run *linearRun) executionOutcom
 	if run.plan.callApp != nil {
 		available[run.plan.callApp.ID] = run.callApp
 	}
+	return r.executeEndNode(ctx, run.plan.definition, run.plan.end, available, run.outcome, run.report)
+}
+
+// executeEndNode maps the definition output from upstream outputs, validates it,
+// seals it as final_output and proposes the result. The graph scheduler passes its
+// own upstream namespace and last sandbox facts.
+func (r *runner) executeEndNode(
+	ctx context.Context, definition *manifestDefinition, node *manifestNode,
+	available map[string]any, last sandbox.Outcome, report *SandboxReport,
+) executionOutcome {
+	r.emitNode(ctx, node.ID, "pending")
+	r.emitNode(ctx, node.ID, "running")
+
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {
 		r.emitNode(ctx, node.ID, "failed")
-		return r.failAfterStart(ctx, CodeNodeInputInvalid, err.Error(), run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+		return r.failAfterStart(ctx, CodeNodeInputInvalid, err.Error(), last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	var final any = bindings
-	if err := validateSchema(run.plan.definition.OutputSchema, bindings, "#"); err != nil {
+	if err := validateSchema(definition.OutputSchema, bindings, "#"); err != nil {
 		r.emitNode(ctx, node.ID, "failed")
 		return r.failAfterStart(ctx, CodeNodeOutputInvalid,
 			"the final output does not match definition.output_schema: "+err.Error(),
-			run.outcome, r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			last, r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	finalObject, ok := final.(map[string]any)
 	if !ok {
 		r.emitNode(ctx, node.ID, "failed")
 		return r.failAfterStart(ctx, CodeNodeOutputInvalid,
-			"the final output must be a JSON object", run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			"the final output must be a JSON object", last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	payload, err := json.Marshal(finalObject)
 	if err != nil {
 		r.emitNode(ctx, node.ID, "failed")
 		return r.failAfterStart(ctx, CodeNodeOutputInvalid,
-			"the final output cannot be encoded", run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			"the final output cannot be encoded", last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	canonical, err := jcs.CanonicalizeBytes(payload)
 	if err != nil {
 		r.emitNode(ctx, node.ID, "failed")
 		return r.failAfterStart(ctx, CodeNodeOutputInvalid,
-			"the final output cannot be canonicalized", run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			"the final output cannot be canonicalized", last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	outputID, err := r.uploadNodeArtifact(ctx, "final_output", "application/json", canonical, "output")
 	if err != nil {
 		r.emitNode(ctx, node.ID, "failed")
 		return r.failAfterStart(ctx, CodeSandboxFailed,
-			"registering the final output failed: "+err.Error(), run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			"registering the final output failed: "+err.Error(), last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	// The end node's work is done once the final output is registered; report it
 	// before the result proposal, because the exit confirmation commits the
@@ -492,17 +610,17 @@ func (r *runner) runEndNode(ctx context.Context, run *linearRun) executionOutcom
 		OutputArtifactID: outputID,
 	}); err != nil {
 		return r.failAfterStart(ctx, CodeSandboxFailed,
-			"the succeeded proposal was refused: "+err.Error(), run.outcome,
-			r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+			"the succeeded proposal was refused: "+err.Error(), last,
+			r.exitEvidence(r.heartbeatCount(), last, nil))
 	}
 	if err := r.confirmExit(ctx, true,
-		r.exitEvidence(r.heartbeatCount(), run.outcome, nil)); err != nil {
+		r.exitEvidence(r.heartbeatCount(), last, nil)); err != nil {
 		return executionOutcome{outcome: "error", code: CodeSandboxFailed,
 			err:     "the exit confirmation was refused: " + err.Error(),
-			sandbox: run.report, failedStatus: true}
+			sandbox: report, failedStatus: true}
 	}
 	return executionOutcome{
-		outcome: "succeeded", runState: r.readRunState(ctx), sandbox: run.report,
+		outcome: "succeeded", runState: r.readRunState(ctx), sandbox: report,
 	}
 }
 
@@ -548,8 +666,17 @@ func (r *runner) emitNode(ctx context.Context, nodeID, state string) {
 	if r.deps.Client == nil {
 		return
 	}
+	submitCtx := ctx
+	if ctx.Err() != nil {
+		// A node.status transition is a durable fact about what happened, not work
+		// the cancellation should erase: F04B/T085 cancels a branch's context on
+		// fail-fast, and the interrupted branch's terminal fact must still be
+		// recorded before the run's failure is committed. The protocol client
+		// bounds this call with its own timeout.
+		submitCtx = context.WithoutCancel(ctx)
+	}
 	if err := r.deps.Client.SubmitNodeStatus(
-		ctx, r.lease.RunID, r.lease.AttemptToken, nodeID, state,
+		submitCtx, r.lease.RunID, r.lease.AttemptToken, nodeID, state,
 	); err != nil {
 		r.logger.Printf("run_id=%s: node.status %s=%s was not recorded: %v",
 			r.lease.RunID, nodeID, state, err)

@@ -32,6 +32,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -184,6 +185,29 @@ type ChildRun struct {
 	Phase                string
 }
 
+// NodeApprovalRequest is the F04B/T087 business-approval proposal the executor
+// asks the platform to prepare. It carries no decision and no capability: the
+// node id, the sealed config and the run-resolved proposal are the only inputs,
+// and the server rebuilds the canonical proposal/hash from them.
+type NodeApprovalRequest struct {
+	NodeID         string
+	Title          string
+	ExpiresSeconds int
+	Proposal       map[string]any
+}
+
+// NodeApproval is the platform's answer to PrepareNodeApproval. The approval row
+// is the server's business decision record (a `platform.approvals` row with no
+// operation); the executor only copies its state into the run.
+type NodeApproval struct {
+	ID                 string
+	State              string
+	ParamsSHA256       string
+	ProposalArtifactID string
+	ExpiresAt          time.Time
+	DecidedAt          *time.Time
+}
+
 // ChildResult is the non-contract terminal result read: the child's state, its
 // sealed output artifact and the decoded JSON object that artifact holds.
 type ChildResult struct {
@@ -242,6 +266,21 @@ type Client interface {
 	ChildResult(
 		ctx context.Context, runID, attemptToken, childRunID string,
 	) (*ChildResult, error)
+	// PrepareNodeApproval asks the platform to prepare (or replay) the one
+	// server-built approval for this run's approval node. The executor never
+	// supplies a decision; a pending approval parks the attempt at
+	// `approval:<approval_id>` and an approved one lets the node publish its
+	// decision output. The call is idempotent for the same canonical proposal.
+	PrepareNodeApproval(
+		ctx context.Context, runID, attemptToken string, request NodeApprovalRequest,
+	) (*NodeApproval, error)
+	// Retrieve runs one F04B/T088 knowledge retrieval through the non-contract
+	// internal mTLS route. The server derives the run owner from the database and
+	// applies each knowledge base's ACL before ranking; the executor never sees a
+	// knowledge service, an embedding or an object key.
+	Retrieve(
+		ctx context.Context, runID, attemptToken string, request RetrieveRequest,
+	) (*RetrieveResult, error)
 }
 
 // InputSource resolves the run's linked input artifacts. The supervisor's
@@ -249,6 +288,20 @@ type Client interface {
 // signed link the Client mints.
 type InputSource interface {
 	Inputs(ctx context.Context, runID string) ([]InputArtifact, error)
+}
+
+// NodeOutputSource is the optional F04B recovery seam: the node_id -> canonical
+// JSON bytes of every already-completed `data` node output of this run. A resumed
+// attempt re-uses those outputs instead of re-calling a model/tool/sandbox, which
+// is what keeps T087/T091's "wait twice, then join" from repeating finished work.
+//
+// The supervisor's implementation re-reads platform.run_node_outputs and verifies
+// each artifact's sha256 against the stored bytes; the executor additionally
+// re-validates the decoded object against the node's output_schema before it
+// trusts a reused value. An error here is not fatal: the attempt re-executes the
+// nodes instead (the executor logs the degradation).
+type NodeOutputSource interface {
+	NodeData(ctx context.Context, runID string) (map[string][]byte, error)
 }
 
 // RunScope is the trusted owner/application identity of one run. It is the
@@ -355,6 +408,10 @@ type Deps struct {
 	Client  Client
 	Inputs  InputSource
 	Sandbox Sandbox
+	// NodeOutputs is the optional F04B recovery seam. Nil means every node is
+	// executed; a wired source lets a resumed attempt reuse completed node
+	// outputs (see NodeOutputSource).
+	NodeOutputs NodeOutputSource
 	// Facts is the trusted read-only capability catalog. Agent nodes require it;
 	// the T042 python chain does not.
 	Facts Facts
@@ -380,8 +437,11 @@ type runner struct {
 	// read (a refusal still has to state which image it is refusing to run).
 	projection *manifestDocument
 	heartbeats atomic.Int64
-	artifacts  []ArtifactReport
-	logger     *log.Logger
+	// artifactsMu guards artifacts: F04B/T085 node goroutines upload their own
+	// node artifacts concurrently.
+	artifactsMu sync.Mutex
+	artifacts   []ArtifactReport
+	logger      *log.Logger
 }
 
 // Run performs at most one claim and its execution. It never panics on a refusal:
@@ -474,6 +534,16 @@ func (r *runner) execute(ctx context.Context) executionOutcome {
 	// T033 single-python path; T033/T037 and T042's golden-graph regression depend
 	// on it. The linear path requires the explicit `node:start#/artifact` facts
 	// binding the T042 chain (and the T043 agent chain) documents.
+	// F04B/T083: a definition with a structured branch region is served by the
+	// graph scheduler. Everything else keeps the exact legacy/linear selection:
+	// the T033 single-python path and the T042/T043 linear chain are unchanged.
+	if hasGraphConstructs(manifest) {
+		plan, planErr := buildGraphPlan(manifest)
+		if planErr != nil {
+			return r.refuse(ctx, codeOfPlanError(planErr), planErr.Error())
+		}
+		return r.executeGraph(ctx, plan)
+	}
 	if legacyPreferred(manifest) {
 		return r.executeLegacy(ctx)
 	}
@@ -720,6 +790,11 @@ func (e *unsupportedError) Error() string { return e.message }
 // terminal failure instead of an infinite requeue loop). The distinction is
 // recorded in the T033 report.
 func (r *runner) refuse(ctx context.Context, code, message string) executionOutcome {
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandbox.Outcome{}, nil, nil, false, false,
+	); ok {
+		return captured
+	}
 	evidence := r.exitEvidence(0, sandbox.Outcome{}, nil)
 	evidence["sandbox_started"] = false
 	evidence["refusal_code"] = code
@@ -751,6 +826,13 @@ func (r *runner) failRun(
 	input *InputArtifact,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, sandboxErr, evidence, true, true,
+	); ok {
+		// The graph scheduler records the failure evidence and commits the run
+		// result after it stopped the other branches.
+		return captured
+	}
 	r.uploadFailureEvidence(ctx, code, message, sandboxOutcome, diagnostics, input)
 	proposal := Proposal{EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, proposal); err != nil {
@@ -776,6 +858,11 @@ func (r *runner) failAfterStart(
 	ctx context.Context, code, message string, sandboxOutcome sandbox.Outcome, evidence map[string]any,
 ) executionOutcome {
 	sandboxReport := sandboxReportOf(sandboxOutcome)
+	if captured, ok := captureGraphFailure(
+		ctx, code, message, sandboxOutcome, nil, evidence, false, true,
+	); ok {
+		return captured
+	}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
 		EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code,
 	}); err != nil {
@@ -848,6 +935,9 @@ type manifestDefinition struct {
 type manifestEdge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
+	// Port is the condition exit port this edge leaves from. Omitted means the
+	// contract's literal "default"; the executor normalises it at plan time.
+	Port string `json:"port,omitempty"`
 }
 
 type manifestNode struct {
@@ -1125,6 +1215,7 @@ func (r *runner) uploadArtifact(
 	if err != nil {
 		return "", err
 	}
+	r.artifactsMu.Lock()
 	r.artifacts = append(r.artifacts, ArtifactReport{
 		ID:        ticket.ArtifactID,
 		Purpose:   purpose,
@@ -1132,6 +1223,7 @@ func (r *runner) uploadArtifact(
 		State:     ready.State,
 		SizeBytes: ready.SizeBytes,
 	})
+	r.artifactsMu.Unlock()
 	return ticket.ArtifactID, nil
 }
 

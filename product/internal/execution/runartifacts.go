@@ -161,6 +161,18 @@ func (s *RunArtifactStore) resolveScope(ctx context.Context, runID, token string
 	return s.resolveScopeWith(ctx, runID, token, false)
 }
 
+// RunOwner re-proves the live attempt token of the run in the path and returns the
+// run's owner id. It is the trusted-identity seam for read-only internal calls that
+// act on behalf of the run (F04B/T088's knowledge retrieval): the owner comes from
+// the runs row, never from the caller's body.
+func (s *RunArtifactStore) RunOwner(ctx context.Context, runID, token string) (string, error) {
+	scope, err := s.resolveScope(ctx, runID, token)
+	if err != nil {
+		return "", err
+	}
+	return scope.OwnerID, nil
+}
+
 // resolveScopeAllowCancelling is the receipt/query variant: completing an upload
 // that was already in flight, asking for a status and minting an input download
 // remain allowed while the Run is cancelling (only new execution-bearing calls

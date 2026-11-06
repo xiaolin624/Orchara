@@ -39,7 +39,7 @@ import (
 
 // planBinding is one sealed node input binding: exactly one of literal or ref.
 type planBinding struct {
-	Literal json.RawMessage `json:"literal"`
+	Literal json.RawMessage `json:"literal,omitempty"`
 	Ref     string          `json:"ref"`
 }
 

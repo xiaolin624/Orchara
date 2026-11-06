@@ -299,12 +299,15 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	r.emitNode(ctx, node.ID, "pending")
 	r.emitNode(ctx, node.ID, "running")
 
-	available := map[string]any{
-		"input":           run.start,
-		run.plan.start.ID: run.start,
-	}
-	if run.plan.python != nil {
-		available[run.plan.python.ID] = run.python
+	available := run.available
+	if available == nil {
+		available = map[string]any{
+			"input":           run.start,
+			run.plan.start.ID: run.start,
+		}
+		if run.plan.python != nil {
+			available[run.plan.python.ID] = run.python
+		}
 	}
 	bindings, err := resolveNodeBindings(node, available)
 	if err != nil {
@@ -343,7 +346,7 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	// before every model turn. The executor passes only this run's resolved
 	// bindings; the builder owns the token budget and the protected facts.
 	authorizedInputs := resolvedAgentInputs(run.plan, node, bindings)
-	contextScope := agentContextScope(run.plan, node)
+	contextScope := agentContextScope(run.plan, node, run.scopeIDs)
 	// F09/T063: personal memory is scoped by this run's trusted owner and
 	// application. The identity read is the same read-only database identity the
 	// input/facts readers use; a failure degrades recall to unavailable in the
@@ -626,8 +629,14 @@ func (r *runner) agentCancelled(
 	if node != nil {
 		r.emitNode(ctx, node.ID, "failed")
 	}
-	r.skipRemaining(ctx, run.plan, nodeIDOf(node))
+	r.skipAfter(ctx, run, nodeIDOf(node))
 	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
+	if captureGraphCancellation(ctx, run.outcome, evidence) {
+		// The graph scheduler confirms the exit only after the other branches
+		// stopped.
+		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
+			sandbox: run.report}
+	}
 	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
 		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
 			err: err.Error(), sandbox: run.report, failedStatus: true}
@@ -644,7 +653,7 @@ func (r *runner) failAgent(
 	if run.plan.agent != nil {
 		r.emitNode(ctx, run.plan.agent.ID, "failed")
 	}
-	r.skipRemaining(ctx, run.plan, nodeIDOf(run.plan.agent))
+	r.skipAfter(ctx, run, nodeIDOf(run.plan.agent))
 	return r.failAfterStart(ctx, code, message, run.outcome,
 		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
 }
@@ -664,6 +673,13 @@ func (r *runner) waitAgent(
 		SuggestedState: "waiting_approval",
 		CheckpointID:   "capability:" + operationID,
 		ErrorCode:      "approval_required",
+	}
+	if captureGraphWaiting(ctx, proposal, "waiting_approval", run.outcome,
+		r.exitEvidence(r.heartbeatCount(), run.outcome, nil), CodeAgentCapabilityFailed) {
+		// The graph scheduler submits the waiting result and confirms the exit
+		// only after the other branches stopped (the waiting hand-over).
+		return executionOutcome{outcome: "waiting_approval", code: "approval_required",
+			sandbox: sandboxReportOf(run.outcome)}
 	}
 	if err := r.deps.Client.SubmitResult(
 		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
@@ -899,7 +915,9 @@ func (r *runner) runAgentToolSandbox(
 	if err != nil {
 		return nil, "", "", &agentToolFailure{CodeToolInputInvalid, err.Error()}
 	}
-	unit := agentSandboxUnit(r.options.ExecutionUnitID, call.ID)
+	// F04B/T085: two agent nodes can run on different branches at the same time,
+	// so the tool-call unit id carries the node id as well as the call id.
+	unit := agentSandboxUnit(r.options.ExecutionUnitID, node.ID+":"+call.ID)
 	outcome, sandboxErr := r.runSandbox(ctx, sandbox.Request{
 		Program:         sandbox.ProgramTool,
 		MediaType:       strings.ToLower(strings.TrimSpace(linked.MediaType)),

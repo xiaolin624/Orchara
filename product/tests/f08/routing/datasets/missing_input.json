@@ -1,0 +1,191 @@
+{
+  "schema": "orchara.routing-corpus/1",
+  "cell": "missing_input",
+  "description": "One authorized candidate whose capability card declares required inputs, with no attachment: the server must ask (awaiting_input) and never auto-dispatch. Three independent application families (inventory, invoice, forecast) so the cell is not a single-card artefact.",
+  "cases": [
+    {
+      "case_id": "rt-missing-frozen-01",
+      "category": "missing_input",
+      "family_id": "inventory-reconcile-zh",
+      "split": "frozen_test",
+      "message": "帮我核对一下库存流水",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "inventory",
+        "candidates": [
+          "inventory"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Chinese paraphrase; CJK 2/3-grams hit only 库存流水核对."
+      }
+    },
+    {
+      "case_id": "rt-missing-frozen-02",
+      "category": "missing_input",
+      "family_id": "inventory-reconcile-zh",
+      "split": "frozen_test",
+      "message": "库存流水核对一下",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "inventory",
+        "candidates": [
+          "inventory"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-missing-frozen-01; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-missing-frozen-03",
+      "category": "missing_input",
+      "family_id": "invoice-reconcile-en",
+      "split": "frozen_test",
+      "message": "reconcile the invoice pdf",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "invoice",
+        "candidates": [
+          "invoice"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "ILIKE '%reconcile%' matches the card word 'reconciliation'."
+      }
+    },
+    {
+      "case_id": "rt-missing-frozen-04",
+      "category": "missing_input",
+      "family_id": "forecast-trend-zh",
+      "split": "frozen_test",
+      "message": "预测下季度收入趋势",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "forecast",
+        "candidates": [
+          "forecast"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "CJK grams 收入/趋势/预测 hit only 收入趋势预测."
+      }
+    },
+    {
+      "case_id": "rt-missing-frozen-05",
+      "category": "missing_input",
+      "family_id": "forecast-trend-zh",
+      "split": "frozen_test",
+      "message": "帮我预测下季度的收入趋势",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "forecast",
+        "candidates": [
+          "forecast"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Paraphrase of rt-missing-frozen-04; same family, same split."
+      }
+    },
+    {
+      "case_id": "rt-missing-dev-01",
+      "category": "missing_input",
+      "family_id": "inventory-stocktake-zh",
+      "split": "dev",
+      "message": "库存盘点",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "inventory",
+        "candidates": [
+          "inventory"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family: a stocktake request, distinct wording from the frozen reconciliation family."
+      }
+    },
+    {
+      "case_id": "rt-missing-dev-02",
+      "category": "missing_input",
+      "family_id": "invoice-matching-en",
+      "split": "dev",
+      "message": "check the invoice matching result",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "invoice",
+        "candidates": [
+          "invoice"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family using the card's includes/expected_outputs vocabulary."
+      }
+    },
+    {
+      "case_id": "rt-missing-dev-03",
+      "category": "missing_input",
+      "family_id": "forecast-quarter-zh",
+      "split": "dev",
+      "message": "下季度收入情况",
+      "attachments": [],
+      "expected": {
+        "decision": "awaiting_input",
+        "application": "forecast",
+        "candidates": [
+          "forecast"
+        ],
+        "interaction": "input",
+        "no_run_reason": null
+      },
+      "provenance": {
+        "origin": "self_created",
+        "reference": "docs/spec/examples/sales/input.csv",
+        "license_review": "not_applicable",
+        "note": "Dev family; 收入 hits forecast only."
+      }
+    }
+  ]
+}

@@ -189,6 +189,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// service, and only artifacts already registered through the routes above
 	// can be named.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-results", s.handleInternalRunNodeResults)
+	// F04B/T088: the graph retrieve node's ACL-checked knowledge retrieval
+	// (non-contract). Worker-capacity only; the run owner is derived from the
+	// live attempt (runs.owner_id), never from the body, and the knowledge
+	// service applies each base's ACL before ranking.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/retrieval", s.handleInternalRunRetrieval)
 
 	// F06/T041: the run-scoped controlled-capability protocol. Worker-only: a
 	// supervisor or maintenance certificate is refused, and the attempt token in
@@ -200,6 +205,11 @@ func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	// F06/T050: the contract prepareApproval. Worker-only; the server builds the
 	// proposal from the operation/policy rows and never copies the worker text.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/approvals", s.handleInternalPrepareApproval)
+	// F04B/T087: the human approval node's server-built record. Worker-only and
+	// non-contract: the server proves the node from the sealed definition and
+	// seals the proposal; this endpoint creates no operation and grants nothing.
+	mux.HandleFunc("POST /internal/v1/runs/{run_id}/node-approvals",
+		s.handleInternalPrepareNodeApproval)
 	// F06/T046: maintenance-only reconciliation of a retained missing-usage
 	// budget reservation. Non-contract, like capability-results.
 	mux.HandleFunc("POST /internal/v1/runs/{run_id}/capability-settlements", s.handleInternalCapabilitySettlement)
