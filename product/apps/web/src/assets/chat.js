@@ -343,6 +343,25 @@ function describeHandling(request, run, version) {
     return { text: '尚无处理应用', handled: false, versionNo: 0 };
   }
   const versionNo = version && Number.isInteger(version.version_no) ? version.version_no : 0;
+  // F12/T096: the shared truth module adds finalizing (phase-only), cancelling,
+  // waiting_children/approval, recovery_pending and needs_reconciliation. When it
+  // is not loaded (older isolated page harness), the three-outcome fallback below
+  // keeps the previous behaviour.
+  if (typeof runStreamHandlingText === 'function') {
+    if (!run || typeof run.state !== 'string' || run.state === '') {
+      return {
+        text: (versionNo > 0 ? 'v' + versionNo : '处理版本') +
+          ' 处理状态未知（尚未读到 Run 快照）',
+        handled: true,
+        versionNo: versionNo,
+      };
+    }
+    return {
+      text: runStreamHandlingText(run, versionNo),
+      handled: true,
+      versionNo: versionNo,
+    };
+  }
   const prefix = versionNo > 0 ? 'v' + versionNo : '处理版本';
   const state = (run && run.state) || '';
   if (state === 'succeeded') {
@@ -355,6 +374,21 @@ function describeHandling(request, run, version) {
     return { text: prefix + ' 已取消', handled: true, versionNo: versionNo };
   }
   return { text: prefix + ' 正在处理', handled: true, versionNo: versionNo };
+}
+
+/**
+ * F12/T096: poll the dialogue while the *Run* can still move.
+ *
+ * `shouldPollRequest` only sees the Request, and a dispatched Request stays
+ * `dispatched` forever — so before this rule the conversation page stopped
+ * observing the Run exactly when finalizing/cancelling/child-waiting began. The
+ * request-only projection is kept unchanged for older callers/tests.
+ */
+function shouldPollHandling(requestState, runState, attempts, maxAttempts) {
+  if (typeof runStreamShouldPoll === 'function') {
+    return runStreamShouldPoll(requestState, runState, attempts, maxAttempts);
+  }
+  return shouldPollRequest(requestState, attempts, maxAttempts);
 }
 
 // ---------------------------------------------------------------------------
@@ -830,7 +864,14 @@ function initChat() {
     try {
       const csrfToken = await csrf();
       await api(requestCancelPath(requestID), { method: 'POST', csrf: csrfToken });
-      setStatus(submitStatus, '已接受取消意图，正在刷新状态…', 'pending');
+      // F12/T096: cancel stops controlled execution; it never rolls back an
+      // external write that already happened. The Run state is rendered by the
+      // handling line once the poll reads it.
+      setStatus(
+        submitStatus,
+        '已接受取消意图：取消只停止受控执行，不会撤回已经发生的外部写入；正在刷新状态…',
+        'pending',
+      );
       await loadMessages();
       await refreshQueue();
       if (requestID === currentRequestID) {
@@ -908,7 +949,13 @@ function initChat() {
       run || null,
       facts && facts.versionNo ? { version_no: facts.versionNo } : null,
     );
-    document.getElementById('chat-handling').textContent = handling.text;
+    const handlingLine = document.getElementById('chat-handling');
+    handlingLine.textContent = handling.text;
+    // F12/T096: keep the observed Run state/phase on the line so a page test (and
+    // a reader) can tell finalizing/cancelling from a committed outcome without
+    // parsing prose.
+    handlingLine.dataset.runState = run && run.state ? String(run.state) : '';
+    handlingLine.dataset.runPhase = run && run.phase ? String(run.phase) : '';
     const runLink = document.getElementById('chat-run-link');
     runLink.replaceChildren();
     if (request.run_id) {
@@ -958,10 +1005,14 @@ function initChat() {
       const result = await fetchRequest(currentRequestID);
       renderRequest(result.request, result.facts, result.run);
       await refreshQueue();
-      if (!shouldPollRequest(result.request.state, attempts, 100)) {
+      const runState = result.run && typeof result.run.state === 'string' ? result.run.state : '';
+      if (!shouldPollHandling(result.request.state, runState, attempts, 100)) {
         stopPolling();
         if (requestIsTerminal(result.request.state)) {
           setStatus(submitStatus, '请求已' + describeRequestState(result.request.state), 'ok');
+        } else if (typeof runStreamIsTerminal === 'function' && runStreamIsTerminal(runState)) {
+          // F12/T096: the dispatched Request is not "done"; the Run outcome is.
+          setStatus(submitStatus, 'Run 已进入终态 ' + runState + '。', 'ok');
         }
         return;
       }

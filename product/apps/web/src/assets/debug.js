@@ -248,6 +248,9 @@ async function fetchDraftRevision(applicationId) {
 
 const DEBUG_POLL_INTERVAL_MS = 1500;
 const DEBUG_MAX_POLLS = 40;
+// F12/T096: the 60s fast-poll budget is a cadence, not a reason to declare a
+// long-running Run "stopped updating". After it, observation continues slowly.
+const DEBUG_SLOW_POLL_INTERVAL_MS = 10000;
 
 function debugStatus(message, kind) {
   const element = document.getElementById('debug-status');
@@ -336,13 +339,18 @@ function initDebug() {
       );
       if (shouldPollRun(polled.run, polls, DEBUG_MAX_POLLS)) {
         pollTimer = setTimeout(() => poll(runId), DEBUG_POLL_INTERVAL_MS);
+      } else if (!runIsTerminal(polled.run.state)) {
+        // F12/T096: waiting/finalizing/cancelling runs outlive the 60s budget.
+        // Keep observing (slowly) instead of freezing the page on a stale state.
+        debugStatus(
+          '已快速轮询 ' + polls + ' 次；Run 仍为 ' + polled.run.state +
+            '，改为每 10 秒继续观察（不会把运行显示成停止）。',
+          'pending',
+        );
+        pollTimer = setTimeout(() => poll(runId), DEBUG_SLOW_POLL_INTERVAL_MS);
       } else {
         stopPolling();
-        if (runIsTerminal(polled.run.state)) {
-          debugStatus('Run 已进入终态 ' + polled.run.state + '。', 'ok');
-        } else {
-          debugStatus('已停止轮询（' + polls + ' 次）；Run 仍为 ' + polled.run.state + '。', 'pending');
-        }
+        debugStatus('Run 已进入终态 ' + polled.run.state + '。', 'ok');
       }
     } catch (error) {
       stopPolling();

@@ -2207,3 +2207,24 @@ T093 已交付，状态 **`passed`**。本票交付的是**可重放判定手段
 合并后重跑 `pytest tests/f12` **242 passed in 65.88s**、`go build/vet/test ./...` 全 exit 0、
 `gofmt -l internal cmd tools` 空、`sync_spec --check` no drift。最终 HEAD 见
 `E:\Orchara\.scratch\f12\T093-REPORT.md`。
+
+## F12/T096 浏览器断线与父子等待时仍能解释真实运行状态（GitHub #97）（2026-11-06）
+
+T096 已交付，状态 **`passed`**（手段真实 + 覆盖完整 + 裁决诚实）。它关掉了 T093 报告里唯一的
+`not_run` —— **SSE 410 保留窗口分支** —— 并补上 finalizing/cancelling/child 等待/部分产物的
+页面真值。**无 Playwright/真实浏览器 DOM、无物理网卡断线**：页面行为用 Node 执行已提交真实字节 +
+最小 DOM/fetch shim；410 来自真实 `ORCHARA_RUN_EVENT_RETENTION=50ms` 的 `cmd/api` 进程。
+证据：`reports/f12/T096-disconnect-and-run-state.md`、`E:\Orchara\.scratch\f12\T096\evidence.jsonl`；
+分支 `t/t096-run-state-truthful-ui`（worktree `E:\Orchara-wt\t096`），基线 `integration/f12` @ `497f4e8`。
+
+| 交付点 | 结果 |
+|---|---|
+| 新纯逻辑模块 | `apps/web/src/assets/runstream.js`：`state`(10)/`phase`(4) → UI 文案/可操作项；410 分类 + `details.snapshot_url` 安全校验 + 快照重建（`resumeCursor=""`，不静默续传）；父子 N/M；产物 readiness（未完成运行产物/最终产物/中间/未就绪）；`/chat` 的 handling 与“dispatched 后继续观察 Run”轮询规则；静态路由 `GET /assets/runstream.js` |
+| `/runs` | 410 后**真实 GET 快照并重建**（不是只显示 URL），时间线标记“保留窗口…未回放旧帧”，`dataset.snapshotRebuilt=true`；`waiting_children/approval` 每次轮询刷新子面板；非终态轮询也刷新产物并标“未完成运行产物”；取消回执统一“不会撤回已经发生的外部写入” |
+| `/chat` | `dispatched` 后继续轮询 Run 到终态（`shouldPollHandling`，旧 `shouldPollRequest` 不变）；finalizing/cancelling/waiting_children/needs_reconciliation 文案；`chat-handling` 带 `data-run-state/phase` |
+| `/debug`、`/runview`、`/attachments` | debug 60s 后转 10s 慢速继续观察（不再“停止更新”）；runview `formatRunError` 增加 finalizing 分支 + 取消回执统一；attachments 的 uploading/scanning/ready/quarantined/deleted 统一文案，deleted 终止轮询 |
+| 真实栈证据 | 410：`410 {"error":{"code":"event_cursor_expired","details":{"snapshot_url":"/api/v1/runs/<id>"}}}` + 快照 GET 200 + 页面真实 fetch；finalizing：`state=running phase=finalizing revision=2`，SSE 事件 `{"state":"running"}` 无 phase，页面 `terminal=false/isSuccess=false/isFailure=false`；cancelling：`202 state=cancelling phase=executing revision=3`，页面 JSON 无“已撤销”；父子：真实 `waiting_children` + 子 `queued` → “等待子任务（已完成 0/1…）”，真实 supervisor 执行子 Run 成功后 `1/1` 且父仍非成功；产物：ready 但 Run 未终态 = “未完成运行产物”，`succeeded`+`output_artifact_id` 后才“最终产物” |
+| 门禁 | `python -m pytest tests/f12/test_t096_pages.py tests/f12/test_t096_stack.py -q` → **17 passed in 57.04s**；`python -m pytest tests/f12 -q` → **259 passed in 111.41s (0:01:51)**（合并后重跑；T093 的 242 全保留）；`go build/vet/test ./...` 全 exit 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → no drift；六个改动脚本 `node --check` 全 exit 0 |
+| 受影响既有套件 | `tests/f03` **2 failed, 201 passed in 1362.47s**（2 条 = T093 §6.2 已记录的既有红：`runs_conversation_id_fkey` / `runs_request_id_fkey`，同名同因，baseline 可复现）；`tests/f07` **36 passed in 311.95s**；`tests/f08/test_postreview_pages.py` **2 passed in 0.36s**；纯 Node `tests/f04b/runview*.test.mjs` 6+7+4 passed |
+| 未修（归属其它 epic） | `artifact.ready`/`usage.updated` 无 emitter（F03/F04B）；`run.status` 无 phase（契约只读，页面重取 `GET /runs/{id}`）；`/children`、`/node-results` 非契约无分页（F07/F04A）；artifacts 不返回 relation/purpose（F05）；Run 删除无公开端点；真实厂商模型/GPU 无 → `not_run` |
+| 边界 | 无浏览器 DOM/Playwright（页面=真实字节+shim）；无物理断网；`debug.js` 慢速续轮询只有源码守卫（poll 是闭包，无独立驱动）；410 只在建流时判定，已建流不会中途因保留窗口被踢 |
