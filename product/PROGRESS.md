@@ -2182,3 +2182,28 @@ waiting decision 为空、Run 永久停泊”的窗口。已改为同事务交�
 
 全量 `pytest tests/f04b`：**96 passed in 625.94s (0:10:25)**（最终树；含 sweeper/decision
 两条故障回滚重试用例）。
+
+## F12/T093 外部客户端全量 REST/SSE 契约门禁（GitHub #94，2026-11-06）
+
+T093 已交付，状态 **`passed`**。本票交付的是**可重放判定手段 + 真实栈证据 + 诚实裁决**；**完整首版 API
+门禁裁决 = passed（106/106）**，唯一 `not_run` 是 SSE 410 保留窗口分支（归 T096）。
+证据：`reports/f12/T093-api-conformance.md`、机器可读 `reports/f12/T093-api-conformance.json`；
+分支 `t/t093-api-conformance`（worktree `E:\Orchara-wt\t093`），基线 `integration/f12` @ `1cdff9c`，
+结束 merge `integration/f12`（交付 HEAD 见 §8/摘要）。
+
+| 交付点 | 结果 |
+|---|---|
+| 门禁 CLI | `tools/f12_api_gate.py`：从 `contracts/openapi.json` 读 106 operation（不手写清单）；逐 operation 三面探针（匿名 401 / 另一主体 403-404 / internal mTLS 角色）+ 可构造资源的 normal path；10 条跨端点不变量；199 条字面路由注册表静态扫描；`--out` 写机器可读证据；退出码 0=passed / 1=failed / 2=契约清单不合法。契约数量或 operationId 重复的变异直接拒绝（exit 2，不产报告） |
+| 逐 operation | **106/106 implemented、0 authorization_failed、0 per_operation_failed**；4 public / 23 internal（真实 worker/supervisor/maintenance 客户端证书）/ 79 session；106×2 parametrized pytest 断言记录存在、不 skip、形状与契约一致 |
+| missing 判定 / 无通用 CRUD | 注入第 107 条不存在的端点 → 以字面注册表判 `route_registered=false`、进 `missing_operations`、verdict failed、exit 1，真实 106 条仍 implemented；删 1 条 → exit 2。未知路径 404 封套、真实路径错误方法 405+`Allow`、随机资源 404，注册表 `generic_patterns=[]` |
+| 服务端修复（5） | ① mux 404/405 → `ContractErrors` 契约封套（外部+内部 mux，保留 `Allow`，SSE 可 Flush）；② `/` → `GET /{$}` 让 mux 拥有 405；③ 审批 `list` 的 `limit` 改 `catalog.ParseLimit`（越界 422 + `details.field`，不 clamp）；④ 审批 service 层同样不再静默 clamp；⑤ 执行租约 `lease_deadline/heartbeat_at/started_at` 由 `::text` 改 `contractTimestamp()`（UTC RFC3339、微秒） |
+| 门禁自身修复（5） | ① missing 分类以 `scan_route_registry()` 为存在性权威（`ContractErrors` 后运行时无法区分路由 404 与资源 404）；② 形状不变量移到 normal probes 之后；③ `*_checked` 由“失败数”改为“真实检查字段数”（123 id / 22 时间 / 4 金额 / 371 JSON 响应，测试要求 >0）；④ UUID 不变量按契约 2xx schema 豁免两个 `type:string` 的配置目录 id（`stub-credential`/`stub-endpoint`，否则假红）；⑤ CLI 复跑改用独立 pristine 栈并比对 session 裁决（门禁会真实创建/领取资源，不能在同一库上重复） |
+| 门禁 | `pytest tests/f12` **242 passed in 50.71s**（`F12_WRITE_EVIDENCE=1`）；`tests/f12/test_gate_mutations.py` 单跑 **4 passed in 50.79s**；`go build ./...`/`go vet ./...`/`go test ./...` 全 exit 0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → no drift |
+| 回归影响面 | 7 个既有套件真实栈串行：`tests/f00b` 133 passed + 2 failed、`tests/f03` 201+2、`tests/f06` **173 passed**、`tests/f02a` 102+2、`tests/f07` **36 passed**、`tests/acceptance` **13 passed**、`tests/f01`（单跑）**155 passed**。6 条既有红已在 baseline `1cdff9c` detached worktree 逐条复现：F08/T074 的 `runs_{request,conversation}_id_fkey`（2）、F08/T079 的 `route_request` kind 与 `model_calls.request_id` FK（2）、F07/T081 的 `runs.last_child_claim_at`（1）、F07/T075 的子 schema `io_mapping_unknown_field`（1）。与本票 diff 不相交，按既有红记录，不静默修、不 skip |
+| 边界/not_run | SSE 410 `event_cursor_expired`+`snapshot_url` 需要比 24h 更老的事件（开发栈默认 `ORCHARA_RUN_EVENT_RETENTION=24h`，本票未压低；归 T096 低保留窗口栈）；真实厂商模型/凭据（本票不调用模型）；非契约路由（去重 199 条中非契约 93：页面/静态 45、公开业务扩展 26、内部 mTLS 17、签名链接 2、运维别名 3）只审计不写契约；`artifact.ready`/`usage.updated` 无 emitter、缺 `Idempotency-Key` 时 `details` 有 `header`/`field` 两种形状、全部 JSON `no-store` 使 HTTP 协商缓存不可用——均记录并归属其它 epic；审批 service 的 422 防御分支无独立 HTTP 入口用例 |
+
+提交：`1cf8c2c`（feat 门禁 CLI）→ `9385ee6`（fix 服务端 5 处）→ `8ab0b1f`（test 套件）→ 文档提交
+（本小节 + 报告）。`git merge integration/f12` = **Already up to date**（集成分支仍为基线 `1cdff9c`）；
+合并后重跑 `pytest tests/f12` **242 passed in 65.88s**、`go build/vet/test ./...` 全 exit 0、
+`gofmt -l internal cmd tools` 空、`sync_spec --check` no drift。最终 HEAD 见
+`E:\Orchara\.scratch\f12\T093-REPORT.md`。
