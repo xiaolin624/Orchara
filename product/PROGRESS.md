@@ -2251,3 +2251,31 @@ REST 是真实 `cmd/api` + 真实 PostgreSQL 16 + mTLS + 对象目录。证据�
 | 回归影响面 | 没有既有测试执行 `app.js`/`nav.js`（全库 grep 无匹配）；T096 三个 JS 文件零改动；`tests/f08` 的两条 chat.js 页面测试与 `tests/f04b` 的 runview 测试仍全绿；Go 零改动 |
 | 边界/not_run | 无 Playwright/真实浏览器（页面结论=Node+shim）；死链修复未做真实浏览器点击；SSE 不在本票路径（T096）；403 `principal_disabled` 在浏览器 cookie 路径实际不可达（禁用先命中 401 session_revoked；key 先命中 401 invalid_key），该分支为防御性处理，服务端可达入口是登录 POST；契约缺 `listGrants`/`getGrant`/`listApiKeys`（F01 记录，不补）；runs/chat 列表分页、children/node-results 口径归 T096；移动端归 T098；仅 dev-stub，无真实厂商模型 |
 
+
+## F12/T098 手机完成对话、审批和个人数据控制（GitHub #99）（2026-11-06）
+
+T098 已交付，状态 **`passed`**（手段真实 + 覆盖完整 + 裁决诚实；“小屏完整画布编辑”按票面明确不做）。
+本票补齐**手机端对话/审批/结果/个人数据**四条旅程的响应式布局与状态反馈，并在真实栈上验证
+冲突（412/409）、过期（两种审批语义 + interaction_expired）、无结果（空检索 + no_matching_application）、
+撤销引用 404 不回退缓存、删除后立即禁读与异步清理/备份期限分离、候选显示来源/保存范围且默认不勾选、
+资料摄取状态/失败码。**无 Playwright/真实浏览器 DOM**：页面行为用 Node 执行已提交真实字节 + 最小
+DOM/fetch shim；CSS 断点/像素布局/真机触控标 `not_run`。证据：
+`reports/f12/T098-mobile-and-personal-data.md`；分支 `t/t098-mobile-personal-data`
+（worktree `E:\Orchara-wt\t098`），基线 `integration/f12` @ `1ba9d01`，代码+测试 HEAD `b2d3089`。
+
+| 交付点 | 结果 |
+|---|---|
+| 响应式样式与页面接线 | 新增 `apps/web/src/assets/mobile.css`（720/480px 两档、44px 触控目标、导航换行、`dl`/`.row` 单列、16px 输入、`.table-scroll`）；`/chat`、`/approvals`、`/runs`、`/personal-data`、`/memories`、`/knowledge` 全部挂载，`/runs` 8 列账本包可聚焦横向滚动容器，`/chat` 补齐原先缺失的页面级布局；`/chat`、`/runs`、`/approvals`、`/editor`、`/debug` 声明“不承诺小屏完整画布编辑” |
+| 冲突/过期/无结果反馈（AC1） | 真实栈：记忆陈旧 `If-Match` → `412 precondition_failed`（`current_etag="1"`/`current_revision=1`，正文未变）；同键异体 → `409 idempotency_conflict`（仍只有 1 条请求）；交互过期 → `409 interaction_closed` + `failed(interaction_expired)`；无匹配 → `failed(no_matching_application)`；空知识库 → 检索 `200 items=[]`、问答 `200 no_results`。页面：审批 `approvalExpiryNote` 区分 **capability 惰性过期** 与 **node 30s sweeper 自动过期**，失败后禁用/重读/不自动重试；chat 的 409 不重放旧幂等键、过期答复不复活任务；空结果有“不是错误 + 下一步” |
+| 撤销引用不能读缓存（AC2） | 真实全链路：上传→finalize→ingest→ready→检索→引用 `200` 正文 → `DELETE /knowledge-documents/{id}` `202` → 同一引用 `404 resource_not_found`（响应无 `text`/`citation`）→ 检索空；页面 404 清空 `#citation-text`、`data-citation-available=false`，并断言**不回退**上一次正文 |
+| 个人数据控制 | 记忆候选显示来源/交互封存/保存范围（应用）/状态/过期，`dataset.selection="none"`、无勾选控件、无全选、点击才发决定；诊断对象**默认不勾选**；文档 7 个摄取状态 + 真实失败码（`ingest_empty_content` 等）+ 下一步；删除同时展示“立即停止访问”（tombstone/epoch，202 前生效）与“异步物理清理/备份期限”+ 真实删除任务状态/剩余 scopes，`GET /deletions/{id}` 可读 |
+| 真实栈证据 | 记忆删除 `202` 后下一次 `GET` 404、列表空、job `200 pending` + remaining scopes；候选 `201` 五字段 pending → 列表无预选择 → 显式 decision `200 confirmed` + 单条记忆；capability 审批过期后 0.6s（≥6 次 sweep）仍 `pending`，decision 才 `409 approval_expired`；node 审批（真实 prepare + waiting + exit）过期后由 100ms sweeper 自动变 `expired(decision_key=sweeper:expired)` 且 Run `failed(approval_expired)`，迟到决定 409 |
+| 测试 | `tests/f12/test_t098_mobile_pages.py` **8 passed**（真实 committed bytes + DOM/fetch shim：移动结构/类名/viewport 样式接线、两种审批过期、chat 冲突/过期/无结果、候选默认未决、个人数据状态/默认未选、引用清除）；`tests/f12/test_t098_stack.py` **6 passed**（真实 PG/mTLS/maintenance/http；412/409/interaction/no-match/空结果/撤销引用/删除/两种审批过期/候选） |
+| 门禁 | `pytest tests/f12/test_t098_*.py -q` → **14 passed in 27.93s**；`pytest tests/f12 -q` → **308 passed in 131.09s (0:02:11)**（既有 294 条全保留）；受影响：`tests/f08/test_postreview_pages.py` + `tests/f04b/test_t083_runview.py` + `tests/f06/test_t050_pages.py` **12 passed in 54.26s**、`tests/f09` **69 passed in 357.41s**、`tests/f10` 知识页 **6 passed in 24.43s**、`tests/f08` chat 页 **4 passed in 17.79s**；`go build/vet/test ./...` 全 exit 0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → no drift；5 个改动脚本 `node --check` exit 0；8 个改动页面抽取 4 个内联块逐个 `node --check` 通过 |
+| 边界/not_run | 无 Playwright/真实浏览器 DOM：CSS 断点真实求值、像素布局、真机触控/手势/横竖屏/`safe-area`/屏幕阅读器均 `not_run`；无真实厂商模型（dev-stub）；删除的“物理副本已删/备份已过期”不声称（只显示 job）；`MemoryCandidate` 契约无 `source_run_id`（`additionalProperties:false`），页面不编造具体 Run id；小屏完整画布编辑（`/editor`、`/debug`）明确不在票面范围；`/chat` 正文当 Run 输入的既有 `node_input_invalid` 缺口未绕过 |
+| 未修（归属 epic） | 删除后的物理清理/备份期限（F07/T071/T072）；`MemoryCandidate` 的来源 run id（F09/契约治理）；诊断授权仍按 run UUID 手输（F11/T073）；删除任务不轮询到 completed（F07）；`/editor`、`/debug` 响应式（明确不做）；真实厂商模型（F14/T090） |
+
+提交：`bb3b10e feat(f12)`（`mobile.css` + 6 页接线 + 审批/chat/记忆/个人数据/引用状态 + 静态路由）→
+`b2d3089 test(f12)`（页面 8 + 真实栈 6）→ 本文档提交。`git merge integration/f12` = **Already up to date**
+（集成分支仍为 `1ba9d01`）；合并后在最终树复跑 `tests/f12` **308 passed in 132.16s**、本票 14 passed、
+Go/静态/语法门禁全绿。最终 HEAD 见 `E:\Orchara\.scratch\f12\T098-REPORT.md`。

@@ -468,10 +468,8 @@ def test_a_deleted_document_stops_the_citation_immediately_and_shows_the_job(
     assert job_read.json["remaining_scopes"], job_read.json
 
     document_after = t055.get_document(owner, document_id)
-    if document_after.status == 200:
-        assert document_after.json["state"] in ("deleting", "deleted"), document_after.json
-    else:
-        assert document_after.status == 404, document_after.text
+    assert document_after.status == 404, document_after.text
+    assert document_after.json["error"]["code"] == "resource_not_found", document_after.text
 
     failure = _failure_body(refused, status=404)
     probe = _page_probe(
