@@ -700,6 +700,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /assets/knowledge.js", s.staticPage(filepath.Join("assets", "knowledge.js")))
 	mux.HandleFunc("GET /assets/models.js", s.staticPage(filepath.Join("assets", "models.js")))
 	mux.HandleFunc("GET /assets/runs.js", s.staticPage(filepath.Join("assets", "runs.js")))
+	// F12/T096: the run-state truth helpers (state/phase mapping, 410 -> snapshot
+	// rebuild, child/artifact readiness) shared by /runs, /debug and /chat.
+	mux.HandleFunc("GET /assets/runstream.js", s.staticPage(filepath.Join("assets", "runstream.js")))
 	// F09/T054: the personal-memory candidate page and its logic.
 	mux.HandleFunc("GET /memories", s.staticPage("memories.html"))
 	mux.HandleFunc("GET /assets/memories.js", s.staticPage(filepath.Join("assets", "memories.js")))

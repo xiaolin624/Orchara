@@ -179,7 +179,33 @@ async function fetchDownloadLink(artifactID) {
 }
 
 function artifactIsTerminal(state) {
-  return state === 'ready' || state === 'quarantined';
+  // T096: `deleted` is terminal too; polling a deleted artifact forever would
+  // keep presenting a resource that is already gone.
+  return state === 'ready' || state === 'quarantined' || state === 'deleted';
+}
+
+/**
+ * F12/T096: one honest sentence per real artifact state. The DB CHECK is
+ * uploading/scanning/ready/quarantined/deleted (contracts/database.sql:51).
+ * Before `ready` an artifact must never be presented as a task input or as a
+ * final output.
+ */
+function artifactStateNote(state) {
+  switch (String(state || '')) {
+    case 'ready':
+      return '校验通过：可以下载，也可以作为任务输入。';
+    case 'uploading':
+      return '上传暂存中（uploading）：字节尚未完成，不能作为任务输入，也不是最终产物。';
+    case 'scanning':
+      return '后台正在扫描真实字节（scanning）：ready 之前不能作为任务输入，也不是最终产物。';
+    case 'quarantined':
+      return '该附件已被隔离（quarantined）：不可下载，也不可作为任务输入。';
+    case 'deleted':
+      return '该附件已删除（deleted）：立即不可下载，也不能作为任务输入。';
+    default:
+      return '状态未知（' + (String(state || '') || 'unknown') +
+        '）：页面不把它当作可用的任务输入或最终产物。';
+  }
 }
 
 function shouldPollArtifact(state, attempts, maxAttempts) {
@@ -648,11 +674,7 @@ function initAttachments() {
     quarantineBox.hidden = !quarantined;
     quarantineReason.textContent = quarantined ? reason || '' : '';
     downloadButton.hidden = summary.state !== 'ready';
-    document.getElementById('artifact-note').textContent = quarantined
-      ? '该附件已被隔离：不可下载，也不可作为任务输入。'
-      : summary.state === 'ready'
-        ? '校验通过。下载时才会向服务器获取新的短时签名链接。'
-        : '后台正在扫描真实字节（uploading/scanning），页面会继续轮询。';
+    document.getElementById('artifact-note').textContent = artifactStateNote(summary.state);
   }
 
   function stopPolling() {
@@ -676,6 +698,10 @@ function initAttachments() {
             quarantineMessage(result.quarantineReason),
           'bad',
         );
+        return;
+      }
+      if (result.artifact.state === 'deleted') {
+        setStatus(artifactStateNote('deleted'), 'bad');
         return;
       }
       if (!shouldPollArtifact(result.artifact.state, attempts, 100)) {
