@@ -111,22 +111,24 @@ supervisor certificate is refused. They are not added to `contracts/openapi.json
   sales workflow's `start` node requires a JSON object, so execution fails with
   `node_input_invalid`. T084's journey uses a JSON task document; the integration gap is
   documented, not hidden.
-- **Optional source publishing (T085)**: the canvas/publish layer accepts
-  `optional_sources` pointing at agent/call_app/model nodes, but the runtime only converges
-  pure read/compute failures and fails closed for writes/approval/unknown outcomes. A stricter
-  publish-time rejection is deferred (see below) because it needs a contract-validator change
-  and a corpus/hash rebuild; until then the canvas warning plus fail-closed runtime behavior
-  are the guard.
+- **Optional source publishing (T085)**: the publish validator now rejects
+  `optional_sources` pointing at anything outside the pure read/compute set
+  `{python, condition, join, retrieve}` (`bad_join_sources` at
+  `/nodes/<i>/config/optional_sources`); agent/call_app/model/approval are not publishable
+  optional sources. The runtime still fails closed for writes/approval/unknown outcomes, so
+  the publish gate and runtime allowlist are two independent guards.
 - **Retrieve output (T088)**: narrowed in this batch to `excerpt`/no score (see §2); this ADR
   is the record that the earlier full-body output was a bug.
-- **Approval expiry (T087)**: there is **no automatic expiry sweeper**. Expiry is observed on
-  the decision path (`decide` returns 409 `approval_expired` and the run fails with
-  `approval_expired`); a run parked in `waiting_approval` does not terminate merely because
-  time passes. T087 is therefore reported as `partial`.
-- **T083/T085 replay join-once**: the replay evidence is a Go fake-seam (`NodeOutputSource`)
-  test plus later real-resume coverage in T087/T091; the direct "same run, second exec,
-  retrieve/model join once" smoke is `not_run` in T083/T085 and is claimed only as indirect
-  coverage by T091.
+- **Approval expiry (T087)**: the API runs a background deadline sweep
+  (`internal/approvals/expiry.go`, cadence `ORCHARA_APPROVAL_SWEEP_INTERVAL`, 30s default).
+  It expires due approval rows by the database clock and resolves the waiting Run through the
+  existing F03/T035 decision transaction; a Run parked in `waiting_approval` now terminates
+  with `approval_expired` without a human decision. T087 is `passed`.
+- **T083/T085 replay join-once**: the Go fake-seam (`NodeOutputSource`) test remains a fast
+  unit guard, and the real-process evidence is now
+  `tests/f04b/test_t087_approval_node.py::test_a_real_resume_reuses_the_join_and_never_fires_it_twice`
+  (two real `exec --once` processes; the join data artifact is reused byte-for-byte and never
+  fires a second time).
 
 ## References
 

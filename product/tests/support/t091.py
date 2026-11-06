@@ -203,12 +203,18 @@ def two_approval_definition(
 
     * default: join2 required=[agent], optional=[py] (optional failure variant
       passes ``py_output_schema=FAILING_OUTPUT_SCHEMA``);
-    * ``agent_optional=True``: required=[py], optional=[agent] (the capability /
-      revoked-profile variant);
+    * ``agent_optional=True``: required=[py], optional=[agent_out] — a pure python
+      guard downstream of the agent, because publish validation rejects a direct
+      optional agent; the capability / revoked-profile variant still proves the
+      agent failure is not converged;
     * ``py_optional=False``: required=[py, agent] (the required fail-fast variant).
     """
     if agent_optional:
-        required, optional = ("py",), ("agent",)
+        # Publish validation rejects an optional source that names an agent
+        # directly. Guard the branch with a pure python node; the agent failure
+        # is still attributed to this branch and the runtime allowlist still
+        # refuses to converge it.
+        required, optional = ("py",), ("agent_out",)
     elif py_optional:
         required, optional = ("agent",), ("py",)
     else:
@@ -226,6 +232,10 @@ def two_approval_definition(
         _python("fork"),
         _python("py", output_schema=py_output_schema),
         _agent_node("agent"),
+    ]
+    if agent_optional:
+        nodes.append(_python("agent_out"))
+    nodes += [
         t083.join_node("join2", fork_id="fork", required=required, optional=optional),
         t083.join_node("join1", fork_id="choose", required=("join2", "direct")),
         _approval(
@@ -244,7 +254,15 @@ def two_approval_definition(
         {"source": "fork", "target": "py"},
         {"source": "fork", "target": "agent"},
         {"source": "py", "target": "join2"},
-        {"source": "agent", "target": "join2"},
+    ]
+    if agent_optional:
+        edges += [
+            {"source": "agent", "target": "agent_out"},
+            {"source": "agent_out", "target": "join2"},
+        ]
+    else:
+        edges.append({"source": "agent", "target": "join2"})
+    edges += [
         {"source": "join2", "target": "join1"},
         {"source": "direct", "target": "join1"},
         {"source": "join1", "target": "approve2"},

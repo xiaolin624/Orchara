@@ -154,9 +154,10 @@ python tools/sync_spec.py --check
 - **real**：PostgreSQL 16、迁移+bootstrap、真实 mTLS internal listener、编译后的 `cmd/supervisor`/`api`/`maintenance` 二进制、真实对象目录与签名链接、真实 WSL2/runsc sandbox、真实 SSE、owner-only 读取。
 - **stub**：Go 单测的协议/能力/sandbox seam（`fakeClient`/`fakeSandbox`/`fakeFacts`/`agentScript`）；LangGraph 证明的记录型 stub adapter。均未冒充生产验收。
 - **not_run**：
-  - 真实“同一 run 第二次 exec 复用已完成节点”冒烟：本票不产生 waiting，无法构造可重复 claim 的 resume 场景；接缝接口+supervisor 装配+Go 单测已完成，留给 T087/T091 在真实等待后补测。
+  - ~~真实“同一 run 第二次 exec 复用已完成节点”冒烟~~：已由 T087 的真实两次 exec 用例补齐
+    （`test_a_real_resume_reuses_the_join_and_never_fires_it_twice`，join data 复用且不再执行）。
   - 真实厂商模型路径（无凭据）；画布/UI 半（另一个 worktree）。
-  - `optional` 分支失败收敛/失败隔离并发执行（T085）；本票 only 记录 optional、按 required-activation 规则 fail-closed。
+  - `optional` 分支失败收敛/失败隔离并发执行归 T085（本票只记录 optional、按 required-activation 规则 fail-closed）。
 - **partial**：无（运行时口径内）；T085–T091 的扩展点已按 §2 预留。
 
 ## 6. 合并、门禁原始输出与 HEAD

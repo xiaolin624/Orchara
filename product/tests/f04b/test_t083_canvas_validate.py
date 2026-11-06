@@ -54,10 +54,15 @@ def save(stack, session: f00b.Session, application_id: str, etag: str | None,
 
 
 def python_stand_ins(document: dict, tool_id: str) -> dict:
-    """The P05 fixture with model/approval nodes replaced by seeded python nodes."""
+    """The P05 fixture with every non-pure node replaced by a seeded python node.
+
+    The corpus uses placeholder tool ids (it is a language-neutral validator
+    fixture); the HTTP validate path also runs the dependency stage, so every
+    python node must point at the real seeded tool version.
+    """
     definition = json.loads(json.dumps(document))
     for node in definition["nodes"]:
-        if node["type"] in ("model", "approval"):
+        if node["type"] in ("model", "approval", "python"):
             node["type"] = "python"
             node["config"] = {"tool_version": tool_id}
             node["inputs"] = {}

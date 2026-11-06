@@ -573,7 +573,7 @@ def test_an_optional_agent_capability_failure_is_never_downgraded(
     assert state["output_artifact_id"] is None, state
     states = t091.node_states(t033_stack.dbname, run["id"])
     assert states["agent"] == ["pending", "running", "failed"], states
-    for node_id in ("join2", "join1", "approve2", "summarise", "end"):
+    for node_id in ("agent_out", "join2", "join1", "approve2", "summarise", "end"):
         assert states[node_id] == ["skipped"], (node_id, states)
     rows = t091.node_result_rows(t033_stack.dbname, run["id"])
     assert [row for row in rows if row["node_id"] in {"join2", "join1", "approve2"}] == []

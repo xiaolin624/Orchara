@@ -107,7 +107,13 @@ def required_failure_definition() -> dict:
 
 
 def parallel_agent_definition() -> dict:
-    """start forks onto a python branch (required) and an agent branch (optional)."""
+    """start forks onto a python branch and an optional guarded agent branch.
+
+    The optional join source is ``analysis_out`` (a pure python node) because
+    publish validation rejects an optional source that names an agent directly.
+    A failure inside the branch still belongs to that source, so an agent
+    capability failure remains non-convergent (see the runtime allowlist).
+    """
     agent = {
         "id": "analysis",
         "type": "agent",
@@ -125,7 +131,45 @@ def parallel_agent_definition() -> dict:
         t027.start_node(),
         _python("left"),
         agent,
-        t083.join_node("join", fork_id="start", required=("left",), optional=("analysis",)),
+        _python("analysis_out"),
+        t083.join_node(
+            "join", fork_id="start", required=("left",), optional=("analysis_out",)
+        ),
+        t083.graph_end(),
+    ]
+    edges = [
+        {"source": "start", "target": "left"},
+        {"source": "start", "target": "analysis"},
+        {"source": "analysis", "target": "analysis_out"},
+        {"source": "left", "target": "join"},
+        {"source": "analysis_out", "target": "join"},
+        {"source": "join", "target": "end"},
+    ]
+    return _definition(nodes, edges, t083.ANY_INPUT_SCHEMA)
+
+
+def direct_optional_agent_definition() -> dict:
+    """An agent branch declared optional directly: now refused at publish time."""
+    agent = {
+        "id": "analysis",
+        "type": "agent",
+        "inputs": {"artifact": {"ref": "node:start#/artifact"}},
+        "output_schema": dict(AGENT_TEXT_SCHEMA),
+        "config": {
+            "model_profile_version": GOLDEN_MODEL_ID,
+            "instructions": "Summarise the validated sales statistics.",
+            "max_turns": 2,
+            "tool_versions": [PRESET_TOOL_ID],
+            "subapp_versions": [],
+        },
+    }
+    nodes = [
+        t027.start_node(),
+        _python("left"),
+        agent,
+        t083.join_node(
+            "join", fork_id="start", required=("left",), optional=("analysis",)
+        ),
         t083.graph_end(),
     ]
     edges = [

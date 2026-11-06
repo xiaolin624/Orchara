@@ -15,7 +15,7 @@
 | 3 | 不能注入 UI 未展示的能力（导出白名单 + 服务端拒绝） | **passed** | 画布 `CONFIG_ALLOWLIST` 十类；Node 用例：干净十类 fixture 导出无 `dropped`；每类注入未知键 → `dropped[{path,reason:unknown_config_key}]`；未知节点类型 → `unknown_node_type`；`api_key`/`run_input`/`endpoint_ref`（definition 或 layout）→ `ExportRefused`；服务端：model config 注入面板从不展示的 `response_schema` + `api_key` → `bad_config` 定位 `/nodes/3/config/...`，未知类型 `mystery` → `unknown_type`（保存成功但 validate/debug 拒绝） |
 | 4 | 两次审批后汇合成功（真实运行） | **passed** | 真实栈 `test_two_approvals_resume_the_same_run_through_the_nested_join`：`start→choose→(approve1→fork→{py,agent}→join2 | direct)→join1→approve2→summarise(model)→end`；exec1 `waiting_approval`（approve1 pending、无 resume）、决定 → exec2（新进程）跑到 approve2 `waiting_approval`（join2/join1 已各执行一次）、决定 → exec3 succeeded；两次 approval 行、两个 resume job、approve1/approve2 各 1 条 data 行；join1/join2 各恰 1 条 data（重放只重发已复用的 succeeded 事实，不再次执行 join、不新增 data 行）；end 输出按来源读外层 join 封套（`join1`, `join2`） |
 | 5 | optional 只吞允许的纯读错误 | **passed** | 真实栈 `test_optional_failure_is_folded_into_the_join_envelope_and_the_run_succeeds`：py 分支 optional 且输出 schema 不匹配 → `node_output_invalid`；join2 信封 `py={status:"failed",error_code:"node_output_invalid"}`（无 `value`）、`agent` succeeded；run succeeded；end 输出把失败当作数据（`join2.results.py.status=="failed"`，无 value）；py 无 data 行；join2 恰 1 行 |
-| 6 | unknown 与越权不降成可选成功 | **passed** | 真实栈 `test_an_optional_agent_capability_failure_is_never_downgraded`：join2 的 agent 源为 optional，审批后撤销 golden model profile → exec2 `model_profile_unavailable`，run **failed**（不是 succeeded）；join2/join1/approve2/summarise/end 全 `skipped`、无 join 行、无 final output。服务端注入未展示能力键/未知类型亦在 validate 阶段拒绝（见 AC3） |
+| 6 | unknown 与越权不降成可选成功 | **passed** | 真实栈 `test_an_optional_agent_capability_failure_is_never_downgraded`：join2 的 optional 分支源为 agent 下游的 pure python guard（发布校验不允许直接 optional agent），审批后撤销 golden model profile → exec2 agent `model_profile_unavailable`，run **failed**（不是 succeeded）；guard/join2/join1/approve2/summarise/end 全 `skipped`、无 join 行、无 final output。服务端注入未展示能力键/未知类型亦在 validate 阶段拒绝（见 AC3） |
 | 7 | 真实端到端演示 + 失败/授权/重试边界 + 版本/输入 hash/命令/原始结果/环境；stub/real 分报 | **passed** | §3/§4/§5；版本：manifest `orchara-execution-manifest/1.0`、`compiler_version=orchara-compiler/1.0.0`、`X-Manifest-SHA256` 与 run 的 `manifest_sha256` 一致、sandbox rootfs digest/runsc；输入：`requires_approval=true` + `task` 文本、CSV `sha256=f226b1fe…`；本轮真实栈原始输出见 §4；stub（dev-stub 模型、Go fake seam）与 real（PG/mTLS/supervisor/runsc/API）分列 |
 
 补充（brief §5 优先级）：
@@ -70,7 +70,7 @@ start → choose ─yes→ approve → fork ─→ py(optional) ─┐
 |---|---|
 | py optional + 输出 schema 不匹配 | py `node_output_invalid` → join2 信封 `py={status:failed,error_code}` 无 value；agent succeeded；run **succeeded**；end 把 failed 当数据、无 py value；py 无 data 行 |
 | py required + 输出 schema 不匹配 | fail-fast：run **failed** `node_output_invalid`、无 final output；py `failed`；join2/join1/approve2/summarise/end **skipped**、无 join data 行、无 approve2 行、无 resume job；runsc 无孤儿 |
-| agent optional + 撤销 golden model profile | agent `model_profile_unavailable` 不被 optional 吸收：run **failed**、join2/join1/approve2/… skipped、无 success/output；证明“越权/能力失败不降级” |
+| optional 分支含 agent + 撤销 golden model profile | 分支源是 agent 下游的 pure python guard；agent `model_profile_unavailable` 不被 optional 吸收：run **failed**、guard/join2/join1/approve2/… skipped、无 success/output；证明“越权/能力失败不降级” |
 
 ### 2.5 等待交接的 skip 语义（集成对齐，不重复修复）
 

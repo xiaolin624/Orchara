@@ -349,6 +349,16 @@ func durationOrDefault(value, fallback time.Duration) time.Duration {
 	return value
 }
 
+// ExpireDueApprovals runs one bounded F04B/T087 approval-deadline sweep. The
+// process that owns the API owns the ticker and its shutdown; this method only
+// exposes the one deterministic pass so the loop has no hidden lifecycle.
+func (s *Server) ExpireDueApprovals(ctx context.Context) (int, error) {
+	if s.approvals == nil {
+		return 0, nil
+	}
+	return s.approvals.ExpireDue(ctx, approvals.DefaultSweepLimit)
+}
+
 // Register adds the identity routes to mux.
 //
 // Every authenticated route goes through Server.authorize, so the CSRF and role

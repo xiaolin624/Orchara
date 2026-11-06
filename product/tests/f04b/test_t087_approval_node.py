@@ -29,6 +29,7 @@ from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
     t033_stack,
+    t033_stack_fast_approval_sweep,
 )
 
 
@@ -263,6 +264,96 @@ def test_approved_node_approval_resumes_the_same_run_once(t033_stack, sandbox) -
     assert t033.no_orphan_evidence()["runsc_list"] == []
 
 # ---------------------------------------------------------------------------
+# 2b. a real resume reuses the completed join instead of firing it again
+# ---------------------------------------------------------------------------
+def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
+    t033_stack, sandbox
+) -> None:
+    owner, _application_id, run = t087.queue_approval_run(
+        t033_stack, t087.approval_after_join_definition(), csv=True,
+        name="t087 join replay",
+    )
+
+    # First process: both python branches run, the join fires once, then the
+    # approval parks the run before the end.
+    completed, report = t087.exec_once(t033_stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "waiting_approval", report
+    assert report["error_code"] == "approval_required", report
+    waiting = assert_waiting_for_approval(t033_stack, run["id"])
+    approval = t087.approval_for_node(t033_stack.dbname, run["id"], "approve1")
+    assert approval is not None and approval["state"] == "pending", approval
+    assert waiting["checkpoint_id"] == "approval:" + approval["id"], waiting
+
+    rows_before = t087.node_result_rows(t033_stack.dbname, run["id"])
+    join_rows_before = [row for row in rows_before if row["node_id"] == "join"]
+    assert len(join_rows_before) == 1, join_rows_before
+    for node_id in ("left", "right"):
+        node_rows = [
+            row for row in rows_before if row["node_id"] == node_id and row["kind"] == "data"
+        ]
+        assert len(node_rows) == 1, (node_id, rows_before)
+    join_before = t087.artifact_document(
+        t033_stack, owner, join_rows_before[0]["artifact_id"]
+    )
+    assert set(join_before["results"]) == {"left", "right"}, join_before
+    states = t087.node_states(t033_stack.dbname, run["id"])
+    assert states["join"] == ["pending", "running", "succeeded"], states
+
+    decided = t087.decide(
+        owner.creator, approval["id"], params_sha256=approval["params_sha256"]
+    )
+    assert decided.status == 200 and decided.json["state"] == "approved", decided.text
+    assert len(t035.resume_jobs(t033_stack.dbname, run["id"])) == 1
+
+    # Second real process: the durable join output is reused; no second join data
+    # row, no second join execution, and the same envelope reaches the end.
+    completed, report = t087.exec_once(t033_stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "succeeded", report
+    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    assert state["finished_at"] is not None, state
+
+    rows_after = t087.node_result_rows(t033_stack.dbname, run["id"])
+    join_rows_after = [row for row in rows_after if row["node_id"] == "join"]
+    assert join_rows_after == join_rows_before, (
+        "the resumed attempt must reuse the one join artifact",
+        join_rows_before,
+        join_rows_after,
+    )
+    for node_id in ("left", "right"):
+        node_rows = [
+            row for row in rows_after if row["node_id"] == node_id and row["kind"] == "data"
+        ]
+        assert len(node_rows) == 1, (node_id, rows_after)
+    join_after = t087.artifact_document(
+        t033_stack, owner, join_rows_after[0]["artifact_id"]
+    )
+    assert join_after == join_before, (join_before, join_after)
+
+    final = t087.artifact_document(
+        t033_stack, owner, t087.output_artifact_id(t033_stack.dbname, run["id"])
+    )
+    assert final["approval_id"] == approval["id"], final
+    assert final["decision"] == "approved", final
+    assert final["results"] == join_after["results"], final
+
+    # The reuse emits one terminal fact per attempt; the join never fires twice
+    # in one attempt.
+    join_succeeded = [
+        event
+        for event in t087.node_events(t033_stack.dbname, run["id"])
+        if event["payload"]["node_id"] == "join"
+        and event["payload"]["state"] == "succeeded"
+    ]
+    attempts = [event["payload"]["attempt_no"] for event in join_succeeded]
+    assert attempts == [1, 2], attempts
+    states = t087.node_states(t033_stack.dbname, run["id"])
+    assert states["join"] == ["pending", "running", "succeeded", "succeeded"], states
+    assert t033.no_orphan_evidence()["runsc_list"] == []
+
+
+# ---------------------------------------------------------------------------
 # 3. reject -> terminal approval_rejected, zero external writes, no resume
 # ---------------------------------------------------------------------------
 def test_rejected_node_approval_terminates_the_run_without_a_resume(t033_stack, sandbox) -> None:
@@ -313,8 +404,9 @@ def test_expired_node_approval_terminates_the_run_and_refuses_the_decision(
     approval = t087.approval_for_node(t033_stack.dbname, run["id"], "approve1")
     assert approval is not None
 
-    # The test moves the real deadline into the past (the deployment has no expiry
-    # sweeper; the contract's decision path is the only decision entry).
+    # Move the real deadline into the past. This stack uses a 5m test-only sweep
+    # cadence, so this case deterministically exercises the decision path's due
+    # check; the automatic sweeper has its own fast-sweep case below.
     t087.point_expiry_past(t033_stack.dbname, approval["id"])
     refused = t087.decide(
         owner.creator, approval["id"], params_sha256=approval["params_sha256"]
@@ -331,6 +423,66 @@ def test_expired_node_approval_terminates_the_run_and_refuses_the_decision(
     assert t035.resume_jobs(t033_stack.dbname, run["id"]) == []
     assert t087.operation_rows(t033_stack.dbname, run["id"]) == []
     assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
+
+
+# ---------------------------------------------------------------------------
+# 4b. the deadline alone terminates a parked run (automatic expiry sweeper)
+# ---------------------------------------------------------------------------
+def test_a_parked_approval_expires_automatically_without_a_decision(
+    t033_stack_fast_approval_sweep, sandbox
+) -> None:
+    stack = t033_stack_fast_approval_sweep
+    owner, _application_id, run = t087.queue_approval_run(
+        stack, t087.approval_definition()
+    )
+    _completed, report = t087.exec_once(stack)
+    assert report["outcome"] == "waiting_approval", report
+    waiting = assert_waiting_for_approval(stack, run["id"])
+    approval = t087.approval_for_node(stack.dbname, run["id"], "approve1")
+    assert approval is not None and approval["state"] == "pending", approval
+    assert waiting["checkpoint_id"] == "approval:" + approval["id"], waiting
+
+    # Make the server-owned deadline due. Nobody calls the decision endpoint:
+    # only the real API process's sweeper can terminate this Run.
+    t087.point_expiry_past(stack.dbname, approval["id"])
+
+    def failed_run():
+        row = t087.run_row(stack.dbname, run["id"])
+        return row if row["state"] == "failed" else None
+
+    state = t087.wait_until(failed_run, timeout=10.0)
+    assert state["error_code"] == t087.EXPIRED_CODE, state
+    assert state["finished_at"] is not None, state
+
+    expired = t087.approval_row(stack.dbname, approval["id"])
+    assert expired["state"] == "expired", expired
+    assert expired["decided_at"] is not None, expired
+    assert expired["decided_by"] is None, expired
+    assert expired["decision_key"] == "sweeper:expired", expired
+
+    # The one waiting resolution is the expired decision; it creates no resume
+    # job and no approval output.
+    decision = t035.waiting_decision(stack.dbname, run["id"])
+    assert decision == {
+        "kind": t035.KIND_APPROVAL,
+        "outcome": "expired",
+        "reference": approval["id"],
+    }, decision
+    assert t035.waiting_row(stack.dbname, run["id"])["resume_job_id"] is None
+    assert t035.resume_jobs(stack.dbname, run["id"]) == []
+    assert t087.output_artifact_id(stack.dbname, run["id"]) is None
+    assert t087.node_result_rows(stack.dbname, run["id"]) == []
+    states = t087.node_states(stack.dbname, run["id"])
+    assert states["approve1"] == ["pending", "running"], states
+    assert "end" not in states, states
+
+    # A late human decision is refused with the stable code: the run is already
+    # terminally expired, not resumable.
+    refused = t087.decide(
+        owner.creator, approval["id"], params_sha256=approval["params_sha256"]
+    )
+    assert refused.status == 409, refused.text
+    assert refused.json["error"]["code"] == t087.EXPIRED_CODE, refused.json
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from support import t025, t033, t042, t083, t085
+from support import t025, t027, t033, t042, t083, t085
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -217,6 +217,7 @@ def test_optional_never_swallows_an_agent_capability_failure(t033_stack, sandbox
 
     states = t085.node_states(t033_stack.dbname, run["id"])
     assert states["analysis"] == ["pending", "running", "failed"], states
+    assert states["analysis_out"] == ["skipped"], states
     assert states["join"] == ["skipped"], states
     assert states["end"] == ["skipped"], states
 
@@ -226,6 +227,43 @@ def test_optional_never_swallows_an_agent_capability_failure(t033_stack, sandbox
 
     orphan = t033.no_orphan_evidence()
     assert orphan["runsc_list"] == [], orphan
+
+
+def test_publish_refuses_an_optional_agent_source(t033_stack) -> None:
+    owner, application_id = t083.application_for(
+        t033_stack, t085.direct_optional_agent_definition(),
+        name="t085 optional agent publish gate",
+    )
+    validation = t025.validate(owner.creator, application_id)
+    assert validation.status == 200, validation.text
+    assert validation.json["valid"] is False, validation.text
+    errors = t025.validation_errors(validation)
+    located = [
+        error for error in errors
+        if error["code"] == "bad_join_sources"
+        and error["pointer"] == "/nodes/3/config/optional_sources"
+    ]
+    assert located, errors
+    assert located[0].get("node_id") == "join", located[0]
+
+    # The same gate refuses a real debug submission and creates no execution
+    # identity: a declaration the runtime will never honour cannot be published.
+    artifact_id = t042.ready_csv(t033_stack, owner)
+    revision = t027.draft_revision(owner.creator, application_id)
+    refused = t027.submit_debug(
+        owner.creator, application_id, draft_revision=revision,
+        input_value={}, artifact_ids=[artifact_id],
+    )
+    assert refused.status == 422, refused.text
+    assert refused.json["error"]["code"] == "validation_failed", refused.text
+    details = refused.json["error"]["details"]["errors"]
+    assert any(
+        error["code"] == "bad_join_sources"
+        and error["pointer"] == "/nodes/3/config/optional_sources"
+        for error in details
+    ), details
+    assert t083.count_runs_for_application(t033_stack.dbname, application_id) == 0
+    assert t083.count_jobs_for_application(t033_stack.dbname, application_id) == 0
 
 
 def test_nested_parallel_region_inside_a_condition_branch(t033_stack, sandbox) -> None:

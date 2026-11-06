@@ -311,9 +311,17 @@ VALID_CASES = [
     },
     {
         "name": "parallel-optional-source",
-        "source": "examples/parallel/workflow.json, right branch declared optional",
+        "source": (
+            "examples/parallel/workflow.json, right branch replaced by a pure python "
+            "compute node declared optional"
+        ),
         "document": mutated(
             PARALLEL,
+            lambda d: node(d, "right").update({
+                "type": "python",
+                "inputs": {},
+                "config": {"tool_version": "33333333-3333-4333-8333-333333333333"},
+            }),
             lambda d: node(d, "join")["config"].update(
                 {"required_sources": ["left"], "optional_sources": ["right"]}),
         ),
@@ -493,6 +501,52 @@ INVALID_CASES = [
         "document": mutated(
             APPROVAL,
             lambda d: node(d, "join")["config"].update({"required_sources": ["approve"]}),
+        ),
+        "reason": "bad_join_sources",
+    },
+    {
+        "name": "optional-model-source",
+        "source": "examples/parallel/workflow.json, a model branch declared optional",
+        "document": mutated(
+            PARALLEL,
+            lambda d: node(d, "join")["config"].update(
+                {"required_sources": ["left"], "optional_sources": ["right"]}),
+        ),
+        "reason": "bad_join_sources",
+    },
+    {
+        "name": "optional-agent-source",
+        "source": "examples/parallel/workflow.json, right replaced by an agent and declared optional",
+        "document": mutated(
+            PARALLEL,
+            lambda d: node(d, "right").update({
+                "type": "agent",
+                "inputs": {},
+                "config": {
+                    "instructions": "Summarise",
+                    "max_turns": 2,
+                    "model_profile_version": "22222222-2222-4222-8222-222222222222",
+                    "subapp_versions": [],
+                    "tool_versions": [],
+                },
+            }),
+            lambda d: node(d, "join")["config"].update(
+                {"required_sources": ["left"], "optional_sources": ["right"]}),
+        ),
+        "reason": "bad_join_sources",
+    },
+    {
+        "name": "optional-call-app-source",
+        "source": "examples/parallel/workflow.json, right replaced by a call_app and declared optional",
+        "document": mutated(
+            PARALLEL,
+            lambda d: node(d, "right").update({
+                "type": "call_app",
+                "inputs": {},
+                "config": {"application_version": "44444444-4444-4444-8444-444444444444"},
+            }),
+            lambda d: node(d, "join")["config"].update(
+                {"required_sources": ["left"], "optional_sources": ["right"]}),
         ),
         "reason": "bad_join_sources",
     },

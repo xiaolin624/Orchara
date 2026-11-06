@@ -526,7 +526,7 @@
     },
     {
       "name": "parallel-optional-source",
-      "source": "examples/parallel/workflow.json, right branch declared optional",
+      "source": "examples/parallel/workflow.json, right branch replaced by a pure python compute node declared optional",
       "verdict": "valid",
       "input": {
         "dsl_version": "1.0",
@@ -565,16 +565,10 @@
           },
           {
             "id": "right",
-            "type": "model",
-            "inputs": {
-              "task": {
-                "literal": "风险清单"
-              }
-            },
+            "type": "python",
+            "inputs": {},
             "config": {
-              "model_profile_version": "22222222-2222-4222-8222-222222222222",
-              "prompt_template": "{{task}}",
-              "response_mode": "json"
+              "tool_version": "33333333-3333-4333-8333-333333333333"
             },
             "output_schema": {
               "type": "object"
@@ -642,8 +636,8 @@
           "currency": "USD"
         }
       },
-      "input_sha256": "f756512f00971292b86b0afc0f7c17db8872aa9a6f753000d17f412384601972",
-      "expected_hash": "5535e25a95fdcc71ccb0c628d086b2b16c48dc3e0d7092bf0edc42215d21b81c"
+      "input_sha256": "82d46779d278ee0303e3f3ebfa1a854909255bf6840c2ac71c4a46a570f43179",
+      "expected_hash": "d116db74a060522b89edccb2c04ac3f7f18dee2f322f6b956da5e61727bfb4b4"
     },
     {
       "name": "condition-branch-approval",
@@ -4588,6 +4582,370 @@
         }
       },
       "input_sha256": "fbc7fb3b3b371f7b3401fad5459c6c12551f5823f8110d95ef0b83f996a6afe9",
+      "reason": "bad_join_sources",
+      "reasons": [
+        "bad_join_sources"
+      ]
+    },
+    {
+      "name": "optional-model-source",
+      "source": "examples/parallel/workflow.json, a model branch declared optional",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "风险清单"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left"
+              ],
+              "optional_sources": [
+                "right"
+              ]
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f756512f00971292b86b0afc0f7c17db8872aa9a6f753000d17f412384601972",
+      "reason": "bad_join_sources",
+      "reasons": [
+        "bad_join_sources"
+      ]
+    },
+    {
+      "name": "optional-agent-source",
+      "source": "examples/parallel/workflow.json, right replaced by an agent and declared optional",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "agent",
+            "inputs": {},
+            "config": {
+              "instructions": "Summarise",
+              "max_turns": 2,
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "subapp_versions": [],
+              "tool_versions": []
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left"
+              ],
+              "optional_sources": [
+                "right"
+              ]
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "e534c403d3ff672121b1c7462c0f3f99636eb37e565704f7d2b4b1f225fcee57",
+      "reason": "bad_join_sources",
+      "reasons": [
+        "bad_join_sources"
+      ]
+    },
+    {
+      "name": "optional-call-app-source",
+      "source": "examples/parallel/workflow.json, right replaced by a call_app and declared optional",
+      "verdict": "invalid",
+      "input": {
+        "dsl_version": "1.0",
+        "input_schema": {
+          "type": "object"
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "inputs": {},
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "left",
+            "type": "model",
+            "inputs": {
+              "task": {
+                "literal": "摘要"
+              }
+            },
+            "config": {
+              "model_profile_version": "22222222-2222-4222-8222-222222222222",
+              "prompt_template": "{{task}}",
+              "response_mode": "json"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "right",
+            "type": "call_app",
+            "inputs": {},
+            "config": {
+              "application_version": "44444444-4444-4444-8444-444444444444"
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "join",
+            "type": "join",
+            "inputs": {},
+            "config": {
+              "fork_id": "start",
+              "mode": "all_active",
+              "required_sources": [
+                "left"
+              ],
+              "optional_sources": [
+                "right"
+              ]
+            },
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "inputs": {
+              "results": {
+                "ref": "node:join#/results"
+              }
+            },
+            "config": {},
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "start",
+            "target": "left"
+          },
+          {
+            "source": "start",
+            "target": "right"
+          },
+          {
+            "source": "left",
+            "target": "join"
+          },
+          {
+            "source": "right",
+            "target": "join"
+          },
+          {
+            "source": "join",
+            "target": "end"
+          }
+        ],
+        "policy": {
+          "max_active_seconds": 900,
+          "max_child_depth": 3,
+          "max_child_calls": 12,
+          "budget_limit": "1.00",
+          "currency": "USD"
+        }
+      },
+      "input_sha256": "f59c18c0141d39f1c04179ee235e8f7016dffcfb238bf558f5bb5816828b7f42",
       "reason": "bad_join_sources",
       "reasons": [
         "bad_join_sources"

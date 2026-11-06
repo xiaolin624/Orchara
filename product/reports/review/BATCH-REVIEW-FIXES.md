@@ -130,6 +130,17 @@ retrieve/condition/join 用例；无断言被放宽或跳过。原始日志：
 - 本报告只覆盖 brief 的 A/B/C/D 项；§2 的 judgement 项确实是**未修**，不是“等价完成”。
 - T084 的 final-tree 全量 `tests/f08`、T086/T083 的全量 f04b/f06、T088 的全量 `tests/f10`
   仍是 `not_run`（共享真实栈争用），报告/ PROGRESS 已按实际改写。
-- T087 是 `partial`（无自动过期 sweeper）；T090 是 `blocked`（无模型凭据/端点/权重/GPU）。
+- T087 在本轮曾是 `partial`（无自动过期 sweeper）；第三轮复核已补 sweeper 并改为 `passed`
+  （见下节与 `REVIEW3-FIXES.md`）。T090 是 `blocked`（无模型凭据/端点/权重/GPU）。
 - 真实验收依赖：PostgreSQL 16 隔离集群、编译后的 `cmd/api`/`cmd/supervisor`/`cmd/maintenance`、
   真实 mTLS、真实对象目录、WSL2+runsc、dev-stub 模型；浏览器 DOM 仍未驱动。
+
+## 6 第三轮复核关闭项（2026-11-06）
+
+第二轮记录中未做的三项已由第三轮修复关闭，不再是开放边界：
+
+- **optional_sources 发布校验**：Go/Python 校验器拒绝非纯读/计算 source，P05 语料重建并加
+  model/agent/call_app 负例（`REVIEW3-FIXES.md` #2）。
+- **T087 自动过期**：API 后台 sweeper + 真实等待自动过期用例（`REVIEW3-FIXES.md` #1）。
+- **T083/T085 replay join-once**：真实两次 exec 证明 join 只执行一次，fake-seam 不再是唯一证据
+  （`REVIEW3-FIXES.md` #3）。

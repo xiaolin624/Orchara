@@ -110,6 +110,54 @@ def approval_definition(
     return definition
 
 
+def approval_after_join_definition() -> dict:
+    """start -> two python branches -> join -> approval -> end.
+
+    The join runs in the first process, before the waiting approval. The second
+    process resumes after the decision, so the durable join output must be reused
+    instead of firing the join again. This is the real-process replay shape for
+    the T085 join-once requirement.
+    """
+    end = t027.end_node()
+    end["inputs"] = {
+        "approval_id": {"ref": "node:approve1#/approval_id"},
+        "decision": {"ref": "node:approve1#/decision"},
+        "results": {"ref": "node:join#/results"},
+    }
+    end["output_schema"] = {
+        "type": "object",
+        "properties": {
+            "approval_id": {"type": "string"},
+            "decision": {"type": "string"},
+            "results": {"type": "object"},
+        },
+        "required": ["approval_id", "decision", "results"],
+        "additionalProperties": False,
+    }
+    definition = t027.definition(
+        [
+            t027.start_node(),
+            t083.python_node("left"),
+            t083.python_node("right"),
+            t083.join_node(
+                "join", fork_id="start", required=("left", "right")
+            ),
+            approval_node("approve1", title="Approve the joined analysis"),
+            end,
+        ],
+        [
+            {"source": "start", "target": "left"},
+            {"source": "start", "target": "right"},
+            {"source": "left", "target": "join"},
+            {"source": "right", "target": "join"},
+            {"source": "join", "target": "approve1"},
+            {"source": "approve1", "target": "end"},
+        ],
+    )
+    definition["output_schema"] = end["output_schema"]
+    return definition
+
+
 def two_approval_definition() -> dict:
     """start -> a1(approval) -> a2(approval) -> end (T091's rehearsal shape)."""
     end = t027.end_node()

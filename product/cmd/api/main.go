@@ -178,6 +178,32 @@ func run(logger *log.Logger) error {
 	})
 	apiServer.Register(mux)
 
+	// F04B/T087: a Run parked in waiting_approval must terminate when its
+	// server-owned deadline passes even if nobody calls the decision endpoint.
+	// The database clock remains authoritative inside each sweep; this loop only
+	// decides how often it looks, and is stopped explicitly on shutdown.
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	defer stopSweep()
+	go func() {
+		ticker := time.NewTicker(cfg.ApprovalSweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-sweepCtx.Done():
+				return
+			case <-ticker.C:
+				count, err := apiServer.ExpireDueApprovals(sweepCtx)
+				if err != nil {
+					logger.Printf("approval sweep: %v", err)
+					continue
+				}
+				if count > 0 {
+					logger.Printf("approval sweep: expired %d due approval(s)", count)
+				}
+			}
+		}
+	}()
+
 	indexPath := filepath.Join(cfg.WebDir, "index.html")
 	if _, err := os.Stat(indexPath); err != nil {
 		return fmt.Errorf("web entry not found at %s (set ORCHARA_WEB_DIR)", indexPath)
