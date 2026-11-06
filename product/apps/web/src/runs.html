@@ -95,12 +95,12 @@
   <section class="card">
     <h2>我的 Run</h2>
     <p id="runs-status" class="status" role="status" aria-live="polite">正在加载运行…</p>
-    <ul id="runs-list"></ul>
+    <ul id="runs-list" data-auth-content></ul>
     <p id="runs-empty" class="hint" hidden>当前没有属于你的 Run。调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
     <button id="runs-next" type="button" hidden>下一页</button>
   </section>
 
-  <section id="run-detail" class="card" hidden aria-live="polite">
+  <section id="run-detail" class="card" data-auth-content hidden aria-live="polite">
     <h2>Run 详情</h2>
     <dl class="run">
       <dt>id</dt><dd id="detail-id"></dd>
@@ -242,8 +242,26 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/runstream.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
+  <script>
+    /*
+     * chat.js links "/runs?run=<id>" here. The runs page used to ignore the query
+     * string and only render the list, so "查看运行" did not open the run it
+     * named. Open the existing detail loader with a validated id; the list still
+     * loads beside it.
+     */
+    (function () {
+      const runID = new URLSearchParams(window.location.search).get('run');
+      if (!runID || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runID)) {
+        return;
+      }
+      if (typeof loadRunDetail === 'function') {
+        loadRunDetail(runID);
+      }
+    })();
+  </script>
 </body>
 </html>

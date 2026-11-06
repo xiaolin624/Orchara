@@ -47,7 +47,8 @@
   <section class="card">
     <h2>已发布版本</h2>
     <p id="versions-status" class="status" role="status" aria-live="polite">正在加载版本…</p>
-    <ul id="versions-list"></ul>
+    <ul id="versions-list" data-auth-content></ul>
+    <button id="versions-next" type="button" hidden>下一页</button>
     <p class="hint">
       已撤销的版本按契约从列表和详情中消失（<code>Version</code> 没有状态字段，因此用“不可见”表达不可用，
       详情返回 404）。版本详情：<code>GET /api/v1/versions/{id}</code>；运行入口校验：
@@ -76,6 +77,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/versions.js"></script>
   <script>
     const applicationId = applicationIdFromVersionsPath(window.location.pathname);
@@ -87,6 +89,10 @@
     const reasonInput = document.getElementById('revoke-reason');
     const stopCheckbox = document.getElementById('revoke-stop-existing');
     const revokeStatus = document.getElementById('revoke-status');
+    const versionsNext = document.getElementById('versions-next');
+
+    let versionItems = [];
+    let nextCursor = null;
 
     function setVersionStatus(message, kind) {
       versionsStatus.textContent = message;
@@ -127,9 +133,25 @@
       }
     }
 
-    async function loadVersions() {
-      const page = await api(versionsPath(applicationId));
-      renderVersions(page.items || []);
+    async function loadVersions(cursor) {
+      // The contract is items + next_cursor with a cursor/limit query. The old
+      // page rendered only page.items, so a list longer than the default 20 was
+      // silently truncated; now the next page is a real, visible operation.
+      const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+      const page = await api(versionsPath(applicationId) + query);
+      if (!cursor) {
+        versionItems = [];
+      }
+      versionItems = versionItems.concat(page.items || []);
+      nextCursor = page.next_cursor || null;
+      versionsNext.hidden = !nextCursor;
+      renderVersions(versionItems);
+      if (nextCursor) {
+        setVersionStatus(
+          '已显示 ' + versionItems.length + ' 个可见版本，还有下一页。',
+          'ok',
+        );
+      }
     }
 
     async function loadPage() {
@@ -147,13 +169,19 @@
         availability.className = 'status ' + (application.active_version_id ? 'ok' : '');
         await loadVersions();
       } catch (error) {
-        if (error.status === 401) {
-          window.location.assign('/login');
+        if (handleAuthFailure(error)) {
+          setVersionStatus('身份已失效，请重新登录。', 'bad');
           return;
         }
         setVersionStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
       }
     }
+
+    versionsNext.addEventListener('click', () => {
+      if (nextCursor) {
+        loadVersions(nextCursor);
+      }
+    });
 
     revokeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -179,6 +207,10 @@
         availability.textContent = describeCatalogAvailability(application);
         await loadVersions();
       } catch (error) {
+        if (handleAuthFailure(error)) {
+          setRevokeStatus('身份已失效，请重新登录。', 'bad');
+          return;
+        }
         setRevokeStatus(describeRevocationFailure(error), 'bad');
       }
     });

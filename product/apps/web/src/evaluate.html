@@ -81,8 +81,12 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" data-requires-role="creator" hidden>
     <h2>2. 开始评测并等待报告</h2>
+    <p class="hint">
+      提交评测需要 <code>creator</code> 角色且提交者本人是该应用的所有者；服务端不满足时返回
+      <code>403 creator_role_required</code>（或 <code>403 forbidden</code>），因此没有该角色时本区域不显示。
+    </p>
     <form id="evaluation-submit-form" method="post">
       <label for="evaluation-draft-revision">草稿 revision（提交时冻结该版本）</label>
       <input id="evaluation-draft-revision" type="number" min="1" step="1" value="1" />
@@ -116,11 +120,12 @@
           <th>实际附件</th>
         </tr>
       </thead>
-      <tbody id="case-rows"></tbody>
+      <tbody id="case-rows" data-auth-content></tbody>
     </table>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/evaluate.js"></script>
   <script>
     (() => {

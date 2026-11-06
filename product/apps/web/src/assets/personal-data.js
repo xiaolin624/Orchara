@@ -452,11 +452,34 @@ function renderItemList(listId, emptyId, items, renderItem) {
   });
 }
 
+// The list contract is items + next_cursor (API.md "pagination"). The page used
+// to read only the first page of each list, which silently hid memories,
+// knowledge bases and documents beyond the server's default limit. This page is
+// the "everything I may delete" inventory, so completeness is the point: follow
+// the opaque cursor until the server says there is no next page.
+async function collectAllPages(path) {
+  var items = [];
+  var cursor = null;
+  for (var page = 0; page < 100; page += 1) {
+    var query = '';
+    if (cursor) {
+      query = (path.indexOf('?') === -1 ? '?' : '&') + 'cursor=' + encodeURIComponent(cursor);
+    }
+    var payload = await api(path + query);
+    items = items.concat(payload.items || []);
+    cursor = payload.next_cursor || null;
+    if (!cursor) {
+      break;
+    }
+  }
+  return items;
+}
+
 async function loadMemories() {
   setStatus('memories-status', '正在加载记忆…', '');
   try {
-    var payload = await api('/api/v1/memories');
-    renderItemList('memories-list', 'memories-empty', payload.items || [], function (memory, entry) {
+    var memories = await collectAllPages('/api/v1/memories');
+    renderItemList('memories-list', 'memories-empty', memories, function (memory, entry) {
       addFieldRow(entry, '记忆 id', memory.id);
       addFieldRow(entry, '应用范围', memory.application_id);
       addFieldRow(entry, '版本', String(memory.revision));
@@ -469,7 +492,7 @@ async function loadMemories() {
       });
       entry.appendChild(button);
     });
-    setStatus('memories-status', '已加载 ' + String((payload.items || []).length) + ' 条记忆。', 'ok');
+    setStatus('memories-status', '已加载 ' + String(memories.length) + ' 条记忆。', 'ok');
   } catch (error) {
     setStatus('memories-status', error.message || String(error), 'bad');
   }
@@ -478,14 +501,13 @@ async function loadMemories() {
 async function loadDocuments() {
   setStatus('documents-status', '正在加载知识文档…', '');
   try {
-    var bases = await api('/api/v1/knowledge-bases');
+    var baseItems = await collectAllPages('/api/v1/knowledge-bases');
     var documents = [];
-    var baseItems = bases.items || [];
     for (var index = 0; index < baseItems.length; index += 1) {
       var base = baseItems[index];
-      var payload = await api('/api/v1/knowledge-bases/'
+      var baseDocuments = await collectAllPages('/api/v1/knowledge-bases/'
         + encodeURIComponent(base.id) + '/documents');
-      (payload.items || []).forEach(function (document) {
+      baseDocuments.forEach(function (document) {
         document.knowledge_base_name = base.name;
         documents.push(document);
       });

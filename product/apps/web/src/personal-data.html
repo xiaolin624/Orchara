@@ -53,7 +53,7 @@
     <h2>我的记忆</h2>
     <p class="hint">删除后该记忆立即从读取、列表与模型召回中消失。</p>
     <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
-    <ul id="memories-list"></ul>
+    <ul id="memories-list" data-auth-content></ul>
     <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。</p>
   </section>
 
@@ -61,7 +61,7 @@
     <h2>我的知识文档</h2>
     <p class="hint">删除文档后，检索、引用、问答与已缓存的结果都不再返回其正文。</p>
     <p id="documents-status" class="status" role="status" aria-live="polite">正在加载知识文档…</p>
-    <ul id="documents-list"></ul>
+    <ul id="documents-list" data-auth-content></ul>
     <p id="documents-empty" class="hint" hidden>还没有知识文档。</p>
   </section>
 
@@ -108,7 +108,7 @@
 
     <h2>我的诊断授权</h2>
     <p class="hint">授权对象、用途与到期时间按服务端记录展示；撤销后状态立即变为“已撤销”。</p>
-    <ul id="grants-list"></ul>
+    <ul id="grants-list" data-auth-content></ul>
     <p id="grants-empty" class="hint" hidden>还没有诊断授权。</p>
   </section>
 
@@ -126,6 +126,7 @@
   <p id="action-status" class="status" role="status" aria-live="polite"></p>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/personal-data.js"></script>
 </body>
 </html>

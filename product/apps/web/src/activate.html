@@ -22,7 +22,7 @@
     [hidden] { display: none !important; }
   </style>
 </head>
-<body>
+<body data-auth="optional">
   <nav><a href="/">状态</a> <a href="/login">登录</a> <a href="/admin">管理台</a></nav>
 
   <h1>账号激活</h1>
@@ -51,6 +51,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script>
     const activateForm = document.getElementById('activate-form');
     const activateStatus = document.getElementById('activate-status');

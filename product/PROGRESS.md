@@ -1,4 +1,4 @@
-# 产品实现进度（权威）
+﻿# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -2228,3 +2228,26 @@ T096 已交付，状态 **`passed`**（手段真实 + 覆盖完整 + 裁决诚�
 | 受影响既有套件 | `tests/f03` **2 failed, 201 passed in 1362.47s**（2 条 = T093 §6.2 已记录的既有红：`runs_conversation_id_fkey` / `runs_request_id_fkey`，同名同因，baseline 可复现）；`tests/f07` **36 passed in 311.95s**；`tests/f08/test_postreview_pages.py` **2 passed in 0.36s**；纯 Node `tests/f04b/runview*.test.mjs` 6+7+4 passed |
 | 未修（归属其它 epic） | `artifact.ready`/`usage.updated` 无 emitter（F03/F04B）；`run.status` 无 phase（契约只读，页面重取 `GET /runs/{id}`）；`/children`、`/node-results` 非契约无分页（F07/F04A）；artifacts 不返回 relation/purpose（F05）；Run 删除无公开端点；真实厂商模型/GPU 无 → `not_run` |
 | 边界 | 无浏览器 DOM/Playwright（页面=真实字节+shim）；无物理断网；`debug.js` 慢速续轮询只有源码守卫（poll 是闭包，无独立驱动）；410 只在建流时判定，已建流不会中途因保留窗口被踢 |
+## F12/T095 跨角色刷新与撤权后界面保持真实授权状态（GitHub #96，2026-11-06）
+
+T095 已交付，状态 **`passed`**。本票交付**单一角色化导航 + 统一 401/403 出口 + 撤权/禁用后的界面真值**，
+修的是界面真实性与可达性，**不是补鉴权**：服务端 `authorize`/`requireScope`/`requireApplicationWrite`
+链未改，「隐藏入口不能代替鉴权」在服务端成立（20 条负例入口的真实 HTTP 拒绝见报告 §3）。
+判定手段：页面是 **Node 执行已提交真实字节 + 最小 DOM/fetch shim（无 Playwright/真实浏览器）**；
+REST 是真实 `cmd/api` + 真实 PostgreSQL 16 + mTLS + 对象目录。证据：
+`reports/f12/T095-role-refresh-and-revocation.md`；分支 `t/t095-role-truthful-ui`
+（worktree `E:\Orchara-wt\t095`），基线 `integration/f12` @ `497f4e8`。
+
+| 交付点 | 结果 |
+|---|---|
+| 单一导航源 | 新增 `apps/web/src/assets/nav.js`，由 `GET /api/v1/auth/me` 的 roles/kind 生成导航：管理台仅 admin、`/apps` 标签 creator「应用与创作」/否则「应用（只读）」、service 不显示人类入口、匿名=状态/登录/激活。22 个 HTML 全部挂载，取代 22 份手写静态列表 |
+| 统一 401/403 | `app.js` 新增 `handleAuthFailure`（401 + 403 `principal_disabled`/`responsible_disabled`）：清空所有 `[data-auth-content]` 区域、跳 `/login`（`?error=session_revoked|session_expired|principal_disabled` 让登录页说明原因）；`apiFull` 对任何数据请求统一走该出口（approvals 等无 401 分支的页面也不会把拒绝读当成功）；403 角色拒绝触发 nav 重读身份并重渲染 |
+| UI 误导入口（AC1 反向） | `/apps` 不再给只读者渲染编辑/调试链接（versions 保留）；新建/模板、debug 提交、publish 预览+提交、evaluate 提交、editor 保存表单改为 `data-requires-role="creator" hidden`；非管理员进 `/admin` 明确提示“不是管理员，服务端会拒绝”；登录后按角色跳转（admin→`/admin`，其余→`/apps`） |
+| 分页一致（AC2） | models 补「下一页」按钮、versions 跟随 `next_cursor` 并追加、personal-data `collectAllPages` 取完整清单、knowledge 知识库列表循环游标；REST 侧断言 `limit=1` 两页不重叠、详情与列表项逐字段相等、`limit=101/0/abc → 422 + details.field=limit`。非契约列表（children/node-results）与 runs/chat 分页归 T096，未改其 JS |
+| 撤权/禁用真值（AC3） | 真实栈：禁用→旧 session `401 session_revoked`、旧 key `401 invalid_key`、登录 `403 principal_disabled`；启用不恢复旧凭据；角色提升/降级在同一活会话下一次请求即生效（403→201→403）；撤销 read grant 后下一次读 404 且列表不再含该应用。页面侧断言刷新重读身份、401/403 清旧行、会话内撤角色后入口当场收敛 |
+| 死链/假退出 | `chat.html` 退出改走真实 `logout()`（POST + CSRF）；`/chat?version=` 在 chat 页读参数并预填版本输入；`/runs?run=` 在 runs 页读参数并调用既有 `loadRunDetail`。**未改** `chat.js`/`runs.js`/`runview.js`（T096 所有权），只在 HTML 内联做最小接线 |
+| 测试 | `tests/f12/test_t095_role_entrypoints.py` **25 passed**（20 条入口↔端点↔负例主体↔状态码 parametrize + 禁用/角色更新/撤权/分页）；`tests/f12/test_t095_page_roles.py` **10 passed**（真实 committed bytes + shim：角色导航矩阵、刷新重读、401/403、creator 门禁、会话内收敛、logout、models/versions/personal-data 翻页、登录原因与角色分流） |
+| 门禁 | `pytest tests/f12` **277 passed in 60.08s（242 T093 + 35 T095）**（含 T093 的 242 passed，未破坏）；merge `integration/f12`（Already up to date）后在交付 HEAD 上复跑 **277 passed in 66.16s (0:01:06)**，退出码 0；`go build ./...`/`go vet ./...`/`go test ./...` 全 exit 0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → no drift；`node --check` 改动脚本 exit 0；22 页 15 个内联脚本块抽取后逐个 `node --check` 通过；`tests/tooling` **21 passed**；`tests/f08/test_postreview_pages.py` + `tests/f04b/test_t083_runview.py` **9 passed** |
+| 回归影响面 | 没有既有测试执行 `app.js`/`nav.js`（全库 grep 无匹配）；T096 三个 JS 文件零改动；`tests/f08` 的两条 chat.js 页面测试与 `tests/f04b` 的 runview 测试仍全绿；Go 零改动 |
+| 边界/not_run | 无 Playwright/真实浏览器（页面结论=Node+shim）；死链修复未做真实浏览器点击；SSE 不在本票路径（T096）；403 `principal_disabled` 在浏览器 cookie 路径实际不可达（禁用先命中 401 session_revoked；key 先命中 401 invalid_key），该分支为防御性处理，服务端可达入口是登录 POST；契约缺 `listGrants`/`getGrant`/`listApiKeys`（F01 记录，不补）；runs/chat 列表分页、children/node-results 口径归 T096；移动端归 T098；仅 dev-stub，无真实厂商模型 |
+
