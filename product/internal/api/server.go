@@ -714,6 +714,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// the bundle and its stylesheet are static build artifacts checked into the tree.
 	mux.HandleFunc("GET /assets/canvas.js", s.staticPage(filepath.Join("assets", "canvas.js")))
 	mux.HandleFunc("GET /assets/canvas.css", s.staticPage(filepath.Join("assets", "canvas.css")))
+	// F12/T098: the shared phone layout for the conversation, approval, result and
+	// personal-data journeys. Static and compile-time like every other asset; it
+	// carries no authorization and no request input participates in the path.
+	mux.HandleFunc("GET /assets/mobile.css", s.staticPage(filepath.Join("assets", "mobile.css")))
 }
 
 type loginRequest struct {
