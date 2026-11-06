@@ -89,6 +89,9 @@ const (
 	// the server against the stored expires_at, so the value is a deployment
 	// knob, never a per-request one.
 	EnvMemoryCandidateTTL = "ORCHARA_MEMORY_CANDIDATE_TTL"
+	// F04B/T087 approval deadline sweep cadence. The API expires pending
+	// approvals whose database deadline has passed; this is how often it looks.
+	EnvApprovalSweepInterval = "ORCHARA_APPROVAL_SWEEP_INTERVAL"
 
 	// Internal mTLS listener for maintenance/worker/supervisor traffic.
 	EnvInternalAddr       = "ORCHARA_INTERNAL_ADDR"
@@ -206,6 +209,13 @@ const (
 	DefaultMemoryCandidateTTL = 7 * 24 * time.Hour
 	minMemoryCandidateTTL     = time.Minute
 	maxMemoryCandidateTTL     = 365 * 24 * time.Hour
+
+	// F04B/T087: how often the API sweeps due approval deadlines. The default is
+	// short enough that a parked Run terminates promptly; the bounds keep a typo
+	// from busy-looping or from effectively disabling the sweep.
+	DefaultApprovalSweepInterval = 30 * time.Second
+	minApprovalSweepInterval     = 10 * time.Millisecond
+	maxApprovalSweepInterval     = 5 * time.Minute
 )
 
 // SecretRef is a validated reference to a credential the deployer registered.
@@ -273,6 +283,9 @@ type Config struct {
 	RunEventHeartbeatInterval time.Duration
 	// MemoryCandidateTTL is the F09/T054 candidate lifetime (7 days by default).
 	MemoryCandidateTTL time.Duration
+	// ApprovalSweepInterval is how often the API expires due pending approvals
+	// (F04B/T087; 30 seconds by default).
+	ApprovalSweepInterval time.Duration
 	// WorkerImageDigest is the deployer-provided image digest pinned into every
 	// execution manifest. Empty is legal: the API starts, and every
 	// manifest-generating request answers 503 compiler_unconfigured. This batch
@@ -515,6 +528,19 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be between %s and %s", minMemoryCandidateTTL, maxMemoryCandidateTTL))
 	}
 	cfg.MemoryCandidateTTL = memoryTTL
+	// F04B/T087: the approval deadline sweep cadence. The sweep itself is the
+	// authority (database clock); this knob only decides how often it looks.
+	approvalSweep, err := parseDuration(
+		lookup, EnvApprovalSweepInterval, DefaultApprovalSweepInterval,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if approvalSweep < minApprovalSweepInterval || approvalSweep > maxApprovalSweepInterval {
+		return nil, invalid(EnvApprovalSweepInterval,
+			fmt.Sprintf("must be between %s and %s", minApprovalSweepInterval, maxApprovalSweepInterval))
+	}
+	cfg.ApprovalSweepInterval = approvalSweep
 	// F02A/T025 deployment inputs. A malformed digest is a configuration error
 	// (refuse to start); an absent one is the honest "no worker image yet"
 	// state that manifest endpoints answer with 503 compiler_unconfigured.

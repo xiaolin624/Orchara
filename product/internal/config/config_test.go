@@ -595,3 +595,30 @@ func TestMemoryCandidateTTLRejectsAStillbornOrAbsurdWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalSweepIntervalDefaultsAndBounds(t *testing.T) {
+	cfg, err := Load(lookupFrom(validStubEnv()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ApprovalSweepInterval != DefaultApprovalSweepInterval {
+		t.Fatalf("sweep interval = %s, want %s",
+			cfg.ApprovalSweepInterval, DefaultApprovalSweepInterval)
+	}
+	for _, value := range []string{"0s", "-1s", "1ms", "6m", "soon"} {
+		env := validStubEnv()
+		env[EnvApprovalSweepInterval] = value
+		if _, err := Load(lookupFrom(env)); err == nil {
+			t.Fatalf("sweep interval %q must be rejected", value)
+		}
+	}
+	env := validStubEnv()
+	env[EnvApprovalSweepInterval] = "100ms"
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ApprovalSweepInterval != 100*time.Millisecond {
+		t.Fatalf("sweep interval = %s", cfg.ApprovalSweepInterval)
+	}
+}

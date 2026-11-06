@@ -429,17 +429,15 @@ def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.
     return stack
 
 
-@pytest.fixture
-def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.T033Stack:
-    """T031's real stack for the T033 tool-debug path.
-
-    Everything the executor needs is real: the internal mTLS listener (claim,
-    heartbeat, result, exit and the five run-scoped artifact routes), the object
-    store with HMAC link signing (the manifest and the CSV move through real
-    signed links), the T025 deployment inputs so ``debugDraft`` freezes the golden
-    manifest, and the compiled supervisor binary. The sandbox itself lives in WSL2
-    and is exercised by the tests, not by this fixture.
-    """
+def build_t033_stack(
+    *,
+    tmp_path: Path,
+    fresh_database,
+    go_binaries,
+    api_server,
+    extra_env: dict[str, str] | None = None,
+) -> t033.T033Stack:
+    """Build T031's real stack; shared by the default and sweep-interval fixtures."""
     dsn, dbname = fresh_database
     st.migrate_or_fail(go_binaries["admin"], dsn)
     st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
@@ -449,10 +447,10 @@ def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.
     internal_addr, _port = unique_internal_addr()
     certificates = make_stack_certificates(tmp_path / "certs", internal_addr)
     signing_key = t024.new_signing_key()
-    server = api_server(
-        dsn,
-        extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
-    )
+    env = t029.api_extra_env(object_dir, certificates, signing_key=signing_key)
+    if extra_env:
+        env.update(extra_env)
+    server = api_server(dsn, extra_env=env)
 
     stack = t033.T033Stack(
         server=server,
@@ -465,6 +463,48 @@ def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.
     )
     f00b.wait_for_internal(stack)
     return stack
+
+
+@pytest.fixture
+def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.T033Stack:
+    """T031's real stack for the T033 tool-debug path.
+
+    Everything the executor needs is real: the internal mTLS listener (claim,
+    heartbeat, result, exit and the five run-scoped artifact routes), the object
+    store with HMAC link signing (the manifest and the CSV move through real
+    signed links), the T025 deployment inputs so ``debugDraft`` freezes the golden
+    manifest, and the compiled supervisor binary. The sandbox itself lives in WSL2
+    and is exercised by the tests, not by this fixture.
+    """
+    return build_t033_stack(
+        tmp_path=tmp_path,
+        fresh_database=fresh_database,
+        go_binaries=go_binaries,
+        api_server=api_server,
+        # Keep the background deadline sweep out of the way of tests that
+        # exercise the decision-path expiry, or that park approvals and then run
+        # other assertions. The dedicated fast-sweep fixture below opts in.
+        extra_env={"ORCHARA_APPROVAL_SWEEP_INTERVAL": "5m"},
+    )
+
+
+@pytest.fixture
+def t033_stack_fast_approval_sweep(
+    tmp_path: Path, fresh_database, go_binaries, api_server
+) -> t033.T033Stack:
+    """The T031 stack with a test-sized F04B/T087 approval-deadline sweep.
+
+    The default stack keeps the production 30s cadence so the decision-path
+    expiry case is not raced by the sweeper; only the automatic-expiry case uses
+    this fixture.
+    """
+    return build_t033_stack(
+        tmp_path=tmp_path,
+        fresh_database=fresh_database,
+        go_binaries=go_binaries,
+        api_server=api_server,
+        extra_env={"ORCHARA_APPROVAL_SWEEP_INTERVAL": "100ms"},
+    )
 
 
 __all__ = [
@@ -485,6 +525,7 @@ __all__ = [
     "t030_stack",
     "t032_stack",
     "t033_stack",
+    "t033_stack_fast_approval_sweep",
     "t055_stack",
     "t059_stack",
     "t060_stack",

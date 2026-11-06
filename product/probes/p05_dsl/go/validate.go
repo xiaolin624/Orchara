@@ -1249,7 +1249,31 @@ func stageRegions(document map[string]any, rules *Rules, g *graph, problems *pro
 		if duplicate || overlap || !equalStrings(declaredList, actualList) {
 			problems.add("bad_join_sources", fmt.Sprintf("/nodes/%d/config/required_sources", position))
 		}
+		// Optional convergence is limited to pure read/compute nodes; a
+		// write-capable, human-waiting or model branch must be rejected here
+		// rather than published and failed closed at run time.
+		for _, name := range optional {
+			sourcePosition, known := g.index[name]
+			if !known {
+				continue
+			}
+			sourceType, _ := asString(nodes[sourcePosition]["type"])
+			if !optionalSourceTypes[sourceType] {
+				problems.add("bad_join_sources",
+					fmt.Sprintf("/nodes/%d/config/optional_sources", position))
+			}
+		}
 	}
+}
+
+// optionalSourceTypes is the publish-time twin of internal/presetexec's
+// optionalFailureNodeTypes: only these node types are pure reads or pure
+// computation, so only their explicit failures may be converged as error data.
+var optionalSourceTypes = map[string]bool{
+	"python":    true,
+	"condition": true,
+	"join":      true,
+	"retrieve":  true,
 }
 
 func stringArray(value any) []string {

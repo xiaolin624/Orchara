@@ -1,8 +1,8 @@
 # F04B/T087 人工审批节点：服务端业务审批 + 重启后继续原决定（GitHub #88）
 
-**状态：`partial`**（运行时 + 等待桥 + 执行器 + 画布 + 真实栈验收已交付；票面“审批过期后终止”一项
-**partial**：本构建没有自动过期 sweeper，只有 decision 路径能观察过期）。全量 `tests/f06` 在共享栈争用下未重跑
-（`not_run`，见 §5），审批/等待相关子集已通过（§4.2）。
+**状态：`passed`**（运行时 + 等待桥 + 执行器 + 画布 + 真实栈验收已交付；票面“审批过期后终止”曾因
+没有自动过期 sweeper 标 `partial`，第三轮复核已补齐 API 后台 sweeper 与真实等待自动过期用例，见 §7）。
+全量 `tests/f06` 在共享栈争用下未重跑（`not_run`，见 §5），审批/等待相关子集已通过（§4.2）。
 
 - 分支：`t/t087-approval-node`，worktree `E:\Orchara-wt\t087`，基线 `integration/t083-t091` @ `491cb78`；
   结束前 merge 集成分支（`f21f09a`）→ 合并提交 **`b086419`**；本报告与 `PROGRESS.md` 追加提交后的 HEAD 见
@@ -21,7 +21,7 @@
 | 通用审批不能授权后续未知外部写 | **passed** | 同一真实 Run 内：节点审批批准后 `platform.operations` 仍为 0；随后真实 write-risk connector capability 调用仍返回 `awaiting_approval`，并创建**自己的** operation + operation 级 approval（`operation_id` 非空、`node_key != node:approve1`）；节点审批行始终 `operation_id IS NULL`。`::test_a_node_approval_never_authorises_a_later_write_operation` |
 | 重放不重复审批（同一 proposal 复用原行） | **passed** | `UNIQUE(run_id,node_key,params_sha256)`：同一 attempt 内二次 prepare 返回同一 id、approvals 恰 1 行、`approval.required` 恰 1 条；恢复后的第二次 exec 再次 prepare 同一 proposal 仍返回原行（approvals 恰 1 条、resume job 恰 1 个）。`::test_node_approval_is_a_server_built_business_decision_and_replays_idempotently`、`::test_approved_node_approval_resumes_the_same_run_once` |
 | 审批拒绝后终止 | **passed** | reject → 200 `rejected`；Run `failed` + `error_code=approval_rejected`；无 resume job、无 output artifact、无 operations/usage；再次 exec `idle`（无 resume 可继续）。`::test_rejected_node_approval_terminates_the_run_without_a_resume` |
-| 审批过期后终止 | **partial**（无自动过期 sweeper） | 测试 SQL 把 `expires_at` 置为过去 → 决定 409 `approval_expired`；approval `expired`；Run `failed` + `approval_expired`；无 resume/output/operations。**这只证明 decision 路径会观察过期**：没有后台扫描/定时器，停在 `waiting_approval` 的 Run 不会仅因时间流逝自动终止。`::test_expired_node_approval_terminates_the_run_and_refuses_the_decision` |
+| 审批过期后终止 | **passed**（第三轮复核补齐自动 sweeper） | 两条真实栈路径：① 决定路径：把 `expires_at` 置为过去 → 决定 409 `approval_expired`；approval `expired`；Run `failed` + `approval_expired`；无 resume/output/operations（`::test_expired_node_approval_terminates_the_run_and_refuses_the_decision`）。② 自动路径：停在 `waiting_approval` 后把 deadline 置为过去，**不调用任何 decision**，API 进程的后台 sweeper 到期自动把 approval 置 `expired`、Run 置 `failed approval_expired`，waiting decision 为 `expired`、无 resume job/output（`::test_a_parked_approval_expires_automatically_without_a_decision`，fast-sweep 栈）。 |
 | 两次审批（T091 预演） | **passed** | `start → a1 → a2 → end`：两次等待、两次决定、第三次 exec 汇合 `succeeded`；2 条独立 approval（均 `operation_id NULL`）、2 个不同 resume job、a1/a2 各 1 条 data artifact、最终输出含两个 approval id。`::test_two_approvals_wait_twice_and_converge_on_one_run` |
 | 参数变化不复用旧决定 | **passed** | 同 node 不同 proposal → 新 approval id/新 `params_sha256`（2 行，旧行保持 approved）；重放新 proposal 不新增第 3 行；用旧 hash 决定新 approval → 409 `approval_params_mismatch`，状态仍 pending。`::test_a_changed_proposal_is_a_new_approval_and_the_old_decision_does_not_apply` |
 | 真实端到端（真实 PG/mTLS/supervisor/API，无 mock 通过） | **passed** | 真实 PostgreSQL 16 隔离库、编译 `cmd/api`/`cmd/supervisor`、真实 mTLS internal listener、真实对象目录封存、真实 F03/T035 waiting/resume 事务、真实审批 API。§4 原始输出 |
@@ -119,6 +119,27 @@ approval 节点的 data artifact（approved 后）：
 （该用例在 graph runtime 合并前一直 skip，从未真正跑过）：把 `t083.node_results` 返回的 items 列表当成
 `{"items": [...]}` body，且 run-view harness 需要 body 形状。已最小修复（列表迭代 + `{"items": node_results}`），
 `tests/f04b/test_t083_runview.py` 7 passed；不改变任何产品断言。
+
+### 2.8 自动过期 sweeper（第三轮复核补齐）
+
+- `internal/approvals/expiry.go::ExpireDue`：只扫描 T087 node approval
+  （`operation_id IS NULL`，每轮最多 100 条 `state='pending' AND expires_at <= now()`），逐条在
+  `Run -> approval` 锁序下重读；截止时间由数据库 `now()` 判定，不信任进程时钟。到期行置
+  `expired`（`decided_by=NULL`、`decision_key='sweeper:expired'`）。F06 capability approval 保持既有
+  decision/lazy 边界，不归本 sweeper。
+- 只有 waiting checkpoint 真正指向该 approval（`approval:<id>`）时才交接；更早 proposal 遗留的
+  pending approval 只过期自身，不会错误终止正在等待另一个 approval 的 Run。
+- **原子交接（复审 P1 修复）**：置 `expired` 后不提交再调用 `resolveWaiting`，而是在**同一事务**内调用
+  `internal/execution.ResolveExpiredNodeApprovalTx`：写入 `outcome=expired` 的 waiting decision，并驱动
+  既有 `maybeEnqueueResumeTx`；exit 已确认时同事务把 Run 置 `failed approval_expired`，exit 未到时只持久化
+  决定，后续 `ConfirmExit` 接管。任何一步失败（含等待更新故障）都回滚整次过期，下一轮 sweeper 仍看到
+  `pending` 并重试，不会留下“approval 已 expired、waiting decision 为空”的死状态。decision 路径的过期
+  分支（`internal/approvals/decision.go::Decide`）对 node approval 复用同一原子交接；交接失败返回 500
+  并回滚，而不是先提交 `expired`。
+- `cmd/api` 启动定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s，范围 10ms..5m）；每轮独立事务，
+  `FOR UPDATE` 重读与决定路径串行化，重复/多实例扫描是幂等的。`internal/api.Server.ExpireDueApprovals`
+  只暴露一次确定性 pass，定时器生命周期归 `cmd/api`。测试中 fast-sweep 栈用 100ms，其余真实栈用
+  5m test-only override 避免与 decision 路径用例竞速。
 
 ## 3. 环境、版本与输入 hash
 
@@ -250,16 +271,11 @@ python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_
   mocked 的审批/决定/resume/写授权。
 - **not_run**：
   - 全量 `pytest tests/f06`（共享栈争用，见 §4.2；审批/等待相关子集 27 passed）。
-  - 合并后全量 `pytest tests/f04b` / `tests/f06`（同上；合并后关键 3 用例真实栈 3 passed，Go/画布全量通过）。
-  - 自动过期 sweeper：本构建没有后台过期扫描；过期由契约唯一决定入口（decision 路径）观察，符合 T050 已记录边界。
   - 真实浏览器 DOM：画布/审批页逻辑用 Node 执行真实字节（无浏览器驱动，环境现状）。
   - 审批后的写工具“未知结果/needs_reconciliation”语义（spec 归 EXECUTION §5/T051，不在本票切片）。
   - 真实厂商模型（本票无模型节点，且本机无凭据）。
-- **partial**：票面“审批过期后终止”一项。自动过期 sweeper 不存在：`platform.approvals.expires_at`
-  只会在下一次 decision/读取路径被检查，停在 `waiting_approval` 的 Run 不会自动终止；决定路径的 409
-  `approval_expired` + Run `failed approval_expired` 是真实栈证明的（§4.1），但没有“定时到期”证据。
-  该缺项已是 T050 记录的既有边界，本票没有补 sweeper；批次记录（`product/PROGRESS.md` 的批次完成记录）
-  明确 T087=`partial`。其余票面项 `passed`。
+- **partial**：无。票面“审批过期后终止”由 §7 的自动 sweeper + 两条真实栈路径补齐；此前记录的
+  `partial` 是当时没有后台扫描，现已关闭。其余票面项 `passed`。
 
 ## 6. 变更文件
 
@@ -284,3 +300,30 @@ python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_
 - `PROGRESS.md`
 
 无迁移；无 `docs/spec/**`、`contracts/**` 改动（`sync_spec --check` no drift）。
+
+## 7. 第三轮复核修复（2026-11-06）
+
+第三轮复核指出 T087 仍缺“到期后自动终止”的真实路径。本轮补 `internal/approvals/expiry.go`、
+`cmd/api` 定时器与配置，并把“真实进程重放后的 join-once”落在同一真实栈套件：
+
+- `test_a_parked_approval_expires_automatically_without_a_decision`：真实 supervisor 停在
+  `waiting_approval`，把 deadline 置为过去后不调用 decision；API 的 100ms sweeper 把 approval 置
+  `expired`、Run 置 `failed approval_expired`，waiting decision 为 `expired`，无 resume job/output；
+  事后人工决定仍 409 `approval_expired`。
+- `test_a_real_resume_reuses_the_join_and_never_fires_it_twice`：`start -> left/right(python) -> join ->
+  approve1 -> end`；第一次 exec 真实跑两个 runsc 分支并发布 1 条 join data，停在审批；第二次 exec
+  恢复后 join 只发一条复用 `succeeded`、join data artifact 逐字段不变、end 使用同一封套；join 每
+  attempt 至多一次 succeeded。
+- **复审 P1（过期与交接非原子）**：`expireOne` 现在在审批行置 `expired` 后、提交前调用
+  `execution.ResolveExpiredNodeApprovalTx`，在同事务内写 waiting decision 并驱动 resume/fail；任何一步
+  失败回滚整个过期，下一轮重试。decision 路径的过期分支也走同一原子交接。真实故障注入用例
+  `test_an_expiry_handoff_failure_rolls_back_and_is_retried`（sweeper 路径）与
+  `test_a_decision_path_expiry_handoff_failure_also_rolls_back`（decision 路径）：等待更新触发器报错时
+  approval 仍 `pending`、Run 仍 waiting、decision 为空；移除故障后下一轮原子完成 expired/failed。详见
+  `reports/review/REVIEW3-FIXES.md` §6。
+- `tests/f04b/test_t087_approval_node.py` 本文件全量 **12 passed in 105.43s**（最终树；含自动过期、
+  两条故障回滚重试、真实 join 重放）。
+- Go：`TestWaitingReferencesApproval`（checkpoint 归属）、config 的
+  `TestApprovalSweepIntervalDefaultsAndBounds`；`go test ./...` 全绿。
+- 全量 `pytest tests/f04b`：**96 passed in 625.94s (0:10:25)**（最终树；含 sweeper/decision
+  两条故障回滚重试用例）。

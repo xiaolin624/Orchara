@@ -1,6 +1,6 @@
 # F04B/T085 并行嵌套与分支失败（GitHub #86）— 并发调度 + optional/required fail-fast
 
-**状态：`passed`（运行时 + 真实栈 + 运行视图/画布提示）**；`go test -race` 在本机 **not_run**（无 cgo C 编译器），真实 resume join-once 场景本票无 waiting 可构造 → **not_run**（接缝与 Go 单测已交付，留 T087/T091）。
+**状态：`passed`（运行时 + 真实栈 + 运行视图/画布提示）**；`go test -race` 在本机 **not_run**（无 cgo C 编译器）。真实 resume join-once 与 optional 发布校验由第三轮复核补齐（§10），不再是 `not_run` / 延迟项。
 
 | 项 | 内容 |
 |---|---|
@@ -22,10 +22,11 @@
 | 4 | **required 失败 fail-fast**：取消其他在飞分支、等待停止后再失败；join 不执行、end skipped | **passed** | 真实栈 `::test_required_failure_cancels_the_other_branch_and_never_joins`（run failed `node_output_invalid`、join/end `skipped`、无 join 行、无 final output、无孤儿 sandbox）；Go 单测 `TestGraphRunRequiredFailureCancelsTheOtherBranchAndNeverJoins` 用确定性 fake：left 阻塞到 `ctx.Done()`、确认停止后才提交 failed proposal（`onSubmitResult` 钩子断言顺序），join 无 data 行 |
 | 5 | **optional 不得吞越权/未知写/预算/审批/持久化** | **passed** | 类型 allowlist + 错误码 allowlist（§3）；真实栈 `::test_optional_never_swallows_an_agent_capability_failure`：publish 后吊销 golden model profile → agent 失败 `model_profile_unavailable`，optional 声明**不**降级，run failed、join/end skipped；Go 单测 `TestGraphRunOptionalNeverSwallowsAnAgentFailure`（capability seam `model_profile_unavailable`）与 `TestGraphRunOptionalNeverSwallowsANonAllowlistedErrorCode`（python `sandbox_orphan` 不吸收） |
 | 6 | 嵌套并行+条件；join 各一次 | **passed** | Go 单测 `TestGraphRunNestedParallelRegionInsideAConditionBranch`（condition 的 yes 分支内嵌 parallel fork，join2/join 各一次，direct skipped）；真实栈 `::test_nested_parallel_region_inside_a_condition_branch`（choose→fork→deepA/deepB→join2→join，15 条 node-results，两个 join 各 1 条 data，外层 `join2.value`=内层封套） |
-| 7 | **join-once under replay**：复用已完成节点、join 不重复执行 | **passed（Go 单测）**；真实 resume `not_run` | `TestGraphRunReplayReusesTheJoinWithoutFiringItAgain`：fake `NodeOutputSource` 回放 start/choose/left/join，join 只发一条 `succeeded`、0 次新 data 行、无 sandbox 调用、end 用复用封套封 final output；真实"同一 run 第二次 exec"本票无 waiting，留 T087/T091（T083 已交付 supervisor 装配与 sha256 复验） |
+| 7 | **join-once under replay**：复用已完成节点、join 不重复执行 | **passed（Go 单测 + 真实两次 exec）** | Go：`TestGraphRunReplayReusesTheJoinWithoutFiringItAgain`（fake `NodeOutputSource`）仍保留为单测。真实进程：T087 的 `test_a_real_resume_reuses_the_join_and_never_fires_it_twice`（`start → left/right(python) → join → approval → end`）第一次 exec 发布 1 条 join data，第二次 exec 恢复后 join 只发复用 `succeeded`、data artifact 逐字段不变、end 用同一封套；见 §10 |
 | 8 | 非法跨区/无激活来源拒绝保持 | **passed** | 不改校验器；plan 复验语义保持 `cross_region_edge`/`invalid_activation`；T083 真实栈用例与 Go 用例在最终树全绿（`tests/f04b` 34 passed） |
 | 9 | 画布 optional 标记与提示（P1） | **passed（可观测文案/标记）** | `apps/web/canvas/src/main.js` join 面板：optional 选项逐个标记「optional：仅纯读/计算错误可收敛」、已选 optional 列表与「写/越权/预算/审批失败不会降级」提示（`data-field="config.optional_sources.convergence"`）；`npm ci --offline && npm run build` 重建并提交 `canvas.js`（`tests/f04b/test_canvas_f04b_assets.py` 5 passed，含 stale-bundle 校验） |
 | 10 | run view 把 optional failed 显示为「已收敛的错误」（P1） | **passed** | `apps/web/src/assets/runview.js`：optional 源的 failed envelope → `已收敛的错误` + 稳定码 + `state-converged`（与 failed 视觉区分），`convergedErrors`/`joinText` 计数；required 源仍是「失败」；`debug.html` 图例补一句收敛规则；`node tests/f04b/runview.test.mjs` PASS 6 |
+| 11 | **optional 发布校验**：拒绝非纯读/计算 source（agent/call_app/model 等） | **passed**（第三轮复核补齐，§10） | Go `internal/workflow/validate.go` 与 P05 `probes/p05_dsl/go/validate.go`/`python/validate.py` 在 join source 校验中拒绝非 `python/condition/join/retrieve` 的 `optional_sources`（`bad_join_sources` 定位 `/nodes/<i>/config/optional_sources`）；P05 语料重建（43 例）含 model/agent/call_app 三个负例；真实 `POST /validate` + debug 提交 422 且零 Run/Job：`test_publish_refuses_an_optional_agent_source` |
 
 ## 2. 并发调度设计（`internal/presetexec/graphrun.go`）
 
@@ -107,8 +108,8 @@ exit=0
 - **stub**：Go 单测的协议/能力/sandbox seam（`fakeClient`/`fakeSandbox`/阻塞 barrier sandbox/`fakeNodeOutputs`/`branchSandbox`）；它们只验证执行器语义，不冒充真实栈。
 - **not_run**：
   1. `go test -race ./internal/presetexec`：本机无 cgo C 编译器（见 §6 原始输出），无法启用 race detector；已用 `-count=5` 重复并发用例 + 单所有权设计降低风险，但**不能**声称 race-free 证明。
-  2. 真实 resume join-once：本票不产生 waiting，无法构造"同一 run 第二次 exec"；Go 单测覆盖复用接缝，真实场景留 T087/T091。
-  3. 真实 agent 审批 waiting / call_app waiting 在 graph 并发下的 hand-over：capture+调度实现已就位，但本票没有可执行的 waiting fixture（T087/T089）。
+  2. ~~真实 resume join-once：本票不产生 waiting … 留 T087/T091。~~ 已由第三轮复核的真实两次 exec 用例关闭（§10）。
+  3. 真实 agent 审批 waiting / call_app waiting 在 graph 并发下的 hand-over：capture+调度实现已就位，由 T087/T089 的真实 waiting 场景覆盖。
   4. 浏览器 DOM/Playwright：页面逻辑用 Node + 真实字节执行（仓库惯例）。
   5. 真实厂商模型：无凭据；agent 失败用例走的是真实 capability 组合（吊销 profile），不调用厂商。
 
@@ -261,5 +262,49 @@ $ python -m pytest tests/f04b/test_t085_parallel_optional.py tests/f04b/test_t08
 - `apps/web/canvas/src/main.js`、`apps/web/src/assets/canvas.js`/`canvas.css`（join 面板 optional 标记/提示；合并 T086 后重建 bundle）
 - `tests/f04b/runview.test.mjs`（optional 收敛断言）、`tests/f04b/test_canvas_f04b_assets.py`（bundle marker）
 - `PROGRESS.md`
+
+## 10. 第三轮复核修复（2026-11-06）
+
+第三轮复核把本票两个延迟项收口，未改运行时收敛语义：
+
+1. **optional 发布校验**（Go 生产校验器 + P05 双语言校验器 + 语料同步）
+   - `internal/workflow/validate.go`、`probes/p05_dsl/go/validate.go`、`probes/p05_dsl/python/validate.py`
+     在 join source 校验中新增：`optional_sources` 指向的节点类型必须 ∈
+     `{python, condition, join, retrieve}`（与运行时 `optionalFailureNodeTypes` 同一集合）；
+     否则 `bad_join_sources`，定位 `/nodes/<i>/config/optional_sources`。
+   - P05 `build_corpus.py` 重建 `corpus.json`：原 `parallel-optional-source` 的右分支改为
+     pure python compute 节点；新增 `optional-model-source`、`optional-agent-source`、
+     `optional-call-app-source` 三个负例（共 43 例）。
+   - 真实 HTTP 发布门禁：`test_publish_refuses_an_optional_agent_source`（`POST /validate` `valid:false`，
+     debug 提交 422 `validation_failed`，零 Run/零 Job）。
+   - 运行时测试 fixture 调整：`parallel_agent_definition` 与 T091 `agent_optional` 变体把 optional
+     source 改为 agent 下游的 pure python guard；agent capability 失败仍在 branch 内，运行时 allowlist
+     仍不降级（`test_optional_never_swallows_an_agent_capability_failure`、T091 capability-failure 用例通过）。
+2. **真实进程重放 join-once**
+   - `tests/f04b/test_t087_approval_node.py::test_a_real_resume_reuses_the_join_and_never_fires_it_twice`：
+     两次真实 `exec --once`，join data artifact 逐字段不变，join 每 attempt 至多一次 succeeded。
+   - Go fake-seam 用例保留为快速单测，不再是唯一证据。
+
+门禁（本轮实测）：
+```text
+$ python -m pytest tests/f04b/test_t085_parallel_optional.py -q
+6 passed in 67.37s (final tree)
+$ python -m pytest tests/f04b/test_t083_canvas_validate.py -q
+3 passed in 24.58s
+$ python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
+8 passed in 87.75s
+$ python -m pytest tests/p05 tests/f02a/test_t023_invalid_draft.py -q
+113 passed in 26.69s
+$ go test ./... -count=1        # all packages ok
+$ gofmt -l internal cmd tools   # empty
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+
+$ python -m pytest tests/f04b -q
+96 passed in 625.94s (0:10:25)
+```
+
+96 = 原 91 + T085 发布负例 1 + T087 自动过期/真实 join 重放 2 + 复审 P1 的 sweeper/decision
+两条故障回滚重试 2；T085 的发布校验/运行时用例在最终树保持通过。
 
 无迁移；`docs/spec/**`、`contracts/**` 未改（`sync_spec --check` no drift）。

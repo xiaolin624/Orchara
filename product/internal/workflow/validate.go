@@ -1274,7 +1274,33 @@ func stageRegions(document map[string]any, rules *Rules, g *graph, problems *pro
 		if duplicate || overlap || !equalStrings(declaredList, actualList) {
 			problems.add("bad_join_sources", fmt.Sprintf("/nodes/%d/config/required_sources", position))
 		}
+		// An optional source is the only place the runtime may fold a failure
+		// into error data, and it only does so for pure read/compute nodes. A
+		// write-capable, human-waiting or model node must be rejected at publish
+		// time instead of being silently published as optional.
+		for _, name := range optional {
+			sourcePosition, known := g.index[name]
+			if !known {
+				continue
+			}
+			sourceType, _ := asString(nodes[sourcePosition]["type"])
+			if !optionalSourceTypes[sourceType] {
+				problems.add("bad_join_sources",
+					fmt.Sprintf("/nodes/%d/config/optional_sources", position))
+			}
+		}
 	}
+}
+
+// optionalSourceTypes is the publish-time twin of internal/presetexec's
+// optionalFailureNodeTypes: only these node types are pure reads or pure
+// computation, so only their explicit failures may be converged as error data.
+// agent/call_app/model/approval/start/end are not optional sources.
+var optionalSourceTypes = map[string]bool{
+	"python":    true,
+	"condition": true,
+	"join":      true,
+	"retrieve":  true,
 }
 
 func stringArray(value any) []string {

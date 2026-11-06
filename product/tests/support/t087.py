@@ -110,6 +110,54 @@ def approval_definition(
     return definition
 
 
+def approval_after_join_definition() -> dict:
+    """start -> two python branches -> join -> approval -> end.
+
+    The join runs in the first process, before the waiting approval. The second
+    process resumes after the decision, so the durable join output must be reused
+    instead of firing the join again. This is the real-process replay shape for
+    the T085 join-once requirement.
+    """
+    end = t027.end_node()
+    end["inputs"] = {
+        "approval_id": {"ref": "node:approve1#/approval_id"},
+        "decision": {"ref": "node:approve1#/decision"},
+        "results": {"ref": "node:join#/results"},
+    }
+    end["output_schema"] = {
+        "type": "object",
+        "properties": {
+            "approval_id": {"type": "string"},
+            "decision": {"type": "string"},
+            "results": {"type": "object"},
+        },
+        "required": ["approval_id", "decision", "results"],
+        "additionalProperties": False,
+    }
+    definition = t027.definition(
+        [
+            t027.start_node(),
+            t083.python_node("left"),
+            t083.python_node("right"),
+            t083.join_node(
+                "join", fork_id="start", required=("left", "right")
+            ),
+            approval_node("approve1", title="Approve the joined analysis"),
+            end,
+        ],
+        [
+            {"source": "start", "target": "left"},
+            {"source": "start", "target": "right"},
+            {"source": "left", "target": "join"},
+            {"source": "right", "target": "join"},
+            {"source": "join", "target": "approve1"},
+            {"source": "approve1", "target": "end"},
+        ],
+    )
+    definition["output_schema"] = end["output_schema"]
+    return definition
+
+
 def two_approval_definition() -> dict:
     """start -> a1(approval) -> a2(approval) -> end (T091's rehearsal shape)."""
     end = t027.end_node()
@@ -361,6 +409,43 @@ def approval_for_node(dbname: str, run_id: str, node_id: str) -> dict | None:
             if row["node_key"] == "node:" + node_id]
     assert len(rows) <= 1, rows
     return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# test-only fault injection for the atomic expiry hand-off
+# ---------------------------------------------------------------------------
+def install_waiting_decision_fault(dbname: str) -> None:
+    """Make the waiting-decision UPDATE fail until the fault is cleared.
+
+    The trigger raises inside the expiry transaction, which is exactly the
+    window the T087 P1 finding describes: the approval must not stay `expired`
+    while the Run is still parked with an empty waiting decision.
+    """
+    st.sql(
+        dbname,
+        """
+        CREATE OR REPLACE FUNCTION platform.t087_fail_waiting_decision()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 't087 injected waiting handoff failure';
+        END
+        $$;
+        DROP TRIGGER IF EXISTS t087_fail_waiting_decision ON platform.run_waitings;
+        CREATE TRIGGER t087_fail_waiting_decision
+        BEFORE UPDATE ON platform.run_waitings
+        FOR EACH ROW EXECUTE FUNCTION platform.t087_fail_waiting_decision();
+        """,
+    )
+
+
+def clear_waiting_decision_fault(dbname: str) -> None:
+    st.sql(
+        dbname,
+        """
+        DROP TRIGGER IF EXISTS t087_fail_waiting_decision ON platform.run_waitings;
+        DROP FUNCTION IF EXISTS platform.t087_fail_waiting_decision();
+        """,
+    )
 
 
 # ---------------------------------------------------------------------------

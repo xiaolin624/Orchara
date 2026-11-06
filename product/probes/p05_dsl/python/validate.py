@@ -53,6 +53,10 @@ if str(JCS_PYTHON) not in sys.path:
 
 import jcs  # noqa: E402  (path set up above)
 
+# Publish-time twin of the runtime's optional-failure allowlist: only pure reads
+# and pure computation may be the direct source of an optional join branch.
+OPTIONAL_SOURCE_TYPES = frozenset({"python", "condition", "join", "retrieve"})
+
 __all__ = [
     "NormalizedWorkflow",
     "Problem",
@@ -792,6 +796,13 @@ def _stage_regions(document: dict[str, Any], rules: Rules, graph: _Graph,
         if (len(declared) != len(set(declared)) or set(required) & set(optional)
                 or sorted(set(declared)) != actual):
             problems.add("bad_join_sources", f"/nodes/{position}/config/required_sources")
+        for source in optional:
+            source_position = index.get(source)
+            if source_position is None:
+                continue
+            if nodes[source_position]["type"] not in OPTIONAL_SOURCE_TYPES:
+                problems.add("bad_join_sources",
+                             f"/nodes/{position}/config/optional_sources")
 
 
 # --------------------------------------------------------------------------

@@ -1876,7 +1876,7 @@ T083（GitHub #84）运行时半已交付，状态 **`passed`**（画布/UI 半�
 | 激活/skipped/join-once | **passed**：真实 PG+mTLS+supervisor+runsc 下条件 true/default、并行 fork、嵌套 condition；未选分支只发 `skipped`；join 每次 region 激活恰一次（1 条 data + 1 次 succeeded） |
 | 非法跨区/无激活来源 | **passed**：`POST /validate` 200 + `cross_region_edge` + `pointer=/edges/10` + `node_id`/`source->target`；debug 提交 422 同定位、零 Run/零 job；运行期 required 源全 skipped → join/run `invalid_activation` |
 | run view 数据（非契约） | **passed**：condition data=`{"port","matched_case"}`、join data=结果封套、node.status 拓扑序；owner-only SSE 重放与 DB `run_events` 一致；不新增契约端点 |
-| 恢复接缝 | **partial**：`presetexec.Deps.NodeOutputs` 接口 + `cmd/supervisor` 读取 `run_node_outputs(kind='data')`/对象根/复算 sha256 + Go 复用单测完成；真实“同一 run 第二次 exec”冒烟 not_run（本票无 waiting，留 T087/T091） |
+| 恢复接缝 | **passed（第三轮补齐真实重放）**：`presetexec.Deps.NodeOutputs` 接口 + `cmd/supervisor` 读取 `run_node_outputs(kind='data')`/对象根/复算 sha256 + Go 复用单测；真实“同一 run 第二次 exec”由 T087 `test_a_real_resume_reuses_the_join_and_never_fires_it_twice` 覆盖 |
 | Python LangGraph 证明 | **passed**：真实 `langgraph 1.1.6`，激活集合、skipped 集合、join 调用次数=1、未选分支不进屏障（超时保护） |
 
 门禁（原始日志 `.scratch/t083-t091/T083/`）：`python -m pytest tests/f04b -q` **14 passed in 110.23s**；
@@ -1916,7 +1916,7 @@ HTTP E2E、以及合并运行时后的**真实条件/join/skipped 执行 E2E** �
 
 ## F04B/T085 并行嵌套与分支失败（GitHub #86，2026-11-06）
 
-T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 因本票无 waiting `not_run`）。
+T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机无 cgo C 编译器 `not_run`；真实 resume join-once 与 optional 发布校验由第三轮复核补齐，见 `reports/review/REVIEW3-FIXES.md`）。
 证据：`reports/f04b/T085-parallel-optional.md`；分支 `t/t085-parallel-optional`（worktree `E:\Orchara-wt\t085`），基线
 `integration/t083-t091` @ `111e2c2`，结束合并 `15db973`（T087/T088/T089 + 集成方对并发调度器的适配，merge `723760b`）；
 功能提交 `71213f0`、`3a98b3a`、`5935afd`、`78d09db`、`9a302f2`（skip 事实每次 attempt 只发布一次，waiting hand-over 不发布）。无迁移；未改 `docs/spec/**`、`contracts/**`。
@@ -1928,7 +1928,8 @@ T085（GitHub #86）已交付，状态 **`passed`**（`go test -race` 因本机�
 | required fail-fast | **passed**：失败 → `cancel()` 其他在飞分支 → `drain()` 等所有节点 goroutine 返回（含 sandbox 清理）→ 未启动节点 emit `skipped` → 只提交一次 failed 结果；join 不执行、end skipped、无 final output；Go 单测用 client 钩子断言"分支停止后才提交失败" |
 | 不吞越权/未知写 | **passed**：agent/call_app、能力/权限、预算、审批、`needs_reconciliation`、`sandbox_*` 等一律不降级。真实栈：optional agent + publish 后吊销 golden model profile → run failed `model_profile_unavailable`、join/end skipped；Go 单测另覆盖 `sandbox_orphan` 不被吸收 |
 | 嵌套并行+条件 | **passed**：Go 单测 condition 内嵌 parallel region；真实栈 `choose→fork→deepA/deepB→join2→join`，两 join 各一次、15 条 node-results、外层 value=内层封套、`direct` skipped |
-| join-once / replay | **passed（Go 单测）**：fake `NodeOutputSource` 回放 start/choose/left/join → join 只发一条 succeeded、无新 data 行、无 sandbox、final output=复用封套；真实二次 exec 冒烟 `not_run`（无 waiting，留 T087/T091） |
+| optional 发布校验 | **passed（第三轮复核补齐）**：Go 生产校验器与 P05 Go/Python 校验器拒绝非 `python/condition/join/retrieve` 的 `optional_sources`（`bad_join_sources`，定位 `/nodes/<i>/config/optional_sources`）；P05 语料 43 例（model/agent/call_app 负例）；真实 `POST /validate` + debug 422 且零 Run/Job |
+| join-once / replay | **passed（Go 单测 + 真实两次 exec）**：fake `NodeOutputSource` 回放仍为快速单测；真实 T087 `test_a_real_resume_reuses_the_join_and_never_fires_it_twice` 第一次 exec 发布 1 条 join data，第二次 exec 复用同一 artifact、join 每 attempt 至多一次 succeeded |
 | 运行视图 / 画布提示（P1） | **passed**：run view 把 optional failed 显示为「已收敛的错误」（`state-converged`，与 failed 区分）+ 图例；画布 join 面板逐个标记 optional、列出已选 optional 并提示"只有纯读/计算错误会收敛；写/越权/预算/审批失败不降级"；`npm ci --offline && npm run build` 重建并提交 canvas bundle |
 
 门禁（最终树、全局 pytest 锁）：`pytest tests/f04b` **43 passed in 239.44s**（含 T086 合并；本票 5 例、T083 全回归、
@@ -1941,7 +1942,7 @@ T086 model-node 9 例；`test_t085_parallel_optional.py` 单跑 **5 passed in 54
 `go test -race ./internal/presetexec` **not_run**（`cgo: C compiler "gcc" not found`，原始输出见报告 §6）。
 附带修复：`internal/sandbox/executor.go`（`78d09db`）不再把"进程退出后自己的取消失败"记成租约丢失，
 真实启动失败保持原错误类型并提供确定性 Go 回归测试（T083/T085 真实栈偶发失败的根因）。
-**not_run**：race detector、真实 resume join-once、graph 并发下的真实 waiting hand-over、浏览器 DOM/Playwright、真实厂商模型。
+**not_run**：race detector、浏览器 DOM/Playwright、真实厂商模型。真实 resume join-once 与 optional 发布校验已由第三轮复核补齐（`REVIEW3-FIXES.md`）。
 
 ## F14/T090 冻结动态候选路由的基线（dev-stub 真实控制面）（2026-11-06）
 
@@ -1993,8 +1994,9 @@ T086（GitHub #87）已交付，状态 **`passed`**（运行时 + 画布）。�
 
 ## F04B/T087 人工审批节点：服务端业务审批与重启后继续原决定（2026-11-06）
 
-T087（GitHub #88）已交付，状态 **`partial`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈均已交付并通过；
-票面“审批过期后终止”一项为 partial：本构建**没有自动过期 sweeper**，只有 decision 路径能观察过期）。
+T087（GitHub #88）已交付，状态 **`passed`**（服务端 + 等待桥 + 执行器 + 画布 + 真实栈均已交付并通过；
+票面“审批过期后终止”曾因没有自动过期 sweeper 为 partial，第三轮复核已补 API 后台 sweeper 与真实等待
+自动过期用例，见 `reports/review/REVIEW3-FIXES.md`）。
 证据：`reports/f04b/T087-approval-node.md`；分支 `t/t087-approval-node`（worktree `E:\Orchara-wt\t087`），
 基线 `integration/t083-t091` @ `491cb78`，结束前 merge `f21f09a` → 合并提交 `b086419`（+ 文档提交）。
 
@@ -2006,14 +2008,14 @@ T087（GitHub #88）已交付，状态 **`partial`**（服务端 + 等待桥 + �
 | 等待桥 | **passed**：`approval:<approval_id>` checkpoint 的 adopt 分支与既有 `capability:<operation_id>` 分支并列，capability 行为未变；rejected/expired → Run `approval_rejected`/`approval_expired`，无 resume；resume 仍由唯一 `maybeEnqueueResumeTx` 创建 |
 | 执行器 | **passed**：graph `approval` 类型/触发/config 复验/`proposal` 输入；pending → `waiting_approval` + `approval:<id>` + ConfirmExit 不继续；approved → data artifact `{approval_id,decision,decided_at,params_sha256,proposal}` 并继续；invalidated/拒绝/过期稳定码；真实二次 exec 同一 Run 恢复成功 |
 | 两次审批（T091 预演） | **passed**：`start→a1→a2→end` 两次等待/两次决定/第三次 exec 汇合；2 条独立 approval、2 个 resume job、a1/a2 各 1 条 data artifact（a1 由恢复接缝复用）、最终输出含两 id |
-| 审批过期（票面“过期后终止”） | **partial（缺自动过期 sweeper）**：现有真实栈用例是把 `expires_at` 写成过去后再 decide → 409 `approval_expired`、approval `expired`、Run failed `approval_expired`、无 resume/output；**等待中的 Run 不会仅因时间流逝自动终止**。没有后台过期扫描/定时器。 |
+| 审批过期（票面“过期后终止”） | **passed（第三轮复核补齐）**：① 决定路径：`expires_at` 置过去后再 decide → 409 `approval_expired`、approval `expired`、Run failed、无 resume/output。② 自动路径：真实 supervisor 停泊后不调用任何 decision，API sweeper 到期把 approval 置 `expired`、Run 置 failed `approval_expired`、waiting decision `expired`、无 resume/output（`test_a_parked_approval_expires_automatically_without_a_decision`）。 |
 | 画布 | **passed**：`approval` palette/panel（title、expires_seconds、proposal 来源绑定/JSON 字面量编辑器、“审批不授权后续外部写”说明）、export allowlist `title,expires_seconds`；bundle 已重建提交 |
 | 审批页 | **passed**：`approvals.js` 识别 `kind=node_approval`，经既有 artifact-content ACL 显示真实 title/节点/来源/proposal；capability 提案渲染不变（T050 页面测试通过） |
-| 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 7 用例（真实 PG/API/mTLS/supervisor/审批 API/唯一 resume）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票 9 passed in 57.79s |
+| 真实栈 | **passed**：`tests/f04b/test_t087_approval_node.py` 原 7 用例 + 第三轮/复审 5 例（自动过期、sweeper/decision 两条故障回滚重试、真实 join 重放等，现全文件 **12 passed in 105.43s**）+ `test_t087_canvas.py` 2 用例；合并前 `pytest tests/f04b -q` **38 passed in 153.16s**；本票原 9 passed in 57.79s |
 | 回归子集 | **passed**：`pytest tests/f06/test_t050_approval.py tests/f06/test_t050_pages.py tests/f06/test_t043_agent_node.py -q` **27 passed in 178.74s**（首跑 1 个 sandbox lease-lost 环境 flake，隔离重跑通过后整套复跑通过） |
 | Go/画布门禁 | **passed**：合并后 `go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全部干净；3 个 Node 画布模块测试 + 11 个画布 pytest 通过；合并后真实栈关键 3 用例（服务端幂等/批准恢复/两次审批）**3 passed in 58.54s** |
 | 既有测试缺陷 | **修复（2 行，测试代码）**：`tests/f04b/test_t083_runview.py` 条件/join 真实栈用例在 `491cb78` 上把 items 列表当 body 使用（该用例在 graph runtime 合并前一直 skip，从未跑过）；修复后 7 passed，产品断言不变 |
-| 边界/not_run | 全量 `pytest tests/f06` 与合并后全量 `pytest tests/f04b` 未重跑（共享 WSL/runsc 栈被 T086/T088/T089/merger 连续占用，编排者要求不重跑长套件；审批/等待子集 27 passed，合并后关键 3 用例真实栈 3 passed）；**无自动过期 sweeper**（过期只能在 decision 路径观察：过期后 `decide` 返回 409 且 Run 以 `approval_expired` 终止；等待中的 Run 不会仅因时间自动终止）→ 票面该项 partial；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
+| 边界/not_run | 全量 `pytest tests/f06` 未重跑（共享 WSL/runsc 栈争用；审批/等待子集 27 passed）；自动过期 sweeper 已由第三轮复核补齐（真实等待用例 + Go 单测）；真实浏览器 DOM `not_run`；审批后写工具的 unknown/reconciliation 归 T051；真实厂商模型不涉及 |
 
 无迁移；未改 `docs/spec/**`、`contracts/**`（`sync_spec --check` no drift）。
 
@@ -2084,11 +2086,11 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
 
 | 票 | 状态 | 结果与缺项 |
 |---|---|---|
-| T083 | **passed** | 画布创作半 + 运行时半 + 运行视图半；真实栈 `tests/f04b` **14 passed in 110.23s**、`test_t083_runview.py` **7 passed in 42.69s**（含真实 condition/join/skipped E2E）；画布模块 8 passed；`tests/f04a` 36 passed、`tests/tooling` 21 passed。缺项：replay 后 join 只触发一次只有 Go fake-seam 证据，真实二次 exec 复用未跑（T087/T091 间接覆盖） |
+| T083 | **passed** | 画布创作半 + 运行时半 + 运行视图半；真实栈 `tests/f04b` **14 passed in 110.23s**、`test_t083_runview.py` **7 passed in 42.69s**（含真实 condition/join/skipped E2E）；画布模块 8 passed；`tests/f04a` 36 passed、`tests/tooling` 21 passed。replay 后 join 只触发一次已由第三轮真实两次 exec 用例补齐（`REVIEW3-FIXES.md` #3） |
 | T084 | **passed** | 34 例冻结语料（frozen 25 / dev 9，18+8 family 不跨 split）+ 真实发布/执行跨用户销售旅程；final-tree 全量 `pytest tests/f08` **not_run**（共享栈争用），实际证据为分套件 1/2/7 passed，第一次合并树完整套件 79 passed in 948.05s。已知缺口：自然语言聊天消息会被路由成功但执行 `node_input_invalid`（F08 把正文当 Run 输入，旅程用 JSON 任务文档） |
-| T085 | **passed** | ready-queue 并发调度器、optional 收敛/required fail-fast/嵌套并行；`tests/f04b` **43 passed in 239.44s**；`tests/f05` 149 passed、`tests/f06` 172 passed + 1 个既有 sandbox flake（隔离重跑通过）、`tests/tooling` 21 passed；`go test -race` 因无 cgo 编译器 **not_run**；真实 resume join-once **not_run**（只有 Go fake-seam，T087/T091 间接覆盖）。附带修复 `internal/sandbox/executor.go` 租约竞态（`78d09db`） |
+| T085 | **passed** | ready-queue 并发调度器、optional 收敛/required fail-fast/嵌套并行；`tests/f04b` **43 passed in 239.44s**；`tests/f05` 149 passed、`tests/f06` 172 passed + 1 个既有 sandbox flake（隔离重跑通过）、`tests/tooling` 21 passed；`go test -race` 因无 cgo 编译器 **not_run**。第三轮补齐 optional 发布校验（Go/Python + P05 43 例）与真实 resume join-once（T087 两次 exec）；附带修复 `internal/sandbox/executor.go` 租约竞态（`78d09db`） |
 | T086 | **passed** | graph 路径 model 节点：一次受控生成、严格 `{{name}}` prompt、平台侧 `output_schema` 校验、恢复接缝；`test_t086_model_node.py`+`test_t086_model_canvas.py` **9 passed in 44.74s**；capability/agent 回归 18 passed；画布纯模块 9 passed。缺项：真实厂商模型、`usage.updated` 事件、真实二次 exec resume、浏览器 DOM 均 `not_run` |
-| T087 | **partial** | 服务端 node approval、等待桥、执行器、画布、真实栈均交付（9 passed in 57.79s；审批/等待子集 27 passed；合并后关键 3 用例 3 passed in 58.54s）。**缺项：没有自动过期 sweeper**——过期只能在 decision 路径观察（过期后 `decide` 返回 409 `approval_expired`，Run 随即 failed）；停在 `waiting_approval` 的 Run 不会仅因时间自动终止。因此票面“审批过期后终止”为 partial，不写成完整 passed |
+| T087 | **passed** | 服务端 node approval、等待桥、执行器、画布、真实栈均交付（原 9 passed in 57.79s；审批/等待子集 27 passed；合并后关键 3 用例 3 passed in 58.54s）。第三轮补齐自动过期 sweeper：真实等待 + 置 past + 无 decision → API 自动 failed `approval_expired`，waiting decision `expired`、无 resume/output；复审 P1 修复为同事务交接（sweeper + decision 路径）并加两条故障回滚重试用例；现全文件 **12 passed in 105.43s**（最终树）。真实 join-once 重放也落在本套件 |
 | T088 | **passed** | 平台 ACL 检索节点（非契约内部路由 + 执行器 + 画布 + run view 引用）；真实栈 `test_t088_retrieve.py` **6 passed in 74.49s**（最终树；另两次合并树 6 passed in 51.63s/78.47s）；引用与 DB chunk/citation 逐字段相等、撤权 404、并行不串。**输出已按 N-R10/R3 收窄**（本次复核修复）：items/citations 只带 `excerpt`（正文前 500 字符），无完整 `text`、无向量 `score`。缺项：`tests/f10` 全量 not_run、真实厂商 embedding、真实二次 exec 复用 retrieve 输出、浏览器 DOM |
 | T089 | **passed** | call_app 画布面板 + graph 路径真实栈 E2E；真实栈 7 passed in 110.27s、画布 23 passed；单 child 等待/恢复、并行/顺序、执行槽交接、失败映射均有真实栈断言。票面共用的 child-thread/slot 与 doc/version/span AC 中：call_app 无文档/切片引用 → doc/version/span 为 **not_applicable**（其“版本保留”由固定 `application_version` + child Run manifest sha 证明）；child slot 与 child-thread 隔离是**真实交付并断言**的，不是 not_applicable。浏览器 DOM `not_run` |
 | T090 | **blocked** | F14 所有不依赖模型的部分已交付：语料/目录卡冻结、泄漏检查、两臂 dev-stub 基线（臂 A frozen 25/25、臂 B 21/25）、`retrieval.not_used=true`；`tests/f14` **13 passed in 76.66s**（合并后复跑）、`test_t084_corpus.py` 4 passed。缺项（blocked 原因）：本机无模型凭据/端点/权重/训练 GPU，同基模强提示基线与训练 **not_run**；held-out 25 例低于 spec 的 100 例起步建议（未虚增）；训练 stop-go 只给 provisional |
@@ -2117,11 +2119,13 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
   T090 因此 `blocked`。
 - **T084 输入形状**：聊天正文当 Run 输入会 `node_input_invalid`；旅程用 JSON 任务文档绕过，属 F08↔F04B
   集成缺口，未冒充通过。
-- **T087 过期**：无自动过期 sweeper；只有 decision 路径观察过期（见 T087 行）。
-- **T085 optional 发布限制**：画布/发布允许 `optional_sources` 指向 agent/call_app/model，运行时只会收敛
-  纯读/计算错误，其余 fail closed（写/能力/预算/审批/未知不降级）；发布期拒绝待后续（ADR 0034 §4）。
-- **T083/T085 replay join-once**：只有 Go fake-seam 证据；真实第二次 exec 复用由 T087/T091 的真实等待
-  场景间接覆盖，T083/T085 自身标 `not_run`。
+- **T087 过期**：已由第三轮补齐自动 sweeper（API 定时扫描 + 真实等待自动过期用例），复审后改为
+  **同事务原子交接**（approval expired + waiting decision + Run 终态一次提交，失败回滚重试）；decision
+  路径仍保留 409 `approval_expired`。
+- **T085 optional 发布限制**：发布校验已拒绝非纯读/计算 source（agent/call_app/model 等），
+  与运行时 allowlist 同集合；不再是延迟项。
+- **T083/T085 replay join-once**：真实两次 exec 已证明 join 只执行一次并复用同一 data artifact；
+  Go fake-seam 仅作快速单测。
 - **T088 输出边界**：节点数据只含 `excerpt`/无 score；完整正文只能经 owner-only citation 路由读取（撤权/
   删除后 404，不回退缓存正文）。内部 worker 路由的 text/score 是服务端排序用的 mTLS 数据面，不是节点数据。
 
@@ -2157,3 +2161,24 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
 回归：Go 单测 4 条新用例 + 真实栈 2 条新用例（T087 伪造 title/expiry；T088 等待中删除文档后恢复）；
 最终门禁 `pytest tests/f04b`、`go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全绿
 （原始 tail 见 `REVIEW2-FIXES.md` §3）。
+
+## 第三轮复核修复：T085/T087/join-once（2026-11-06）
+
+第三轮复核在 `ea56392..8ce1d82` 上只要求修三项；报告：`reports/review/REVIEW3-FIXES.md`。
+
+| # | 发现 | 修复 | 回归 |
+|---|---|---|---|
+| 1 | T087 停在 `waiting_approval` 的 Run 不会仅因时间自动终止 | `internal/approvals/expiry.go::ExpireDue`（只扫 node approval，`operation_id IS NULL`）+ `cmd/api` 定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s）；数据库时钟、Run→approval 锁序、stale approval 不解析当前 wait；**审批 expired + waiting decision + Run 终态在同一事务**（`ResolveExpiredNodeApprovalTx`，sweeper 与 decision 路径共用，复审 P1 修复）；F06 capability approval 边界不变 | Go `TestWaitingReferencesApproval`、config 边界；真实栈 `test_a_parked_approval_expires_automatically_without_a_decision`、sweeper/decision 两条故障回滚重试；T087 全文件 **12 passed in 105.43s**（最终树） |
+| 2 | T085 发布允许 optional 指向 agent/call_app/model | Go 生产校验器 + P05 Go/Python 校验器拒绝非 `{python,condition,join,retrieve}` source（`bad_join_sources`）；P05 corpus 重建 43 例（model/agent/call_app 负例）；受影响 runtime fixture 改为 pure python guard | `tests/p05` **111 passed in 7.17s**；真实 HTTP `test_publish_refuses_an_optional_agent_source`（`tests/f04b/test_t085_parallel_optional.py` **6 passed in 67.37s**，最终树）；T091 **8 passed in 87.75s** |
+| 3 | T083/T085 replay join-once 只有 fake-seam | 真实两次 exec：fork/join 在 approval 之前，第二次 exec 复用 join artifact | `test_a_real_resume_reuses_the_join_and_never_fires_it_twice`（1 passed in 25.51s）；join data 行前后相同、每 attempt 至多一次 succeeded |
+
+Go/静态门禁：`go build ./...`、`go vet ./...`、`go test ./... -count=1` 全绿；
+`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → no drift。
+**复审 P1 修复（同日）**：第一版 sweeper 在审批事务提交后才 `resolveWaiting`，存在“approval 已 expired、
+waiting decision 为空、Run 永久停泊”的窗口。已改为同事务交接：`expiry.go::expireOne` 与
+`decision.go::Decide` 的 node-approval 过期分支都在提交前调用
+`execution.ResolveExpiredNodeApprovalTx` 写 decision 并驱动既有 resume/fail；任何失败回滚整次过期，
+下一轮重试。sweeper/decision 两条真实故障注入用例验证回滚与重试。T087 全文件 **12 passed in 105.43s**。
+
+全量 `pytest tests/f04b`：**96 passed in 625.94s (0:10:25)**（最终树；含 sweeper/decision
+两条故障回滚重试用例）。
