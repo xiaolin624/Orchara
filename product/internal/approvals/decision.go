@@ -115,14 +115,32 @@ func (s *Service) Decide(ctx context.Context, request DecisionRequest) (*Approva
 		return nil, fmt.Errorf("checking the approval deadline: %w", err)
 	}
 	if due {
+		// A node approval's expiry is the same two-step hazard as the background
+		// sweeper: committing `expired` and then calling resolveWaiting leaves a
+		// dead row if the process dies or the hand-off fails. Drive the waiting
+		// decision and the terminal Run transition in this transaction instead.
+		if approval.OperationID == "" && s.Execution == nil {
+			return nil, failure(503, "execution_unavailable", "no resume authority is configured")
+		}
 		if err := expireApprovalTx(ctx, tx, approval, request); err != nil {
 			return nil, err
+		}
+		if approval.OperationID == "" {
+			if err := s.Execution.ResolveExpiredNodeApprovalTx(
+				ctx, tx, approval.RunID, approval.ID,
+			); err != nil {
+				return nil, fmt.Errorf("handing off the expired node approval: %w", err)
+			}
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("committing the expired approval: %w", err)
 		}
-		if err := s.resolveWaiting(ctx, approval, "expired"); err != nil {
-			return nil, fmt.Errorf("resolving the expired waiting run: %w", err)
+		// F06 capability approvals keep their decision/lazy boundary and use the
+		// separate resume call after commit.
+		if approval.OperationID != "" {
+			if err := s.resolveWaiting(ctx, approval, "expired"); err != nil {
+				return nil, fmt.Errorf("resolving the expired waiting run: %w", err)
+			}
 		}
 		return nil, failure(409, CodeExpired, "that approval has expired; it cannot authorise the operation")
 	}

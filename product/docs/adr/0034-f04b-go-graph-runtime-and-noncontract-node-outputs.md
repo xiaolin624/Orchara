@@ -124,7 +124,8 @@ supervisor certificate is refused. They are not added to `contracts/openapi.json
   It expires due node-approval rows by the database clock and performs the waiting hand-off
   **in the same transaction** (`execution.ResolveExpiredNodeApprovalTx`): the approval state,
   the `expired` waiting decision and the terminal Run transition commit atomically, so a
-  crash or database error rolls the expiry back and the next pass retries. A Run parked in
+  crash or database error rolls the expiry back and the next pass retries. The decision
+  endpoint's due-approval branch uses the same atomic hand-off. A Run parked in
   `waiting_approval` terminates with `approval_expired` without a human decision. T087 is
   `passed`.
 - **T083/T085 replay join-once**: the Go fake-seam (`NodeOutputSource`) test remains a fast

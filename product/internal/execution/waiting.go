@@ -481,7 +481,13 @@ func (s *Service) ResolveExpiredNodeApprovalTx(
 		return err
 	}
 	if waiting == nil {
-		return ErrWaitingConditionMissing
+		// A Run that is not waiting has no hand-off to perform: the durable
+		// expired decision is adopted when the worker's waiting result lands.
+		// A Run that *is* waiting without a row is an invariant violation.
+		if _, isWaiting := waitingKindForState(run.State); isWaiting {
+			return ErrWaitingConditionMissing
+		}
+		return nil
 	}
 	// The approvals sweeper only calls this with a matching checkpoint. Keep the
 	// check under the row lock so a changed wait can never receive this decision.

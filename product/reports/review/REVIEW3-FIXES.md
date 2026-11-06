@@ -59,7 +59,7 @@ $ python -m pytest tests/f04b/test_t085_parallel_optional.py -q
 6 passed in 67.37s (final tree)
 
 $ python -m pytest tests/f04b/test_t087_approval_node.py -q
-11 passed in 87.78s
+12 passed in 105.43s
 
 $ python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
 8 passed in 87.75s
@@ -81,11 +81,11 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f04b -q
-95 passed in 577.68s (0:09:37)
+96 passed in 625.94s (0:10:25)
 ```
 
-（95 = 原 91 + 本轮的 T085 发布负例 1 + T087 自动过期/真实 join 重放 2 + 复审 P1 故障回滚重试 1。
-该全量运行在最终树上执行，覆盖同事务交接修复。）
+（96 = 原 91 + 本轮的 T085 发布负例 1 + T087 自动过期/真实 join 重放 2 + 复审 P1 的
+sweeper/decision 两条故障回滚重试 2。该全量运行在最终树上执行，覆盖同事务交接修复。）
 
 ## 4. 变更文件
 
@@ -134,22 +134,28 @@ $ python -m pytest tests/f04b -q
   `ConfirmExit` 接管。
 - `internal/approvals/expiry.go::expireOne` 在把 approval 置 `expired` 后、`tx.Commit()` 前调用该
   方法；任何错误（包括注入的等待更新故障）都会回滚 approval 过期，下一轮 sweeper 重试。
+- `internal/approvals/decision.go::Decide` 的过期分支对 node approval 复用同一原子交接：交接失败时
+  回滚并返回 500，而不是先提交 `expired` 再留下空等待；F06 capability approval 的 decision/lazy 路径不变。
 - 该方法是幂等的：同 outcome 的已存 decision 会继续驱动 resume；不同 decision 不覆盖；Run 已离开
-  waiting/cancelling 时安全返回。
+  waiting/cancelling 时安全返回；waiting 尚未落地时只持久化决定，后续 adopt 接管。
 - F06 capability approval 不归此 sweeper，行为不变。
 
 ### 6.3 回归
 
-新增真实栈故障注入用例
-`test_an_expiry_handoff_failure_rolls_back_and_is_retried`：
-安装 `run_waitings.decision` 更新触发器使交接事务失败 → 等到 API 日志出现注入错误后断言 approval
-仍 `pending`、`decided_at` 为空、Run 仍 `waiting_approval`、waiting decision 为空；移除故障后下一轮
-sweeper 原子完成 `expired` + Run failed + waiting decision `expired`，无 resume job/output。
+新增两个真实栈故障注入用例：
+
+- `test_an_expiry_handoff_failure_rolls_back_and_is_retried`：安装
+  `run_waitings.decision` 更新触发器使**sweeper**交接事务失败 → 等到 API 日志出现注入错误后断言
+  approval 仍 `pending`、`decided_at` 为空、Run 仍 `waiting_approval`、waiting decision 为空；移除
+  故障后下一轮 sweeper 原子完成 `expired` + Run failed + waiting decision `expired`，无 resume job/output。
+- `test_a_decision_path_expiry_handoff_failure_also_rolls_back`：同一触发器下调用
+  `POST /approvals/{id}/decision`，交接失败返回 500，approval 仍 `pending`、Run 仍 waiting、decision
+  为空；移除故障后 sweeper 完成过期。证明 decision 路径也不会留下死 `expired` 行。
 
 最终树门禁：
 ```text
 $ python -m pytest tests/f04b/test_t087_approval_node.py -q
-11 passed in 87.78s
+12 passed in 105.43s
 
 $ go build ./...; go vet ./...; go test ./...
 # 全绿
@@ -159,5 +165,5 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f04b -q
-95 passed in 577.68s (0:09:37)
+96 passed in 625.94s (0:10:25)
 ```

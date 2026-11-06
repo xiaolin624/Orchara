@@ -133,7 +133,9 @@ approval 节点的 data artifact（approved 后）：
   `internal/execution.ResolveExpiredNodeApprovalTx`：写入 `outcome=expired` 的 waiting decision，并驱动
   既有 `maybeEnqueueResumeTx`；exit 已确认时同事务把 Run 置 `failed approval_expired`，exit 未到时只持久化
   决定，后续 `ConfirmExit` 接管。任何一步失败（含等待更新故障）都回滚整次过期，下一轮 sweeper 仍看到
-  `pending` 并重试，不会留下“approval 已 expired、waiting decision 为空”的死状态。
+  `pending` 并重试，不会留下“approval 已 expired、waiting decision 为空”的死状态。decision 路径的过期
+  分支（`internal/approvals/decision.go::Decide`）对 node approval 复用同一原子交接；交接失败返回 500
+  并回滚，而不是先提交 `expired`。
 - `cmd/api` 启动定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s，范围 10ms..5m）；每轮独立事务，
   `FOR UPDATE` 重读与决定路径串行化，重复/多实例扫描是幂等的。`internal/api.Server.ExpireDueApprovals`
   只暴露一次确定性 pass，定时器生命周期归 `cmd/api`。测试中 fast-sweep 栈用 100ms，其余真实栈用
@@ -314,13 +316,14 @@ python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_
   attempt 至多一次 succeeded。
 - **复审 P1（过期与交接非原子）**：`expireOne` 现在在审批行置 `expired` 后、提交前调用
   `execution.ResolveExpiredNodeApprovalTx`，在同事务内写 waiting decision 并驱动 resume/fail；任何一步
-  失败回滚整个过期，下一轮重试。真实故障注入用例
-  `test_an_expiry_handoff_failure_rolls_back_and_is_retried`：等待更新触发器报错时 approval 仍
-  `pending`、Run 仍 waiting、decision 为空；移除故障后下一轮原子完成 expired/failed。详见
+  失败回滚整个过期，下一轮重试。decision 路径的过期分支也走同一原子交接。真实故障注入用例
+  `test_an_expiry_handoff_failure_rolls_back_and_is_retried`（sweeper 路径）与
+  `test_a_decision_path_expiry_handoff_failure_also_rolls_back`（decision 路径）：等待更新触发器报错时
+  approval 仍 `pending`、Run 仍 waiting、decision 为空；移除故障后下一轮原子完成 expired/failed。详见
   `reports/review/REVIEW3-FIXES.md` §6。
-- `tests/f04b/test_t087_approval_node.py` 本文件全量 **11 passed in 87.78s**（最终树；含自动过期、
-  故障回滚重试、真实 join 重放）。
+- `tests/f04b/test_t087_approval_node.py` 本文件全量 **12 passed in 105.43s**（最终树；含自动过期、
+  两条故障回滚重试、真实 join 重放）。
 - Go：`TestWaitingReferencesApproval`（checkpoint 归属）、config 的
   `TestApprovalSweepIntervalDefaultsAndBounds`；`go test ./...` 全绿。
-- 全量 `pytest tests/f04b`：**95 passed in 577.68s (0:09:37)**（最终树；含复审 P1
-  故障回滚重试用例）。
+- 全量 `pytest tests/f04b`：**96 passed in 625.94s (0:10:25)**（最终树；含 sweeper/decision
+  两条故障回滚重试用例）。

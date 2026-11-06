@@ -541,6 +541,55 @@ def test_an_expiry_handoff_failure_rolls_back_and_is_retried(
 
 
 # ---------------------------------------------------------------------------
+# 4d. the decision-path expiry uses the same atomic hand-off
+# ---------------------------------------------------------------------------
+def test_a_decision_path_expiry_handoff_failure_also_rolls_back(
+    t033_stack_fast_approval_sweep, sandbox
+) -> None:
+    stack = t033_stack_fast_approval_sweep
+    owner, _application_id, run = t087.queue_approval_run(
+        stack, t087.approval_definition()
+    )
+    _completed, report = t087.exec_once(stack)
+    assert report["outcome"] == "waiting_approval", report
+    assert_waiting_for_approval(stack, run["id"])
+    approval = t087.approval_for_node(stack.dbname, run["id"], "approve1")
+    assert approval is not None and approval["state"] == "pending", approval
+
+    t087.install_waiting_decision_fault(stack.dbname)
+    try:
+        t087.point_expiry_past(stack.dbname, approval["id"])
+        refused = t087.decide(
+            owner.creator, approval["id"], params_sha256=approval["params_sha256"]
+        )
+        # The expiry could not be handed off durably, so the decision request
+        # fails instead of committing a dead `expired` row.
+        assert refused.status == 500, refused.text
+        still = t087.approval_row(stack.dbname, approval["id"])
+        assert still["state"] == "pending", still
+        assert still["decided_at"] is None, still
+        state = t087.run_row(stack.dbname, run["id"])
+        assert state["state"] == "waiting_approval", state
+        waiting = t035.waiting_row(stack.dbname, run["id"])
+        assert waiting["decision"] is None, waiting
+    finally:
+        t087.clear_waiting_decision_fault(stack.dbname)
+
+    def failed_run():
+        row = t087.run_row(stack.dbname, run["id"])
+        return row if row["state"] == "failed" else None
+
+    state = t087.wait_until(failed_run, timeout=10.0)
+    assert state["error_code"] == t087.EXPIRED_CODE, state
+    assert t087.approval_row(stack.dbname, approval["id"])["state"] == "expired"
+    assert t035.waiting_decision(stack.dbname, run["id"]) == {
+        "kind": t035.KIND_APPROVAL,
+        "outcome": "expired",
+        "reference": approval["id"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # 5. two approvals in one run (T091 rehearsal): two waits, two decisions, one end
 # ---------------------------------------------------------------------------
 def test_two_approvals_wait_twice_and_converge_on_one_run(t033_stack, sandbox) -> None:
