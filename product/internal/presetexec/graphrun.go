@@ -62,6 +62,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"orchara/platform/internal/jcs"
 	"orchara/platform/internal/sandbox"
@@ -290,6 +291,12 @@ type graphScheduler struct {
 
 	optionalFailures map[string]map[string]string
 	endOutcome       *executionOutcome
+	// drainFailure is the deterministic sibling failure observed while a terminal
+	// node drained the other branches. A waiting hand-over must not park the run
+	// (and certify its exit) when a sibling's started sandbox failed or could not
+	// prove cleanup: that failure decides the attempt.
+	drainFailure      *graphNodeAttempt
+	drainFailureIndex int
 	// skipsEmitted records the skipped facts already sent. Skips are decided the
 	// moment a branch is known to be unselected, but they are only emitted when the
 	// attempt reaches a verdict: a waiting hand-over leaves them for the resumed
@@ -636,6 +643,12 @@ func (s *graphScheduler) absorbOptionalFailure(
 func (s *graphScheduler) stopAndCommit(attempt *graphNodeAttempt) executionOutcome {
 	s.cancel()
 	s.drain()
+	if attempt.kind == graphAttemptWaiting && s.drainFailure != nil {
+		// A waiting hand-over is only safe when every other branch stopped
+		// cleanly. A failed sibling (for example an unproven sandbox cleanup)
+		// must fail the run instead of being hidden behind the checkpoint.
+		attempt = s.drainFailure
+	}
 	if attempt.kind != graphAttemptWaiting {
 		s.skipUnsettled()
 		s.emitPendingSkips()
@@ -660,7 +673,9 @@ func (s *graphScheduler) stopForCommittedTerminal(terminal *executionOutcome) (e
 	return *terminal, true
 }
 
-// drain receives every in-flight result without scheduling new work.
+// drain receives every in-flight result without scheduling new work. It records
+// the deterministic sibling failure (lowest plan index) so a waiting hand-over
+// can fail closed instead of parking over a broken branch.
 func (s *graphScheduler) drain() {
 	for s.inFlight > 0 {
 		result := <-s.results
@@ -678,7 +693,49 @@ func (s *graphScheduler) drain() {
 			}
 		}
 		s.recordEvidence(result.node, result.attempt)
+		if result.attempt == nil || result.attempt.kind != graphAttemptFailed {
+			continue
+		}
+		if handoverCancelFailure(result.attempt) {
+			// The scheduler's own hand-over cancel aborted this branch before it
+			// touched a sandbox; it is not a branch failure and the resumed attempt
+			// re-drives it. A started sandbox or a typed sandbox/cleanup error is
+			// never excused (see the function).
+			continue
+		}
+		if s.drainFailure == nil || result.node.index < s.drainFailureIndex {
+			s.drainFailure = result.attempt
+			s.drainFailureIndex = result.node.index
+		}
 	}
+}
+
+// handoverCancelFailure reports whether a failed sibling was aborted by the
+// scheduler's own waiting hand-over cancel rather than by its own work. A branch
+// that started a sandbox (or carries a typed sandbox/cleanup error) can never be
+// excused this way: an unproven cleanup must fail the run even while another
+// branch waits.
+func handoverCancelFailure(attempt *graphNodeAttempt) bool {
+	if attempt == nil || attempt.kind != graphAttemptFailed {
+		return false
+	}
+	// A started sandbox or a typed sandbox error is a real branch failure: an
+	// unproven cleanup must fail the run even while another branch waits. The
+	// startedForExit flag is not evidence of a sandbox (a delegation failure
+	// certifies an exit without one), so it is deliberately not consulted.
+	if attempt.sandbox.SandboxStarted || attempt.sandboxErr != nil {
+		return false
+	}
+	switch attempt.code {
+	case CodeChildSpawnFailed, CodeChildResultFailed,
+		CodeAgentCapabilityFailed, CodeNodeCapabilityFailed:
+	default:
+		// Only a delegation/capability call that our cancel aborted is excused;
+		// any other "context canceled" text keeps its failure severity.
+		return false
+	}
+	return strings.Contains(attempt.message, "context canceled") ||
+		strings.Contains(attempt.message, "context deadline exceeded")
 }
 
 // skipUnsettled marks the nodes that never started as skipped; the facts are
@@ -729,24 +786,41 @@ func (s *graphScheduler) commitFailure(attempt *graphNodeAttempt) executionOutco
 // commitCancelled confirms the attempt exit for a cancelled node after the other
 // branches stopped; a cancellation is not a failed result.
 func (s *graphScheduler) commitCancelled(attempt *graphNodeAttempt) executionOutcome {
+	started := attempt.sandbox.SandboxStarted || s.started
+	outcome := attempt.sandbox
 	evidence := attempt.evidence
-	if evidence == nil {
-		evidence = s.runner.exitEvidence(s.runner.heartbeatCount(), attempt.sandbox, nil)
+	if s.started && !attempt.sandbox.SandboxStarted {
+		// Another branch's sandbox really started; the cancelled node's own record
+		// cannot certify the attempt exit.
+		outcome = s.last
+		evidence = nil
 	}
-	if err := s.runner.confirmExit(s.base, attempt.sandbox.SandboxStarted, evidence); err != nil {
+	if evidence == nil {
+		evidence = s.runner.exitEvidence(s.runner.heartbeatCount(), outcome, nil)
+	}
+	if err := s.runner.confirmExit(s.base, started, evidence); err != nil {
 		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
-			err: err.Error(), sandbox: sandboxReportOf(attempt.sandbox), failedStatus: true}
+			err: err.Error(), sandbox: sandboxReportOf(outcome), failedStatus: true}
 	}
 	return executionOutcome{outcome: "cancelled", code: "cancel_requested",
-		runState: s.runner.readRunState(s.base), sandbox: sandboxReportOf(attempt.sandbox)}
+		runState: s.runner.readRunState(s.base), sandbox: sandboxReportOf(outcome)}
 }
 
 // commitWaiting hands the run over at its stable checkpoint after the other
 // branches stopped.
 func (s *graphScheduler) commitWaiting(attempt *graphNodeAttempt) executionOutcome {
+	started := attempt.sandbox.SandboxStarted || s.started
+	outcome := attempt.sandbox
 	evidence := attempt.evidence
+	if s.started && !attempt.sandbox.SandboxStarted {
+		// A sibling branch's sandbox really ran before the hand-over. The exit
+		// fact must certify that sandbox, not the waiting node's own (never
+		// started) record.
+		outcome = s.last
+		evidence = nil
+	}
 	if evidence == nil {
-		evidence = s.runner.exitEvidence(s.runner.heartbeatCount(), attempt.sandbox, nil)
+		evidence = s.runner.exitEvidence(s.runner.heartbeatCount(), outcome, nil)
 	}
 	if attempt.proposal == nil {
 		return s.runner.failAfterStart(s.base, CodeSandboxFailed,
@@ -762,7 +836,7 @@ func (s *graphScheduler) commitWaiting(attempt *graphNodeAttempt) executionOutco
 		return s.runner.failAfterStart(s.base, code,
 			"the waiting result was refused: "+err.Error(), attempt.sandbox, evidence)
 	}
-	if err := s.runner.confirmExit(s.base, attempt.sandbox.SandboxStarted, evidence); err != nil {
+	if err := s.runner.confirmExit(s.base, started, evidence); err != nil {
 		return executionOutcome{outcome: "error", code: attempt.fallbackCode,
 			err:     "the waiting exit was refused: " + err.Error(),
 			sandbox: sandboxReportOf(attempt.sandbox)}
@@ -1093,6 +1167,16 @@ func (r *runner) reusableNodeOutputs(ctx context.Context, plan *graphPlan) map[s
 		if !known {
 			continue
 		}
+		if node.node.Type == "retrieve" {
+			// A retrieve output is a view of documents whose readability (ACL,
+			// tombstone, active index) can change while the run waits for an
+			// approval or a child. Reusing the saved excerpt would serve content
+			// that the platform can no longer read, so the node runs again and the
+			// internal retrieval route re-applies the current ACL before ranking.
+			r.logger.Printf("run_id=%s: node %s is a retrieve node; its saved excerpt is not reused across a resume",
+				r.lease.RunID, nodeID)
+			continue
+		}
 		value, err := decodeJSONDocument(payload)
 		if err != nil {
 			r.logger.Printf("run_id=%s: node %s has unreadable completed output; it will run again: %v",
@@ -1128,6 +1212,14 @@ func (r *runner) publishNodeData(
 	label, document, operation string,
 ) (executionOutcome, map[string]any, bool) {
 	id := node.node.ID
+	// The platform wrapper owns the output contract: every node type that
+	// publishes data (condition, join, model, retrieve, approval) is checked
+	// against its sealed output_schema here, before any artifact is sealed or any
+	// success fact is emitted.
+	if err := validateSchema(node.node.OutputSchema, output, "#"); err != nil {
+		return r.failGraphNode(ctx, node, CodeNodeOutputInvalid,
+			"the "+document+" does not match the node output_schema: "+err.Error()), nil, true
+	}
 	canonical, err := canonicalNodeDocument(output)
 	if err != nil {
 		return r.failGraphNode(ctx, node, CodeNodeOutputInvalid,

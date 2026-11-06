@@ -87,6 +87,9 @@ type fakeClient struct {
 	nodeApprovalScript   []*NodeApproval
 	nodeApprovalErr      error
 	nodeApprovalRequests []NodeApprovalRequest
+	// onPrepareNodeApproval is a test hook called when the executor asks the
+	// platform to prepare the node approval (used to order a sibling failure).
+	onPrepareNodeApproval func()
 
 	// scripted retrieval seam (retrieve node tests)
 	retrieve         func(RetrieveRequest) (*RetrieveResult, error)
@@ -101,6 +104,10 @@ func (f *fakeClient) PrepareNodeApproval(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nodeApprovalRequests = append(f.nodeApprovalRequests, request)
+	hook := f.onPrepareNodeApproval
+	if hook != nil {
+		hook()
+	}
 	if f.nodeApprovalErr != nil {
 		return nil, f.nodeApprovalErr
 	}

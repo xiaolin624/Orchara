@@ -98,10 +98,13 @@ type nodeRunFacts struct {
 }
 
 // nodeDefinitionNode is the subset of one sealed definition node this service
-// needs: the identity and type (the proposal shape is the executor's job).
+// needs: the identity, type and config. The config is the authority for the
+// human-facing title and the approval window; the worker request cannot change
+// either.
 type nodeDefinitionNode struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
+	ID     string          `json:"id"`
+	Type   string          `json:"type"`
+	Config json.RawMessage `json:"config"`
 }
 
 // PrepareNode prepares (or replays) the one approval of this run's approval node.
@@ -139,6 +142,16 @@ func (s *Service) PrepareNode(
 	if err != nil {
 		return nil, err
 	}
+	// The worker's request only carries the run/attempt/node identity. The
+	// display title and the approval window are read from the sealed definition,
+	// so a live attempt token cannot rewrite the human-facing proposal or extend
+	// its own deadline.
+	sealedTitle, sealedExpires, err := approvalNodeSettings(definitionNodes, record.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	record.Title = sealedTitle
+	record.ExpiresSeconds = sealedExpires
 	nodeKey := "node:" + record.NodeID
 	existing, err := nodeApprovalByKeyTx(ctx, tx, record.RunID, nodeKey, paramsSHA)
 	if err != nil {
@@ -391,6 +404,42 @@ func requireApprovalNode(
 			Field:   "node_id"}
 	}
 	return ids, nil
+}
+
+// nodeApprovalSettings is the sealed config of one approval node: the only
+// authority for the human-facing title and the approval window.
+type nodeApprovalSettings struct {
+	Title          string `json:"title"`
+	ExpiresSeconds int    `json:"expires_seconds"`
+}
+
+// approvalNodeSettings reads the title and expiry from the sealed definition.
+// A sealed config that fails the contract bounds is a manifest problem, never a
+// reason to fall back to the worker request.
+func approvalNodeSettings(nodes []nodeDefinitionNode, nodeID string) (string, int, error) {
+	for _, node := range nodes {
+		if node.ID != nodeID {
+			continue
+		}
+		var settings nodeApprovalSettings
+		if len(node.Config) == 0 || json.Unmarshal(node.Config, &settings) != nil {
+			return "", 0, failure(503, "manifest_unavailable",
+				"the sealed approval node config is not the documented object")
+		}
+		title := strings.TrimSpace(settings.Title)
+		if title == "" || utf8.RuneCountInString(title) > MaxNodeTitleRunes {
+			return "", 0, failure(503, "manifest_unavailable",
+				"the sealed approval node title is empty or too long")
+		}
+		if settings.ExpiresSeconds < 60 || settings.ExpiresSeconds > 86400 {
+			return "", 0, failure(503, "manifest_unavailable",
+				"the sealed approval node expiry is outside the contract window")
+		}
+		return title, settings.ExpiresSeconds, nil
+	}
+	return "", 0, &Error{Status: 422, Code: "validation_failed",
+		Message: "the node is not part of this run's sealed definition",
+		Field:   "node_id"}
 }
 
 // sealNodeProposalTx writes the sealed node proposal object and its run link. The
