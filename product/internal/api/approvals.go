@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"orchara/platform/internal/approvals"
+	"orchara/platform/internal/catalog"
 	"orchara/platform/internal/identity"
 )
 
@@ -161,15 +162,13 @@ func (s *Server) handleListApprovals(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, failure.Status, failure.Code, failure.Message)
 		return
 	}
-	limit := 0
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		value, err := parseQueryInt(raw)
-		if err != nil {
-			writeError(w, r, http.StatusUnprocessableEntity, "validation_failed",
-				"limit must be an integer between 1 and 100")
-			return
-		}
-		limit = value
+	limit, err := catalog.ParseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		// T093: every list uses the same contract rule - an out-of-range limit is
+		// a located 422, never a silent clamp.
+		writeErrorWithDetails(w, r, http.StatusUnprocessableEntity, "validation_failed",
+			"limit must be an integer between 1 and 100", map[string]any{"field": "limit"})
+		return
 	}
 	items, next, err := s.approvals.List(
 		r.Context(), caller.PrincipalID, limit, r.URL.Query().Get("cursor"),
@@ -247,31 +246,3 @@ func (s *Server) writeApprovalError(w http.ResponseWriter, r *http.Request, err 
 	s.internalError(w, r, err)
 	return false
 }
-
-// parseQueryInt is the small strict integer parser the list query needs; a
-// non-integer is a 422, never a silently defaulted page.
-func parseQueryInt(raw string) (int, error) {
-	value := 0
-	if raw == "" {
-		return 0, nil
-	}
-	for _, char := range raw {
-		if char < '0' || char > '9' {
-			return 0, errNotAnInteger
-		}
-		value = value*10 + int(char-'0')
-		if value > 1_000_000 {
-			return 0, errNotAnInteger
-		}
-	}
-	if value < 1 {
-		return 0, errNotAnInteger
-	}
-	return value, nil
-}
-
-type notAnInteger struct{}
-
-func (notAnInteger) Error() string { return "not an integer" }
-
-var errNotAnInteger = notAnInteger{}

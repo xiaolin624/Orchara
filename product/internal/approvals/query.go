@@ -52,7 +52,10 @@ func (s *Service) List(ctx context.Context, callerID string, limit int, cursor s
 		limit = DefaultListLimit
 	}
 	if limit > MaxListLimit {
-		limit = MaxListLimit
+		// T093: no silent clamp. The HTTP handler already rejects this with a
+		// located 422; the service repeats the rule so an internal caller cannot
+		// get a quietly truncated page either.
+		return nil, "", failure(422, "validation_failed", "limit must be an integer between 1 and 100")
 	}
 	rank, expires, after, err := decodeCursor(cursor)
 	if err != nil {
