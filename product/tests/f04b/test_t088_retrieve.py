@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from support import f00b, t025, t033, t042, t055, t064, t083, t088
+from support import f00b, t025, t027, t033, t042, t055, t064, t083, t087, t088
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -446,3 +446,73 @@ def test_two_parallel_retrieve_nodes_keep_their_own_documents(t033_stack) -> Non
     states = t088.node_states(stack.dbname, run["id"])
     for node_id in ("left_search", "right_search", "join"):
         assert states[node_id] == ["pending", "running", "succeeded"], states
+
+# ---------------------------------------------------------------------------
+# 7. a resumed run re-checks readability instead of reusing the saved excerpt
+# ---------------------------------------------------------------------------
+def test_a_resumed_run_rechecks_document_readability_instead_of_reusing_the_excerpt(
+    t033_stack,
+) -> None:
+    stack = t033_stack
+    admin = f00b.admin_session(stack)
+    alice = make_user(stack, admin, "t088.review2")
+    base_id, document_id = t088.ready_knowledge_base(
+        stack, alice, "t088 review2", t055.SAMPLE_DOCUMENT
+    )
+
+    start = t027.start_node()
+    search = t088.retrieve_node("search", [base_id])
+    approve = t087.approval_node("approve")
+    end = t027.end_node()
+    end["inputs"] = {
+        "count": {"ref": "node:search#/count"},
+        "decision": {"ref": "node:approve#/decision"},
+    }
+    definition = t027.definition(
+        [start, search, approve, end],
+        [
+            {"source": "start", "target": "search"},
+            {"source": "search", "target": "approve"},
+            {"source": "approve", "target": "end"},
+        ],
+    )
+    definition["input_schema"] = {
+        "type": "object",
+        "properties": {"question": {"type": "string"}},
+        "required": ["question"],
+        "additionalProperties": False,
+    }
+
+    owner, application_id, run = t088.submit_run(
+        stack,
+        alice,
+        definition,
+        input_value={"question": QUERY},
+        name="t088 retrieve then approve",
+    )
+    validation = t025.validate(owner.creator, application_id)
+    assert validation.status == 200 and validation.json == {"valid": True, "errors": []}, (
+        validation.text
+    )
+
+    completed, report = t088.run_once(stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "waiting_approval", report
+    approval = t087.approval_for_node(stack.dbname, run["id"], "approve")
+    assert approval is not None, t087.approval_rows(stack.dbname, run_id=run["id"])
+    assert approval["state"] == "pending", approval
+
+    # The document is deleted while the run waits for the human decision.
+    t064.revoke_document(stack.dbname, document_id)
+
+    decided = t087.decide(
+        alice, approval["id"], params_sha256=approval["params_sha256"]
+    )
+    assert decided.status == 200, decided.text
+
+    completed, report = t088.run_once(stack)
+    assert completed.returncode == 0, (completed.stderr, report)
+    assert report["outcome"] == "succeeded", report
+    final = t088.final_output_document(alice, stack.dbname, run["id"])
+    assert final["count"] == 0, final
+    assert document_id not in json.dumps(final), final

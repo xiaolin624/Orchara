@@ -2141,3 +2141,19 @@ T091 已交付，状态 **`passed`**（十类画布/导出 + 十类 fixture 保�
   **18 passed in 178.05s**；T091 十类 acceptance 回归 **8 passed in 144.09s**；无栈模块/语料
   **21 passed in 3.37s**；`go build/vet/test ./...` exit 0、`gofmt -l` 空、`sync_spec --check`
   no drift、`node --check` exit 0。详见 `reports/review/BATCH-REVIEW-FIXES.md` §3.3/§4。
+
+## 第二轮独立复核修复（2026-11-06）
+
+独立的第二轮 review 在 `ea56392..525a28f` 上发现 4 项范围内问题（Standards 2 / Spec 2），
+全部在 `t/review2-fixes` 修复并先红后绿；报告：`reports/review/REVIEW2-FIXES.md`。
+
+| # | 级别 | 发现 | 修复 |
+|---|---|---|---|
+| 1 | Standards/P2 | 恢复时复用已删除知识的 excerpt（未复查 tombstone） | retrieve 节点不再从恢复接缝复用；恢复时重跑内部 ACL 检索（`graphrun.go::reusableNodeOutputs`） |
+| 2 | Standards/P2 | 审批 title/expires 取自 worker 请求 | 服务器从 sealed definition 读取并校验（`approvals/node.go::approvalNodeSettings`），非法 sealed config 503，不回退 |
+| 3 | Spec/P1 | 并行挂起掩盖兄弟沙箱失败并用未启动证据确认退出 | `drain()` 记录兄弟失败；waiting 改为提交该失败；exit 证据聚合所有已启动 sandbox（`graphrun.go`） |
+| 4 | Spec/P2 | condition/join 输出绕过 output_schema | `publishNodeData` 统一 schema 校验（`node_output_invalid`，不发布 artifact） |
+
+回归：Go 单测 4 条新用例 + 真实栈 2 条新用例（T087 伪造 title/expiry；T088 等待中删除文档后恢复）；
+最终门禁 `pytest tests/f04b`、`go build/vet/test ./...`、`gofmt -l`、`sync_spec --check` 全绿
+（原始 tail 见 `REVIEW2-FIXES.md` §3）。

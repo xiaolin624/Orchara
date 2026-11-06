@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -136,6 +137,55 @@ def test_node_approval_is_a_server_built_business_decision_and_replays_idempoten
     assert t087.usage_ledger_rows(t033_stack.dbname, run["id"]) == []
     assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
     assert t087.node_states(t033_stack.dbname, run["id"]) == {}
+
+
+# ---------------------------------------------------------------------------
+# 1b. the sealed definition owns the title and the approval window
+# ---------------------------------------------------------------------------
+def test_the_server_takes_the_approval_title_and_window_from_the_sealed_definition(
+    t033_stack,
+) -> None:
+    owner, _application_id, run = t087.queue_approval_run(
+        t033_stack, t087.approval_definition()
+    )
+    sealed = next(
+        node
+        for node in t087.approval_definition()["nodes"]
+        if node["type"] == "approval"
+    )["config"]
+    lease = t087.claim_next_run(t033_stack)
+    forged = t087.prepare_body(lease, title="Forged title", expires_seconds=86400)
+    response = t087.prepare_node_approval(t033_stack, lease, body=forged)
+    assert response.status == 201, response.text
+
+    approval = t087.approval_row(t033_stack.dbname, response.json["id"])
+    assert approval is not None, response.json
+    proposal = t087.proposal_document(t033_stack, approval)
+    # The sealed node config owns both fields; the worker request cannot change
+    # either one.
+    assert proposal["title"] == sealed["title"], proposal
+    expires = datetime.fromisoformat(proposal["expires_at"].replace("Z", "+00:00"))
+    remaining = (expires - datetime.now(timezone.utc)).total_seconds()
+    window = sealed["expires_seconds"]
+    assert window - 60 < remaining <= window + 60, (
+        remaining,
+        proposal["expires_at"],
+        window,
+    )
+
+    # The stored row and the durable event agree with the sealed window, not the
+    # forged 86400s one.
+    row_expires = datetime.fromisoformat(approval["expires_at"])
+    assert abs((row_expires - expires).total_seconds()) < 2, (
+        approval["expires_at"],
+        proposal["expires_at"],
+    )
+    events = t087.run_events(t033_stack.dbname, run["id"], "approval.required")
+    assert len(events) == 1, events
+    event_expires = datetime.fromisoformat(
+        events[0]["payload"]["expires_at"].replace("Z", "+00:00")
+    )
+    assert abs((event_expires - expires).total_seconds()) < 2, events[0]
 
 
 # ---------------------------------------------------------------------------
