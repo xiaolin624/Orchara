@@ -127,10 +127,13 @@ approval 节点的 data artifact（approved 后）：
   `Run -> approval` 锁序下重读；截止时间由数据库 `now()` 判定，不信任进程时钟。到期行置
   `expired`（`decided_by=NULL`、`decision_key='sweeper:expired'`）。F06 capability approval 保持既有
   decision/lazy 边界，不归本 sweeper。
-- 只有 waiting checkpoint 真正指向该 approval（`approval:<id>` / `capability:<operation_id>`）时才调用
-  既有 `ResolveWaiting(..., "expired")`；更早 proposal 遗留的 pending approval 只过期自身，不会错误终止
-  正在等待另一个 approval 的 Run。等待结果尚未落地时，过期决定由既有 `adoptApprovalDecisionTx` 在结果
-  到达时接管并失败 Run（与 decision-before-waiting 顺序一致）。
+- 只有 waiting checkpoint 真正指向该 approval（`approval:<id>`）时才交接；更早 proposal 遗留的
+  pending approval 只过期自身，不会错误终止正在等待另一个 approval 的 Run。
+- **原子交接（复审 P1 修复）**：置 `expired` 后不提交再调用 `resolveWaiting`，而是在**同一事务**内调用
+  `internal/execution.ResolveExpiredNodeApprovalTx`：写入 `outcome=expired` 的 waiting decision，并驱动
+  既有 `maybeEnqueueResumeTx`；exit 已确认时同事务把 Run 置 `failed approval_expired`，exit 未到时只持久化
+  决定，后续 `ConfirmExit` 接管。任何一步失败（含等待更新故障）都回滚整次过期，下一轮 sweeper 仍看到
+  `pending` 并重试，不会留下“approval 已 expired、waiting decision 为空”的死状态。
 - `cmd/api` 启动定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s，范围 10ms..5m）；每轮独立事务，
   `FOR UPDATE` 重读与决定路径串行化，重复/多实例扫描是幂等的。`internal/api.Server.ExpireDueApprovals`
   只暴露一次确定性 pass，定时器生命周期归 `cmd/api`。测试中 fast-sweep 栈用 100ms，其余真实栈用
@@ -309,10 +312,15 @@ python -m pytest tests/f04b/test_t087_approval_node.py::test_node_approval_is_a_
   approve1 -> end`；第一次 exec 真实跑两个 runsc 分支并发布 1 条 join data，停在审批；第二次 exec
   恢复后 join 只发一条复用 `succeeded`、join data artifact 逐字段不变、end 使用同一封套；join 每
   attempt 至多一次 succeeded。
-- `tests/f04b/test_t087_approval_node.py` 本文件全量 **10 passed in 80.48s**（最终 node-only sweeper
-  树上复跑；两次独立运行：自动过期 1 passed in 24.87s、join 重放 1 passed in 25.51s）。
+- **复审 P1（过期与交接非原子）**：`expireOne` 现在在审批行置 `expired` 后、提交前调用
+  `execution.ResolveExpiredNodeApprovalTx`，在同事务内写 waiting decision 并驱动 resume/fail；任何一步
+  失败回滚整个过期，下一轮重试。真实故障注入用例
+  `test_an_expiry_handoff_failure_rolls_back_and_is_retried`：等待更新触发器报错时 approval 仍
+  `pending`、Run 仍 waiting、decision 为空；移除故障后下一轮原子完成 expired/failed。详见
+  `reports/review/REVIEW3-FIXES.md` §6。
+- `tests/f04b/test_t087_approval_node.py` 本文件全量 **11 passed in 87.78s**（最终树；含自动过期、
+  故障回滚重试、真实 join 重放）。
 - Go：`TestWaitingReferencesApproval`（checkpoint 归属）、config 的
   `TestApprovalSweepIntervalDefaultsAndBounds`；`go test ./...` 全绿。
-- 全量 `pytest tests/f04b`：**94 passed in 565.21s (0:09:25)**（本轮新增 T085 发布负例 1 +
-  T087 自动过期/真实 join 重放 2；该运行在 node-only sweeper 调整前启动，随后 T087 全文件在最终树
-  复跑 10 passed in 80.48s）。
+- 全量 `pytest tests/f04b`：**95 passed in 577.68s (0:09:37)**（最终树；含复审 P1
+  故障回滚重试用例）。

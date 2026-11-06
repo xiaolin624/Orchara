@@ -444,6 +444,80 @@ func (s *Service) ResolveWaiting(
 	return result, nil
 }
 
+// ResolveExpiredNodeApprovalTx is the atomic T087 deadline hand-off. The
+// caller's transaction has already marked a node approval expired and holds the
+// Run lock; this method stores the expired waiting decision and drives the one
+// resume transaction before that same commit. A crash or database error rolls
+// the approval expiry back with the hand-off, so a later sweep retries instead
+// of leaving an expired approval with an empty waiting decision.
+//
+// Benign lifecycle races return nil: the Run already left the waiting state, a
+// cancel is being confirmed, or the stored first decision is different (the
+// resume path re-checks the approval and refuses it). Real persistence errors
+// are returned so the caller rolls back.
+func (s *Service) ResolveExpiredNodeApprovalTx(
+	ctx context.Context, tx *sql.Tx, runID, approvalID string,
+) error {
+	runID = strings.TrimSpace(runID)
+	approvalID = strings.TrimSpace(approvalID)
+	if !uuid.Valid(runID) || !uuid.Valid(approvalID) {
+		return &ValidationError{
+			Field: "reference", Message: "run and approval must be UUIDs",
+		}
+	}
+	resolution := WaitingResolution{
+		Kind: WaitingKindApproval, Outcome: "expired", Reference: approvalID,
+	}
+	decision, err := canonicalWaitingDecision(resolution)
+	if err != nil {
+		return err
+	}
+	run, err := lockWaitingRunTx(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	waiting, err := lockWaitingTx(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	if waiting == nil {
+		return ErrWaitingConditionMissing
+	}
+	// The approvals sweeper only calls this with a matching checkpoint. Keep the
+	// check under the row lock so a changed wait can never receive this decision.
+	if waiting.Kind != WaitingKindApproval ||
+		strings.TrimSpace(waiting.CheckpointID) != "approval:"+approvalID {
+		return nil
+	}
+	if run.State == "cancelling" {
+		// F03/T036 owns the terminal transition; the expired approval row is
+		// enough, and the waiting evidence stays inert.
+		return nil
+	}
+	_, isWaiting := waitingKindForState(run.State)
+	if len(waiting.Decision) > 0 {
+		// The first stored decision is authoritative. A different outcome leaves
+		// the wait alone; the resume path re-reads the approval and refuses it.
+		if !sameWaitingDecision(waiting.Decision, decision) {
+			return nil
+		}
+	} else {
+		if !isWaiting {
+			return nil
+		}
+		if err := storeWaitingDecisionTx(
+			ctx, tx, runID, WaitingKindApproval, decision,
+		); err != nil {
+			return err
+		}
+	}
+	if !isWaiting {
+		return nil
+	}
+	_, err = s.maybeEnqueueResumeTx(ctx, tx, runID)
+	return err
+}
+
 // waitingOutcomeOf is the read-only replay answer for a run that already left the
 // waiting state (resumed/queued/terminal): it reports the stored facts and the
 // existing resume job, and never writes.

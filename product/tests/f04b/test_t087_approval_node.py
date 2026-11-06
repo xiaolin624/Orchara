@@ -486,6 +486,61 @@ def test_a_parked_approval_expires_automatically_without_a_decision(
 
 
 # ---------------------------------------------------------------------------
+# 4c. a failed hand-off rolls the expiry back; the next sweep retries it
+# ---------------------------------------------------------------------------
+def test_an_expiry_handoff_failure_rolls_back_and_is_retried(
+    t033_stack_fast_approval_sweep, sandbox
+) -> None:
+    stack = t033_stack_fast_approval_sweep
+    owner, _application_id, run = t087.queue_approval_run(
+        stack, t087.approval_definition()
+    )
+    _completed, report = t087.exec_once(stack)
+    assert report["outcome"] == "waiting_approval", report
+    assert_waiting_for_approval(stack, run["id"])
+    approval = t087.approval_for_node(stack.dbname, run["id"], "approve1")
+    assert approval is not None and approval["state"] == "pending", approval
+
+    # Force the waiting-decision update to fail inside the expiry transaction.
+    t087.install_waiting_decision_fault(stack.dbname)
+    try:
+        t087.point_expiry_past(stack.dbname, approval["id"])
+        t087.wait_until(
+            lambda: "t087 injected waiting handoff failure" in stack.server.logs(),
+            timeout=5.0,
+        )
+        # The failed hand-off rolled the whole transaction back: the approval is
+        # still pending, not a dead `expired` row the sweep would skip forever.
+        still = t087.approval_row(stack.dbname, approval["id"])
+        assert still["state"] == "pending", still
+        assert still["decided_at"] is None, still
+        state = t087.run_row(stack.dbname, run["id"])
+        assert state["state"] == "waiting_approval", state
+        waiting = t035.waiting_row(stack.dbname, run["id"])
+        assert waiting["decision"] is None, waiting
+        assert waiting["resume_job_id"] is None, waiting
+    finally:
+        t087.clear_waiting_decision_fault(stack.dbname)
+
+    def failed_run():
+        row = t087.run_row(stack.dbname, run["id"])
+        return row if row["state"] == "failed" else None
+
+    state = t087.wait_until(failed_run, timeout=10.0)
+    assert state["error_code"] == t087.EXPIRED_CODE, state
+    expired = t087.approval_row(stack.dbname, approval["id"])
+    assert expired["state"] == "expired", expired
+    decision = t035.waiting_decision(stack.dbname, run["id"])
+    assert decision == {
+        "kind": t035.KIND_APPROVAL,
+        "outcome": "expired",
+        "reference": approval["id"],
+    }, decision
+    assert t035.resume_jobs(stack.dbname, run["id"]) == []
+    assert t087.output_artifact_id(stack.dbname, run["id"]) is None
+
+
+# ---------------------------------------------------------------------------
 # 5. two approvals in one run (T091 rehearsal): two waits, two decisions, one end
 # ---------------------------------------------------------------------------
 def test_two_approvals_wait_twice_and_converge_on_one_run(t033_stack, sandbox) -> None:

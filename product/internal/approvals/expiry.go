@@ -10,8 +10,9 @@ package approvals
 //	ExpireDue   claims a bounded set of due pending *node* approvals
 //	            (`operation_id IS NULL`), expires each row in its own
 //	            Run -> approval lock order, and hands the expired decision to the
-//	            one F03/T035 resume transaction. F06 capability approvals keep
-//	            their documented decision/lazy boundary.
+//	            one F03/T035 resume transaction **in that same transaction**.
+//	            F06 capability approvals keep their documented decision/lazy
+//	            boundary.
 //
 // Safety properties:
 //   - the database clock decides, never a process clock;
@@ -20,9 +21,14 @@ package approvals
 //   - only a wait whose checkpoint names this approval is resolved; a stale
 //     pending approval from an earlier proposal cannot fail the Run that is
 //     actually waiting on a later one;
+//   - expiry, the waiting decision and the terminal Run transition commit
+//     atomically: a crash or database error after the approval row would have
+//     changed rolls the expiry back, so the next pass retries instead of leaving
+//     an `expired` approval with an empty waiting decision;
 //   - a Run whose waiting result has not landed yet simply keeps the durable
-//     expired decision; `adoptApprovalDecisionTx` fails it when the result
-//     arrives, exactly like the existing decision-before-waiting order.
+//     expired decision in the same transaction; `adoptApprovalDecisionTx` fails
+//     it when the result arrives, exactly like the existing
+//     decision-before-waiting order.
 
 import (
 	"context"
@@ -74,32 +80,18 @@ func (s *Service) ExpireDue(ctx context.Context, limit int) (int, error) {
 	expired := 0
 	var failures []error
 	for _, id := range ids {
-		result, err := s.expireOne(ctx, id)
+		approval, err := s.expireOne(ctx, id)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("expiring approval %s: %w", id, err))
 			continue
 		}
-		if result == nil {
+		if approval == nil {
 			// A concurrent decision, cancellation or expiry won; nothing to do.
 			continue
 		}
 		expired++
-		if !result.resolveWaiting {
-			continue
-		}
-		if err := s.resolveWaiting(ctx, result.approval, "expired"); err != nil {
-			failures = append(failures,
-				fmt.Errorf("resolving the run waiting on approval %s: %w", id, err))
-		}
 	}
 	return expired, errors.Join(failures...)
-}
-
-// expiredApproval is one row expired by the sweeper plus whether this approval
-// is the Run's current waiting checkpoint.
-type expiredApproval struct {
-	approval       *Approval
-	resolveWaiting bool
 }
 
 // expireOne re-checks and expires one due approval. It returns nil when another
@@ -108,7 +100,7 @@ type expiredApproval struct {
 // Locking order is the decision path's Run -> approval order, so a sweeper and a
 // human decision serialize instead of deadlocking. The row is re-read under the
 // lock because the database clock may have been overtaken by another writer.
-func (s *Service) expireOne(ctx context.Context, approvalID string) (*expiredApproval, error) {
+func (s *Service) expireOne(ctx context.Context, approvalID string) (*Approval, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting the expiry transaction: %w", err)
@@ -175,13 +167,23 @@ func (s *Service) expireOne(ctx context.Context, approvalID string) (*expiredApp
 	if err != nil {
 		return nil, fmt.Errorf("expiring the approval: %w", err)
 	}
+	if resolve {
+		// The waiting decision and the terminal Run transition are committed by
+		// this same transaction. Any error here rolls the approval expiry back;
+		// the next pass sees it as still pending and retries.
+		if err := s.Execution.ResolveExpiredNodeApprovalTx(
+			ctx, tx, approval.RunID, approval.ID,
+		); err != nil {
+			return nil, fmt.Errorf("handing off the expired approval: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing the expired approval: %w", err)
 	}
 	approval.State = "expired"
 	decided := decidedAt.UTC()
 	approval.DecidedAt = &decided
-	return &expiredApproval{approval: approval, resolveWaiting: resolve}, nil
+	return approval, nil
 }
 
 // waitingReferencesApprovalTx reports whether the Run's durable waiting

@@ -121,9 +121,12 @@ supervisor certificate is refused. They are not added to `contracts/openapi.json
   is the record that the earlier full-body output was a bug.
 - **Approval expiry (T087)**: the API runs a background deadline sweep
   (`internal/approvals/expiry.go`, cadence `ORCHARA_APPROVAL_SWEEP_INTERVAL`, 30s default).
-  It expires due approval rows by the database clock and resolves the waiting Run through the
-  existing F03/T035 decision transaction; a Run parked in `waiting_approval` now terminates
-  with `approval_expired` without a human decision. T087 is `passed`.
+  It expires due node-approval rows by the database clock and performs the waiting hand-off
+  **in the same transaction** (`execution.ResolveExpiredNodeApprovalTx`): the approval state,
+  the `expired` waiting decision and the terminal Run transition commit atomically, so a
+  crash or database error rolls the expiry back and the next pass retries. A Run parked in
+  `waiting_approval` terminates with `approval_expired` without a human decision. T087 is
+  `passed`.
 - **T083/T085 replay join-once**: the Go fake-seam (`NodeOutputSource`) test remains a fast
   unit guard, and the real-process evidence is now
   `tests/f04b/test_t087_approval_node.py::test_a_real_resume_reuses_the_join_and_never_fires_it_twice`

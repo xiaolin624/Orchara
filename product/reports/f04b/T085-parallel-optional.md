@@ -301,10 +301,10 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f04b -q
-94 passed in 565.21s (0:09:25)
+95 passed in 577.68s (0:09:37)
 ```
 
-全量 f04b 运行在 node-only sweeper/5m 测试 cadence 调整前启动；调整后 T087 全文件在最终树
-**10 passed in 80.48s**，T085 的发布校验/运行时用例保持通过。
+95 = 原 91 + T085 发布负例 1 + T087 自动过期/真实 join 重放 2 + 复审 P1 故障回滚重试 1；
+T085 的发布校验/运行时用例在最终树保持通过。
 
 无迁移；`docs/spec/**`、`contracts/**` 未改（`sync_spec --check` no drift）。

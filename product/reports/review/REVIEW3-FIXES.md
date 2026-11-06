@@ -4,12 +4,13 @@
 - 本轮只修三项：T087 审批自动过期、T085 `optional_sources` 发布校验、真实进程重放后的 join-once。
 - 未动：T090 模型/训练、DSH 模型接入、浏览器 DOM、T084 聊天输入形状、纯代码风格重构。
 - 未改 `contracts/**`、`docs/spec/**`、迁移、凭据；`python tools/sync_spec.py --check` no drift。
+- 复审 P1（过期与等待交接非原子）的修复与回归见 §6。
 
 ## 1. 逐条映射
 
 | # | 复核发现 | 修复 | 回归证据 |
 |---|---|---|---|
-| 1 | **T087 审批自动过期缺失**：停在 `waiting_approval` 的 Run 只有在下一次 decision 时才观察过期，不会仅因时间自动终止。 | 新增 `internal/approvals/expiry.go::ExpireDue`：按数据库时钟扫描 due pending **node** approvals（`operation_id IS NULL`），逐条在 `Run -> approval` 锁序下重读并置 `expired`（`decided_by=NULL`、`decision_key='sweeper:expired'`），只对真正指向该 approval 的 waiting checkpoint 调用既有 `ResolveWaiting(...,"expired")`。F06 capability approvals 保持既有 decision/lazy 边界，不归本 sweeper。`cmd/api` 启动定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s，范围 10ms..5m），`internal/api.Server.ExpireDueApprovals` 暴露一次确定性 pass。 | Go：`TestWaitingReferencesApproval`（stale approval 不解析当前 wait）、`TestApprovalSweepIntervalDefaultsAndBounds`。真实栈：`test_a_parked_approval_expires_automatically_without_a_decision`（真实 supervisor 停泊、置 past、不调用 decision；API 100ms sweeper 自动 failed `approval_expired`，waiting decision `expired`，无 resume/output；事后决定 409）。 |
+| 1 | **T087 审批自动过期缺失**：停在 `waiting_approval` 的 Run 只有在下一次 decision 时才观察过期，不会仅因时间自动终止。 | 新增 `internal/approvals/expiry.go::ExpireDue`：按数据库时钟扫描 due pending **node** approvals（`operation_id IS NULL`），逐条在 `Run -> approval` 锁序下重读并置 `expired`（`decided_by=NULL`、`decision_key='sweeper:expired'`），并在**同一事务**内调用 `execution.ResolveExpiredNodeApprovalTx` 写入过期等待决定、驱动既有 resume 事务（§6）。F06 capability approvals 保持既有 decision/lazy 边界，不归本 sweeper。`cmd/api` 启动定时器（`ORCHARA_APPROVAL_SWEEP_INTERVAL`，默认 30s，范围 10ms..5m），`internal/api.Server.ExpireDueApprovals` 暴露一次确定性 pass。 | Go：`TestWaitingReferencesApproval`（stale approval 不解析当前 wait）、`TestApprovalSweepIntervalDefaultsAndBounds`。真实栈：`test_a_parked_approval_expires_automatically_without_a_decision`（真实 supervisor 停泊、置 past、不调用 decision；API 100ms sweeper 自动 failed `approval_expired`，waiting decision `expired`，无 resume/output；事后决定 409）；故障回滚重试用例 `test_an_expiry_handoff_failure_rolls_back_and_is_retried`（§6）。 |
 | 2 | **T085 optional 发布校验缺失**：画布/发布允许 `optional_sources` 指向 agent/call_app/model，运行时不会收敛，只有画布提示。 | Go 生产校验器 `internal/workflow/validate.go`、P05 Go/Python 校验器新增：optional source 节点类型必须 ∈ `{python, condition, join, retrieve}`（与运行时 `optionalFailureNodeTypes` 同一集合），否则 `bad_join_sources` 定位 `/nodes/<i>/config/optional_sources`。P05 `build_corpus.py` 重建 corpus：原 optional 正例改为 pure python source；新增 model/agent/call_app 三个负例（43 例）。受影响真实栈 fixture 改为“optional source = agent 下游的 pure python guard”，保持 agent capability 失败不降级的运行时证明。 | P05：`pytest tests/p05` **111 passed in 7.17s**（Go/Python 共享语料）；`internal/workflow` corpus replay 通过。真实 HTTP：`test_publish_refuses_an_optional_agent_source`（`POST /validate` `valid:false` + 定位；debug 提交 422，零 Run/Job）。运行时回归：T085 agent 失败用例、T091 capability-failure 用例通过。 |
 | 3 | **T083/T085 replay join-once 只有 fake-seam**：真实“同一 run 第二次 exec，join 只执行一次”未跑。 | 新增真实栈 `test_a_real_resume_reuses_the_join_and_never_fires_it_twice`：`start -> left/right(python) -> join -> approve1(approval) -> end`；第一次 exec 跑两个真实 runsc 分支并发布 1 条 join data，停在审批；第二次 exec 恢复后 join 只发复用 `succeeded`，join data artifact 逐字段不变，end 使用同一封套。Go fake-seam 用例保留为快速单测，不再是唯一证据。 | `test_a_real_resume_reuses_the_join_and_never_fires_it_twice`（两次真实 `exec --once`）；join 每 attempt 至多一次 succeeded，data 行恰 1 条。 |
 
@@ -21,8 +22,12 @@
 - **锁序**与 decision 相同（Run -> approval），因此 sweeper 与人工决定串行化；锁内重读保证“人工先到”时 sweeper 不做任何写入。
 - **stale approval**：只过期行，不解析 Run 当前的另一个 wait（`waitingReferencesApproval` 对比
   `approval:<id>`；capability wait 不归本 sweeper）。这是 changed-proposal 场景的安全边界。
-- **等待结果尚未落地**：过期决定先持久化；`adoptApprovalDecisionTx` 在 waiting result 到达时接管并失败 Run，
-  与既有 decision-before-waiting 顺序一致。
+- **原子交接**：审批行 `expired`、waiting decision、以及（exit 已确认时的）Run 终态调用
+  `execution.ResolveExpiredNodeApprovalTx` 在**同一个数据库事务**内提交。任何一步失败（含故障注入）
+  都回滚整个过期，下一轮扫描仍看到 `pending` 并重试；不会产生“expired 但 waiting decision 为空”的
+  不可恢复状态（§6）。
+- **等待结果尚未落地**：过期决定在同一事务持久化；`adoptApprovalDecisionTx` 在 waiting result 到达时接管
+  并失败 Run，与既有 decision-before-waiting 顺序一致。
 - **幂等/多实例**：每行独立事务 + `UPDATE ... WHERE state='pending'`；重复扫描和多个 API 实例竞争都收敛到一次过期。
 - 配置默认 30s；测试 fast-sweep 栈使用 100ms，其余真实栈用 5m test-only override，避免与
   decision 路径到期用例竞速。
@@ -54,7 +59,7 @@ $ python -m pytest tests/f04b/test_t085_parallel_optional.py -q
 6 passed in 67.37s (final tree)
 
 $ python -m pytest tests/f04b/test_t087_approval_node.py -q
-10 passed in 80.48s
+11 passed in 87.78s
 
 $ python -m pytest tests/f04b/test_t091_ten_node_workflow.py -q
 8 passed in 87.75s
@@ -76,12 +81,11 @@ $ python tools/sync_spec.py --check
 no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f04b -q
-94 passed in 565.21s (0:09:25)
+95 passed in 577.68s (0:09:37)
 ```
 
-（94 = 原 91 + 本轮的 T085 发布负例 1 + T087 自动过期/真实 join 重放 2。该全量运行在 node-only sweeper
-与 5m 测试 cadence 调整前启动；调整后 T087 全文件在最终树上复跑 **10 passed in 80.48s**，
-Go/配置/校验器门禁保持全绿。）
+（95 = 原 91 + 本轮的 T085 发布负例 1 + T087 自动过期/真实 join 重放 2 + 复审 P1 故障回滚重试 1。
+该全量运行在最终树上执行，覆盖同事务交接修复。）
 
 ## 4. 变更文件
 
@@ -94,6 +98,7 @@ Go/配置/校验器门禁保持全绿。）
 - `product/internal/config/config.go`、`config_test.go`（sweep interval 配置/校验）
 - `product/internal/api/server.go`（一次 sweep pass）
 - `product/cmd/api/main.go`（定时器生命周期）
+- `product/internal/execution/{waiting.go,approval_bridge.go}`（`ResolveExpiredNodeApprovalTx` 原子交接及边界注释）
 - `product/internal/workflow/validate.go`（optional source 类型校验）
 - `product/probes/p05_dsl/{build_corpus.py,corpus.json,go/validate.go,python/validate.py}`
 
@@ -111,3 +116,48 @@ Go/配置/校验器门禁保持全绿。）
 - `go test -race` 仍因本机无 cgo C 编译器 `not_run`。
 - 真实厂商模型/嵌入、浏览器 DOM 仍不在本轮范围。
 - T090 模型/训练、DSH 模型接入、T084 聊天输入形状未改。
+
+## 6. 复审 P1 修复：过期与等待交接改为同事务
+
+### 6.1 缺陷
+
+第一版 `ExpireDue` 在审批事务提交后才调用 `resolveWaiting`。若进程在两步之间退出，或等待结算发生
+瞬时数据库错误，approval 已经是 `expired`，而后续 sweeper 只扫描 `pending`，会永久跳过该行；Run 停在
+`waiting_approval`、waiting decision 为空，迟到的人工决定也只返回 `409 approval_expired`。这违反
+`STATE-MACHINES.md` 的同事务事件/job 要求和 `IMPLEMENTATION-DETAILS.md:57` 的过期终止语义。
+
+### 6.2 修复
+
+- `internal/execution/waiting.go` 新增 `ResolveExpiredNodeApprovalTx(ctx, tx, runID, approvalID)`：
+  在调用方事务内写入 `outcome=expired` 的 waiting decision，并调用既有 `maybeEnqueueResumeTx`；
+  已确认 exit 时在同一事务把 Run 置 `failed approval_expired`，exit 未到时只持久化决定，后续
+  `ConfirmExit` 接管。
+- `internal/approvals/expiry.go::expireOne` 在把 approval 置 `expired` 后、`tx.Commit()` 前调用该
+  方法；任何错误（包括注入的等待更新故障）都会回滚 approval 过期，下一轮 sweeper 重试。
+- 该方法是幂等的：同 outcome 的已存 decision 会继续驱动 resume；不同 decision 不覆盖；Run 已离开
+  waiting/cancelling 时安全返回。
+- F06 capability approval 不归此 sweeper，行为不变。
+
+### 6.3 回归
+
+新增真实栈故障注入用例
+`test_an_expiry_handoff_failure_rolls_back_and_is_retried`：
+安装 `run_waitings.decision` 更新触发器使交接事务失败 → 等到 API 日志出现注入错误后断言 approval
+仍 `pending`、`decided_at` 为空、Run 仍 `waiting_approval`、waiting decision 为空；移除故障后下一轮
+sweeper 原子完成 `expired` + Run failed + waiting decision `expired`，无 resume job/output。
+
+最终树门禁：
+```text
+$ python -m pytest tests/f04b/test_t087_approval_node.py -q
+11 passed in 87.78s
+
+$ go build ./...; go vet ./...; go test ./...
+# 全绿
+$ gofmt -l internal cmd tools
+# empty
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+
+$ python -m pytest tests/f04b -q
+95 passed in 577.68s (0:09:37)
+```

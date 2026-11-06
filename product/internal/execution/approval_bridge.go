@@ -12,6 +12,9 @@ package execution
 //     fails the waiting Run with the stable approval_rejected / approval_expired
 //     code once the supervisor exit fact exists, so both arrival orders converge
 //     on one decision and zero dispatches.
+//   - The T087 deadline sweeper calls ResolveExpiredNodeApprovalTx so the
+//     `expired` approval row, its waiting decision and the terminal Run commit in
+//     one transaction; a failure rolls the expiry back and the next sweep retries.
 //   - A cancelled or terminal Run invalidates its pending approvals rather than
 //     leaving a decision that could authorise an operation after the run ended.
 

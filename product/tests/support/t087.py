@@ -412,6 +412,43 @@ def approval_for_node(dbname: str, run_id: str, node_id: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# test-only fault injection for the atomic expiry hand-off
+# ---------------------------------------------------------------------------
+def install_waiting_decision_fault(dbname: str) -> None:
+    """Make the waiting-decision UPDATE fail until the fault is cleared.
+
+    The trigger raises inside the expiry transaction, which is exactly the
+    window the T087 P1 finding describes: the approval must not stay `expired`
+    while the Run is still parked with an empty waiting decision.
+    """
+    st.sql(
+        dbname,
+        """
+        CREATE OR REPLACE FUNCTION platform.t087_fail_waiting_decision()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 't087 injected waiting handoff failure';
+        END
+        $$;
+        DROP TRIGGER IF EXISTS t087_fail_waiting_decision ON platform.run_waitings;
+        CREATE TRIGGER t087_fail_waiting_decision
+        BEFORE UPDATE ON platform.run_waitings
+        FOR EACH ROW EXECUTE FUNCTION platform.t087_fail_waiting_decision();
+        """,
+    )
+
+
+def clear_waiting_decision_fault(dbname: str) -> None:
+    st.sql(
+        dbname,
+        """
+        DROP TRIGGER IF EXISTS t087_fail_waiting_decision ON platform.run_waitings;
+        DROP FUNCTION IF EXISTS platform.t087_fail_waiting_decision();
+        """,
+    )
+
+
+# ---------------------------------------------------------------------------
 # no-future-write fixture (real write-risk connector + real capability proxy)
 # ---------------------------------------------------------------------------
 def bind_write_connector(stack, admin) -> dict:
