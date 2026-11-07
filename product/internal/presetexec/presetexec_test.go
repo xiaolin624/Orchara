@@ -66,6 +66,16 @@ type fakeClient struct {
 	statusErr     error
 	nodeEventErr  error
 	nodeResultErr error
+	// submitErr is the scripted platform refusal of a result proposal (the T114
+	// cancel race: 409 run_state_conflict/run_terminal/stale_attempt). A set error
+	// is returned instead of storing the proposal, like the internal API.
+	submitErr   error
+	submitCalls int
+	// exitErr is the scripted platform refusal of the attempt-exit confirmation;
+	// runStateAfterExit is the committed run state a successful exit leaves, so a
+	// test can prove the executor reports the finalizer's decision.
+	exitErr           error
+	runStateAfterExit string
 	// onSubmitResult is a test hook called before a proposal is recorded. The
 	// T085 fail-fast test uses it to prove the failure was committed only after
 	// the other branch stopped.
@@ -228,6 +238,12 @@ func (f *fakeClient) PutBytes(_ context.Context, link string, content []byte) er
 
 func (f *fakeClient) SubmitResult(_ context.Context, _ string, _ string, proposal Proposal) error {
 	f.mu.Lock()
+	f.submitCalls++
+	refusal := f.submitErr
+	if refusal != nil {
+		f.mu.Unlock()
+		return refusal
+	}
 	hook := f.onSubmitResult
 	f.mu.Unlock()
 	if hook != nil {
@@ -251,6 +267,15 @@ func (f *fakeClient) ConfirmExit(
 	f.exits = append(f.exits, recordedExit{
 		AttemptID: attemptID, ExecutionUnitID: executionUnitID, Evidence: copied,
 	})
+	if f.exitErr != nil {
+		return f.exitErr
+	}
+	if f.runStateAfterExit != "" {
+		// The real finalizer commits the terminal state inside the exit
+		// transaction; the fake mirrors that so the executor's post-exit read sees
+		// the platform's decision.
+		f.runState = f.runStateAfterExit
+	}
 	return nil
 }
 
