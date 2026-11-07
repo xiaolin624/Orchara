@@ -2,7 +2,9 @@
 
 - **状态：`passed`**（真实栈上 FAULT-01/02/03 三个故障全部注入并通过；真实供应商/真实模型 `not_run`）
 - 分支：`t/t106-approval-faults`；worktree `E:\Orchara-wt\t106`
-- 基线：`integration/f13b` @ `c132e8e`；完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`）
+- 基线：`integration/f13b` @ `c132e8e`；完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`），
+  merge commit `cb20f85`；`PROGRESS.md` 冲突保留 T104/T105/T106 三节
+- 证据生成时的 HEAD：`cb20f85`（证据 JSON 的 `product_commit` 字段即此值）
 - 交付（全部为新增文件，未改动 `docs/spec/**`、`contracts/**`、迁移或既有票测试断言）：
   - `product/tests/f13b/test_t106_approval_faults.py`：3 条真实栈测试（FAULT-01/02/03），共 53 条断言
   - `product/tests/f13b/fault_support.py`：`Fault` 记录（注入点/输入/预期/实际/独立账本/命令）、
@@ -74,9 +76,9 @@
   `platform.operation_attempts` 恰 1 行 `succeeded`；`platform.approvals` 只有 1 行，id/proposal/
   `params_sha256`/approver 全程不变，仅 `pending → approved`；`platform.jobs` 的 resume job 恰 1 个，
   终态 `completed`；`platform.runs` 终态 `succeeded`。
-- **进程表**：worker A PID 66576 被 taskkill 后 `tasklist` 不再存在（Popen exit=1）；
-  `pg_stat_activity` 中 `t106-fault01-worker-a` 会话由 1 条变为 0 条；真实 supervisor PID 65956 返回
-  `status=idle`、exit 0；worker B PID 63240 退出码 0。
+- **进程表**：worker A PID 64504 被 taskkill 后 `tasklist` 不再存在（Popen exit=1）；
+  `pg_stat_activity` 中 `t106-fault01-worker-a` 会话由 1 条变为 0 条；真实 supervisor PID 66868 返回
+  `status=idle`、exit 0；worker B PID 53328 退出码 0。
 
 ### 3.4 预注册预期 vs 实际
 
@@ -149,7 +151,7 @@
 ### 5.2 输入 / seed / hash
 
 - seed：`t106-fault03`；params 同上，独立 sha256 与产品 `operations.params_sha256` 相等。
-- 证据 artifact：真实 object bytes + `platform.artifacts` ready 行（`cbb873d5-b6f0-43e6-abde-ebeabcfeecf8`）。
+- 证据 artifact：真实 object bytes + `platform.artifacts` ready 行（`7a52ae39-bae8-4b14-859e-8173c65e6e53`）。
 
 ### 5.3 独立账本（实际数字）
 
@@ -185,6 +187,8 @@
 
 ## 7. 门禁（本票最终代码，真实 tail）
 
+合并前（分支 `eb45cd7`）：
+
 ```text
 $ python -m pytest tests/f13b/test_t106_approval_faults.py -q --basetemp=...   # F13B_WRITE_EVIDENCE=1
 ...                                                                      [100%]
@@ -203,7 +207,31 @@ $ python -m pytest tests/f12 -q
 ........................................................................ [ 96%]
 ...............                                                          [100%]
 447 passed in 385.14s (0:06:25)
+```
 
+合并 `integration/f13b`（`f234e72`，含 T104/T105）后（merge commit `cb20f85`）：
+
+```text
+$ python -m pytest tests/f13b -q
+........................................................................ [ 39%]
+........................................................................ [ 79%]
+......................................                                   [100%]
+182 passed in 148.45s (0:02:28)
+
+$ python -m pytest tests/f12 -q
+........................................................................ [ 16%]
+........................................................................ [ 32%] ... [ 96%]
+...............                                                          [100%]
+447 passed in 488.01s (0:08:08)
+
+$ python -m pytest tests/f13b/test_t106_approval_faults.py -q --basetemp=...   # 证据重生成
+...                                                                      [100%]
+3 passed in 64.16s
+```
+
+两次均：
+
+```text
 $ go build ./...          # exit 0（无输出）
 $ go vet ./...            # exit 0（无输出）
 $ go test ./...           # exit 0；全部包 ok / [no test files]

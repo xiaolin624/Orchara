@@ -2632,3 +2632,7 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   `go build/vet/test` 全 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
 - 边界：dev-stub 模型、回环 connector 端点（非真实供应商）、无浏览器 DOM；真实供应商/模型 `not_run`；
   worker 角色是文档化 seam（图执行器无 connector 节点，T101 J6b），真实 supervisor 进程重启证据与本 seam 分列。
+- 合并后（merge commit `cb20f85`，含 T104/T105）复跑：`pytest tests/f13b` **182 passed in 148.45s**；
+  `pytest tests/f12` **447 passed in 488.01s**；证据重生成 **3 passed in 64.16s**
+  （`T106-faults.json` 的 `product_commit=cb20f85`）；Go `build/vet/test` 全 0；gofmt 空；
+  `sync_spec --check` → `no drift`。原始 tail 在 `E:\Orchara\.scratch\f13b\T106\*`。
