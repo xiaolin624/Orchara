@@ -2606,6 +2606,33 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - `not_run`：官方 AgentDojo suite、真实模型、产品 evaluation runner 执行改编 workspace case、上游全文件离线重算（需 pinned clone）。恢复边界 `not_applicable`（三条任务无恢复语义）。
 - 证据：`reports/f13b/T105-agentdojo-import.md`；原始 tail `E:\Orchara\.scratch\f13b\T105\`。
 
+## F13B T106（GitHub #107）：故障注入审批重启、换参与写后丢回执（2026-11-07）
+
+- 分支 `t/t106-approval-faults` / worktree `E:\Orchara-wt\t106`；基线 `integration/f13b` @ `c132e8e`，
+  完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`），`PROGRESS.md` 双方小节保留。
+- 交付：新增 `tests/f13b/fault_support.py`（Fault/进程/PG/证据 writer，仅 `F13B_WRITE_EVIDENCE=1` 重写）、
+  `tests/f13b/t106_worker.py`（真实 worker OS 进程）、`tests/f13b/test_t106_approval_faults.py`
+  （3 条真实栈测试，53 条断言）、`reports/f13b/T106-faults.json`（3 个故障记录）、
+  `reports/f13b/T106-approval-faults.md`。未改 `docs/spec/**`、`contracts/**`、迁移与既有票断言。
+- FAULT-01（真杀进程 + 真 supervisor 重启）：真实 worker 进程停在审批等待（waiting+confirm exit）→
+  `taskkill /F /T` 真杀（原始输出列出其 psql 子进程；`pg_stat_activity` 会话 1→0）→ 真实
+  `cmd/supervisor exec --once` 启动并 `status=idle` → owner 精确批准 → 恰 1 个 resume job → 新 worker 进程
+  用**同一 operation id/logical key/params** 重放，succeeded。独立账本：回环端点 0 写（批准前）/恰 1 写
+  （批准后），`operations` 一行同 id、`operation_attempts` 1 行、`approvals` 一行
+  （id/proposal/params_sha256/approver 不变）、run succeeded。
+- FAULT-02（换参与旧批准）：精确 params 批准后同 operation id 换 params → 409 `operation_conflict`，0 写、
+  operation/approval 行不变；随后精确 params 仍成功（批准未被消耗）；错 `params_sha256` 决定 → 409
+  `approval_params_mismatch`；陌生人 404、admin 403 `approver_mismatch`、取消后迟到决定 409，全部 0 写。
+- FAULT-03（写后丢回执）：`LostReceiptServer` 真实断连 → operation `unknown`（非 succeeded/failed）、
+  无 receipt、attempt 仍 dispatching；重复 invoke/换参不重发（端点仍 1 次请求）；run 停
+  `needs_reconciliation`（非 succeeded）；真实 evidence artifact + `POST /operations/{id}/reconcile`
+  结案 succeeded，物理 attempt 仍 1、端点请求仍 1。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t106_approval_faults.py` **3 passed in 51.53s**（证据重跑）；
+  `pytest tests/f13b` **43 passed in 103.79s**；`pytest tests/f12` **447 passed in 385.14s**；
+  `go build/vet/test` 全 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 边界：dev-stub 模型、回环 connector 端点（非真实供应商）、无浏览器 DOM；真实供应商/模型 `not_run`；
+  worker 角色是文档化 seam（图执行器无 connector 节点，T101 J6b），真实 supervisor 进程重启证据与本 seam 分列。
+
 ## F13B T107（GitHub #108）：旧图、活旧进程、取消与事件竞态故障注入（2026-11-07）
 - 分支 `t/t107-lifecycle-faults` / worktree `E:\Orchara-wt\t107`；基线 `integration/f13b` @ `834ca68`，结束前 merge `integration/f13b` @ `f234e72`（T105）→ 合并提交 `db94214`，其上重跑门禁；证据最后一轮在 `e904e0c` 树。
 - 交付：`tests/f13b/test_t107_lifecycle_faults.py`（4 条真实栈故障，FAULT-04/05/06/10）、`tests/support/t107.py`（故障证据记录器 + Windows 真实进程探针 + `pg_stat_activity` 只读模型）、`reports/f13b/T107-faults.json`、`reports/f13b/T107-lifecycle-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品代码与既有票断言。
