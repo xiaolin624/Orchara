@@ -2914,8 +2914,8 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 ## F13B T113（GitHub #114）：对比缓存开关并验证过期/越权命中为零（2026-11-08）
 
 - 分支 `t/t113-cache-toggle` / worktree `E:\Orchara-wt\t113`；基线 `integration/t113-t114-t122`
-  @ `ae1af91`，代码提交 `7205caa`（命中复检修复）、测试提交 `65c8241`；结束前 merge 集成 tip
-  并在最终树重跑门禁/证据；工作区干净。
+  @ `ae1af91`，代码提交 `7205caa`（命中复检修复）、测试提交 `65c8241`、merge 提交 `e64e7b7`
+  （含集成 `21ee9a0` 的 T114 AC5 probe hardening）；门禁与证据在 merge 后最终树重跑；工作区干净。
 - 交付：`tests/f13b/test_t113_cache_comparison.py`（5 条真实栈证据测试：对照/删除/撤权/负向/
   边界）、`tests/support/t113.py`（固定语料与查询序列、P50/P95/P99 与成对统计、缓存行/封存
   对象/时间戳独立真值、部署开关与缓存后端故障、页面脚本 Node 执行、`F13B_WRITE_EVIDENCE=1`
@@ -2925,10 +2925,10 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   sha256（`internal/knowledge/cache_store.go` + `cache_test.go`）；未改 `docs/spec/**`、
   `contracts/**`、迁移。
 - 对照（固定 8 文档/24 chunk、24 spec = 8 查询 × top_k 3/8/20、每模式 48 次、成对取样）：
-  cache-on 重复 **命中 24/24**，p50/p95/p99 **30.65/44.625/55.47 ms**；
-  cache-off 重复 0/24，**44.561/55.218/55.344 ms**；成对中位比
-  **0.6534**（on 更快 20/24）；按 top_k 3/8/20
-  p50 比 0.4866/0.7671/0.7281；正确性 24/24 spec 逐字段相同；
+  cache-on 重复 **命中 24/24**，p50/p95/p99 **35.235/50.016/58.402 ms**；
+  cache-off 重复 0/24，**44.196/53.966/54.814 ms**；成对中位比
+  **0.8053**（on 更快 17/24）；按 top_k 3/8/20
+  p50 比 0.509/0.7261/0.9548；正确性 24/24 spec 逐字段相同；
   费用 **0 USD**（`local-hash-v1` 本地 hash + 无模型调用，0 是记账不是省略；真实模型费用 blocked）；
   权威检索执行次数 24 vs 48。
 - 删除矩阵（真实 `DELETE /knowledge-documents/{id}`，缓存行保留）：同查询 `hit=false`、旧键
@@ -2950,17 +2950,17 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   一致、引用仍 200；恢复后幸存旧行再次命中、无行 top_k 先存储后命中；页面 `/knowledge` +
   `knowledge.js` 以 Node 执行已提交字节，`buildRetrievalBody` 与测量请求一致（DOM not_run）。
 - 门禁（真实 tail，最终树，cwd=`product/`）：`pytest tests/f13b/test_t113_cache_comparison.py -q`
-  → **5 passed in 74.03s (0:01:14)**；`pytest tests/f10 -q` → **88 passed in 776.40s (0:12:56)**；`pytest tests/f13b -q`
-  → **238 passed in 593.75s (0:09:53)**；`go build` / `go vet` / `go test ./...` → exit 0 (no output) / exit 0 (no output) / exit 0 (all packages ok / no test files)；
+  → **5 passed in 75.76s (0:01:15)**；`pytest tests/f10 -q` → **88 passed in 610.32s (0:10:10)**；`pytest tests/f13b -q`
+  → **241 passed, 1 skipped in 761.73s (0:12:41)**；`go build` / `go vet` / `go test ./...` → exit 0 (no output) / exit 0 (no output) / exit 0 (all packages ok / no test files)；
   `gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → **no drift: spec copy and contract snapshot match the manifest**。
-  证据轮 `F13B_WRITE_EVIDENCE=1` → **5 passed in 77.04s (0:01:17)**，五段全 passed。
+  证据轮 `F13B_WRITE_EVIDENCE=1` → **5 passed in 75.93s (0:01:15)**，五段全 passed。
 - 诚实边界/`blocked`/`not_run`：真实 embedding provider 与真实模型生成/质量/延迟/费用
   `blocked`；本切片 KB owner-only、`policy.ResourceTypes={application}` → per-KB/document
   grant 撤销 `not_applicable`，以 tombstone（内容撤权）+ 管理员禁用凭据 + 跨 principal 隔离
   覆盖；SSE/浏览器 DOM/容量规模/Redis `not_run`；T114 容量 WINDOW 期间的一次 `tests/f10`
   尝试被编排中断、**未用作证据**，最终门禁与证据均在 WINDOW 结束后按 ENV-B2 §2.1 重跑
-  （f10 与 T122 允许并发，f13b 与 T113 延迟证据独占）；命中路径因封存正文重读成本上升，
-  top_k=20 的收益不稳定（三次证据跑 by-top_k p50 比约 1.76× 更慢 / 1.01× / 0.73×），
-  绝对延迟随宿主负载约 4× 变化，已如实记录。
+  （f10 与 T122 允许并发，f13b 与 T113 延迟证据独占）；命中整体仍快（四次证据跑 p50 比 0.63–0.80），但因封存正文重读成本上升，
+  top_k=20 的收益不稳定（by-top_k p50 比约 1.76× 更慢 / 1.01× 持平 / 0.73× 更快 / 0.95× 接近持平），
+  绝对延迟随宿主负载约 5× 变化，已如实记录。
 - 证据/日志：`reports/f13b/T113-cache-comparison.{md,json}`；原始 tail
   `E:\Orchara\.scratch\f13b\T113\`；摘要 `E:\Orchara\.scratch\f13b\T113-REPORT.md`。
