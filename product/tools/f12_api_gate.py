@@ -55,6 +55,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from evidence_redaction import redact_value
+
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 # The F12 baseline: contracts/openapi.json lists 93 paths / 106 operations. A
 # gate that silently accepts 105 would be a false-green, so the number is fixed.
@@ -633,6 +635,7 @@ class Gate:
         self._success_bodies: list[tuple[str, Any]] = []
         self._created_ids: dict[str, str] = {}
         self._run_ids_with_events: list[str] = []
+        self.cross_principal_failures: list[str] = []
         self.errors: list[str] = []
         self.started_at = utc_now()
         self._request_count = 0
@@ -1366,7 +1369,7 @@ class Gate:
             if probe["kind"] in ("anonymous", "correct_internal_role"):
                 implemented_probe = probe
                 break
-        # Two independent signals, both required:
+        # Two independent signals, both required for the *route* to count:
         # * the literal route registry must register this exact method+path. This
         #   is what separates "the operation was never implemented" from "the
         #   handler answered 404 for a resource"; once ContractErrors normalises
@@ -1375,6 +1378,11 @@ class Gate:
         # * the runtime probe must actually reach the handler (no plain-text mux
         #   404/405, no transport failure), so a registration that exists only in
         #   the source scan cannot pass.
+        #
+        # Reaching a handler is NOT "implemented" any more (T093 review): an
+        # always-401 handler also reaches the handler. `functional_probe` is
+        # filled from the operation's own normal-path probe below; until then the
+        # honest status is route_only (not implemented).
         route_registered = not (
             self.route_registry is not None
             and operation.operation_id in self.route_missing_ids
@@ -1384,7 +1392,7 @@ class Gate:
             and not implemented_probe.get("route_missing")
             and not implemented_probe.get("transport_error")
         )
-        implemented = route_registered and runtime_reached
+        route_only = route_registered and runtime_reached
         if operation.security == "public":
             authorization_ok = True
         elif operation.security == "internal":
@@ -1393,7 +1401,13 @@ class Gate:
             )
         else:
             authorization_ok = all(probe.get("ok") for probe in probes)
-        verdict = "pass" if implemented and authorization_ok and not failures else "fail"
+        failures_list = failures
+        if not route_registered:
+            verdict = "fail"
+        elif not authorization_ok or failures_list:
+            verdict = "fail"
+        else:
+            verdict = "route_only"
         return {
             "operation_id": operation.operation_id,
             "method": operation.method,
@@ -1401,8 +1415,14 @@ class Gate:
             "epic": epic_for(operation),
             "security": operation.security,
             "internal_role": operation.internal_role,
-            "implemented": implemented,
+            "implemented": False,
             "route_registered": route_registered,
+            "runtime_reached": runtime_reached,
+            "route_only": route_only,
+            "functional_probe": None,
+            "implementation_status": (
+                "missing" if not route_registered else "route_only"
+            ),
             "implementation_evidence": {
                 "probe": implemented_probe["kind"] if implemented_probe else None,
                 "status": implemented_probe["status"] if implemented_probe else None,
@@ -1413,9 +1433,62 @@ class Gate:
             "authorization_ok": authorization_ok,
             "probes": probes,
             "normal_path": None,
+            "cross_principal_isolation": None,
             "failures": failures,
             "verdict": verdict,
         }
+
+    def _finalize_implementation(self) -> None:
+        """Separate route existence from a real functional probe (T093 review).
+
+        ``implemented`` is true only when the operation's own normal-path probe
+        returned one of its contract-declared success statuses. Everything else
+        is ``route_only`` (registered and reachable, but the functional path was
+        never demonstrated) or ``probe_failed``; neither counts as implemented.
+        """
+        for operation in self.operations:
+            record = self.records.get(operation.operation_id)
+            if record is None:
+                continue
+            normal = record.get("normal_path")
+            functional = bool(
+                normal
+                and normal.get("ok")
+                and normal.get("status") in operation.success_statuses
+            )
+            record["functional_probe"] = (
+                {
+                    "kind": "normal_path",
+                    "status": normal.get("status"),
+                    "ok": bool(normal.get("ok")),
+                    "expected_statuses": sorted(operation.success_statuses),
+                    "checked": True,
+                }
+                if normal
+                else {
+                    "kind": "normal_path",
+                    "status": None,
+                    "ok": False,
+                    "expected_statuses": sorted(operation.success_statuses),
+                    "checked": False,
+                }
+            )
+            if not record["route_registered"]:
+                status = "missing"
+            elif functional:
+                status = "functional"
+            elif normal is not None:
+                status = "probe_failed"
+            else:
+                status = "route_only"
+            record["implementation_status"] = status
+            record["implemented"] = functional
+            if status in ("missing", "probe_failed") or not record["authorization_ok"]:
+                record["verdict"] = "fail"
+            elif functional:
+                record["verdict"] = "pass"
+            else:
+                record["verdict"] = "route_only"
 
     # -- normal paths -------------------------------------------------------
     def _run_normal_probes(self) -> None:
@@ -1446,6 +1519,121 @@ class Gate:
                     f"normal_path: expected {sorted(operation.success_statuses)}, got {response.status}"
                 )
                 self.records[operation_id]["verdict"] = "fail"
+
+    # -- cross-principal content isolation ----------------------------------
+    def _run_cross_principal_isolation(self) -> None:
+        """Assert that another principal cannot see the creator's resources.
+
+        The review found that ``wrong_principal`` on a self-service list expected
+        200 and only checked the status code: a member could receive the same
+        200 without the body ever being inspected. For every list/get operation
+        with a fixture, this pass calls the same route as the plain member and
+        asserts the creator's id is absent (list) or the detail read is 403/404.
+        """
+        assert self.member is not None and self.creator is not None
+        for operation in self.operations:
+            record = self.records.get(operation.operation_id)
+            if record is None:
+                continue
+            record["cross_principal_isolation"] = self._cross_principal_for(operation)
+
+    def _cross_principal_for(self, operation: Operation) -> dict:
+        operation_id = operation.operation_id
+        list_fixture = CROSS_PRINCIPAL_LIST_FIXTURES.get(operation_id)
+        if list_fixture is not None:
+            resource_key = list_fixture
+            if not self.fixtures.get(resource_key):
+                return {
+                    "applicable": True,
+                    "checked": False,
+                    "kind": "list",
+                    "resource": resource_key,
+                    "reason": f"no {resource_key} fixture was created",
+                }
+            response = self._record_response(
+                "isolation:" + operation_id, self.member.client.get(operation.path + "?limit=100")
+            )
+            payload = response.json or {}
+            items = payload.get("items") if isinstance(payload, dict) else None
+            items = items if isinstance(items, list) else []
+            foreign_id = self.fixtures[resource_key]
+            item_ids = {str(item.get("id")) for item in items if isinstance(item, dict)}
+            text = response.text
+            visible = str(foreign_id) in text or str(foreign_id) in item_ids
+            result = {
+                "applicable": True,
+                "checked": True,
+                "kind": "list",
+                "resource": resource_key,
+                "member_status": response.status,
+                "items_returned": len(items),
+                "foreign_id": foreign_id,
+                "foreign_id_visible": visible,
+                "isolation_ok": response.status == 200 and not visible,
+            }
+            if not result["isolation_ok"]:
+                self.cross_principal_failures.append(
+                    f"{operation_id}: member list status={response.status} "
+                    f"foreign_id_visible={visible}"
+                )
+            return result
+
+        detail_fixture = CROSS_PRINCIPAL_DETAIL_FIXTURES.get(operation_id)
+        if detail_fixture is not None:
+            if not self.fixtures.get(detail_fixture):
+                return {
+                    "applicable": True,
+                    "checked": False,
+                    "kind": "detail",
+                    "resource": detail_fixture,
+                    "reason": f"no {detail_fixture} fixture was created",
+                }
+            path = self._render_path(operation)
+            response = self._record_response(
+                "isolation:" + operation_id, self.member.client.get(path)
+            )
+            foreign_id = self.fixtures[detail_fixture]
+            visible = response.status == 200 or str(foreign_id) in response.text
+            result = {
+                "applicable": True,
+                "checked": True,
+                "kind": "detail",
+                "resource": detail_fixture,
+                "member_status": response.status,
+                "foreign_id": foreign_id,
+                "foreign_id_visible": visible,
+                "isolation_ok": response.status in (403, 404) and not visible,
+            }
+            if not result["isolation_ok"]:
+                self.cross_principal_failures.append(
+                    f"{operation_id}: member detail status={response.status} "
+                    f"foreign_id_visible={visible}"
+                )
+            return result
+
+        if operation_id in CROSS_PRINCIPAL_SHARED:
+            return {
+                "applicable": False,
+                "checked": False,
+                "reason": CROSS_PRINCIPAL_SHARED[operation_id],
+            }
+        if operation_id in CROSS_PRINCIPAL_NOT_RUN:
+            return {
+                "applicable": True,
+                "checked": False,
+                "reason": CROSS_PRINCIPAL_NOT_RUN[operation_id],
+            }
+        if operation.method == "GET" and operation.security in ("session", "session_only"):
+            return {
+                "applicable": True,
+                "checked": False,
+                "reason": "no second-principal fixture exists for this read",
+            }
+        return {
+            "applicable": False,
+            "checked": False,
+            "reason": "not a list/get read operation",
+        }
 
     # -- invariant checks ---------------------------------------------------
     def _invariant(self, name: str, checked: bool, observations: list[dict], failures: list[str], note: str = "") -> None:
@@ -2011,6 +2199,9 @@ class Gate:
             return self._report()
 
         self._run_operation_probes()
+        # Content isolation runs against the fixtures the setup built, before
+        # the normal probes start deleting them.
+        self._run_cross_principal_isolation()
         self._inv_error_envelope()
         self._inv_pagination()
         self._inv_etag()
@@ -2018,6 +2209,9 @@ class Gate:
         self._inv_sse()
         self._inv_no_generic_crud()
         self._run_normal_probes()
+        # `implemented` needs the normal-path results; classify route existence
+        # separately from a real functional probe after they have run.
+        self._finalize_implementation()
         # Shape invariants run last: they scan every recorded success body, and
         # the normal-path responses (a real run, lease, artifact, approval, ...)
         # are the ones that actually carry ids, timestamps and money strings.
@@ -2029,7 +2223,26 @@ class Gate:
     def _report(self) -> dict:
         records = [self.records.get(operation.operation_id) for operation in self.operations]
         records = [record for record in records if record is not None]
-        missing = [record["operation_id"] for record in records if not record["implemented"]]
+        missing = [
+            record["operation_id"]
+            for record in records
+            if record["implementation_status"] == "missing"
+        ]
+        functional = [
+            record["operation_id"]
+            for record in records
+            if record["implementation_status"] == "functional"
+        ]
+        route_only = [
+            record["operation_id"]
+            for record in records
+            if record["implementation_status"] == "route_only"
+        ]
+        probe_failed = [
+            record["operation_id"]
+            for record in records
+            if record["implementation_status"] == "probe_failed"
+        ]
         authorization_failed = [
             record["operation_id"] for record in records if not record["authorization_ok"]
         ]
@@ -2040,22 +2253,49 @@ class Gate:
             for name, entry in self.invariants.items()
             if entry.get("not_run")
         }
+        cross_checked = [
+            record["operation_id"]
+            for record in records
+            if (record.get("cross_principal_isolation") or {}).get("checked")
+        ]
+        cross_not_run = [
+            record["operation_id"]
+            for record in records
+            if (record.get("cross_principal_isolation") or {}).get("applicable")
+            and not (record.get("cross_principal_isolation") or {}).get("checked")
+        ]
         by_epic: dict[str, dict] = {}
         for record in records:
             bucket = by_epic.setdefault(
                 record["epic"],
-                {"operations": 0, "implemented": 0, "failed": 0, "missing": []},
+                {
+                    "operations": 0,
+                    "implemented": 0,
+                    "route_only": 0,
+                    "failed": 0,
+                    "missing": [],
+                    "route_only_operations": [],
+                },
             )
             bucket["operations"] += 1
-            bucket["implemented"] += int(record["implemented"])
+            bucket["implemented"] += int(record["implementation_status"] == "functional")
+            bucket["route_only"] += int(record["implementation_status"] == "route_only")
             bucket["failed"] += int(record["verdict"] == "fail")
-            if not record["implemented"]:
+            if record["implementation_status"] == "missing":
                 bucket["missing"].append(record["operation_id"])
+            elif record["implementation_status"] == "route_only":
+                bucket["route_only_operations"].append(record["operation_id"])
         verdict_failed = bool(
-            self.errors or missing or authorization_failed or invariant_failures
+            self.errors
+            or missing
+            or probe_failed
+            or authorization_failed
+            or invariant_failures
+            or self.cross_principal_failures
             or any(record["verdict"] == "fail" for record in records)
         )
-        return {
+        verdict = "failed" if verdict_failed else ("route_only" if route_only else "passed")
+        report = {
             "ticket": "T093",
             "issue": 94,
             "title": "外部客户端验证全量 REST/SSE 共同契约",
@@ -2083,18 +2323,36 @@ class Gate:
             "operations": records,
             "summary": {
                 "operations": len(self.operations),
-                "implemented": len(records) - len(missing),
+                # `implemented` now counts functional probes only; the separate
+                # route counts are the honest evidence the review asked for.
+                "implemented": len(functional),
+                "route_registered": sum(
+                    1 for record in records if record["route_registered"]
+                ),
+                "functional_probe": len(functional),
+                "functional_coverage": f"{len(functional)}/{len(records)}",
+                "route_only": len(route_only),
+                "route_only_operations": route_only,
+                "probe_failed": len(probe_failed),
+                "probe_failed_operations": probe_failed,
                 "missing_operations": missing,
                 "authorization_failed": authorization_failed,
                 "per_operation_failed": per_operation_failed,
                 "invariant_failures": invariant_failures,
+                "cross_principal_isolation": {
+                    "checked": len(cross_checked),
+                    "checked_operations": cross_checked,
+                    "not_run": cross_not_run,
+                    "failures": self.cross_principal_failures,
+                },
                 "not_run": not_run,
                 "errors": self.errors,
                 "by_epic": by_epic,
-                "verdict": "failed" if verdict_failed else "passed",
+                "verdict": verdict,
             },
             "invariants": self.invariants,
         }
+        return redact_value(report)
 
 
 def check_error_envelope(response: Response) -> tuple[bool, str]:
@@ -2361,6 +2619,57 @@ CREATOR_OPS = frozenset(
         "submitTool",
     }
 )
+
+# Cross-principal content isolation: which fixture id must be invisible to the
+# plain member on a list / detail read (T093 review, H).
+CROSS_PRINCIPAL_LIST_FIXTURES: dict[str, str] = {
+    "listApplications": "application_id",
+    "listRuns": "run_id",
+    "listConversations": "conversation_id",
+    "listMemories": "memory_id",
+    "listKnowledgeBases": "knowledge_base_id",
+}
+
+CROSS_PRINCIPAL_DETAIL_FIXTURES: dict[str, str] = {
+    "getApplication": "application_id",
+    "getDraft": "application_id",
+    "listVersions": "application_id",
+    "getRun": "run_id",
+    "listRunArtifacts": "run_id",
+    "getConversation": "conversation_id",
+    "listMessages": "conversation_id",
+    "getMemory": "memory_id",
+    "getKnowledgeBase": "knowledge_base_id",
+    "listKnowledgeDocuments": "knowledge_base_id",
+    "getArtifact": "artifact_id",
+    "readArtifactContent": "artifact_id",
+    "downloadArtifact": "artifact_id",
+}
+
+CROSS_PRINCIPAL_SHARED: dict[str, str] = {
+    "getIdentity": "self-scoped identity read; there is no foreign body to hide",
+    "listModels": "shared deployer catalog; the response is not scoped to one principal",
+    "listTools": "shared published catalog; the response is not scoped to one principal",
+    "getModel": "shared model catalog; the model version is deployer-registered, not per-principal",
+    "listPublicationReviews": "administrator review queue; a plain member is refused before any body is built",
+    "listCredentialRefs": "administrator-only deployment configuration; not a per-principal body",
+    "listModelEndpoints": "administrator-only deployment configuration; not a per-principal body",
+}
+
+CROSS_PRINCIPAL_NOT_RUN: dict[str, str] = {
+    "listApprovals": "no approval fixture is created by the gate; the member's empty list is the only observation",
+    "listMemoryCandidates": "no memory-candidate fixture is created by the gate",
+    "getRequest": "the request fixture is created by the request normal-path probe after this pass",
+    "getVersion": "no published version fixture exists in the gate",
+    "getTool": "no tool-version fixture is selected by the gate",
+    "getPublicationReview": "no publication-review fixture exists in the gate",
+    "getEvaluation": "no evaluation fixture exists in the gate",
+    "getEvaluationReport": "no evaluation-report fixture exists in the gate",
+    "getKnowledgeDocument": "no ingested knowledge-document fixture exists in the gate",
+    "getBackgroundJob": "no background-job fixture is selected by the gate",
+    "getDeletion": "no deletion fixture exists before the destructive normal probes",
+    "getApproval": "no approval fixture exists in the gate",
+}
 
 
 def _future(hours: int = 1) -> str:
@@ -3272,18 +3581,35 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = report["summary"]
     print(
-        f"F12 API gate: {summary['implemented']}/{summary['operations']} operations implemented, "
-        f"{len(summary['invariant_failures'])} invariant failure(s), verdict={summary['verdict']}"
+        f"F12 API gate: route-registered {summary['route_registered']}/{summary['operations']}, "
+        f"functional probe {summary['functional_probe']}/{summary['operations']}, "
+        f"route_only {summary['route_only']}, "
+        f"{len(summary['invariant_failures'])} invariant failure(s), "
+        f"verdict={summary['verdict']}"
     )
     for operation_id in summary["missing_operations"]:
         print(f"  MISSING OPERATION: {operation_id}")
+    if summary["route_only_operations"]:
+        print(
+            "  ROUTE-ONLY (registered but no functional normal-path probe): "
+            + ", ".join(summary["route_only_operations"])
+        )
+    for failure in summary["cross_principal_isolation"]["failures"]:
+        print(f"  CROSS-PRINCIPAL ISOLATION FAILED: {failure}")
     for failure in summary["invariant_failures"]:
         print(f"  INVARIANT FAILED: {failure['invariant']}: {failure['failures'][:3]}")
     for record in report["operations"]:
-        if record["verdict"] == "fail" and record["implemented"]:
+        if record["verdict"] == "fail":
             print(f"  AUTHORIZATION/PROBE FAILED: {record['operation_id']}: {record['failures'][:2]}")
     print(f"report: {out_path}")
-    return 0 if summary["verdict"] == "passed" else 1
+    # 0 = every operation has a functional probe; 3 = the gate is honest but
+    # functional coverage is incomplete (declared route_only); 1 = a real
+    # failure; 2 = the manifest was refused before probing.
+    if summary["verdict"] == "passed":
+        return 0
+    if summary["verdict"] == "route_only":
+        return 3
+    return 1
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point

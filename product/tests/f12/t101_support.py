@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import traceback
 from contextlib import contextmanager
@@ -27,6 +28,11 @@ import pytest
 from support import f00b, t024, t029, t033, t048
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
+
+_TOOLS_ROOT = st.PRODUCT_ROOT / "tools"
+if str(_TOOLS_ROOT) not in sys.path:  # pragma: no cover - pytest adds it already
+    sys.path.insert(0, str(_TOOLS_ROOT))
+from evidence_redaction import redact_value  # noqa: E402
 
 EVIDENCE_JSON = st.PRODUCT_ROOT / "reports" / "f12" / "T101-journeys.json"
 
@@ -174,29 +180,56 @@ class Journey:
         self.status = "blocked"
         self.failure = reason
 
+    def mark_passed(self) -> None:
+        """Set ``passed`` explicitly, only after the journey body asserted something.
+
+        There is deliberately no implicit "the body returned, so it passed" rule:
+        a journey that records no assertion is ``not_run``, not ``passed``
+        (AGENTS.md hard rule 1; TESTING-AND-DATASETS.md §7).
+        """
+        if not self.assertions:
+            raise AssertionError(
+                f"{self.journey_id}: a journey cannot be marked passed without at "
+                "least one recorded assertion"
+            )
+        if self.status in {"blocked", "failed"}:
+            return
+        self.status = "passed"
+
+    def validate_status(self) -> None:
+        if self.status == "passed" and not self.assertions:
+            raise AssertionError(
+                f"{self.journey_id}: status='passed' requires at least one recorded "
+                f"assertion (assertions={len(self.assertions)})"
+            )
+
     # -- evidence -----------------------------------------------------------
     def record(self) -> dict:
-        return {
-            "journey_id": self.journey_id,
-            "title": self.title,
-            "status": self.status,
-            "entry": self.entry,
-            "duration_s": self.duration_s,
-            "truth_sources": self.truth,
-            "assertions": self.assertions,
-            "assertion_count": len(self.assertions),
-            "facts": self.facts,
-            "failure": self.failure,
-            "environment": {
-                "profile": "dev-stub",
-                "postgres": "127.0.0.1:55432 (throwaway database per stack)",
-                "execution": "cmd/supervisor exec --once (WSL2/runsc) / real mTLS internal protocol",
-                "maintenance": "cmd/maintenance run --once",
-            },
-        }
+        self.validate_status()
+        return redact_value(
+            {
+                "journey_id": self.journey_id,
+                "title": self.title,
+                "status": self.status,
+                "entry": self.entry,
+                "duration_s": self.duration_s,
+                "truth_sources": self.truth,
+                "assertions": self.assertions,
+                "assertion_count": len(self.assertions),
+                "facts": self.facts,
+                "failure": self.failure,
+                "environment": {
+                    "profile": "dev-stub",
+                    "postgres": "127.0.0.1:55432 (throwaway database per stack)",
+                    "execution": "cmd/supervisor exec --once (WSL2/runsc) / real mTLS internal protocol",
+                    "maintenance": "cmd/maintenance run --once",
+                },
+            }
+        )
 
     def persist(self) -> None:
         self.duration_s = round(time.time() - self.started_at, 2)
+        self.validate_status()
         _RECORDS[self.journey_id] = self
         if os.environ.get("T101_WRITE_EVIDENCE") != "1":
             return
@@ -223,13 +256,23 @@ class Journey:
 
 
 def _short(value, limit: int = 400) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    redacted = redact_value(value)
+    text = (
+        redacted
+        if isinstance(redacted, str)
+        else json.dumps(redacted, ensure_ascii=False, default=str)
+    )
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 @contextmanager
 def journey(journey_id: str, title: str):
-    """Run one journey, always persisting a truthful status (passed/failed/blocked)."""
+    """Run one journey, always persisting a truthful status.
+
+    A normal return does **not** make the journey pass: the body must call
+    ``mark_passed()`` after all its assertions have run. An untouched journey
+    stays ``not_run`` and is persisted that way.
+    """
     record = Journey(journey_id=journey_id, title=title)
     try:
         yield record
@@ -241,9 +284,6 @@ def journey(journey_id: str, title: str):
         if os.environ.get("T101_VERBOSE_FAILURES") == "1":
             record.facts.setdefault("traceback", traceback.format_exc(limit=8))
         raise
-    else:
-        if record.status == "not_run":
-            record.status = "passed"
     finally:
         record.persist()
 

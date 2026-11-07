@@ -22,6 +22,8 @@ import json
 from support import f00b, f02a
 from support import stack as st
 
+import t101_support
+
 SCOPE_READ = "application:read"
 SCOPE_WRITE = "application:write"
 
@@ -102,13 +104,17 @@ def run(stack, record) -> dict:
 
     key_response = _create_key(admin, service_id, [SCOPE_READ])
     record.http("POST", "/api/v1/admin/api-keys", key_response)
-    record.check("scoped key issued", key_response.status == 201, key_response.text)
+    record.check(
+        "scoped key issued",
+        key_response.status == 201,
+        t101_support.redact_value(key_response.json),
+    )
     key_id = key_response.json["id"]
     secret = key_response.json["secret"]
     record.check(
         "the secret is returned once under the documented prefix",
         secret.startswith("orchara_") and len(secret) == len("orchara_") + 43,
-        secret[:9] + "...",
+        {"length_ok": len(secret) == len("orchara_") + 43},
     )
 
     row = _key_row(stack.dbname, key_id)
@@ -318,6 +324,32 @@ def run(stack, record) -> dict:
             "missing_acl": denied.status,
             "wrong_scope": wrong_scope.status,
             "responsible_disabled": orphaned.status,
+        },
+    )
+    record.note(
+        "ac2",
+        {
+            "verdict": "partial",
+            "proven": [
+                "scope: the same call is 403 insufficient_scope with a write-scoped key",
+                "ACL: the same call is 404 without the read grant and 200 with it",
+                "human: disabling the responsible human revokes the key (401 invalid_key)",
+            ],
+            "not_proven": (
+                "no single external write exercises API-key scope + resource ACL + a human "
+                "approval at the same time: J5 is a read journey, J2's approval is a browser "
+                "session decision over an internal capability call"
+            ),
+            "product_support": (
+                "the product can bind a service-owned Run's approval to its responsible human "
+                "(internal/approvals/service.go:187-207 approverForOwnerTx), so this is a "
+                "coverage gap in the delivered journeys, not a confirmed product gap"
+            ),
+            "remaining_not_run": (
+                "publish a version whose definition contains an approval-gated write node, "
+                "submit it with a write-scoped service key that also holds the application "
+                "grant, then have the responsible human approve and assert exactly one egress"
+            ),
         },
     )
     return {

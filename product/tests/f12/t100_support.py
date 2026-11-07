@@ -44,6 +44,7 @@ for entry in (TESTS_ROOT, PRODUCT_ROOT / "worker", PRODUCT_ROOT / "tools"):
 
 from support import f00b, stack as st, t024, t029, t033  # noqa: E402
 from support.certs import make_stack_certificates, unique_internal_addr  # noqa: E402
+from evidence_redaction import redact_value  # noqa: E402
 
 EVIDENCE_DIR = PRODUCT_ROOT / "reports" / "f12"
 EVIDENCE_JSON = EVIDENCE_DIR / "T100-journeys.json"
@@ -200,7 +201,7 @@ class JourneyRecord:
 
 
 class JourneyHandle:
-    """Context manager for one journey: passed on exit, failed on exception."""
+    """Context manager for one journey: a normal exit never invents ``passed``."""
 
     def __init__(self, log: "JourneyLog", record: JourneyRecord) -> None:
         self._log = log
@@ -213,7 +214,10 @@ class JourneyHandle:
     def __exit__(self, exc_type, exc, _traceback) -> bool:
         self.record.duration_seconds = round(time.monotonic() - self._started, 3)
         if exc is None:
-            self.record.status = "passed"
+            # Explicitly marked by the journey body (mark_passed) or left as
+            # not_run. There is no implicit promotion here: a body that records
+            # no assertion must not become a passed journey.
+            pass
         elif exc_type is not None and exc_type.__name__ in {"Skipped", "XFailed"}:
             self.record.status = "blocked"
             self.record.failure_reason = f"environment/declared boundary: {exc}"
@@ -222,6 +226,24 @@ class JourneyHandle:
             self.record.failure_reason = f"{exc_type.__name__ if exc_type else 'Error'}: {exc}"
         self._log.write()
         return False  # never swallow the failure
+
+    def mark_passed(self) -> None:
+        """Set ``passed`` explicitly, only after the journey body asserted something."""
+        if not self.record.assertions:
+            raise AssertionError(
+                f"{self.record.journey_id}: cannot mark passed without at least "
+                "one recorded assertion"
+            )
+        if self.record.status in {"blocked", "failed"}:
+            return
+        self.record.status = "passed"
+
+    def validate(self) -> None:
+        if self.record.status == "passed" and not self.record.assertions:
+            raise AssertionError(
+                f"{self.record.journey_id}: status='passed' requires at least one "
+                f"recorded assertion (assertions={len(self.record.assertions)})"
+            )
 
     def assertion(self, text: str) -> None:
         """One independently checked assertion, in the language of the journey."""
@@ -297,23 +319,34 @@ class JourneyLog:
         )
         self.write()
 
+    def records(self) -> list[dict]:
+        """The redacted, validated machine-readable records (used by tests too)."""
+        records = []
+        for record in sorted(self._records.values(), key=lambda item: item.journey_id):
+            if record.status == "passed" and not record.assertions:
+                raise AssertionError(
+                    f"{record.journey_id}: status='passed' requires at least one "
+                    f"recorded assertion (assertions={len(record.assertions)})"
+                )
+            records.append(redact_value(asdict(record)))
+        return records
+
     def write(self) -> None:
         if os.environ.get(WRITE_EVIDENCE_ENV) != "1":
             return
         EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "ticket": "T100",
-            "issue": 101,
-            "title": "复现账号到发布和后台执行的关键旅程",
-            "created_at": self._created_at,
-            "generated_at": _utcnow(),
-            "environment": self._environment or {},
-            "journeys": [
-                asdict(record)
-                for record in sorted(self._records.values(), key=lambda item: item.journey_id)
-            ],
-            "known_gaps": self._gaps,
-        }
+        payload = redact_value(
+            {
+                "ticket": "T100",
+                "issue": 101,
+                "title": "复现账号到发布和后台执行的关键旅程",
+                "created_at": self._created_at,
+                "generated_at": _utcnow(),
+                "environment": self._environment or {},
+                "journeys": self.records(),
+                "known_gaps": self._gaps,
+            }
+        )
         temporary = EVIDENCE_JSON.with_suffix(".json.tmp")
         with temporary.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
