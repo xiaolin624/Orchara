@@ -1050,6 +1050,7 @@ func (s *Service) dispatchModel(
 	candidate := &modelproxy.Candidate{
 		ID: spec.Profile.ID, Provider: spec.Profile.Provider, ModelID: spec.Profile.ModelID,
 		EndpointRef: spec.Profile.EndpointRef, SecretRef: spec.Profile.SecretRef,
+		Config:          spec.Profile.ConfigJSON,
 		ValidationState: spec.Profile.ValidationState,
 	}
 	provider, err := s.Providers.For(candidate)
@@ -1150,6 +1151,7 @@ func (s *Service) dispatchFallback(
 	candidate := &modelproxy.Candidate{
 		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
 		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+		Config:          profile.ConfigJSON,
 		ValidationState: profile.ValidationState,
 	}
 	provider, err := s.Providers.For(candidate)
@@ -1232,6 +1234,7 @@ func (s *Service) selectFallback(
 		candidate := &modelproxy.Candidate{
 			ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
 			EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+			Config:          profile.ConfigJSON,
 			ValidationState: profile.ValidationState,
 		}
 		provider, err := s.Providers.For(candidate)
@@ -2147,11 +2150,17 @@ func providerFailure(err error) *Error {
 	switch {
 	case errors.Is(err, modelproxy.ErrNotConfigured):
 		return capFailure(503, CodeProviderNotConfigured, "no real model provider is configured")
+	case errors.Is(err, modelproxy.ErrDestinationUnapproved):
+		return capFailure(503, CodeProviderDestinationNotApproved,
+			"the model endpoint destination is not approved by the deployment catalog")
 	case errors.Is(err, modelproxy.ErrAdapterUnavailable):
 		return capFailure(503, CodeAdapterUnavailable, "no vendor adapter is compiled for this provider")
 	case errors.Is(err, modelproxy.ErrCandidateUnavailable):
 		return capFailure(422, CodeModelUnavailable, "the model profile version is not callable")
 	default:
+		if code := modelproxy.ProviderCode(err); code != "" {
+			return capFailure(503, code, "the model provider call did not complete")
+		}
 		return capFailure(503, CodeProviderNotConfigured, "the model provider is not available")
 	}
 }
@@ -2162,9 +2171,11 @@ func providerErrorCode(err error) string {
 		return CodeProviderNotConfigured
 	case errors.Is(err, modelproxy.ErrAdapterUnavailable):
 		return CodeAdapterUnavailable
-	default:
-		return "provider_error"
 	}
+	if code := modelproxy.ProviderCode(err); code != "" {
+		return code
+	}
+	return "provider_error"
 }
 
 // sleepBackoff is the bounded retry pause. It is not a budget gate: the

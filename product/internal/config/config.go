@@ -77,6 +77,13 @@ const (
 	// EnvExecutionLeaseTTL is the F03 claim lease length. It is a deployment
 	// knob bounded by the execution protocol (1s..1h), not a per-request value.
 	EnvExecutionLeaseTTL = "ORCHARA_EXECUTION_LEASE_TTL"
+	// EnvCapacityStubServiceDelay is the F13B/T114 capacity-stub stand-in
+	// service time: a deployment knob that makes the deterministic stub provider
+	// take a fixed amount of time per call so a capacity measurement has a
+	// controllable service time. It only exists for the capacity-stub profile;
+	// any other profile setting it is a configuration error. It is stand-in
+	// time, never vendor latency.
+	EnvCapacityStubServiceDelay = "ORCHARA_CAPACITY_STUB_SERVICE_DELAY"
 	// F03/T032 run-event stream knobs. Retention is the documented replay window
 	// (default 24h); poll is how often an idle SSE stream asks PostgreSQL (Redis
 	// is wakeup-only and absent in this batch); heartbeat is the idle comment
@@ -191,6 +198,9 @@ const (
 	// minExecutionLeaseTTL/maxExecutionLeaseTTL bound the deployment knob.
 	minExecutionLeaseTTL = time.Second
 	maxExecutionLeaseTTL = time.Hour
+	// maxCapacityStubServiceDelay bounds the F13B/T114 stand-in service time so
+	// a misconfiguration cannot park every run for an hour.
+	maxCapacityStubServiceDelay = 30 * time.Second
 
 	// F03/T032 defaults. The retention window is the documented replay horizon;
 	// the heartbeat is API.md §4's 15s idle comment.
@@ -276,6 +286,11 @@ type Config struct {
 	RetryBackoff time.Duration
 	// ExecutionLeaseTTL is the F03 claim lease length (30s by default).
 	ExecutionLeaseTTL time.Duration
+	// CapacityStubServiceDelay is the standalone capacity-stub stand-in service
+	// time of the deterministic stub provider (F13B/T114). Zero means unset; a
+	// non-zero value is only legal with the capacity-stub profile. It is
+	// deliberately not vendor latency and never reaches a real provider.
+	CapacityStubServiceDelay time.Duration
 	// RunEventRetention/PollInterval/HeartbeatInterval are the F03/T032 durable
 	// event stream knobs (24h replay window, 500ms PostgreSQL poll, 15s comment).
 	RunEventRetention         time.Duration
@@ -426,6 +441,17 @@ func Load(lookup Lookup) (*Config, error) {
 		// A stub profile must be able to say where its stub results are recorded,
 		// otherwise stub output can be mistaken for a real result later.
 		cfg.StubLedger = orDefault(lookup, EnvStubLedger, "reports/p01/stub-ledger.jsonl")
+		// F06/T122: an explicitly configured real-model destination is read out
+		// even under a stub profile, so a deployment can exercise the compiled
+		// chat-completions adapter against a controlled endpoint. Both variables
+		// must be set together: a half-configured destination is refused instead
+		// of silently dispatching to a different place than the operator meant.
+		// Stub candidates are unaffected (cfg.Stub() stays true).
+		if endpoint, secretRef, configured, err := explicitStubDestination(lookup); err != nil {
+			return nil, err
+		} else if configured {
+			cfg.ModelEndpoint, cfg.ModelSecret = endpoint, secretRef
+		}
 	case ProfileRealModel:
 		endpoint := value(lookup, EnvModelEndpoint)
 		if endpoint == "" {
@@ -484,6 +510,23 @@ func Load(lookup Lookup) (*Config, error) {
 			fmt.Sprintf("must be between %s and %s", minExecutionLeaseTTL, maxExecutionLeaseTTL))
 	}
 	cfg.ExecutionLeaseTTL = leaseTTL
+	// F13B/T114: the capacity-stub stand-in service time. It is deployment
+	// configuration for the capacity measurement, not a request value and not
+	// vendor latency; the gate keeps it out of every other profile.
+	serviceDelay, err := parseDuration(lookup, EnvCapacityStubServiceDelay, 0)
+	if err != nil {
+		return nil, err
+	}
+	if serviceDelay > maxCapacityStubServiceDelay {
+		return nil, invalid(EnvCapacityStubServiceDelay,
+			fmt.Sprintf("must be at most %s", maxCapacityStubServiceDelay))
+	}
+	if serviceDelay > 0 && profile != ProfileCapacityStub {
+		return nil, invalid(EnvCapacityStubServiceDelay,
+			fmt.Sprintf("may only be set with profile %q; %q has no capacity stand-in service time",
+				ProfileCapacityStub, profile))
+	}
+	cfg.CapacityStubServiceDelay = serviceDelay
 	// F03/T032: the durable event-stream knobs. Small values are legal (tests use
 	// them to observe heartbeats/retention quickly); only absurd upper bounds are
 	// configuration errors.
@@ -869,6 +912,34 @@ func orDefault(lookup Lookup, key, fallback string) string {
 		return raw
 	}
 	return fallback
+}
+
+// explicitStubDestination reads an explicitly configured real-model destination
+// under a stub profile (F06/T122). "Configured" means both variables are set;
+// a half-configured destination is a configuration error, never a guess.
+func explicitStubDestination(lookup Lookup) (string, SecretRef, bool, error) {
+	endpoint := value(lookup, EnvModelEndpoint)
+	secretRaw := value(lookup, EnvModelSecretRef)
+	if endpoint == "" && secretRaw == "" {
+		return "", "", false, nil
+	}
+	if endpoint == "" {
+		return "", "", false, invalid(EnvModelEndpoint,
+			"is required when "+EnvModelSecretRef+" is set")
+	}
+	if strings.Contains(endpoint, "?") || strings.Contains(endpoint, "#") {
+		return "", "", false, invalid(EnvModelEndpoint,
+			"must be a base endpoint without query or fragment")
+	}
+	if secretRaw == "" {
+		return "", "", false, invalid(EnvModelSecretRef,
+			"is required when "+EnvModelEndpoint+" is set")
+	}
+	ref, err := ParseSecretRef(secretRaw)
+	if err != nil {
+		return "", "", false, invalid(EnvModelSecretRef, err.Error())
+	}
+	return endpoint, ref, true, nil
 }
 
 func parseBool(lookup Lookup, key string) (bool, error) {

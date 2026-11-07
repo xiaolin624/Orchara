@@ -313,6 +313,23 @@ func (s *Server) writeJobDataError(w http.ResponseWriter, r *http.Request, err e
 		writeError(w, r, http.StatusServiceUnavailable, "provider_adapter_unavailable",
 			"no vendor adapter is compiled for this provider in this build")
 		return false
+	case errors.Is(err, modelproxy.ErrDestinationUnapproved):
+		// F06/T122: a candidate names a destination the deployer did not register.
+		writeError(w, r, http.StatusServiceUnavailable, "provider_destination_not_approved",
+			"the model endpoint destination is not approved by the deployment catalog")
+		return false
+	case modelproxy.IsTransient(err):
+		// F06/T122: 429/5xx/timeout. The job retry table treats this as an
+		// infrastructure failure (bounded retry), never as a delivered answer.
+		writeError(w, r, http.StatusServiceUnavailable, "provider_transient",
+			"the model provider failed transiently")
+		return false
+	case modelproxy.ProviderCode(err) != "":
+		// F06/T122: a non-retryable provider refusal (4xx, malformed answer,
+		// oversized answer). The code is stable and never contains a payload.
+		writeError(w, r, http.StatusServiceUnavailable, modelproxy.ProviderCode(err),
+			"the model provider refused the call")
+		return false
 	default:
 		s.internalError(w, r, err)
 		return false

@@ -803,8 +803,7 @@ func (r *runner) refuse(ctx context.Context, code, message string) executionOutc
 		SuggestedState: "failed",
 		ErrorCode:      code,
 	}); err != nil {
-		return executionOutcome{outcome: "error", code: code,
-			err: "the failed proposal was refused: " + err.Error(), failedStatus: true}
+		return r.endRefusedProposal(ctx, err, code, message, true, evidence, nil)
 	}
 	if err := r.confirmExit(ctx, true, evidence); err != nil {
 		return executionOutcome{outcome: "error", code: code,
@@ -836,9 +835,7 @@ func (r *runner) failRun(
 	r.uploadFailureEvidence(ctx, code, message, sandboxOutcome, diagnostics, input)
 	proposal := Proposal{EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code}
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, proposal); err != nil {
-		return executionOutcome{outcome: "error", code: code,
-			err:     "the failed proposal was refused: " + err.Error(),
-			sandbox: sandboxReport, failedStatus: true}
+		return r.endRefusedProposal(ctx, err, code, message, true, evidence, sandboxReport)
 	}
 	if err := r.confirmExit(ctx, true, evidence); err != nil {
 		return executionOutcome{outcome: "error", code: code,
@@ -866,8 +863,7 @@ func (r *runner) failAfterStart(
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
 		EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code,
 	}); err != nil {
-		return executionOutcome{outcome: "error", code: code,
-			err: "the failed proposal was refused: " + err.Error(), sandbox: sandboxReport, failedStatus: true}
+		return r.endRefusedProposal(ctx, err, code, message, true, evidence, sandboxReport)
 	}
 	if err := r.confirmExit(ctx, true, evidence); err != nil {
 		return executionOutcome{outcome: "error", code: code,
@@ -875,6 +871,48 @@ func (r *runner) failAfterStart(
 	}
 	return executionOutcome{outcome: "failed", code: code, err: message,
 		runState: r.readRunState(ctx), sandbox: sandboxReport}
+}
+
+// endRefusedProposal handles the platform refusing a result proposal while the
+// attempt may still be live (409 run_state_conflict/run_terminal/stale_attempt, a
+// deadline refusal or any other refusal of the proposal transaction).
+//
+// A refused proposal wrote nothing: the Run is not finalized. The attempt must
+// still certify that it ended, because that exit is what lets the one finalizer
+// commit the Run's real outcome in its fixed priority (cancel > deadline >
+// proposal) and release the execution slot. Without it, a cancel that lands while
+// a capability call is in flight leaves the Run cancelling forever with a live
+// attempt and a leaked slot (F13B/T114 CANCEL-RACE-SLOT-LEAK).
+//
+// The other half is equally explicit: when the platform already considers the
+// token dead (the Attempt exited, was revoked or a newer attempt owns the lease)
+// the exit confirmation answers stale_attempt. That is a safe return - one
+// attempt, a readable combined diagnostic, never a retry loop, a panic or a
+// credential in the message.
+func (r *runner) endRefusedProposal(
+	ctx context.Context,
+	refusal error, code, message string,
+	started bool, evidence map[string]any, sandboxReport *SandboxReport,
+) executionOutcome {
+	r.logger.Printf("run_id=%s: the %s proposal was refused (%v); confirming the attempt exit",
+		r.lease.RunID, code, refusal)
+	if err := r.confirmExit(ctx, started, evidence); err != nil {
+		return executionOutcome{outcome: "error", code: code,
+			err: "the proposal was refused: " + refusal.Error() +
+				"; the attempt exit could not be confirmed: " + err.Error(),
+			sandbox: sandboxReport, failedStatus: true}
+	}
+	runState := r.readRunState(ctx)
+	if runState == "cancelled" {
+		// The finalizer's cancel priority committed cancelled: this attempt ended
+		// because it was cancelled, not because of the failure it was reporting.
+		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
+			runState: runState, sandbox: sandboxReport}
+	}
+	return executionOutcome{outcome: "failed", code: code,
+		err: message + ": the proposal was refused: " + refusal.Error() +
+			"; the attempt exit was confirmed",
+		runState: runState, sandbox: sandboxReport}
 }
 
 // verifyManifest fetches the sealed manifest bytes, verifies the frozen hash and
