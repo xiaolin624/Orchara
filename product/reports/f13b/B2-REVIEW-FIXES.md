@@ -1,7 +1,8 @@
 # B2 两轴复核修复（Standards + Spec + T113 增量）
 
 - **分支/worktree**：`t/review-fixes-b2` @ `E:\Orchara-wt\review-fixes`；基线 = 集成分支
-  `integration/t113-t114-t122` tip `e4591d6`（本报告交付树另含一个 merge 提交，见 §6）。
+  `integration/t113-t114-t122` tip `e4591d6`；结束前 merge 该集成分支为 **Already up to date**
+  （无 merge commit，见 §9）。
 - **范围**：`E:\Orchara\.scratch\f13b\b2\REVIEW-FIXES.md` 的全部 finding：
   H1–H3（Standards hard）、S1–S7（Spec）、T113-1..T113-7（T113 增量）、§1.3 可选 smell。
 - **状态**：hard/spec/必做 T113 项全部修复并有测试或文档证据；§1.3 全部记录为 `not_run`
@@ -23,7 +24,7 @@
 | S1 T114 未断言“不丢任务” | **fixed**（gate 收紧） | `assert_trial` 断言 `submit_failures==[]`、`process_failures==[]`、`executor.failures==[]`；旧证据（2 条 executor failure）红，修复后 short profile 绿 |
 | S2 `ORCHARA_MODEL_SECRET_REF` 只验证不生效 | **fixed**（行为） | `WithDeploySecret` + `resolveCredential` fallback（行内优先、部署级回退、都无→`provider_not_configured`）；Go 单测 + 真实栈两态 e2e（可解析→Bearer 部署凭据；env 未设→503 0 行） |
 | S3 routing-control 提示无覆盖 | **fixed**（测试） | Go 单测断言 system/user 形状、fixture 原文字节、model id、`response_format=json_object`、decision/reason 抬升；真实栈 e2e 属 F08，记录为边界 |
-| S4 T114 AC4 取消断言过弱 | **fixed**（gate 收紧） | 执行中取消必须 `cancelled`+`finished_at`+`live_attempts==0`、`stuck_count==0`、guued 保持 intent==stop、迟到 result 只接受 `cancelled`；旧证据（2/4/6 stuck）红，修复后 short profile 绿 |
+| S4 T114 AC4 取消断言过弱 | **fixed**（gate 收紧） | 执行中取消必须 `cancelled`+`finished_at`+`live_attempts==0`、`stuck_count==0`、queued 保持 intent==stop、迟到 result 只接受 `cancelled`；旧证据（2/4/6 stuck）红，修复后 short profile 绿 |
 | S5 T114 证据 provenance | **fixed**（文档） | T114 报告新增 §2.1：JSON commit `5ffaff7`、probe 重写 `c27f7e3`、重写后 short 绿跑 `21ee9a0`（169.97s）、49 分钟未重跑原因/限制；不伪造新数字 |
 | S6 cancel 修复未覆盖分支 | **fixed**（补测；行为既有） | Go 单测覆盖“exit 已确认但 Run 非 cancelled”（failed=deadline 形态 / needs_reconciliation）；deadline 真实栈路径仍 `not_run`（诚实降级） |
 | S7 T122 证据行未绑定交付树 | **fixed**（证据） | 最终交付树重跑并记录 `T122-EVIDENCE`，`git_head=3c7713c...`（证据运行树本身），见 §8.3 |
