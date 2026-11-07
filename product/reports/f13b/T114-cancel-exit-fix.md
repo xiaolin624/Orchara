@@ -2,9 +2,11 @@
 
 - **状态**：passed（真实栈红→绿 + Go 单测 + 门禁；`not_run` 边界见 §7）。
 - **分支**：`t/cancel-exit-fix`。基于 `22eb645`（T114 已并入的集成分支 tip），结束时 merge
-  `integration/t113-t114-t122`（`a9dae57`：T114 配额表述勘误，仅文档）。
+  `integration/t113-t114-t122`（`a9dae57`：T114 配额表述勘误，仅文档）→ merge commit `8943aa0`。
+  HEAD 即该分支 tip（本报告为最后一次 docs 提交）。
 - **提交**：`cfcb868` test（先红：`cancel_exit_test.go` + `tests/f13b/test_t114_cancel_exit.py`）、
-  `3413273` fix（`internal/presetexec/presetexec.go`），报告/PROGRESS 为后续 docs 提交。
+  `3413273` fix（`internal/presetexec/presetexec.go`）、`20ff04b` docs（本报告 + PROGRESS）、
+  `8943aa0` merge；merge 后验证复跑见 §5。
 - **缺陷来源**：T114（GitHub #115）验收 AC4 真实观测（`reports/f13b/T114-capacity.md` §3.8/§4）：
   饱和窗口内取消 6 个 executing Run，trial-1/2/3 分别有 **2/4/6** 个停在 `cancelling`、attempt 未退出、
   `finished_at` 缺失、slot 泄漏，直到租约 sweep 才变成 `recovery_pending`。
@@ -167,6 +169,28 @@ pytest exit=0
 2 passed, 1 skipped in 155.31s (0:02:35)
 pytest exit=0
 ```
+
+**merge 后复跑**（`git merge integration/t113-t114-t122` → merge commit `8943aa0`；merge diff 仅
+`product/PROGRESS.md` 与 `reports/f13b/T114-capacity.md`，无代码/测试改动）：
+
+```text
+# go-gates-postmerge.log
+build exit=0 / vet exit=0 / test exit=0 / gofmt exit=0（空）
+no drift: spec copy and contract snapshot match the manifest
+
+# postmerge-cancel-exit.log
+1 passed in 36.26s
+pytest exit=0
+# run 8d95d2af-31b7-4484-ac30-a608f212231b: cancelled, finished_at, attempt exited,
+# execution_slots_used=0, intent_to_stop_s=5.266, executor outcome=cancelled
+
+# postmerge-t036.log
+15 passed in 151.39s (0:02:31)
+pytest exit=0
+```
+
+`test_t114_capacity.py` 短 profile 在 merge 前同一代码上通过；merge 未触及容量/执行路径，未再复跑
+（`not_run`：merge 后未重复容量门禁）。
 
 原始日志（仓库外）：`E:\Orchara\.scratch\f13b\cancel-fix\`：
 `go-gates.log`、`go-unit-red.log`、`go-unit-green.log`、`realstack-red.log`、`realstack-green.log`、
