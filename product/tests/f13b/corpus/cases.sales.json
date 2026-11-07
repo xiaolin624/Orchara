@@ -1,0 +1,445 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "250.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/total"
+        },
+        {
+          "expected": "200.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/东区"
+        },
+        {
+          "expected": "50.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/西区"
+        },
+        {
+          "expected": 3,
+          "kind": "json_equals",
+          "pointer": "/summary/order_count"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-csv-summary",
+      "category": "sales",
+      "family_id": "sales-file-summary",
+      "fixture_id": "sales-dev-orders-csv",
+      "input": {
+        "source": "sales-dev-csv-summary",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-file-summary",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "250.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/total"
+        },
+        {
+          "expected": "200.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/东区"
+        },
+        {
+          "expected": "50.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/西区"
+        },
+        {
+          "expected": 3,
+          "kind": "json_equals",
+          "pointer": "/summary/order_count"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-xlsx-summary",
+      "category": "sales",
+      "family_id": "sales-file-summary",
+      "fixture_id": "sales-dev-orders-xlsx",
+      "input": {
+        "source": "sales-dev-xlsx-summary",
+        "task_input": {
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "sha256": "287bd26ca0cac1ef630caef40807c0a82739e86285b4343905242979190cdb60"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-file-summary",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-missing-column",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-missing-column",
+      "input": {
+        "expected_failure": {
+          "error_code": "missing_column"
+        },
+        "source": "sales-dev-missing-column",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "090a64e1d5ee58bca8d28f6c3bf8193b50973c4e1a84773b19398423064666b4"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-bad-input",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-duplicate-order",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-duplicate-order",
+      "input": {
+        "expected_failure": {
+          "error_code": "duplicate_order_id"
+        },
+        "source": "sales-dev-duplicate-order",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "ed46d9c9993a54d2f63a568c4f1da3c508afaeeec59668f09461965232802876"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-bad-input",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-negative-amount",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-negative-amount",
+      "input": {
+        "expected_failure": {
+          "error_code": "negative_amount"
+        },
+        "source": "sales-dev-negative-amount",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "ab8b77b20d44945ca5d4ae7473108063cd4e85f8ddd156a563dff8db00ca35ad"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-bad-input",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-formula-cell",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-formula-cell",
+      "input": {
+        "expected_failure": {
+          "error_code": "formula_not_supported"
+        },
+        "source": "sales-dev-formula-cell",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "f5f5b8453b76e651449868eb23b571a9dc284dcce7b7521db2a2969c2a4bfb68"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-bad-input",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-dev-over-limit",
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-over-limit",
+      "input": {
+        "expected_failure": {
+          "error_code": "row_limit_exceeded"
+        },
+        "source": "sales-dev-over-limit",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "b6ce0a560d325bc70c7c7f6890da714c874162ecc827caed44dc7eb4d747d334"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-sales-bad-input",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "101234.65",
+          "kind": "decimal_equals",
+          "pointer": "/summary/total"
+        },
+        {
+          "expected": "1234.65",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/北区"
+        },
+        {
+          "expected": "100000.00",
+          "kind": "decimal_equals",
+          "pointer": "/summary/regions/南区"
+        },
+        {
+          "expected": 4,
+          "kind": "json_equals",
+          "pointer": "/summary/order_count"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-frozen-boundary-decimals",
+      "category": "sales",
+      "family_id": "sales-frozen-boundary",
+      "fixture_id": "sales-frozen-boundary",
+      "input": {
+        "source": "sales-frozen-boundary-decimals",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "288fdd3a2074481f5ebe2d0b2b27dc68107d8a43c6eef451b9c4c88366644c24"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-sales-frozen-boundary",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-frozen-empty-file",
+      "category": "sales",
+      "family_id": "sales-frozen-empty",
+      "fixture_id": "sales-frozen-empty",
+      "input": {
+        "expected_failure": {
+          "error_code": "empty_input"
+        },
+        "source": "sales-frozen-empty-file",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "746acc305e8f9c067e0a4f372e081896c5367991b05e596355cac9a400792adf"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-sales-frozen-empty",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "sales-frozen-invalid-encoding",
+      "category": "sales",
+      "family_id": "sales-frozen-encoding",
+      "fixture_id": "sales-frozen-encoding",
+      "input": {
+        "expected_failure": {
+          "error_code": "invalid_encoding"
+        },
+        "source": "sales-frozen-invalid-encoding",
+        "task_input": {
+          "media_type": "text/csv",
+          "sha256": "602b45c22b8984d69007c2c39620a2e5de1ea3ba58c6ade46862f1643d86895f"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-sales-frozen-encoding",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}
