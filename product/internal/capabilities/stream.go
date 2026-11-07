@@ -314,6 +314,7 @@ func (s *Service) dispatchStream(
 	candidate := &modelproxy.Candidate{
 		ID: spec.Profile.ID, Provider: spec.Profile.Provider, ModelID: spec.Profile.ModelID,
 		EndpointRef: spec.Profile.EndpointRef, SecretRef: spec.Profile.SecretRef,
+		Config:          spec.Profile.ConfigJSON,
 		ValidationState: spec.Profile.ValidationState,
 	}
 	provider, err := s.Providers.StreamingFor(candidate)
@@ -474,6 +475,7 @@ func (s *Service) dispatchStreamFallback(
 	candidate := &modelproxy.Candidate{
 		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
 		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
+		Config:          profile.ConfigJSON,
 		ValidationState: profile.ValidationState,
 	}
 	provider, err := s.Providers.StreamingFor(candidate)

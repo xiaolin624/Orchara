@@ -426,6 +426,17 @@ func Load(lookup Lookup) (*Config, error) {
 		// A stub profile must be able to say where its stub results are recorded,
 		// otherwise stub output can be mistaken for a real result later.
 		cfg.StubLedger = orDefault(lookup, EnvStubLedger, "reports/p01/stub-ledger.jsonl")
+		// F06/T122: an explicitly configured real-model destination is read out
+		// even under a stub profile, so a deployment can exercise the compiled
+		// chat-completions adapter against a controlled endpoint. Both variables
+		// must be set together: a half-configured destination is refused instead
+		// of silently dispatching to a different place than the operator meant.
+		// Stub candidates are unaffected (cfg.Stub() stays true).
+		if endpoint, secretRef, configured, err := explicitStubDestination(lookup); err != nil {
+			return nil, err
+		} else if configured {
+			cfg.ModelEndpoint, cfg.ModelSecret = endpoint, secretRef
+		}
 	case ProfileRealModel:
 		endpoint := value(lookup, EnvModelEndpoint)
 		if endpoint == "" {
@@ -869,6 +880,34 @@ func orDefault(lookup Lookup, key, fallback string) string {
 		return raw
 	}
 	return fallback
+}
+
+// explicitStubDestination reads an explicitly configured real-model destination
+// under a stub profile (F06/T122). "Configured" means both variables are set;
+// a half-configured destination is a configuration error, never a guess.
+func explicitStubDestination(lookup Lookup) (string, SecretRef, bool, error) {
+	endpoint := value(lookup, EnvModelEndpoint)
+	secretRaw := value(lookup, EnvModelSecretRef)
+	if endpoint == "" && secretRaw == "" {
+		return "", "", false, nil
+	}
+	if endpoint == "" {
+		return "", "", false, invalid(EnvModelEndpoint,
+			"is required when "+EnvModelSecretRef+" is set")
+	}
+	if strings.Contains(endpoint, "?") || strings.Contains(endpoint, "#") {
+		return "", "", false, invalid(EnvModelEndpoint,
+			"must be a base endpoint without query or fragment")
+	}
+	if secretRaw == "" {
+		return "", "", false, invalid(EnvModelSecretRef,
+			"is required when "+EnvModelEndpoint+" is set")
+	}
+	ref, err := ParseSecretRef(secretRaw)
+	if err != nil {
+		return "", "", false, invalid(EnvModelSecretRef, err.Error())
+	}
+	return endpoint, ref, true, nil
 }
 
 func parseBool(lookup Lookup, key string) (bool, error) {
