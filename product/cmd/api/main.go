@@ -91,10 +91,20 @@ func run(logger *log.Logger) error {
 	if signer == nil {
 		logger.Print("object link signing is not configured (ORCHARA_OBJECT_SIGNING_KEY); signed upload/download links will be refused")
 	}
+	// F06/T039: the deployer-registered model catalog. A malformed catalog
+	// refuses startup (fail closed) rather than serving a half-configured
+	// registration surface. It is built before the provider set because the
+	// F06/T122 chat-completions adapter approves destination and credential
+	// references against it.
+	modelCatalog, err := modelregistry.FromEnv(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("model catalog rejected: %w", err)
+	}
 	// The provider set is built from deployment configuration only. A candidate's
 	// endpoint_ref/secret_ref are references; no request can add an endpoint or a
 	// credential.
-	providers := modelproxy.NewProviders(cfg.Profile, cfg.ModelEndpoint, cfg.SecretDir, config.FromEnv())
+	providers := modelproxy.NewProviders(cfg.Profile, cfg.ModelEndpoint, cfg.SecretDir, config.FromEnv()).
+		WithCatalog(modelCatalog)
 	// F13B/T114: the capacity-stub stand-in service time (module docs: it is
 	// deployment configuration and only the capacity-stub profile may carry it).
 	providers.SetStubServiceDelay(cfg.CapacityStubServiceDelay)
@@ -131,20 +141,14 @@ func run(logger *log.Logger) error {
 	notifier := background.NewInProcessNotifier(sync.OnceFunc(func() {
 		logger.Print("wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)")
 	}))
-	// F06/T039: the deployer-registered model catalog. A malformed catalog
-	// refuses startup (fail closed) rather than serving a half-configured
-	// registration surface.
-	modelCatalog, err := modelregistry.FromEnv(os.Getenv)
-	if err != nil {
-		return fmt.Errorf("model catalog rejected: %w", err)
-	}
 	// F06/T048: the versioned connector registry. Credential references are
 	// resolved inside Go from the deployer's env/file root; no request value can
 	// name a credential or an endpoint.
 	connectorService := connectors.New(db, objects, config.FromEnv(), cfg.SecretDir)
-	// F10/T064: the labelled answer generator. No model provider exists in this
-	// build, so generation is the extractive stub; the documented dev-stub fault
-	// switch is refused outside a stub profile (fail closed at startup).
+	// F10/T064: the labelled answer generator. Knowledge answer synthesis still
+	// uses the extractive stub: F06/T122 wires the real chat-completions adapter
+	// to the run-scoped model gateway, not to this seam. The documented dev-stub
+	// fault switch is refused outside a stub profile (fail closed at startup).
 	answerer, err := knowledge.AnswererFromEnv(cfg.Profile, config.FromEnv(), logger)
 	if err != nil {
 		return fmt.Errorf("answer generator rejected: %w", err)

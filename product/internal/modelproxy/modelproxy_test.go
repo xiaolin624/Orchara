@@ -139,6 +139,9 @@ func TestARealCandidateIsNotConfiguredWithoutAnEndpoint(t *testing.T) {
 }
 
 func TestAConfiguredEndpointWithoutACompiledAdapterFailsClosedAndHidesTheSecret(t *testing.T) {
+	// F06/T122: the adapter is compiled, but this candidate's config declares no
+	// protocol at all, so no adapter applies and the answer stays the same stable
+	// adapter_unavailable 503 — and the credential never appears in the error.
 	secret := "t024-model-secret-" + strings.Repeat("x", 20)
 	lookup := func(key string) (string, bool) {
 		if key == "ORCHARA_MODEL_SECRET" {

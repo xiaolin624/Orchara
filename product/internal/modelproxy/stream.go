@@ -6,9 +6,9 @@ package modelproxy
 // may deliver text and tool-call fragments, but the caller still receives the
 // same fully formed ProviderResponse it gets from Call; the server seals that
 // response as the receipt only after the stream completed. The documented dev
-// stub implements Stream deterministically from the canonical params; a real
-// vendor adapter is not compiled in this build and remains
-// `provider_adapter_unavailable` (never a fabricated stream).
+// stub implements Stream deterministically from the canonical params; F06/T122
+// adds the real chat-completions SSE adapter, which returns no partial answer on
+// a half stream and classifies it as transient (never a fabricated stream).
 
 import (
 	"context"

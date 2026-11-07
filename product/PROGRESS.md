@@ -2817,6 +2817,40 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   **447 passed in 273.73s**；Go build/vet/test 0；`gofmt` 空；`sync_spec --check` no drift。
 - 未改 `docs/spec/**`、`contracts/**`、迁移、产品 auth/审批/沙箱语义。
 
+## F06/T122 真实厂商模型 adapter（OpenAI-compatible chat completions，2026-11-07）
+
+- 票 #135（T122）。新增 `internal/modelproxy/openai.go`：单协议 chat-completions adapter
+  （每次调用一次物理 HTTP、无隐藏重试、8 MiB/超时上限、SSE delta/finish/usage 映射、
+  canonical `Output`）。`realProvider.Available` 从无条件 `adapter_unavailable` 改为 fail-closed
+  门禁：部署端点 + 已批准目的地（deployer catalog）+ 登记 `protocol=chat_compatible` +
+  Go 内可解析凭据；未配置/未批准/未支持协议分别返回 `provider_not_configured` /
+  `provider_destination_not_approved` / `adapter_unavailable`，预检失败不产生任何 ledger 行。
+- 错误分类：429/408/5xx/网络超时 → `*TransientError`（复用既有 ≤3 物理尝试与兼容 fallback）；
+  401/403/404/其它 4xx/3xx/非法 JSON/超大响应 → 终止性稳定 code；流式 error 帧/半段 EOF →
+  transient 且**不返回部分结果**；调用方取消原样返回。T024 验证路径的 provider 拒绝不再落成
+  500/internal（映射为稳定 code，业务失败不重试）。
+- 配置：`dev-stub`/`capacity-stub` 下显式成对设置 `ORCHARA_MODEL_ENDPOINT` +
+  `ORCHARA_MODEL_SECRET_REF` 时读出（半配置拒绝启动；`real-model` 语义不变）；`cmd/api` 先建
+  deployer catalog 再 `NewProviders(...).WithCatalog(...)`，adapter 用 catalog 批准
+  `endpoint_ref`/`secret_ref` 并把 catalog 凭据条目的 `env` 解析为凭据值（凭据值不进 catalog）；
+  capability/fallback/stream 均把登记 `Config` 传给 adapter。
+- 证据：Go 协议测试 19 条（本地 `httptest` fake provider：正常/tool_calls/usage/429/5xx/超时/
+  非法 JSON/8 MiB+1/半段流/error 帧/emit 停止/取消）；真实栈 e2e 11 条（PG + 编译 API + mTLS +
+  sealed artifact + loopback fake provider）：恰好一次请求与请求体、usage 入账与 decimal 计费、
+  receipt sha256==封存字节、429 三次重试后成功、5xx 三次失败、401 一次不重试、流式与半段重试
+  无残缺产物、未配置/未批准/坏凭据/不支持协议无 ledger 行、管理员登记→验证流程→fake provider
+  真实调用。报告 `reports/f06/T122-real-provider-adapter.md`。
+- 门禁：`go build ./...` / `go vet ./...` / `go test ./...` exit 0；`gofmt -l internal cmd tools` 空；
+  `pytest tests/f06/test_t122_real_provider.py` **11 passed in 132.51s (0:02:12)**；
+  `pytest tests/f06` **184 passed in 1398.11s (0:23:18)**；`python tools/sync_spec.py --check` no drift。
+- 集成分支 `22eb645` 已 merge（`1ab71c7`）；merge 后最终树复跑：`go build/vet/test ./...` exit 0，
+  `pytest tests/f06/test_t122_real_provider.py` **11 passed in 99.20s**、
+  `pytest tests/f06` **184 passed in 1390.38s (0:23:10)**。
+- 诚实边界：**真实厂商 end-to-end = blocked**（无获批端点/凭据/配额/外发批准），未用 fake
+  provider 冒充；`provider=stub` 行为不变。T044 时代"真实 provider 流式必 adapter_unavailable"
+  的断言被本票语义取代（测试改名并保留 fail-closed 断言，报告 §9 记录）。
+- 未改 `docs/spec/**`、`contracts/**`、迁移；未新增管理页面/契约端点。
+
 ## F13B T114 容量：100 用户 / 1000 应用 / 20 顶层替身执行（2026-11-08）
 
 - 分支 `t/t114-capacity-20-top`（GitHub #115）；短门禁 `pytest tests/f13b/test_t114_capacity.py -q`
@@ -2850,4 +2884,30 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 门禁：短 profile **1 passed in 169.61s**；完整测量 **1 passed in 2922.75s**；`pytest tests/f13b -q`（独占，含 T111 WSL/runsc）**235 passed, 1 skipped in 705.22s**；`go build/vet/test ./...` 0/0/0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` no drift。`pytest tests/f03 -q` **3 failed, 200 passed**：3 条是基线既有失败（`test_t029_invariants`/`test_t035_migration` 的 runs 播种与 F05/F07 request/conversation 外键冲突，`test_t032_pages` 对旧 runs.html 的过时断言），单跑同样失败（73.46s），与本票改动路径无关；已报告未静默修改（ENV-B2 §5）。
 - 边界：真实厂商模型、真实容量机器/多机/负载均衡、GPU/网络吞吐 `blocked`/`not_run`；未改
   `docs/spec/**`、`contracts/**`、迁移。
+
+## F13B T114 验收缺陷修复：取消在途执行不再泄漏 attempt/slot（CANCEL-RACE-SLOT-LEAK，2026-11-08）
+
+- 缺陷来源：T114（#115）AC4 真实观测——执行中 Run 被公开 cancel 时若命中在途 capability 调用，worker
+  的上传/结果提案被 409 `run_state_conflict` 拒绝后**直接返回、不确认 attempt exit**，Run 永远
+  `cancelling`、无 `finished_at`、slot 泄漏到租约 sweep（2/4/6 次/轮）。
+- 根因：`internal/presetexec/presetexec.go` 的 `refuse`/`failRun`/`failAfterStart` 在 `SubmitResult`
+  报错分支直接 return；没有 exit 事实，现有 finalizer（优先级 cancel > proposal，未改）无法提交
+  `cancelled`/释放 slot。
+- 修复：新增 `endRefusedProposal` 并统一三条失败路径——提案被拒后仍 `ConfirmExit`（token 仍 live）→
+  finalizer 提交真实终态；exit 也被拒（`stale_attempt`/`run_terminal`）→ 只尝试一次、安全返回、
+  诊断可读且不含 token。附带修复 deadline 拒绝路径的同形态泄漏。
+- 红→绿（真实栈，`tests/f13b/test_t114_cancel_exit.py`，`capacity-stub` 5s 在途替身）：
+  修复前 run `e5b01a5c-…` 停在 `cancelling`、`finished_at` NULL、attempt live、`execution_slots.used=1`
+  （**1 failed in 79.77s**）；修复后 run `6f79e93b-…` → `cancelled` + `finished_at` + attempt exited +
+  `execution_slots.used=0`，supervisor `outcome=cancelled`、intent→stop **4.854s**
+  （**1 passed in 32.47s**）；迟到 result 409 `run_terminal` 不复活、取消后无新增 worker artifact。
+- Go 单测：`cancel_exit_test.go`（4 失败路径 × `run_state_conflict`/`run_terminal`/`stale_attempt`、
+  succeeded 提案被拒、exit 被拒）先红（exits=[]）后绿。
+- 门禁：`go build/vet/test ./...` 0/0/0；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
+  `pytest tests/f03/test_t036_cancel.py -q` **15 passed in 158.66s**；
+  `pytest tests/f13b/test_t114_capacity.py -q`（短 profile）**2 passed, 1 skipped in 155.31s**。
+- 证据：`reports/f13b/T114-cancel-exit-fix.md`；原始日志 `E:\Orchara\.scratch\f13b\cancel-fix\`。
+  未改 `docs/spec/**`、`contracts/**`、迁移、finalizer 优先级或 `waiting`/`recovery_pending` 语义。
+  未覆盖：exit 确认本身的瞬时失败重试、cancel 与 claim/exit 的并发注入、T107 FAULT-05（并发窗口，
+  该用例含 WSL 读取，记为 `not_run`）。
 
