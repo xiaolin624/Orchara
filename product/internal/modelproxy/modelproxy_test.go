@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"orchara/platform/internal/config"
 )
@@ -203,5 +204,75 @@ func TestFormatUnitsNeverUsesFloats(t *testing.T) {
 	}
 	if got := estimateReservedUnits(8); got != 2*reservedUnitsPerInputToken {
 		t.Errorf("estimateReservedUnits(8) = %d", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// F13B/T114: the capacity-stub stand-in service time
+// ---------------------------------------------------------------------------
+
+func TestCapacityStubServiceDelayIsAProfileGatedStandIn(t *testing.T) {
+	candidate := testCandidate("stub")
+	fixture := testFixture(`{"case":"ok"}`)
+	request := CallRequest{
+		Candidate: candidate, Fixture: fixture, FixtureSHA256: fixtureSHA256Hex(fixture),
+	}
+
+	capacityProviders := stubProviderFor(t, config.ProfileCapacityStub)
+	capacityProviders.SetStubServiceDelay(100 * time.Millisecond)
+	capacityProvider, err := capacityProviders.For(candidate)
+	if err != nil {
+		t.Fatalf("capacity-stub For: %v", err)
+	}
+	started := time.Now()
+	if _, err := capacityProvider.Call(context.Background(), request); err != nil {
+		t.Fatalf("capacity-stub call: %v", err)
+	}
+	delayed := time.Since(started)
+	if delayed < 90*time.Millisecond {
+		t.Fatalf("the capacity-stub stand-in service time did not apply: %s", delayed)
+	}
+
+	// dev-stub must keep its deterministic, immediate timing: the same setter is
+	// a no-op outside the capacity-stub profile.
+	devProviders := stubProviderFor(t, config.ProfileDevStub)
+	devProviders.SetStubServiceDelay(100 * time.Millisecond)
+	devProvider, err := devProviders.For(candidate)
+	if err != nil {
+		t.Fatalf("dev-stub For: %v", err)
+	}
+	started = time.Now()
+	if _, err := devProvider.Call(context.Background(), request); err != nil {
+		t.Fatalf("dev-stub call: %v", err)
+	}
+	if immediate := time.Since(started); immediate >= 50*time.Millisecond {
+		t.Fatalf("dev-stub timing changed by the capacity knob: %s", immediate)
+	}
+}
+
+func TestCapacityStubServiceDelayObservesCancellation(t *testing.T) {
+	providers := stubProviderFor(t, config.ProfileCapacityStub)
+	providers.SetStubServiceDelay(5 * time.Second)
+	candidate := testCandidate("stub")
+	provider, err := providers.For(candidate)
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if _, err := provider.Call(ctx, CallRequest{Candidate: candidate, Fixture: testFixture(`{}`),
+		FixtureSHA256: fixtureSHA256Hex(testFixture(`{}`))}); err == nil {
+		t.Fatal("a cancelled stand-in call must return the context error")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("the stand-in delay did not observe cancellation: %s", elapsed)
+	}
+	// A real-model deployment cannot install a stand-in delay at all.
+	realProviders := NewProviders(config.ProfileRealModel, "https://model.invalid", "",
+		func(string) (string, bool) { return "", false })
+	realProviders.SetStubServiceDelay(100 * time.Millisecond)
+	if realProviders.stub.serviceDelay != 0 {
+		t.Fatal("a real-model provider set must not carry a stand-in delay")
 	}
 }
