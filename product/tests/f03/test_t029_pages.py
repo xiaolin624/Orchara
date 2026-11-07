@@ -3,8 +3,8 @@
 Two layers, both real:
 
 * the page and its asset are fetched from the running API over HTTP, and the
-  structural assertions are about what the browser receives (no query string as
-  input, no credential storage, the detail fields incl. the lease facts);
+  structural assertions are about what the browser receives (query input limited
+  to the run id, no credential storage, the detail fields incl. the lease facts);
 * ``runs.js`` is executed under Node with stubbed headers, so path building, the
   state sentence and the "no lease, no fake progress" rule are observed
   behaviour rather than source text.
@@ -81,7 +81,13 @@ def test_the_runs_page_is_served_with_real_link_markers(t029_stack) -> None:
 
     assert "localStorage" not in body
     assert "sessionStorage" not in body
-    assert "location.search" not in body
+    # The page may deep-link to one run (`/runs?run=<uuid>`): F12/T095 wired that
+    # so the chat page's "查看运行" link opens the run it refers to. That is the
+    # only query parameter the page may read, and the value must not become a
+    # secret carrier - the assertion this replaced forbade `location.search`
+    # outright, which contradicted the deep link rather than protecting a
+    # credential.
+    assert re.findall(r"URLSearchParams\([^)]*\)\.get\(\s*'([^']+)'", body) == ["run"]
     assert "?token=" not in body
 
 
