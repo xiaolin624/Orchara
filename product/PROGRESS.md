@@ -2609,8 +2609,8 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 ## F13B T106（GitHub #107）：故障注入审批重启、换参与写后丢回执（2026-11-07）
 
 - 分支 `t/t106-approval-faults` / worktree `E:\Orchara-wt\t106`；基线 `integration/f13b` @ `c132e8e`，
-  完成前先 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`）→ `cb20f85`；随后集成 tip 又推进到
-  `1ce0d65`（T107 + 已合并的 T106），再次 merge → `18e2bd4`；`PROGRESS.md` 冲突保留
+  完成前依次 merge 推进后的集成 tip：`f234e72`（T104/T105）→ `cb20f85`；`1ce0d65`（T107 + 已合并的
+  T106）→ `18e2bd4`；`d593c1e`（T107 最终证据/环境，docs-only）→ `7edd475`；`PROGRESS.md` 冲突保留
   T104/T105/T106/T107 四节。
 - 交付：新增 `tests/f13b/fault_support.py`（Fault/进程/PG/证据 writer，仅 `F13B_WRITE_EVIDENCE=1` 重写）、
   `tests/f13b/t106_worker.py`（真实 worker OS 进程）、`tests/f13b/test_t106_approval_faults.py`
@@ -2641,6 +2641,10 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 再 merge `integration/f13b` @ `1ce0d65`（T107 + 已合并的 T106）后（merge commit `18e2bd4`）复跑：
   `pytest tests/f13b` **186 passed in 211.65s**；`pytest tests/f12` **447 passed in 311.84s**；
   Go `build/vet/test` 全 0；gofmt 空；`sync_spec --check` → `no drift`。
+- 最终 docs-only merge（`d593c1e` → `7edd475`：仅 `PROGRESS.md` + T107 报告）后，
+  `git diff 18e2bd4..7edd475 -- product/tests product/internal product/cmd product/tools product/db
+  product/contracts` 为空，故真实栈结果不变；在 `7edd475` 复跑 `go build/vet/test` 全 0、gofmt 空、
+  `sync_spec --check` → `no drift`（当时 T108 占用 realstack 锁，未重复真实栈套件）。
 
 ## F13B T107（GitHub #108）：旧图、活旧进程、取消与事件竞态故障注入（2026-11-07）
 - 分支 `t/t107-lifecycle-faults` / worktree `E:\Orchara-wt\t107`；基线 `integration/f13b` @ `834ca68`，结束前 merge `integration/f13b` @ `f234e72`（T105）→ 合并提交 `db94214`，其上重跑门禁；证据最后一轮在 `e904e0c` 树。

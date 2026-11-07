@@ -2,11 +2,14 @@
 
 - **状态：`passed`**（真实栈上 FAULT-01/02/03 三个故障全部注入并通过；真实供应商/真实模型 `not_run`）
 - 分支：`t/t106-approval-faults`；worktree `E:\Orchara-wt\t106`
-- 基线：`integration/f13b` @ `c132e8e`；完成前先 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`）
-  → merge commit `cb20f85`；随后 `integration/f13b` 又推进到 `1ce0d65`（T107 + 已合并的 T106），再次 merge
-  → merge commit `18e2bd4`；`PROGRESS.md` 冲突保留 T104/T105/T106/T107 四节
-- 证据生成时的 HEAD：`cb20f85`（证据 JSON 的 `product_commit` 字段即此值；其后只追加了 T107 的测试/文档
-  与本次 merge，T106 代码未变）
+- 基线：`integration/f13b` @ `c132e8e`；完成前依次 merge 推进后的集成 tip：
+  `f234e72`（T104/T105）→ `cb20f85`；`1ce0d65`（T107 + 已合并的 T106）→ `18e2bd4`；
+  `d593c1e`（T107 最终证据/环境，仅 docs）→ `7edd475`。`PROGRESS.md` 冲突保留
+  T104/T105/T106/T107 四节。
+- 证据生成时的 HEAD：`cb20f85`（证据 JSON 的 `product_commit` 字段即此值；其后只追加了 T107 的测试/文档、
+  两次 docs-only merge 与本票文档，T106 代码未变）
+- 最终代码树与门禁树一致：`git diff 18e2bd4..7edd475 -- product/tests product/internal product/cmd
+  product/tools product/db product/contracts` 为空；f13b/f12 的 186/447 全绿结果适用于最终代码树。
 - 交付（全部为新增文件，未改动 `docs/spec/**`、`contracts/**`、迁移或既有票测试断言）：
   - `product/tests/f13b/test_t106_approval_faults.py`：3 条真实栈测试（FAULT-01/02/03），共 53 条断言
   - `product/tests/f13b/fault_support.py`：`Fault` 记录（注入点/输入/预期/实际/独立账本/命令）、
@@ -244,6 +247,20 @@ $ python -m pytest tests/f12 -q
 ........................................................................ [ 96%]
 ...............                                                          [100%]
 447 passed in 311.84s (0:05:11)
+```
+
+最后一次 merge 的是集成 docs-only 变更（`d593c1e`：仅 `PROGRESS.md` + T107 报告）→ `7edd475`；
+`git diff 18e2bd4..7edd475 -- product/tests product/internal product/cmd product/tools product/db
+product/contracts` 为空，故真实栈结果不因该 merge 改变。宿主上当时 T108 正占用 realstack 锁，
+未重复真实栈套件；在 `7edd475` 上复跑非真实栈门禁：
+
+```text
+$ go build ./...   # exit 0
+$ go vet ./...     # exit 0
+$ go test ./...    # exit 0
+$ gofmt -l internal cmd tools   # 空输出
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
 ```
 
 三次均：
