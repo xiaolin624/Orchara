@@ -31,6 +31,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"orchara/platform/internal/providercodes"
 )
 
 // Kind is one fixed handler kind. The database CHECK constraint and this
@@ -194,8 +196,8 @@ const (
 	// configured is a deployment fact, not a transient outage: retrying cannot
 	// fix it, so it is a business failure. The compatibility report itself is a
 	// successful job with a failed report, never a job failure.
-	CodeProviderNotConfigured      = "provider_not_configured"
-	CodeProviderAdapterUnavailable = "provider_adapter_unavailable"
+	CodeProviderNotConfigured      = providercodes.NotConfigured
+	CodeProviderAdapterUnavailable = providercodes.DispatchAdapterUnavailable
 	CodeModelCallRefused           = "model_call_refused"
 	CodeFixtureMissing             = "fixture_missing"
 	CodeReportNotReady             = "report_not_ready"

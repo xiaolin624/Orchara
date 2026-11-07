@@ -37,10 +37,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"orchara/platform/internal/providercodes"
 )
 
 // Stable error codes. They are the vocabulary the HTTP layer maps to contract
 // statuses and the owner-facing ledger shows (never a provider payload).
+//
+// The provider codes are aliases of internal/providercodes, the single source
+// shared with the job-scoped internal endpoint and the background retry table
+// (F06/T122; B2 review fix H3).
 const (
 	CodeRunNotFound             = "run_not_found"
 	CodeRunNotRunning           = "run_not_running"
@@ -57,18 +63,25 @@ const (
 	CodeToolUnavailable         = "tool_not_available"
 	CodeResultArtifactInvalid   = "result_artifact_invalid"
 	CodeManifestUnavailable     = "manifest_unavailable"
-	CodeProviderNotConfigured   = "provider_not_configured"
-	CodeAdapterUnavailable      = "adapter_unavailable"
-	CodeProviderTransient       = "provider_transient"
-	CodeProviderResponseInvalid = "provider_response_invalid"
+	CodeProviderNotConfigured   = providercodes.NotConfigured
+	CodeAdapterUnavailable      = providercodes.AdapterUnavailable
+	CodeProviderTransient       = providercodes.Transient
+	CodeProviderResponseInvalid = providercodes.ResponseInvalid
 	// F06/T122 provider protocol vocabulary: the destination is not one the
 	// deployer registered, or the provider answer exceeded the adapter's 8 MiB
 	// protocol limit (the existing provider_response_invalid covers malformed
 	// chat-completions and provider status refusals below).
-	CodeProviderDestinationNotApproved = "provider_destination_not_approved"
-	CodeProviderResponseTooLarge       = "provider_response_too_large"
-	CodeParamsInvalid                  = "validation_failed"
-	CodeInternal                       = "internal_error"
+	CodeProviderDestinationNotApproved = providercodes.DestinationNotApproved
+	CodeProviderResponseTooLarge       = providercodes.ResponseTooLarge
+	// CodeCallerCancelled is the stable ledger code for a capability call whose
+	// caller went away (client disconnect or request deadline). It is a
+	// cancellation, never a provider claim: the attempt is closed and its
+	// reservation released, but the failure is not classified as a provider
+	// error and never retried or failed over (B2 review fix H2). It is the
+	// non-stream analogue of CodeStreamCancelled.
+	CodeCallerCancelled = "caller_cancelled"
+	CodeParamsInvalid   = "validation_failed"
+	CodeInternal        = "internal_error"
 	// F06/T046 budget vocabulary.
 	CodeBudgetExhausted        = "budget_exhausted"
 	CodeBudgetCurrencyMismatch = "budget_currency_mismatch"

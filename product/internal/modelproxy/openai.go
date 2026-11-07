@@ -44,6 +44,7 @@ import (
 	"orchara/platform/internal/budget"
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/modelregistry"
+	"orchara/platform/internal/providercodes"
 )
 
 const (
@@ -94,19 +95,21 @@ func (e *ProviderStatusError) Error() string {
 }
 
 // ProviderCode is the stable, non-secret code of this refusal. It is the code
-// the capability ledger records.
+// the capability ledger records. The strings are the shared provider vocabulary
+// (internal/providercodes), not local literals: the HTTP and background-job
+// surfaces must not drift from the ledger.
 func (e *ProviderStatusError) ProviderCode() string {
 	switch {
 	case e.StatusCode == http.StatusUnauthorized, e.StatusCode == http.StatusForbidden:
-		return "provider_permission_denied"
+		return providercodes.PermissionDenied
 	case e.StatusCode == http.StatusNotFound:
-		return "provider_model_not_found"
+		return providercodes.ModelNotFound
 	case e.StatusCode >= 300 && e.StatusCode < 400:
-		return "provider_redirected"
+		return providercodes.Redirected
 	case e.StatusCode >= 400 && e.StatusCode < 500:
-		return "provider_request_rejected"
+		return providercodes.RequestRejected
 	default:
-		return "provider_error"
+		return providercodes.Unclassified
 	}
 }
 
@@ -123,19 +126,19 @@ func ProviderCode(err error) string {
 	}
 	switch {
 	case errors.Is(err, ErrResponseInvalid):
-		return "provider_response_invalid"
+		return providercodes.ResponseInvalid
 	case errors.Is(err, ErrResponseTooLarge):
-		return "provider_response_too_large"
+		return providercodes.ResponseTooLarge
 	case errors.Is(err, ErrDestinationUnapproved):
-		return "provider_destination_not_approved"
+		return providercodes.DestinationNotApproved
 	case errors.Is(err, ErrCallInvalid):
-		return "provider_call_invalid"
+		return providercodes.CallInvalid
 	case errors.Is(err, ErrAdapterUnavailable):
-		return "adapter_unavailable"
+		return providercodes.AdapterUnavailable
 	case errors.Is(err, ErrNotConfigured):
-		return "provider_not_configured"
+		return providercodes.NotConfigured
 	case errors.Is(err, ErrCandidateUnavailable):
-		return "candidate_unavailable"
+		return providercodes.CandidateUnavailable
 	}
 	return ""
 }
@@ -224,25 +227,36 @@ func (p *realProvider) checkDestination(reference string) error {
 
 // resolveCredential reads the vendor credential inside Go.
 //
+// Priority is fixed: the candidate row's `secret_ref` is the explicit choice and
+// is tried first; the deployment-level credential is the fallback used only when
+// the row reference cannot be resolved (F13B/T122 review fix S2). Both are
+// deployment configuration, never request values.
+//
 // The returned value is the only place the credential exists; no error path
 // includes it or the reference, so a caller may log the error.
 func (p *realProvider) resolveCredential(rawRef string) (string, error) {
 	reference := strings.TrimSpace(rawRef)
-	if reference == "" {
-		return "", ErrNotConfigured
-	}
-	if secret, err := resolveSecret(reference, p.secretDir, p.lookup); err == nil {
-		return secret, nil
-	}
-	if p.catalog != nil {
-		if name, ok := p.catalog.CredentialEnv(reference); ok && strings.TrimSpace(name) != "" {
-			lookup := p.lookup
-			if lookup == nil {
-				lookup = config.FromEnv()
+	if reference != "" {
+		if secret, err := resolveSecret(reference, p.secretDir, p.lookup); err == nil {
+			return secret, nil
+		}
+		if p.catalog != nil {
+			if name, ok := p.catalog.CredentialEnv(reference); ok && strings.TrimSpace(name) != "" {
+				lookup := p.lookup
+				if lookup == nil {
+					lookup = config.FromEnv()
+				}
+				if value, found := lookup(strings.TrimSpace(name)); found && strings.TrimSpace(value) != "" {
+					return strings.TrimSpace(value), nil
+				}
 			}
-			if value, found := lookup(strings.TrimSpace(name)); found && strings.TrimSpace(value) != "" {
-				return strings.TrimSpace(value), nil
-			}
+		}
+	}
+	// Deployment-level fallback: an empty or unresolvable deployment reference
+	// simply ends in provider_not_configured, exactly like an absent one.
+	if deployment := strings.TrimSpace(p.deploySecret); deployment != "" {
+		if secret, err := resolveSecret(deployment, p.secretDir, p.lookup); err == nil {
+			return secret, nil
 		}
 	}
 	return "", ErrNotConfigured

@@ -28,11 +28,17 @@ The five executed evidence sections (``support/t113.py`` aggregates them into
   credential revocation (``PATCH /admin/principals/{id}`` disabled), and the
   grounded-answer provenance (answers are regenerated on every request even when
   the retrieval cache hits; answer text is never stored, so it cannot cross a
-  user or a point in time).
+  user or a point in time). The revocation half of AC3 is recorded as
+  **partial** (B2 review fix T113-5): both real revocation entries run before the
+  cache lookup, so the synthetic poisoned row is the only direct cache-layer
+  re-check, and no per-resource grant exists in this build.
 * ``negative_cases`` AC4: source-revision changes (add a document, re-upload the
   same bytes as a new document) never hit the old key; empty and partial results
-  are not stored; a previously stored entry whose sealed body became unreadable
-  is discarded instead of served; an over-bound entry is not stored.
+  are not stored; a previously stored entry whose sealed body was removed is
+  discarded instead of served, while a transient sealed-body read failure only
+  misses that request and the row survives (B2 review fix T113-2); the sealed
+  source/body objects are independently re-hashed (T113-6); an over-bound entry
+  is not stored.
 * ``boundaries``  AC5: an unknown cache switch refuses startup, and a cache
   backend that is unavailable degrades to the authoritative path instead of
   failing or serving a hit, then recovers with a fresh process.
@@ -280,13 +286,33 @@ def test_t113_cache_off_vs_on_comparison_with_latency_and_cost(
     summary = t113.comparison_summary(
         specs=specs,
         total_chunks=total_chunks,
-        cold_on_ms=cold_on_ms,
-        cold_off_ms=cold_off_ms,
-        repeat_on_ms=repeat_on_ms,
-        repeat_off_ms=repeat_off_ms,
+        measurements=measurements,
         rows=rows,
     )
     print("T113-COMPARISON " + json.dumps(summary, ensure_ascii=False))
+    # The summary is derived from this run's measured rows, so every correctness
+    # count must equal the spec count and both hit rates must be measured facts
+    # (F13B/T113 review fix T113-1: these fields used to be constants).
+    assert summary["correctness"]["specs_compared"] == len(specs), summary["correctness"]
+    assert summary["correctness"]["measured_requests"] == len(measurements), summary["correctness"]
+    assert summary["correctness"]["measured_answer_digests"] == len(measurements), (
+        summary["correctness"]
+    )
+    assert (
+        summary["correctness"]["answers_identical_cache_on_cold_vs_off"] == len(specs)
+    ), summary["correctness"]
+    assert (
+        summary["correctness"]["answers_identical_cache_on_hit_vs_off"] == len(specs)
+    ), summary["correctness"]
+    assert summary["correctness"]["answers_identical_hit_vs_cold"] == len(specs), (
+        summary["correctness"]
+    )
+    assert summary["hit_rates"]["cache_on_cold"] == 0.0, summary["hit_rates"]
+    assert summary["hit_rates"]["cache_on_repeat"] == 1.0, summary["hit_rates"]
+    assert summary["hit_rates"]["cache_off"] == 0.0, summary["hit_rates"]
+    assert summary["hit_rates"]["cache_on_overall"] == len(specs) / (2 * len(specs)), (
+        summary["hit_rates"]
+    )
     # Gross-regression guard only (the same precedent as T067/ADR 0015 D5): the
     # host runs several suites at once, so the quantitative keep/drop verdict is
     # the recorded P50/P95 table, not a sub-second ordering assertion.
@@ -326,13 +352,12 @@ def test_t113_cache_off_vs_on_comparison_with_latency_and_cost(
             },
             "measurements": measurements,
             "cache_on_repeat": {
-                **t113.stats(repeat_on_ms),
-                "hit_rate": hit_rate_repeat,
+                **summary["cache_on_repeat"],
                 "validated_chunks_equals_items": True,
             },
-            "cache_on_cold": {**t113.stats(cold_on_ms), "hit_rate": 0.0},
-            "cache_off_repeat": {**t113.stats(repeat_off_ms), "hit_rate": 0.0},
-            "cache_off_cold": {**t113.stats(cold_off_ms), "hit_rate": 0.0},
+            "cache_on_cold": summary["cache_on_cold"],
+            "cache_off_repeat": summary["cache_off_repeat"],
+            "cache_off_cold": summary["cache_off_cold"],
             "summary": summary,
             "web_path": web_path,
             "cache_rows": [
@@ -375,6 +400,39 @@ def test_t113_deletion_leaves_zero_stale_cache_hits(
     )
     assert t113.DELETED_MARKER in deleted_item["text"]
     old_key = old_row["cache_key"]
+
+    # T113-6 (independent truth): the test reads the sealed objects itself and
+    # re-computes SHA-256, instead of trusting the API projection. Three facts
+    # must agree: the sealed source object <-> the citation's source_sha256, and
+    # the sealed chunk body <-> the cache row's body_sha256 (and its text).
+    source_artifact = t055.artifact_row(dbname, artifact_ids[1])
+    source_bytes = t113.object_path(stack, source_artifact["object_key"]).read_bytes()
+    source_sha256 = t113.sha256_hex(source_bytes)
+    deleted_chunk_row = next(
+        row
+        for row in t055.chunk_rows(dbname, deleted_document)
+        if row["id"] == deleted_item["chunk_id"]
+    )
+    deleted_citation = t055.citation_of(deleted_chunk_row)
+    stored_deleted_item = next(
+        item for item in old_row["items"] if item["document_id"] == deleted_document
+    )
+    body_artifact = t055.artifact_row(dbname, stored_deleted_item["body_artifact_id"])
+    body_bytes = t113.object_path(stack, body_artifact["object_key"]).read_bytes()
+    body_sha256 = t113.sha256_hex(body_bytes)
+    assert source_sha256 == source_artifact["sha256"] == deleted_citation["source_sha256"], (
+        source_sha256,
+        source_artifact["sha256"],
+        deleted_citation.get("source_sha256"),
+    )
+    assert body_sha256 == body_artifact["sha256"] == stored_deleted_item["body_sha256"], (
+        body_sha256,
+        body_artifact["sha256"],
+        stored_deleted_item["body_sha256"],
+    )
+    assert stored_deleted_item["text"] == body_bytes.decode("utf-8")
+    assert stored_deleted_item["citation"] == deleted_citation
+
     hits_before = t113.hit_counts(t067.cache_rows(dbname, base_id=base_id))
     first_hit = t055.retrieval_query(alice, base_id, query, top_k=top_k)
     assert first_hit.json["retrieval"]["cache"]["hit"] is True, first_hit.json["retrieval"]
@@ -678,6 +736,22 @@ def test_t113_deletion_leaves_zero_stale_cache_hits(
             },
             "independent_truth": {
                 "document_row_after": document_after,
+                "sealed_object_sha256": {
+                    "source_artifact_id": artifact_ids[1],
+                    "source_object_sha256_recomputed": source_sha256,
+                    "source_artifact_sha256": source_artifact["sha256"],
+                    "citation_source_sha256": deleted_citation["source_sha256"],
+                    "body_artifact_id": stored_deleted_item["body_artifact_id"],
+                    "body_object_sha256_recomputed": body_sha256,
+                    "body_artifact_sha256": body_artifact["sha256"],
+                    "cache_item_body_sha256": stored_deleted_item["body_sha256"],
+                    "cache_item_text_equals_object": (
+                        stored_deleted_item["text"] == body_bytes.decode("utf-8")
+                    ),
+                    "cache_item_citation_equals_row": (
+                        stored_deleted_item["citation"] == deleted_citation
+                    ),
+                },
                 "deletion_job": {
                     "state": job["state"],
                     "remaining_scopes": t069.remaining_scopes(job),
@@ -840,6 +914,32 @@ def test_t113_revocation_and_cross_principal_hits_are_zero(
     cache_evidence.record(
         "revocation",
         {
+            # B2 review fix T113-5: this section is partial for AC3. Deletion is
+            # proven by a real tombstone; "revocation" is covered only by
+            # mechanisms that run *before* the cache lookup plus one synthetic
+            # cache-layer re-check, so it must not be reported as a full pass.
+            "ac3_verdict": "partial",
+            "ac3_scope": {
+                "deletion": (
+                    "proven: real document tombstone, every read path refuses, poisoned live row "
+                    "discarded, new source-digest key"
+                ),
+                "revocation": (
+                    "partial: cross-principal isolation (404) and the admin credential disable (401) "
+                    "both happen before the cache lookup (GetBase/auth), so their zero-hit evidence "
+                    "does not by itself exercise a cache-layer authorization re-check; the only direct "
+                    "cache-layer re-check observed here is the synthetic poisoned-row case (a stored "
+                    "item forced under another live key)"
+                ),
+                "per_resource_grant": (
+                    "not_applicable: policy.ResourceTypes is {application}; this build has no "
+                    "per-knowledge-base/document grant or revoke entry to drive the cache"
+                ),
+                "acl_epoch_fact": (
+                    "the cache key's acl_epoch is the knowledge-base revision, not a per-resource "
+                    "grant epoch; no grant-change entry exists to test a real acl_epoch transition"
+                ),
+            },
             "entries": {
                 "cross_principal": "POST /knowledge-bases/{id}/retrieval-queries as another real user",
                 "credential": "PATCH /api/v1/admin/principals/{id} {disabled:true} (admin session)",
@@ -1037,6 +1137,46 @@ def test_t113_unstable_sources_and_partial_results_are_not_served(
     healed_hit = t055.retrieval_query(alice, partial_base, query, top_k=top_k)
     assert healed_hit.json["retrieval"]["cache"]["hit"] is True
 
+    # (5b) T113-2: a *transient* sealed-body read failure is a miss for this
+    # request only. The entry is a rebuildable optimization, so it must survive
+    # an availability blip (a concurrent open failing with an OS error that is
+    # not ErrNotExist/ErrInvalidKey/ErrTooLarge) and still hit after recovery;
+    # only the deterministic removal above discards it. The old code deleted the
+    # row for every read error.
+    transient_key = t067.cache_row_with_prefix(
+        dbname, healed_hit.json["retrieval"]["cache"]["key_prefix"]
+    )["cache_key"]
+    transient_artifact = t055.artifact_row(dbname, unreadable["body_artifact_id"])
+    release_transient = t113.hold_object_unreadable(
+        stack, transient_artifact["object_key"]
+    )
+    hits_before_transient = int(t067.cache_row_by_key(dbname, transient_key)["hit_count"])
+    try:
+        transient = t055.retrieval_query(alice, partial_base, query, top_k=top_k)
+        transient_cache = transient.json["retrieval"]["cache"]
+        assert transient.status == 200, transient.text
+        assert transient_cache["hit"] is False, transient_cache
+        assert transient_cache["discarded"] is True, transient_cache
+        assert transient_cache["discard_reason"] == "cache_unavailable", transient_cache
+        surviving_row = t067.cache_row_by_key(dbname, transient_key)
+        assert surviving_row is not None, (
+            "a transient sealed-body read failure must keep the cache row"
+        )
+        assert int(surviving_row["hit_count"]) == hits_before_transient, surviving_row
+        assert unreadable["id"] not in {
+            item["chunk_id"] for item in transient.json["items"]
+        }, transient.json["items"]
+    finally:
+        release_transient()
+    recovered_transient = t055.retrieval_query(alice, partial_base, query, top_k=top_k)
+    assert recovered_transient.json["retrieval"]["cache"]["hit"] is True, (
+        recovered_transient.json["retrieval"]["cache"]
+    )
+    transient_row_after_recovery = t067.cache_row_by_key(dbname, transient_key)
+    assert int(transient_row_after_recovery["hit_count"]) == hits_before_transient + 1, (
+        transient_row_after_recovery
+    )
+
     # (6) An over-bound entry is refused. The fixed corpus is the maximum-size
     # shape reachable through the public API: 50 chunks at the 1200-rune chunk
     # bound with 4-byte runes, so the measured body is near the 256 KiB policy
@@ -1060,8 +1200,12 @@ def test_t113_unstable_sources_and_partial_results_are_not_served(
     oversized_items = oversized_response.json["items"]
     assert len(oversized_items) == t113.OVERSIZED_CHUNKS, len(oversized_items)
     citation_text = {row["id"]: row["citation"] for row in oversized_rows}
+    # The policy's body accounting is UTF-8 text bytes + citation JSON bytes
+    # (knowledge.shouldStoreRetrievalCache / cacheItemsBytes); the test must use
+    # the same unit, not characters (F13B/T113 review fix T113-1).
     measured_body_bytes = sum(
-        len(item["text"].encode("utf-8")) + len(citation_text[item["chunk_id"]])
+        len(item["text"].encode("utf-8"))
+        + len(citation_text[item["chunk_id"]].encode("utf-8"))
         for item in oversized_items
     )
     oversized_cache = oversized_response.json["retrieval"]["cache"]
@@ -1091,7 +1235,9 @@ def test_t113_unstable_sources_and_partial_results_are_not_served(
                 "did not read the sealed object. A missing/replaced object was therefore served from "
                 "the memoized text while the authoritative path skipped that candidate. The fix "
                 "re-reads each sealed body on a hit and requires the exact stored text and sha256 "
-                "(internal/knowledge/cache_store.go:cachedBodyMatches)."
+                "(internal/knowledge/cache_store.go); the B2 review fix T113-2 additionally separates "
+                "a deterministic unavailability (missing/invalid/oversized object -> discard with "
+                "item_unreadable) from a transient I/O failure (miss with cache_unavailable, row kept)."
             ),
             "observed": {
                 "source_change": {
@@ -1126,6 +1272,19 @@ def test_t113_unstable_sources_and_partial_results_are_not_served(
                     "entry_deleted": entry_deleted_after_discard,
                     "healed_stored": healed.json["retrieval"]["cache"]["stored"],
                     "healed_hit": healed_hit.json["retrieval"]["cache"]["hit"],
+                },
+                "transient_sealed_body_read_failure": {
+                    "key_prefix": transient_key[:16],
+                    "hit": transient_cache["hit"],
+                    "discarded": transient_cache["discarded"],
+                    "discard_reason": transient_cache["discard_reason"],
+                    "row_survived": surviving_row is not None,
+                    "hit_count_before": hits_before_transient,
+                    "hit_count_after_miss": int(surviving_row["hit_count"]),
+                    "recovered_hit": recovered_transient.json["retrieval"]["cache"]["hit"],
+                    "hit_count_after_recovery": int(
+                        transient_row_after_recovery["hit_count"]
+                    ),
                 },
                 "oversized_entry": {
                     "corpus_chunks": len(oversized_rows),
@@ -1273,3 +1432,83 @@ def test_t113_failure_and_recovery_boundaries(
             },
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# T113-1 self-check: the summary is computed from the measured rows, not constants
+# ---------------------------------------------------------------------------
+def test_t113_comparison_summary_is_derived_from_measured_rows() -> None:
+    """F13B/T113 review fix T113-1.
+
+    Before the fix ``comparison_summary`` hard-coded ``answers_identical_* =
+    len(specs)`` and ``hit_rate = 1.0/0.0``. This pure test feeds the aggregator
+    one inconsistent answer pair and a zero cache-hit rate: the summary must
+    report exactly those facts, so a future constant cannot silently pass.
+    """
+
+    def row(phase, mode, query, top_k, hit, digest, latency):
+        return {
+            "phase": phase,
+            "mode": mode,
+            "query": query,
+            "top_k": top_k,
+            "cache_hit": hit,
+            "answer_sha256": digest,
+            "latency_ms": latency,
+        }
+
+    specs = (("q1", 3), ("q2", 5))
+    measurements = [
+        row("cold", "cache_on", "q1", 3, False, "digest-a", 10.0),
+        row("cold", "cache_off", "q1", 3, False, "digest-b", 12.0),  # divergent answer
+        row("cold", "cache_on", "q2", 5, False, "digest-c", 11.0),
+        row("cold", "cache_off", "q2", 5, False, "digest-c", 13.0),
+        row("repeat", "cache_on", "q1", 3, False, "digest-a", 9.0),  # zero hits
+        row("repeat", "cache_off", "q1", 3, False, "digest-b", 12.0),
+        row("repeat", "cache_on", "q2", 5, False, "digest-c", 9.5),
+        row("repeat", "cache_off", "q2", 5, False, "digest-c", 13.0),
+    ]
+    summary = t113.comparison_summary(
+        specs=specs, total_chunks=3, measurements=measurements, rows=[]
+    )
+    correctness = summary["correctness"]
+    assert correctness["specs_compared"] == 2, correctness
+    assert correctness["answers_identical_cache_on_cold_vs_off"] == 1, correctness
+    assert correctness["answers_identical_cache_on_hit_vs_off"] == 1, correctness
+    assert correctness["answers_identical_hit_vs_cold"] == 2, correctness
+    assert correctness["mismatched_specs"]["cache_on_cold_vs_off"] == [
+        {"query": "q1", "top_k": 3}
+    ], correctness
+    assert correctness["mismatched_specs"]["cache_on_hit_vs_off"] == [
+        {"query": "q1", "top_k": 3}
+    ], correctness
+    assert summary["hit_rates"] == {
+        "cache_on_cold": 0.0,
+        "cache_on_repeat": 0.0,
+        "cache_on_overall": 0.0,
+        "cache_off": 0.0,
+    }, summary["hit_rates"]
+    assert summary["cost"]["reused_results"] == 0, summary["cost"]
+    assert summary["cost"]["authoritative_retrieval_executions"] == {
+        "cache_on": 4,
+        "cache_off": 4,
+    }, summary["cost"]
+    assert summary["fixed"]["measured_requests_per_mode"] == {
+        "cache_on": 4,
+        "cache_off": 4,
+    }, summary["fixed"]
+    # The latency tables come from the same measured rows.
+    assert summary["cache_on_repeat"]["runs"] == 2, summary["cache_on_repeat"]
+    assert summary["cache_off_repeat"]["runs"] == 2, summary["cache_off_repeat"]
+
+    # A duplicate request row must be refused, not silently overwritten: the
+    # aggregation identity is (phase, mode, query, top_k).
+    duplicated = measurements + [measurements[0]]
+    try:
+        t113.comparison_summary(
+            specs=specs, total_chunks=3, measurements=duplicated, rows=[]
+        )
+    except AssertionError as exc:
+        assert "duplicate measurement rows" in str(exc), exc
+    else:  # pragma: no cover - the assertion above must fire
+        raise AssertionError("a duplicated measurement row was silently accepted")

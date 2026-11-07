@@ -22,11 +22,19 @@ import (
 // destination, a protocol this build does not speak, or an unresolvable
 // credential answers with a stable typed error before anything is dispatched or
 // billed.
+//
+// F13B/T122 (B2 review fix S2): the deployment-level credential
+// (`ORCHARA_MODEL_SECRET_REF` -> Config.ModelSecret) is a real fallback. The
+// candidate row's `secret_ref` is tried first, so an explicitly registered
+// credential always wins; a row whose reference cannot be resolved falls back to
+// the deployment credential for the same deployment endpoint. When neither
+// resolves the provider is `provider_not_configured` (fail closed).
 type realProvider struct {
-	endpoint  string
-	secretDir string
-	lookup    config.Lookup
-	catalog   *modelregistry.Catalog
+	endpoint     string
+	deploySecret string
+	secretDir    string
+	lookup       config.Lookup
+	catalog      *modelregistry.Catalog
 }
 
 // Name is a label, not a URL and not a credential.

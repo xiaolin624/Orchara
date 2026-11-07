@@ -2,11 +2,17 @@
 
 - **Ticket:** GitHub #115 (T114, epic F13B). Branch `t/t114-capacity-20-top`.
 - **Status:** **passed** (measurement), with one recorded product defect outside this ticket's
-  scope (cancel race, §4). The committed evidence comes from one full run of
+  scope (cancel race, §4; fixed by the follow-up `t/cancel-exit-fix`, see §4 “Status update”).
+  The committed evidence comes from one full run of
   `F13B_CAPACITY_FULL=1 F13B_WRITE_EVIDENCE=1 python -m pytest
   tests/f13b/test_t114_capacity.py::test_capacity_full_three_trials -q` (`1 passed in 2922.75s`).
   The default gate (`python -m pytest tests/f13b/test_t114_capacity.py -q`) runs the same harness
   as one 60-second trial (`1 passed in 169.61s`) without writing evidence.
+- **B2 review fixes (2026-11-08):** S1 (task-loss gate), S4 (executing-cancel terminal/slot gate)
+  and S5 (evidence provenance: the committed JSON predates the AC5 probe rewrite and the 49-minute
+  measurement was not re-run) are applied in this report and in `tests/support/t114.py`; see §2.1,
+  §3.6, §3.8, §3.10. The committed gross numbers are historical (`5ffaff7`) and are not presented
+  as post-fix measurements.
 - **Evidence:** [`T114-capacity.json`](T114-capacity.json) (three trials, raw metrics), this
   report, harness [`test_t114_capacity.py`](../../tests/f13b/test_t114_capacity.py) +
   [`tests/support/t114.py`](../../tests/support/t114.py); raw logs under
@@ -105,6 +111,33 @@
    `test_capacity_full_three_trials` with `F13B_CAPACITY_FULL=1 F13B_WRITE_EVIDENCE=1`: three
    independent 15-minute trials, each on a fresh database, `1 passed in 2922.75s`.
 
+### 2.1 Evidence provenance (B2 review fix S5)
+
+The committed `T114-capacity.json` was measured at `git_commit 5ffaff7` (2026-11-08, 49-minute
+full run). Since then the **harness** changed while the product capacity path did not:
+
+| fact | value |
+|---|---|
+| evidence JSON commit | `5ffaff76d49a896a8239c651b947366068d5a37c` (`T114-capacity.json` top-level `git_commit`) |
+| AC5 lease-expiry probe rewritten | `c27f7e3` (`tests/support/t114.py` lease-expiry probe: real claim + forced past lease + real `cmd/admin runs sweep-leases` + recorded sweep report) |
+| post-rewrite short-profile rerun on the integration tree | `21ee9a0`（`merge(b2): T114 AC5 lease-expiry probe 加固`）→ `python -m pytest tests/f13b/test_t114_capacity.py -q` **1 passed in 169.97s** |
+| full 49-minute measurement after the rewrite | **not re-run** |
+
+Why the 49-minute measurement was not re-run and what that limits:
+
+- the probe rewrite (`c27f7e3`) changed **only** the after-window AC5 probe path; it did not change
+  the capacity knob, the submission/claim/execution path or any measured quantity, and the committed
+  evidence bytes for the measured window are unchanged by it;
+- a full re-run costs ~49 minutes of exclusive real-stack time plus a fresh 100-user/1000-application
+  seed; the B2 review window did not have that budget;
+- therefore **the capacity numbers in §3 are the `5ffaff7` numbers** and are not claimed as a
+  post-rewrite or post-cancel-fix measurement. The AC5 probe evidence in §3.10 is the rewritten
+  probe's **short-profile** evidence on `21ee9a0` (and the B2 re-run below), not a re-measure of the
+  full three-trial JSON.
+- B2 review fix S5 is therefore a **documentation/provenance fix**: it records the commit split,
+  the post-rewrite green rerun and the missing full re-run instead of presenting the old probe as
+  current evidence. No new full-run numbers are fabricated.
+
 ## 3. Results
 
 Every value below is a measured row from `T114-capacity.json`, not a projection. Queue time and
@@ -192,6 +225,22 @@ printed `status=failed` with `sandbox_failed` and the API refused its failed pro
 `run_state_conflict`. No business Run failed (`runs.error_code` is empty); no operation attempt
 failed.
 
+**B2 review fix S1 (task loss is now gated).** The old harness recorded `submit_failures` and the
+executor failure list but `assert_trial` never read them, so the report's "no submitted task is
+lost" claim had no gate. The tightened `assert_trial` now requires:
+
+- `result["api"]["submit_failures"] == []` (every submit was accepted by the real API);
+- `result["executor"]["process_failures"] == []`;
+- `result["executor"]["failures"] == []` (an executor failure is an unexplained product outcome,
+  not something to filter away; if a future run has a legitimate classified failure, it must be
+  added to the evidence and asserted against its real Run/terminal code instead of dropped).
+
+The committed JSON above **predates** the fix: it contains the 2/4/6 cancel-race executor failures
+(§4) and would fail the new assertion. Those rows are kept as the historical red evidence, not
+rewritten. In the historical run every `submit_failures` list is empty and every executor failure
+names a real `run_id` that reached a terminal state, so no submitted task was silently dropped —
+but that is now enforced by the gate rather than asserted in prose.
+
 ### 3.7 Cost (stub ledger)
 
 | trial | calls | tokens in | tokens out | charged amount | currency/note |
@@ -233,6 +282,27 @@ splits cleanly:
 | trial-2 | 202 | `cancelling` | 200 | **0.0386 s** | 409 `run_terminal` | `cancelled` |
 | trial-3 | 202 | `cancelling` | 200 | **0.0294 s** | 409 `run_terminal` | `cancelled` |
 
+**B2 review fix S4 (the AC4 gate now binds the executing-cancel case).** `stopped > 0` was
+satisfiable by the queued cancels alone, and the late-result assertion accepted `cancelling`. The
+tightened `assert_trial` now requires, for every Run whose cancel intent was persisted while it was
+*executing*:
+
+- terminal `state == "cancelled"` **and** a non-NULL `finished_at` within the bounded stop wait
+  (the 30 s batch wait; `intent_to_stop_s` is recorded per row);
+- no live attempt (`live_attempts == 0`, read independently from `platform.run_attempts`), i.e. the
+  execution slot is released;
+- `cancel["stuck"] == []` and `stuck_count == 0` — any stuck Run fails the gate, not just the
+  report;
+- queued cancels keep the immediate shape (`cancel_requested_at == finished_at`, no live attempt);
+- a late result after `cancelled` must leave the Run `cancelled` (the old `cancelling` allowance is
+  gone).
+
+The committed `5ffaff7` evidence fails these assertions (2/4/6 stuck Runs, §4); it is kept as the
+historical red evidence. The cancel-exit fix (`t/cancel-exit-fix`, in the integration tip) closes the
+worker path; the B2 short-profile rerun on this branch records **0 stuck / 0 executor failures**
+(see `product/reports/f13b/B2-REVIEW-FIXES.md`). The full three-trial JSON was not re-measured
+(§2.1).
+
 ### 3.9 Independent child pool during saturation
 
 | trial | children | children executed | parents completed | child queue p50 s | parent wait p50 s | peak concurrent child attempts | child attempts overlapping a 20-slot-saturated moment |
@@ -259,6 +329,13 @@ job and its execution slot; that is why this probe runs after the measured windo
 cannot read or cancel another principal's Run (404). Capacity-full submission answers 202 and
 queues; no submitted task is lost.
 
+**B2 review fix S5 (probe provenance).** The lease-expiry probe was rewritten in `c27f7e3` (real
+claim + forced expired lease + real `cmd/admin runs sweep-leases` + recorded sweep report); the
+three-trial JSON above was produced **before** that rewrite at `5ffaff7`. The rewritten probe's
+evidence is the post-rewrite **short-profile** run at `21ee9a0` (`1 passed in 169.97s`) and the B2
+short-profile rerun on this branch, not a re-measure of the 49-minute JSON. See §2.1 for the full
+provenance split and the reason the full measurement was not re-run.
+
 ## 4. Findings (recorded, not fixed by this ticket)
 
 - **CANCEL-RACE-SLOT-LEAK (product defect, owner F03/T036 + F04B).** Cancelling an **executing**
@@ -273,6 +350,11 @@ queues; no submitted task is lost.
   numbers; the capacity results stand on their own because they are measured before it. This is
   reported, not silently worked around: the deterministic claim → cancel → exit → late-result
   probe proves the intended T036 semantics still hold when the worker really confirms its exit.
+  **Status update (B2, 2026-11-08): fixed.** The follow-up defect fix `t/cancel-exit-fix`
+  (`reports/f13b/T114-cancel-exit-fix.md`, in the integration tip) makes every executor failure
+  path confirm the attempt exit after a refused proposal; the real-stack regression
+  `tests/f13b/test_t114_cancel_exit.py` is green and the tightened harness gate (§3.8) now fails on
+  any recurrence. The 2/4/6 counts above remain the historical evidence of the defect.
 - **PEAK-INTERVAL-OVERLAP (measurement note, not over-admission).** The attempt-interval sweep
   reaches **21** overlapping top-level attempt intervals in every trial while the authoritative
   `execution_slots.used` counter never exceeds **20** (max 20; the participants snapshot at the

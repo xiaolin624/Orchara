@@ -262,3 +262,80 @@ func TestRefusedProposalWithDeadTokenReturnsSafely(t *testing.T) {
 		})
 	}
 }
+
+// TestRefusedProposalWithExitConfirmedButRunNotCancelled covers the second half
+// of endRefusedProposal (F13B/T114; B2 review fix S6): the proposal was refused,
+// the attempt exit WAS confirmed, but the one finalizer did not commit
+// `cancelled`. That is the deadline shape - the deadline finalizer observed the
+// active-time limit first and committed `failed(deadline_exceeded)` - and any
+// other non-cancelled terminal/parked state behaves the same. The executor must
+// report the finalizer's state with its own failure code, not claim a
+// cancellation it did not observe.
+func TestRefusedProposalWithExitConfirmedButRunNotCancelled(t *testing.T) {
+	cases := []struct {
+		name       string
+		finalState string
+		refusal    string
+	}{
+		{"deadline finalizer committed failed", "failed", "run_state_conflict"},
+		{"parked for reconciliation", "needs_reconciliation", "run_terminal"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			lease, manifest, _ := successLease(t, PresetToolID, 1)
+			input := inputArtifact()
+			client := &fakeClient{
+				lease: lease, manifest: manifest, inputs: []InputArtifact{input},
+				inputBytes: []byte(salesCSV),
+				// The cancel/deadline intent landed before the proposal: the Run is
+				// no longer executing, so the result proposal is refused.
+				runState:          "cancelling",
+				runStateAfterExit: testCase.finalState,
+				submitErr:         &codedClientError{code: testCase.refusal},
+			}
+			box := &fakeSandbox{
+				outcome: sandbox.Outcome{
+					SandboxStarted: true, CleanupVerified: true,
+					Cleanup: sandbox.CleanupFacts{WorkspaceRemoved: true},
+				},
+				err: sandbox.ErrTimeout,
+			}
+			report := Run(context.Background(), baseDeps(t,
+				client, &fakeInputs{inputs: client.inputs}, box))
+
+			if len(client.exits) != 1 {
+				t.Fatalf("the refused proposal must still confirm the exit: exits=%+v report=%+v",
+					client.exits, report)
+			}
+			if started, _ := client.exits[0].Evidence["started"].(bool); !started {
+				t.Fatalf("the exit evidence must certify the claimed attempt: %+v", client.exits[0].Evidence)
+			}
+			if report.RunState != testCase.finalState {
+				t.Fatalf("run state = %q, want the finalizer's state %q", report.RunState, testCase.finalState)
+			}
+			if report.Outcome != "failed" {
+				t.Fatalf("a non-cancelled finalizer state must be reported as failed: %+v", report)
+			}
+			// Report.Status=="executed" is the executor's own success at doing its
+			// job (it proposed, was refused, and still certified the exit); the
+			// Run's state is the finalizer's decision above.
+			if report.Status != "executed" {
+				t.Fatalf("the executor completed its attempt; Status = %q (report=%+v)", report.Status, report)
+			}
+			if report.ErrorCode != CodeToolTimeout {
+				t.Fatalf("the executor's own failure code changed: %q", report.ErrorCode)
+			}
+			for _, fragment := range []string{"the proposal was refused", testCase.refusal, "the attempt exit was confirmed"} {
+				if !strings.Contains(report.Error, fragment) {
+					t.Fatalf("the diagnostic must contain %q: %q", fragment, report.Error)
+				}
+			}
+			if strings.Contains(report.Error, "cancelled") {
+				t.Fatalf("the executor must not claim a cancellation it did not observe: %q", report.Error)
+			}
+			if len(client.proposals) != 0 {
+				t.Fatalf("a refused proposal must never be stored: %+v", client.proposals)
+			}
+		})
+	}
+}

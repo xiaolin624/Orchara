@@ -225,3 +225,24 @@ pytest exit=0
   `status=failed`、文本含 `stale_attempt`），但未在本票真实执行。
 - **真实厂商模型 / 真实容量机器 / GPU / 多机**：`blocked`（无凭据/端点），沿用 T114 边界；本缺陷复现
   仅用已交付的 `capacity-stub` 替身服务时间旋钮。
+
+## 8. B2 复核修复（S6）：补上“exit 已确认但 Run 不是 cancelled”分支的测试
+
+B2 两轴复核指出：`endRefusedProposal` 的“exit 已确认但 run state 非 `cancelled`”分支
+（`presetexec.go` 的 deadline/unknown 返回）**没有测试**，而本报告 §2 声称同时修复了
+deadline-refused 泄漏。该分支此前只能由代码阅读保证。
+
+- 新增 Go 单测 `TestRefusedProposalWithExitConfirmedButRunNotCancelled`（`cancel_exit_test.go`）：
+  两个子用例（finalizer 提交 `failed`＝deadline 形态；finalizer 留在 `needs_reconciliation`）。
+  假 client 让 exit 确认成功、`RunState` 返回非 `cancelled`，断言：
+  - `ConfirmExit` 恰好 1 次且 evidence `started=true`（exit 真的确认了）；
+  - `report.Outcome == "failed"`、`RunState` 等于 finalizer 的状态、`Status=executed`；
+  - 保留执行器自己的失败码（`tool_timeout`），诊断含“proposal was refused + 拒绝码 +
+    attempt exit was confirmed”，且**不含**“cancelled”（不冒充取消）。
+- 性质：**这是补测，不是新行为**。该分支在集成分支的既有修复中已存在；红→绿不适用（测试在
+  修复后的代码上直接为绿，见 `green-go-h2h3s2s6.log`）。S6 的验收就是“分支被测试钉住”。
+- 诚实降级：**deadline-refused 的真实栈路径仍未单独注入**（`not_run`）。要真实触发它，需要在
+  proposal 提交的窗口内让 active-time deadline 先被 finalizer 观察到；本票没有构造该时序，
+  因此本报告只声明“deadline 形态的**返回值/错误码由 Go seam 测试钉住**，真实栈的
+  deadline-vs-cancel 竞态未复验”。不把 Go 单测当作真实栈验收。
+

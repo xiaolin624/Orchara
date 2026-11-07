@@ -2964,3 +2964,74 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   绝对延迟随宿主负载约 5× 变化，已如实记录。
 - 证据/日志：`reports/f13b/T113-cache-comparison.{md,json}`；原始 tail
   `E:\Orchara\.scratch\f13b\T113\`；摘要 `E:\Orchara\.scratch\f13b\T113-REPORT.md`。
+
+## 2026-11-08 B2 两轴复核修复（分支 `t/review-fixes-b2`，基线 `e4591d6`）
+
+两轴 code review（Standards/Spec + T113 增量）全部发现项的修复；逐条原缺陷/根因/修复/证据
+见 `reports/f13b/B2-REVIEW-FIXES.md`（未修项也在该报告 §7 逐条给出 `not_run`/judgement 理由）。
+
+- **H1（文档）**：新增 `docs/adr/0035-t122-openai-compatible-adapter.md`（单一
+  OpenAI-compatible chat-completions 协议、适用范围 `provider != stub`、与 ADR 0007 的修订
+  关系、fail-closed 四道门禁、错误/重试/流式/取消边界、真实厂商 e2e 仍 `blocked`）；
+  ADR 0007 三处“真实厂商 adapter 仍未编译”原句旁加 dated 修订指针（只加指针，不改原文）；
+  T122 报告与本小节引用 ADR 0035。
+- **H2（行为）**：非流式调用方取消/deadline 不再落 `provider_error`。
+  `capabilities.modelCallFailureCode` 在写账本前短路取消；`finishCallerCancelled` 用不可取消
+  的清理上下文把 attempt/operation 记为 `caller_cancelled`（释放预留、不计费、无 receipt、
+  不重试、不 fallback）；`providerErrorCode`/`providerFailure` 同步把 ctx 错误映射为取消。
+  Go 表驱动测试 + 真实栈“客户端中止在途请求”用例（operation/attempt `failed`+
+  `caller_cancelled`、`settlement_state=released`、charge 0、1 次物理请求、无 receipt）。
+- **H3（结构）**：provider 错误词表单点化到新叶包 `internal/providercodes`；
+  `modelproxy`、`capabilities`（常量别名）、`api/jobdata.go`、`background/job.go` +
+  `background/handlers/model_validate.go` 引用同一来源，值不变
+  （`provider_adapter_unavailable` 由 `provider_`+`adapter_unavailable` 派生）；
+  3 个表驱动测试覆盖每个错误→稳定码、jobdata JSON code、后台重试表 + 词表漂移守卫。
+- **S1（gate 收紧）**：`tests/support/t114.py::assert_trial` 断言 `submit_failures==[]`、
+  `executor.process_failures==[]`、`executor.failures==[]`；旧证据（2 条 executor failure）
+  红，修复后 short profile 绿。**S4**：执行中取消必须 `cancelled`+`finished_at`+
+  `live_attempts==0`、`stuck_count==0`；queued 保持 `intent==finished_at`；迟到 result 只接受
+  `cancelled`。旧证据（2/4/6 stuck）红，修复后 short profile 绿。
+- **S2（行为）**：`Config.ModelSecret` 真正接线：`Providers.WithDeploySecret` +
+  `resolveCredential` 行内 `secret_ref` 优先、部署级凭据回退、两者都不可用 →
+  `provider_not_configured`；Go 单测 + 真实栈两态 e2e（部署凭据可解析→Bearer 部署凭据；
+  配对存在但 env 未设置→503 0 行）证明部署旋钮有效，且行凭据优先。
+- **S3（测试）**：routing-control（`task=route`）服务端提示补 Go 单测（system/user 形状、
+  fixture 字节、登记 model id、`response_format=json_object`、decision/reason 抬升）；
+  真实栈 e2e 属 F08，记录为边界。
+- **S5（文档）**：T114 报告新增 §2.1 证据 provenance（JSON commit `5ffaff7`、AC5 probe 重写
+  `c27f7e3`、重写后 short-profile 在 `21ee9a0` 绿跑 169.97s、49 分钟未重跑原因与限制），
+  §3.10 标明 probe 证据来源；不伪造新的全量数字。
+- **S6（补测）**：`endRefusedProposal` 的“exit 已确认但 Run 非 cancelled”分支补 Go 单测
+  （deadline 形态=failed、parked=needs_reconciliation）；deadline 真实栈路径仍 `not_run`。
+- **S7（证据）**：T122 在最终交付树重跑并记录绑定本票代码 commit 的 `T122-EVIDENCE` 行
+  （报告 §10.6/§10.7）。
+- **T113 增量**（详见 `reports/f13b/T113-cache-comparison.md` §14）：
+  - T113-1 汇总字段全部从测量行派生（每请求 `answer_sha256`、逐 spec 三组相等性、
+    hit_rate=hits/attempts、延迟/计数/成本）；新增纯函数自检（喂不一致/0 命中假 rows 必须
+    反映）；重复测量行被拒；Node/Python 版本运行时探测；删除 `Evidence.fail/block` 死代码；
+    oversize body 用 UTF-8 字节计。
+  - T113-2 命中时封存 body 读取失败分确定性（缺对象/非法 key/超大 → `item_unreadable` + 删行）
+    与瞬态（IO/占用/不可用 → `cache_unavailable` + 保留行）；Go 分类/丢弃矩阵单测 + 真实栈
+    “对象暂时不可读→miss 且行在→恢复后命中”用例。
+  - T113-3 ADR 0015 末尾 dated 修订块（保留原文）：命中成本含每条 chunk 封存 body 重读+sha256；
+    确定性/瞬态两类失败；词表不扩。
+  - T113-5 T113 报告 AC3 改 `partial`（删除 proven；撤权仅跨主体/管理员禁用/合成投毒行；
+    per-resource grant `not_applicable`），evidence 增 `ac3_verdict/ac3_scope`。
+  - T113-6 删除用例直接读封存 source/body 对象重算 sha256，与 citation `source_sha256`、
+    cache `body_sha256`/text 三者对照，evidence 记录。
+  - T113-4 `cachedBodyMatches` → `item.matchesSealedBody`；缓存行仍存整份 text 为 judgement
+    call 不修（§7.2）。T113-7 可选：`not_run`（Go 单测无法注入 store，由 Python 负向/瞬态用例守卫）。
+- **门禁 tail（最终树，cwd=`product/`）**：`go build ./...` exit 0、`go vet ./...` exit 0、
+  `go test ./...` exit 0（0 FAIL）、`gofmt -l internal cmd tools` 空、
+  `python tools/sync_spec.py --check` → `no drift`；
+  `pytest tests/f06/test_t122_real_provider.py -q` → **13 passed in 110.24s**；
+  `pytest tests/f13b/test_t114_cancel_exit.py -q` → **1 passed in 33.10s**；
+  `pytest tests/f13b/test_t114_capacity.py -q`（short）→ **2 passed, 1 skipped in 155.00s**；
+  `pytest tests/f13b/test_t113_cache_comparison.py -q` → **6 passed in 77.49s**；
+  `pytest tests/f10/test_t067_cache.py -q` → **8 passed in 75.04s**。
+  S7 证据行：`T122-EVIDENCE ... "git_head": "3c7713c..."`（证据运行树 = 最终交付树 commit；
+  随后仅 docs-only 提交写入该行）。结束前 `git merge integration/t113-t114-t122` → **Already up to date**。
+- **未改**：`docs/spec/**`、`contracts/**`、迁移；未 push；未弱化既有票断言（S1/S4/S2 的
+  harness/fixture 收紧与 S6 的失败路径测试是 brief 要求的新增/收紧）。
+- **原始日志**：`E:\Orchara\.scratch\f13b\review-fixes\`；摘要
+  `E:\Orchara\.scratch\f13b\B2-REVIEW-FIXES-REPORT.md`。

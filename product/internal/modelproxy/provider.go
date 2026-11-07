@@ -125,6 +125,20 @@ func (p *Providers) SetStubServiceDelay(delay time.Duration) {
 	p.stub.serviceDelay = delay
 }
 
+// WithDeploySecret installs the deployment-level credential reference
+// (`ORCHARA_MODEL_SECRET_REF`) as the fallback for the deployment endpoint
+// (F13B/T122; B2 review fix S2). The candidate row's `secret_ref` keeps
+// priority; the deployment credential is tried only when the row reference
+// cannot be resolved. An empty reference leaves the provider with row
+// credentials only.
+func (p *Providers) WithDeploySecret(reference string) *Providers {
+	if p == nil || p.real == nil {
+		return nil
+	}
+	p.real.deploySecret = strings.TrimSpace(reference)
+	return p
+}
+
 // For returns the provider a candidate is allowed to use.
 func (p *Providers) For(candidate *Candidate) (Provider, error) {
 	if candidate == nil {

@@ -1619,11 +1619,13 @@ class CapacityTrial:
                 row = {
                     "run_id": item["run_id"],
                     "state_before": item["state_before"],
+                    "state_after_api": item.get("state_after_api"),
                     "api_seconds": item.get("api_seconds"),
                     "api_status": item.get("status"),
                     "state": item.get("state"),
                     "cancel_requested_at": item.get("cancel_requested_at"),
                     "finished_at": item.get("finished_at"),
+                    "live_attempts": item.get("live_attempts"),
                     "stopped": item.get("stopped"),
                 }
                 if item.get("cancel_requested_at") and item.get("finished_at"):
@@ -1683,7 +1685,11 @@ def _cancel_rows(dbname: str, run_ids: list[str]) -> list[dict]:
         "SELECT r.id::text AS run_id, r.state, r.error_code, "
         "r.cancel_requested_at::text AS cancel_requested_at, "
         "r.finished_at::text AS finished_at, "
-        "(SELECT count(*) FROM platform.run_attempts a WHERE a.run_id = r.id) AS attempts "
+        "(SELECT count(*) FROM platform.run_attempts a WHERE a.run_id = r.id) AS attempts, "
+        # S4: a cancelled Run that still owns an unexited/unrevoked attempt is a
+        # leaked execution slot; the assertion reads this independent fact.
+        "(SELECT count(*) FROM platform.run_attempts a WHERE a.run_id = r.id "
+        "AND a.exited_at IS NULL AND a.revoked_at IS NULL) AS live_attempts "
         "FROM platform.runs r "
         f"WHERE r.id = ANY(ARRAY[{values}])",
     )
@@ -2184,16 +2190,87 @@ def assert_trial(result: dict, *, expect_seconds: float) -> None:
     assert result["concurrency"]["child"]["peak"] <= CHILD_SLOTS, (
         f"{label}: the child pool admitted more than {CHILD_SLOTS}: {result['concurrency']}"
     )
-    # AC4: cancel intent and stop time are distinct, measured facts.
+    # AC5 (S1): no submitted task may be silently lost. Every submit must have
+    # been accepted by the real API, and no executor failure may be unexplained:
+    # the previous harness recorded both lists but never asserted them.
+    submit_failures = result["api"]["submit_failures"]
+    assert submit_failures == [], (label, submit_failures[:5])
+    process_failures = result["executor"]["process_failures"]
+    assert process_failures == [], (label, process_failures[:5])
+    executor_failures = result["executor"]["failures"]
+    assert executor_failures == [], (
+        f"{label}: {len(executor_failures)} executor failure(s) without a green product "
+        f"outcome: {executor_failures[:5]}"
+    )
+
+    # AC4 (S4): cancel intent and stop time are distinct, measured facts, and the
+    # assertion now binds the executing-cancel case: every Run whose cancel intent
+    # was persisted while it was executing must commit `cancelled` with a
+    # finished_at inside the bounded stop wait and must release its execution slot
+    # (no live attempt). `stopped > 0` alone was satisfiable by the queued cancels
+    # even while executing cancels leaked slots.
     cancel = result["cancel"]
     assert cancel["batches"], f"{label}: no cancel batch ran"
-    assert cancel["stopped"] > 0, (label, cancel["rows"])
+    assert cancel["stuck"] == [] and cancel["stuck_count"] == 0, (
+        f"{label}: {cancel['stuck_count']} cancelled Run(s) never reached a terminal "
+        f"state within the bounded stop wait: {cancel['stuck']}"
+    )
+    executing_rows = [row for row in cancel["rows"] if row["state_before"] == "running"]
+    assert executing_rows, (label, cancel["rows"])
+    persisted_executing = [row for row in executing_rows if row["cancel_requested_at"]]
+    assert persisted_executing, (
+        f"{label}: no executing Run recorded a persisted cancel intent: {executing_rows}"
+    )
+    for row in persisted_executing:
+        assert row["state"] == "cancelled", (
+            f"{label}: an executing cancel did not commit cancelled: {row}"
+        )
+        assert row["finished_at"], (
+            f"{label}: a cancelled executing Run has no stop time: {row}"
+        )
+        assert row.get("intent_to_stop_s") is not None and 0.0 <= row["intent_to_stop_s"] < 30.0, (
+            f"{label}: cancel intent -> stop was not bounded: {row}"
+        )
+        assert int(row.get("live_attempts") or 0) == 0, (
+            f"{label}: a cancelled Run still holds a live attempt (leaked slot): {row}"
+        )
+    # The queued-cancel shape is the clean immediate one: the intent and the stop
+    # come from the same cancel transaction's clock, and no attempt may be live.
+    # A Run claimed between selection and the cancel API call is an executing
+    # cancel and is held to the general rule below instead.
+    queued_rows = [row for row in cancel["rows"] if row["state_before"] == "queued"]
+    assert queued_rows, (label, cancel["rows"])
+    for row in queued_rows:
+        if not row["cancel_requested_at"]:
+            continue
+        if row.get("state_after_api") == "cancelling":
+            continue
+        assert row["state"] == "cancelled", (
+            f"{label}: a queued cancel did not commit cancelled: {row}"
+        )
+        assert row["finished_at"] == row["cancel_requested_at"], (
+            f"{label}: a queued cancel was not committed by the cancel transaction: {row}"
+        )
+        assert int(row.get("live_attempts") or 0) == 0, (label, row)
+    # Every Run whose cancel intent was persisted (whether it was queued or
+    # executing when the API was called) must be terminal `cancelled`, with a stop
+    # time and no live attempt: a cancel may never leak a slot.
+    for row in cancel["rows"]:
+        if not row["cancel_requested_at"]:
+            continue
+        assert row["state"] == "cancelled", (label, row)
+        assert row["finished_at"], (label, row)
+        assert int(row.get("live_attempts") or 0) == 0, (
+            f"{label}: a cancelled Run still holds a live attempt (leaked slot): {row}"
+        )
     assert (
         cancel["queued_intent_to_terminal_s"].get("n", 0) > 0
         or cancel["intent_to_stop_s"].get("n", 0) > 0
     ), (label, cancel)
     if cancel["late_result"] is not None:
-        assert cancel["late_result"].get("state_after") in ("cancelled", "cancelling"), (
+        # A late worker result for an already-terminal cancelled Run must never
+        # revive it (the previous assertion also accepted `cancelling`).
+        assert cancel["late_result"].get("state_after") == "cancelled", (
             label,
             cancel["late_result"],
         )

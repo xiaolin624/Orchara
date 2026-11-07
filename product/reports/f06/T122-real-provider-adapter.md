@@ -8,26 +8,32 @@
   `127.0.0.1:55432`；Go 1.27.3；Python 3.12.2；Node 24.13.0。无 GPU、无真实浏览器 DOM。
 - **切片边界**：只实现一个通用协议（OpenAI-compatible chat completions）；不引厂商 SDK；
   `provider=stub` 与 stub 通路行为不变；不新增管理页面、契约端点或迁移。
+- **ADR**：本票编译的单一协议、适用范围、fail-closed/错误/重试/流式边界与“真实厂商仍
+  blocked”的决策见 **ADR 0035**（`product/docs/adr/0035-t122-openai-compatible-adapter.md`）；
+  它修订 ADR 0007 中三处“真实厂商 adapter 仍未编译”的历史结论（正文保留原文，只加指针）。
+- **B2 复核修复**：本报告在 B2 两轴复核后更新，修复 H1/H2/H3/S2/S3/S7 与证据 provenance
+  （见 §10）；未经本报告 §10 记录的数字/断言不再作为交付证据。
 
 ## 1. 实现范围
 
 | 文件 | 变更 |
 |---|---|
 | `product/internal/modelproxy/openai.go`（新） | chat-completions adapter：`Available` 目的地/协议/凭据门禁，`Call`（一次物理 HTTP），`Stream`（SSE 映射），错误分类，canonical `Output`，价格→`ChargedUnits` |
-| `product/internal/modelproxy/real.go` | `realProvider` 增加 catalog 字段；`Available` 从无条件 `ErrAdapterUnavailable` 改为真实门禁；`Call` 走 adapter |
-| `product/internal/modelproxy/provider.go` | `Candidate.Config` 的注册配置由 adapter 读取；`Providers` 移除未用字段 |
+| `product/internal/modelproxy/real.go` | `realProvider` 增加 catalog 字段与部署级凭据字段；`Available` 从无条件 `ErrAdapterUnavailable` 改为真实门禁；`Call` 走 adapter |
+| `product/internal/modelproxy/provider.go` | `Candidate.Config` 的注册配置由 adapter 读取；`Providers` 移除未用字段；新增 `WithDeploySecret`（S2） |
 | `product/internal/modelproxy/modelproxy.go` / `stream.go` | 包级过时注释（"无 vendor adapter"）改为 T122 事实 |
 | `product/internal/config/config.go` | `dev-stub`/`capacity-stub` 下显式 `ORCHARA_MODEL_ENDPOINT`+`ORCHARA_MODEL_SECRET_REF` 成对读出；半配置拒绝启动；`real-model` 语义不变 |
-| `product/cmd/api/main.go` | 先构建 deployer catalog，再 `NewProviders(...).WithCatalog(catalog)` |
-| `product/internal/capabilities/{service,stream}.go` | 构造 `modelproxy.Candidate` 时带上 `Config`（capability + fallback + stream 路径）；错误码映射 |
-| `product/internal/capabilities/errors.go` | 新增 `provider_destination_not_approved`、`provider_response_too_large` |
-| `product/internal/api/jobdata.go` | T024 验证路径：transient/目的地/状态拒绝的稳定错误码映射（不再落入 500 internal） |
-| `product/internal/background/handlers/model_validate.go` | 新错误码 → 业务失败（不重试）或基础设施失败（有界重试），保持固定重试表 |
-| `product/internal/modelproxy/openai_test.go`（新） | 19 条协议测试（本地 `httptest` fake HTTP provider） |
+| `product/cmd/api/main.go` | 先构建 deployer catalog，再 `NewProviders(...).WithCatalog(catalog).WithDeploySecret(cfg.ModelSecret)`（S2：部署级凭据真正参与解析） |
+| `product/internal/providercodes/providercodes.go`（新） | 单一 provider 错误词表（H3）；api / background / capabilities / modelproxy 四处引用同一常量 |
+| `product/internal/capabilities/{service,stream}.go` | 构造 `modelproxy.Candidate` 时带上 `Config`（capability + fallback + stream 路径）；错误码映射；调用方取消短路为 `caller_cancelled`（H2） |
+| `product/internal/capabilities/errors.go` | provider 常量改为引用 `internal/providercodes`；新增 `provider_destination_not_approved`、`provider_response_too_large`、`caller_cancelled` |
+| `product/internal/api/jobdata.go` | T024 验证路径：transient/目的地/状态拒绝的稳定错误码映射（不再落入 500 internal）；引用共享词表（H3） |
+| `product/internal/background/handlers/model_validate.go` | 新错误码 → 业务失败（不重试）或基础设施失败（有界重试），保持固定重试表；引用共享词表（H3） |
+| `product/internal/modelproxy/openai_test.go`（新） | 协议测试（本地 `httptest` fake HTTP provider），含 S2 部署级凭据回退与 S3 routing-control 形状 |
 | `product/internal/modelproxy/stream_test.go` | 更新 T044 时代"真实 provider 流式必 adapter_unavailable"的断言（见 §9） |
 | `product/internal/config/config_test.go` | stub profile → 显式端点 3 条测试 |
-| `product/tests/support/t122.py`（新） | 真实栈 helper：deployer catalog env、模型登记 SQL、loopback fake provider（JSON/SSE/半段/错误状态） |
-| `product/tests/f06/test_t122_real_provider.py`（新） | 11 条真实栈 e2e |
+| `product/tests/support/t122.py`（新） | 真实栈 helper：deployer catalog env、模型登记 SQL、loopback fake provider（JSON/SSE/半段/错误状态）、部署级凭据与行凭据分离 |
+| `product/tests/f06/test_t122_real_provider.py`（新） | 真实栈 e2e（B2 修复后 13 条：原 11 + S2 部署凭据回退 + H2 调用方取消） |
 
 未改 `product/docs/spec/**`、`product/contracts/**`、数据库迁移；未改其它票的断言（除 §9 记录的
 一条被本票语义取代的 T044 断言）。
@@ -250,7 +256,9 @@ F08 routing control（`task=route`）。adapter 把 fixture 作为 user prompt�
     "receipt_size_bytes": 169, "tokens_in": 11, "tokens_out": 7}
   ```
   注：`git_head` 是证据运行时的分支基点（`ae1af91`）；T122 的改动当时是同一 worktree 的未提交
-  变更，提交后的树内容与运行内容一致（见 §6 门禁的最终提交）。
+  变更，提交后的树内容与运行内容一致（见 §6 门禁的最终提交）。**B2 复核修复 S7** 已在最终
+  交付树上重跑并产生绑定本票 commit 的新证据行（见 §10.2），上行为历史基线，不再作为当前
+  交付树的证据。
 
 ## 6. 门禁
 
@@ -302,6 +310,13 @@ $ python -m pytest tests/f06 -q
   ```
   合并后真实栈占用 1499s = 25.0 min（≤30 min），`t122-merge.owner.txt` 由运行者删除。
 
+### 6.2 B2 复核修复后的最终树证据行
+
+B2 两轴复核指出 §6.1 的复跑没有机器可读证据行、数字与交付树未绑定（S7）。修复后仍在最终
+交付树上重跑 `tests/f06/test_t122_real_provider.py`（`T122_GIT_HEAD` 指向本票最终代码 commit），
+并捕获 `T122-EVIDENCE` 行；该行与运行 tail 见 §10.2。`git diff <证据 commit>..<docs commit>`
+只含报告/PROGRESS 文档，不含产品代码（见 §10.2）。
+
 ## 7. 复现命令
 
 ```powershell
@@ -334,3 +349,112 @@ python -m pytest tests/f06/test_t122_real_provider.py -q   # 需 realstack 锁
   仍 fail closed 返回 `ErrNotConfigured`，且不再返回 `adapter_unavailable`。这是**语义变更**，
   不是弱化断言；stub 流式断言未动。
 - 未改其它票的断言；`provider=stub` 全部路径行为不变。
+
+## 10. B2 两轴复核修复（2026-11-08，`t/review-fixes-b2`）
+
+B2 复核对本票的发现按 H1/H2/H3/S2/S3/S7 修复。逐条见
+`product/reports/f13b/B2-REVIEW-FIXES.md`；本节只记录 T122 面。
+
+### 10.1 H1 — ADR 0007 冲突声明（文档）
+
+- 新增 `docs/adr/0035-t122-openai-compatible-adapter.md`（单一协议、适用范围
+  `provider != stub`、与 ADR 0007 的修订关系、fail-closed 四道门禁、错误/重试/流式/取消
+  边界、真实厂商仍 `blocked`）；ADR 0007 三处原句旁加 dated 修订指针（不改原文）；本报告
+  头部与 `PROGRESS.md` T122 小节引用 ADR 0035。
+- 性质：**文档修复**，不是新的行为验收。
+
+### 10.2 H2 — 非流式调用方取消（行为）
+
+- 缺陷：`classifyTransportError` 原样返回 `parent.Err()`，非流式 `dispatchModel` 把它交给
+  `providerErrorCode` 默认 `provider_error`，调用方取消被记成 provider 失败。
+- 修复：`capabilities.modelCallFailureCode` 在写账本前短路 ctx 取消/deadline；
+  `finishCallerCancelled` 用不可取消的 5s 清理上下文把 attempt/operation 记为
+  `caller_cancelled`（释放预留、不计费、无 receipt、不重试、不 fallback）；`providerErrorCode`/
+  `providerFailure` 也把 ctx 错误映射为取消（安全网）。
+- 测试：
+  - Go 表驱动 `TestCallerCancellationIsNotAProviderFailure`（红：`undefined: CodeCallerCancelled`
+    / `modelCallFailureCode`）；
+  - 真实栈新增 `test_caller_cancellation_is_not_recorded_as_a_provider_failure`：客户端在途中止
+    请求 → operation/attempt `failed` + `caller_cancelled`、`settlement_state=released`、
+    charge 0、1 次物理请求、无 receipt；
+  - `tests/f13b/test_t114_cancel_exit.py`（in-flight 取消）补断言 attempt 非 `provider_error`。
+
+### 10.3 H3 — provider 错误词表单点化（结构）
+
+- 新增叶包 `internal/providercodes`；`modelproxy`、`capabilities`（常量别名）、
+  `api/jobdata.go`、`background/job.go`、`background/handlers/model_validate.go` 全部引用同一
+  来源；值不变（`provider_adapter_unavailable` 由 `provider_`+`adapter_unavailable` 派生）。
+- 测试：`TestProviderCodeVocabularyIsSingleSourced`（每个 modelproxy 错误 → 稳定码；词表成员
+  可达）、`TestJobDataErrorUsesTheSharedProviderVocabulary`（真实 writer JSON code）、
+  `TestModelValidateOutcomeUsesTheSharedProviderVocabulary`（重试表）。
+- 性质：结构性收敛；不改任何对外 code 字符串。
+
+### 10.4 S2 — `ORCHARA_MODEL_SECRET_REF` 真正生效（行为）
+
+- 修复：`Providers.WithDeploySecret(string(cfg.ModelSecret))` + `realProvider.resolveCredential`
+  的行内优先/部署级回退；两者都不可用 → `provider_not_configured`。优先级写进 ADR 0035 D2。
+- 测试：
+  - Go `TestDeploymentLevelSecretIsTheCredentialFallback`（无部署凭据 → `ErrNotConfigured`；
+    有 → Bearer 部署凭据；行凭据优先且值不同）。
+  - 真实栈两种部署：`t122_stack`（部署凭据可解析）新增
+    `test_deployment_level_secret_ref_is_the_credential_fallback`（坏行回退成功、Bearer 部署
+    凭据、两凭据不泄漏、行凭据优先）；`t122_stack_without_deployment_secret`（配对存在但 env
+    未设置＝不可用）让原 fail-closed 用例断言 `provider_not_configured` / 0 行 / 0 请求。
+  - 本套件 tail（最终树）：`13 passed in 110.24s`（原 11 + S2 + H2 两条）。
+
+### 10.5 S3 — routing-control 合成提示覆盖（测试）
+
+- 判定：`task=route` 与 model_compatibility 的服务端提示是共享 provider 缝的必要行为，不删；
+  compatibility 已有 e2e，routing 此前只有代码。
+- 新增 Go 单测 `TestRoutingFixtureCallSynthesisesTheRoutingControlPrompt`：system（routing
+  prompt）+ user（fixture 原文字节）、登记 `model_id`、`response_format=json_object`、
+  `decision`/`reason` 抬进 `Data`。路由的真实栈 e2e 属 F08，本票未新增（记录为边界，不静默省略）。
+
+### 10.6 S7 — 证据行绑定最终交付树（证据）
+
+- 旧报告唯一 `T122-EVIDENCE` 行 `git_head=ae1af91`（改动前基线）；merge 后复跑无机器可读行。
+- 修复：在最终交付树上以 `T122_GIT_HEAD=<本票代码 commit>` 重跑本套件并捕获
+  `T122-EVIDENCE`（`-s`，`gate-t122-evidence.log`）：
+
+```text
+T122-EVIDENCE {"charged_amount": "0.00002500",
+  "git_head": "3c7713cdc2f167c611087e67b1579e7d144d8a94",
+  "model_id": "fake-vendor-model-1",
+  "model_profile_version_id": "22222222-2222-4222-8222-222222222222",
+  "params_sha256": "ed59ed7c047dd96d7f5c17df85d827230d1ba185e46eef40a4aa901a2a84546a",
+  "price_version": "price-v1:22222222-2222-4222-8222-222222222222:in=1.00:out=2.00:USD",
+  "profile": "dev-stub + explicit ORCHARA_MODEL_ENDPOINT (loopback fake provider)",
+  "provider": "openai-compatible",
+  "receipt_artifact_sha256": "f332165a26f3caf682f25b048ded043dd30ef2775ebea6f3d6e8cf8c2988b882",
+  "receipt_size_bytes": 169, "tokens_in": 11, "tokens_out": 7}
+13 passed in 109.97s (0:01:49)
+```
+
+- 该行对应本票最终**代码+文档交付树** commit `3c7713c...`（`ad9b39a` 代码 commit + 报告/
+  ADR/PROGRESS 的 docs commit）；本报告随后**只新增这一行证据**（docs-only）。验证方式：
+  `git diff 3c7713c..HEAD --stat` 只含文档。证据跑在自己的 `T122_GIT_HEAD` 值上打印，不是
+  事后回填的旧基线。`gate-t122-evidence.log` 中 PowerShell 把 fake provider 的
+  `ConnectionResetError`（H2 取消用例主动断开连接的预期噪声）记成 stderr/exit 1；pytest 结果为
+  **13 passed**，前一门禁跑（`-q`，无 stderr 噪声）同样 **13 passed** 且进程 exit 0。
+
+
+### 10.7 最终树门禁 tail
+
+```text
+$ go build ./...   exit=0
+$ go vet ./...     exit=0
+$ go test ./...    exit=0
+$ gofmt -l internal cmd tools   （空）
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
+
+$ python -m pytest tests/f06/test_t122_real_provider.py -q
+13 passed in 110.24s (0:01:50)
+
+# 证据复跑（-s，T122_GIT_HEAD=最终交付树 commit）
+$ python -m pytest tests/f06/test_t122_real_provider.py -q -s
+13 passed in 109.97s (0:01:49)   # 见 §10.6 的 T122-EVIDENCE 行
+```
+（原始日志：`E:\Orchara\.scratch\f13b\review-fixes\gate-t122.log`、
+`gate-t122-evidence.log`、`gate-go.log`。）
+

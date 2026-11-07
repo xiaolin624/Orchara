@@ -19,6 +19,7 @@ import (
 	"orchara/platform/internal/execution"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/providercodes"
 	"orchara/platform/internal/uuid"
 )
 
@@ -1070,6 +1071,11 @@ func (s *Service) dispatchModel(
 	failureCode := CodeProviderTransient
 	failureReason := ""
 	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
+		// A caller cancellation that arrived before this attempt must not create
+		// a ledger failure for a call that never happened (H2).
+		if ctx.Err() != nil {
+			return nil, s.finishCallerCancelled(ctx, operationID, attempt)
+		}
 		if _, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation); capErr != nil {
 			return nil, capErr
 		}
@@ -1081,10 +1087,12 @@ func (s *Service) dispatchModel(
 		if callErr == nil {
 			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil, pricing)
 		}
-		transient := modelproxy.IsTransient(callErr)
-		code := CodeProviderTransient
-		if !transient {
-			code = providerErrorCode(callErr)
+		code, cancelled := modelCallFailureCode(ctx, callErr)
+		if cancelled {
+			// The caller is gone: no retry, no fallback, no provider failure and
+			// no provider_error row. Close the real attempt with a clean-up
+			// context and answer the (likely already disconnected) caller.
+			return nil, s.finishCallerCancelled(ctx, operationID, attempt)
 		}
 		reason, fallbackEligible := fallbackReasonFor(callErr)
 		if !fallbackEligible {
@@ -1101,7 +1109,9 @@ func (s *Service) dispatchModel(
 				return nil, capErr
 			}
 			if err := sleepBackoff(ctx, attempt); err != nil {
-				return nil, capFailure(503, CodeProviderTransient, "the capability retry was interrupted")
+				// The caller vanished during the backoff: close the operation as a
+				// cancellation instead of reporting an interrupted provider retry.
+				return nil, s.finishCallerCancelled(ctx, operationID, attempt)
 			}
 			continue
 		}
@@ -1189,9 +1199,11 @@ func (s *Service) dispatchFallback(
 		fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
 		return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact, pricing)
 	}
-	code := providerErrorCode(callErr)
-	if modelproxy.IsTransient(callErr) {
-		code = CodeProviderTransient
+	code, cancelled := modelCallFailureCode(ctx, callErr)
+	if cancelled {
+		// The caller went away during the fallback attempt: close it as a
+		// cancellation, never as a provider failure (H2).
+		return nil, s.finishCallerCancelled(ctx, operationID, attempt)
 	}
 	if capErr := s.failAttemptAndOperation(ctx, operationID, attempt, code); capErr != nil {
 		return nil, capErr
@@ -2157,6 +2169,10 @@ func providerFailure(err error) *Error {
 		return capFailure(503, CodeAdapterUnavailable, "no vendor adapter is compiled for this provider")
 	case errors.Is(err, modelproxy.ErrCandidateUnavailable):
 		return capFailure(422, CodeModelUnavailable, "the model profile version is not callable")
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		// A caller cancellation is not a provider claim; it is never recorded as
+		// a provider failure (B2 review fix H2).
+		return capFailure(503, CodeCallerCancelled, "the capability call was cancelled")
 	default:
 		if code := modelproxy.ProviderCode(err); code != "" {
 			return capFailure(503, code, "the model provider call did not complete")
@@ -2165,17 +2181,63 @@ func providerFailure(err error) *Error {
 	}
 }
 
+// providerErrorCode is the one ledger code of a provider-dispatch failure. The
+// provider vocabulary itself is shared (internal/providercodes); this function
+// only decides which member applies and the capability-only fallback.
+//
+// A caller cancellation is mapped explicitly: it is a cancellation, not an
+// unclassified provider failure, so a raced call cannot be recorded as
+// provider_error (B2 review fix H2; the dispatch loop short-circuits even
+// earlier, so no retry/fallback/ledger failure is attempted for it).
 func providerErrorCode(err error) string {
 	switch {
 	case errors.Is(err, modelproxy.ErrNotConfigured):
 		return CodeProviderNotConfigured
 	case errors.Is(err, modelproxy.ErrAdapterUnavailable):
 		return CodeAdapterUnavailable
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return CodeCallerCancelled
 	}
 	if code := modelproxy.ProviderCode(err); code != "" {
 		return code
 	}
-	return "provider_error"
+	return providercodes.Unclassified
+}
+
+// modelCallFailureCode classifies one failed physical model call before anything
+// is written. It returns (code, cancelled):
+//
+//   - cancelled is true for a caller cancellation or an already-done caller
+//     context. The caller-owned request is gone; the attempt still has to be
+//     closed (with a detached cleanup context), but the failure must not be
+//     retried, must not select a fallback and must never be recorded as a
+//     provider failure.
+//   - otherwise code is the provider ledger code, with a typed transient error
+//     reported as CodeProviderTransient exactly like the retry loop expects.
+func modelCallFailureCode(ctx context.Context, err error) (string, bool) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return CodeCallerCancelled, true
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return CodeCallerCancelled, true
+	}
+	if modelproxy.IsTransient(err) {
+		return CodeProviderTransient, false
+	}
+	return providerErrorCode(err), false
+}
+
+// finishCallerCancelled closes the physical attempt of a caller-cancelled call
+// and releases its reservation with a context that outlives the dead request.
+// It mirrors the streaming path's cleanup (stream.go: a non-cancellable 5s
+// context) so the ledger row is never left `dispatching` and nothing is billed.
+func (s *Service) finishCallerCancelled(ctx context.Context, operationID string, attempt int) *Error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.failAttemptAndOperation(cleanupCtx, operationID, attempt, CodeCallerCancelled); err != nil {
+		return capFailure(500, CodeInternal, "the cancelled capability attempt could not be closed")
+	}
+	return capFailure(503, CodeCallerCancelled, "the capability call was cancelled by its caller")
 }
 
 // sleepBackoff is the bounded retry pause. It is not a budget gate: the
