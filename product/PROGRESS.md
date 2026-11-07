@@ -2824,8 +2824,8 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   **1 passed in 2922.75s**（三轮 15 分钟，各一个全新数据库）。
 - 画像：100 用户 / 1000 应用经公开 REST 播种（101 principals = 100 用户 + admin，1000 applications；
   user/app id sha256 记录在证据里；997 trivial + 3 workload apps）。容量旋钮走既定
-  `platform.quota_counters`：`global/execution_slots` 8 → **20**（权威 used 峰值 = 20），独立
-  `global/child_slots` 2 → **8**；未改迁移/契约/规格。
+  `platform.quota_counters`：`global/execution_slots` 迁移种子 2 → **20**（权威 used 峰值 = 20）；
+  独立 `global/child_slots` 迁移 0051 已是 8，UPDATE 为 no-op（8 → 8，未提子槽）；未改迁移/契约/规格。
 - 替身服务时间：`ORCHARA_CAPACITY_STUB_SERVICE_DELAY=500ms`，仅 `capacity-stub` profile + stub provider
   生效（其他 profile 启动即拒绝）；实测 stub call p50 0.516–0.517s / p95 0.566–0.575s，是替身时间，
   不是厂商延迟。
