@@ -1,15 +1,17 @@
 # F12/T093 从外部客户端验证全量 REST/SSE 共同契约（GitHub #94）
 
-**状态：`passed`**（本票交付的是**判定手段 + 真实运行证据 + 诚实裁决**；本票的真实栈门禁裁决为
-**passed：106/106 operation 已实现、0 授权失败、0 不变量失败、0 错误**，唯一 `not_run` 是 SSE 410
-保留窗口分支，见 §5/§7）。
+**状态：`partial`（判定手段 `passed`；完整首版门禁裁决 `route_only`）**——2026-11-07 复核修复后，
+门禁把「路由存在」和「功能路径被真实调用」分开计数：**route-registered 106/106、
+functional probe 60/106、route_only 46**、跨主体内容隔离 18 条实测、0 授权失败、0 不变量失败、
+0 错误。报告不再声称 106/106 operation 已实现；46 条 route_only 的功能路径未验证，见 §5.1/§5.5。
+唯一 `not_run` 是 SSE 410 保留窗口分支，见 §5.3/§7。
 
 需要明确区分两句话，避免把“手段通过”读成“首版 API 已全绿”或反过来：
 
 | 口径 | 结论 | 证据 |
 |---|---|---|
-| **门禁手段本身通过**（本票交付物） | `passed` | `tests/f12` **242 passed**；CLI 可重放并在独立 pristine 栈上复跑出同一裁决；变异（105 条被拒、107 条注入被判 missing）都以非零退出码收口 |
-| **完整首版 API 门禁裁决** | **`passed`（106/106）** | `reports/f12/T093-api-conformance.json`：`summary.verdict=passed`、`implemented=106`、`missing_operations=[]`、`authorization_failed=[]`、`per_operation_failed=[]`、`invariant_failures=[]`、`errors=[]` |
+| **门禁手段本身通过**（本票交付物） | `passed` | `tests/f12` 全绿；CLI 可重放并在独立 pristine 栈上复跑出同一裁决；变异（105 条被拒、107 条注入被判 missing）都以非零退出码收口 |
+| **完整首版 API 门禁裁决** | **`route_only`（route-registered 106/106；functional 60/106）** | `reports/f12/T093-api-conformance.json`：`summary.verdict=route_only`、`implemented=60`、`route_only=46`、`missing_operations=[]`、`probe_failed=[]`、`authorization_failed=[]`、`invariant_failures=[]`、`errors=[]` |
 
 - 分支：`t/t093-api-conformance`；worktree `E:\Orchara-wt\t093`；基线 `integration/f12` @ `1cdff9c`；
   结束前 merge `integration/f12`（结果见 §8）。
@@ -25,9 +27,9 @@
 
 | 票面验收项 | 结论 | 证据 |
 |---|---|---|
-| 106 项均有实现与授权测试记录 | **passed（106/106）** | 门禁从 `contracts/openapi.json` 读 operation 清单（不手写 106 行），逐条记录 `implemented / route_registered / authorization_ok / probes / normal_path / verdict`：4 条 public、23 条 internal（真实 mTLS 证书角色）、79 条 session/session_only。每条都有 `unauthenticated`（401 或证书边界）、`wrong_principal`（403/404）或 `wrong_internal_role`（403）探针；另有 106 个 parametrized pytest 用例逐 operation 断言记录存在且不是 skip。见 `reports/f12/T093-api-conformance.json` 的 `operations[]` 与 `tests/f12/test_operations.py`。 |
+| 106 项均有实现与授权测试记录 | **partial（route-registered 106/106；functional 60/106）** | 门禁从 `contracts/openapi.json` 读 operation 清单（不手写 106 行），逐条记录 `route_registered / runtime_reached / functional_probe / implementation_status / implemented / authorization_ok / probes / normal_path / cross_principal_isolation / verdict`：4 条 public、23 条 internal（真实 mTLS 证书角色）、79 条 session/session_only。每条都有 `unauthenticated`（401 或证书边界）、`wrong_principal`（403/404/200）或 `wrong_internal_role`（403）探针；**到达 handler 不再等于 implemented**：只有该 operation 自己的 normal-path 探针返回契约声明的成功状态，`implemented` 才为 true。其余 46 条标记 `route_only`（路由已注册、功能路径未验证），在 `summary.route_only_operations` 与 §5.1 按 epic 列出。跨主体内容隔离对 18 个 list/get operation 真实断言“另一主体看不到 creator 的资源 id”；13 条无夹具的读操作明确 `not_run` 并写原因。另有 106×3 个 parametrized pytest 用例逐 operation 断言分类、隔离事实与记录存在且不是 skip。见 `reports/f12/T093-api-conformance.json` 与 `tests/f12/test_operations.py`。 |
 | 没有默认通用 CRUD 兜底 | **passed** | 运行时：未知路径 404 契约封套、真实路径错误方法 405（保留 `Allow`）、随机 UUID 资源 404 且不可枚举；静态：`scan_route_registry()` 解析 `server.go`/`internal.go`/`main.go` 的 199 条字面注册，106 条契约 operation 全部有 `method+path` 字面注册，`generic_patterns=[]`（没有首段通配的通用资源路由）、`missing_registrations=[]`。`tests/f12/test_invariants.py::test_no_generic_crud_fallback`。 |
-| 未实现端点使完整首版验收失败 | **passed** | 变异测试把不存在的 `/api/v1/f12-missing-operation-<hex>` 注入契约成 107 条：门禁以**字面路由注册表**判定该 operation `implemented=false / route_registered=false`，进入 `summary.missing_operations`，`verdict=failed`，CLI 退出码 1 并打印 `MISSING OPERATION: f12InjectedMissingOperation`；同一次运行里真实 106 条仍 `implemented=106`。另一变异删掉 1 条 operation → 清单数量校验拒绝运行（退出码 2，不产出报告）。`tests/f12/test_gate_mutations.py`、`tests/f12/test_manifest.py`。 |
+| 未实现端点使完整首版验收失败 | **passed** | 变异测试把不存在的 `/api/v1/f12-missing-operation-<hex>` 注入契约成 107 条：门禁以**字面路由注册表**判定该 operation `implementation_status=missing / route_registered=false`，进入 `summary.missing_operations`，`verdict=failed`，CLI 退出码 1 并打印 `MISSING OPERATION: f12InjectedMissingOperation`；同一次运行里真实 106 条仍是 route-registered 106，其中 60 条 functional、46 条 route_only。第二个变异证明「已注册但只有匿名 401」的 operation（`getVersion`）不会被算成 implemented（`test_a_registered_but_always_401_operation_is_not_counted_as_implemented`）。另一变异删掉 1 条 operation → 清单数量校验拒绝运行（退出码 2，不产出报告）。`tests/f12/test_gate_mutations.py`、`tests/f12/test_manifest.py`。 |
 | 端到端真实入口 | **passed** | 入口就是 `python tools/f12_api_gate.py --base-url ... --internal-* ... --contract ... --out ...`：真实 HTTP/HTTPS 套接字打到独立编译的 `cmd/api`（真实 PG 16 隔离库 + 真实 mTLS internal listener + 真实对象目录），不 import handler、不进程内调用。测试里既用 session fixture 跑同一个 `Gate`，也有一条用例**直接起 CLI 子进程**复跑未修改的 106 条契约并比对裁决（`test_the_gate_cli_reproduces_the_session_verdict`）。 |
 | 版本、命令与原始结果 | **passed** | 见 §7：Go/Python/Node/PG 版本、真实命令、退出码与原始 tail；`gofmt`、`go build/vet/test`、`sync_spec --check` 全绿。 |
 
@@ -38,9 +40,14 @@
 - **清单来自契约**：`load_operations()` 读 `contracts/openapi.json`；operationId 重复、数量不等于
   `DEFAULT_EXPECTED_OPERATIONS=106`（可用 `--expected-operations` 显式覆盖，用于变异测试）都在启动前
   `ManifestError` 拒绝（退出码 2），**不产出报告**——静默少跑一条不可能变绿。
-- **逐 operation 三面探针**：public（liveness/readiness/login/activate 的失败路径）、session
-  （匿名 401 + 另一主体 403/404）、internal（无客户端证书 TLS 边界 + 正确角色 + 错误角色 403）；
+- **逐 operation 三面探针 + 功能探针分离**：public（liveness/readiness/login/activate 的失败路径）、
+  session（匿名 401 + 另一主体 403/404/200）、internal（无客户端证书 TLS 边界 + 正确角色 + 错误角色 403）；
   能通过公开 API 真实构造的资源另外跑 normal path（创建/读取/更新/取消/领取/心跳/结算）。
+  `functional_probe` 只取该 operation 自己的 normal-path 结果；没有 normal path 的 operation 是
+  `route_only`，不计入 `implemented`（T093 复核 G）。
+- **跨主体内容隔离**：对 18 个有夹具的 list/get operation，用 plain member 调同一路由并断言 creator 的
+  资源 id 不在响应里（列表）或详情读是 403/404；记录 `cross_principal_isolation` 字段（member 状态、
+  items 数、foreign_id_visible、理由）。13 条无夹具读操作明确 `not_run`，不拿状态码冒充隔离（复核 H）。
 - **10 条跨端点不变量**：`error_envelope`、`pagination`、`etag_if_match`、`idempotency`、`sse_frames`、
   `uuid_server_generated`、`utc_rfc3339`、`decimal_strings`、`no_store`、`no_generic_crud`。
 - **路由注册表静态扫描**：`scan_route_registry()` 把三个 mux 文件的 `HandleFunc("METHOD /path")` 解析成
@@ -50,7 +57,9 @@
 - **按 epic 分组 + 机器可读证据**：`--out` 写 JSON（contract sha256、环境、fixture、106 条逐 operation
   记录、10 条不变量、summary/by_epic/verdict）；`F12_WRITE_EVIDENCE=1` 时 pytest session fixture 把同一
   份结构写到 `product/reports/f12/T093-api-conformance.json`。
-- **退出码**：0=verdict passed；1=有 missing/授权失败/不变量失败/错误；2=契约清单本身不合法。
+- **退出码**：0=verdict passed（全部 106 条都有 functional probe）；3=verdict route_only（无失败，但
+  功能覆盖不完整，是本次复核后的诚实裁决）；1=有 missing/probe_failed/授权失败/不变量失败/跨主体失败/错误；
+  2=契约清单本身不合法。
 
 ## 3. 审计发现并修复（含“修前行为 → 修后行为 → 覆盖测试”）
 
@@ -60,11 +69,15 @@
   没有 `{error:{code,message,request_id}}`，外部客户端拿不到 `request_id`。
 - **修后**：`internal/api/errors.go:42` 新增 `ContractErrors` 中间件，只在 status 是 404/405 **且响应还不是
   JSON** 时介入，改写为契约封套；保留 mux 的 `Allow` 头，删掉会撒谎的 `Content-Length`；handler 自己的
-  `writeError`（已带 `application/json`）原样通过；实现 `Flush` 让 SSE 继续工作。两个 mux 都在最外层套上
-  （`cmd/api/main.go:221`、`:246`）。
+  `writeError`（已带 `application/json`）原样通过；实现 `Flush` 让 SSE 继续工作。内部 mux 在最外层套上
+  （`cmd/api/main.go:246`）。公开 mux 由 2026-11-07 复核改为 `ContractErrorsFor([]string{"/api/"}, mux)`
+  （`cmd/api/main.go:221`、`internal/api/errors.go:48`）：页面不是 API 契约面，未知页面保留 net/http 的
+  普通 404/405；只有 `/api/` 前缀得到契约封套。Go 单测
+  `internal/api/errors_test.go::TestContractErrorsForOnlyWrapsAPIPaths` 同时断言
+  `GET /no-such-page` 仍是 text/plain、`GET /api/v1/no-such` 是 JSON 封套。
 - **覆盖**：`tests/f12/test_invariants.py::test_error_envelope_including_the_mux_404_and_405`
   （未知路径 404 `not_found`、未知方法 405 `method_not_allowed`，两者 `envelope_ok=true`）；
-  门禁 `error_envelope` 不变量扫描**每一个**错误响应（本次 400+ 条），不再只抽查两条。
+  门禁 `error_envelope` 不变量扫描**每一个**错误响应（本次 202 条），不再只抽查两条。
 
 ### 3.2 `mux.HandleFunc("/")` catch-all 把真实 API 的方法不匹配变成自己的 404
 
@@ -123,7 +136,7 @@
   3. `test_uuid_utc_decimal_and_no_store` 增加断言：UUID / 时间 / 金额三类检查数都必须 **> 0**，
      “零字段的 checked” 不再允许。
 - **效果**：同一份证据现在真实扫到 `id_fields_checked=123`、`timestamp_fields_checked=22`、
-  `money_fields_checked=4`、`json_responses_checked=371`；并且**立刻暴露了下一条**（契约允许的
+  `money_fields_checked=4`、`json_responses_checked=389`；并且**立刻暴露了下一条**（契约允许的
   配置目录 string id 被 UUID 不变量误判）。
 - **覆盖**：`tests/f12/test_invariants.py::test_uuid_utc_decimal_and_no_store`；`tests/f03` 的
   claim/heartbeat 真实栈用例同时证明 `lease_deadline` 的 UTC 形状（§3.5）。
@@ -140,14 +153,14 @@
   命中（单测锁定）。产品代码与契约均未改。
 - **覆盖**：`tests/f12/test_manifest.py::test_only_the_contract_declared_string_ids_are_exempt_from_the_uuid_rule`
   （断言豁免集合恰为这两条）；`tests/f12/test_invariants.py::test_uuid_utc_decimal_and_no_store`
-  （123 个 id 字段 checked、0 失败）；CLI 独立复跑得到同一结果（§7.3）。
+  （125 个 id 字段 checked、0 失败）；CLI 独立复跑得到同一结果（§7.3）。
 
 ### 3.8 测试/分类缺陷（3 条红 → 绿，均不是产品放宽）
 
 | # | 失败 | 根因 | 修法 |
 |---|---|---|---|
 | 1 | `test_an_unauthenticated_caller_gets_the_contract_401_for_every_family` | 对 `GET /api/v1/admin/users` 探测，但该路径只注册 `POST`，得到 mux 405 而非 401 | 按真实注册方法探测（`admin/users` 用 POST）；断言仍是 401 + `unauthenticated/invalid_key`，没有把 405 当 401 掩盖 |
-| 2 | `test_the_gate_fails_on_an_injected_unimplemented_operation` | 注入路由的 404 被 `ContractErrors` 规范成契约封套后，运行时探测无法区分“路由不存在”与“资源不存在”，被归到 `authorization_failed` | 门禁改为以 `scan_route_registry()` 的字面注册表判定“是否存在”，运行时只判定授权/形状；新增 `route_registered` 证据与单测。真实 106 条仍 `implemented=106`，注入的 1 条落进 `missing_operations` 且退出码 1 |
+| 2 | `test_the_gate_fails_on_an_injected_unimplemented_operation` | 注入路由的 404 被 `ContractErrors` 规范成契约封套后，运行时探测无法区分“路由不存在”与“资源不存在”，被归到 `authorization_failed` | 门禁改为以 `scan_route_registry()` 的字面注册表判定“是否存在”，运行时只判定授权/形状；新增 `route_registered` 证据与单测。真实 106 条仍 route-registered 106，其中 60 functional / 46 route_only；注入的 1 条落进 `missing_operations` 且退出码 1。复核另加「已注册但只有匿名 401」变异：`getVersion` 必须是 route_only，不是 implemented |
 | 3 | `test_sse_frames_carry_id_event_and_the_event_schema_envelope` | 断言 `content_type == "text/event-stream"`，实际 `text/event-stream; charset=utf-8`（合法参数） | 按 media type 解析（分号前、去空白、小写）比较；保留“必须是 SSE”的语义 |
 
 ## 4. 审计发现但未修（如实记录，归属其它 epic / 后续票）
@@ -156,7 +169,7 @@
 |---|---|---|---|---|
 | 1 | `artifact.ready`、`usage.updated` 两种持久事件**没有 emitter** | 契约枚举：`contracts/event.schema.json:29-30`；实现只有 `run.status`/`node.status`/`approval.required`（`internal/execution/events.go:41,43,144`；`grep -r artifact.ready internal/` 无命中）；T086 报告已记 `usage.updated` 无 emitter | F03/T032（事件）与 F05（artifact）/F06（usage） | 属功能缺口，不是契约判定缺陷；本票只记录，不实现 F12 之外的功能 |
 | 2 | 缺少 `Idempotency-Key` 时 `details` 有**两种形状**：`{"header":"Idempotency-Key"}`（8 条）与 `{"field":"Idempotency-Key"}`（3 条：`decideApproval`、`decideMemoryCandidate`、`reconcileOperation`） | 证据 JSON `invariants.idempotency.observations[].missing_key_details_shapes`；代码：`internal/api/debug.go:104`、`models.go:200`、`publication.go:129`、`requests.go:267`、`evaluation_submit.go:97` vs `approvals.go:211`、`memory.go:317`、`reconcile.go:47` | F06/F08/F09（各 handler 的写路径） | 两种形状都“定位到了同一个 header”，契约未把 `details` 内部键钉死；统一属于跨 epic 的 API 形状收敛，不在本票范围。门禁按“标识到 header”判定并在证据里显式记录两种形状 |
-| 3 | 所有 JSON 响应（含成功读取）都带 `Cache-Control: no-store`，使 HTTP 协商缓存（ETag + `If-None-Match` 条件 GET）实际不可用 | `internal/api/errors.go:97-99`（`writeJSON` 统一 no-store）；证据 JSON `invariants.no_store.observations[0].json_responses_checked=371`（全部 no-store） | F01/API 响应头策略（`docs/spec/API.md` 只要求草稿/记忆有 ETag；未要求可缓存） | `no-store` 是既有全局安全策略（会话/密钥/审批数据），本票不能为缓存收益擅自放宽；ETag 仍作为**写侧乐观并发**校验有效（428/412 已由 `etag_if_match` 证明）。记录为“协商缓存不可用”的设计后果 |
+| 3 | 所有 JSON 响应（含成功读取）都带 `Cache-Control: no-store`，使 HTTP 协商缓存（ETag + `If-None-Match` 条件 GET）实际不可用 | `internal/api/errors.go:97-99`（`writeJSON` 统一 no-store）；证据 JSON `invariants.no_store.observations[0].json_responses_checked=389`（全部 no-store） | F01/API 响应头策略（`docs/spec/API.md` 只要求草稿/记忆有 ETag；未要求可缓存） | `no-store` 是既有全局安全策略（会话/密钥/审批数据），本票不能为缓存收益擅自放宽；ETag 仍作为**写侧乐观并发**校验有效（428/412 已由 `etag_if_match` 证明）。记录为“协商缓存不可用”的设计后果 |
 | 4 | 非契约路由：注册表 199 条去重字面模式 vs 契约 106 条 operation，另有 93 条非契约模式（90 带方法 + 3 运维别名） | 见 §5.4 清单（由 `scan_route_registry` 同一正则 + 契约 diff 得到） | 各 epics（F02A/F05/F06/F07/F08/F10/F11/F13A 的页面/内部/扩展路由） | 这些是**有意的**非契约面（页面、签名链接、内部 mTLS、评测进度等），ENV §8 已把它列为已知边界；本票只验证“契约内 106 条都在”，不把非契约面写进契约（也不得改 `contracts/**`） |
 | 5 | 审批服务层 3.4 的 422 防御分支没有独立用例（HTTP 层先拒绝） | `internal/approvals/query.go:54-58` | F06 | 只能通过绕过 HTTP 的直接 service 调用触发；现有测试均为 HTTP 黑盒。记录为覆盖缺口 |
 | 6 | `GET /api/v1/runs/{run_id}/capabilities` 同时存在**公开 mux 版本**（`server.go:476`）与契约内 internal 版本；公开版本不在 OpenAPI | §5.4 清单第 7 条 | F03/F06 | 同上，非契约扩展面；本票不删不改 |
@@ -169,40 +182,40 @@
 - `generated_at`、`environment.requests`、契约 sha256：见证据文件头；契约
   `sha256=bf191b9697f99b362bd61c287964724637e1281153232699aacf582157fc3e91`（93 paths / 106 operations）。
 
-### 5.1 按 epic 分组（106 条）
+### 5.1 按 epic 分组（106 条；implemented = 有 functional probe）
 
-| epic | operations | implemented | failed | missing |
-|---|---:|---:|---:|---|
-| F00/D00 | 2 | 2 | 0 | — |
-| F01 | 12 | 12 | 0 | — |
-| F02A | 8 | 8 | 0 | — |
-| F02B | 6 | 6 | 0 | — |
-| F03 | 10 | 10 | 0 | — |
-| F03/F04A | 5 | 5 | 0 | — |
-| F00B | 9 | 9 | 0 | — |
-| F05 | 10 | 10 | 0 | — |
-| F06 | 13 | 13 | 0 | — |
-| F07 | 1 | 1 | 0 | — |
-| F08 | 9 | 9 | 0 | — |
-| F09 | 8 | 8 | 0 | — |
-| F10 | 7 | 7 | 0 | — |
-| F11 | 3 | 3 | 0 | — |
-| F13A | 3 | 3 | 0 | — |
-| **合计** | **106** | **106** | **0** | **[]** |
+| epic | operations | functional | route_only | failed |
+|---|---:|---:|---:|---:|
+| F00/D00 | 2 | 2 | 0 | 0 |
+| F00B | 9 | 1 | 8 | 0 |
+| F01 | 12 | 9 | 3 | 0 |
+| F02A | 8 | 8 | 0 | 0 |
+| F02B | 6 | 1 | 5 | 0 |
+| F03 | 10 | 8 | 2 | 0 |
+| F03/F04A | 5 | 0 | 5 | 0 |
+| F05 | 10 | 4 | 6 | 0 |
+| F06 | 13 | 7 | 6 | 0 |
+| F07 | 1 | 0 | 1 | 0 |
+| F08 | 9 | 8 | 1 | 0 |
+| F09 | 8 | 6 | 2 | 0 |
+| F10 | 7 | 4 | 3 | 0 |
+| F11 | 3 | 2 | 1 | 0 |
+| F13A | 3 | 0 | 3 | 0 |
+| **合计** | **106** | **60** | **46** | **0** |
 
 ### 5.2 不变量（10 条全 passed）
 
 | 不变量 | 观测 |
 |---|---|
-| error_envelope | 未知路径 404 `not_found`、未知方法 405 `method_not_allowed` + `Allow`；全部错误响应封套合法 |
+| error_envelope | 未知路径 404 `not_found`、未知方法 405 `method_not_allowed` + `Allow`；本次扫描 202 条错误响应，封套全合法 |
 | pagination | 14 个分页端点；`limit=1` 有 items/next_cursor；`101/0/abc → 422 + field=limit`；`listMemories` 游标往返 |
 | etag_if_match | draft/memory：缺 `If-Match` 428、旧版本 412；`cancelRun` 202 且不要求 ETag |
 | idempotency | `debugDraft` 重放同 run_id、同 key 异 body 409；11 个必填 header 的 operation 缺头均 422/400 且定位 |
 | sse_frames | `id/event/data` 帧、`event.schema.json` 校验、Last-Event-ID 重放不倒退；410 分支 `not_run` |
-| uuid_server_generated | **123** 个 id 字段均满足契约（服务端资源 UUID；两个契约声明为 string 的配置目录 id 按 schema 豁免） |
-| utc_rfc3339 | **22** 个时间字段均为 UTC RFC3339（含执行租约 `lease_deadline` 的微秒精度） |
+| uuid_server_generated | **125** 个 id 字段均满足契约（服务端资源 UUID；两个契约声明为 string 的配置目录 id 按 schema 豁免） |
+| utc_rfc3339 | **23** 个时间字段均为 UTC RFC3339（含执行租约 `lease_deadline` 的微秒精度） |
 | decimal_strings | **4** 个金额字段均为十进制字符串，无二进制浮点 |
-| no_store | **371** 个 JSON 响应全部 `Cache-Control: no-store` |
+| no_store | **389** 个 JSON 响应全部 `Cache-Control: no-store` |
 | no_generic_crud | 运行时 404/405/随机资源 404；静态 106 条字面注册、无通配 |
 
 > 这些计数是**实际检查的字段数**（本轮修正了计数器语义，见 §3.6），原始值见证据 JSON 的
@@ -240,6 +253,43 @@ mux 各注册一次但属契约路径，去重后不重复计数）。分类：
   unknown-operations,node-results,retrieval,capability-results,node-approvals,capability-settlements}`。
 - **签名对象链接（2）**：`PUT|GET /object-links/{token}`（短期签名 URL，不属于 JSON API）。
 - **运维别名（3，method-less）**：`/healthz`、`/readyz`、`/api/status`。
+
+### 5.5 `route_only` 清单与跨主体隔离口径（2026-11-07 复核）
+
+**route_only = 路由已注册、运行时可达，但没有 functional normal-path 探针**，因此不计入
+`implemented`。本机 dev-stub 栈能真实构造 60 条；其余 46 条的 normal path 需要尚不存在的夹具
+（发布版本、审批、评测报告、后台 job、ingress 文档等），如实列在这里而不是用“路由存在”冒充：
+
+`activateUser`、`completeBackgroundJob`、`completeBackgroundUpload`、`completeWorkerUpload`、
+`confirmAttemptExit`、`createBackgroundDownload`、`createBackgroundUpload`、`createWorkerDownload`、
+`createWorkerUpload`、`decideApproval`、`decideMemoryCandidate`、`deleteArtifact`、`deleteDocument`、
+`downloadArtifact`、`evaluateDraft`、`getApproval`、`getBackgroundArtifactStatus`、`getBackgroundJob`、
+`getEvaluation`、`getEvaluationReport`、`getKnowledgeDocument`、`getPublicationReview`、`getTool`、
+`getVersion`、`getWorkerArtifactStatus`、`grantDiagnostics`、`heartbeatBackgroundJob`、`ingestDocument`、
+`invokeBackgroundModel`、`invokeCapability`、`prepareApproval`、`proposeMemoryCandidate`、
+`readArtifactContent`、`reconcileOperation`、`registerRunArtifact`、`replyInteraction`、
+`reviewPublication`、`reviewTool`、`revokeVersion`、`runEvents`、`setUserRoles`、`spawnChild`、
+`streamModelCall`、`submitApplication`、`submitTool`、`updatePrincipal`。
+
+跨主体内容隔离（`cross_principal_isolation`）：**18 条实测**——`listApplications`、`listRuns`、
+`listConversations`、`listMemories`、`listKnowledgeBases`、`getApplication`、`getDraft`、
+`listVersions`、`getRun`、`listRunArtifacts`、`getConversation`、`listMessages`、`getMemory`、
+`getKnowledgeBase`、`listKnowledgeDocuments`、`getArtifact`、`readArtifactContent`、
+`downloadArtifact`。每条记录 member 的状态、items 数、`foreign_id_visible` 与 `isolation_ok`；
+13 条无夹具读操作（`getVersion`、`getTool`、`getApproval`、`getRequest`、`getPublicationReview`、
+`getEvaluation`、`getEvaluationReport`、`getKnowledgeDocument`、`getBackgroundJob`、`getDeletion`、
+`listApprovals`、`listMemoryCandidates`、`runEvents`）明确记 `not_run` 并写原因。报告不再说
+“每条记录都有 403/404”：无路径参数的自助 list 的 wrong_principal 本来就是 200，隔离由内容断言证明。
+
+### 5.6 门禁的已声明边界（不隐瞒）
+
+1. **normal-path 覆盖 60/106**：不是 106 条都有功能探针；46 条 route_only 已在 §5.5 列出。
+2. **实现判定依赖源码正则**：`implemented` 的路由存在性来自 `scan_route_registry()` 对
+   `server.go`/`internal.go`/`main.go` 的 `HandleFunc("METHOD /path")` 扫描；不是编译产物或运行时注册表。
+   读不到源码时 fail-closed（全部 missing），生产只发布二进制时必须以源码快照运行。
+3. **夹具有限**：没有发布版本、审批、评测报告、后台 job 的通用构造器，因此这些 functional probe 缺失；
+   这是门禁边界，不是“已验证通过”。
+4. **跨主体隔离 18/31 个读操作**：其余 13 条 not_run 的原因是“没有第二个主体的资源夹具”，不是“已隔离”。
 
 ## 6. 回归影响面（4 处全局改动的既有套件结果）
 
@@ -356,34 +406,38 @@ FAILED tests/f02a/test_t027_refusals.py::test_unready_and_foreign_dependencies_a
 ### 7.2 本票门禁（命令 + 原始 tail）
 
 ```powershell
-cd E:\Orchara-wt\t093\product
+cd E:\Orchara-wt\review-f12\product
 $env:F12_WRITE_EVIDENCE='1'
-python -m pytest tests/f12 -q
+python -m pytest tests/f12/test_operations.py -q
 ```
 ```text
-........................................................................ [ 29%]
-........................................................................ [ 59%]
-........................................................................ [ 89%]
-..........................                                               [100%]
-242 passed in 53.51s
+........................................................................ [ 22%]
+........................................................................ [ 45%]
+........................................................................ [ 67%]
+........................................................................ [ 90%]
+...............................                                          [100%]
+319 passed in 26.44s
 ```
 
-证据 JSON（`reports/f12/T093-api-conformance.json`，266,798 bytes，generated_at `2026-11-06T11:14:52Z`，
-`environment.requests=377`）的 summary 原始值：
+证据 JSON（`reports/f12/T093-api-conformance.json`，复核修复后重新生成）的 summary 原始值：
 
 ```json
-{"operations": 106, "implemented": 106, "missing_operations": [], "authorization_failed": [],
- "per_operation_failed": [], "invariant_failures": [], "errors": [], "verdict": "passed",
+{"operations": 106, "route_registered": 106, "functional_probe": 60,
+ "functional_coverage": "60/106", "implemented": 60, "route_only": 46,
+ "probe_failed": 0, "missing_operations": [], "authorization_failed": [],
+ "per_operation_failed": [], "invariant_failures": [],
+ "cross_principal_isolation": {"checked": 18, "failures": []},
+ "errors": [], "verdict": "route_only",
  "not_run": {"sse_frames": ["410 event_cursor_expired + snapshot_url: requires an event older than ORCHARA_RUN_EVENT_RETENTION; the development stack keeps 24h, so this branch was not exercised"]}}
 ```
 
 形状不变量原始观测（证明不是空集通过）：
 
 ```json
-{"uuid_server_generated": [{"id_fields_checked": 123}],
- "utc_rfc3339": [{"timestamp_fields_checked": 22}],
+{"uuid_server_generated": [{"id_fields_checked": 125}],
+ "utc_rfc3339": [{"timestamp_fields_checked": 23}],
  "decimal_strings": [{"money_fields_checked": 4}],
- "no_store": [{"json_responses_checked": 371}]}
+ "no_store": [{"json_responses_checked": 389}]}
 ```
 
 变异测试（可单独重放，单独运行也通过）：
@@ -392,24 +446,25 @@ python -m pytest tests/f12 -q
 python -m pytest tests/f12/test_gate_mutations.py -q -rA
 ```
 ```text
-....                                                                     [100%]
+.....                                                                    [100%]
 PASSED tests/f12/test_gate_mutations.py::test_the_gate_cli_refuses_a_manifest_with_105_operations
 PASSED tests/f12/test_gate_mutations.py::test_the_gate_fails_on_an_injected_unimplemented_operation
 PASSED tests/f12/test_gate_mutations.py::test_the_gate_cli_reproduces_the_session_verdict
 PASSED tests/f12/test_gate_mutations.py::test_the_gate_reports_the_same_verdict_as_its_exit_code
-4 passed in 50.79s
+PASSED tests/f12/test_gate_mutations.py::test_a_registered_but_always_401_operation_is_not_counted_as_implemented
+5 passed in 51.19s
 ```
 
 ### 7.3 CLI 直接产出（端到端真实入口）
 
 `test_the_gate_cli_reproduces_the_session_verdict` 用文档化命令行（`--base-url`、`--admin-*`、
 `--internal-url/--internal-ca/--internal-cert-dir`、`--contract contracts/openapi.json`、`--out`）在
-**另一个 pristine 栈**上以子进程运行 CLI，断言退出码 0、`--out` 文件存在且逐项等于 session 裁决：
-`operations=106 / implemented=106 / missing=[] / authorization_failed=[] / invariant_failures=[] /
-verdict=passed`、`by_epic` 与 `not_run` 键集合一致，stdout 含
-`F12 API gate: 106/106 operations implemented`。该次 CLI 产出的报告副本保存在
-`E:\Orchara\.scratch\f12\t093\cli-report.json`（266,622 bytes，来自 pristine CLI 栈），summary 与上面 session
-证据完全一致，形状计数同样为 123/22/4/371。这证明证据 JSON 是**可由 CLI 独立重放产出**的，而不是测试专属路径。
+**另一个 pristine 栈**上以子进程运行 CLI，断言退出码 3、`--out` 文件存在且逐项等于 session 裁决：
+`operations=106 / route_registered=106 / functional_probe=60 / route_only=46 / missing=[] /
+authorization_failed=[] / invariant_failures=[] / verdict=route_only`、`by_epic` 与 `not_run` 键集合一致，
+stdout 含 `F12 API gate: route-registered 106/106, functional probe 60/106, route_only 46`。
+退出码 3 是 2026-11-07 复核新增的**诚实裁决**：没有失败，但 46 条只有路由、没有功能探针，不能报
+“106/106 implemented”。这证明证据 JSON 是**可由 CLI 独立重放产出**的，而不是测试专属路径。
 
 ### 7.4 Go / 静态门禁
 
@@ -497,3 +552,7 @@ python tools/sync_spec.py --check  → no drift
    “OpenAPI 是唯一对外面”，需要另开契约治理票。
 8. **`details` 形状未统一**（§4 #2）、**`no-store` 使协商缓存不可用**（§4 #3）、
    **`artifact.ready`/`usage.updated` 无 emitter**（§4 #1）仍是已知产品/契约边界，本票只记录证据。
+9. **复核后的功能覆盖边界（2026-11-07）**：`implemented` 只统计有 functional probe 的 60 条；
+   46 条 route_only 见 §5.5。若要把它们变成 functional，需要先补发布版本/审批/评测报告/后台 job/
+   ingress 文档等夹具，或另开票扩展门禁；本票不把“路由存在”写成“功能已验证”。退出码 3 表示
+   route_only 裁决，CI 若要求 0 必须显式处理这一新语义，而不是把 3 当成通过。

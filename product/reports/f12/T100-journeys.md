@@ -3,6 +3,13 @@
 **状态：`passed`**（五条旅程全部真实跑通，独立真值核对，失败/授权/重试边界有断言；
 1 条已知产品缺口按 `blocked` 单独声明，1 个真实厂商模型变体按环境 `blocked`，没有把它写成通过）。
 
+> **2026-11-07 复核修复说明**：原来的 `t100_support.JourneyHandle.__exit__` 在正常退出时无条件把
+> `status` 置成 `passed`，即使旅程体没有记录任何断言。现在正常退出不再改写状态；五个测试在旅程体
+> 末尾显式调用 `journey.mark_passed()`，`JourneyLog.records()/write()` 强制校验 `passed` 至少有一条断言。
+> 证据 JSON 已重新生成（同一批 5 条 `passed` + 1 条 `blocked` gap，断言数不变），并在写入源头脱敏：
+> 环境数据库名 `orchara_t100_…` 也被 `orchara_<redacted>` 规则覆盖（不是凭据，但按统一规则处理）。
+> 空旅程回归测试见 `tests/f12/test_journey_status.py`。
+
 | # | journey_id | 旅程 | 状态 | 用时（旅程体，秒） | 独立真值 |
 |---|---|---|---|---|---|
 | 1 | `T100-J1` | 账号启动：migrate → bootstrap → 邀请 → 激活 → 登录 | `passed` | 6.297 | `schema_migrations`/`principals`/`users`/`role_bindings`/`activation_tokens`/`sessions`/`audit_events` + 真实 CLI 退出码 |

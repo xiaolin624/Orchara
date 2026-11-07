@@ -2,8 +2,8 @@
   "ticket": "T100",
   "issue": 101,
   "title": "复现账号到发布和后台执行的关键旅程",
-  "created_at": "2026-11-07T04:53:25Z",
-  "generated_at": "2026-11-07T04:54:31Z",
+  "created_at": "2026-11-07T05:45:17Z",
+  "generated_at": "2026-11-07T05:46:11Z",
   "environment": {
     "profile": "ORCHARA_PROFILE=dev-stub (no vendor credentials, endpoints or GPU)",
     "python": "3.12.2",
@@ -11,12 +11,12 @@
     "go": "go version go1.27.3 windows/amd64",
     "node": "v24.13.0",
     "postgres": "16.4",
-    "database": "orchara_t100_54c9ad96cdac",
+    "database": "orchara_<redacted>",
     "migrations": {
       "count": 52,
       "head": "0052_handoff_scope_bounds.sql"
     },
-    "git_head": "60d9de0115c006a281050ad5e1a7445c54b9c040",
+    "git_head": "cacfc44ea14cddc9363613b0d5ade2fa5a859833",
     "contract_sha256": "bf191b9697f99b362bd61c287964724637e1281153232699aacf582157fc3e91",
     "platform": "Windows-11-10.0.26200-SP0",
     "sandbox": {
@@ -83,14 +83,14 @@
           "head": "0052_handoff_scope_bounds.sql"
         },
         "bootstrap_admin": {
-          "principal_id": "963546bd-6c7b-4881-b308-09b1c6449bce",
+          "principal_id": "13f5d77f-aaf5-4434-a74b-028c68128056",
           "login": "admin",
           "role": "admin",
           "audit_action": "admin.bootstrap",
           "password_hash": "argon2id (secret never stored in clear)"
         },
         "admin_session": {
-          "principal_id": "963546bd-6c7b-4881-b308-09b1c6449bce",
+          "principal_id": "13f5d77f-aaf5-4434-a74b-028c68128056",
           "roles": [
             "admin"
           ],
@@ -98,8 +98,8 @@
           "csrf_stored_as_sha256": true
         },
         "invitation": {
-          "login": "t100.creator-cb4854",
-          "principal_id": "cdab04ee-9cfa-4182-8d13-1841d900a438",
+          "login": "t100.creator-987c9e",
+          "principal_id": "32f36167-127c-4908-ba4a-767f03b557a1",
           "roles": [
             "creator"
           ],
@@ -108,8 +108,8 @@
           "user_password_sentinel": "!pending-activation"
         },
         "activated_user": {
-          "login": "t100.creator-cb4854",
-          "principal_id": "cdab04ee-9cfa-4182-8d13-1841d900a438",
+          "login": "t100.creator-987c9e",
+          "principal_id": "32f36167-127c-4908-ba4a-767f03b557a1",
           "roles": [
             "creator"
           ]
@@ -124,8 +124,8 @@
       },
       "variants": [],
       "failure_reason": null,
-      "started_at": "2026-11-07T04:53:30Z",
-      "duration_seconds": 6.297
+      "started_at": "2026-11-07T05:45:21Z",
+      "duration_seconds": 5.547
     },
     {
       "journey_id": "T100-J2",
@@ -172,24 +172,24 @@
       ],
       "facts": {
         "model_registration": {
-          "model_profile_version_id": "a3ebc125-c44c-49d1-b7c5-c7669f33adf1",
+          "model_profile_version_id": "693c8657-f8f5-42f3-87c6-5962f42098f6",
           "provider": "stub",
           "model_id": "stub-model-1",
           "endpoint_ref": "stub-endpoint",
           "data_destination": "local-stub",
-          "manifest_sha256": "57f173b299644e706c75318a2c9a9ebff69e6b0c3cd068f87f89c63eb236e79d"
+          "manifest_sha256": "2ba42a5e278f3ff9ed8da118113ea3574afeacf259c3cce273568b3f4d9873a8"
         },
         "evaluation_submission": {
-          "evaluation_id": "2ea6e141-067c-479e-8540-f3b864d9eb83",
-          "background_job_id": "d26b26a2-2134-48fe-858e-370a3f55988d",
-          "idempotency_key": "t100-model-validate-133761e2fd8d",
+          "evaluation_id": "fc036c9e-65fe-4572-9243-ea415c4c78c6",
+          "background_job_id": "c9251041-d37f-4e72-b7fc-ed37601f07f4",
+          "idempotency_key": "t100-model-validate-2c27d72771ad",
           "replay_created_second_job": false
         },
         "independent_truth": {
           "model_validation_state": "passed",
           "evaluation_state": "succeeded",
           "report_status": "passed",
-          "report_manifest_sha256": "57f173b299644e706c75318a2c9a9ebff69e6b0c3cd068f87f89c63eb236e79d",
+          "report_manifest_sha256": "2ba42a5e278f3ff9ed8da118113ea3574afeacf259c3cce273568b3f4d9873a8",
           "dataset_sha256_matches_sealed_bytes": true,
           "report_provider": "stub",
           "report_stub": true,
@@ -204,8 +204,8 @@
         }
       ],
       "failure_reason": null,
-      "started_at": "2026-11-07T04:53:54Z",
-      "duration_seconds": 3.937
+      "started_at": "2026-11-07T05:45:39Z",
+      "duration_seconds": 3.234
     },
     {
       "journey_id": "T100-J3",
@@ -257,11 +257,11 @@
       ],
       "facts": {
         "evaluation": {
-          "evaluation_id": "e32f8ae6-1c83-4be5-9bd2-ebd468d20047",
-          "report_id": "d9632a3b-81f8-4c43-b443-750fc2b8ebbb",
+          "evaluation_id": "2c9b5c82-3121-44c7-af6f-90d3b096696e",
+          "report_id": "22472ae8-2f85-468b-be1b-15a5f56033e4",
           "report_status": "passed",
-          "manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
-          "snapshot_manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "manifest_sha256": "1a20fd8f41486f18fa48845cc43cbd99938a19d2361a139ad305bd7f8d545f16",
+          "snapshot_manifest_sha256": "1a20fd8f41486f18fa48845cc43cbd99938a19d2361a139ad305bd7f8d545f16",
           "cases": {
             "sales-happy-csv": {
               "run_state": "succeeded",
@@ -286,28 +286,28 @@
           }
         },
         "published_version": {
-          "application_id": "f095f448-bd30-442d-a16b-072a93bdf8bd",
-          "version_id": "9074a95e-3155-4b16-a778-e2959263dd61",
+          "application_id": "649a07fb-f396-44cf-80c0-680eaa4af961",
+          "version_id": "664326be-ffdc-4668-b3b4-9ddda70b8081",
           "version_no": 1,
-          "manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
-          "manifest_artifact_id": "6047c332-b11b-4001-886b-da82829be9b0",
-          "review_id": "8cdc3a1f-7686-48a2-8087-2c9880aab2dd",
+          "manifest_sha256": "1a20fd8f41486f18fa48845cc43cbd99938a19d2361a139ad305bd7f8d545f16",
+          "manifest_artifact_id": "6b33539d-d5a6-4847-b35c-3caa5c8ea36b",
+          "review_id": "6e4da40c-5092-44f9-b2bd-b5a34a53fea2",
           "outbox_publish_rows": 1,
           "audit_actions": [
             "publication.approved"
           ]
         },
         "immutability": {
-          "draft_revalidated_manifest_sha256": "b10eab92b404359ff06c175f5d3f950288ed9873947f8d4b32443812a8cf7cfe",
-          "published_manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "draft_revalidated_manifest_sha256": "acc53a875ae6057091b79dcbae316f3d7a3d1bed5b5a632fd291789ff676934b",
+          "published_manifest_sha256": "1a20fd8f41486f18fa48845cc43cbd99938a19d2361a139ad305bd7f8d545f16",
           "published_row_unchanged": true,
           "published_sealed_bytes_unchanged": true
         }
       },
       "variants": [],
       "failure_reason": null,
-      "started_at": "2026-11-07T04:54:03Z",
-      "duration_seconds": 12.968
+      "started_at": "2026-11-07T05:45:46Z",
+      "duration_seconds": 12.938
     },
     {
       "journey_id": "T100-J4",
@@ -349,9 +349,9 @@
       "notes": [],
       "facts": {
         "result_first": {
-          "run_id": "371cd01a-30a1-44c1-a42a-c8a59489066d",
-          "job_id": "f7632d61-55dc-4696-81f5-37d8b5667626",
-          "output_artifact_id": "936effda-f9c7-4013-bca4-c3b11cb6977a",
+          "run_id": "f26a196f-bbb9-46ae-b5be-983d62ce2d39",
+          "job_id": "e4e72afb-f868-4251-a1fc-8c25f88d1771",
+          "output_artifact_id": "f23db75c-b91f-45eb-b443-d81ad3017353",
           "output_sha256": "6365003e32468310289cfbcb18913794629315c76914b78c561d34201fe97285",
           "revision_after_proposal": 2,
           "revision_after_exit": 3,
@@ -360,9 +360,9 @@
           "quota_released": true
         },
         "exit_first": {
-          "run_id": "36da0861-1a43-4fac-a665-e83f4a1efdd2",
-          "job_id": "cf05d4f8-f571-46b3-b700-fed9b158b7cd",
-          "output_artifact_id": "15f0b183-722e-44df-b8e8-0fb9d0106f3e",
+          "run_id": "5d375f26-abc8-424c-be06-80620f4eb04f",
+          "job_id": "1b733eb4-33a7-48f5-88ea-c223c7f734aa",
+          "output_artifact_id": "d82e15d4-eba3-4b5e-89fb-c6d441193bf8",
           "state_after_exit_only": "recovery_pending",
           "revision_after_exit_only": 3,
           "revision_after_result": 4,
@@ -374,11 +374,11 @@
           "interim_state": "running",
           "parked_state": "needs_reconciliation",
           "parked_finished_at": null,
-          "stale_token_run_id": "62f96df0-6db5-445c-ada0-bb546e8d1f11",
+          "stale_token_run_id": "faf393ac-ca1f-4355-9d69-f3e9d4e590db",
           "stale_token_error": "stale_attempt"
         },
         "real_supervisor_exec": {
-          "run_id": "0a763563-33ea-4df2-ac45-00e8253f2bc1",
+          "run_id": "84496ced-5353-4f2c-bfe8-8c004dba544e",
           "executor_report": {
             "status": "executed",
             "outcome": "succeeded",
@@ -390,7 +390,7 @@
             "exit_code": 0,
             "cleanup": {
               "sandbox_list_matches": 0,
-              "pid": 842,
+              "pid": 822,
               "pid_alive": false,
               "ps_matches": 0,
               "workspace_removed": true
@@ -420,12 +420,12 @@
         {
           "variant_id": "real-supervisor-exec",
           "status": "passed",
-          "evidence": "run 0a763563-33ea-4df2-ac45-00e8253f2bc1: outcome=succeeded, attempt exited+revoked, sandbox cleanup={'sandbox_list_matches': 0, 'pid': 842, 'pid_alive': False, 'ps_matches': 0, 'workspace_removed': True}"
+          "evidence": "run 84496ced-5353-4f2c-bfe8-8c004dba544e: outcome=succeeded, attempt exited+revoked, sandbox cleanup={'sandbox_list_matches': 0, 'pid': 822, 'pid_alive': False, 'ps_matches': 0, 'workspace_removed': True}"
         }
       ],
       "failure_reason": null,
-      "started_at": "2026-11-07T04:54:20Z",
-      "duration_seconds": 10.641
+      "started_at": "2026-11-07T05:46:03Z",
+      "duration_seconds": 8.453
     },
     {
       "journey_id": "T100-J5",
@@ -469,19 +469,19 @@
       "notes": [],
       "facts": {
         "tool_run_enqueued": {
-          "job_id": "b8a1c6af-3e68-4afd-a9ae-4a3410bfde25",
+          "job_id": "03e9fc8c-8512-4b6f-9fc7-4644bea4d496",
           "kind": "tool_run",
           "state": "ready",
-          "artifact_id": "c9c848a6-fae9-447e-911e-929d7ec481ef",
+          "artifact_id": "9813d3a3-c97f-4504-8aac-9c81b024140a",
           "input_sha256": "f226b1fef2d09026714dfbc29a01f1439d1353ba0bfb4a98fd3531db1fc612da"
         },
         "tool_run_result": {
           "job_state": "succeeded",
           "attempt_count": 1,
           "failure_class": null,
-          "finished_at": "2026-11-07 12:53:45.548629+08",
-          "result_event_id": "8ddd9e08-2698-4af9-bcf4-86206964c687",
-          "summary_artifact_id": "89c0dd53-cfc1-47b9-bd25-6a7403ab1de0",
+          "finished_at": "2026-11-07 13:45:32.597032+08",
+          "result_event_id": "c57ed211-26c8-424d-91b5-0a8ca4e124e7",
+          "summary_artifact_id": "ef06d811-fdc2-43cf-976e-4ef606b7e5bd",
           "summary_sha256": "84751af4c9cd7057707d57c93055593f7cebc0f1c634c81f3f9a9c9a58d83987",
           "product_summary": {
             "total": "250.00",
@@ -505,31 +505,31 @@
           }
         },
         "claim": {
-          "job_id": "d97cd05c-c7ad-41d0-a5e5-623153fd91ce",
-          "attempt_token": "bf860a61-0b29-4161-aef9-88a64354bb9c",
+          "job_id": "cb8bfa15-adf1-477d-bda4-5d27f5a8b981",
+          "attempt_token": "<redacted>",
           "attempt_count": 1,
           "worker_id": "t100-maintenance-unit",
-          "lease_deadline": "2026-11-07 12:54:17.858796+08"
+          "lease_deadline": "2026-11-07 13:46:04.668469+08"
         },
         "heartbeat": {
-          "lease_deadline_before": "2026-11-07 12:54:17.858796+08",
-          "lease_deadline_after": "2026-11-07 12:54:17.979683+08",
+          "lease_deadline_before": "2026-11-07 13:46:04.668469+08",
+          "lease_deadline_after": "2026-11-07 13:46:04.77674+08",
           "renewed": true
         },
         "complete": {
-          "retry_event": "71ce5e7f-003c-4d33-a3f2-99d9efae0301",
-          "terminal_event": "db368f64-bdca-40d5-a32b-93b8ed2395df",
+          "retry_event": "b646530b-55c7-4da0-b050-f6915d2f5151",
+          "terminal_event": "9d0e561a-ccb2-40a7-ac28-7cada6ee5f51",
           "state": "failed",
           "failure_class": "business",
           "error_code": "negative_amount",
           "attempt_count": 2,
-          "finished_at": "2026-11-07 12:53:48.75507+08"
+          "finished_at": "2026-11-07 13:45:35.272532+08"
         }
       },
       "variants": [],
       "failure_reason": null,
-      "started_at": "2026-11-07T04:53:42Z",
-      "duration_seconds": 6.14
+      "started_at": "2026-11-07T05:45:30Z",
+      "duration_seconds": 5.375
     }
   ],
   "known_gaps": [
@@ -568,15 +568,15 @@
         },
         "run_read_status": 200,
         "run_read": {
-          "id": "2bee5627-2788-4034-90a3-7e8a2609057f",
+          "id": "4edd5e19-eca0-41b8-9689-3bb84696fc2e",
           "state": "failed",
           "revision": 3,
-          "application_version_id": "9074a95e-3155-4b16-a778-e2959263dd61",
+          "application_version_id": "664326be-ffdc-4668-b3b4-9ddda70b8081",
           "parent_run_id": null,
           "output_artifact_id": null,
           "error_code": "node_input_invalid",
           "kind": "published",
-          "execution_snapshot_id": "9c47081e-ef65-4db4-835d-870fba3977a8",
+          "execution_snapshot_id": "4e0391a8-fa22-4874-bae7-de8330a9b8e4",
           "phase": "idle"
         },
         "node_results_status": 200,
@@ -588,7 +588,7 @@
         }
       },
       "reason": "The Request path seals the chat message verbatim as the Run input (internal/requests/submit.go:131,646-690) while the executor requires a JSON object (internal/presetexec/linear.go:177-187 / graphrun.go:929-937), so the real execution fails with node_input_invalid before any sandbox starts. This is the known F08<->F04B integration gap, not a test-authoring shortcut; the ticket's structured entry (explicit application_version_id + JSON task document) is the in-spec alternative and was not used to claim this chat-text capability.",
-      "recorded_at": "2026-11-07T04:54:16Z"
+      "recorded_at": "2026-11-07T05:45:59Z"
     }
   ]
 }

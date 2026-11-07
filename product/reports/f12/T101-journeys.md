@@ -1,12 +1,13 @@
 # T101（GitHub #102）请求、审批、记忆、知识及服务账号五旅程真实复现报告
 
-- 状态：**`passed`**（判定口径：手段真实 + 覆盖完整 + 裁决诚实；五条旅程 J1/J2/J3/J4/J5 全部真实跑通，
-  其中「请求→Run（自然语言）」作为 **J1b 子记录记 `blocked`** —— 这是 F08↔F04B 的**产品缺口**，
-  不是本票测试写法或环境问题；本票没有为了全绿而绕开正式入口或修改产品语义）。
-- 分支：`t/t101-data-journeys`；worktree：`E:\Orchara-wt\t101`。
-- 基线：`integration/f12` @ `60d9de0`；完成前 `git merge integration/f12` = **Already up to date**，
-  最终代码 HEAD 见 `E:\Orchara\.scratch\f12\T101-REPORT.md`。
-- 证据：`reports/f12/T101-journeys.json`（6 条 journey 记录：真实入口/用时/独立真值/断言点/失败原因）。
+- 状态：**`partial`**（2026-11-07 复核后改判：五条旅程 J1/J2/J3/J4/J5 仍真实跑通，但 **AC2
+  「scope/ACL/人类批准三者同时满足」没有被一个真实外部写同时证明**，见 §2/§5；J1b 自然语言子记录因
+  F08↔F04B 产品缺口记 `blocked`。原先写 `passed` 的依据是「三件事分别被证明」，不是「同一操作同时满足」，
+  复核判定为覆盖缺口，不是已满足）。
+- 分支：`t/t101-data-journeys`；worktree：`E:\Orchara-wt\t101`；复核修复分支 `t/f12-review-fixes`。
+- 基线：`integration/f12` @ `60d9de0`；完成前 `git merge integration/f12` = **Already up to date**。
+- 证据：`reports/f12/T101-journeys.json`（6 条 journey 记录：真实入口/用时/独立真值/断言点/失败原因；
+  2026-11-07 复核后重新生成，状态由旅程体显式 `mark_passed()` 设置，证据文本在写入源头脱敏）。
 - 环境条件：`ORCHARA_PROFILE=dev-stub`（**无真实厂商模型/凭据**）；WSL2 + runsc 真实执行；
   PostgreSQL 16.4（隔离集群 `127.0.0.1:55432`，每个测试自建库）。stub/real 分界见 §7。
 
@@ -28,7 +29,7 @@
 | AC（issue #102 原文） | 结论 | 证据 |
 |---|---|---|
 | 1. 请求结果、写审批、个人记忆、知识摄取、服务账号五旅程真实完成 | **满足（J1/J2/J3/J4/J5 全 passed；J1b 按实际行为记 blocked）** | `T101-journeys.json`：J1 16 断言、J2 34、J3 28、J4 19、J5 24，全部真实 HTTP/真实 PG/真实 supervisor+maintenance/真实对象目录；无 mock 替身 |
-| 2. scope/ACL/人类批准同时满足 | **满足** | J5：同一调用在「scope + read grant + 负责人启用」三者齐备时 200；去掉任一 → 404（无 ACL）/403（越 scope）/401（负责人禁用连带撤销）。J2：人类批准绑定 `params_sha256` + approver=Run owner（ACL）+ admin/陌生人被拒。J3：人类 confirm 决定 + owner-only 队列 + 服务 key `403 personal_scope_forbidden`。详见 §5 |
+| 2. scope/ACL/人类批准同时满足 | **partial（未满足）** | J5 证明 scope + read grant + 负责人启用（读操作，**无审批**）；J2 证明人类批准 + `params_sha256` 绑定 + approver=Run owner（**用 owner 浏览器会话，无 API-key scope**）。**没有任何一个外部写同时满足三者**，所以不能称“同时满足”。确切理由与剩余验证见 §5；这不是已确认的产品缺口——`internal/approvals/service.go:187-207` 的 `approverForOwnerTx` 会把服务账号 Run 的审批人解析为其负责人，产品代码路径看起来支持，缺的是本票尚未构造的端到端旅程（发布版本含审批写节点 + 服务 key 提交） |
 | 3. 缺判定条件不计 passed | **满足** | 自然语言请求旅程 J1b 记 `blocked`（非 passed）；不声称真实模型质量、真实外部供应商、真实 embedding；未跑的「无显式版本的自然语言路由」写 `not_run` 及原因 |
 | 4. 通过端到端入口实际演示；失败、当前授权与重试/恢复边界有断言 | **满足** | 越权：跨用户 Run/artifact 404、陌生人审批 404、admin 批准 403、服务 key 个人数据 403；拒绝/过期/取消：审批 reject→失败、expiry→失败、cancel→invalidated；重复投递：同幂等键请求不建第二个 Run、同 logical key 不二次外写、丢回执重复 invoke 不重发；恢复：resume 恰好一次、丢回执→`needs_reconciliation`→证据 reconcile 成功且只 1 次物理写 |
 | 5. 记录版本、输入/hash、命令、原始结果与 profile；stub/real 分报，缺条件 blocked、未运行 not_run | **满足** | 每条 journey 记录 entry/truth/assertions/facts；报告 §1/§4/§6/§7 含版本、输入 hash、命令、原始 tail、profile；`UV_*`/真实模型/真实外部供应商 not_run 均已列明 |
@@ -163,9 +164,13 @@
   - 撤销：`204` 后下一次调用 401 `invalid_key`；过期：真实 3 秒寿命，deadline 过后 401（不注入时间）；
   - 禁用负责人：官方 `PATCH` 立即生效（401），且独立读 key 行证明 `revoked_at` 被禁用事务写入而 `expires_at` 未变。
 
-## 5. scope / ACL / 人类批准「三者同时满足」是怎么断言的
+## 5. scope / ACL / 人类批准：分别被证明，但没有被同一个外部写同时证明
 
-**J5 的字面三重门控断言**（同一调用，缺一即拒，这是 AC2 的核心证据）：
+> **复核改判（2026-11-07）**：本节原来标题是「三者同时满足是怎么断言的」，结论写成 `满足`。
+> 复核指出这是把三件分别成立的事读成了同一操作同时成立：J5 是**读**（无审批），J2 是**人类会话 + 内部
+> capability 调用**（无 API-key scope/ACL）。下面保留每一条的真实验证，但把 AC2 的结论改为 `partial`。
+
+**J5 的字面三重门控断言**（同一调用，缺一即拒；注意这是读操作，**不经过审批**）：
 
 | 条件 | 齐备时 | 去掉该条件 | 证据 |
 |---|---|---|---|
@@ -176,7 +181,29 @@
 **J2 的「人类批准」三重绑定**：approval 只对**精确参数**（`params_sha256` 与服务端封存 proposal 一致）、
 **精确 approver**（Run owner；陌生人 404、admin 403 `approver_mismatch`）、**未过期且未取消**的 approval 生效；
 批准后仍要 supervisor exit 才生成 1 个 resume，恢复调用才真正外写。即「人类批准」不是单一 200，
-而是参数绑定 + 身份绑定 + 时序/状态绑定同时成立。
+而是参数绑定 + 身份绑定 + 时序/状态绑定同时成立。但 J2 的提交主体是 owner 的**浏览器会话**，
+授权来自角色/session，不是 API-key scope；也没有资源 grant 参与。
+
+**为什么 AC2 是 `partial` 而不是 `满足`**：
+
+| 需要同时成立 | J5（读） | J2（写审批） | 三合一外部写 |
+|---|---|---|---|
+| API-key scope | ✅ `application:read` | ❌ 浏览器会话 | **未构造** |
+| 资源 ACL grant | ✅ read grant | ❌ 无 grant | **未构造** |
+| 人类批准（approval） | ❌ 读路径无审批 | ✅ owner 决定 | **未构造** |
+| 同一操作产生外部写 | ❌ 只读 | ✅ 恰一次 | **未证明** |
+
+- **不是已确认的产品缺口**：`internal/approvals/service.go:187-207` 的 `approverForOwnerTx` 明确把
+  service-owned Run 的审批人解析为 `platform.principals.responsible_user_id`，service account 无负责人时
+  fail-closed `422 approver_unavailable`；`/api/v1/requests`、`createConversation`、`submitRequest` 的契约
+  security 都允许 `apiKey`，`internal/api/requests.go:86-111,250-257` 只要求 `application:read/write` scope。
+  也就是说产品代码路径**看起来支持**服务 key 提交、负责人审批。
+- **缺的是本票的端到端构造**：需要一个包含 approval-gated write 节点的**已发布版本**，由带 scope + grant 的
+  服务 key 提交 `/requests`，Run 归属 service principal，再由 `responsible_user_id` 对应的真人在浏览器会话
+  批准，最后断言连接器只收到 1 次物理写。本票没有构造这个版本（J2 的审批是内部 capability 直接调用，
+  J1 的发布版本只有 start/end 节点），所以真实证据链缺这一格。
+- 因此 T101 的状态从 `passed` 改为 **`partial`**；AC2 的剩余验证记为 `not_run`，不把「三件事分别成立」
+  写成「同时满足」，也不虚构成「产品无法表达」。
 
 **J3 的人类专属边界**：候选/记忆只能由人类 owner 读取和决定；服务 key 即使带 `application:read/write`
 也是 **403 `personal_scope_forbidden`**；陌生人决定 404；confirm 是唯一产生记忆的路径（pending 不是记忆）。
@@ -199,8 +226,12 @@ python -m pytest tests/f12/test_t101_journeys.py -q
 
 ```
 .....                                                                    [100%]
-5 passed in 76.88s (0:01:16)
+5 passed in 72.18s (0:01:12)
 ```
+
+（2026-11-07 复核修复后重跑；6 条 journey 记录的状态由旅程体显式 `mark_passed()` 设置：
+J1/J2/J3/J4/J5 `passed`，J1b `blocked`；没有“正常退出就 passed”的隐式改写。证据文本在
+`t101_support._short()` / `record()` / `persist()` 源头脱敏。）
 
 ### 6.2 全量 F12 套件（不破坏 T093/T095/T096/T098）
 
@@ -379,6 +410,16 @@ ok  	orchara/platform/internal/workflow	2.398s
 4. **审批过期无 sweeper**：即时性依赖决策路径；没有后台自动过期的证据，报告已声明。
 5. **每测试独立真实栈**：本票套件 5 个测试各建一个库/API（约 77s），换来的是与既有票一致的隔离；
    若 CI 资源更紧，可改模块级栈但需解决 golden draft/tool version 的全局唯一约束。
+6. **AC2 仍 partial（2026-11-07 复核）**：本票只分别证明了 API-key scope、资源 ACL、人类审批，
+   没有在同一个外部写上同时证明三者；剩余验证要求见 §5。不要把 `J5 passed` 读成 AC2 满足。
+7. **已修复的凭据泄漏事故**：原提交的 `T101-journeys.json` 第 841 行含一次性测试 API key 明文
+   （`orchara_gATw…`，所属测试库已 drop，已不可认证），`:316/:371/:386` 的请求日志 detail 含
+   `x-connector-secret` 值。2026-11-07 复核后在**产生证据的源头**脱敏并重新生成（`t101_support._short/record/
+   persist`、`j101_service_accounts.py:105` 改为脱敏形状），本文件与 JSON 不再含明文；**git 历史仍保留该
+   已失效字符串，未改写历史**（分支已推送、issue tracker 引用 SHA）。细节见 `reports/f12/REVIEW-FIXES.md`。
+8. **状态改写事故已修复**：原 `journey()` 在正常退出时把 `not_run` 隐式改成 `passed`；现在 `passed`
+   必须由旅程体在所有断言之后显式 `mark_passed()`，且 `persist()/record()` 强制校验
+   `passed` 至少有一条断言。空旅程现在是 `not_run`，回归测试见 `tests/f12/test_journey_status.py`。
 
 ## 10. 复现步骤
 
