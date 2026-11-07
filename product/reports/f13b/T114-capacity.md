@@ -50,9 +50,9 @@
 | seed seconds (trial 1) | 100 users 34.84 s; 3 workload apps 0.56 s; the other 997 apps 2.11 s |
 | capacity app / draft revision | `61f360df-d04d-4489-9c49-dbeafb1a87dd` r2 (one of the 1000) |
 | child version | `a20cf5d5-ce4c-48c1-91ee-f9bccf440638` |
-| `execution_slots` before → after | 8 → **20** |
-| `child_slots` before → after | 2 → **8** |
-| knob statement | `UPDATE platform.quota_counters SET capacity = 20 WHERE scope = 'global' AND dimension = 'execution_slots'; UPDATE platform.quota_counters SET capacity = 8 WHERE scope = 'global' AND dimension = 'child_slots'` |
+| `execution_slots` before → after | 2 → **20** |
+| `child_slots` before → after | 8 → **8** (migration 0051 already seeds 8; the `UPDATE` was a no-op — no child-slot raise happened) |
+| knob statement | `UPDATE platform.quota_counters SET capacity = 20 WHERE scope = 'global' AND dimension = 'execution_slots'; UPDATE platform.quota_counters SET capacity = 8 WHERE scope = 'global' AND dimension = 'child_slots'` (the second statement is the same no-op: the row is already 8) |
 | service time | 500 ms stand-in (`ORCHARA_CAPACITY_STUB_SERVICE_DELAY`; capacity-stub profile only, stub provider only) |
 | capacity graph / definition sha256 / run input sha256 | `start -> analyse(model, 500ms stub) -> end` / `3facf37e422f82a043bcc5110e5093e97aec6b7d189bff0ec5f980faa0c2b373` / `c486302476b3f37892fbbe25a1f316393942cd2db0bd63f2c0272b32313de071` |
 | frozen manifest sha256 | `508f8e1bf7466faa4f78f35243d498d1fac45f7b852c27c2fc0461df5331dd1a` (one distinct hash per trial, as expected for a fresh snapshot per Run) |
@@ -67,8 +67,9 @@
    applications) are the independent truth; the sorted user/application id hashes are in the
    evidence.
 2. **Capacity knob.** `platform.quota_counters` is the established operator surface: this run sets
-   `('global','execution_slots').capacity` to **20** and keeps the independent child pool at
-   **8**. Before/after values and the exact `UPDATE` are in the evidence. No migration, spec or
+   `('global','execution_slots').capacity` from its migrated value **2** to **20**; the independent
+   child pool is already **8** from migration 0051, so its `UPDATE` is a no-op (no child-slot raise
+   happened). Before/after values and the exact `UPDATE` are in the evidence. No migration, spec or
    contract changed.
 3. **Saturation.** 3 submitter threads keep a queue of `debugDraft` submissions full (target 60) on
    the one fixed capacity application revision; 24 executor threads each run a real one-shot
@@ -310,9 +311,9 @@ F13B_CAPACITY_FULL=1 F13B_WRITE_EVIDENCE=1 \
 
 # the capacity knob (established operator surface; no migration)
 UPDATE platform.quota_counters SET capacity = 20
- WHERE scope = 'global' AND dimension = 'execution_slots';
+ WHERE scope = 'global' AND dimension = 'execution_slots';   -- migrated seed: 2 -> 20
 UPDATE platform.quota_counters SET capacity = 8
- WHERE scope = 'global' AND dimension = 'child_slots';
+ WHERE scope = 'global' AND dimension = 'child_slots';       -- migration 0051 seed is already 8: no-op
 
 python tools/pg_dev.py status
 ```
