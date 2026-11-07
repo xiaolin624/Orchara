@@ -52,12 +52,22 @@ def test_the_apps_page_lists_the_visible_applications(pages_server) -> None:
         "下一页",
         "当前没有可见的应用",
         "requireLogin(",
-        "error.status === 401",
-        "location.assign('/login')",
+        # T095 centralised the session-failure branch in app.js: every page now
+        # calls the shared helper instead of repeating `error.status === 401` and
+        # its redirect. The helper's own 401 -> /login branch and its "empty the
+        # session regions" rule are asserted on the served asset just below, so
+        # the behaviour stays pinned instead of only being renamed.
+        "handleAuthFailure(error)",
     ):
         # The identity read is via requireLogin(); the page never renders an
         # application before that succeeds.
         assert marker in body, f"apps.html is missing {marker!r}"
+
+    app_js = pages_server.http.get("/assets/app.js")
+    assert app_js.status == 200, app_js.text
+    assert "error.status === 401" in app_js.text
+    assert "window.location.assign(loginURLFor(error))" in app_js.text
+    assert "[data-auth-content]" in app_js.text
 
     # The ACL wording is honest about default deny and about admin not being a
     # content reader.
