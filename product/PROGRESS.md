@@ -2851,3 +2851,29 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 边界：真实厂商模型、真实容量机器/多机/负载均衡、GPU/网络吞吐 `blocked`/`not_run`；未改
   `docs/spec/**`、`contracts/**`、迁移。
 
+## F13B T114 验收缺陷修复：取消在途执行不再泄漏 attempt/slot（CANCEL-RACE-SLOT-LEAK，2026-11-08）
+
+- 缺陷来源：T114（#115）AC4 真实观测——执行中 Run 被公开 cancel 时若命中在途 capability 调用，worker
+  的上传/结果提案被 409 `run_state_conflict` 拒绝后**直接返回、不确认 attempt exit**，Run 永远
+  `cancelling`、无 `finished_at`、slot 泄漏到租约 sweep（2/4/6 次/轮）。
+- 根因：`internal/presetexec/presetexec.go` 的 `refuse`/`failRun`/`failAfterStart` 在 `SubmitResult`
+  报错分支直接 return；没有 exit 事实，现有 finalizer（优先级 cancel > proposal，未改）无法提交
+  `cancelled`/释放 slot。
+- 修复：新增 `endRefusedProposal` 并统一三条失败路径——提案被拒后仍 `ConfirmExit`（token 仍 live）→
+  finalizer 提交真实终态；exit 也被拒（`stale_attempt`/`run_terminal`）→ 只尝试一次、安全返回、
+  诊断可读且不含 token。附带修复 deadline 拒绝路径的同形态泄漏。
+- 红→绿（真实栈，`tests/f13b/test_t114_cancel_exit.py`，`capacity-stub` 5s 在途替身）：
+  修复前 run `e5b01a5c-…` 停在 `cancelling`、`finished_at` NULL、attempt live、`execution_slots.used=1`
+  （**1 failed in 79.77s**）；修复后 run `6f79e93b-…` → `cancelled` + `finished_at` + attempt exited +
+  `execution_slots.used=0`，supervisor `outcome=cancelled`、intent→stop **4.854s**
+  （**1 passed in 32.47s**）；迟到 result 409 `run_terminal` 不复活、取消后无新增 worker artifact。
+- Go 单测：`cancel_exit_test.go`（4 失败路径 × `run_state_conflict`/`run_terminal`/`stale_attempt`、
+  succeeded 提案被拒、exit 被拒）先红（exits=[]）后绿。
+- 门禁：`go build/vet/test ./...` 0/0/0；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift；
+  `pytest tests/f03/test_t036_cancel.py -q` **15 passed in 158.66s**；
+  `pytest tests/f13b/test_t114_capacity.py -q`（短 profile）**2 passed, 1 skipped in 155.31s**。
+- 证据：`reports/f13b/T114-cancel-exit-fix.md`；原始日志 `E:\Orchara\.scratch\f13b\cancel-fix\`。
+  未改 `docs/spec/**`、`contracts/**`、迁移、finalizer 优先级或 `waiting`/`recovery_pending` 语义。
+  未覆盖：exit 确认本身的瞬时失败重试、cancel 与 claim/exit 的并发注入、T107 FAULT-05（并发窗口，
+  该用例含 WSL 读取，记为 `not_run`）。
+
