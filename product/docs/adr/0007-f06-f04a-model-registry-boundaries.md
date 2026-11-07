@@ -183,6 +183,9 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   params 或回执正文。
 - 真实厂商 adapter 仍未编译：真实 provider 诚实失败，stub 输出处处 `stub=true`；本能力
   投影/账本不得被读成真实模型结果。
+  > **修订指针（2026-11-08）**：该“未编译”事实已被 `ADR 0035` 修订（F06/T122 编译了唯一的
+  > OpenAI-compatible chat-completions adapter；适配范围/门禁/fail-closed/取消语义见 0035）。
+  > 真实厂商端到端仍 `blocked`；本句保留为 2026-11-03 的历史结论。
 
 ## T042 追加（2026-11-03）：线性 python 节点执行与节点结果边界
 
@@ -246,6 +249,9 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   dev stub 从 canonical params 确定性切块（`stub_stream_chunks` 默认 3），
   `stub_stream_fail_after` 在 N 块后以 `TransientError` 失败。真实厂商 adapter 仍未编译：
   `StreamingFor` 对 real candidate 返回 `adapter_unavailable`，绝不伪造流。
+  > **修订指针（2026-11-08）**：该结论已被 `ADR 0035` 修订。T122 的 real provider 现在实现
+  > `Stream`（真实 SSE，一次物理请求、无隐藏重试）；`adapter_unavailable` 只用于未声明
+  > `chat_compatible` 的注册。真实厂商流式 e2e 仍 `blocked`。
 - capability seam 增 `(*Service).Stream(ctx, runID, role, Input, emit func(Frame) error)`；复用
   T041 同一授权/operation/JCS params/idempotency 规则（tool/connector 流在写账本前 422
   `capability_kind_unsupported`）。每次物理流尝试是一行 `operation_attempts`，其行 id 即帧的
@@ -307,6 +313,9 @@ ORCHARA_CREDENTIAL_REFS='[{"id":"stub-credential","description":"dev stub (no re
   `stub-rate-limited*`、`stub-adapter-down*`、`stub-permission-denied*`、
   `stub-schema-error*`），因为故障属于服务端解析出的候选而不是 worker params；真实厂商
   adapter 仍未编译，真实 provider 仍以 `adapter_unavailable` 诚实失败。
+  > **修订指针（2026-11-08）**：该“未编译/必定 adapter_unavailable”结论已被 `ADR 0035`
+  > 修订（T122 已编译并接入 real adapter；fail-closed 改由 endpoint/catalog/protocol/
+  > credential 四道门禁承担）。真实厂商端到端仍 `blocked`。
 
 ## T046 追加（2026-11-04）：十进制账本是预算权威，预留按预算根串行
 
