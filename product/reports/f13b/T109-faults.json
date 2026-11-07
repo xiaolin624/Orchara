@@ -1,0 +1,719 @@
+{
+  "ticket": "T109",
+  "issue": 110,
+  "title": "fault injection: delete, rate limit, Redis wakeup and permission revoke",
+  "status": "partial",
+  "branch": "t/t109-data-faults",
+  "commit": "4175a53ff43ab87ef492b0a8a57cacb44423388b",
+  "generated_at": "2026-11-07T12:15:59.976545Z",
+  "environment": {
+    "profile": "dev-stub (ORCHARA_PROFILE=dev-stub; no vendor credentials or endpoint)",
+    "database": "isolated PostgreSQL 16.4 cluster at 127.0.0.1:55432; one throwaway database per stack",
+    "api": "compiled cmd/api behind real HTTP, real filesystem object store, real mTLS internal listener",
+    "maintenance": "compiled cmd/maintenance as a real OS process (append-only poller or `run --once`)",
+    "supervisor": "compiled cmd/supervisor claim/exit protocol over real mTLS (no node executes here)",
+    "sandbox": "WSL2/runsc not used: every graph in this ticket is start->...->end/call_app (no python node)",
+    "notifier": "the API installs background.InProcessNotifier with no consumer, so every wakeup is dropped; a maintenance process claims from PostgreSQL polling. There is no Redis adapter in this build.",
+    "not_run": [
+      "a real vendor model / vendor 429/5xx endpoint (the dev stub's registered fault model ids are used and labelled)",
+      "a Redis server or Redis wakeup adapter (this build has none; T022/T024 report it not_run)",
+      "a real browser DOM (no Playwright/Chromium on this host)"
+    ]
+  },
+  "faults": [
+    {
+      "id": "FAULT-09",
+      "title": "delete a knowledge document while the PostgreSQL retrieval cache is warm",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T12:15:30.917278Z",
+      "injection_point": "real `DELETE /api/v1/knowledge-documents/{id}` (the F11 tombstone transaction and its deletion job) executed after `POST /knowledge-bases/{id}/retrieval-queries` warmed `platform.knowledge_retrieval_cache`; then a stale item was injected into the live row under the current cache key (the lost-eviction adversary)",
+      "inputs": {
+        "query": "华北地区十月的销售额是多少",
+        "knowledge_base_id": "cba74684-3b7b-4a55-8ef3-6c5715ad05b7",
+        "deleted_document_id": "e3aeafff-1ddb-456a-a414-17c19b95e62e",
+        "kept_document_id": "5b950e41-405c-4a12-ab36-2c9b265d08be",
+        "source_artifact_id": "969b26eb-10ac-4944-8c98-c74cf16b737b",
+        "deleted_chunk_id": "9f158257-88c8-4368-96da-d3fe5ed92929",
+        "source_object_sha256": "8187d1fc07874c4bbaf9000910526a0fae08a80ebf74d5ba118eebbd52cee062",
+        "cache_key_prefix_before": "b6f90297012100f2",
+        "cache_key_prefix_after": "79d02e50971bb2b8",
+        "seed": "tests.f10 DOC fixtures (SAMPLE_DOCUMENT + Markdown refund policy); no RNG"
+      },
+      "independent_truth": {
+        "sealed_source_object_bytes_sha256": "8187d1fc07874c4bbaf9000910526a0fae08a80ebf74d5ba118eebbd52cee062",
+        "citation_span_recomputed_from_sealed_source": true,
+        "platform.knowledge_documents": {
+          "id": "e3aeafff-1ddb-456a-a414-17c19b95e62e",
+          "knowledge_base_id": "cba74684-3b7b-4a55-8ef3-6c5715ad05b7",
+          "source_artifact_id": "969b26eb-10ac-4944-8c98-c74cf16b737b",
+          "revision": 2,
+          "state": "deleted",
+          "active_revision": 1,
+          "parser_version": "orchara-text-parser/1",
+          "chunker_version": "orchara-paragraph-overlap-chunker/1",
+          "embedding_model_revision": "local-hash-v1",
+          "error_code": null,
+          "deleted_at": "2026-11-07 20:15:28.560924+08",
+          "created_at": "2026-11-07 20:15:27.671907+08"
+        },
+        "platform.knowledge_chunks_still_present": 1,
+        "platform.knowledge_retrieval_cache_rows": [
+          {
+            "cache_key": "79d02e50971bb2b8bc404c4ec008c87cf8d5381b5524b318ac15d8f544e73cf5",
+            "hit_count": 1,
+            "documents": [
+              "5b950e41-405c-4a12-ab36-2c9b265d08be"
+            ]
+          },
+          {
+            "cache_key": "b6f90297012100f26629da22416c8b9a6683619d94fbca3e30751e0ba6304b6a",
+            "hit_count": 0,
+            "documents": [
+              "5b950e41-405c-4a12-ab36-2c9b265d08be",
+              "e3aeafff-1ddb-456a-a414-17c19b95e62e"
+            ]
+          }
+        ],
+        "stale_rows_referencing_deleted_chunk": [
+          {
+            "cache_key": "b6f90297012100f26629da22416c8b9a6683619d94fbca3e30751e0ba6304b6a",
+            "hit_count": 0
+          }
+        ],
+        "deletion_job": {
+          "id": "c637f3a3-ab85-4bbe-9daa-9910517c8ce0",
+          "owner_id": "272cf576-7677-470f-b6f7-c29f240d70cb",
+          "resource_type": "knowledge_document",
+          "resource_id": "e3aeafff-1ddb-456a-a414-17c19b95e62e",
+          "deletion_revision": 2,
+          "state": "pending",
+          "remaining_scopes": "[\"backup_catalog\", \"checkpoints\", \"object_store\", \"retrieval_cache\", \"sandbox_temp\", \"search_index\", \"third_party_history\"]",
+          "scope_details": "{\"checkpoints\": {\"document_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\"}, \"object_store\": {\"items\": [{\"kind\": \"object\", \"sha256\": \"8187d1fc07874c4bbaf9000910526a0fae08a80ebf74d5ba118eebbd52cee062\", \"object_key\": \"sealed/1121710b86f9b137c20ac121e39becce17b2ada34c1263cc03b40b01fdf2a630\", \"size_bytes\": 1536, \"artifact_id\": \"969b26eb-10ac-4944-8c98-c74cf16b737b\"}, {\"kind\": \"chunk_object\", \"sha256\": \"8b21d78a7b6dbbfd0a1ee76b0062ea22329d6b724f8dffe81d419a81fda49469\", \"chunk_id\": \"9f158257-88c8-4368-96da-d3fe5ed92929\", \"chunk_no\": 0, \"object_key\": \"sealed/497b4789b32643b2fe515583fb476e1b759741170bcb0a5ea80d58a5a585a16a\", \"size_bytes\": 1535, \"artifact_id\": \"d7b2b9ad-4cc0-4664-83ec-4b6b2e5c4a60\", \"document_revision\": 1}]}, \"sandbox_temp\": {\"document_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\"}, \"search_index\": {\"chunk_ids\": [\"9f158257-88c8-4368-96da-d3fe5ed92929\"], \"document_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\", \"document_revision\": 2, \"index_version_ids\": [\"1f3442db-e7f9-4cc0-a1be-592159bd5b52\"]}, \"backup_catalog\": {\"resource_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\", \"resource_type\": \"knowledge_document\"}, \"retrieval_cache\": {\"document_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\", \"knowledge_base_id\": \"cba74684-3b7b-4a55-8ef3-6c5715ad05b7\"}, \"third_party_history\": {\"note\": \"documents are not sent to a third-party memory component; T072 records the boundary\", \"document_id\": \"e3aeafff-1ddb-456a-a414-17c19b95e62e\"}}",
+          "completed_scopes": "[]",
+          "attempt_count": 0,
+          "error_code": null,
+          "started_at": null,
+          "updated_at": "2026-11-07 20:15:28.560924+08",
+          "created_at": "2026-11-07 20:15:28.560924+08",
+          "completed_at": null
+        }
+      },
+      "expected": {
+        "retrieval_after_delete": "200 with no deleted-document item and no deleted body",
+        "cache_after_delete": "hit=false; the stale row stays live but never hits",
+        "citation": "404 resource_not_found with no text/citation",
+        "reindex_and_replay": "refused/failed without restoring the document",
+        "reingest_deleted_source": "404 resource_not_found"
+      },
+      "observed": {
+        "warm_items": 4,
+        "citation_before_delete": 200,
+        "citation_after_delete": {
+          "status": 404,
+          "code": "resource_not_found",
+          "has_text": false
+        },
+        "retrieval_after_delete": {
+          "status": 200,
+          "items": 3,
+          "deleted_document_items": 0,
+          "hit": false
+        },
+        "poisoned_entry": {
+          "hit": false,
+          "discarded": true,
+          "discard_reason": "item_unreadable",
+          "deleted_body_present": false
+        },
+        "reindex_after_delete": {
+          "status": 404,
+          "code": "resource_not_found"
+        },
+        "replay_job": {
+          "id": "75437956-8843-441c-b0a7-145eaf7ea817",
+          "state": "failed",
+          "error_code": "source_deleted",
+          "failure_class": "business",
+          "attempt_count": 1,
+          "expected_revision": null,
+          "input_artifact_id": "969b26eb-10ac-4944-8c98-c74cf16b737b",
+          "dedup_key": "t109-replay:e3aeafff-1ddb-456a-a414-17c19b95e62e",
+          "finished_at": "2026-11-07 20:15:30.140882+08"
+        },
+        "reingest_deleted_source": {
+          "status": 404,
+          "code": "resource_not_found"
+        },
+        "empty_retrieval": {
+          "items": [],
+          "hit": false,
+          "stored": false,
+          "rows_after_empty_store": 2
+        },
+        "answer_outcome": "no_results",
+        "stale_hits": 0,
+        "cache_hit_rows": [
+          {
+            "cache_key": "79d02e50971bb2b8bc404c4ec008c87cf8d5381b5524b318ac15d8f544e73cf5",
+            "hit_count": 1,
+            "documents": [
+              "5b950e41-405c-4a12-ab36-2c9b265d08be"
+            ]
+          }
+        ],
+        "stale_body_on_hit_rows": true,
+        "deleted_body_marker_in_responses": false
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t109_data_faults.py -k fault_09 -q"
+      ],
+      "not_run": [
+        "physical cleanup scopes (T071/T072) are not driven here; the ticket is about immediate logical unreadability"
+      ],
+      "blocked": null
+    },
+    {
+      "id": "FAULT-11",
+      "title": "provider 429/5xx/half response: bounded retry, one compatible fallback, no splice",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T12:15:37.531615Z",
+      "injection_point": "the documented dev-stub provider registered under the golden profile version: `model_id` `stub-rate-limited-primary` (429), `stub-unavailable-primary` (5xx) and the streaming params `stub_stream_fail_after`/`stub_stream_fail_attempts` (a half answer then a typed transient). The calls are real mTLS capability invocations on real Runs with real sealed execution manifests; the failure is the stub's, labelled.",
+      "inputs": {
+        "golden_profile_version_id": "22222222-2222-4222-8222-222222222222",
+        "fallback_profile_version_id": "cb0a22e4-b9b3-48f8-90df-faa6371371cf",
+        "phase_a_model_id": "stub-rate-limited-primary",
+        "phase_b_model_id": "stub-model + stub_stream_fail_after=2/fail_attempts=3",
+        "phase_c_model_id": "stub-unavailable-primary",
+        "seed": "deterministic dev stub (sha256 of canonical params); no RNG"
+      },
+      "independent_truth": {
+        "platform.operation_attempts.A": [
+          {
+            "attempt_no": 1,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 2,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 3,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 4,
+            "state": "succeeded",
+            "error_code": null,
+            "tokens_in": 21,
+            "tokens_out": 7,
+            "charged_amount": "0.00003500",
+            "result_artifact_id": "27a77bd3-362b-42ca-b582-413263664573"
+          }
+        ],
+        "platform.operation_attempts.B": [
+          {
+            "attempt_no": 1,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 2,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 3,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 4,
+            "state": "succeeded",
+            "error_code": null,
+            "tokens_in": 41,
+            "tokens_out": 7,
+            "charged_amount": "0.00005500",
+            "result_artifact_id": "006b3711-3472-4f22-854d-d6f6f693be4c"
+          }
+        ],
+        "platform.operation_attempts.C": [
+          {
+            "attempt_no": 1,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 2,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          },
+          {
+            "attempt_no": 3,
+            "state": "failed",
+            "error_code": "provider_transient",
+            "tokens_in": null,
+            "tokens_out": null,
+            "charged_amount": null,
+            "result_artifact_id": null
+          }
+        ],
+        "platform.operations.A": {
+          "id": "88306b6f-af72-4cbe-88d5-1a659c9b3dd2",
+          "state": "succeeded",
+          "capability_version": "22222222-2222-4222-8222-222222222222",
+          "capability_kind": "model",
+          "last_error_code": null,
+          "fallback_profile_version_id": "cb0a22e4-b9b3-48f8-90df-faa6371371cf",
+          "fallback_reason": "rate_limited"
+        },
+        "platform.operations.B": {
+          "id": "2ef0b40d-c9d6-4984-a290-dd3cd13fdf50",
+          "state": "succeeded",
+          "capability_version": "22222222-2222-4222-8222-222222222222",
+          "capability_kind": "model",
+          "last_error_code": null,
+          "fallback_profile_version_id": "cb0a22e4-b9b3-48f8-90df-faa6371371cf",
+          "fallback_reason": "availability"
+        },
+        "platform.operations.C": {
+          "id": "47797268-e6c2-4296-8026-7fe704f5eb95",
+          "state": "failed",
+          "capability_version": "22222222-2222-4222-8222-222222222222",
+          "capability_kind": "model",
+          "last_error_code": "provider_transient",
+          "fallback_profile_version_id": null,
+          "fallback_reason": null
+        },
+        "receipt_artifacts": {
+          "A": "27a77bd3-362b-42ca-b582-413263664573",
+          "B": "006b3711-3472-4f22-854d-d6f6f693be4c"
+        },
+        "receipt_reason_A": "rate_limited",
+        "receipt_reason_B": "availability",
+        "receipt_text_B_sha256": "2abdb5d35eb8f01f00c9057d5fe3859fb41ba05bdde4e556727a6b986fb3d270",
+        "final_text_sha256": "2abdb5d35eb8f01f00c9057d5fe3859fb41ba05bdde4e556727a6b986fb3d270",
+        "stream_generations": [
+          {
+            "generation_id": "579d4370-1fda-4e9f-b99e-5067fa677fcd",
+            "delta_chars": 14,
+            "is_prefix": true
+          },
+          {
+            "generation_id": "0fd3592b-5e32-4c92-b31d-556c4e9182a1",
+            "delta_chars": 14,
+            "is_prefix": true
+          },
+          {
+            "generation_id": "8d866c39-6372-4573-a414-d995f55a257c",
+            "delta_chars": 14,
+            "is_prefix": true
+          }
+        ]
+      },
+      "expected": {
+        "bounded_retry": "exactly three physical primary attempts before the fallback",
+        "fallback": "one compatible-fallback success per operation; one receipt",
+        "half_response": "failed generations emit evidence; the final answer is only the successful generation, never a concatenation",
+        "terminal_failure": "503 provider_transient after exactly three attempts, no fallback"
+      },
+      "observed": {
+        "phase_a": {
+          "response_status": 200,
+          "fallback": {
+            "primary_profile_version_id": "22222222-2222-4222-8222-222222222222",
+            "profile_version_id": "cb0a22e4-b9b3-48f8-90df-faa6371371cf",
+            "reason": "rate_limited"
+          },
+          "attempt_states": [
+            "failed",
+            "failed",
+            "failed",
+            "succeeded"
+          ],
+          "attempt_count": 4,
+          "charged_amounts": [
+            null,
+            null,
+            null,
+            "0.00003500"
+          ],
+          "ledger_attempts": 4
+        },
+        "phase_b": {
+          "response_status": 200,
+          "frame_types": [
+            "delta",
+            "delta",
+            "error",
+            "delta",
+            "delta",
+            "error",
+            "delta",
+            "delta",
+            "error",
+            "delta",
+            "delta",
+            "delta",
+            "delta",
+            "final"
+          ],
+          "generations": 4,
+          "failed_generation_deltas": [
+            14,
+            14,
+            14
+          ],
+          "final_text_chars": 27,
+          "final_equals_all_generations": false,
+          "final_equals_last_generation": true,
+          "attempt_states": [
+            "failed",
+            "failed",
+            "failed",
+            "succeeded"
+          ],
+          "fallback": {
+            "primary_profile_version_id": "22222222-2222-4222-8222-222222222222",
+            "profile_version_id": "cb0a22e4-b9b3-48f8-90df-faa6371371cf",
+            "reason": "availability"
+          },
+          "receipts": 1
+        },
+        "phase_c": {
+          "status": 503,
+          "error_code": "provider_transient",
+          "attempts": 3,
+          "attempt_error_codes": [
+            "provider_transient",
+            "provider_transient",
+            "provider_transient"
+          ],
+          "operation": {
+            "state": "failed",
+            "last_error_code": "provider_transient",
+            "fallback_profile_version_id": null
+          }
+        }
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t109_data_faults.py -k fault_11 -q"
+      ],
+      "not_run": [
+        "a real vendor endpoint's own 429/5xx body, Retry-After header and request log (no vendor credential/endpoint exists on this host; the dev stub is labelled)",
+        "a real vendor's non-deterministic truncation (the stub truncation is exact and reproducible)"
+      ],
+      "blocked": null
+    },
+    {
+      "id": "FAULT-12",
+      "title": "lost wakeup and maintenance restart: jobs/facts survive; SSE replays from PostgreSQL",
+      "verdict": "partial",
+      "recorded_at": "2026-11-07T12:15:48.034734Z",
+      "injection_point": "the product's own notifier: cmd/api installs background.InProcessNotifier with no consumer, so every wakeup is dropped (logged once). The artifact_finalize job is committed by the real job-scoped upload/complete route while no maintenance process exists; the compiled cmd/maintenance process is started only afterwards (round 2 is a restart). SSE: a real GET /runs/{id}/events is closed and reopened with Last-Event-ID after a worker mTLS event was committed",
+      "inputs": {
+        "finalize_job_1": "b50fbc87-88a2-4f0d-8910-dbf2eb55f623",
+        "finalize_artifact_1": "45749dce-db5f-49ed-a3c0-5ab887759557",
+        "finalize_job_2": "d15d7964-f109-4d45-8cb0-cdfcc8f4565b",
+        "finalize_artifact_2": "15ca6bda-89b9-41ea-9c29-8039eefaea53",
+        "run_id": "205de3e0-0a91-4b92-928e-4d0faf7374bf",
+        "last_event_id": 1,
+        "content_sha256": {
+          "round1": "eb2fafb16aa14444a8bc38df61838c68e04810330d385338ea7d4b02b8e01a37",
+          "round2": "6a652ac59d1824c6dd7b6ce77d0f2e18265a1b0f0063c7789e7f9a5bf5aaf62c"
+        },
+        "seed": "no RNG: fixed artifact bytes; job dedup keys are derived from the fixture artifact"
+      },
+      "independent_truth": {
+        "platform.background_jobs": [
+          {
+            "id": "b50fbc87-88a2-4f0d-8910-dbf2eb55f623",
+            "kind": "artifact_finalize",
+            "target_id": "45749dce-db5f-49ed-a3c0-5ab887759557",
+            "owner_id": "c6d5252d-03d7-41f4-998e-f9b99bdef5f9",
+            "state": "ready",
+            "error_code": null,
+            "failure_class": null,
+            "attempt_count": 0,
+            "lease_token": null,
+            "lease_deadline": null,
+            "result_artifact_id": null,
+            "finished_at": null
+          },
+          {
+            "id": "d15d7964-f109-4d45-8cb0-cdfcc8f4565b",
+            "kind": "artifact_finalize",
+            "target_id": "15ca6bda-89b9-41ea-9c29-8039eefaea53",
+            "owner_id": "c6d5252d-03d7-41f4-998e-f9b99bdef5f9",
+            "state": "ready",
+            "error_code": null,
+            "failure_class": null,
+            "attempt_count": 0,
+            "lease_token": null,
+            "lease_deadline": null,
+            "result_artifact_id": null,
+            "finished_at": null
+          }
+        ],
+        "platform.artifacts": {
+          "round1": {
+            "artifact_id": "45749dce-db5f-49ed-a3c0-5ab887759557",
+            "sha256": "eb2fafb16aa14444a8bc38df61838c68e04810330d385338ea7d4b02b8e01a37",
+            "state": "ready"
+          },
+          "round2": {
+            "artifact_id": "15ca6bda-89b9-41ea-9c29-8039eefaea53",
+            "sha256": "6a652ac59d1824c6dd7b6ce77d0f2e18265a1b0f0063c7789e7f9a5bf5aaf62c",
+            "state": "ready"
+          }
+        },
+        "platform.run_events": [
+          {
+            "seq": 1,
+            "type": "run.status",
+            "payload": "{\"state\": \"queued\"}"
+          },
+          {
+            "seq": 2,
+            "type": "run.status",
+            "payload": "{\"state\": \"running\"}"
+          },
+          {
+            "seq": 3,
+            "type": "node.status",
+            "payload": "{\"state\": \"running\", \"node_id\": \"t109-node\", \"attempt_no\": 1}"
+          }
+        ],
+        "notifier_drop_log_lines": [
+          "orchara-api 2026/11/07 12:15:43 wakeup: no notification transport is configured; the wakeup was dropped (PostgreSQL polling is authoritative)"
+        ],
+        "redis_adapter_present": false
+      },
+      "expected": {
+        "lost_wakeup": "the committed job is still claimed and succeeds from PostgreSQL polling",
+        "maintenance_restart": "a restarted real process claims the job committed while it was down",
+        "sse": "the disconnected stream replays seq > Last-Event-ID from PostgreSQL"
+      },
+      "observed": {
+        "rounds": [
+          {
+            "round": 1,
+            "maintenance_before_enqueue": false,
+            "job_state_before_maintenance": "ready",
+            "notifier_drop_log": true,
+            "job_state_after": "succeeded",
+            "attempt_count": 1,
+            "artifact_state": "ready",
+            "process": {
+              "pid": 70380,
+              "returncode": 1
+            }
+          },
+          {
+            "round": 2,
+            "maintenance_before_enqueue": false,
+            "job_state_before_maintenance": "ready",
+            "notifier_drop_log": true,
+            "job_state_after": "succeeded",
+            "attempt_count": 1,
+            "artifact_state": "ready",
+            "process": {
+              "pid": 68668,
+              "returncode": 1
+            }
+          }
+        ],
+        "job_state_1": {
+          "id": "b50fbc87-88a2-4f0d-8910-dbf2eb55f623",
+          "kind": "artifact_finalize",
+          "state": "succeeded",
+          "error_code": null,
+          "failure_class": null,
+          "attempt_count": 1,
+          "lease_token": null,
+          "result_artifact_id": null
+        },
+        "job_state_2": {
+          "id": "d15d7964-f109-4d45-8cb0-cdfcc8f4565b",
+          "kind": "artifact_finalize",
+          "state": "succeeded",
+          "error_code": null,
+          "failure_class": null,
+          "attempt_count": 1,
+          "lease_token": null,
+          "result_artifact_id": null
+        },
+        "sse": {
+          "before_disconnect": [
+            1,
+            2
+          ],
+          "first_frames": [
+            "2"
+          ],
+          "replayed_frames": [
+            "2",
+            "3"
+          ],
+          "reapplied_type": "node.status",
+          "durable_after": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t109_data_faults.py -k fault_12 -q"
+      ],
+      "not_run": [
+        "a real Redis restart: no Redis server/adapter exists in this build",
+        "an API process restart while an SSE stream is open (the fixture owns the API process); the stream is reconnected instead"
+      ],
+      "blocked": {
+        "part": "Redis restart / Redis queue loss",
+        "reason": "this build ships no Redis adapter or server: internal/background/notifier.go only has NopNotifier and a same-process InProcessNotifier (the API installs it with no consumer), and T022/T024 record the Redis adapter as not_run",
+        "what_was_proved_instead": "the same lost-wakeup property over PostgreSQL polling plus SSE replay from platform.run_events",
+        "unblock_condition": "a Redis client/instance and a subscribe path in a future build"
+      }
+    },
+    {
+      "id": "FAULT-14",
+      "title": "revoke an application read grant while a Run is live: the next capability call is refused",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T12:15:57.381863Z",
+      "injection_point": "real `DELETE /api/v1/admin/grants/{id}` (admin session + CSRF, one policy-epoch bump) executed after a real parent Run was claimed (`cmd/supervisor` mTLS claim) and had already spawned one child through `POST /internal/v1/runs/{id}/children`. The second spawnChild re-resolves the child version under the run owner's *current* ACL (`catalog.ResolveRunnableVersionTx`) instead of trusting the frozen manifest",
+      "inputs": {
+        "grant_id": "6170b97c-ab4e-4c3f-8a30-f5a6f3144ed5",
+        "grantee_principal_id": "ca3c5cc5-9ee2-4aa6-a346-ff98e720d0d1",
+        "child_application_id": "60f52e51-59b2-4a28-b78a-9b9cf3d30e12",
+        "child_version_id": "a62ddbf7-d072-4f3d-b0dd-eeca58d9736b",
+        "parent_application_id": "3bc16425-90ab-469e-ab50-b94856628a35",
+        "parent_run_id": "203f04ca-35c3-486e-b3ea-0e3c1748d936",
+        "frozen_snapshot_id": "839b4f5e-502e-499b-997a-8b84aae09122",
+        "frozen_manifest_artifact_id": "711702c4-9ee2-4ab5-bf7c-5cb33f63e0a0",
+        "first_child_run_id": "8ea557c6-ef17-4bea-a904-f3eb51610b97",
+        "seed": "publisher-shape fixture for the child version (T075 helper); the publication review transaction is the documented boundary"
+      },
+      "independent_truth": {
+        "platform.resource_grants_after": [],
+        "platform.policy_epochs": {
+          "after_create_grant": 1,
+          "after_revoke": 2,
+          "note": "the real grant/revoke transactions bump the acl epoch; the next decision re-reads resource_grants instead of a cached allow"
+        },
+        "platform.runs": 2,
+        "platform.run_children": [
+          {
+            "logical_key": "call-1",
+            "child_run_id": "8ea557c6-ef17-4bea-a904-f3eb51610b97",
+            "parent_run_id": "203f04ca-35c3-486e-b3ea-0e3c1748d936"
+          }
+        ],
+        "platform.jobs": 2,
+        "platform.operations": 0,
+        "frozen_manifest_subapp_versions": [
+          "a62ddbf7-d072-4f3d-b0dd-eeca58d9736b"
+        ],
+        "frozen_manifest_sha256_matches_snapshot": true
+      },
+      "expected": {
+        "next_reads": "404 resource_not_found for the child application and runnable version",
+        "next_capability": "spawnChild refused with 403 child_not_visible",
+        "snapshot": "still pins the child version but grants no permanent right",
+        "writes": "the first child Run remains; the refused call creates no Run/job/operation"
+      },
+      "observed": {
+        "reads": {
+          "application": 404,
+          "application_code": "resource_not_found",
+          "runnable": 404,
+          "runnable_code": "resource_not_found"
+        },
+        "first_spawn": {
+          "status": 202,
+          "child_run_id": "8ea557c6-ef17-4bea-a904-f3eb51610b97",
+          "run_children": 1
+        },
+        "revoke": {
+          "status": 204,
+          "grants_after": [],
+          "epoch_bumped": true
+        },
+        "second_spawn": {
+          "status": 403,
+          "code": "child_not_visible",
+          "run_children_after": 1,
+          "child_runs_after": 1,
+          "runs_after": 2,
+          "jobs_after": 2,
+          "operations_after": 0
+        },
+        "parent_run_state": "running"
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t109_data_faults.py -k fault_14 -q"
+      ],
+      "not_run": [
+        "document-level grants: the F01 grant vocabulary is application-only in this build; document access revocation is exercised as the real document delete in FAULT-09",
+        "a real publication review for the child version (the T075 publisher-shape fixture is used and labelled, as in the existing F07 child-run suites)"
+      ],
+      "blocked": null
+    }
+  ],
+  "blocked": [
+    {
+      "id": "FAULT-12",
+      "part": "Redis restart / Redis queue loss",
+      "reason": "this build ships no Redis adapter or server: internal/background/notifier.go only has NopNotifier and a same-process InProcessNotifier (the API installs it with no consumer), and T022/T024 record the Redis adapter as not_run",
+      "what_was_proved_instead": "the same lost-wakeup property over PostgreSQL polling plus SSE replay from platform.run_events",
+      "unblock_condition": "a Redis client/instance and a subscribe path in a future build"
+    }
+  ],
+  "failures": [],
+  "produced_faults": [
+    "FAULT-09",
+    "FAULT-11",
+    "FAULT-12",
+    "FAULT-14"
+  ],
+  "not_covered": [
+    "a real vendor model / a real vendor 429/5xx/truncated endpoint (the dev-stub fault model ids are used instead and labelled)",
+    "the Redis-restart half of FAULT-12: this build has no Redis adapter, so only the PostgreSQL-notifier / SSE-replay half is executed; the Redis restart is blocked",
+    "a real browser DOM for the pages (no Playwright/Chromium on this host)"
+  ]
+}
