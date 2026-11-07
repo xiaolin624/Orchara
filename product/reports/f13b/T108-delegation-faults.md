@@ -265,6 +265,17 @@ $ $env:F13B_WRITE_EVIDENCE='1'; python -m pytest tests/f13b/test_t108_delegation
 普通 pytest 运行不会重写已提交的证据 JSON（`support/t108.py` 的 `persist` 在
 `F13B_WRITE_EVIDENCE!=1` 时直接返回；T101/T106 同一约定）。
 
+**最终树复跑（`ee1c2d5`，含 T106 最终证据文档的 docs-only merge）：**
+
+```text
+$ python -m pytest tests/f13b/test_t108_delegation_faults.py -q   -> 4 passed in 84.78s
+$ python -m pytest tests/f13b -q                                  -> 190 passed in 301.17s
+$ python -m pytest tests/f12 -q                                   -> 447 passed in 322.25s
+$ go build/vet/test ./...                                         -> 0 / 0 / 0
+$ gofmt -l internal cmd tools                                     -> 空
+$ python tools/sync_spec.py --check                               -> no drift
+```
+
 ## 8. 覆盖边界与 `not_run`
 
 - **真实模型/供应商**：`not_run`。全部模型调用（仅 FAULT-13 子例 B 的 agent child 用
