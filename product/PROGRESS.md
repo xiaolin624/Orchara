@@ -2605,3 +2605,42 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 门禁（真实 tail，从 `product/`）：`pytest tests/f13b -q` → **179 passed in 73.11s**；`pytest tests/tooling -q` → **21 passed in 4.54s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`；`tools/f13b_agentdojo.py --summary` exit 0（gate_issues=[]）；`build_agentdojo.py`/`build_corpus.py`/`build_external.py` 均 `matches`。
 - `not_run`：官方 AgentDojo suite、真实模型、产品 evaluation runner 执行改编 workspace case、上游全文件离线重算（需 pinned clone）。恢复边界 `not_applicable`（三条任务无恢复语义）。
 - 证据：`reports/f13b/T105-agentdojo-import.md`；原始 tail `E:\Orchara\.scratch\f13b\T105\`。
+
+## F13B T106（GitHub #107）：故障注入审批重启、换参与写后丢回执（2026-11-07）
+
+- 分支 `t/t106-approval-faults` / worktree `E:\Orchara-wt\t106`；基线 `integration/f13b` @ `c132e8e`，
+  完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`），`PROGRESS.md` 双方小节保留。
+- 交付：新增 `tests/f13b/fault_support.py`（Fault/进程/PG/证据 writer，仅 `F13B_WRITE_EVIDENCE=1` 重写）、
+  `tests/f13b/t106_worker.py`（真实 worker OS 进程）、`tests/f13b/test_t106_approval_faults.py`
+  （3 条真实栈测试，53 条断言）、`reports/f13b/T106-faults.json`（3 个故障记录）、
+  `reports/f13b/T106-approval-faults.md`。未改 `docs/spec/**`、`contracts/**`、迁移与既有票断言。
+- FAULT-01（真杀进程 + 真 supervisor 重启）：真实 worker 进程停在审批等待（waiting+confirm exit）→
+  `taskkill /F /T` 真杀（原始输出列出其 psql 子进程；`pg_stat_activity` 会话 1→0）→ 真实
+  `cmd/supervisor exec --once` 启动并 `status=idle` → owner 精确批准 → 恰 1 个 resume job → 新 worker 进程
+  用**同一 operation id/logical key/params** 重放，succeeded。独立账本：回环端点 0 写（批准前）/恰 1 写
+  （批准后），`operations` 一行同 id、`operation_attempts` 1 行、`approvals` 一行
+  （id/proposal/params_sha256/approver 不变）、run succeeded。
+- FAULT-02（换参与旧批准）：精确 params 批准后同 operation id 换 params → 409 `operation_conflict`，0 写、
+  operation/approval 行不变；随后精确 params 仍成功（批准未被消耗）；错 `params_sha256` 决定 → 409
+  `approval_params_mismatch`；陌生人 404、admin 403 `approver_mismatch`、取消后迟到决定 409，全部 0 写。
+- FAULT-03（写后丢回执）：`LostReceiptServer` 真实断连 → operation `unknown`（非 succeeded/failed）、
+  无 receipt、attempt 仍 dispatching；重复 invoke/换参不重发（端点仍 1 次请求）；run 停
+  `needs_reconciliation`（非 succeeded）；真实 evidence artifact + `POST /operations/{id}/reconcile`
+  结案 succeeded，物理 attempt 仍 1、端点请求仍 1。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t106_approval_faults.py` **3 passed in 51.53s**（证据重跑）；
+  `pytest tests/f13b` **43 passed in 103.79s**；`pytest tests/f12` **447 passed in 385.14s**；
+  `go build/vet/test` 全 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 边界：dev-stub 模型、回环 connector 端点（非真实供应商）、无浏览器 DOM；真实供应商/模型 `not_run`；
+  worker 角色是文档化 seam（图执行器无 connector 节点，T101 J6b），真实 supervisor 进程重启证据与本 seam 分列。
+
+## F13B T107（GitHub #108）：旧图、活旧进程、取消与事件竞态故障注入（2026-11-07）
+- 分支 `t/t107-lifecycle-faults` / worktree `E:\Orchara-wt\t107`；基线 `integration/f13b` @ `834ca68`，结束前 merge `integration/f13b` @ `f234e72`（T105）→ 合并提交 `db94214`，其上重跑门禁；证据最后一轮在 `e904e0c` 树。
+- 交付：`tests/f13b/test_t107_lifecycle_faults.py`（4 条真实栈故障，FAULT-04/05/06/10）、`tests/support/t107.py`（故障证据记录器 + Windows 真实进程探针 + `pg_stat_activity` 只读模型）、`reports/f13b/T107-faults.json`、`reports/f13b/T107-lifecycle-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品代码与既有票断言。
+- FAULT-04（旧图恢复）：v1 debug Run 的封存 manifest 与仓库 checked-in golden 字节逐字节相同（sha256 `9cc418d1…`）；经真实 submit/review/approve 事务发布 v1、v2（v2 sha256 `eac3a5db…`）后，v1 Run 两次 claim/一次 recover 都返回 v1 manifest（lease sha、signed URL 字节、execution snapshot 全为 v1）；删除 v1 对象后 `runs recover` 稳定拒绝 `artifact_unavailable`，Run 保持 `recovery_pending`，v2 对象完好但从未被回退使用。
+- FAULT-05（活旧 worker + 过期租约）：真实 `cmd/supervisor exec --once`（pid 64356）真实领取 attempt（token 前缀 `8420f63a`），OS `NtSuspendProcess` 冻结后其真实 PG backend（pid 50836，`application_name=t107-old-worker-db-…`）仍在 `pg_stat_activity`；过期租约 + `sweep-leases --grace 1s` → `recovery_pending(lease_expired)`、job held、allocation 未释放、claim 204、仅 1 个 attempt。恢复进程后其 exit confirmation 被真实 `409 stale_attempt` 拒绝（exec report status=failed），Run 仍 parked、事件数不变；进程退出并留下真实退出证据后才 recover → queued，再 claim 才出现 attempt #2。
+- FAULT-06（取消后迟到）：真实 cancel → `cancelling`，期间 result/event/upload/capability 全拒绝（capability `run_cancelled`、operations=0）；supervisor exit 后 `cancelled`（revision 4、seq 1..5、状态 queued→running→cancelling→cancelled）。迟到 result（含同 body 重投）/旧 event 重放/新 event → `409 run_terminal`；重复 claim 204；同 evidence exit 200 幂等、不同 evidence 409；upload 409 / capability 403 均 `stale_attempt`；外部 owner 读 404；终态 recover 拒绝 `not_recovery_pending`；Run 行、事件与 seq 完全不变。
+- FAULT-10（重复事件/相反决定）：同 event_id 重放（含 batch）不新增 seq；真实终态 failed 后迟到事件 409 `run_terminal`，seq 1..6 连续。两个 supervisor mTLS 会话 barrier 并发 approve/reject → 恰一个 200、一个 409 `decision_conflict`；DB 仅 1 条决定（本轮 approved/`t107-race-approve`），相反决定重放仍 409，exit 后恰好 1 个 resume job；worker 证书 403、未知 run 404、跨 owner 404。
+- 诚实边界：模型仅 dev-stub（无真实供应商）；FAULT-05 的失联注入是宿主 OS 挂起真实进程（非网络分区/真机关机）；FAULT-04 v2 发布的五类评测报告使用 T068 既有“真实 evaluation/case run 行 + seeded 终态”fixture（manifest/version/review/approve 事务与对象字节真实）；FAULT-06/10 的等待决定走 T035 文档化非契约 bridge，不是 F06 审批 UI；本批次无真实外部写 connector，FAULT-10 的“外写”按平台当前语义核对为恰好一次 resume 恢复。
+- 门禁（真实 tail，合并 `f234e72` 后树，cwd=`product/`）：`pytest tests/f13b/test_t107_lifecycle_faults.py -q` → **4 passed in 76.85s**；`pytest tests/f13b -q` → **183 passed in 192.65s**；`pytest tests/f12 -q` → **447 passed in 374.23s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。最终代码/测试树 `e8e9311` 复跑 `pytest tests/f13b -q` → **183 passed in 220.05s**，`pytest tests/f13b/test_t107_lifecycle_faults.py -q`（证据轮）→ **4 passed in 59.60s**；合并 `integration/f13b` @ `1ce0d65`（含 T106）后最终树 `636135e` 复跑 `pytest tests/f13b -q` → **186 passed in 321.82s**；其后仅文档提交。
+- 证据：`reports/f13b/T107-lifecycle-faults.md` + `reports/f13b/T107-faults.json`（`F13B_WRITE_EVIDENCE=1`，HEAD `e904e0c`）；原始 tail `E:\Orchara\.scratch\f13b\T107\`。
+- `not_run`：真实厂商模型/真实外部写供应商；生产部署上的 v1→v2 升级恢复；网络分区/宿主机失联恢复；浏览器 DOM/SSE UI；多机 supervisor 竞争与多轮并发压力。
