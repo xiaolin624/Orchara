@@ -1,0 +1,1715 @@
+{
+  "ticket": "T111",
+  "issue": 112,
+  "title": "re-run build and script isolation attacks on the formal Linux sandbox host",
+  "status": "passed",
+  "branch": "integration/f13b",
+  "commit": "f814639ad8839249962faf753b1f5dbdb5112583",
+  "generated_at": "2026-11-07T14:44:52.582919Z",
+  "environment": {
+    "profile": "dev-stub",
+    "note": "Every record below was executed inside WSL2 Ubuntu-24.04 with gVisor runsc. Windows-local process results are not used as runsc acceptance anywhere in this report (ADR 0002).",
+    "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+    "distro": "Ubuntu-24.04",
+    "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+    "runsc_version": "runsc version release-20241118.0",
+    "runsc_spec": "spec: 1.1.0-rc.1",
+    "rootfs_path": "/opt/orchara-sandbox/python-rootfs",
+    "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5",
+    "rootfs_file_count": 1093,
+    "rootfs_size_kib": 46536,
+    "rootfs_python_sha256": "c2c20b4745d447551221ec3d4e70f92c270c4609fe3df34fc52ea6dd46e92273",
+    "rootfs_builder": "orchara.sandbox-rootfs/v1",
+    "rootfs_kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+    "rootfs_runsc": "runsc version release-20241118.0",
+    "captured_at": "2026-11-07T14:42:22.884786Z"
+  },
+  "cases": [
+    {
+      "id": "run-files-credentials-mounts-privilege",
+      "stage": "run",
+      "attack": "read /etc/passwd|shadow|hostname, /mnt host paths and another Run's workspace; write the read-only rootfs/tool/inputs; dump the sandbox environment and /proc/1/environ; mount/unshare/setuid/capset; try to configure uid0/privileged/no_new_privs=off through the deployment env",
+      "verdict": "passed",
+      "blocked_at": "runtime (gVisor/runsc) refuses uid0/mount-namespace/capset/no_new_privs escalation inside the fixed bundle; unprivileged user namespaces are permitted by the runtime but stay sandbox-local (no host path reached)",
+      "recorded_at": "2026-11-07T14:42:26.100923Z",
+      "inputs": {
+        "program": "oracle is cmd/sandboxprobe --mode isolation",
+        "hostile_env_names": [
+          "ORCHARA_CONNECTOR_SECRET",
+          "ORCHARA_DB_DSN",
+          "ORCHARA_SANDBOX_CAPABILITIES",
+          "ORCHARA_SANDBOX_NO_NEW_PRIVS",
+          "ORCHARA_SANDBOX_PRIVILEGED",
+          "ORCHARA_SANDBOX_UID",
+          "ORCHARA_SIGNING_KEY",
+          "ORCHARA_T111_ENV_SECRET"
+        ],
+        "hostile_env_value_sha256": {
+          "ORCHARA_T111_ENV_SECRET": "1d28a2fde152febda23d0491c63371470c77409d8bea2b0f51537777a01c2be2",
+          "ORCHARA_DB_DSN": "7645826a9ecbb9aac6b615faec3be7d31f796aed735524c6e0f6fc4914f480cd",
+          "ORCHARA_SIGNING_KEY": "6dcc175dd8c5bde599714a9fd656a9b76f30587a27fca489d5aefc0c85bed9d8",
+          "ORCHARA_CONNECTOR_SECRET": "e402855b4ec393fdf60c79d39b2b7dd529af3bf021fef7d0e59d335036337c79",
+          "ORCHARA_SANDBOX_UID": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+          "ORCHARA_SANDBOX_PRIVILEGED": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "ORCHARA_SANDBOX_CAPABILITIES": "b5c7aed7cd2a308523e7d2847b7815909e864b2fd9c4ea88b00d35adb2ecdfd7",
+          "ORCHARA_SANDBOX_NO_NEW_PRIVS": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+        },
+        "other_run_decoy": "/var/tmp/orchara-sandbox/other-run/secret.txt",
+        "workspace_root": "D:\\caches\\pytest\\pytest-of-19677\\pytest-321\\test_run_stage_denies_host_fil0\\host-staging"
+      },
+      "expected": {
+        "identity": "uid/gid 65534, empty capabilities, NoNewPrivs=1",
+        "reads": "all host/mount/foreign reads refused",
+        "writes": "rootfs/tool/inputs refused; /workspace allowed",
+        "env": "only the fixed OCI environment; no deployment credential name or value",
+        "mounts": "exactly /, /proc, /tmp, /tool(ro), /inputs(ro), /workspace(rw)",
+        "network": "all connections fail",
+        "cleanup": "runsc list empty, no pid/process, no state dir, no tmpfs mount"
+      },
+      "observed": {
+        "probe": {
+          "environment": {
+            "credential_prefixed": [],
+            "names": [
+              "HOME",
+              "PATH",
+              "PYTHONDONTWRITEBYTECODE",
+              "PYTHONHASHSEED",
+              "PYTHONHOME",
+              "PYTHONNOUSERSITE"
+            ],
+            "outside_oci_allowlist": []
+          },
+          "foreign_files": [
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/var/tmp/orchara-sandbox/foreign/secret.txt",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/var/tmp/orchara-sandbox/other-run/secret.txt",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/work/tenant-b/input.csv",
+              "read": false
+            }
+          ],
+          "gid": 65534,
+          "host_files": [
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/etc/hostname",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/etc/shadow",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/etc/passwd",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/etc/os-release",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/root/.ssh/id_rsa",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/var/lib/postgresql/.pgpass",
+              "read": false
+            }
+          ],
+          "host_mount_paths": [
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/mnt/c/Windows/System32/drivers/etc/hosts",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/mnt/wsl",
+              "read": false
+            },
+            {
+              "errno": 2,
+              "errno_name": "ENOENT",
+              "error": "FileNotFoundError",
+              "path": "/mnt/e/Orchara/product/contracts/database.sql",
+              "read": false
+            }
+          ],
+          "hostname": "sandbox",
+          "input_writes": [
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/inputs/input.csv",
+              "wrote": false
+            }
+          ],
+          "mounts": [
+            {
+              "destination": "/",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=3,wfdno=3,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=fscache,disable_fifo_open,overlayfs_stale_read,directfs"
+            },
+            {
+              "destination": "/sys",
+              "fstype": "sysfs",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,dentry_cache_limit=1000"
+            },
+            {
+              "destination": "/dev",
+              "fstype": "tmpfs",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,mode=0755"
+            },
+            {
+              "destination": "/tmp",
+              "fstype": "tmpfs",
+              "options": "rw,noexec",
+              "source": "none",
+              "super_options": "rw,size=16m"
+            },
+            {
+              "destination": "/proc",
+              "fstype": "proc",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,dentry_cache_limit=1000"
+            },
+            {
+              "destination": "/tool",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=4,wfdno=4,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            },
+            {
+              "destination": "/inputs",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=5,wfdno=5,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            },
+            {
+              "destination": "/dev/pts",
+              "fstype": "devpts",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw"
+            },
+            {
+              "destination": "/workspace",
+              "fstype": "9p",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,trans=fd,rfdno=6,wfdno=6,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            }
+          ],
+          "mounts_after_escalation": [
+            {
+              "destination": "/",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=3,wfdno=3,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=fscache,disable_fifo_open,overlayfs_stale_read,directfs"
+            },
+            {
+              "destination": "/proc",
+              "fstype": "proc",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,dentry_cache_limit=1000"
+            },
+            {
+              "destination": "/tool",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=4,wfdno=4,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            },
+            {
+              "destination": "/inputs",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none",
+              "super_options": "ro,trans=fd,rfdno=5,wfdno=5,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            },
+            {
+              "destination": "/workspace",
+              "fstype": "9p",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,trans=fd,rfdno=6,wfdno=6,aname=/,dfltuid=4294967294,dfltgid=4294967294,dcache=1000,cache=remote_revalidating,disable_fifo_open,directfs"
+            },
+            {
+              "destination": "/sys",
+              "fstype": "sysfs",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,dentry_cache_limit=1000"
+            },
+            {
+              "destination": "/dev",
+              "fstype": "tmpfs",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw,mode=0755"
+            },
+            {
+              "destination": "/tmp",
+              "fstype": "tmpfs",
+              "options": "rw,noexec",
+              "source": "none",
+              "super_options": "rw,size=16m"
+            },
+            {
+              "destination": "/dev/pts",
+              "fstype": "devpts",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw"
+            },
+            {
+              "destination": "/tmp/t111-mount",
+              "fstype": "tmpfs",
+              "options": "rw",
+              "source": "none",
+              "super_options": "rw"
+            }
+          ],
+          "network": [
+            {
+              "connected": false,
+              "errno": 113,
+              "errno_name": "EHOSTUNREACH",
+              "error": "OSError",
+              "target": "1.1.1.1:443"
+            },
+            {
+              "connected": false,
+              "errno": 113,
+              "errno_name": "EHOSTUNREACH",
+              "error": "OSError",
+              "target": "8.8.8.8:53"
+            },
+            {
+              "connected": false,
+              "errno": 111,
+              "errno_name": "ECONNREFUSED",
+              "error": "ConnectionRefusedError",
+              "target": "127.0.0.1:18080"
+            },
+            {
+              "connected": false,
+              "errno": 113,
+              "errno_name": "EHOSTUNREACH",
+              "error": "OSError",
+              "target": "169.254.169.254:80"
+            }
+          ],
+          "pid_namespace_pid1": {
+            "content_head": "/usr/bin/python3.12\u0000/tool/probe.py\u0000--mode\u0000isolation\u0000--seconds\u000030",
+            "path": "/proc/1/cmdline",
+            "read": true
+          },
+          "privileges": {
+            "escalation": {
+              "attempts": [
+                {
+                  "attempt": "setuid_root",
+                  "denied": true,
+                  "errno": 1,
+                  "errno_name": "EPERM",
+                  "error_class": "PermissionError"
+                },
+                {
+                  "attempt": "setgid_root",
+                  "denied": true,
+                  "errno": 1,
+                  "errno_name": "EPERM",
+                  "error_class": "PermissionError"
+                },
+                {
+                  "attempt": "mount_tmpfs",
+                  "denied": true,
+                  "errno": 1,
+                  "errno_name": "EPERM",
+                  "error_class": "PermissionError"
+                },
+                {
+                  "attempt": "unshare_mount_namespace",
+                  "denied": true,
+                  "errno": 1,
+                  "errno_name": "EPERM",
+                  "error_class": "PermissionError"
+                },
+                {
+                  "attempt": "capset_sys_admin",
+                  "denied": true,
+                  "errno": 1,
+                  "errno_name": "EPERM",
+                  "error_class": "PermissionError"
+                },
+                {
+                  "attempt": "clear_no_new_privs",
+                  "denied": true,
+                  "errno": 22,
+                  "errno_name": "EINVAL",
+                  "error_class": "OSError"
+                }
+              ],
+              "user_namespace": {
+                "after": {
+                  "gid": 65534,
+                  "host_reads": [
+                    {
+                      "errno": 2,
+                      "errno_name": "ENOENT",
+                      "error": "FileNotFoundError",
+                      "path": "/etc/passwd",
+                      "read": false
+                    },
+                    {
+                      "errno": 2,
+                      "errno_name": "ENOENT",
+                      "error": "FileNotFoundError",
+                      "path": "/mnt/c/Windows/System32/drivers/etc/hosts",
+                      "read": false
+                    },
+                    {
+                      "errno": 2,
+                      "errno_name": "ENOENT",
+                      "error": "FileNotFoundError",
+                      "path": "/var/tmp/orchara-sandbox/other-run/secret.txt",
+                      "read": false
+                    }
+                  ],
+                  "mount_tmpfs": {
+                    "attempt": "mount_tmpfs_after_unshare",
+                    "denied": false,
+                    "result": "succeeded"
+                  },
+                  "setuid_root": {
+                    "attempt": "setuid_root_after_unshare",
+                    "denied": true,
+                    "errno": 22,
+                    "errno_name": "EINVAL",
+                    "error_class": "OSError"
+                  },
+                  "uid": 65534,
+                  "workspace_write": {
+                    "path": "/workspace/userns-output.txt",
+                    "wrote": true
+                  }
+                },
+                "unshare": {
+                  "attempt": "unshare_user_namespace",
+                  "denied": false,
+                  "result": "succeeded"
+                }
+              }
+            },
+            "no_new_privs": {
+              "supported": true,
+              "value": 1
+            },
+            "status": {
+              "CapBnd": "0000000000000000",
+              "CapEff": "0000000000000000",
+              "CapInh": "0000000000000000",
+              "CapPrm": "0000000000000000",
+              "Gid": "65534\t65534\t65534\t65534",
+              "Seccomp": "0",
+              "Uid": "65534\t65534\t65534\t65534"
+            },
+            "status_keys": [
+              "Name",
+              "State",
+              "Tgid",
+              "Pid",
+              "PPid",
+              "TracerPid",
+              "Uid",
+              "Gid",
+              "FDSize",
+              "Groups",
+              "VmSize",
+              "VmRSS",
+              "VmData",
+              "Threads",
+              "CapInh",
+              "CapPrm",
+              "CapEff",
+              "CapBnd",
+              "Seccomp",
+              "Mems_allowed",
+              "Mems_allowed_list"
+            ]
+          },
+          "probe": "orchara.sandbox-isolation/v1",
+          "probe_extensions": [
+            "f13b.t111"
+          ],
+          "proc1_environ": {
+            "credential_prefixed": [],
+            "names": [
+              "HOME",
+              "PATH",
+              "PYTHONDONTWRITEBYTECODE",
+              "PYTHONHASHSEED",
+              "PYTHONHOME",
+              "PYTHONNOUSERSITE"
+            ],
+            "outside_oci_allowlist": [],
+            "path": "/proc/1/environ",
+            "read": true,
+            "size_bytes": 104
+          },
+          "rootfs_writes": [
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/usr/bin/python3.12",
+              "wrote": false
+            },
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/etc/passwd",
+              "wrote": false
+            },
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/etc/hostname",
+              "wrote": false
+            }
+          ],
+          "tool_readable": true,
+          "tool_writes": [
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/tool/probe.py",
+              "wrote": false
+            },
+            {
+              "errno": 13,
+              "errno_name": "EACCES",
+              "error": "PermissionError",
+              "path": "/tool/build_tool.py",
+              "wrote": false
+            }
+          ],
+          "uid": 65534,
+          "workspace_readable": true,
+          "workspace_write": {
+            "path": "/workspace/probe-output.txt",
+            "wrote": true
+          }
+        },
+        "cleanup_report": {
+          "sandbox_list_matches": 0,
+          "pid": 529,
+          "pid_alive": false,
+          "ps_matches": 0,
+          "workspace_removed": true
+        },
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": [],
+        "env_values_seen_in_probe_json": false
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/sandboxprobe --mode isolation",
+        "ORCHARA_SANDBOX_UID=0 ORCHARA_SANDBOX_PRIVILEGED=1 ... (ignored, probe still uid 65534)"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "run-network-positive-control",
+      "stage": "run",
+      "attack": "connect to the guest loopback port, public IPs and the metadata address from the sandbox",
+      "verdict": "passed",
+      "blocked_at": "network namespace + --network=none (runsc), proven against a live guest listener",
+      "recorded_at": "2026-11-07T14:42:27.799866Z",
+      "inputs": {
+        "guest_listener": "127.0.0.1:18080 on the WSL guest, outside the sandbox namespace",
+        "sandbox_targets": [
+          "1.1.1.1:443",
+          "8.8.8.8:53",
+          "127.0.0.1:18080",
+          "169.254.169.254:80"
+        ]
+      },
+      "expected": {
+        "control": "guest connect succeeds while the listener is live",
+        "sandbox": "every connect fails with a real socket error (--network=none + new netns)"
+      },
+      "observed": {
+        "guest_control": {
+          "returncode": 0,
+          "stdout": "CONNECTED",
+          "stderr": "",
+          "connected": true
+        },
+        "sandbox_network": [
+          {
+            "connected": false,
+            "errno": 113,
+            "errno_name": "EHOSTUNREACH",
+            "error": "OSError",
+            "target": "1.1.1.1:443"
+          },
+          {
+            "connected": false,
+            "errno": 113,
+            "errno_name": "EHOSTUNREACH",
+            "error": "OSError",
+            "target": "8.8.8.8:53"
+          },
+          {
+            "connected": false,
+            "errno": 111,
+            "errno_name": "ECONNREFUSED",
+            "error": "ConnectionRefusedError",
+            "target": "127.0.0.1:18080"
+          },
+          {
+            "connected": false,
+            "errno": 113,
+            "errno_name": "EHOSTUNREACH",
+            "error": "OSError",
+            "target": "169.254.169.254:80"
+          }
+        ],
+        "guest_after_stop": {
+          "returncode": 0,
+          "stdout": "DENIED ConnectionRefusedError",
+          "stderr": "",
+          "connected": false
+        },
+        "cleanup_report": {
+          "sandbox_list_matches": 0,
+          "pid": 700,
+          "pid_alive": false,
+          "ps_matches": 0,
+          "workspace_removed": true
+        },
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        }
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "wsl python3 tcp listener 127.0.0.1:18080 (guest control)",
+        "cmd/sandboxprobe --mode isolation"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "run-config-policy-refusal",
+      "stage": "run",
+      "attack": "configure a sandbox with an over-limit memory/quota/pids/timeout profile",
+      "verdict": "passed",
+      "blocked_at": "product configuration policy (sandbox.OptionsFromEnv) before runsc is invoked",
+      "recorded_at": "2026-11-07T14:42:28.233589Z",
+      "inputs": {
+        "attempts": {
+          "memory": {
+            "memory_mb": 999999
+          },
+          "workspace-quota": {
+            "quota_mb": 99999
+          },
+          "pids": {
+            "pids": "not-a-number"
+          },
+          "timeout": {
+            "timeout": "-5s"
+          }
+        }
+      },
+      "expected": "sandbox.OptionsFromEnv refuses before any unit is created",
+      "observed": {
+        "memory": {
+          "exit_code": 1,
+          "report": {
+            "error": "ORCHARA_SANDBOX_MEMORY_MB is not a valid limit",
+            "status": "failed"
+          }
+        },
+        "workspace-quota": {
+          "exit_code": 1,
+          "report": {
+            "error": "ORCHARA_SANDBOX_WORKSPACE_QUOTA_MB must be a positive integer at most 4096",
+            "status": "failed"
+          }
+        },
+        "pids": {
+          "exit_code": 1,
+          "report": {
+            "error": "ORCHARA_SANDBOX_PIDS is not a valid limit",
+            "status": "failed"
+          }
+        },
+        "timeout": {
+          "exit_code": 1,
+          "report": {
+            "error": "ORCHARA_SANDBOX_TIMEOUT must be a positive duration",
+            "status": "failed"
+          }
+        }
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true
+      },
+      "commands": [
+        "cmd/sandboxprobe with an unsafe ORCHARA_SANDBOX_* profile"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "run-timeout-reclaim",
+      "stage": "run",
+      "attack": "sleep past the sandbox wall-clock limit",
+      "verdict": "passed",
+      "blocked_at": "driver timeout + executor kill + cleanup proof (runsc delete/pid/workspace)",
+      "recorded_at": "2026-11-07T14:42:31.063892Z",
+      "inputs": {
+        "mode": "slow",
+        "sleep_seconds": 60,
+        "sandbox_timeout": "2s"
+      },
+      "expected": "unit killed at 2s, timeout reported, all processes/dirs/mounts reclaimed",
+      "observed": {
+        "outcome": "timeout",
+        "timed_out": true,
+        "elapsed_seconds": 2.422,
+        "cleanup_report": {
+          "sandbox_list_matches": 0,
+          "pid": 904,
+          "pid_alive": false,
+          "ps_matches": 0,
+          "workspace_removed": true
+        },
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/sandboxprobe --mode slow --seconds 60 --timeout 2s"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "build-hostile-setup-hook",
+      "stage": "build",
+      "attack": "untrusted setup.py reads /etc/passwd|shadow|hostname, a real repo file via /mnt, the object-directory decoy, a DSN decoy, an mTLS private key, another Run's workspace and PID 1 environ; writes /etc/passwd, the object dir, the other Run workspace and the read-only /inputs|/tool mounts; dumps its environment and the mount table",
+      "verdict": "passed",
+      "blocked_at": "runtime (gVisor/runsc) uid 65534 + empty capabilities + NoNewPrivs + ro mounts",
+      "recorded_at": "2026-11-07T14:42:45.473623Z",
+      "inputs": {
+        "submission": "real POST /api/v1/tools with an application/zip tool_source",
+        "build": "real maintenance tool_build job -> deploy/sandbox/build_tool.py -> runsc",
+        "secret_marker_sha256": "abdc3fbaa360ea06df1113d5e4d9d317b4139619eca3a46ba8962ba07cdfd65f",
+        "db_name_marker_sha256": "e06f44597f25812090c698bbb105029ce8237d3ea14e3f94ecdd5faa85c1cafd",
+        "read_paths": [
+          "/etc/passwd",
+          "/etc/shadow",
+          "/etc/hostname",
+          "/mnt/c/Windows/System32/drivers/etc/hosts",
+          "/mnt/e/Orchara/product/PROGRESS.md",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/t111-decoy.dsn",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem",
+          "/var/tmp/orchara-sandbox/other-run/secret.txt",
+          "/var/tmp/orchara-sandbox/foreign/secret.txt"
+        ],
+        "write_paths": [
+          "/etc/passwd",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt",
+          "/var/tmp/orchara-sandbox/other-run/evil.txt",
+          "/inputs/source.zip",
+          "/tool/build_tool.py"
+        ],
+        "guest_controls": {
+          "/mnt/e/Orchara/product/PROGRESS.md": "READABLE",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": "READABLE",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/t111-decoy.dsn": "READABLE",
+          "/var/tmp/orchara-sandbox/other-run/secret.txt": "READABLE"
+        }
+      },
+      "expected": {
+        "reads": "all refused with a real errno",
+        "writes": "all refused; only /workspace accepts writes",
+        "credentials": "no deployment env name/value in the hook env or PID 1 environ",
+        "mounts": "exactly the approved six; /tool and /inputs read-only",
+        "build": "still ready, digest from the sealed source/lock/SBOM",
+        "cleanup": "no runsc entry/process, no state dir/mount, empty host staging root"
+      },
+      "observed": {
+        "hook": {
+          "environment": {
+            "leaks": [],
+            "names": [
+              "HOME",
+              "LANG",
+              "LC_ALL",
+              "PATH",
+              "PYTHONDONTWRITEBYTECODE",
+              "PYTHONHASHSEED",
+              "PYTHONNOUSERSITE",
+              "TMPDIR"
+            ]
+          },
+          "mounts": [
+            {
+              "destination": "/",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none"
+            },
+            {
+              "destination": "/sys",
+              "fstype": "sysfs",
+              "options": "rw",
+              "source": "none"
+            },
+            {
+              "destination": "/dev",
+              "fstype": "tmpfs",
+              "options": "rw",
+              "source": "none"
+            },
+            {
+              "destination": "/tmp",
+              "fstype": "tmpfs",
+              "options": "rw,noexec",
+              "source": "none"
+            },
+            {
+              "destination": "/proc",
+              "fstype": "proc",
+              "options": "rw",
+              "source": "none"
+            },
+            {
+              "destination": "/tool",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none"
+            },
+            {
+              "destination": "/inputs",
+              "fstype": "9p",
+              "options": "ro",
+              "source": "none"
+            },
+            {
+              "destination": "/dev/pts",
+              "fstype": "devpts",
+              "options": "rw",
+              "source": "none"
+            },
+            {
+              "destination": "/workspace",
+              "fstype": "9p",
+              "options": "rw",
+              "source": "none"
+            }
+          ],
+          "no_new_privs": {
+            "supported": true,
+            "value": 1
+          },
+          "probe": "t111.hostile-build-hook/v1",
+          "proc1": {
+            "leaks": [],
+            "names": [
+              "HOME",
+              "PATH",
+              "PYTHONDONTWRITEBYTECODE",
+              "PYTHONHASHSEED",
+              "PYTHONHOME",
+              "PYTHONNOUSERSITE"
+            ],
+            "read": true
+          },
+          "reads": {
+            "/etc/hostname": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/etc/passwd": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/etc/shadow": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/mnt/c/Windows/System32/drivers/etc/hosts": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/t111-decoy.dsn": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/mnt/e/Orchara/product/PROGRESS.md": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/var/tmp/orchara-sandbox/foreign/secret.txt": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/var/tmp/orchara-sandbox/other-run/secret.txt": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            }
+          },
+          "status": {
+            "CapBnd": "0000000000000000",
+            "CapEff": "0000000000000000",
+            "CapInh": "0000000000000000",
+            "CapPrm": "0000000000000000",
+            "Gid": "65534\t65534\t65534\t65534",
+            "Uid": "65534\t65534\t65534\t65534"
+          },
+          "workspace_read": [
+            "/workspace/t111-hook-output.txt",
+            {
+              "ok": true
+            }
+          ],
+          "workspace_write": [
+            "/workspace/t111-hook-output.txt",
+            {
+              "ok": true
+            }
+          ],
+          "writes": {
+            "/etc/passwd": {
+              "errno": 13,
+              "error": "PermissionError",
+              "ok": false
+            },
+            "/inputs/source.zip": {
+              "errno": 13,
+              "error": "PermissionError",
+              "ok": false
+            },
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-321/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            },
+            "/tool/build_tool.py": {
+              "errno": 13,
+              "error": "PermissionError",
+              "ok": false
+            },
+            "/var/tmp/orchara-sandbox/other-run/evil.txt": {
+              "errno": 2,
+              "error": "FileNotFoundError",
+              "ok": false
+            }
+          }
+        },
+        "build_state": "ready",
+        "build_bundle_digest": "sha256:95ed4699bd6e15bdf0616cb233900a1a1da03cabe0d291ae19e52e21d8fce030",
+        "cleanup_report": null,
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "POST /api/v1/tools (application/zip tool_source)",
+        "cmd/maintenance run --once --kinds tool_build,artifact_finalize"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "build-fork-limit",
+      "stage": "build",
+      "attack": "fork as many children as possible from the untrusted setup.py hook (200 attempts)",
+      "verdict": "passed",
+      "blocked_at": "OCI pids cgroup limit enforced by runsc: the container is stopped at the limit (no in-app EAGAIN observed); the 12-child control and the 128-pid scaling control prove the boundary follows the configured limit",
+      "recorded_at": "2026-11-07T14:43:08.210947Z",
+      "inputs": {
+        "control_children": 12,
+        "control_pids_limit": 64,
+        "scaling_children": 16,
+        "scaling_pids_limit": 128,
+        "attack_attempts": 200
+      },
+      "expected": "a bounded 12-child fork completes under the 64-pid limit; 16 children are stopped there but admitted at 128; the 200-attempt fork bomb is stopped, publishes no digest and is reclaimed",
+      "observed": {
+        "control": {
+          "children": 12,
+          "failure": null,
+          "build_state": "ready"
+        },
+        "scaling": {
+          "children": 16,
+          "build_state": "ready"
+        },
+        "attack": {
+          "attempts": 200,
+          "build_state": "failed",
+          "build_error_code": "build_failed",
+          "digest": null,
+          "completed_marker_present": false,
+          "log_tail": "build sandbox stdout:\n\nbuild sandbox stderr:\n\n"
+        },
+        "guest_cleanup_control": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "guest_cleanup_scaling": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "guest_cleanup_attack": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/maintenance run --once with ORCHARA_SANDBOX_PIDS=64 (control/attack)",
+        "cmd/maintenance run --once with ORCHARA_SANDBOX_PIDS=128 (scaling control)"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "build-memory-limit",
+      "stage": "build",
+      "attack": "allocate up to 512 MiB in a child process of the untrusted setup.py hook",
+      "verdict": "passed",
+      "blocked_at": "OCI memory limit enforced by runsc inside the sandbox: the allocation child is stopped before the requested size; the 1 GiB control completes",
+      "recorded_at": "2026-11-07T14:43:25.275840Z",
+      "inputs": {
+        "control_memory_limit_mb": 1024,
+        "attack_memory_limit_mb": 192,
+        "requested_mb": 512
+      },
+      "expected": "with 1 GiB the 512 MiB allocation completes; with 192 MiB the child is stopped before 512 MiB, the build path stays safe and reclaimed",
+      "observed": {
+        "control": {
+          "build_state": "ready",
+          "parent": {
+            "returncode": 0,
+            "stderr_tail": "",
+            "stdout_tail": "T111_MEMORY_START\nT111_MEMORY_PROGRESS 8\nT111_MEMORY_PROGRESS 16\nT111_MEMORY_PROGRESS 24\nT111_MEMORY_PROGRESS 32\nT111_MEMORY_PROGRESS 40\nT111_MEMORY_PROGRESS 48\nT111_MEMORY_PROGRESS 56\nT111_MEMORY_PROGRESS 64\nT111_MEMORY_PROGRESS 72\nT111_MEMORY_PROGRESS 80\nT111_MEMORY_PROGRESS 88\nT111_MEMORY_PROGRESS 96\nT111_MEMORY_PROGRESS 104\nT111_MEMORY_PROGRESS 112\nT111_MEMORY_PROGRESS 120\nT111_MEMORY_PROGRESS 128\nT111_MEMORY_PROGRESS 136\nT111_MEMORY_PROGRESS 144\nT111_MEMORY_PROGRESS 152\nT111_MEMORY_PROGRESS 160\nT111_MEMORY_PROGRESS 168\nT111_MEMORY_PROGRESS 176\nT111_MEMORY_PROGRESS 184\nT111_MEMORY_PROGRESS 192\nT111_MEMORY_PROGRESS 200\nT111_MEMORY_PROGRESS 208\nT111_MEMORY_PROGRESS 216\nT111_MEMORY_PROGRESS 224\nT111_MEMORY_PROGRESS 232\nT111_MEMORY_PROGRESS 240\nT111_MEMORY_PROGRESS 248\nT111_MEMORY_PROGRESS 256\nT111_MEMORY_PROGRESS 264\nT111_MEMORY_PROGRESS 272\nT111_MEMORY_PROGRESS 280\nT111_MEMORY_PROGRESS 288\nT111_MEMORY_PROGRESS 296\nT111_MEMORY_PROGRESS 304\nT111_MEMORY_PROGRESS 312\nT111_MEMORY_PROGRESS 320\nT111_MEMORY_PROGRESS 328\nT111_MEMORY_PROGRESS 336\nT111_MEMORY_PROGRESS 344\nT111_MEMORY_PROGRESS 352\nT111_MEMORY_PROGRESS 360\nT111_MEMORY_PROGRESS 368\nT111_MEMORY_PROGRESS 376\nT111_MEMORY_PROGRESS 384\nT111_MEMORY_PROGRESS 392\nT111_MEMORY_PROGRESS 400\nT111_MEMORY_PROGRESS 408\nT111_MEMORY_PROGRESS 416\nT111_MEMORY_PROGRESS 424\nT111_MEMORY_PROGRESS 432\nT111_MEMORY_PROGRESS 440\nT111_MEMORY_PROGRESS 448\nT111_MEMORY_PROGRESS 456\nT111_MEMORY_PROGRESS 464\nT111_MEMORY_PROGRESS 472\nT111_MEMORY_PROGRESS 480\nT111_MEMORY_PROGRESS 488\nT111_MEMORY_PROGRESS 496\nT111_MEMORY_PROGRESS 504\nT111_MEMORY_PROGRESS 512\nT111_MEMORY_CHILD {\"allocated_mib\": 512, \"outcome\": \"survived\"}\n"
+          },
+          "child": {
+            "allocated_mib": 512,
+            "outcome": "survived"
+          },
+          "progress_mib": 512
+        },
+        "attack": {
+          "build_state": "ready",
+          "parent": {
+            "returncode": 1,
+            "stderr_tail": "",
+            "stdout_tail": "T111_MEMORY_START\nT111_MEMORY_PROGRESS 8\nT111_MEMORY_PROGRESS 16\nT111_MEMORY_PROGRESS 24\nT111_MEMORY_PROGRESS 32\nT111_MEMORY_PROGRESS 40\nT111_MEMORY_PROGRESS 48\nT111_MEMORY_PROGRESS 56\nT111_MEMORY_PROGRESS 64\nT111_MEMORY_PROGRESS 72\nT111_MEMORY_PROGRESS 80\nT111_MEMORY_PROGRESS 88\nT111_MEMORY_PROGRESS 96\nT111_MEMORY_PROGRESS 104\nT111_MEMORY_PROGRESS 112\nT111_MEMORY_PROGRESS 120\nT111_MEMORY_PROGRESS 128\nT111_MEMORY_PROGRESS 136\nT111_MEMORY_PROGRESS 144\nT111_MEMORY_PROGRESS 152\n"
+          },
+          "child": null,
+          "progress_mib": 152,
+          "digest": "sha256:b119ac94c6ec39ed4ae88266d77b89284245733a7a22494c65ac75e9fc1d0414"
+        },
+        "guest_cleanup_control": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "guest_cleanup_attack": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/maintenance run --once with ORCHARA_SANDBOX_MEMORY_MB=1024 (control)",
+        "cmd/maintenance run --once with ORCHARA_SANDBOX_MEMORY_MB=192 (attack)"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "build-disk-quota",
+      "stage": "build",
+      "attack": "write 64 MiB to /workspace from the untrusted setup.py hook",
+      "verdict": "passed",
+      "blocked_at": "tmpfs size quota + RLIMIT_FSIZE inside the sandbox (host project quota is F15B deployment scope: see not_run)",
+      "recorded_at": "2026-11-07T14:43:36.267522Z",
+      "inputs": {
+        "workspace_quota_mb": 8,
+        "requested_mib": 64
+      },
+      "expected": "ENOSPC/EFBIG at the tmpfs quota; the guest filesystem does not grow and the build/cleanup stay safe",
+      "observed": {
+        "written_mib": 7,
+        "failure": {
+          "class": "OSError",
+          "errno": 28,
+          "errno_name": "ENOSPC"
+        },
+        "guest_filesystem_before": {
+          "path": "/",
+          "used_bytes": 4149551104,
+          "available_bytes": 1021959270400
+        },
+        "guest_filesystem_after": {
+          "path": "/",
+          "used_bytes": 4149551104,
+          "available_bytes": 1021959270400
+        },
+        "guest_volume_growth_bytes": 0,
+        "build_state": "ready",
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/maintenance run --once with ORCHARA_SANDBOX_WORKSPACE_QUOTA_MB=8"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "build-timeout-reclaim",
+      "stage": "build",
+      "attack": "sleep 60s in the untrusted setup.py hook while the build budget is 2s",
+      "verdict": "passed",
+      "blocked_at": "sandbox executor timeout + kill + cleanup proof (runsc delete/pid/workspace)",
+      "recorded_at": "2026-11-07T14:43:47.220206Z",
+      "inputs": {
+        "tool_build_timeout": "2s",
+        "hook_sleep_seconds": 60
+      },
+      "expected": "build_timeout, no ready digest, unit killed, all processes/dirs/mounts reclaimed",
+      "observed": {
+        "build_state": "failed",
+        "build_error_code": "build_timeout",
+        "elapsed_seconds": 6.2,
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/maintenance run --once --tool-build-timeout 2s"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    },
+    {
+      "id": "end-to-end-tool-run",
+      "stage": "run",
+      "attack": "none (positive end-to-end control): upload CSV, debug run, real supervisor exec",
+      "verdict": "passed",
+      "blocked_at": null,
+      "recorded_at": "2026-11-07T14:43:53.832109Z",
+      "inputs": {
+        "run_id": "1bac8d87-3743-49ce-acb6-9b4c93840791",
+        "csv_sha256": "f226b1fef2d09026714dfbc29a01f1439d1353ba0bfb4a98fd3531db1fc612da"
+      },
+      "expected": "the sandboxed preset tool succeeds end to end and the unit is fully reclaimed",
+      "observed": {
+        "exec_report": {
+          "status": "executed",
+          "run_id": "1bac8d87-3743-49ce-acb6-9b4c93840791",
+          "job_id": "5501dc09-3dda-4b40-8c35-4a52852bf8ac",
+          "execution_unit_id": "exec-AI-69060-8a74569e",
+          "outcome": "succeeded",
+          "run_state": "succeeded",
+          "heartbeats": 10,
+          "sandbox": {
+            "sandbox_id": "exec-ai-69060-8a74569e",
+            "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5",
+            "started": true,
+            "exit_code": 0,
+            "timed_out": false,
+            "cancelled": false,
+            "duration_ms": 303,
+            "cleanup": {
+              "sandbox_list_matches": 0,
+              "pid": 2542,
+              "pid_alive": false,
+              "ps_matches": 0,
+              "workspace_removed": true
+            }
+          },
+          "artifacts": [
+            {
+              "id": "9e78d47d-b0d6-4c82-a336-0b746c3bd153",
+              "purpose": "final_output",
+              "relation": "output",
+              "state": "ready",
+              "size_bytes": 110
+            },
+            {
+              "id": "6d574429-7404-4426-b08a-bbde11fc5e73",
+              "purpose": "node_output",
+              "relation": "artifact",
+              "state": "ready",
+              "size_bytes": 40
+            },
+            {
+              "id": "3d826fe8-5736-44c8-b9e8-3809a842cd17",
+              "purpose": "log",
+              "relation": "log",
+              "state": "ready",
+              "size_bytes": 18
+            }
+          ],
+          "duration_ms": 1001
+        },
+        "run_state": "succeeded",
+        "guest_cleanup": {
+          "runsc_list": [],
+          "runsc_list_raw": [
+            "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+          ],
+          "runsc_processes": [],
+          "state_root_entries": [
+            "t033-manual-1"
+          ],
+          "state_root_exists": true,
+          "state_root_mounts": [],
+          "list_empty": true,
+          "ps_empty": true,
+          "dirs_empty": false,
+          "mounts_empty": true,
+          "sandbox_id_processes": [],
+          "sandbox_id_dir_exists": false,
+          "sandbox_id_clean": true
+        },
+        "host_staging_entries": []
+      },
+      "cleanup": {
+        "runsc_list": [],
+        "runsc_list_raw": [
+          "ID          PID         STATUS      BUNDLE      CREATED     OWNER"
+        ],
+        "runsc_processes": [],
+        "state_root_entries": [
+          "t033-manual-1"
+        ],
+        "state_root_exists": true,
+        "state_root_mounts": [],
+        "list_empty": true,
+        "ps_empty": true,
+        "dirs_empty": false,
+        "mounts_empty": true,
+        "sandbox_id_processes": [],
+        "sandbox_id_dir_exists": false,
+        "sandbox_id_clean": true
+      },
+      "commands": [
+        "cmd/supervisor exec --once (real mTLS + runsc)"
+      ],
+      "host": {
+        "host": "WSL2 Ubuntu-24.04 (accepted test host per ADR 0002; not a standalone Linux server)",
+        "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+        "runsc_version": "runsc version release-20241118.0",
+        "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+      }
+    }
+  ],
+  "blocked": [],
+  "not_run": [
+    {
+      "item": "host filesystem project quota (beyond the sandbox workspace tmpfs)",
+      "why": "WSL2 Ubuntu-24.04 has no per-directory filesystem project quota and no quota tooling installed. This ticket verifies the product's actual disk protection: the only writable mount is a size-bounded tmpfs plus RLIMIT_FSIZE, and the fill attack really hit ENOSPC with zero guest-volume growth. A host-level project quota belongs to the F15B deployment platform."
+    },
+    {
+      "item": "full egress protocol matrix (ICMP/UDP/DNS/proxy tunnelling)",
+      "why": "the bundle runs with --network=none; this ticket records real TCP connect failures and a live guest-side positive control, not every protocol"
+    },
+    {
+      "item": "production Linux host outside WSL2",
+      "why": "ADR 0002 accepts WSL2 for acceptance only; production delivery still needs a standalone Linux host"
+    },
+    {
+      "item": "real vendor model / connector credentials",
+      "why": "the environment only has the dev-stub profile; no real vendor credential or endpoint exists"
+    }
+  ],
+  "expected_cases": [
+    "run-files-credentials-mounts-privilege",
+    "run-network-positive-control",
+    "run-config-policy-refusal",
+    "run-timeout-reclaim",
+    "build-hostile-setup-hook",
+    "build-fork-limit",
+    "build-memory-limit",
+    "build-disk-quota",
+    "build-timeout-reclaim",
+    "end-to-end-tool-run"
+  ],
+  "produced_cases": [
+    "build-disk-quota",
+    "build-fork-limit",
+    "build-hostile-setup-hook",
+    "build-memory-limit",
+    "build-timeout-reclaim",
+    "end-to-end-tool-run",
+    "run-config-policy-refusal",
+    "run-files-credentials-mounts-privilege",
+    "run-network-positive-control",
+    "run-timeout-reclaim"
+  ],
+  "missing_cases": [],
+  "unexpected_cases": [],
+  "failed_cases": [],
+  "complete": true
+}

@@ -48,6 +48,11 @@ J2_APPROVAL = "J2-write-approval"
 J3_MEMORY = "J3-personal-memory"
 J4_KNOWLEDGE = "J4-knowledge-ingestion"
 J5_SERVICE_ACCOUNT = "J5-service-account"
+# T101 review follow-up: the three-way gate (API-key scope + resource ACL + a
+# human approval) on one real external write, plus the graph-dispatch gap it
+# cannot cover without a product change.
+J6_SERVICE_WRITE = "J6-service-key-write-approval"
+J6B_GRAPH_DISPATCH = "J6b-graph-dispatch-write-gap"
 
 _RECORDS: dict[str, "Journey"] = {}
 

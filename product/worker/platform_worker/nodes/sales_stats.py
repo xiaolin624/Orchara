@@ -829,15 +829,22 @@ def _write_json(path: str, document: dict) -> None:
 
 
 def _csv_text_field(value: str) -> str:
-    """Escape spreadsheet formula prefixes; the CSV writer handles quoting.
+    """Escape spreadsheet formula prefixes and control characters.
 
     SECURITY §4: text exported to a spreadsheet must not become a formula. The
     sales tool rejects such input already, so this is defence in depth for a
     future caller; amounts are never altered (they cannot start with these
     prefixes because the input parser rejects them).
+
+    T110 (GitHub #111) found that a bare CR survives the writer's minimal
+    quoting (``lineterminator="\n"`` quotes the delimiter, the quote character
+    and ``\n``), so a region such as ``"\rCR"`` split the exported row in a
+    naive reader. A CR is never meaningful inside a cell of this export: replace
+    it with a space. LF stays untouched (the writer quotes it, and the T030
+    round-trip test pins "a newline in a region is data, not structure").
     """
-    text = str(value)
-    if text[:1] in ("=", "+", "-", "@"):
+    text = str(value).replace("\r", " ")
+    if text.lstrip(" ")[:1] in ("=", "+", "-", "@") or text[:1] in ("=", "+", "-", "@"):
         return "'" + text
     return text
 

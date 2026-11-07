@@ -1,0 +1,437 @@
+{
+  "adapters": [
+    {
+      "adapter": "heuristic-local/1",
+      "cost_usd": 0.0,
+      "default_endpoint": "none",
+      "evidence": "compare.py recomputed the hard verdict and the local proxy score on the real sealed report (t103-real-recorded-report.json); the trap observed 0 outbound connection(s) and the probe itself reported 0 socket connect(s). The score is advisory and is never an input to the hard verdict.",
+      "hard_verdict": "failed",
+      "install": "in-process (compare.py in this repository)",
+      "invocation": {
+        "command": "D:\\Python\\python.exe E:\\Orchara-wt\\t103\\product\\probes\\f13b_quality\\compare.py --report E:\\Orchara\\.scratch\\f13b\\T103\\t103-real-recorded-report.json --out E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\heuristic-compare.json",
+        "elapsed_s": 0.2,
+        "outbound_connections": 0,
+        "outbound_targets": [],
+        "returncode": 0
+      },
+      "outbound_connections": 0,
+      "outbound_targets": [],
+      "probe_reported_outbound": 0,
+      "python": "3.12.2",
+      "quality_score": 1.0,
+      "report_sha256": "a42cc60e4f2cf0abef6d1648b21eaa83830c2b6615c76c9ee0477ee3d20354d9",
+      "required_env": [],
+      "role": "deterministic local proxy for a semantic quality score (NOT a judge)",
+      "telemetry": "none (the scorer opens no socket)",
+      "vendor_tokens": 0,
+      "verdict": "accepted"
+    },
+    {
+      "adapter": "deepeval",
+      "blocked_kind": "judge_endpoint_and_credential",
+      "blocked_reason": "deepeval is installed and its deterministic ExactMatch metric runs locally, but the semantic metrics need a judge model. Constructing AnswerRelevancyMetric fails with: DeepEvalError: OpenAI API key is not configured. Set OPENAI_API_KEY in your environment or pass `api_key` to OpenAIModel(...).. This host has no approved judge endpoint or credential, so no semantic score was produced and none is fabricated.",
+      "cost_usd": 0.0,
+      "default_endpoint": "OpenAI-compatible client by default (models/llms/openai_model.py); an approved judge endpoint is not configured here",
+      "evidence": {
+        "deterministic_metric": {
+          "constructed": true,
+          "measured": true,
+          "name": "ExactMatchMetric",
+          "reason": "The actual and expected outputs are exact matches.",
+          "requires_model": false,
+          "score": 1.0
+        },
+        "note": "the deterministic run is real local evidence (zero egress); the semantic attempt's real error is the blocked evidence",
+        "semantic_attempt": {
+          "construct_error": "DeepEvalError: OpenAI API key is not configured. Set OPENAI_API_KEY in your environment or pass `api_key` to OpenAIModel(...)."
+        }
+      },
+      "inspection": {
+        "raw": {
+          "returncode": 0,
+          "stderr_tail": ""
+        },
+        "result": {
+          "default_endpoints": [
+            "\"https://otel.confident-ai.com\",",
+            "\"https://storage.googleapis.com/allennlp-public-models/decomposable-attention-elmo-2020.04.09.tar.gz\",",
+            "\"https://www.googleapis.com/auth/cloud-platform\"",
+            "# OTLP_ENDPOINT = \"https://otel.confident-ai.com/v1/traces\"",
+            "API_BASE_URL = \"https://api.confident-ai.com\"",
+            "API_BASE_URL_EU = \"https://eu.api.confident-ai.com\"",
+            "PROD = \"https://cloud.confident-ai.com\"",
+            "WWW = \"https://www.confident-ai.com\"",
+            "_POSTHOG_HOST = \"https://us.i.posthog.com\""
+          ],
+          "package_root": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval\\Lib\\site-packages\\deepeval",
+          "source_hits": {
+            "CONFIDENT_AI": [
+              "constants.py"
+            ],
+            "DEEPEVAL_TELEMETRY_OPT_OUT": [
+              "config\\settings.py",
+              "telemetry\\client.py",
+              "telemetry\\__init__.py"
+            ],
+            "OPENAI_API_KEY": [
+              "key_handler.py",
+              "cli\\main.py",
+              "cli\\utils.py",
+              "config\\settings.py",
+              "cli\\providers\\_speech.py",
+              "cli\\providers\\llms\\anthropic.py",
+              "cli\\providers\\llms\\azure.py",
+              "cli\\providers\\llms\\bedrock.py"
+            ],
+            "Posthog": [
+              "telemetry\\client.py"
+            ],
+            "TELEMETRY": [
+              "config\\settings.py",
+              "plugins\\plugin.py",
+              "telemetry\\client.py",
+              "telemetry\\events.py",
+              "telemetry\\identity.py",
+              "telemetry\\__init__.py"
+            ],
+            "posthog": [
+              "telemetry\\client.py"
+            ],
+            "telemetry": [
+              "progress_context.py",
+              "__init__.py",
+              "anthropic\\__init__.py",
+              "cli\\main.py",
+              "cli\\utils.py",
+              "config\\settings.py",
+              "dataset\\dataset.py",
+              "evaluate\\compare.py"
+            ]
+          },
+          "telemetry_switch_present": true,
+          "version": "4.3.3"
+        }
+      },
+      "install": {
+        "create_venv": {
+          "command": "D:\\Python\\python.exe -m venv E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval",
+          "elapsed_s": 10.4,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": ""
+        },
+        "pip_install": {
+          "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval\\Scripts\\python.exe -m pip install --disable-pip-version-check --no-input deepeval",
+          "elapsed_s": 102.2,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": "...(truncated)...\n-any.whl (15 kB)\nUsing cached aiosignal-1.4.0-py3-none-any.whl (7.5 kB)\nUsing cached annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)\nUsing cached annotated_types-0.8.0-py3-none-any.whl (13 kB)\nUsing cached anyio-4.16.0-py3-none-any.whl (134 kB)\nUsing cached attrs-26.1.0-py3-none-any.whl (67 kB)\nUsing cached backoff-2.2.1-py3-none-any.whl (15 kB)\nUsing cached certifi-2026.10.23-py3-none-any.whl (135 kB)\nUsing cached charset_normalizer-3.5.2-cp312-cp312-win_amd64.whl (207 kB)\nUsing cached colorama-0.4.6-py2.py3-none-any.whl (25 kB)\nUsing cached distro-1.9.0-py3-none-any.whl (20 kB)\nUsing cached execnet-2.1.2-py3-none-any.whl (40 kB)\nUsing cached frozenlist-1.8.0-cp312-cp312-win_amd64.whl (44 kB)\nUsing cached httpx2-2.16.0-py3-none-any.whl (97 kB)\nUsing cached httpcore2-2.16.0-py3-none-any.whl (85 kB)\nUsing cached idna-3.20-py3-none-any.whl (69 kB)\nUsing cached iniconfig-2.3.1-py3-none-any.whl (7.6 kB)\nUsing cached jiter-0.19.0-cp312-cp312-win_amd64.whl (225 kB)\nUsing cached markdown_it_py-4.2.0-py3-none-any.whl (91 kB)\nUsing cached markupsafe-3.0.4-cp312-cp312-win_amd64.whl (14 kB)\nUsing cached multidict-7.2.1-cp312-cp312-win_amd64.whl (95 kB)\nUsing cached packaging-26.3-py3-none-any.whl (129 kB)\nUsing cached pluggy-1.7.0-py3-none-any.whl (27 kB)\nUsing cached prompt_toolkit-3.0.53-py3-none-any.whl (392 kB)\nUsing cached propcache-0.5.4-cp312-cp312-win_amd64.whl (46 kB)\nUsing cached pygments-2.21.0-py3-none-any.whl (1.3 MB)\nUsing cached shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)\nUsing cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)\nUsing cached typing_inspection-0.4.5-py3-none-any.whl (14 kB)\nUsing cached urllib3-2.8.0-py3-none-any.whl (135 kB)\nUsing cached yarl-1.25.1-cp312-cp312-win_amd64.whl (102 kB)\nUsing cached sniffio-1.3.1-py3-none-any.whl (10 kB)\nUsing cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)\nUsing cached truststore-0.10.5-py3-none-any.whl (19 kB)\nUsing cached wcwidth-0.9.4-cp310-abi3-win_amd64.whl (597 kB)\nUsing cached h11-0.16.0-py3-none-any.whl (37 kB)\nInstalling collected packages: wcwidth, urllib3, typing-extensions, truststore, tenacity, tabulate, sniffio, shellingham, setuptools, python-dotenv, pygments, pyfiglet, propcache, portalocker, pluggy, packaging, nest_asyncio, multidict, mdurl, MarkupSafe, jiter, iniconfig, idna, h11, frozenlist, execnet, distro, colorama, charset_normalizer, certifi, backoff, attrs, annotated-types, annotated-doc, aiohappyeyeballs, yarl, wheel, typing-inspection, tqdm, requests, pytest, pydantic-core, prompt_toolkit, opentelemetry-api, markdown-it-py, jinja2, httpcore2, grpcio, click, anyio, aiosignal, rich, questionary, pytest-xdist, pytest-rerunfailures, pytest-repeat, pytest-asyncio, pydantic, posthog, opentelemetry-semantic-conventions, httpx2, aiohttp, typer, pydantic-settings, opentelemetry-sdk, openai, deepeval\nSuccessfully installed MarkupSafe-3.0.4 aiohappyeyeballs-2.7.1 aiohttp-3.14.5 aiosignal-1.4.0 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.16.0 attrs-26.1.0 backoff-2.2.1 certifi-2026.10.23 charset_normalizer-3.5.2 click-8.3.3 colorama-0.4.6 deepeval-4.3.3 distro-1.9.0 execnet-2.1.2 frozenlist-1.8.0 grpcio-1.85.1 h11-0.16.0 httpcore2-2.16.0 httpx2-2.16.0 idna-3.20 iniconfig-2.3.1 jinja2-3.1.6 jiter-0.19.0 markdown-it-py-4.2.0 mdurl-0.1.2 multidict-7.2.1 nest_asyncio-1.6.0 openai-3.46.0 opentelemetry-api-1.45.2 opentelemetry-sdk-1.45.2 opentelemetry-semantic-conventions-0.66b2 packaging-26.3 pluggy-1.7.0 portalocker-4.4.2 posthog-7.86.0 prompt_toolkit-3.0.53 propcache-0.5.4 pydantic-2.14.3 pydantic-core-2.50.4 pydantic-settings-2.16.2 pyfiglet-1.0.4 pygments-2.21.0 pytest-9.2.0 pytest-asyncio-1.4.1.post1 pytest-repeat-0.9.4 pytest-rerunfailures-16.7 pytest-xdist-3.8.0 python-dotenv-1.2.4 questionary-2.1.1 requests-2.34.2 rich-14.3.4 setuptools-84.2.1 shellingham-1.5.4 sniffio-1.3.1 tabulate-0.9.0 tenacity-9.2.1 tqdm-4.70.1 truststore-0.10.5 typer-0.28.0 typing-extensions-4.16.0 typing-inspection-0.4.5 urllib3-2.8.0 wcwidth-0.9.4 wheel-0.48.0 yarl-1.25.1\n"
+        },
+        "venv": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval"
+      },
+      "invocation": {
+        "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval\\Scripts\\python.exe E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\deepeval-metrics.py E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\deepeval-metrics.json",
+        "elapsed_s": 4.2,
+        "outbound_connections": 0,
+        "outbound_targets": [],
+        "returncode": 0,
+        "stderr_tail": "\n"
+      },
+      "outbound_connections": 0,
+      "outbound_targets": [],
+      "required_env": [
+        "an approved judge model endpoint/credential (the build has only ORCHARA_PROFILE=dev-stub)",
+        "DEEPEVAL_TELEMETRY_OPT_OUT=YES to disable the library's telemetry"
+      ],
+      "result": {
+        "deterministic_metric": {
+          "constructed": true,
+          "measured": true,
+          "name": "ExactMatchMetric",
+          "reason": "The actual and expected outputs are exact matches.",
+          "requires_model": false,
+          "score": 1.0
+        },
+        "metric_count": 58,
+        "semantic_metric": {
+          "construct_error": "DeepEvalError: OpenAI API key is not configured. Set OPENAI_API_KEY in your environment or pass `api_key` to OpenAIModel(...)."
+        },
+        "version": "4.3.3"
+      },
+      "role": "first general-purpose semantic quality adapter (candidate)",
+      "vendor_tokens": 0,
+      "verdict": "blocked",
+      "version": {
+        "pip_show_head": "",
+        "python": {
+          "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-deepeval\\Scripts\\python.exe -c import sys; print(sys.version)",
+          "elapsed_s": 0.1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]\n"
+        }
+      }
+    },
+    {
+      "adapter": "ragas",
+      "blocked_kind": "dependency_incompatibility",
+      "blocked_reason": "ragas installed, but importing it on this host fails: ModuleNotFoundError: No module named 'langchain_community.chat_models.vertexai'. A compatible ragas/langchain-community pairing (or a supported Python environment) is missing, so no metric was constructed or run.",
+      "cost_usd": 0.0,
+      "default_endpoint": "judge + embedding model providers chosen by the caller; no approved judge or embedding endpoint is configured here",
+      "evidence": {
+        "note": "the import/metric-construction attempt above is the real bounded evidence; a metric run is not faked",
+        "payload": {
+          "traceback": "Traceback (most recent call last):\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\ragas-metrics.py\", line 7, in <module>\n    import ragas\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\__init__.py\", line 5, in <module>\n    from ragas.evaluation import aevaluate, evaluate\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\evaluation.py\", line 31, in <module>\n    from ragas.llms import llm_factory\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\llms\\__init__.py\", line 1, in <module>\n    from ragas.llms.base import (\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\llms\\base.py\", line 12, in <module>\n    from langchain_community.chat_models.vertexai import ChatVertexAI\nModuleNotFoundError: No module named 'langchain_community.chat_models.vertexai'\n",
+          "unhandled": "ModuleNotFoundError: No module named 'langchain_community.chat_models.vertexai'"
+        }
+      },
+      "install": {
+        "create_venv": {
+          "command": "D:\\Python\\python.exe -m venv E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas",
+          "elapsed_s": 10.0,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": ""
+        },
+        "pip_install": {
+          "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Scripts\\python.exe -m pip install --disable-pip-version-check --no-input ragas",
+          "elapsed_s": 256.8,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": "...(truncated)...\n-none-any.whl (97 kB)\nUsing cached httpcore2-2.16.0-py3-none-any.whl (85 kB)\nUsing cached idna-3.20-py3-none-any.whl (69 kB)\nUsing cached jsonpointer-3.10-py3-none-any.whl (10 kB)\nUsing cached langchain_text_splitters-1.1.3-py3-none-any.whl (38 kB)\nUsing cached langgraph_checkpoint-4.3.1-py3-none-any.whl (58 kB)\nUsing cached langgraph_prebuilt-1.1.1-py3-none-any.whl (42 kB)\nUsing cached langgraph_sdk-0.4.14-py3-none-any.whl (171 kB)\nUsing cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)\nUsing cached multidict-7.2.1-cp312-cp312-win_amd64.whl (95 kB)\nUsing cached orjson-3.13.0-cp312-cp312-win_amd64.whl (121 kB)\nUsing cached propcache-0.5.4-cp312-cp312-win_amd64.whl (46 kB)\nUsing cached python_dateutil-4.0.0-py3-none-any.whl (92 kB)\nUsing cached python_dotenv-1.2.4-py3-none-any.whl (23 kB)\nUsing cached requests_toolbelt-1.0.0-py2.py3-none-any.whl (54 kB)\nUsing cached urllib3-2.8.0-py3-none-any.whl (135 kB)\nUsing cached websockets-17.4-cp312-cp312-win_amd64.whl (219 kB)\nUsing cached yarl-1.25.1-cp312-cp312-win_amd64.whl (102 kB)\nUsing cached zstandard-0.25.0-cp312-cp312-win_amd64.whl (506 kB)\nUsing cached tzdata-2026.6-py2.py3-none-any.whl (348 kB)\nUsing cached h11-0.16.0-py3-none-any.whl (37 kB)\nUsing cached ormsgpack-1.13.0-cp312-cp312-win_amd64.whl (157 kB)\nUsing cached truststore-0.10.5-py3-none-any.whl (19 kB)\nInstalling collected packages: appdirs, zstandard, xxhash, websockets, uuid-utils, urllib3, tzdata, typing-extensions, truststore, tenacity, sniffio, shellingham, regex, pyyaml, python-dotenv, pygments, pyarrow, propcache, pillow, packaging, ormsgpack, orjson, numpy, networkx, nest-asyncio, multidict, mdurl, jsonpointer, jiter, idna, httpx-sse, hf-xet, h11, fsspec, frozenlist, filelock, docstring-parser, distro, diskcache, dill, colorama, click, charset_normalizer, certifi, attrs, annotated-types, annotated-doc, aiohappyeyeballs, yarl, typing-inspection, tqdm, sqlalchemy, scipy, requests, python-dateutil, pydantic-core, multiprocess, markdown-it-py, langchain-protocol, jsonpatch, httpcore2, httpcore, anyio, aiosignal, tiktoken, scikit-network, rich, requests-toolbelt, pydantic, pandas, httpx2, httpx, aiohttp, typer, pydantic-settings, openai, langsmith, huggingface-hub, langchain-core, instructor, datasets, langgraph-sdk, langgraph-checkpoint, langchain-text-splitters, langchain_openai, langgraph-prebuilt, langchain-classic, langgraph, langchain-community, langchain, ragas\nSuccessfully installed aiohappyeyeballs-2.7.1 aiohttp-3.14.5 aiosignal-1.4.0 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.16.0 appdirs-1.4.4 attrs-26.1.0 certifi-2026.10.23 charset_normalizer-3.5.2 click-8.5.1 colorama-0.4.6 datasets-5.1.0 dill-0.4.1 diskcache-5.6.3 distro-1.9.0 docstring-parser-0.16 filelock-4.2.9 frozenlist-1.8.0 fsspec-2026.7.0 h11-0.16.0 hf-xet-1.8.0 httpcore-1.0.9 httpcore2-2.16.0 httpx-0.28.1 httpx-sse-0.4.3 httpx2-2.16.0 huggingface-hub-2.4.0 idna-3.20 instructor-1.3.2 jiter-0.19.0 jsonpatch-1.44 jsonpointer-3.10 langchain-1.4.9 langchain-classic-1.0.8 langchain-community-0.4.2 langchain-core-1.7.6 langchain-protocol-0.0.21 langchain-text-splitters-1.1.3 langchain_openai-1.1.9 langgraph-1.2.20 langgraph-checkpoint-4.3.1 langgraph-prebuilt-1.1.1 langgraph-sdk-0.4.14 langsmith-0.14.17 markdown-it-py-4.2.0 mdurl-0.1.2 multidict-7.2.1 multiprocess-0.70.19 nest-asyncio-1.6.0 networkx-3.7 numpy-2.5.4 openai-1.109.1 orjson-3.13.0 ormsgpack-1.13.0 packaging-26.3 pandas-3.1.1 pillow-13.0.0 propcache-0.5.4 pyarrow-26.0.1 pydantic-2.14.3 pydantic-core-2.50.4 pydantic-settings-2.16.2 pygments-2.21.0 python-dateutil-4.0.0 python-dotenv-1.2.4 pyyaml-6.0.3 ragas-0.4.3 regex-2026.11.7 requests-2.34.2 requests-toolbelt-1.0.0 rich-13.9.4 scikit-network-0.33.5 scipy-1.18.1 shellingham-1.5.4 sniffio-1.3.1 sqlalchemy-2.1.8 tenacity-8.5.0 tiktoken-0.14.0 tqdm-4.70.1 truststore-0.10.5 typer-0.28.0 typing-extensions-4.16.0 typing-inspection-0.4.5 tzdata-2026.6 urllib3-2.8.0 uuid-utils-0.19.0 websockets-17.4 xxhash-4.0.2 yarl-1.25.1 zstandard-0.25.0\n"
+        },
+        "venv": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas"
+      },
+      "invocation": {
+        "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Scripts\\python.exe E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\ragas-metrics.py E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\ragas-metrics.json",
+        "elapsed_s": 9.8,
+        "outbound_connections": 0,
+        "outbound_targets": [],
+        "returncode": 0,
+        "stderr_tail": "",
+        "stdout_tail": ""
+      },
+      "outbound_connections": 0,
+      "outbound_targets": [],
+      "required_env": [
+        "an approved judge model endpoint/credential",
+        "an approved embedding model endpoint/credential"
+      ],
+      "result": {
+        "traceback": "Traceback (most recent call last):\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\ragas-metrics.py\", line 7, in <module>\n    import ragas\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\__init__.py\", line 5, in <module>\n    from ragas.evaluation import aevaluate, evaluate\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\evaluation.py\", line 31, in <module>\n    from ragas.llms import llm_factory\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\llms\\__init__.py\", line 1, in <module>\n    from ragas.llms.base import (\n  File \"E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Lib\\site-packages\\ragas\\llms\\base.py\", line 12, in <module>\n    from langchain_community.chat_models.vertexai import ChatVertexAI\nModuleNotFoundError: No module named 'langchain_community.chat_models.vertexai'\n",
+        "unhandled": "ModuleNotFoundError: No module named 'langchain_community.chat_models.vertexai'"
+      },
+      "role": "RAG-specific quality special case (candidate)",
+      "vendor_tokens": 0,
+      "verdict": "blocked",
+      "version": {
+        "pip_show_head": "",
+        "python": {
+          "command": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\venv-ragas\\Scripts\\python.exe -c import sys; print(sys.version)",
+          "elapsed_s": 0.1,
+          "returncode": 0,
+          "stderr_tail": "",
+          "stdout_tail": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]\n"
+        }
+      }
+    },
+    {
+      "adapter": "promptfoo",
+      "binary": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\npm-promptfoo\\node_modules\\promptfoo\\dist\\src\\entrypoint.js",
+      "blocked_kind": "semantic_provider_endpoint",
+      "blocked_reason": "promptfoo is installed and its deterministic echo/equals eval passed fully offline, but it is a harness: a semantic quality score needs a model provider, and this host has no approved model endpoint/credential. Its default telemetry/update path made real outbound requests during that offline eval, so it is not acceptable as shipped for an evaluation containing real content.",
+      "cost_usd": 0.0,
+      "data_egress": {
+        "default_outbound_connections": 6,
+        "default_outbound_targets": [
+          "a.promptfoo.app:443",
+          "api.promptfoo.dev:443",
+          "r.promptfoo.app:443"
+        ],
+        "note": "the offline deterministic eval made real outbound proxy requests before any model provider was involved; the opt-out variables are present in the installed source. Even with them set, a semantic score still needs an approved model destination, which this host does not have.",
+        "opt_out": [
+          "PROMPTFOO_DISABLE_TELEMETRY=1",
+          "PROMPTFOO_DISABLE_UPDATE=1"
+        ],
+        "policy_verdict": "eliminated_without_opt_out"
+      },
+      "default_endpoint": "the provider/model is caller-configured; a semantic quality judgement still needs a model destination, and no approved one is configured here",
+      "evidence": {
+        "deterministic_eval_passed": true,
+        "note": "both the offline deterministic run and the observed default egress are real; no semantic provider call was made",
+        "outbound_targets": [
+          "a.promptfoo.app:443",
+          "api.promptfoo.dev:443",
+          "r.promptfoo.app:443"
+        ]
+      },
+      "inspection": {
+        "raw": {
+          "returncode": 0
+        },
+        "result": {
+          "source_hits": {
+            "PROMPTFOO_DISABLE_TELEMETRY": [
+              "dist\\src\\main.js",
+              "dist\\src\\telemetry-CIqy4fSC.js",
+              "dist\\src\\telemetry-CXozp_6C.js",
+              "dist\\src\\telemetry-g7PkBxmY.js"
+            ],
+            "PROMPTFOO_DISABLE_UPDATE": [
+              "dist\\src\\main.js",
+              "dist\\src\\server\\index.js"
+            ],
+            "api.promptfoo.dev": [
+              "dist\\src\\fetch-B5KxZuKu.js",
+              "dist\\src\\fetch-BG_Jl7ty.js",
+              "dist\\src\\fetch-RXHsZF-J.js",
+              "dist\\src\\main.js",
+              "dist\\src\\server\\index.js"
+            ],
+            "posthog": [
+              "dist\\src\\telemetry-CIqy4fSC.js",
+              "dist\\src\\telemetry-CXozp_6C.js",
+              "dist\\src\\telemetry-g7PkBxmY.js",
+              "dist\\src\\app\\assets\\index-CrdXWTXm.js"
+            ],
+            "telemetry": [
+              "dist\\src\\accounts-BOxNYxVN.js",
+              "dist\\src\\accounts-CPISMNlh.js",
+              "dist\\src\\accounts-vJBPs89d.js",
+              "dist\\src\\agents-C9Efp4mC.js",
+              "dist\\src\\agents-CQYwaVCO.js",
+              "dist\\src\\agents-DRWiCHYz.js"
+            ]
+          }
+        }
+      },
+      "install": {
+        "command": "D:\\develop\\nodejs\\npm.CMD install --prefix E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\npm-promptfoo --no-fund --no-audit --loglevel error promptfoo",
+        "elapsed_s": 168.7,
+        "returncode": 0,
+        "stderr_tail": "",
+        "stdout_tail": "\nadded 613 packages in 3m\n"
+      },
+      "invocation": {
+        "command": "node E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\npm-promptfoo\\node_modules\\promptfoo\\dist\\src\\entrypoint.js eval --config E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\promptfoo-offline.yaml --no-progress-bar",
+        "elapsed_s": 5.6,
+        "returncode": 0,
+        "stderr_tail": "telemetry.shutdown() timed out during shutdown\n",
+        "stdout_tail": "Starting evaluation eval-HaQ-2026-11-07T09:59:01\nRunning 1 test cases (up to 4 at a time)...\n\n\u001b[90m\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\u001b[39m\n\u001b[90m\u2502\u001b[39m\u001b[1m\u001b[34m [echo] hello                                                                                                           \u001b[39m\u001b[22m\u001b[90m\u2502\u001b[39m\n\u001b[90m\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\u001b[39m\n\u001b[90m\u2502\u001b[39m [PASS] hello                                                                                                           \u001b[90m\u2502\u001b[39m\n\u001b[90m\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\u001b[39m\n\u2713 Eval complete (ID: eval-HaQ-2026-11-07T09:59:01)\n\n\u00bb View results: promptfoo view\n\u00bb Share with your team: https://promptfoo.app\n\u00bb Feedback: https://promptfoo.dev/feedback\n\n\nResults:\n  \u2713 1 passed (100%)\n  0 failed (0%)\n  0 errors (0%)\nDuration: 0s (concurrency: 4)\n\n"
+      },
+      "outbound_connections": 6,
+      "outbound_targets": [
+        {
+          "at": 1794045541.313,
+          "target": "api.promptfoo.dev:443"
+        },
+        {
+          "at": 1794045541.535,
+          "target": "a.promptfoo.app:443"
+        },
+        {
+          "at": 1794045541.656,
+          "target": "r.promptfoo.app:443"
+        },
+        {
+          "at": 1794045541.657,
+          "target": "r.promptfoo.app:443"
+        },
+        {
+          "at": 1794045541.926,
+          "target": "r.promptfoo.app:443"
+        },
+        {
+          "at": 1794045541.926,
+          "target": "r.promptfoo.app:443"
+        }
+      ],
+      "package_json": "E:\\Orchara\\.scratch\\f13b\\T103\\adapter-work2\\npm-promptfoo\\node_modules\\promptfoo\\package.json",
+      "required_env": [
+        "PROMPTFOO_DISABLE_TELEMETRY=1 to disable the CLI's telemetry",
+        "PROMPTFOO_DISABLE_UPDATE=1 to disable its update check",
+        "an approved model provider endpoint for any semantic assertion"
+      ],
+      "role": "alternative harness (the CLI is not itself a judge)",
+      "vendor_tokens": 0,
+      "verdict": "blocked",
+      "version": "0.125.1"
+    }
+  ],
+  "data_egress_policy": [
+    {
+      "adapter": "promptfoo",
+      "default_outbound_connections": 6,
+      "default_outbound_targets": [
+        "a.promptfoo.app:443",
+        "api.promptfoo.dev:443",
+        "r.promptfoo.app:443"
+      ],
+      "note": "the offline deterministic eval made real outbound proxy requests before any model provider was involved; the opt-out variables are present in the installed source. Even with them set, a semantic score still needs an approved model destination, which this host does not have.",
+      "opt_out": [
+        "PROMPTFOO_DISABLE_TELEMETRY=1",
+        "PROMPTFOO_DISABLE_UPDATE=1"
+      ],
+      "policy_verdict": "eliminated_without_opt_out"
+    }
+  ],
+  "egress_observation": [
+    {
+      "adapter": "heuristic-local/1",
+      "outbound_connections": 0,
+      "targets": []
+    },
+    {
+      "adapter": "deepeval",
+      "outbound_connections": 0,
+      "targets": []
+    },
+    {
+      "adapter": "ragas",
+      "outbound_connections": 0,
+      "targets": []
+    },
+    {
+      "adapter": "promptfoo",
+      "outbound_connections": 6,
+      "targets": [
+        "a.promptfoo.app:443",
+        "api.promptfoo.dev:443",
+        "r.promptfoo.app:443"
+      ]
+    }
+  ],
+  "generated_at": "2026-11-07T09:59:03.109330+00:00",
+  "host": {
+    "judge_credentials_configured": false,
+    "judge_endpoint_configured": false,
+    "network_at_probe_time": "see the install evidence; package installs used the registry",
+    "node": "D:\\develop\\nodejs\\node.EXE",
+    "npm": "D:\\develop\\nodejs\\npm.CMD",
+    "profile": "dev-stub",
+    "python": "3.12.2"
+  },
+  "report": {
+    "path": "E:\\Orchara\\.scratch\\f13b\\T103\\t103-real-recorded-report.json",
+    "sha256": "a42cc60e4f2cf0abef6d1648b21eaa83830c2b6615c76c9ee0477ee3d20354d9"
+  },
+  "schema": "orchara-t103-adapter-probe/1",
+  "summary": {
+    "accepted": [
+      "heuristic-local/1"
+    ],
+    "approved_judge_blocked_reason": "no approved judge endpoint or credential exists on this host; the only model profile is ORCHARA_PROFILE=dev-stub",
+    "approved_judge_runs": 0,
+    "blocked": [
+      "deepeval",
+      "ragas",
+      "promptfoo"
+    ],
+    "eliminated": [],
+    "not_run": [],
+    "policy_eliminated_without_opt_out": [
+      "promptfoo"
+    ],
+    "trap_observed_outbound_total": 6
+  }
+}

@@ -326,7 +326,19 @@ func (s *Service) loadAuthorizedRun(ctx context.Context, runID, attemptToken str
 	if run.State != "running" {
 		return nil, capFailure(409, CodeRunNotRunning, "the run is not running")
 	}
-	if artifactState != "ready" || !strings.EqualFold(artifactOwner, run.OwnerID) {
+	// F06/T041 sealed a debug snapshot's manifest artifact as the run's author, so
+	// artifact owner and run owner were the same principal. An F08/T074 published
+	// Run pins the *version's* manifest artifact, which the publisher sealed
+	// (SubmitPublication is owner-only); the run owner is the granted requester.
+	// The ownership equality is therefore a debug-run rule. For a published Run the
+	// boundary is the immutable version digest, re-proven below: the artifact
+	// digest must equal the snapshot digest and the bytes must hash to
+	// runs.manifest_sha256, which DispatchVersionTx copied from the version it
+	// resolved under the read-grant and revocation checks. Keeping the equality for
+	// published Runs made every granted reader's agent/model/tool/connector call
+	// fail closed with manifest_unavailable.
+	if artifactState != "ready" ||
+		(run.Kind != "published" && !strings.EqualFold(artifactOwner, run.OwnerID)) {
 		return nil, capFailure(503, CodeManifestUnavailable, "the sealed execution manifest is not readable")
 	}
 	if !strings.EqualFold(run.ManifestSHA256, snapshotSHA) {

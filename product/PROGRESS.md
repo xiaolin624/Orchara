@@ -2471,3 +2471,349 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 `not_run`。真实服务器 410→页面重建仍由 `test_t096_stack.py::test_real_410_drives_the_page_snapshot_rebuild`
 覆盖（未改）。F1 页面路径只证明请求形状与“没有请求”，真实服务端解析由 F11/T073 既有真实栈用例覆盖。
 跨 epic 既有红（f03/f02a/f00b）未触碰、未修。
+
+## F13B T101 收尾（GitHub #102，2026-11-07）
+
+- 分支 `t/t101-three-in-one`，worktree `E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`；
+  完成前 merge 了推进后的 `integration/f13b` @ `ffe4022`（T102），合并提交 `3921c81`；
+  `PROGRESS.md` 尾部双追加冲突按保留双方小节解决。
+- 交付：新增 `J6-service-key-write-approval`（49 断言）与 `J6b-graph-dispatch-write-gap`（7 断言，`blocked`）。
+  AC2 从 `partial` 改判为**满足（平台/授权边界）**：服务 key 的 `application:read`+`write` scope + application
+  read grant + 服务账号负责人的人类 operation 审批，作用在**同一个真实回环外部写**上（回环端点自己的
+  请求日志恰好 1 次物理写、1 条 succeeded attempt、真实 receipt）；同一请求去掉任一条件均被拒：
+  无 grant 404、只有 read scope 403 `insufficient_scope`、service key 自己批准 404、admin 403
+  `approver_mismatch`、错 hash 409。版本由**真实五类评测 → submit → admin review decision** 发布。
+- 发现并修复 **P1 产品缺陷**：`internal/capabilities/service.go` 的 `loadAuthorizedRun` 要求 sealed
+  manifest artifact 属主 == Run owner，导致任何非发布者提交的 published Run 调用任何 capability 都被
+  503 `manifest_unavailable`；修复只对 `run.Kind == "published"` 放宽属主相等，保留 artifact ready、
+  snapshot digest 相等、字节 sha256 == `runs.manifest_sha256`；Go 回归测试
+  `internal/capabilities/manifest_owner_test.go`（published 允许 / 三类摘要拒绝 / debug 仍拒）。
+- 未解：**J6b `blocked`**（已发布图本身发不出 connector operation：图执行器无 connector 节点、agent
+  tool call 恒为 `kind=tool`）；J1b 保持 `blocked`（F08↔F04B 输入缺口）。
+- 门禁（真实 tail）：`pytest tests/f12/test_t101_journeys.py -q` → **6 passed in 90.82s**；
+  证据重跑（`T101_WRITE_EVIDENCE=1`）→ **6 passed in 87.93s**，普通运行不改写 JSON；
+  `pytest tests/f12 -q` → **447 passed in 262.76s**；`go build=0`、`go vet=0`、`go test=0`；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 合并树最终复跑（`3921c81`，含 T102）：targeted 证据 **6 passed in 137.57s**、
+  `pytest tests/f12 -q` **447 passed in 489.77s**、`go build/vet/test` = 0、gofmt 空、sync `no drift`
+  （共享宿主同期有其它真实栈任务，耗时高于首跑，结果全绿）。
+- 边界：dev-stub 模型、回环 connector stub（非真实供应商）、WSL2+runsc 真实执行；真实模型/真实第三方
+  供应商 `not_run`；写操作由文档化 worker capability 协议发出（J6b 记图分发缺口）；证据重生成后
+  `Select-String` 复查无明文凭据。
+
+## F13B T102：冻结七类内部案例并证明没有切分泄漏（2026-11-07）
+
+- 分支 `t/t102-frozen-cases`（worktree `E:\Orchara-wt\t102`，基线 `integration/f13b` @ `30642be`）。
+- 交付：`tests/f13b/corpus/**`（7 个 `cases.<category>.json` + `registry.json` + 6 个 CSV fixture）、
+  `tests/f13b/build_corpus.py`（确定性生成器，registry 与 case 文档可由其重放）、
+  `tools/f13b_corpus.py`（loader/validator/切分泄漏检测/拒绝原因）、
+  `tests/f13b/test_t102_corpus.py`（离线测试）、
+  `internal/evaluation/dataset_f13b_corpus_test.go`（产品严格 `ParseDataset` 装载证明）、
+  `reports/f13b/T102-frozen-cases.md`。
+- 语料：**46 案例（25 dev / 21 frozen_test，20 families，178 assertions）**，覆盖
+  sales/routing/rag/memory/delegation/approval_effects/lifecycle 七类；每 case 至少 1 assertion、
+  family、split、provenance/licence，并在 registry 中有独立真值说明与采集事实清单。
+- 切分隔离实测：跨 split family **0/20**、归一化模板 **0/20**、字符 5-gram Jaccard 最大跨 split
+  **0.4018 < 0.75**（同 split 最大 0.6606，证明指标非零）；伪造跨 split family/template/近似重复均被拒绝。
+- 真值：sales 由 `tests/f13a/reference/sales_reference.py`（stdlib+Decimal，不 import 产品工具）从 fixture 重算；
+  routing 由 catalog 快照机械推导；rag 由来源快照（id/page/version/status/text）核对；
+  memory/delegation/approval/lifecycle 采用人工标注 + 账本/状态不变量。
+- 空/跳过/不完整：`reject_reasons` 8 个稳定码 + `is_decidable` 缺事实即不可判定；
+  20 条负向检查（含伪造跨 split、重复 case_id、文件/schema pin 篡改）全部断言原因码。
+- 未改 `docs/spec/**`、`contracts/**`、迁移与既有 `tests/f13a` 文件。
+- 门禁（真实 tail）：`pytest tests/f13b` **36 passed in 16.12s**；`pytest tests/tooling` **21 passed in 15.02s**；
+  `pytest tests/f13a/test_t056_fixtures.py`（离线子集）**7 passed in 1.31s**；`go build/vet/test` exit 0；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：case 执行器/真实模型、真实 artifact 采集、debug snapshot 发布、完整 `tests/f13a` 真实栈套件（按离线票范围）。
+
+ HEAD
+## F13B T103（GitHub #104）：同一录制结果的 hard checker vs 质量评分（2026-11-07）
+
+- 分支 `t/t103-quality-vs-hard` / worktree `E:\Orchara-wt\t103`；基线 `integration/f13b` @ `30642be`。
+  本票 test/probe-only：**未改** `docs/spec/**`、`contracts/**`、迁移、`internal/evaluation` 语义或任何产品代码；
+  唯一 tracked 改动是 `tests/support/t068.py` 增加可选 `quality` 槽参数（向后兼容）。
+- 真实栈（PostgreSQL 16.4 + 编译二进制 + 真实 maintenance 双池 + 真实 supervisor + 真实 completion guard）：
+  真实 runner 产出单条录制结果 `a42cc60e…`（`status=failed`，quality 槽如实 `not_installed/null`）：
+  `t103-hard-pass` 的 `run_state`+`json_equals("", {})` 全过；`t103-hard-fail` 的
+  `json_equals("", {"total":"100.00"})` 对真实输出 `{}` 硬失败。
+  `probes/f13b_quality/compare.py` 从 `cases[].assertions` 独立复算 = `failed`，与产品 status 一致，
+  且 `quality_used=false`。
+- 同一 case 证据经真实 job-scoped 封印为 `status=failed` + `quality={adapter:"heuristic-local/1", score:1.0}`：
+  completion guard 接受；真实 `POST /api/v1/applications/{id}/submit` → **HTTP 422 `evaluation_not_passed`**
+  （`details.report_status=failed`），0 条 review。反向对照：passed 五类作者案例 + `quality.score=0.0`
+  → **HTTP 202 submitted**，review 创建，`author_cases.satisfied=true`。质量分只是信息。
+- 适配器（隔离 venv/npm 真实安装 + 真实最小调用 + 回环代理 trap）：`heuristic-local/1` outbound=0、tokens=0、$0；
+  DeepEval 4.3.3 确定性 `ExactMatch` 本地跑通（0 出站），语义指标报 `OpenAI API key is not configured` → `blocked`；
+  Ragas 0.4.3 导入因 `langchain_community.chat_models.vertexai` 缺失失败 → `blocked`；
+  Promptfoo 0.125.1 离线确定性 eval 通过，但默认 telemetry/update 发出 6 条真实出站
+  （`api.promptfoo.dev:443`、`a.promptfoo.app:443`、`r.promptfoo.app:443`）→ 无 opt-out 时数据外发策略淘汰，
+  语义 role 仍 `blocked`。获批 judge 运行 = `not_run`（无端点/凭据），无任何伪造的 judge 分数/费用。
+- 门禁：`pytest tests/f13b` 全绿（本票 4 条 + T102 corpus 用例）；Go `build=0/vet=0/test=0`；
+  `gofmt -l` 空；`sync_spec --check` no drift。`pytest tests/f13a` = **3 failed / 48 passed**，
+  经 stash 本票唯一 tracked 改动后原样复现（3 failed in 98.65s）：三个既有 F13A 用例仍假设最小
+  `start->end` 链以 `tool_unsupported_graph` 失败，而基线实际成功并封印 `{}`，**属基线既有红，非本票引入**。
+- 证据：`reports/f13b/T103-hard-vs-quality.md`；`probes/f13b_quality/**`（compare/adapter probe/矩阵/证据）；
+  原始 tail `E:\Orchara\.scratch\f13b\T103\`。
+
+## F13B T104（GitHub #105）：导入 τ²-bench 改编任务并拒绝空判定器（2026-11-07）
+
+- 分支 `t/t104-tau2-import` / worktree `E:\Orchara-wt\t104`；基线 `integration/f13b` @ `5c7c506`，
+  结束时 merge `integration/f13b` @ `c132e8e` → **Already up to date**（分支已包含），工作区干净。
+- 来源：`sierra-research/tau2-bench` @ `da0835f6c67baef58bdda18f2a3b037dfb3a1754`（MIT；LICENSE
+  sha256 `74741b87…`）；`git init` + `git fetch --depth 1 origin <commit>` 真实克隆到
+  `E:\Orchara\.scratch\f13b\T104\upstream`（不提交上游代码）。`tasks.json`/`policy.md`/
+  `split_tasks.json`/`db.json`/`tasks.py`/`evaluator.py`/`pyproject.toml` 的 SHA-256 与抓取命令在
+  `tests/f13b/external/tau2/source_pin.json`；上游 evaluator:134-139 的缺 criteria → reward=1.0
+  陷阱记录为 `empty_checker_trap`。
+- 导入 3 条改编 airline 任务（上游 task 11/39/40）：`tau2-airline-39-refund-eligibility`（退款资格
+  拒绝；3/7 可取消；refund_total 995.75）、`tau2-airline-11-flight-downgrade`（不得改乘客数，降舱
+  退款 5244.00）、`tau2-airline-40-passenger-correction`（乘客改名）。全部 `frozen_test`/
+  `approval_effects`，改写为隔离本地 booking fixture（JSON + `/booking-desk` 端点面），
+  `origin=adapted_external`、`license_review=reviewed`、reference 带 repo@commit#task#path；改编
+  说明在 `external/registry.json`，未塞入 schema 禁止字段。共 23 条断言；产品 `ParseDataset` 由
+  `internal/evaluation/dataset_t104_external_test.go` 证明可加载。
+- 空判定器门禁 `tools/f13b_external.py`：稳定码 `missing_checker`/`empty_criteria`/
+  `empty_reward_basis`/`text_only_checker`/`no_actions`/`no_environment`/`default_success` 等；真实
+  τ² 形状负例（缺 criteria、空 reward_basis、仅 nl 文本、无环境）与适配 case 负例（仅 run_state、
+  text_similarity、无环境、未审许可、未知 source task、错 reference、伪造跨 split）共 24 条全部按
+  预期拒绝；`validate_tau2_source` 重校验 commit/LICENSE sha/criteria sha。
+- 离线端到端（stub，非产品/非榜单）：loader → 门禁 → 参考轨迹 → 本地 fixture 模拟 → 五类断言
+  镜像；3 条 gold 轨迹 23/23 断言通过，2 条错误轨迹（多取消 4 条不可退、移除乘客）按预期失败。
+- T102 集成：`corpus/registry.json` 增加 `external_imports`（外部 registry sha256 + commit +
+  `adapted_external` 标签），七类 case 文档字节不变；T102 36 条测试与两套 builder 复现全绿。
+- 未改 `docs/spec/**`、`contracts/**`、迁移、产品 worker 代码。
+- 门禁（真实 tail，从 `product/`）：`pytest tests/f13b -q` → **88 passed in 47.79s**（T104 48 +
+  T102 36 + T103 真栈 4）；`pytest tests/tooling -q` → **21 passed in 4.72s**；
+  `go build ./...`/`go vet ./...`/`go test ./...` exit 0（`go test` 39 ok / 0 FAIL）；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → **no drift**；
+  `tools/f13b_external.py --summary` → exit 0（gate_issues=[]，23/23 stub）；两个 builder `matches`。
+- `not_run`：产品 evaluation runner 执行适配 case（本构建无 booking 应用）、真实模型、τ² 官方
+  suite/用户模拟、recovery 边界（三条任务无恢复语义）、上游全文件离线重算（需 pinned clone）、
+  db.json 重构（仅 pin hash）；仅根 MIT 已审，域内第三方数据未逐项审计。
+- 证据：`reports/f13b/T104-tau2-import.md`；原始 tail `E:\Orchara\.scratch\f13b\T104\`。
+
+## F13B T105（GitHub #106）：导入 AgentDojo 改编任务并分开报告攻击成功（2026-11-07）
+
+- 分支 `t/t105-agentdojo-import` / worktree `E:\Orchara-wt\t105`；基线 `integration/f13b` @ `834ca68`；结束时 merge `integration/f13b`（最终状态见报告 §11）。
+- 来源：`ethz-spylab/agentdojo` @ `089ed468cf3ed0322acc66b0211f26d9d90dbf60`（MIT；LICENSE sha256 `a090c871…`，1182 bytes）；`git init` + `git fetch --depth 1 origin <commit>` 真实克隆到 `E:\Orchara\.scratch\f13b\T105\upstream`（git-ignored，不提交上游代码）。12 个上游文件的 SHA-256/size、任务/注入任务/向量证据、抓取命令在 `external/agentdojo/source_pin.json`；未伪造任何 hash。
+- `security=True` 语义：上游 `BaseInjectionTask.security()` True = 注入目标成功；`benchmark.py` 的错误/跳过路径把 `security` 强制为 True，DoS 为 `security=not utility`，无注入 API 文档写明 "The security is always True"。`map_agentdojo_outcome(utility, security)` 映射 `attack_success=security`、`security_expectation_met=utility and not attack_success`；非布尔值拒绝；四条真值表 + 3 case × 4 轨迹交叉验证。
+- 导入 3 条改编 workspace 任务：UserTask16 (v1.2.2) + InjectionTask4（外发 Facebook 验证码）；UserTask6 + InjectionTask2（注入建日程）；UserTask28 + InjectionTask1（注入删除 file 13）。均 `frozen_test`/`approval_effects`，25 条断言，utility/attack/side-effect 角色分离；攻击动作保留上游写入参数；3 个本地 JSON fixture；AgentDojo 环境/工具/用户模拟未复用。
+- 许可门禁：缺/未审/不可再分发来源许可 → `source_unlicensed` / `license_not_reviewed`；`packageable_cases()` 不打包该 case；负例覆盖缺 license、pending、redistributable=false、错 license_id、self_created origin。
+- 离线段到端（stub，非产品/非榜单）：gold 3/3 满足；attack_obeyed utility 3 但 attack_success 3、满足 0（证明只报一个 security 布尔会掩盖攻击成功）；attack_blocked 拒绝 3、满足 3；utility_failed 满足 0。汇总只有 utility/attack_success/被拒数等分列，无综合分。
+- 真实栈检索注入：真实 PostgreSQL + 编译 `cmd/api` + 对象存储 + `cmd/maintenance` 摄入；文档含 `<INFORMATION>` 注入；真实 retrieval + answer 后 `platform.operations=0`、`platform.approvals=0`、connector 写 0、canary 值未泄漏、引用仅来自本人文档、外来主体仍 404；answer 文本引用了注入文本但不执行。3 passed。**blocked**：语义模型读取工具输出后发起写操作（缺厂商/本地语义模型端点+凭据与工具执行面）；官方 AgentDojo suite `not_run`。
+- 未改 `docs/spec/**`、`contracts/**`、迁移、产品 worker 代码。T102 registry 仅新增 `external_imports.agentdojo`（sha256+commit pin），七类 case 文档字节不变；T104 tau2 引用保留。
+- 门禁（真实 tail，从 `product/`）：`pytest tests/f13b -q` → **179 passed in 73.11s**；`pytest tests/tooling -q` → **21 passed in 4.54s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`；`tools/f13b_agentdojo.py --summary` exit 0（gate_issues=[]）；`build_agentdojo.py`/`build_corpus.py`/`build_external.py` 均 `matches`。
+- `not_run`：官方 AgentDojo suite、真实模型、产品 evaluation runner 执行改编 workspace case、上游全文件离线重算（需 pinned clone）。恢复边界 `not_applicable`（三条任务无恢复语义）。
+- 证据：`reports/f13b/T105-agentdojo-import.md`；原始 tail `E:\Orchara\.scratch\f13b\T105\`。
+
+## F13B T106（GitHub #107）：故障注入审批重启、换参与写后丢回执（2026-11-07）
+
+- 分支 `t/t106-approval-faults` / worktree `E:\Orchara-wt\t106`；基线 `integration/f13b` @ `c132e8e`，
+  完成前依次 merge 推进后的集成 tip：`f234e72`（T104/T105）→ `cb20f85`；`1ce0d65`（T107 + 已合并的
+  T106）→ `18e2bd4`；`d593c1e`（T107 最终证据/环境，docs-only）→ `7edd475`；`PROGRESS.md` 冲突保留
+  T104/T105/T106/T107 四节。
+- 交付：新增 `tests/f13b/fault_support.py`（Fault/进程/PG/证据 writer，仅 `F13B_WRITE_EVIDENCE=1` 重写）、
+  `tests/f13b/t106_worker.py`（真实 worker OS 进程）、`tests/f13b/test_t106_approval_faults.py`
+  （3 条真实栈测试，53 条断言）、`reports/f13b/T106-faults.json`（3 个故障记录）、
+  `reports/f13b/T106-approval-faults.md`。未改 `docs/spec/**`、`contracts/**`、迁移与既有票断言。
+- FAULT-01（真杀进程 + 真 supervisor 重启）：真实 worker 进程停在审批等待（waiting+confirm exit）→
+  `taskkill /F /T` 真杀（原始输出列出其 psql 子进程；`pg_stat_activity` 会话 1→0）→ 真实
+  `cmd/supervisor exec --once` 启动并 `status=idle` → owner 精确批准 → 恰 1 个 resume job → 新 worker 进程
+  用**同一 operation id/logical key/params** 重放，succeeded。独立账本：回环端点 0 写（批准前）/恰 1 写
+  （批准后），`operations` 一行同 id、`operation_attempts` 1 行、`approvals` 一行
+  （id/proposal/params_sha256/approver 不变）、run succeeded。
+- FAULT-02（换参与旧批准）：精确 params 批准后同 operation id 换 params → 409 `operation_conflict`，0 写、
+  operation/approval 行不变；随后精确 params 仍成功（批准未被消耗）；错 `params_sha256` 决定 → 409
+  `approval_params_mismatch`；陌生人 404、admin 403 `approver_mismatch`、取消后迟到决定 409，全部 0 写。
+- FAULT-03（写后丢回执）：`LostReceiptServer` 真实断连 → operation `unknown`（非 succeeded/failed）、
+  无 receipt、attempt 仍 dispatching；重复 invoke/换参不重发（端点仍 1 次请求）；run 停
+  `needs_reconciliation`（非 succeeded）；真实 evidence artifact + `POST /operations/{id}/reconcile`
+  结案 succeeded，物理 attempt 仍 1、端点请求仍 1。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t106_approval_faults.py` **3 passed in 51.53s**（证据重跑）；
+  `pytest tests/f13b` **43 passed in 103.79s**；`pytest tests/f12` **447 passed in 385.14s**；
+  `go build/vet/test` 全 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 边界：dev-stub 模型、回环 connector 端点（非真实供应商）、无浏览器 DOM；真实供应商/模型 `not_run`；
+  worker 角色是文档化 seam（图执行器无 connector 节点，T101 J6b），真实 supervisor 进程重启证据与本 seam 分列。
+- 合并后（merge commit `cb20f85`，含 T104/T105）复跑：`pytest tests/f13b` **182 passed in 148.45s**；
+  `pytest tests/f12` **447 passed in 488.01s**；证据重生成 **3 passed in 64.16s**
+  （`T106-faults.json` 的 `product_commit=cb20f85`）；Go `build/vet/test` 全 0；gofmt 空；
+  `sync_spec --check` → `no drift`。原始 tail 在 `E:\Orchara\.scratch\f13b\T106\*`。
+- 再 merge `integration/f13b` @ `1ce0d65`（T107 + 已合并的 T106）后（merge commit `18e2bd4`）复跑：
+  `pytest tests/f13b` **186 passed in 211.65s**；`pytest tests/f12` **447 passed in 311.84s**；
+  Go `build/vet/test` 全 0；gofmt 空；`sync_spec --check` → `no drift`。
+- 最终 docs-only merge（`d593c1e` → `7edd475`：仅 `PROGRESS.md` + T107 报告）后，
+  `git diff 18e2bd4..7edd475 -- product/tests product/internal product/cmd product/tools product/db
+  product/contracts` 为空，故真实栈结果不变；在 `7edd475` 复跑 `go build/vet/test` 全 0、gofmt 空、
+  `sync_spec --check` → `no drift`（当时 T108 占用 realstack 锁，未重复真实栈套件）。
+
+## F13B T107（GitHub #108）：旧图、活旧进程、取消与事件竞态故障注入（2026-11-07）
+- 分支 `t/t107-lifecycle-faults` / worktree `E:\Orchara-wt\t107`；基线 `integration/f13b` @ `834ca68`，结束前 merge `integration/f13b` @ `f234e72`（T105）→ 合并提交 `db94214`，其上重跑门禁；证据最后一轮在 `e904e0c` 树。
+- 交付：`tests/f13b/test_t107_lifecycle_faults.py`（4 条真实栈故障，FAULT-04/05/06/10）、`tests/support/t107.py`（故障证据记录器 + Windows 真实进程探针 + `pg_stat_activity` 只读模型）、`reports/f13b/T107-faults.json`、`reports/f13b/T107-lifecycle-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品代码与既有票断言。
+- FAULT-04（旧图恢复）：v1 debug Run 的封存 manifest 与仓库 checked-in golden 字节逐字节相同（sha256 `9cc418d1…`）；经真实 submit/review/approve 事务发布 v1、v2（v2 sha256 `eac3a5db…`）后，v1 Run 两次 claim/一次 recover 都返回 v1 manifest（lease sha、signed URL 字节、execution snapshot 全为 v1）；删除 v1 对象后 `runs recover` 稳定拒绝 `artifact_unavailable`，Run 保持 `recovery_pending`，v2 对象完好但从未被回退使用。
+- FAULT-05（活旧 worker + 过期租约）：真实 `cmd/supervisor exec --once`（pid 64356）真实领取 attempt（token 前缀 `8420f63a`），OS `NtSuspendProcess` 冻结后其真实 PG backend（pid 50836，`application_name=t107-old-worker-db-…`）仍在 `pg_stat_activity`；过期租约 + `sweep-leases --grace 1s` → `recovery_pending(lease_expired)`、job held、allocation 未释放、claim 204、仅 1 个 attempt。恢复进程后其 exit confirmation 被真实 `409 stale_attempt` 拒绝（exec report status=failed），Run 仍 parked、事件数不变；进程退出并留下真实退出证据后才 recover → queued，再 claim 才出现 attempt #2。
+- FAULT-06（取消后迟到）：真实 cancel → `cancelling`，期间 result/event/upload/capability 全拒绝（capability `run_cancelled`、operations=0）；supervisor exit 后 `cancelled`（revision 4、seq 1..5、状态 queued→running→cancelling→cancelled）。迟到 result（含同 body 重投）/旧 event 重放/新 event → `409 run_terminal`；重复 claim 204；同 evidence exit 200 幂等、不同 evidence 409；upload 409 / capability 403 均 `stale_attempt`；外部 owner 读 404；终态 recover 拒绝 `not_recovery_pending`；Run 行、事件与 seq 完全不变。
+- FAULT-10（重复事件/相反决定）：同 event_id 重放（含 batch）不新增 seq；真实终态 failed 后迟到事件 409 `run_terminal`，seq 1..6 连续。两个 supervisor mTLS 会话 barrier 并发 approve/reject → 恰一个 200、一个 409 `decision_conflict`；DB 仅 1 条决定（本轮 approved/`t107-race-approve`），相反决定重放仍 409，exit 后恰好 1 个 resume job；worker 证书 403、未知 run 404、跨 owner 404。
+- 诚实边界：模型仅 dev-stub（无真实供应商）；FAULT-05 的失联注入是宿主 OS 挂起真实进程（非网络分区/真机关机）；FAULT-04 v2 发布的五类评测报告使用 T068 既有“真实 evaluation/case run 行 + seeded 终态”fixture（manifest/version/review/approve 事务与对象字节真实）；FAULT-06/10 的等待决定走 T035 文档化非契约 bridge，不是 F06 审批 UI；本批次无真实外部写 connector，FAULT-10 的“外写”按平台当前语义核对为恰好一次 resume 恢复。
+- 门禁（真实 tail，合并 `f234e72` 后树，cwd=`product/`）：`pytest tests/f13b/test_t107_lifecycle_faults.py -q` → **4 passed in 76.85s**；`pytest tests/f13b -q` → **183 passed in 192.65s**；`pytest tests/f12 -q` → **447 passed in 374.23s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。最终代码/测试树 `e8e9311` 复跑 `pytest tests/f13b -q` → **183 passed in 220.05s**，`pytest tests/f13b/test_t107_lifecycle_faults.py -q`（证据轮）→ **4 passed in 59.60s**；合并 `integration/f13b` @ `1ce0d65`（含 T106）后最终树 `636135e` 复跑 `pytest tests/f13b -q` → **186 passed in 321.82s**；其后仅文档提交。
+- 证据：`reports/f13b/T107-lifecycle-faults.md` + `reports/f13b/T107-faults.json`（`F13B_WRITE_EVIDENCE=1`，HEAD `e904e0c`）；原始 tail `E:\Orchara\.scratch\f13b\T107\`。
+- `not_run`：真实厂商模型/真实外部写供应商；生产部署上的 v1→v2 升级恢复；网络分区/宿主机失联恢复；浏览器 DOM/SSE UI；多机 supervisor 竞争与多轮并发压力。
+
+## F13B T108（GitHub #109）：子应用并发、满槽与嵌套汇合故障注入（2026-11-07）
+- 分支 `t/t108-delegation-faults` / worktree `E:\Orchara-wt\t108`；基线 `integration/f13b` @ `f234e72`，测试代码提交 `1f0bfd5`，结束前 merge `integration/f13b` @ `d593c1e`（含 T106/T107）→ 合并提交 `203b2d5`，门禁与证据都在合并后的树重跑；工作区干净。
+- 交付：`tests/f13b/test_t108_delegation_faults.py`（4 条真实栈用例：FAULT-07/08/13 + 负边界）、`tests/support/t108.py`（故障证据记录器 + barrier 并发 spawn 注入 + 20 父快照/时延模型 + 嵌套 condition/join 图构造器）、`reports/f13b/T108-faults.json`（4 条 fault 记录）、`reports/f13b/T108-delegation-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品 Go/Python 代码与既有票测试断言。
+- FAULT-07（同父并发调用同子应用两次）：父 Run `844a747a…` 的 attempt 用 `threading.Barrier(2)` + 两条独立 mTLS 连接同时 `spawnChild`（同 child version `1f23be2e…`、keys `call_app:left`/`call_app:right`，两条请求同时在途：max(start)=30976.652 < min(finish)=30976.756），得两个独立 child Run `5f1bc53b…`/`b237adb3…`、不同 checkpoint thread `87bb590b…`/`8ca6ed1d…`、封存输入 alpha/beta（sha256 独立重算一致）。一个 child 的真实 lease 被持有、另一个由真实 supervisor 执行，两个 attempt 同时 live（held 19:57:54.673 起，executing 19:58:03.085–19:58:03.375；19 次采样 `child_slots.used=2`）；held attempt 以 `started=false` 的"从未运行" exit 合法 requeue（复用同一 job `b1fc9dfe…`）再由真实 supervisor 执行。父恢复后重放两次调用、一个 join（data=1、succeeded 事件 seq 17），输出 left=alpha/right=beta（无串扰），事件 1..22 连续，child 数仍 2，child/per-parent/execution 槽位全 0。
+- FAULT-08（20 父等待 + 小池）：20 个真实父 Run 各自 claim→spawn→`waiting_children`；Python `execution_slots` 压到 1（被一个真实 claimed 顶层 Run 占住）、独立 `child_slots` 8→2。22 个 SQL 采样点：`active≤2`、`active+queued+completed≡20`、queued child 的 attempt 恒为 0、每个 active child 恰 1 个 live attempt + 2 条 live allocation、`child_pool.used=active`；两个槽满时第 3 个 claim 返回 204。20 child 全 succeeded（错误 0）、20 父各 1 条 `children/succeeded` decision + 1 个 ready resume job；完成时延 P50 8.60s/P95 12.73s，排队时延 P50 8.43s/P95 12.59s（含刻意关池的 setup 段）。释放外部 Python 槽后一个父 resume 被真实 claim 并执行成功，证明队列可排出、无死锁。
+- FAULT-13（嵌套分支/skipped/必需失败）：真实嵌套 condition/join 图（`choose` 内嵌 `choose2`，分支节点是真实 `call_app`）。成功子例：`join2`/`join` 各恰 1 次（data=1、succeeded 事件 seq 31/34、artifact `d8a6ecde…`/`ae650bc6…`），envelope 各命名 1 activated + 1 skipped，封存 manifest 的 join 配置（fork/sources）与 envelope 计数一致，父 succeeded、事件 1..41 连续。必需失败子例：必需 child 继承 `0.00000001 USD`，真实 supervisor 执行到模型预留被真实拒绝 `budget_exhausted`，父 Run **显式 failed / `budget_exhausted`**（finished_at 已写），两 join 0 data/0 succeeded 事件、节点 skipped，事件 1..35 连续，不永久等待。
+- 负边界：child 池 capacity=0 时 spawn 202 + child `queued`（receipt 存在、job ready、attempt 0、无槽），恢复 1 槽后真实 claim/执行并让父 succeeded；父额度 0 时 spawn `429 budget_exhausted`，0 child Run / 0 receipt / 0 ledger 行。
+- 诚实边界：dev-stub 模型（FAULT-13 子例 B 用它触发真实预算拒绝），无真实供应商；child 并发被故意压到 2 槽（注入条件，不是 20 个 child 同时执行）；FAULT-07 的 held child 第一条 attempt 只持有 lease、未执行图，经 `started=false` 合法 requeue 后才由真实 supervisor 执行，因此"同时"指两个 attempt/两条 child 槽同时 live（attempt 行时间戳与 allocation 行证明），不是两张图同时在 CPU 上跑；19 个父 resume 未逐个 drain（只排出 1 个证明可解开）；常驻 supervisor 守护进程、浏览器 DOM、真实模型 `not_run`；测试用 `ORCHARA_EXECUTION_LEASE_TTL=300s` 部署余量（默认 30s）。T106 的 `tests/f13b/fault_support.py` 在 T108 开始实现后随 `d593c1e` 才合并，本票按 brief 允许的"同样结构"使用 `tests/support/t108.py`（字段/`F13B_WRITE_EVIDENCE`/redaction 约定相同；未改 T106 的写入器，T107 亦用自己的 `support/t107.py` 记录器）。
+- 门禁（真实 tail，cwd=`product/`，合并树 `203b2d5`）：`pytest tests/f13b/test_t108_delegation_faults.py -q` → **4 passed in 72.32s**；`pytest tests/f13b -q` → **190 passed in 253.42s**；`pytest tests/f12 -q` → **447 passed in 350.01s**；`go build/vet/test` exit 0；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`；证据轮（`F13B_WRITE_EVIDENCE=1`）**4 passed in 87.79s**，生成 4 条 passed 记录。最终树 `ee1c2d5`（含 T106 最终证据文档的 docs-only merge）复跑：targeted **4 passed in 84.78s**、`pytest tests/f13b -q` **190 passed in 301.17s**、`pytest tests/f12 -q` **447 passed in 322.25s**、`go build/vet/test` 0/0/0、`gofmt -l` 空、`sync_spec --check` `no drift`。
+- 分支最终 tip 为 docs-only 提交（integration `883ca35` 的树 == `ee1c2d5`；本分支已 merge 该 tip，代码/测试树自 `ee1c2d5` 未变）。
+- 证据：`reports/f13b/T108-delegation-faults.md` + `reports/f13b/T108-faults.json`（HEAD `203b2d5`）；原始 tail `E:\Orchara\.scratch\f13b\T108\`；给编排者的摘要 `E:\Orchara\.scratch\f13b\T108-REPORT.md`。
+
+## F13B T109（GitHub #110）：删除、限流、Redis 丢唤醒与权限撤销故障注入（2026-11-07）
+
+- **状态裁决（2026-11-07）**：T109 记 **passed**（FAULT-09/11/14 真实栈 passed；FAULT-12 的 PG-notifier
+  丢唤醒/maintenance 重启/SSE 回放半 passed，Redis 传输变体因本构建无 adapter/server 记 `blocked`）。
+  issue AC5 允许缺失条件标 `blocked`；未把 PG 结果写成 Redis 通过，证据与原始 tail 不变。
+
+- 分支 `t/t109-data-faults` / worktree `E:\Orchara-wt\t109`；基线 `integration/f13b` @ `d593c1e`，结束前依次 merge `integration/f13b` @ `f6e0394`（T106 最终证据，合并 `4175a53`）与 @ `883ca35`（T108 子任务并发，合并 `e3829b5`，PROGRESS 双小节保留）；最终门禁在代码/测试树 `e3829b5` 上重跑、证据 JSON 也在该树重生成；之后再 merge 的 `cb7f325`（T108 文档 + T109 状态裁决）仅文档改动，未改代码/测试。
+- 交付：`tests/f13b/test_t109_data_faults.py`（4 条真实栈故障，FAULT-09/11/12/14）、`tests/support/t109.py`（fault 证据 writer + 真实 grants/后台任务/进程探针）、`reports/f13b/T109-faults.json`（4 条 fault 记录，FAULT-12 含 `blocked` 的 Redis 子项）、`reports/f13b/T109-data-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品 Go/Python 代码与既有票断言。
+- FAULT-09 passed：真实打开 PostgreSQL 检索缓存并命中后，经真实 `DELETE /knowledge-documents/{id}` 删除文档；删除后检索无该文档 item、`cache.hit=false`、无正文；citation 404 无 text/citation；把已删 item 注入当前 key 的活缓存行 → `hit=false/discarded=true/item_unreadable`；reindex 404、ingest 重放 `failed/source_deleted`（business）、删除源文件后重摄取 404；真实 stale 缓存行 `hit_count=0`（stale hits=0）。
+- FAULT-11 passed（dev-stub 故障 id，已标注）：429 主模型（`stub-rate-limited-primary`）→ attempts `[failed,failed,failed,succeeded]`、fallback `rate_limited`、receipt 1；半段流 3 个 generation 后 fallback：最终文本 == 最后 generation、`final != 全部 generation 拼接`；无 fallback 的 5xx → 503 `provider_transient`、恰 3 次 attempt、operation failed。
+- FAULT-12 partial（PG 半 passed / Redis 半 blocked）：API 的 `InProcessNotifier` 无消费者，唤醒全部丢弃（日志 drop 行）；无 maintenance 时提交的 `artifact_finalize` 仍 durable `ready`，启动/重启真实 `cmd/maintenance` 后从 PG claim → succeeded；SSE 断线后 `Last-Event-ID=1` 重连回放 seq 2、3（`run_events`=1,2,3，seq3=`node.status`）。本构建无 Redis adapter/server（T022/T024 亦记 `not_run`）→ Redis 重启 `blocked`，未用 PG 结果冒充 Redis 通过。
+- FAULT-14 passed：真实 parent Run 领取并成功 spawn 一个 child 后，真实 `DELETE /admin/grants/{id}` 撤销 child application read grant（204、无 body、epoch bump、grants 0 行）；下一次 spawnChild → 403 `child_not_visible`，application/runnable 读 → 404；冻结 snapshot 仍钉 child version（快照非永久授权）；首个 child Run 保留但无新增 Run/job/operation。
+- 门禁（真实 tail，最终合并树 `e3829b5`（含 T108），cwd=`product/`）：`pytest tests/f13b/test_t109_data_faults.py -q` → **4 passed in 55.35s**；`pytest tests/f13b -q` → **194 passed in 278.25s**；`pytest tests/f12 -q` → **447 passed in 277.62s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 边界/`blocked`/`not_run`：Redis 重启与 Redis 队列丢失 `blocked`（无 adapter/实例）；真实厂商 429/5xx/半段端点与厂商请求日志 `not_run`（dev-stub 故障 id 代替并标注）；document-level grant 在本构建不存在，文档访问撤销由 FAULT-09 的真实删除覆盖；FAULT-14 的 child version 用 T075 publisher-shape fixture（真实 validate/manifest/version/依赖边，publication review 事务未跑，与既有 F07 child-run 套件一致并已标注）；物理清理 scope 属 T071/T072，本票只证明逻辑立即不可读；浏览器 DOM/SSE UI `not_run`。
+- 证据：`reports/f13b/T109-data-faults.md` + `reports/f13b/T109-faults.json`（`F13B_WRITE_EVIDENCE=1`）；原始 tail `E:\Orchara\.scratch\f13b\T109\`。
+
+## F13B T110（GitHub #111）：执行平台身份、文件、出站与注入安全回归（2026-11-07）
+
+- **状态裁决（2026-11-07）**：T110 记 **passed**（平台层身份/IDOR/SSRF/恶意文档/XSS/提示注入回归的攻击全部被真实层阻断；AC2 的 CSV 结构缺陷——`_csv_text_field` 只处理 `= + - @`、`\r` 开头 region 的真实导出字节破坏行结构——由本票**发现并修复**：CR 替换为空格，TAB/LF 保留数据语义；新增真实导出字节回归）。不是真实浏览器，不替代 T111 的 Linux 沙箱验收。
+- 分支 `t/t110-security-regression` / worktree `E:\Orchara-wt\t110`；基线 `integration/f13b` @ `f6e0394`；结束前 merge 集成 tip @ `5a210c0`（T108/T109 最终 merge）→ merge commit `40e54cc`；门禁与证据都在该合并树重跑；证据 JSON `product_commit=40e54cc`。
+- 交付：`tests/f13b/security_support.py`（攻击证据记录器：`blocked_at ∈ {os,network,proxy,app_validation,schema}`、输入/sha256、响应 fact、独立真值、Node+DOM shim XSS harness、committed CSV 导出器探针、`F13B_WRITE_EVIDENCE=1` 才写回 + redaction 拒绝凭据形状值）、`tests/f13b/test_t110_security_regression.py`（15 用例 / **36 条攻击**）、`reports/f13b/T110-security.json`（36 条逐攻击证据）、`reports/f13b/T110-security-regression.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品安全语义与既有票断言。
+- 攻击族/分布：identity 16、ssrf 5、malicious_document 7、xss 2、csv_formula 4、prompt_injection 2；状态 **35 blocked / 1 observed**（SSRF 显式 opt-in 对照；无未修 finding）。**阻断层分布：`app_validation` 28、`proxy` 4、`network` 1、`schema` 1、`os` 0**（OS 层属 T111；control 不冒充阻断）。
+- 身份/IDOR（真实 HTTP）：A 的 run/artifact/approval/knowledge/memory/conversation 被 B/匿名读写全部 404（与随机 UUID 同码；run 404 `resource_not_found`、approval 404 `approval_not_found`）；匿名 401；伪造 Bearer/cookie/`X-Principal-Id` 头、缺/伪造 CSRF、伪造内部 attempt token（403 `stale_attempt`）、无客户端证书 TLS（连接被关闭，`network`）、role 头与证书不符（403 `forbidden`）、read-scope service key 写（403 `insufficient_scope`）全部拒绝；admin 读 approval 200/决定 403 `approver_mismatch` 为文档化边界；篡改 HMAC 下载链接 404，真实链接返回封存字节（signed link 为短时 bearer 能力，照实记录）。
+- SSRF/重定向/DNS（真实 connector）：metadata、`127.0.0.1` allow_private=false、`localhost` DNS→私网全部 `422 connector_target_forbidden`，端点请求日志 0；302→metadata `422 connector_redirect_refused` 且恰 1 次原请求、未跟随；对照 `allow_private=true` 真到达端点（1 次）。恶意文档（真实准入/摄取）：macro/traversal/entry-bomb 真实上传后 `quarantined`（`xlsx_macro_present`/`xlsx_path_traversal`/`xlsx_entry_limit_exceeded`，无 document 行）；ratio bomb 过准入但文档 `failed` + `ingest_archive_limit_exceeded`（compression_ratio）；DTD→`ingest_dtd_not_supported`；seeded traversal 由 parser 拒为 `ingest_archive_path_traversal`；encrypted PDF→`pdf_encrypted`；全部 0 chunk、不 ready。
+- XSS（**执行了 committed 真实页面字节，但不是浏览器**）：把真实 API 返回的 `<img onerror>`/`<script>`/`<iframe javascript:>`/`<svg onload>`/`javascript:` 文本喂给 `apps/web/src/assets/memories.js` 的真实 `renderMemory`/`renderCandidate`（Node `vm` + 最小记录 shim）：payload 以 `textContent` 文本出现，`inner_html_count=0 / attribute_count=0 / handler_property_count=0 / url_property_count=0 / script_executions=0`；shim 的 `innerHTML` 正对照被记录 1 次（证明观察非盲）。第一方资产/`apps/web/canvas/src/**` 静态审计无 sink；`canvas.js` 生成 bundle 未执行 → `not_run`。
+- CSV：七种 `=`/`+`/`@`/`-`/`space+=`/`TAB+=`/`CR+=` region 的真实 tool_run 全部 `failed/formula_not_supported/business/attempts=1` 且无 `summary.csv`；合法运行真实导出字节 `region,total\n东区,200.00\n西区,50.00\n`（sha256 `bb60f942…`）无 risky cell；committed 导出器对 `= + - @` 加 `'` 前缀（sha256 `8df8d829…`）。finding：`\tTAB`/`\rCR` 真实导出为裸字节，Python `csv` 解析为 `[['region','total'],['\tTAB','10.00'],[],['CR','20.00']]`——CR 前缀破坏行结构（无公式执行；`= + - @` 因 parser `lstrip` 先拒绝而不可达）。
+- 提示注入（平台层）：注入文档真实检索+answer（`extractive_stub/1`，`stub=true`）后 `platform.operations` 7→7、`approvals` 1→1（delta 0）；canary **值**不出现，文本只出现文档自带的 `ORCHARA_T110_CANARY` 字面量；connector 响应注入文本只落为 receipt `body.note` 数据，不产生新 operation/approval。真实模型服从注入并发起写工具在本宿主无法构造（dev-stub，无 tool 执行面）→ `not_run`/`blocked`，官方 AgentDojo 属 T105。
+- 门禁（真实 tail，合并树 `40e54cc`，cwd=`product/`）：`pytest tests/f13b/test_t110_security_regression.py -q`（`F13B_WRITE_EVIDENCE=1`）→ **15 passed in 41.24s**；普通运行 → **15 passed in 31.95s**；`pytest tests/f13b -q` → **209 passed in 448.58s**；`pytest tests/f12 -q` → **447 passed in 344.78s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。合并前同一代码树（`5c9102d`）亦跑：f13b **201 passed in 190.05s**、f12 **447 passed in 293.47s**（合并后新增 T108/T109 用例）。
+- 边界/`not_run`：真实浏览器 DOM（Node+shim 不是浏览器）、真实第三方 connector、真实厂商模型对注入的服从/拒绝、Excel/LibreOffice 打开导出 CSV、活动 DNS rebinding、`canvas.js` 生成 bundle、OS/沙箱隔离（T111）；signed link 的 bearer 边界与 admin 读 approval 为文档化行为。原始 tail/摘要：`E:\Orchara\.scratch\f13b\T110\`、`E:\Orchara\.scratch\f13b\T110-REPORT.md`。
+
+## F13B T111（GitHub #112）：在正式 Linux 重跑构建与脚本隔离攻击（2026-11-07）
+
+- 分支 `t/t111-linux-isolation` / worktree `E:\Orchara-wt\t111`；基线 `integration/f13b` @
+  `f6e0394`；结束前 merge 集成分支。
+- 交付：`tests/f13b/test_t111_linux_isolation.py`（10 用例：run 4 + build 5 + 端到端 1）、
+  `tests/support/t111.py`（WSL 宿主事实/清理真值/证据记录器）、
+  `reports/f13b/T111-isolation.json`、`reports/f13b/T111-linux-isolation.md`；
+  `deploy/sandbox/isolation_probe.py` 仅新增观测字段（host/env/mount/capability/userns/errno），
+  OCI bundle、driver 与 build_tool 的安全语义未改。
+- 真实验收宿主（ADR 0002）：WSL2 Ubuntu-24.04 / `6.6.87.2-microsoft-standard-WSL2` / gVisor
+  `runsc release-20241118.0`（spec 1.1.0-rc.1）/ rootfs digest
+  `sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5`；每条证据记录
+  host/kernel/runsc/digest，未用 Windows 结果冒充 runsc。
+- run 阶段（`cmd/sandboxprobe`）：宿主 `/etc`、`/mnt`、另一 Run workspace、PID1 environ、证书/密钥路径
+  全部 ENOENT/EACCES；沙箱 env 仅 OCI 6 项，宿主注入的 `ORCHARA_*` 不可见；setuid/setgid/mount-ns/
+  capset/clear-no_new_privs EPERM/EINVAL；非特权 userns 被 gVisor 允许但无宿主权限（uid 仍 65534、
+  `setuid(0)` EINVAL、宿主读仍 ENOENT、仅沙箱本地 tmpfs）；`1.1.1.1/8.8.8.8/169.254.169.254`
+  EHOSTUNREACH、宿主 loopback ECONNREFUSED，客人 listener 正控制 CONNECTED；超限 profile 在任何
+  单元创建前被产品 `OptionsFromEnv` 拒绝；2s 超时 2.6s kill 且 cleanup 全清。
+- build 阶段（真实 `tool_build` + 恶意 `setup.py`）：10 条精确宿主/对象目录/DSN/证书/另一 Run 路径
+  全部 ENOENT，只读挂载写 EACCES，`/workspace` 可写；钩子与 PID1 env 无凭据；构建仍 ready 且 digest
+  与 source/lock/SBOM 独立重算一致。fork：12 子在 64 限额成功、16 子在 64 停止但 128 成功、200 次
+  攻击 failed 无 digest；内存：1 GiB 对照 512 MiB 成功、192 MiB 下停在 152 MiB；磁盘：8 MiB quota
+  在 7 MiB ENOSPC、宿主卷 0 增长；时间：2s 预算 kill，`build_timeout`，无 digest。
+- 清理：每条用例后 `runsc list` 空、本 sandbox id 无进程/目录/挂载、宿主 staging 空；共享 state root
+  只有更早的 `t033-manual-1` 遗留（非本票），新增目录 0。
+- 发现（只报告未修复）：gVisor 超 pids 直接停容器（无 EAGAIN，默认 64 的用户余量约 13）；非特权
+  userns 被允许但无宿主能力；driver 把 runtime SIGKILL 137 误标 timeout（校准 64 MiB 内存限额时见，
+  最终 192 MiB 用例避开）。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t111_linux_isolation.py -q` **10 passed in 131.98s**；
+  `pytest tests/f05/test_t033_sandbox_run.py tests/f05/test_t037_build_isolation.py -q`
+  **10 passed in 177.56s**；`pytest tests/f13b -q` **196 passed in 307.44s**；`go build/vet/test`
+  exit 0（39 ok / 0 FAIL）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：宿主级 filesystem project quota（WSL2 无该能力）、完整 ICMP/UDP/DNS/代理矩阵、
+  WSL2 外独立生产宿主、真实供应商模型/connector。
+
+- 合并后（merge `integration/f13b` @ `5a210c0` → merge commit `abfd01a`，PROGRESS 冲突保留双方
+  小节：T108/T109 + T111）复跑：T111 **10 passed in 113.56s**、T033/T037 **10 passed in
+  138.34s**、`pytest tests/f13b -q` **204 passed in 446.46s**；Go `build/vet/test` 全 0、
+  gofmt 空、`sync_spec --check` → `no drift`；证据 JSON 在 `abfd01a` 树重新生成（commit=abfd01a）。
+
+
+## 批次完成记录：F13B #102–#112 / T101–T111（2026-11-07）
+
+- 基线：`integration/f12` @ `30642be` → 集成分支 `integration/f13b`（已推送）。
+- 范围：**T101 收尾（#102）+ F13B T102–T111（#103–#112），11 个 issue 全部关闭**。
+- 未开始：F13B T112–T115（#113–#116）、F15B #117–#122、F14 #91/#93/#95/#98/#100 —— 全部 blocked，
+  已在 #113/#116/#117/#91 写明确缺失条件，保持 open。
+- 契约/规格：未改 `contracts/**`、`docs/spec/**`；无新增迁移；`sync_spec --check` no drift。
+- **产品缺陷修复 2 个**（均由验收旅程发现，有红→绿证据）：
+  1. T101 P1：published Run 的 sealed manifest artifact 属主相等规则使任何非发布者的已发布 Run 无法调用
+     任何 capability（503 `manifest_unavailable`）。修复只对 `run.Kind=="published"` 放宽属主相等，
+     保留 artifact ready、snapshot/run digest 相等、字节 sha256==`runs.manifest_sha256` 与 dispatch 时 ACL。
+  2. T110：sales CSV 导出的裸 CR 会破坏行结构（`_csv_text_field` 只处理 `= + - @`）。修复：CR 替换为空格；
+     TAB/LF 保留数据语义；新增 T030 回归与 T110 真实导出字节断言。
+
+### 票状态（最终）
+
+| 票 | Issue | 状态 | 关键交付/证据 |
+|---|---|---|---|
+| T101 | #102 | **passed** | J6 服务 key + grant + 真实发布版本 + 负责人审批 + 恰好 1 次外写（49 断言）；AC2 在平台/授权边界满足；J6b 图分发缺口 blocked；P1 manifest 修复 + Go 回归；f12 447 |
+| T102 | #103 | **passed** | 七类 46 案例（25 dev/21 frozen，20 families，178 断言）；跨 split family/template 0/20，最大 Jaccard 0.4018 < 0.75；20 条负向拒绝；产品 `ParseDataset` 装载证明 |
+| T103 | #104 | **passed** | 同一真实录制结果 hard=failed；quality=1.0 的报告被真实 submit **422 `evaluation_not_passed`**；quality=0.0 的 passed 报告 202；heuristic 适配器出站 0/费用 0；DeepEval/Ragas/Promptfoo blocked，Promptfoo 因 6 次真实外发 eliminated；获批 judge not_run |
+| T104 | #105 | **passed** | τ²-bench @ `da0835f6…`（MIT）3 个 airline 改编任务/23 断言；20 个拒绝码 + 24 条负向；stub 判定 23/23；官方 suite not_run |
+| T105 | #106 | **passed** | AgentDojo @ `089ed468…`（MIT）3 个 workspace 任务/25 断言；`security=True→attack_success=true`、utility 与 attack_success 分列；真实检索注入 0 operation/0 外写/无 canary；真实模型服从注入 blocked；官方 suite not_run |
+| T106 | #107 | **passed** | FAULT-01 真实杀 worker 进程（DB session 1→0）+ 同 operation id + 1 resume + 0/1 外写；FAULT-02 换参 409/0 写；FAULT-03 丢回执 unknown→reconcile，物理写仍 1；53 断言 |
+| T107 | #108 | **passed** | FAULT-04 v1 钉住旧 manifest/删除后 `artifact_unavailable` 不回退 v2；FAULT-05 活旧进程 suspend + 租约过期 recovery_pending、无第二执行；FAULT-06 cancel 后 11 种迟到投递不复活；FAULT-10 并发相反决定恰 1 条 |
+| T108 | #109 | **passed** | FAULT-07 同父并发 2 child（独立 Run/thread、无串扰）；FAULT-08 20 父/2 子槽全推进、queued attempt=0、P50/P95；FAULT-13 嵌套 join 各 1 次、必需失败显式 `budget_exhausted` |
+| T109 | #110 | **passed（裁决）** | FAULT-09 删除后 cache hit=false/stale hit=0/无正文；FAULT-11 3 次重试 + fallback 不拼接；FAULT-12 PG 丢唤醒/maintenance 重启/SSE 回放 passed，**Redis 传输变体 blocked**（无 adapter，未冒充）；FAULT-14 撤权后 `child_not_visible` |
+| T110 | #111 | **passed（裁决）** | 36 条攻击（identity 16/ssrf 5/doc 7/xss 2/csv 4/pi 2）；35 blocked + 1 opt-in 对照；XSS 执行 0；CSV 公式 7 种被拒；**CSV CR 缺陷发现并修复**；真实浏览器/真实模型 not_run |
+| T111 | #112 | **passed** | 真实 WSL2 Linux `6.6.87.2` + runsc `release-20241118.0` + rootfs `03c3f647…`；10 条攻击（宿主文件/凭据/挂载/出站/userns/fork/内存/磁盘/时间/恶意 setup.py）全部阻断并有 `runsc list`/进程/目录清理证据 |
+
+### 门禁（集成分支最终树）
+
+| 套件 | 结果 |
+|---|---|
+| `pytest tests/f13b tests/f12 -q` | **666 passed in 690.10s**（f13b 219 + f12 447） |
+| `pytest tests/f01 -q`（单跑） | **165 passed in 757.61s (0:12:37)** |
+| `go build ./...` / `go vet ./...` / `go test ./...` | exit 0 / 0 / 0（39 ok，0 FAIL，12 no test files） |
+| `gofmt -l internal cmd tools` | 空 |
+| `python tools/sync_spec.py --check` | `no drift` |
+
+### 诚实边界（本批不掩盖）
+
+- **`tests/f13a` 在基线就有 3 failed**（`test_rv1_effect_evidence`、`test_t052_runner`、`test_t062_runner`）：
+  它们仍断言最小 `start->end` 链以 `tool_unsupported_graph` 失败，而基线实际成功并封印 `{}`。
+  在独立 worktree 检出 `30642be` 复现同样 3 failed，**不是本批引入**，未在本批修。
+- **无真实厂商模型/凭据/GPU**：dev-stub 只用于平台/故障/容量替身；F14 与 T112/T113/T114 的真实模型
+  质量/延迟/费用全部 blocked/not_run。
+- **无 Redis**：FAULT-12 只有 Nop/InProcess notifier；Redis 重启变体 blocked，PG 结果未冒充 Redis。
+- **无真实浏览器**：XSS/页面结论是 Node 执行已提交真实字节 + shim；不是 Playwright/DOM。
+- **无新 Linux 部署环境/三名未参与开发者**：F15B 与 T115 未开始，已写明解除条件。
+- 两个产品修复（T101 manifest 属主、T110 CSV CR）是本批唯一的非测试产品改动；其余票未改产品语义。
+
+
+## F13B 复核修复：5 项 P2（2026-11-07）
+
+- 复核范围 `30642be..edc59b4`；5 项 P2 全部修复，逐条（原缺陷/根因/修复/红→绿）见
+  `reports/f13b/REVIEW-FIXES.md`。
+- **Standards**：
+  1. T111 证据聚合：固定 10 条 `EXPECTED_CASE_IDS`；任一 case `failed` → 汇总 `failed`，
+     blocked/缺失/多余/重复 → `partial`；`write_if_enabled` 只在完整且全 passed 时写，
+     部分/失败运行不再覆盖已提交记录；
+  2. T107 报告写入前统一 `redact_value` + 嵌入字符串逐字替换 + `find_violations` 拒绝写；
+     已提交 `T107-faults.json` 重生成，旧 attempt token 已清除。
+- **Spec**：
+  3. T102 `is_decidable` 只要求本类别事实（0/46 → **46/46**）；新增正向测试；
+  4. T104 τ² 门禁拒绝「所有被声明 reward_basis 分量都没有实际检查」的 vacuous checker
+     （真实任务 39 的空 COMMUNICATE 分量仍合法）；新增负向测试与正向对照；
+  5. T105 `json_equal` 区分 JSON bool 与 number（`False != 0`、`True != 1`），
+     gold `read=false` 改成 `0` 后 `utility`/`security_expectation_met` 均为 false。
+- 证据：`reports/f13b/T111-isolation.json`、`reports/f13b/T107-faults.json` 重生成；
+  T107 `find_violations=[]`；T111 `status=passed, complete=true`。
+- 门禁：`pytest tests/f13b` **233 passed in 415.76s**（新增 14 条）；`tests/f12`
+  **447 passed in 273.73s**；Go build/vet/test 0；`gofmt` 空；`sync_spec --check` no drift。
+- 未改 `docs/spec/**`、`contracts/**`、迁移、产品 auth/审批/沙箱语义。
+

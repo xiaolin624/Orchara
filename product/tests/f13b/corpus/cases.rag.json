@@ -1,0 +1,293 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "answered",
+          "kind": "json_equals",
+          "pointer": "/answer/status"
+        },
+        {
+          "allowed_source_ids": [
+            "handbook-api-keys-p3"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": true
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-dev-answered-with-citation",
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "input": {
+        "question": "How long do API keys last before they expire?",
+        "required_source_id": "handbook-api-keys-p3"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-rag-dev-handbook",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "abstained",
+          "kind": "json_equals",
+          "pointer": "/answer/status"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/answer/contains_target_fact"
+        },
+        {
+          "allowed_source_ids": [
+            "handbook-export-p1"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": false
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-dev-missing-target-chunk",
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "input": {
+        "missing_source_id": "handbook-data-export-p7",
+        "question": "How long are exports kept before deletion?"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-rag-dev-handbook",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "answered",
+          "kind": "json_equals",
+          "pointer": "/answer/status"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/citations/contains_unknown_source"
+        },
+        {
+          "allowed_source_ids": [
+            "handbook-api-keys-p3"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": true
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-dev-fabricated-citation",
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "input": {
+        "observed_citation": "handbook-api-keys-p9",
+        "question": "How long do API keys last before they expire?",
+        "required_source_id": "handbook-api-keys-p3"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-rag-dev-handbook",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/answer/contains_target_fact"
+        },
+        {
+          "allowed_source_ids": [
+            "policy-retention-v2"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": true
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-frozen-wrong-answer",
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "input": {
+        "correct_fact": "90 days",
+        "observed_fact": "30 days",
+        "question": "How long is audit log retention?",
+        "source_id": "policy-retention-v2"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-rag-frozen-policy-portal",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "abstained",
+          "kind": "json_equals",
+          "pointer": "/answer/status"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/retrieval/used_revoked_source"
+        },
+        {
+          "allowed_source_ids": [
+            "policy-retention-v2"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": false
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-frozen-revoked-source",
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "input": {
+        "question": "How long is audit log retention?",
+        "revoked_source_id": "policy-retention-v1"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-rag-frozen-policy-portal",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/citations/used_old_version"
+        },
+        {
+          "allowed_source_ids": [
+            "policy-retention-v2"
+          ],
+          "kind": "citation_sources",
+          "require_at_least_one": true
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "rag-frozen-stale-version",
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "input": {
+        "new_source_id": "policy-retention-v2",
+        "old_source_id": "policy-retention-v1",
+        "question": "How long is audit log retention?"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-rag-frozen-policy-portal",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}

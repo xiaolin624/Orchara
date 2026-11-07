@@ -1,0 +1,766 @@
+{
+  "ticket": "T107",
+  "issue": 108,
+  "title": "fault injection: old graph, live old worker, cancel race and event races",
+  "status": "passed",
+  "branch": "integration/f13b",
+  "commit": "f814639ad8839249962faf753b1f5dbdb5112583",
+  "generated_at": "2026-11-07T14:44:52.567921Z",
+  "environment": {
+    "profile": "dev-stub",
+    "model": "stub only; no real vendor credential or endpoint",
+    "database": "isolated PostgreSQL 16.4 cluster at 127.0.0.1:55432",
+    "object_store": "real filesystem object root behind the product API",
+    "sandbox": "WSL2 Ubuntu-24.04 + runsc (real supervisor exec where used)"
+  },
+  "faults": [
+    {
+      "id": "FAULT-04",
+      "title": "publish v2 after a v1 Run/snapshot exists, then resume/recover v1",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T14:44:33.379006Z",
+      "injection_point": "real POST /applications/{id}/submit + /reviews/{id}/decision publishes v2 (new platform.application_versions row and sealed v2 manifest artifact); then the v1 sealed manifest object is deleted from the real object store before `orchara-admin runs recover`",
+      "inputs": {
+        "run_id": "277dfb8e-6539-4d4d-81a3-6a831135fd61",
+        "v1_snapshot_id": "3b220de1-ad5c-4909-b3ac-69bc07b6c198",
+        "v1_manifest_artifact_id": "23938c8f-e9d2-4067-833e-cd3c0323a458",
+        "v1_manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+        "v1_version_id": "244529ec-cf49-47e6-ab81-3bd01bc38d53",
+        "v2_version_id": "01609c29-175f-4f17-953c-5da24db5ed8e",
+        "v2_manifest_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
+        "v2_manifest_artifact_id": "348224c8-36b1-4c44-873e-ce1317556346",
+        "golden_manifest_bytes_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686"
+      },
+      "independent_truth": {
+        "checked_in_golden_manifest": "tests/snapshots/sales/manifest.jcs + manifest.sha256",
+        "object_bytes_v1_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+        "object_bytes_v2_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
+        "platform.runs.execution_snapshot_id": "3b220de1-ad5c-4909-b3ac-69bc07b6c198",
+        "platform.runs.manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+        "platform.execution_snapshots": {
+          "v1": {
+            "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+            "manifest_artifact_id": "23938c8f-e9d2-4067-833e-cd3c0323a458"
+          },
+          "v2": {
+            "manifest_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
+            "manifest_artifact_id": "348224c8-36b1-4c44-873e-ce1317556346"
+          }
+        },
+        "platform.application_versions": [
+          {
+            "version_no": 1,
+            "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686"
+          },
+          {
+            "version_no": 2,
+            "manifest_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10"
+          }
+        ],
+        "recovery_refusal": {
+          "status": "refused",
+          "code": "artifact_unavailable",
+          "message": "the sealed manifest object is unavailable: opening the sealed manifest object: object does not exist",
+          "check_only": false,
+          "run_id": "277dfb8e-6539-4d4d-81a3-6a831135fd61",
+          "state": "recovery_pending",
+          "recovery_reason": "lease_expired",
+          "recovery_since": "2026-11-07T14:44:32.228527Z",
+          "execution_unit_id": "t107-fault04-v1b",
+          "attempt_started_at": "2026-11-07 22:44:31.913677+08",
+          "heartbeat_at": "2026-11-07 22:42:31.913677+08",
+          "lease_deadline": "2026-11-07 22:42:32.024836+08",
+          "job_id": "6dcc8a33-7c33-4dd2-ab2a-4a872b345163",
+          "evidence_sha256": "3c3a6f36fd56af1395784ab936da6e8c980d2d04a944397b48a93b11f5c27211",
+          "checks": [
+            {
+              "name": "run_state",
+              "status": "passed",
+              "detail": "recovery_pending reason=lease_expired"
+            },
+            {
+              "name": "attempt",
+              "status": "passed",
+              "detail": "one attempt, execution unit t107-fault04-v1b"
+            },
+            {
+              "name": "evidence_unit",
+              "status": "passed",
+              "detail": "evidence and attempt name the same execution unit"
+            },
+            {
+              "name": "old_execution",
+              "status": "passed",
+              "detail": "last heartbeat 2026-11-07 22:42:31.913677+08 is older than the grace window"
+            },
+            {
+              "name": "job",
+              "status": "passed",
+              "detail": "one live job in state held"
+            },
+            {
+              "name": "manifest_artifact",
+              "status": "failed",
+              "code": "artifact_unavailable",
+              "detail": "the sealed manifest object is unavailable: opening the sealed manifest object: object does not exist"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "claim_1": "manifest_sha256 == v1 golden sha; manifest bytes == golden JCS; snapshot == v1",
+        "recovery_1": "status recovered; manifest_artifact check passed; state queued",
+        "claim_2": "the new attempt still loads the v1 manifest bytes, not the v2 artifact",
+        "recovery_2": "status refused; code artifact_unavailable; run stays recovery_pending; no evidence row; no v2 fallback"
+      },
+      "observed": {
+        "claim_1": {
+          "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+          "manifest_url_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+          "execution_snapshot_id": "3b220de1-ad5c-4909-b3ac-69bc07b6c198"
+        },
+        "recovery_1": {
+          "status": "recovered",
+          "state": "queued",
+          "checks": {
+            "run_state": "passed",
+            "attempt": "passed",
+            "evidence_unit": "passed",
+            "old_execution": "passed",
+            "job": "passed",
+            "manifest_artifact": "passed",
+            "input_artifact": "passed",
+            "database_drained": "passed",
+            "actor": "passed",
+            "requeue": "passed"
+          }
+        },
+        "claim_2": {
+          "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
+          "attempt_token_differs": true
+        },
+        "recovery_2": {
+          "status": "refused",
+          "code": "artifact_unavailable",
+          "run_state": "recovery_pending",
+          "evidence_rows": 1,
+          "v2_object_still_intact": true
+        }
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q -k fault_04"
+      ]
+    },
+    {
+      "id": "FAULT-05",
+      "title": "a live old supervisor holds an expired lease; recovery_pending without a second run",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T14:44:20.293237Z",
+      "injection_point": "the compiled real `cmd/supervisor exec --once` claims attempt 0aac5ad5.. on run dc75390a-1973-421b-b53c-01add52d3be1; the process is suspended with NtSuspendProcess (heartbeat stops, process+DB session stay alive); then `UPDATE platform.run_attempts SET lease_deadline = now() - 120s` and the real `orchara-admin runs sweep-leases --grace 1s` parks the Run",
+      "inputs": {
+        "run_id": "dc75390a-1973-421b-b53c-01add52d3be1",
+        "execution_unit_id": "t107-old-worker-ec3cd9d154",
+        "attempt_token_prefix": "0aac5ad5",
+        "supervisor_pid": 69660,
+        "supervisor_application_name": "t107-old-worker-db-36d76b8b6c",
+        "suspend": {
+          "pid": 69660,
+          "operation": "NtSuspendProcess",
+          "status": 0
+        },
+        "commands": {
+          "sweep": "orchara-admin runs sweep-leases --grace 1s",
+          "recover": "orchara-admin runs recover --run dc75390a-1973-421b-b53c-01add52d3be1 --evidence <json>"
+        }
+      },
+      "independent_truth": {
+        "process": {
+          "before": {
+            "pid": 69660,
+            "alive": true,
+            "creation_time_epoch": 1794062653.215784
+          },
+          "while_parked": {
+            "pid": 69660,
+            "alive": true,
+            "creation_time_epoch": 1794062653.215784
+          },
+          "verdict": "still alive (STILL_ACTIVE) with the same creation time"
+        },
+        "pg_stat_activity_sessions": [
+          {
+            "pid": 47308,
+            "application_name": "t107-old-worker-db-36d76b8b6c",
+            "state": "idle",
+            "backend_start": "2026-11-07T14:44:13.374571Z",
+            "state_change": "2026-11-07T14:44:13.490691Z"
+          }
+        ],
+        "sessions_after_park": [
+          {
+            "pid": 47308,
+            "application_name": "t107-old-worker-db-36d76b8b6c",
+            "state": "idle",
+            "backend_start": "2026-11-07T14:44:13.374571Z",
+            "state_change": "2026-11-07T14:44:13.490691Z"
+          }
+        ],
+        "sessions_after_exit": [],
+        "sweep_report": {
+          "status": "ok",
+          "grace": "1s",
+          "dry_run": false,
+          "scanned": 1,
+          "parked": 1,
+          "would_park": 0,
+          "skipped": 0,
+          "runs": [
+            {
+              "run_id": "dc75390a-1973-421b-b53c-01add52d3be1",
+              "job_id": "c33d9e7d-aeb0-4ae8-a345-003f805f1c18",
+              "execution_unit_id": "t107-old-worker-ec3cd9d154",
+              "lease_deadline": "2026-11-07 22:42:13.904255+08",
+              "heartbeat_at": "2026-11-07 22:42:13.499246+08",
+              "action": "parked"
+            }
+          ],
+          "note": "a parked run keeps its held job and its execution slot; no requeue, token swap or second executor happens here. Re-queueing requires cmd/admin runs recover with audited operator evidence."
+        },
+        "platform.run_attempts": {
+          "token_prefix": "0aac5ad5",
+          "exited_at_while_parked": null,
+          "revoked_at_while_parked": null,
+          "attempt_count_before_recovery": 1
+        },
+        "supervisor_report": {
+          "status": "failed",
+          "run_id": "dc75390a-1973-421b-b53c-01add52d3be1",
+          "job_id": "c33d9e7d-aeb0-4ae8-a345-003f805f1c18",
+          "execution_unit_id": "t107-old-worker-ec3cd9d154",
+          "outcome": "error",
+          "error_code": "sandbox_failed",
+          "error": "the attempt lease was lost while the sandbox ran: the sandbox was stopped because the attempt lease was lost: internal API 409 stale_attempt: the attempt token does not own a live lease on this run",
+          "heartbeats": 1,
+          "sandbox": {
+            "sandbox_id": "t107-old-worker-ec3cd9d154",
+            "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5",
+            "started": false,
+            "exit_code": 0,
+            "timed_out": false,
+            "cancelled": false,
+            "duration_ms": 0,
+            "cleanup": {
+              "sandbox_list_matches": 0,
+              "pid": 0,
+              "pid_alive": false,
+              "ps_matches": 0,
+              "workspace_removed": true
+            }
+          },
+          "duration_ms": 5340
+        },
+        "supervisor_stderr_tail": "orchara-supervisor 2026/11/07 14:44:18 run_id=dc75390a-1973-421b-b53c-01add52d3be1: node.status stats=failed was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 14:44:18 run_id=dc75390a-1973-421b-b53c-01add52d3be1: node.status end=skipped was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 14:44:18 exec: status=failed outcome=error run=dc75390a-1973-421b-b53c-01add52d3be1 code=sandbox_failed\n",
+        "independent_late_heartbeat": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token does not own a live lease on this run\", \"request_id\": \"c20a2bb1d82b3b05d2bfa632a8731e78\"}}"
+      },
+      "expected": {
+        "parked": "run state recovery_pending, reason lease_expired, job held, allocation not released",
+        "no_second_execution": "claim returns 204; exactly one attempt before recovery",
+        "old_process": "process alive with a real pg_stat_activity backend while parked",
+        "old_process_write": "the resumed old process reports failure on the stale lease; run stays parked",
+        "recovery": "only after the process is gone: recover -> queued, attempt finalized, then one new attempt"
+      },
+      "observed": {
+        "parked_state": "recovery_pending",
+        "recovery_reason": "lease_expired",
+        "job_state": "held",
+        "attempts_before_recovery": 1,
+        "process_alive_while_parked": true,
+        "db_sessions_while_parked": 1,
+        "events_before_park": 7,
+        "events_after_park": 8,
+        "old_process_report_status": "failed",
+        "old_process_report_error_code": "sandbox_failed",
+        "old_process_report_error": "the attempt lease was lost while the sandbox ran: the sandbox was stopped because the attempt lease was lost: internal API 409 stale_attempt: the attempt token does not own a live lease on this run",
+        "independent_late_heartbeat": {
+          "status": 409,
+          "code": "stale_attempt"
+        },
+        "recovered_state": "queued",
+        "attempts_after_successful_recovery": 2
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q -k fault_05"
+      ]
+    },
+    {
+      "id": "FAULT-06",
+      "title": "cancel then late result/exit/duplicate queue delivery/events: no revival, no new capability",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T14:44:41.587658Z",
+      "injection_point": "real POST /runs/{id}/cancel while the claimed attempt is running; after the supervisor's real exit commits cancelled, replay the pre-cancel worker event, send fresh result/event/upload/capability calls, poll the claim endpoint again, and call `orchara-admin runs recover` on the terminal Run",
+      "inputs": {
+        "run_id": "5ab777b7-1707-4c32-b04a-be672bf87f31",
+        "attempt_token_prefix": "09e6b35f",
+        "cancel_requested_at": "2026-11-07 22:44:38.154077+08",
+        "pre_cancel_event_id": "8ff3b8b6-0a7b-47d6-8d91-bfe465d5e322",
+        "pre_cancel_event_seq": 3,
+        "terminal_revision": 4,
+        "late_deliveries": [
+          {
+            "delivery": "late_result",
+            "note": "a fresh result after cancelled",
+            "at": "2026-11-07T14:44:38.776921Z",
+            "status": 409,
+            "code": "run_terminal",
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"d54bb7d9d0160973dee3f4bedf2bd88d\"}}"
+          },
+          {
+            "delivery": "duplicate_late_result",
+            "note": "the same result body replayed",
+            "at": "2026-11-07T14:44:38.779537Z",
+            "status": 409,
+            "code": "run_terminal",
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"16e03ddec9ea21bf7b284f05f2262519\"}}"
+          },
+          {
+            "delivery": "replay_pre_cancel_event",
+            "note": "same event_id/content replayed",
+            "at": "2026-11-07T14:44:38.782974Z",
+            "status": 409,
+            "code": "run_terminal",
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"5720ee0342cdbc5a9f3c5ccdd1a506cf\"}}"
+          },
+          {
+            "delivery": "late_new_event",
+            "note": "a new node.status after cancelled",
+            "at": "2026-11-07T14:44:38.786041Z",
+            "status": 409,
+            "code": "run_terminal",
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"8171f3971600166fee043c5687e6be5c\"}}"
+          },
+          {
+            "delivery": "duplicate_queue_delivery",
+            "note": "claim poll after cancelled",
+            "at": "2026-11-07T14:44:38.793695Z",
+            "status": 204,
+            "code": null,
+            "body": ""
+          },
+          {
+            "delivery": "replay_same_exit",
+            "note": "identical exit evidence",
+            "at": "2026-11-07T14:44:38.836167Z",
+            "status": 200,
+            "code": null,
+            "body": "{\"id\": \"<redacted>\", \"state\": \"exited\"}"
+          },
+          {
+            "delivery": "different_exit",
+            "note": "different exit evidence",
+            "at": "2026-11-07T14:44:38.836167Z",
+            "status": 409,
+            "code": "attempt_evidence_conflict",
+            "body": "{\"error\": {\"code\": \"attempt_evidence_conflict\", \"message\": \"this attempt already exited with different evidence\", \"request_id\": \"3c2a30b6db2c3c04613839fd829f25c7\"}}"
+          },
+          {
+            "delivery": "late_artifact_upload",
+            "note": "a new capability/artifact call",
+            "at": "2026-11-07T14:44:38.851422Z",
+            "status": 409,
+            "code": "stale_attempt",
+            "body": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token does not own a live lease on this run\", \"request_id\": \"6c192caa1dc8d2dfcfe2cd9d500d6449\"}}"
+          },
+          {
+            "delivery": "late_capability_call",
+            "note": "a new model capability call",
+            "at": "2026-11-07T14:44:38.882101Z",
+            "status": 403,
+            "code": "stale_attempt",
+            "body": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token is not a live lease of this run\", \"request_id\": \"9196df72272133b8f4407b402572c709\"}}"
+          },
+          {
+            "delivery": "foreign_owner_read",
+            "note": "another owner reads the cancelled run",
+            "at": "2026-11-07T14:44:39.770924Z",
+            "status": 404,
+            "code": "resource_not_found",
+            "body": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that run does not exist\", \"request_id\": \"7e7bbdba36533acdffd5805fc6140af4\"}}"
+          },
+          {
+            "delivery": "recover_cancelled_run",
+            "note": "operator recover after terminal",
+            "at": "2026-11-07T14:44:39.876623Z",
+            "status": 1,
+            "code": "not_recovery_pending",
+            "body": "{\"status\": \"refused\", \"code\": \"not_recovery_pending\", \"message\": \"the run is cancelled, not recovery_pending\", \"check_only\": false, \"run_id\": \"5ab777b7-1707-4c32-b04a-be672bf87f31\", \"state\": \"cancelled\", \"evidence_sha256\": \"74091b6f711db29855e7e8c5a9646bf2d5cc0a71d0e4a04b9ddb8120e5d80073\", \"checks\": [{\"name\": \"run_state\", \"status\": \"skipped\", \"detail\": \"the run is cancelled\"}]}"
+          }
+        ]
+      },
+      "independent_truth": {
+        "platform.runs": {
+          "id": "5ab777b7-1707-4c32-b04a-be672bf87f31",
+          "owner_id": "0ca326e8-6a67-4db0-82c6-58be3767b43b",
+          "state": "cancelled",
+          "phase": "idle",
+          "revision": 4,
+          "cancel_requested_at": "2026-11-07 22:44:38.154077+08",
+          "error_code": null,
+          "finished_at": "2026-11-07 22:44:38.401799+08",
+          "output_artifact_id": null
+        },
+        "platform.run_events": [
+          {
+            "seq": 1,
+            "type": "run.status",
+            "payload": "{\"state\": \"queued\"}"
+          },
+          {
+            "seq": 2,
+            "type": "run.status",
+            "payload": "{\"state\": \"running\"}"
+          },
+          {
+            "seq": 3,
+            "type": "node.status",
+            "payload": "{\"state\": \"running\", \"node_id\": \"node-a\", \"attempt_no\": 1}"
+          },
+          {
+            "seq": 4,
+            "type": "run.status",
+            "payload": "{\"state\": \"cancelling\"}"
+          },
+          {
+            "seq": 5,
+            "type": "run.status",
+            "payload": "{\"state\": \"cancelled\"}"
+          }
+        ],
+        "status_states": [
+          "queued",
+          "running",
+          "cancelling",
+          "cancelled"
+        ],
+        "next_event_seq": 6,
+        "run_attempts": [
+          {
+            "token": "<redacted>",
+            "job_id": "f4ec5ce4-8f80-48cd-be1d-e4b96bf68a01",
+            "run_id": "5ab777b7-1707-4c32-b04a-be672bf87f31",
+            "worker_id": "t029-supervisor",
+            "execution_unit_id": "t107-fault06",
+            "lease_deadline": "2026-11-07 22:49:37.915926+08",
+            "exited_at": "2026-11-07 22:44:38.401799+08",
+            "revoked_at": "2026-11-07 22:44:38.401799+08"
+          }
+        ],
+        "jobs": {
+          "id": "f4ec5ce4-8f80-48cd-be1d-e4b96bf68a01",
+          "run_id": "5ab777b7-1707-4c32-b04a-be672bf87f31",
+          "kind": "start",
+          "state": "completed",
+          "available_at": "2026-11-07 22:44:37.844589+08",
+          "current_attempt_token": null,
+          "resume_artifact_id": null
+        },
+        "quota": {
+          "scope": "global",
+          "dimension": "execution_slots",
+          "used": 0,
+          "capacity": 2
+        },
+        "recovery_refusal": {
+          "status": "refused",
+          "code": "not_recovery_pending",
+          "message": "the run is cancelled, not recovery_pending",
+          "check_only": false,
+          "run_id": "5ab777b7-1707-4c32-b04a-be672bf87f31",
+          "state": "cancelled",
+          "evidence_sha256": "74091b6f711db29855e7e8c5a9646bf2d5cc0a71d0e4a04b9ddb8120e5d80073",
+          "checks": [
+            {
+              "name": "run_state",
+              "status": "skipped",
+              "detail": "the run is cancelled"
+            }
+          ]
+        },
+        "capability_operations": []
+      },
+      "expected": {
+        "terminal": "cancelled stays cancelled; revision/row/events identical after every late delivery",
+        "execution_calls": "result/event/upload/capability after cancel are refused; zero operation rows",
+        "queue": "claim poll returns 204; no second attempt",
+        "seq": "contiguous 1..5 with no duplicate event",
+        "recovery": "refused not_recovery_pending"
+      },
+      "observed": {
+        "final_state": "cancelled",
+        "final_revision": 4,
+        "event_seqs": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "status_states": [
+          "queued",
+          "running",
+          "cancelling",
+          "cancelled"
+        ],
+        "attempts": 1,
+        "capability_operations": 0,
+        "run_artifacts_before": 1,
+        "run_artifacts_after": 1,
+        "late_delivery_statuses": [
+          {
+            "delivery": "late_result",
+            "status": 409,
+            "code": "run_terminal"
+          },
+          {
+            "delivery": "duplicate_late_result",
+            "status": 409,
+            "code": "run_terminal"
+          },
+          {
+            "delivery": "replay_pre_cancel_event",
+            "status": 409,
+            "code": "run_terminal"
+          },
+          {
+            "delivery": "late_new_event",
+            "status": 409,
+            "code": "run_terminal"
+          },
+          {
+            "delivery": "duplicate_queue_delivery",
+            "status": 204,
+            "code": null
+          },
+          {
+            "delivery": "replay_same_exit",
+            "status": 200,
+            "code": null
+          },
+          {
+            "delivery": "different_exit",
+            "status": 409,
+            "code": "attempt_evidence_conflict"
+          },
+          {
+            "delivery": "late_artifact_upload",
+            "status": 409,
+            "code": "stale_attempt"
+          },
+          {
+            "delivery": "late_capability_call",
+            "status": 403,
+            "code": "stale_attempt"
+          },
+          {
+            "delivery": "foreign_owner_read",
+            "status": 404,
+            "code": "resource_not_found"
+          },
+          {
+            "delivery": "recover_cancelled_run",
+            "status": 1,
+            "code": "not_recovery_pending"
+          }
+        ],
+        "recovery_code": "not_recovery_pending"
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q -k fault_06"
+      ]
+    },
+    {
+      "id": "FAULT-10",
+      "title": "duplicate events and two concurrent opposite approval decisions",
+      "verdict": "passed",
+      "recorded_at": "2026-11-07T14:44:52.137453Z",
+      "injection_point": "two real supervisor mTLS clients race `POST /internal/v1/runs/{id}/waiting-resolution` with approved/rejected over separate connections (threading.Barrier); duplicate worker events replay the same event_id through the real `POST /internal/v1/runs/{id}/events` endpoint, including after the real terminal finalizer committed failed",
+      "inputs": {
+        "event_run_id": "b87c3cb9-bf34-42e7-87a2-47a826a831e5",
+        "event_id": "d1ded402-d7d8-4629-9046-9236e197750b",
+        "duplicate_local_sequence": 9,
+        "decision_run_id": "71c69633-18c9-42af-a95b-21a5c6676bcc",
+        "race_outcomes": [
+          "approved",
+          "rejected"
+        ],
+        "race_references": [
+          "t107-race-approve",
+          "t107-race-reject"
+        ],
+        "decision_statuses": [
+          {
+            "index": 0,
+            "status": 409,
+            "body": "{\"error\": {\"code\": \"decision_conflict\", \"message\": \"a different waiting resolution is already stored\", \"request_id\": \"6d6437cc032945d2f5575a8fc842cd57\"}}"
+          },
+          {
+            "index": 1,
+            "status": 200,
+            "body": "{\"run_id\": \"71c69633-18c9-42af-a95b-21a5c6676bcc\", \"kind\": \"approval\", \"outcome\": \"rejected\", \"decision_at\": \"2026-11-07T14:44:48.912753Z\", \"resume_job_id\": null}"
+          }
+        ]
+      },
+      "independent_truth": {
+        "platform.run_waitings": {
+          "run_id": "71c69633-18c9-42af-a95b-21a5c6676bcc",
+          "kind": "approval",
+          "checkpoint_id": "ckpt-t107-fault10",
+          "decision": "{\"kind\": \"approval\", \"outcome\": \"rejected\", \"reference\": \"t107-race-reject\"}",
+          "decision_at": "2026-11-07 22:44:48.912753+08",
+          "exit_confirmed_at": "2026-11-07 22:44:50.114029+08",
+          "resume_job_id": "d5a10ce5-f559-4038-9f28-f51db376911c",
+          "resume_artifact_id": "d007f17c-201d-4751-8f7b-fd934fcb5b2a",
+          "created_at": "2026-11-07 22:44:48.33052+08",
+          "updated_at": "2026-11-07 22:44:50.114029+08"
+        },
+        "stored_decision": {
+          "kind": "approval",
+          "outcome": "rejected",
+          "reference": "t107-race-reject"
+        },
+        "waiting_rows_for_run": 1,
+        "platform.run_events_waiting_run": [
+          {
+            "seq": 1,
+            "type": "run.status",
+            "payload": "{\"state\": \"queued\"}"
+          },
+          {
+            "seq": 2,
+            "type": "run.status",
+            "payload": "{\"state\": \"running\"}"
+          },
+          {
+            "seq": 3,
+            "type": "run.status",
+            "payload": "{\"state\": \"waiting_approval\"}"
+          },
+          {
+            "seq": 4,
+            "type": "run.status",
+            "payload": "{\"state\": \"queued\"}"
+          }
+        ],
+        "platform.run_events_terminal_run": [
+          {
+            "seq": 1,
+            "type": "run.status",
+            "payload": "{\"state\": \"queued\"}"
+          },
+          {
+            "seq": 2,
+            "type": "run.status",
+            "payload": "{\"state\": \"running\"}"
+          },
+          {
+            "seq": 3,
+            "type": "node.status",
+            "payload": "{\"state\": \"running\", \"node_id\": \"node-a\", \"attempt_no\": 1}"
+          },
+          {
+            "seq": 4,
+            "type": "node.status",
+            "payload": "{\"state\": \"succeeded\", \"node_id\": \"node-b\", \"attempt_no\": 1}"
+          },
+          {
+            "seq": 5,
+            "type": "run.status",
+            "payload": "{\"state\": \"running\"}"
+          },
+          {
+            "seq": 6,
+            "type": "run.status",
+            "payload": "{\"state\": \"failed\", \"error_code\": \"tool_crash\"}"
+          }
+        ],
+        "resume_job": {
+          "id": "d5a10ce5-f559-4038-9f28-f51db376911c",
+          "run_id": "71c69633-18c9-42af-a95b-21a5c6676bcc",
+          "kind": "resume",
+          "state": "ready",
+          "current_attempt_token": null,
+          "resume_artifact_id": "d007f17c-201d-4751-8f7b-fd934fcb5b2a",
+          "created_at": "2026-11-07 22:44:50.114029+08"
+        },
+        "late_duplicate_event_response": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"7966ca3a5d6780a30b8b905df4003da9\"}}",
+        "late_new_event_response": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"633f6d328fd6035895b1b3bb7fbfb18a\"}}"
+      },
+      "expected": {
+        "concurrent_decisions": "exactly one 200, the other 409 decision_conflict; one stored decision row",
+        "duplicate_events": "same event_id consumes no seq, produces no second row; batch replay is a no-op",
+        "terminal": "late events on the failed Run are 409 run_terminal; seq stays contiguous and the row unchanged",
+        "resume": "the exit creates exactly one resume job; the stored decision is never replaced",
+        "negative": "worker certificate cannot decide (403), unknown run 404, foreign owner read 404"
+      },
+      "observed": {
+        "decision_statuses": [
+          200,
+          409
+        ],
+        "stored_outcome": "rejected",
+        "stored_reference": "t107-race-reject",
+        "decision_rows": 1,
+        "resume_jobs": 1,
+        "waiting_run_states": [
+          "queued",
+          "running",
+          "waiting_approval",
+          "queued"
+        ],
+        "waiting_run_seqs": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "event_run_terminal_states": [
+          "queued",
+          "running",
+          "running",
+          "failed"
+        ],
+        "event_run_terminal_seqs": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "late_event_codes": [
+          "run_terminal",
+          "run_terminal"
+        ],
+        "negative_codes": {
+          "worker_decision": "forbidden",
+          "unknown_run": "run_not_found",
+          "foreign_read": 404
+        }
+      },
+      "commands": [
+        "python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q -k fault_10"
+      ]
+    }
+  ],
+  "failures": [],
+  "not_covered": [
+    "real vendor model quality/latency/cost",
+    "FAULT-04 recovery against a *running* production deployment (this is a throwaway stack)",
+    "FAULT-05 host/network partition with an unreachable host (this suspends the real process instead)"
+  ],
+  "produced_faults": [
+    "FAULT-04",
+    "FAULT-05",
+    "FAULT-06",
+    "FAULT-10"
+  ]
+}

@@ -1,0 +1,925 @@
+{
+  "ticket": "T106",
+  "issue": 107,
+  "title": "Fault injection: approval restart, changed params and lost receipt",
+  "generated_at": "2026-11-07T19:30:38+0800",
+  "product_commit": "cb20f853b407169d37cc5bf75c848eaa39bc56d1",
+  "product_commit_note": "HEAD checked out when this evidence run started; the ticket's test sources are committed on the same branch",
+  "environment": {
+    "profile": "dev-stub (ORCHARA_PROFILE=dev-stub; no vendor credentials or endpoint)",
+    "postgres": "PostgreSQL 16.4 at 127.0.0.1:55432; one throwaway database per stack",
+    "api": "compiled cmd/api: real mTLS internal listener, real object store, HMAC signed links",
+    "supervisor": "compiled cmd/supervisor exec --once as a real one-shot OS process",
+    "worker": "real OS worker processes (tests/f13b/t106_worker.py) over the real mTLS protocol",
+    "connector": "real loopback HTTP endpoint owned by the test; its request log is the independent ledger",
+    "sandbox": "WSL2/runsc not used by this ticket (no graph node executes)",
+    "not_run": [
+      "a real vendor connector endpoint (loopback stands in for the deployment-defined endpoint)",
+      "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+      "a real browser DOM",
+      "a resident supervisor daemon (the production one-shot `exec --once` shape is used)"
+    ]
+  },
+  "faults": [
+    {
+      "fault_id": "FAULT-01",
+      "title": "Approval waits while the real worker process is killed; the original approval resumes the unchanged operation",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "OS process kill `taskkill /F /T /PID <worker-a>` of the real worker process tests/f13b/t106_worker.py (real mTLS capability + T035 waiting/exit protocol) while platform.approvals.state='pending'; restart = compiled `cmd/supervisor exec --once` process against the same PostgreSQL + mTLS API, then a fresh worker process claiming the single resume job. Durability seam: platform.approvals, platform.operations, platform.run_waitings, platform.jobs.",
+      "input": {
+        "seed": "t106-fault01",
+        "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+        "operation_id": "ef315585-334d-4850-add7-97bc8388fbaa",
+        "logical_key": "t106:fault01:write",
+        "params": {
+          "path": "/v1/orders",
+          "body": {
+            "amount": 1250,
+            "currency": "CNY"
+          }
+        },
+        "policy_id": "cf1723fc-6915-4226-a5a3-e92c62f6197e",
+        "policy_sha256": "eaba9cfc7214a4392d90e42e82e0e4daa09ecf46df242bd45d1f615b809fc88a",
+        "connector_origin": "http://127.0.0.1:58227",
+        "params_canonical": "{\"body\": {\"amount\": 1250, \"currency\": \"CNY\"}, \"path\": \"/v1/orders\"}",
+        "params_sha256_independent": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e"
+      },
+      "expected": [
+        "the killed process disappears and its PostgreSQL session leaves pg_stat_activity",
+        "the approval row is not replaced (same id/proposal/params_sha256/approver)",
+        "platform.operations keeps exactly the same operation id",
+        "exactly one resume job is created, only after the human decision",
+        "the loopback endpoint observes 0 requests before approval and exactly 1 after",
+        "the resumed operation reaches succeeded with exactly one attempt"
+      ],
+      "observed": {
+        "worker_a_pid": 64504,
+        "worker_b_pid": 53328,
+        "supervisor_pid": 66868,
+        "approval_id": "eaf0d044-4e1c-4660-9334-3e8629c563e2",
+        "operation_id": "ef315585-334d-4850-add7-97bc8388fbaa",
+        "resume_jobs": 1,
+        "writes_before_approval": 0,
+        "writes_after_resume": 1,
+        "run_state": "succeeded"
+      },
+      "independent_ledger": {
+        "process_table": {
+          "worker_a": {
+            "pid": 64504,
+            "started_at": 1794051007.6379647,
+            "os_start_time": "2026-11-07T11:30:07.6424607Z",
+            "kill": {
+              "taskkill": {
+                "command": "taskkill /F /T /PID 64504",
+                "returncode": 0,
+                "stdout": "SUCCESS: The process with PID 58244 (child process of PID 64504) has been terminated.\nSUCCESS: The process with PID 64504 (child process of PID 68992) has been terminated.",
+                "stderr": ""
+              },
+              "exit_code": 1,
+              "exited_at": 1794051009.7903693,
+              "present_after": {
+                "command": "tasklist /FI PID eq 64504 /FO CSV /NH",
+                "returncode": 0,
+                "present": false,
+                "rows": []
+              }
+            },
+            "db_sessions_before": [
+              {
+                "pid": 56784,
+                "application_name": "t106-fault01-worker-a",
+                "state": "idle",
+                "backend_start": "2026-11-07 19:30:08.777956+08",
+                "query": ""
+              }
+            ],
+            "db_sessions_after": []
+          }
+        },
+        "supervisor_restart": {
+          "command": "E:\\Orchara\\.scratch\\f13b\\T106\\pt-merged\\f00b-go-bin0\\orchara-supervisor.exe exec --once",
+          "pid": 66868,
+          "started_at": 1794051010.161174,
+          "finished_at": 1794051011.5053523,
+          "returncode": 0,
+          "timed_out": false,
+          "report": {
+            "status": "idle",
+            "execution_unit_id": "exec-AI-66868-d5083e05",
+            "heartbeats": 0,
+            "duration_ms": 40
+          },
+          "log": "E:\\Orchara\\.scratch\\f13b\\T106\\pt-merged\\test_fault_01_restart_keeps_th0\\supervisor-exec.log",
+          "log_tail": "{\"status\":\"idle\",\"execution_unit_id\":\"exec-AI-66868-d5083e05\",\"heartbeats\":0,\"duration_ms\":40}\norchara-supervisor 2026/11/07 11:30:11 exec: status=idle outcome= run= code="
+        },
+        "connector_endpoint": {
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/v1/orders",
+              "headers": {
+                "host": "127.0.0.1:58227",
+                "user-agent": "Go-http-client/1.1",
+                "content-length": "32",
+                "accept": "application/json",
+                "content-type": "application/json",
+                "x-connector-secret": "<redacted>",
+                "accept-encoding": "gzip",
+                "connection": "close"
+              },
+              "body": "{\"amount\": 1250, \"currency\": \"CNY\"}"
+            }
+          ],
+          "request_count": 1
+        },
+        "postgres": {
+          "run": {
+            "id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+            "state": "succeeded",
+            "error_code": null,
+            "revision": 6,
+            "phase": "idle",
+            "cancel_requested_at": null,
+            "finished_at": "2026-11-07 19:30:13.487558+08"
+          },
+          "waiting": {
+            "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+            "kind": "approval",
+            "checkpoint_id": "capability:ef315585-334d-4850-add7-97bc8388fbaa",
+            "decision": "{\"kind\": \"approval\", \"outcome\": \"approved\", \"reference\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\"}",
+            "decision_at": "2026-11-07 19:30:12.034267+08",
+            "exit_confirmed_at": "2026-11-07 19:30:08.687706+08",
+            "resume_job_id": "97309889-b16b-40eb-9a9a-cd29d526bc47",
+            "resume_artifact_id": "e4afde68-ff26-4251-b356-9b76b39c5b65",
+            "created_at": "2026-11-07 19:30:08.672236+08",
+            "updated_at": "2026-11-07 19:30:12.034267+08"
+          },
+          "approval": {
+            "id": "eaf0d044-4e1c-4660-9334-3e8629c563e2",
+            "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+            "operation_id": "ef315585-334d-4850-add7-97bc8388fbaa",
+            "node_key": "t106:fault01:write",
+            "proposal_artifact_id": "09f2c168-fd4e-46af-9a32-60fd1364c6d2",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "approver_id": "fb25d2b2-9045-4f6d-a9ca-29f2152e3a6d",
+            "state": "approved",
+            "expires_at": "2026-11-07 20:30:08.654025+08",
+            "decided_at": "2026-11-07 19:30:12.00709+08",
+            "decided_by": "fb25d2b2-9045-4f6d-a9ca-29f2152e3a6d",
+            "decision_key": "333ca758-5d46-477c-8e7a-ab327ff9ea61"
+          },
+          "approval_count": 1,
+          "operation": {
+            "id": "ef315585-334d-4850-add7-97bc8388fbaa",
+            "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+            "logical_key": "t106:fault01:write",
+            "capability_version": "cf1723fc-6915-4226-a5a3-e92c62f6197e",
+            "capability_kind": "connector",
+            "risk_class": "write",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "params_artifact_id": "916760a5-8d5c-4a4c-b9ab-7fd0cfc7fafb",
+            "state": "succeeded",
+            "receipt_artifact_id": "05204f6d-b16e-4dc5-b183-07e4fb14e297",
+            "last_error_code": null,
+            "dispatched_at": "2026-11-07 19:30:13.176225+08",
+            "created_at": "2026-11-07 19:30:08.620887+08",
+            "updated_at": "2026-11-07 19:30:13.190826+08"
+          },
+          "operation_rows": [
+            {
+              "id": "ef315585-334d-4850-add7-97bc8388fbaa",
+              "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+              "logical_key": "t106:fault01:write",
+              "capability_version": "cf1723fc-6915-4226-a5a3-e92c62f6197e",
+              "capability_kind": "connector",
+              "risk_class": "write",
+              "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+              "params_artifact_id": "916760a5-8d5c-4a4c-b9ab-7fd0cfc7fafb",
+              "state": "succeeded",
+              "receipt_artifact_id": "05204f6d-b16e-4dc5-b183-07e4fb14e297",
+              "last_error_code": null,
+              "dispatched_at": "2026-11-07 19:30:13.176225+08",
+              "created_at": "2026-11-07 19:30:08.620887+08",
+              "updated_at": "2026-11-07 19:30:13.190826+08"
+            }
+          ],
+          "attempts": [
+            {
+              "id": "49394560-6658-42b5-93df-caa8bd3842a1",
+              "operation_id": "ef315585-334d-4850-add7-97bc8388fbaa",
+              "attempt_no": 1,
+              "state": "succeeded",
+              "attempt_token": "<redacted>",
+              "result_artifact_id": "05204f6d-b16e-4dc5-b183-07e4fb14e297",
+              "error_code": null,
+              "tokens_in": null,
+              "tokens_out": null,
+              "reserved_amount": "0.00000000",
+              "charged_amount": null,
+              "currency": null,
+              "price_version": null,
+              "settlement_state": "none",
+              "created_at": "2026-11-07 19:30:13.176225+08",
+              "finished_at": "2026-11-07 19:30:13.190826+08"
+            }
+          ],
+          "resume_jobs": [
+            {
+              "id": "97309889-b16b-40eb-9a9a-cd29d526bc47",
+              "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+              "kind": "resume",
+              "state": "completed",
+              "current_attempt_token": null,
+              "resume_artifact_id": "e4afde68-ff26-4251-b356-9b76b39c5b65",
+              "created_at": "2026-11-07 19:30:12.034267+08"
+            }
+          ],
+          "start_job": {
+            "id": "46ad41fb-4686-47ec-a9dc-e358788b6ce7",
+            "run_id": "9682161d-d619-4ff1-ae0c-af40c2bb82e3",
+            "kind": "start",
+            "state": "completed",
+            "available_at": "2026-11-07 19:30:07.58938+08",
+            "current_attempt_token": null,
+            "resume_artifact_id": null
+          }
+        }
+      },
+      "assertions": [
+        {
+          "name": "worker_a_operation_unchanged",
+          "ok": true,
+          "detail": "ef315585-334d-4850-add7-97bc8388fbaa"
+        },
+        {
+          "name": "parked_at_approval",
+          "ok": true,
+          "detail": "{\"run\": {\"id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"state\": \"waiting_approval\", \"error_code\": null, \"revision\": 3, \"phase\": \"waiting\", \"cancel_requested_at\": null, \"finished_at\": null}, \"waiting\": {\"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"kind\": \"approval\", \"checkpoint_id\": \"capability:ef315585-334d-4850-add7-97bc8388fbaa\", \"decision\": null, \"decision_at\": null, \"exit_confirmed_at\": \"2026-11-07 19:30:08.687706+08\", \"resume_job_id\": null, \"resume_artifact_id\": null, \"created_at\": \"2026-11-07 19:30:08.672236+08\", \"updated_at\": \"2026-11-07 19:30:08.687706+08\"}, \"approval\": {\"id\":..."
+        },
+        {
+          "name": "product_hash_matches_the_independent_hash",
+          "ok": true,
+          "detail": "{\"product\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"independent\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\"}"
+        },
+        {
+          "name": "no_write_before_approval",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "worker_db_session_present",
+          "ok": true,
+          "detail": "[{\"pid\": 56784, \"application_name\": \"t106-fault01-worker-a\", \"state\": \"idle\", \"backend_start\": \"2026-11-07 19:30:08.777956+08\", \"query\": \"\"}]"
+        },
+        {
+          "name": "worker_process_killed",
+          "ok": true,
+          "detail": "{\"taskkill\": {\"command\": \"taskkill /F /T /PID 64504\", \"returncode\": 0, \"stdout\": \"SUCCESS: The process with PID 58244 (child process of PID 64504) has been terminated.\\nSUCCESS: The process with PID 64504 (child process of PID 68992) has been terminated.\", \"stderr\": \"\"}, \"exit_code\": 1, \"exited_at\": 1794051009.7903693, \"present_after\": {\"command\": \"tasklist /FI PID eq 64504 /FO CSV /NH\", \"returncode\": 0, \"present\": false, \"rows\": []}}"
+        },
+        {
+          "name": "worker_db_session_gone",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "restarted_supervisor_is_idle",
+          "ok": true,
+          "detail": "{\"command\": \"E:\\\\Orchara\\\\.scratch\\\\f13b\\\\T106\\\\pt-merged\\\\f00b-go-bin0\\\\orchara-supervisor.exe exec --once\", \"pid\": 66868, \"started_at\": 1794051010.161174, \"finished_at\": 1794051011.5053523, \"returncode\": 0, \"timed_out\": false, \"report\": {\"status\": \"idle\", \"execution_unit_id\": \"exec-AI-66868-d5083e05\", \"heartbeats\": 0, \"duration_ms\": 40}, \"log\": \"E:\\\\Orchara\\\\.scratch\\\\f13b\\\\T106\\\\pt-merged\\\\test_fault_01_restart_keeps_th0\\\\supervisor-exec.log\", \"log_tail\": \"{\\\"status\\\":\\\"idle\\\",\\\"execution_unit_id\\\":\\\"exec-AI-66868-d5083e05\\\",\\\"heartbeats\\\":0,\\\"duration_ms\\\":40}\\norchara-supervisor 2026/1..."
+        },
+        {
+          "name": "restart_does_not_auto_resume",
+          "ok": true,
+          "detail": "{\"run\": {\"id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"state\": \"waiting_approval\", \"error_code\": null, \"revision\": 3, \"phase\": \"waiting\", \"cancel_requested_at\": null, \"finished_at\": null}, \"approval\": {\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"operation_id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"node_key\": \"t106:fault01:write\", \"proposal_artifact_id\": \"09f2c168-fd4e-46af-9a32-60fd1364c6d2\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"fb25d2b2-9045-4f6d-a9ca-29f2152e3a6d\", \"sta..."
+        },
+        {
+          "name": "original_approval_decided",
+          "ok": true,
+          "detail": "{\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"state\": \"approved\", \"proposal_artifact_id\": \"09f2c168-fd4e-46af-9a32-60fd1364c6d2\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T12:30:08Z\"}"
+        },
+        {
+          "name": "approval_row_not_replaced",
+          "ok": true,
+          "detail": "{\"before\": {\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"operation_id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"node_key\": \"t106:fault01:write\", \"proposal_artifact_id\": \"09f2c168-fd4e-46af-9a32-60fd1364c6d2\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"fb25d2b2-9045-4f6d-a9ca-29f2152e3a6d\", \"state\": \"pending\", \"expires_at\": \"2026-11-07 20:30:08.654025+08\", \"decided_at\": null, \"decided_by\": null, \"decision_key\": null}, \"after\": {\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\":..."
+        },
+        {
+          "name": "same_operation_after_decision",
+          "ok": true,
+          "detail": "{\"id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"logical_key\": \"t106:fault01:write\", \"capability_version\": \"cf1723fc-6915-4226-a5a3-e92c62f6197e\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"916760a5-8d5c-4a4c-b9ab-7fd0cfc7fafb\", \"state\": \"authorized\", \"receipt_artifact_id\": null, \"last_error_code\": null, \"dispatched_at\": null, \"created_at\": \"2026-11-07 19:30:08.620887+08\", \"updated_at\": \"2026-11-07 19:30:12.00709+08\"}"
+        },
+        {
+          "name": "exactly_one_resume_job",
+          "ok": true,
+          "detail": "[{\"id\": \"97309889-b16b-40eb-9a9a-cd29d526bc47\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"e4afde68-ff26-4251-b356-9b76b39c5b65\", \"created_at\": \"2026-11-07 19:30:12.034267+08\"}]"
+        },
+        {
+          "name": "no_write_after_decision_before_resume",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "worker_b_exit_clean",
+          "ok": true,
+          "detail": "{\"facts\": {\"mode\": \"resume\", \"pid\": 53328, \"started_at\": 1794051013.135783, \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"operation_id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"logical_key\": \"t106:fault01:write\", \"job_id\": \"97309889-b16b-40eb-9a9a-cd29d526bc47\", \"claimed_at\": 1794051013.1665268, \"lease\": {\"job_id\": \"97309889-b16b-40eb-9a9a-cd29d526bc47\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"attempt_token\": \"<redacted>\", \"lease_deadline\": \"2026-11-07T11:30:43.151934Z\", \"manifest\": {\"definition\": {\"edges\": [{\"source\": \"start\", \"target\": \"stats\"}, {\"source\": \"stats\", \"targe..."
+        },
+        {
+          "name": "same_operation_succeeded_once",
+          "ok": true,
+          "detail": "{\"operation\": {\"id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"logical_key\": \"t106:fault01:write\", \"capability_version\": \"cf1723fc-6915-4226-a5a3-e92c62f6197e\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"916760a5-8d5c-4a4c-b9ab-7fd0cfc7fafb\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"05204f6d-b16e-4dc5-b183-07e4fb14e297\", \"last_error_code\": null, \"dispatched_at\": \"2026-11-07 19:30:13.176225+08\", \"created_at\": \"2026-11-07..."
+        },
+        {
+          "name": "exactly_one_physical_write",
+          "ok": true,
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:58227\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+        },
+        {
+          "name": "one_operation_row_and_one_resume_job",
+          "ok": true,
+          "detail": "{\"operations\": [{\"id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"logical_key\": \"t106:fault01:write\", \"capability_version\": \"cf1723fc-6915-4226-a5a3-e92c62f6197e\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"916760a5-8d5c-4a4c-b9ab-7fd0cfc7fafb\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"05204f6d-b16e-4dc5-b183-07e4fb14e297\", \"last_error_code\": null, \"dispatched_at\": \"2026-11-07 19:30:13.176225+08\", \"created_at\": \"2026-11-..."
+        },
+        {
+          "name": "approval_unchanged_after_resume",
+          "ok": true,
+          "detail": "{\"before\": {\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"operation_id\": \"ef315585-334d-4850-add7-97bc8388fbaa\", \"node_key\": \"t106:fault01:write\", \"proposal_artifact_id\": \"09f2c168-fd4e-46af-9a32-60fd1364c6d2\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"fb25d2b2-9045-4f6d-a9ca-29f2152e3a6d\", \"state\": \"pending\", \"expires_at\": \"2026-11-07 20:30:08.654025+08\", \"decided_at\": null, \"decided_by\": null, \"decision_key\": null}, \"after\": {\"id\": \"eaf0d044-4e1c-4660-9334-3e8629c563e2\", \"run_id\":..."
+        },
+        {
+          "name": "run_succeeded",
+          "ok": true,
+          "detail": "{\"id\": \"9682161d-d619-4ff1-ae0c-af40c2bb82e3\", \"state\": \"succeeded\", \"error_code\": null, \"revision\": 6, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 19:30:13.487558+08\"}"
+        }
+      ],
+      "assertion_count": 20,
+      "commands": [
+        "cmd/supervisor exec --once  # after the kill, before approval",
+        "POST /api/v1/approvals/{id}/decision (owner session, exact params_sha256)",
+        "POST /internal/v1/jobs/claim (mTLS supervisor) -> POST /internal/v1/runs/{id}/capabilities (mTLS worker, same operation id)"
+      ],
+      "not_run": [
+        "a real vendor connector endpoint (loopback stands in for the deployment-defined endpoint)",
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)"
+      ],
+      "duration_s": 7.03,
+      "failure": null
+    },
+    {
+      "fault_id": "FAULT-02",
+      "title": "An approval is bound to the exact params: changed params and wrong hashes are refused with zero writes",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "internal/capabilities/service.go:689-700 `prepareOperation` compares the stored operation's params_sha256 with the new canonical digest and returns 409 operation_conflict; internal/approvals/decision.go:148-151 compares the decision's params_sha256 with the approval and returns 409 approval_params_mismatch. exercised through the real mTLS capability and owner decision HTTP paths.",
+      "input": {
+        "seed": "t106-fault02",
+        "operation_id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+        "logical_key": "t106:fault02:write",
+        "params": {
+          "path": "/v1/orders",
+          "body": {
+            "amount": 1250,
+            "currency": "CNY"
+          }
+        },
+        "changed_params": {
+          "path": "/v1/orders",
+          "body": {
+            "amount": 999999,
+            "currency": "CNY"
+          }
+        },
+        "policy_id": "3c557e8e-0302-4552-aa1b-aeb3777c124e",
+        "connector_origin": "http://127.0.0.1:59574",
+        "params_canonical": "{\"body\": {\"amount\": 1250, \"currency\": \"CNY\"}, \"path\": \"/v1/orders\"}",
+        "params_sha256_independent": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+        "changed_params_canonical": "{\"body\": {\"amount\": 999999, \"currency\": \"CNY\"}, \"path\": \"/v1/orders\"}",
+        "changed_params_sha256_independent": "27bfe6c6cf796efd2146923378886a6dfce5e895dd63d79b3fb2fa8c38925d65",
+        "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7"
+      },
+      "expected": [
+        "a replay with changed params is refused (409 operation_conflict)",
+        "the old approval cannot authorise changed params or a different logical key",
+        "a decision with a wrong params_sha256 is refused (409 approval_params_mismatch)",
+        "a stranger (404) and the admin (403 approver_mismatch) cannot decide",
+        "a late decision after cancellation is refused (409)",
+        "every refused path leaves the loopback write count unchanged"
+      ],
+      "observed": {
+        "changed_params_error": "operation_conflict",
+        "wrong_hash_error": "approval_params_mismatch",
+        "stranger_status": 404,
+        "admin_status": 403,
+        "late_decision_status": 409,
+        "writes": 1
+      },
+      "independent_ledger": {
+        "connector_endpoint": {
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/v1/orders",
+              "headers": {
+                "host": "127.0.0.1:59574",
+                "user-agent": "Go-http-client/1.1",
+                "content-length": "32",
+                "accept": "application/json",
+                "content-type": "application/json",
+                "x-connector-secret": "<redacted>",
+                "accept-encoding": "gzip",
+                "connection": "close"
+              },
+              "body": "{\"amount\": 1250, \"currency\": \"CNY\"}"
+            }
+          ],
+          "request_count": 1,
+          "requests_at_changed_params_refusal": 0
+        },
+        "postgres": {
+          "run": {
+            "id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+            "state": "cancelling",
+            "error_code": null,
+            "revision": 6,
+            "phase": "executing",
+            "cancel_requested_at": "2026-11-07 19:30:27.809601+08",
+            "finished_at": null
+          },
+          "approval_one": {
+            "id": "8a173805-87a2-48c7-87d7-0e26a63212a7",
+            "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+            "operation_id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+            "node_key": "t106:fault02:write",
+            "proposal_artifact_id": "445cf5a4-485c-4a45-a02a-629c420febb5",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "approver_id": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+            "state": "approved",
+            "expires_at": "2026-11-07 20:30:24.028271+08",
+            "decided_at": "2026-11-07 19:30:24.218455+08",
+            "decided_by": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+            "decision_key": "73717324-c0d5-41a1-a639-11f9111a93af"
+          },
+          "approval_two": {
+            "id": "a42b4d91-7c97-4662-84db-b054c8d16870",
+            "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+            "operation_id": "ac97d624-e667-4a8d-be35-a3f419a0e6aa",
+            "node_key": "t106:fault02:write:call-2",
+            "proposal_artifact_id": "9f92991e-7b21-4ef0-87fe-19428ce4a3e0",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "approver_id": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+            "state": "invalidated",
+            "expires_at": "2026-11-07 20:30:25.905488+08",
+            "decided_at": "2026-11-07 19:30:27.809601+08",
+            "decided_by": null,
+            "decision_key": "run_cancel_requested"
+          },
+          "approval_rows": [
+            {
+              "id": "8a173805-87a2-48c7-87d7-0e26a63212a7",
+              "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+              "operation_id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+              "node_key": "t106:fault02:write",
+              "proposal_artifact_id": "445cf5a4-485c-4a45-a02a-629c420febb5",
+              "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+              "approver_id": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+              "state": "approved",
+              "expires_at": "2026-11-07 20:30:24.028271+08",
+              "decided_at": "2026-11-07 19:30:24.218455+08",
+              "decided_by": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+              "decision_key": "73717324-c0d5-41a1-a639-11f9111a93af"
+            },
+            {
+              "id": "a42b4d91-7c97-4662-84db-b054c8d16870",
+              "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+              "operation_id": "ac97d624-e667-4a8d-be35-a3f419a0e6aa",
+              "node_key": "t106:fault02:write:call-2",
+              "proposal_artifact_id": "9f92991e-7b21-4ef0-87fe-19428ce4a3e0",
+              "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+              "approver_id": "d3e7dccf-4541-46d2-a18f-a094cf70d773",
+              "state": "invalidated",
+              "expires_at": "2026-11-07 20:30:25.905488+08",
+              "decided_at": "2026-11-07 19:30:27.809601+08",
+              "decided_by": null,
+              "decision_key": "run_cancel_requested"
+            }
+          ],
+          "operation_one": {
+            "id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+            "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+            "logical_key": "t106:fault02:write",
+            "capability_version": "3c557e8e-0302-4552-aa1b-aeb3777c124e",
+            "capability_kind": "connector",
+            "risk_class": "write",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "params_artifact_id": "b5b5e763-59f9-4c76-aff0-905a65fd4f7b",
+            "state": "succeeded",
+            "receipt_artifact_id": "489bca54-9d4d-4ea3-89d8-2aa998bdf268",
+            "last_error_code": null,
+            "dispatched_at": "2026-11-07 19:30:25.475301+08",
+            "created_at": "2026-11-07 19:30:24.002708+08",
+            "updated_at": "2026-11-07 19:30:25.490357+08"
+          },
+          "operation_two": {
+            "id": "ac97d624-e667-4a8d-be35-a3f419a0e6aa",
+            "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+            "logical_key": "t106:fault02:write:call-2",
+            "capability_version": "3c557e8e-0302-4552-aa1b-aeb3777c124e",
+            "capability_kind": "connector",
+            "risk_class": "write",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "params_artifact_id": "b51ea2ae-6109-46ff-bb25-6b90d35275c7",
+            "state": "awaiting_approval",
+            "receipt_artifact_id": null,
+            "last_error_code": null,
+            "dispatched_at": null,
+            "created_at": "2026-11-07 19:30:25.892279+08",
+            "updated_at": "2026-11-07 19:30:25.892279+08"
+          },
+          "operation_rows": [
+            {
+              "id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+              "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+              "logical_key": "t106:fault02:write",
+              "capability_version": "3c557e8e-0302-4552-aa1b-aeb3777c124e",
+              "capability_kind": "connector",
+              "risk_class": "write",
+              "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+              "params_artifact_id": "b5b5e763-59f9-4c76-aff0-905a65fd4f7b",
+              "state": "succeeded",
+              "receipt_artifact_id": "489bca54-9d4d-4ea3-89d8-2aa998bdf268",
+              "last_error_code": null,
+              "dispatched_at": "2026-11-07 19:30:25.475301+08",
+              "created_at": "2026-11-07 19:30:24.002708+08",
+              "updated_at": "2026-11-07 19:30:25.490357+08"
+            },
+            {
+              "id": "ac97d624-e667-4a8d-be35-a3f419a0e6aa",
+              "run_id": "250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7",
+              "logical_key": "t106:fault02:write:call-2",
+              "capability_version": "3c557e8e-0302-4552-aa1b-aeb3777c124e",
+              "capability_kind": "connector",
+              "risk_class": "write",
+              "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+              "params_artifact_id": "b51ea2ae-6109-46ff-bb25-6b90d35275c7",
+              "state": "awaiting_approval",
+              "receipt_artifact_id": null,
+              "last_error_code": null,
+              "dispatched_at": null,
+              "created_at": "2026-11-07 19:30:25.892279+08",
+              "updated_at": "2026-11-07 19:30:25.892279+08"
+            }
+          ],
+          "attempts_one": [
+            {
+              "id": "846515dc-9b7a-47ec-8f6d-791f95eba09b",
+              "operation_id": "59b46aef-af7b-4b28-b59a-832a1ca0eadc",
+              "attempt_no": 1,
+              "state": "succeeded",
+              "attempt_token": "<redacted>",
+              "result_artifact_id": "489bca54-9d4d-4ea3-89d8-2aa998bdf268",
+              "error_code": null,
+              "tokens_in": null,
+              "tokens_out": null,
+              "reserved_amount": "0.00000000",
+              "charged_amount": null,
+              "currency": null,
+              "price_version": null,
+              "settlement_state": "none",
+              "created_at": "2026-11-07 19:30:25.475301+08",
+              "finished_at": "2026-11-07 19:30:25.490357+08"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "name": "changed_params_are_a_different_input",
+          "ok": true,
+          "detail": "{\"params\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"changed\": \"27bfe6c6cf796efd2146923378886a6dfce5e895dd63d79b3fb2fa8c38925d65\"}"
+        },
+        {
+          "name": "write_parked_for_approval",
+          "ok": true,
+          "detail": "{\"operation_id\": \"59b46aef-af7b-4b28-b59a-832a1ca0eadc\", \"state\": \"awaiting_approval\", \"receipt_artifact_id\": null, \"approval_id\": \"8a173805-87a2-48c7-87d7-0e26a63212a7\", \"data\": {\"connector_policy_version_id\": \"3c557e8e-0302-4552-aa1b-aeb3777c124e\", \"error_code\": \"approval_required\", \"risk_class\": \"write\", \"status\": \"awaiting_approval\"}}"
+        },
+        {
+          "name": "product_hash_matches_the_independent_hash",
+          "ok": true,
+          "detail": "{\"product\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"independent\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\"}"
+        },
+        {
+          "name": "one_resume_after_approval",
+          "ok": true,
+          "detail": "[{\"id\": \"d0cabc23-2602-4254-a54c-975d8f61af38\", \"run_id\": \"250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"3003625a-2995-4daf-b35b-64f49cda453d\", \"created_at\": \"2026-11-07 19:30:24.239118+08\"}]"
+        },
+        {
+          "name": "changed_params_refused_operation_conflict",
+          "ok": true,
+          "detail": "{\"error\": {\"code\": \"operation_conflict\", \"message\": \"that operation id/logical key is already recorded with different parameters\", \"request_id\": \"48b063893b64fe05c9c4feaafa8307d0\"}}"
+        },
+        {
+          "name": "zero_writes_on_changed_params",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "state_unchanged_by_refusal",
+          "ok": true,
+          "detail": "{\"operation_before\": {\"id\": \"59b46aef-af7b-4b28-b59a-832a1ca0eadc\", \"run_id\": \"250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7\", \"logical_key\": \"t106:fault02:write\", \"capability_version\": \"3c557e8e-0302-4552-aa1b-aeb3777c124e\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"b5b5e763-59f9-4c76-aff0-905a65fd4f7b\", \"state\": \"authorized\", \"receipt_artifact_id\": null, \"last_error_code\": null, \"dispatched_at\": null, \"created_at\": \"2026-11-07 19:30:24.002708+08\", \"updated_at\": \"2026-11-07 19:30..."
+        },
+        {
+          "name": "old_operation_id_not_reusable_for_new_call",
+          "ok": true,
+          "detail": "{\"error\": {\"code\": \"operation_conflict\", \"message\": \"that operation id/logical key is already recorded with different parameters\", \"request_id\": \"2290876563ecea7cbd4abff23909039a\"}}"
+        },
+        {
+          "name": "exact_params_still_succeed_once",
+          "ok": true,
+          "detail": "{\"response\": \"{\\\"operation_id\\\": \\\"59b46aef-af7b-4b28-b59a-832a1ca0eadc\\\", \\\"state\\\": \\\"succeeded\\\", \\\"receipt_artifact_id\\\": \\\"489bca54-9d4d-4ea3-89d8-2aa998bdf268\\\", \\\"approval_id\\\": null, \\\"data\\\": {\\\"body\\\": {\\\"ok\\\": true, \\\"write_id\\\": \\\"w-t106\\\"}, \\\"connector_policy_version_id\\\": \\\"3c557e8e-0302-4552-aa1b-aeb3777c124e\\\", \\\"headers\\\": {\\\"content-length\\\": \\\"34\\\", \\\"content-type\\\": \\\"application/json\\\", \\\"date\\\": \\\"Sat, 07 Nov 2026 11:30:25 GMT\\\"}, \\\"policy_sha256\\\": \\\"c8a11633dad3cc0eec076d1ba6f49f3f9365a0c2047d425d3b36f9376ce5cf17\\\", \\\"status\\\": 200, \\\"stub\\\": false}}\", \"records\": [{\"..."
+        },
+        {
+          "name": "one_attempt_for_the_sanctioned_write",
+          "ok": true,
+          "detail": "[{\"id\": \"846515dc-9b7a-47ec-8f6d-791f95eba09b\", \"operation_id\": \"59b46aef-af7b-4b28-b59a-832a1ca0eadc\", \"attempt_no\": 1, \"state\": \"succeeded\", \"attempt_token\": \"<redacted>\", \"result_artifact_id\": \"489bca54-9d4d-4ea3-89d8-2aa998bdf268\", \"error_code\": null, \"tokens_in\": null, \"tokens_out\": null, \"reserved_amount\": \"0.00000000\", \"charged_amount\": null, \"currency\": null, \"price_version\": null, \"settlement_state\": \"none\", \"created_at\": \"2026-11-07 19:30:25.475301+08\", \"finished_at\": \"2026-11-07 19:30:25.490357+08\"}]"
+        },
+        {
+          "name": "second_write_parked",
+          "ok": true,
+          "detail": "{\"operation_id\": \"ac97d624-e667-4a8d-be35-a3f419a0e6aa\", \"state\": \"awaiting_approval\", \"receipt_artifact_id\": null, \"approval_id\": \"a42b4d91-7c97-4662-84db-b054c8d16870\", \"data\": {\"connector_policy_version_id\": \"3c557e8e-0302-4552-aa1b-aeb3777c124e\", \"error_code\": \"approval_required\", \"risk_class\": \"write\", \"status\": \"awaiting_approval\"}}"
+        },
+        {
+          "name": "wrong_params_hash_refused",
+          "ok": true,
+          "detail": "{\"error\": {\"code\": \"approval_params_mismatch\", \"message\": \"the decision must carry the approval's exact params_sha256\", \"request_id\": \"943f227ea8ab65c85d0db02497388105\"}}"
+        },
+        {
+          "name": "wrong_hash_leaves_the_approval_pending",
+          "ok": true,
+          "detail": "{\"id\": \"a42b4d91-7c97-4662-84db-b054c8d16870\", \"run_id\": \"250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7\", \"operation_id\": \"ac97d624-e667-4a8d-be35-a3f419a0e6aa\", \"node_key\": \"t106:fault02:write:call-2\", \"proposal_artifact_id\": \"9f92991e-7b21-4ef0-87fe-19428ce4a3e0\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"d3e7dccf-4541-46d2-a18f-a094cf70d773\", \"state\": \"pending\", \"expires_at\": \"2026-11-07 20:30:25.905488+08\", \"decided_at\": null, \"decided_by\": null, \"decision_key\": null}"
+        },
+        {
+          "name": "stranger_cannot_read_or_decide",
+          "ok": true,
+          "detail": "{\"read\": 404, \"decide\": 404}"
+        },
+        {
+          "name": "admin_is_not_the_approver",
+          "ok": true,
+          "detail": "{\"error\": {\"code\": \"approver_mismatch\", \"message\": \"only the designated human approver may decide this run approval\", \"request_id\": \"6ed454e3af6a167660ea8d2f901a9bbe\"}}"
+        },
+        {
+          "name": "refused_deciders_write_nothing",
+          "ok": true,
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:59574\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+        },
+        {
+          "name": "run_cancel_accepted",
+          "ok": true,
+          "detail": "{\"id\": \"250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7\", \"state\": \"cancelling\", \"revision\": 6, \"application_version_id\": null, \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"debug\", \"execution_snapshot_id\": \"23f494aa-104f-47e0-bf35-e00065fc5242\", \"phase\": \"executing\"}"
+        },
+        {
+          "name": "late_decision_after_cancel_refused",
+          "ok": true,
+          "detail": "{\"approval\": {\"id\": \"a42b4d91-7c97-4662-84db-b054c8d16870\", \"run_id\": \"250a0c69-ed0d-4a18-8799-ac1c9e6f6fe7\", \"operation_id\": \"ac97d624-e667-4a8d-be35-a3f419a0e6aa\", \"node_key\": \"t106:fault02:write:call-2\", \"proposal_artifact_id\": \"9f92991e-7b21-4ef0-87fe-19428ce4a3e0\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"d3e7dccf-4541-46d2-a18f-a094cf70d773\", \"state\": \"invalidated\", \"expires_at\": \"2026-11-07 20:30:25.905488+08\", \"decided_at\": \"2026-11-07 19:30:27.809601+08\", \"decided_by\": null, \"decision_key\": \"run_cancel_requested\"}, \"decisi..."
+        }
+      ],
+      "assertion_count": 18,
+      "commands": [
+        "POST /internal/v1/runs/{id}/capabilities (changed params) -> 409 operation_conflict",
+        "POST /api/v1/approvals/{id}/decision (wrong params_sha256) -> 409 approval_params_mismatch"
+      ],
+      "not_run": [
+        "a real vendor connector endpoint (loopback stands in for the deployment-defined endpoint)",
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)"
+      ],
+      "duration_s": 5.38,
+      "failure": null
+    },
+    {
+      "fault_id": "FAULT-03",
+      "title": "The connector applies the write and the connection is dropped before the receipt; the operation is unknown, never auto-resent, and reconciles to one write",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "tests/support/t051.py:39-70 `_DropHandler._handle` reads the complete request body (the write is really applied by the endpoint) and then calls socket.shutdown(SHUT_RDWR) with no response; the product's real HTTP client (internal/capabilities/connectors.go dispatchConnector) observes a transport error and markConnectorUnknown commits operations.state='unknown' + run_unknown_operations + runs.state='needs_reconciliation'.",
+      "input": {
+        "seed": "t106-fault03",
+        "run_id": "6eecd8a9-e23e-4f1d-a415-2958bac12683",
+        "operation_id": "d01bfb31-f701-4e13-92f5-1564021756f4",
+        "logical_key": "agent:approval-node:tool:call-1",
+        "params": {
+          "path": "/v1/orders",
+          "body": {
+            "amount": 1250,
+            "currency": "CNY"
+          }
+        },
+        "params_sha256_independent": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+        "policy_id": "59ef0ee1-6688-46a0-9797-079775b93d2b",
+        "policy_sha256": "5ab9705a68637dc26b4656b7a9dd3b30e29f9552bb0b26fd6dc05d6279830e09",
+        "connector_origin": "http://127.0.0.1:63619"
+      },
+      "expected": [
+        "the endpoint observes exactly one write request",
+        "the operation is unknown (never succeeded/failed) and has no receipt",
+        "a duplicate invoke does not send a second request",
+        "the Run is not succeeded while the write is unknown (needs_reconciliation)",
+        "owner evidence + POST /operations/{id}/reconcile settles it as succeeded",
+        "the physical write count stays exactly 1"
+      ],
+      "observed": {
+        "initial_state": "unknown",
+        "run_at_unknown": "running",
+        "run_parked": "needs_reconciliation",
+        "run_final": "succeeded",
+        "endpoint_requests": 1,
+        "physical_attempts": 1,
+        "evidence_artifact_id": "7a52ae39-bae8-4b14-859e-8173c65e6e53"
+      },
+      "independent_ledger": {
+        "connector_endpoint": {
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/v1/orders",
+              "headers": {
+                "host": "127.0.0.1:63619",
+                "user-agent": "Go-http-client/1.1",
+                "content-length": "32",
+                "accept": "application/json",
+                "content-type": "application/json",
+                "x-connector-secret": "<redacted>",
+                "accept-encoding": "gzip",
+                "connection": "close"
+              },
+              "body": "{\"amount\": 1250, \"currency\": \"CNY\"}"
+            }
+          ],
+          "request_count": 1
+        },
+        "postgres": {
+          "operation": {
+            "id": "d01bfb31-f701-4e13-92f5-1564021756f4",
+            "run_id": "6eecd8a9-e23e-4f1d-a415-2958bac12683",
+            "logical_key": "agent:approval-node:tool:call-1",
+            "capability_version": "59ef0ee1-6688-46a0-9797-079775b93d2b",
+            "capability_kind": "connector",
+            "risk_class": "write",
+            "params_sha256": "99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e",
+            "params_artifact_id": "d0feb8b8-ed41-4cf9-bbd9-84e3f1f0d24b",
+            "state": "succeeded",
+            "receipt_artifact_id": "7a52ae39-bae8-4b14-859e-8173c65e6e53",
+            "provider_idempotency_key": null,
+            "dispatched_at": "2026-11-07 19:30:36.107151+08",
+            "reconciled_by": "f1ec02ba-0474-4a9c-a10a-841b6f4a7304",
+            "reconciliation_evidence_id": "7a52ae39-bae8-4b14-859e-8173c65e6e53",
+            "reconciliation_conclusion": "confirmed_success",
+            "reconciliation_key": "t106-f03-confirmed-success",
+            "reconciliation_limitation": "no_idempotency_or_query_support",
+            "last_error_code": null,
+            "created_at": "2026-11-07 19:30:35.72805+08",
+            "updated_at": "2026-11-07 19:30:37.409144+08"
+          },
+          "attempts": [
+            {
+              "attempt_no": 1,
+              "state": "dispatching",
+              "attempt_token": "<redacted>",
+              "result_artifact_id": null,
+              "error_code": null,
+              "created_at": "2026-11-07 19:30:36.107151+08"
+            }
+          ],
+          "unknown": {
+            "id": "859fabe7-3012-4e6f-ae86-48ad56ac6803",
+            "run_id": "6eecd8a9-e23e-4f1d-a415-2958bac12683",
+            "operation_id": "d01bfb31-f701-4e13-92f5-1564021756f4",
+            "reason": "transport_error",
+            "created_at": "2026-11-07 19:30:36.117078+08",
+            "resolved_at": "2026-11-07 19:30:37.409144+08"
+          },
+          "run": {
+            "id": "6eecd8a9-e23e-4f1d-a415-2958bac12683",
+            "state": "succeeded",
+            "error_code": null,
+            "revision": 7,
+            "phase": "idle",
+            "cancel_requested_at": null,
+            "finished_at": "2026-11-07 19:30:37.409144+08"
+          },
+          "owner_ledger_item": {
+            "id": "d01bfb31-f701-4e13-92f5-1564021756f4",
+            "capability_kind": "connector",
+            "risk_class": "write",
+            "connector_target": "POST http://127.0.0.1:63619/v1",
+            "capability_version": "59ef0ee1-6688-46a0-9797-079775b93d2b",
+            "state": "succeeded",
+            "attempts": 1,
+            "error_code": null,
+            "receipt_artifact_id": "7a52ae39-bae8-4b14-859e-8173c65e6e53",
+            "reconciled_by": "f1ec02ba-0474-4a9c-a10a-841b6f4a7304",
+            "reconciliation_evidence_id": "7a52ae39-bae8-4b14-859e-8173c65e6e53",
+            "reconciliation_conclusion": "confirmed_success",
+            "reconciliation_limitation": "no_idempotency_or_query_support",
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "charged_amount": "0",
+            "tool_call_summary": [],
+            "structured_output_keys": [],
+            "stub": false
+          }
+        }
+      },
+      "assertions": [
+        {
+          "name": "no_write_before_the_dispatch",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "endpoint_received_exactly_one_write",
+          "ok": true,
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:63619\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+        },
+        {
+          "name": "capability_answer_is_unknown_never_success",
+          "ok": true,
+          "detail": "{\"operation_id\": \"d01bfb31-f701-4e13-92f5-1564021756f4\", \"state\": \"unknown\", \"receipt_artifact_id\": null, \"approval_id\": null, \"data\": {\"dispatch_error_code\": \"connector_transport_error\", \"error_code\": \"operation_unknown\", \"limitation\": \"no_idempotency_or_query_support\", \"reconciliation_status\": \"pending\", \"requires_reconciliation\": true}}"
+        },
+        {
+          "name": "durable_unknown_facts",
+          "ok": true,
+          "detail": "{\"operation\": {\"id\": \"d01bfb31-f701-4e13-92f5-1564021756f4\", \"run_id\": \"6eecd8a9-e23e-4f1d-a415-2958bac12683\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"59ef0ee1-6688-46a0-9797-079775b93d2b\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"d0feb8b8-ed41-4cf9-bbd9-84e3f1f0d24b\", \"state\": \"unknown\", \"receipt_artifact_id\": null, \"provider_idempotency_key\": null, \"dispatched_at\": \"2026-11-07 19:30:36.107151+08\", \"reconciled_by\": null, \"reconciliation_..."
+        },
+        {
+          "name": "product_hash_matches_the_independent_hash",
+          "ok": true,
+          "detail": "{\"product\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"independent\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\"}"
+        },
+        {
+          "name": "run_is_not_succeeded_while_unknown",
+          "ok": true,
+          "detail": "{\"id\": \"6eecd8a9-e23e-4f1d-a415-2958bac12683\", \"state\": \"running\", \"error_code\": null, \"revision\": 5, \"phase\": \"executing\", \"cancel_requested_at\": null, \"finished_at\": null}"
+        },
+        {
+          "name": "unknown_discloses_no_idempotency",
+          "ok": true,
+          "detail": "{\"dispatch_error_code\": \"connector_transport_error\", \"error_code\": \"operation_unknown\", \"limitation\": \"no_idempotency_or_query_support\", \"reconciliation_status\": \"pending\", \"requires_reconciliation\": true}"
+        },
+        {
+          "name": "duplicate_invoke_never_resends",
+          "ok": true,
+          "detail": "{\"response\": \"{\\\"operation_id\\\": \\\"d01bfb31-f701-4e13-92f5-1564021756f4\\\", \\\"state\\\": \\\"unknown\\\", \\\"receipt_artifact_id\\\": null, \\\"approval_id\\\": null, \\\"data\\\": {\\\"dispatch_error_code\\\": \\\"connector_transport_error\\\", \\\"dispatch_state\\\": \\\"unknown\\\", \\\"error_code\\\": \\\"operation_unknown\\\", \\\"limitation\\\": \\\"no_idempotency_or_query_support\\\", \\\"reconciliation_status\\\": \\\"pending\\\", \\\"requires_reconciliation\\\": true}}\", \"records\": 1}"
+        },
+        {
+          "name": "changed_params_after_unknown_refused",
+          "ok": true,
+          "detail": "{\"error\": {\"code\": \"operation_conflict\", \"message\": \"that operation id/logical key is already recorded with different parameters\", \"request_id\": \"6982fa4581f085ed6d58fcfc371fd96d\"}}"
+        },
+        {
+          "name": "run_parks_needs_reconciliation",
+          "ok": true,
+          "detail": "{\"id\": \"6eecd8a9-e23e-4f1d-a415-2958bac12683\", \"state\": \"needs_reconciliation\", \"error_code\": \"unknown_operations\", \"revision\": 6, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": null}"
+        },
+        {
+          "name": "reconcile_confirms_success",
+          "ok": true,
+          "detail": "{\"id\": \"d01bfb31-f701-4e13-92f5-1564021756f4\", \"state\": \"succeeded\"}"
+        },
+        {
+          "name": "physical_write_count_is_one",
+          "ok": true,
+          "detail": "{\"attempts\": 1, \"endpoint_requests\": 1}"
+        },
+        {
+          "name": "evidence_is_the_receipt",
+          "ok": true,
+          "detail": "{\"operation\": {\"id\": \"d01bfb31-f701-4e13-92f5-1564021756f4\", \"run_id\": \"6eecd8a9-e23e-4f1d-a415-2958bac12683\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"59ef0ee1-6688-46a0-9797-079775b93d2b\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"d0feb8b8-ed41-4cf9-bbd9-84e3f1f0d24b\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"7a52ae39-bae8-4b14-859e-8173c65e6e53\", \"provider_idempotency_key\": null, \"dispatched_at\": \"2026-11-07 19:30:36.107151+08\", \"re..."
+        },
+        {
+          "name": "run_succeeded_after_reconciliation",
+          "ok": true,
+          "detail": "{\"id\": \"6eecd8a9-e23e-4f1d-a415-2958bac12683\", \"state\": \"succeeded\", \"error_code\": null, \"revision\": 7, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 19:30:37.409144+08\"}"
+        },
+        {
+          "name": "reconcile_replay_is_idempotent_and_never_resends",
+          "ok": true,
+          "detail": "{\"replay\": 200, \"records\": 1}"
+        }
+      ],
+      "assertion_count": 15,
+      "commands": [
+        "POST /internal/v1/runs/{id}/capabilities -> 200 {state:'unknown'} (TCP reset after the write)",
+        "POST /api/v1/operations/{id}/reconcile {conclusion:'confirmed_success', evidence_artifact_id}"
+      ],
+      "not_run": [
+        "a real vendor connector endpoint (loopback stands in for the deployment-defined endpoint)",
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)"
+      ],
+      "duration_s": 3.19,
+      "failure": null
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "body": {
+    "error": {
+      "code": "evaluation_not_passed",
+      "details": {
+        "report_status": "failed"
+      },
+      "message": "the cited evaluation report is not passed; a publication review can only cite a passed report",
+      "request_id": "4250107486f4a1ae1709dd1cdc5f5ee2"
+    }
+  },
+  "http_status": 422,
+  "quality_score": 1.0,
+  "raw_text": "{\"error\":{\"code\":\"evaluation_not_passed\",\"message\":\"the cited evaluation report is not passed; a publication review can only cite a passed report\",\"request_id\":\"4250107486f4a1ae1709dd1cdc5f5ee2\",\"details\":{\"report_status\":\"failed\"}}}\n",
+  "recomputed_hard_verdict": "failed",
+  "report_status": "failed"
+}
