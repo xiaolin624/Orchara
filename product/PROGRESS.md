@@ -2911,3 +2911,56 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   未覆盖：exit 确认本身的瞬时失败重试、cancel 与 claim/exit 的并发注入、T107 FAULT-05（并发窗口，
   该用例含 WSL 读取，记为 `not_run`）。
 
+## F13B T113（GitHub #114）：对比缓存开关并验证过期/越权命中为零（2026-11-08）
+
+- 分支 `t/t113-cache-toggle` / worktree `E:\Orchara-wt\t113`；基线 `integration/t113-t114-t122`
+  @ `ae1af91`，代码提交 `7205caa`（命中复检修复）、测试提交 `65c8241`、merge 提交 `e64e7b7`
+  （含集成 `21ee9a0` 的 T114 AC5 probe hardening）；门禁与证据在 merge 后最终树重跑；工作区干净。
+- 交付：`tests/f13b/test_t113_cache_comparison.py`（5 条真实栈证据测试：对照/删除/撤权/负向/
+  边界）、`tests/support/t113.py`（固定语料与查询序列、P50/P95/P99 与成对统计、缓存行/封存
+  对象/时间戳独立真值、部署开关与缓存后端故障、页面脚本 Node 执行、`F13B_WRITE_EVIDENCE=1`
+  才写且只写全 passed 的证据 recorder）、`reports/f13b/T113-cache-comparison.json` +
+  `.md`；**产品缺陷修复**：命中复检此前只比对 `platform.artifacts.sha256` 列、不读封存对象，
+  对象缺失/被替换时会命中记忆正文而权威路径会跳过 → 现在命中重读每条封存正文并核对正文与
+  sha256（`internal/knowledge/cache_store.go` + `cache_test.go`）；未改 `docs/spec/**`、
+  `contracts/**`、迁移。
+- 对照（固定 8 文档/24 chunk、24 spec = 8 查询 × top_k 3/8/20、每模式 48 次、成对取样）：
+  cache-on 重复 **命中 24/24**，p50/p95/p99 **35.235/50.016/58.402 ms**；
+  cache-off 重复 0/24，**44.196/53.966/54.814 ms**；成对中位比
+  **0.8053**（on 更快 17/24）；按 top_k 3/8/20
+  p50 比 0.509/0.7261/0.9548；正确性 24/24 spec 逐字段相同；
+  费用 **0 USD**（`local-hash-v1` 本地 hash + 无模型调用，0 是记账不是省略；真实模型费用 blocked）；
+  权威检索执行次数 24 vs 48。
+- 删除矩阵（真实 `DELETE /knowledge-documents/{id}`，缓存行保留）：同查询 `hit=false`、旧键
+  不命中、引用/文档/诊断 404 无 `text`、回答只剩保留内容、投毒活行 `item_unreadable` 丢弃、
+  reindex 404、ingest 重放 `failed/business`、重摄已删源 404；最后一份文档删除时并发查询风暴
+  post-commit **0 hit / 0 items / 0 marker**，post-delete 读后 hit 快照不变、空结果不建行；
+  stale 行 post-delete 增量 0，`last_hit_at <= deleted_at`。
+- 撤权/越权矩阵：跨 principal 访问 A 的 KB/引用 404 无正文；把 A 的真实 item 注入 B 的活行
+  → `item_unreadable` 丢弃、无 A 正文；管理员 `PATCH /admin/principals/{A} {disabled:true}`
+  后 A 检索/回答 401 `session_revoked`、A 的活行 hit 3→3（未服务）、B 仍命中自己的行；回答
+  每请求重新生成（`wrong-answer` 故障服务器在检索命中时给出新生成哨兵），答案文本不进入缓存，
+  A/B 答案互不含对方 marker。
+- 负向/AC4：新增文档/重传同字节为新文档使 source digest 1→2→3、旧键不命中且旧行 hit 不动；
+  空结果/部分结果不存储；命中时封存 body 不可读 → `item_unreadable` 丢弃并删除条目（修复点，
+  恢复后重新存储并命中）；超大条目 50 chunk × 1200 rune 实测 267960 B >
+  262144 B → `stored=false`、无行。
+- 失败/恢复边界：未知开关值真实进程 exit≠0 且点名开关；缓存表 rename 后第二真实进程
+  `hit=false/discarded=true/discard_reason=cache_unavailable/stored=false`，items 与权威 miss
+  一致、引用仍 200；恢复后幸存旧行再次命中、无行 top_k 先存储后命中；页面 `/knowledge` +
+  `knowledge.js` 以 Node 执行已提交字节，`buildRetrievalBody` 与测量请求一致（DOM not_run）。
+- 门禁（真实 tail，最终树，cwd=`product/`）：`pytest tests/f13b/test_t113_cache_comparison.py -q`
+  → **5 passed in 75.76s (0:01:15)**；`pytest tests/f10 -q` → **88 passed in 610.32s (0:10:10)**；`pytest tests/f13b -q`
+  → **241 passed, 1 skipped in 761.73s (0:12:41)**；`go build` / `go vet` / `go test ./...` → exit 0 (no output) / exit 0 (no output) / exit 0 (all packages ok / no test files)；
+  `gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → **no drift: spec copy and contract snapshot match the manifest**。
+  证据轮 `F13B_WRITE_EVIDENCE=1` → **5 passed in 75.93s (0:01:15)**，五段全 passed。
+- 诚实边界/`blocked`/`not_run`：真实 embedding provider 与真实模型生成/质量/延迟/费用
+  `blocked`；本切片 KB owner-only、`policy.ResourceTypes={application}` → per-KB/document
+  grant 撤销 `not_applicable`，以 tombstone（内容撤权）+ 管理员禁用凭据 + 跨 principal 隔离
+  覆盖；SSE/浏览器 DOM/容量规模/Redis `not_run`；T114 容量 WINDOW 期间的一次 `tests/f10`
+  尝试被编排中断、**未用作证据**，最终门禁与证据均在 WINDOW 结束后按 ENV-B2 §2.1 重跑
+  （f10 与 T122 允许并发，f13b 与 T113 延迟证据独占）；命中整体仍快（四次证据跑 p50 比 0.63–0.80），但因封存正文重读成本上升，
+  top_k=20 的收益不稳定（by-top_k p50 比约 1.76× 更慢 / 1.01× 持平 / 0.73× 更快 / 0.95× 接近持平），
+  绝对延迟随宿主负载约 5× 变化，已如实记录。
+- 证据/日志：`reports/f13b/T113-cache-comparison.{md,json}`；原始 tail
+  `E:\Orchara\.scratch\f13b\T113\`；摘要 `E:\Orchara\.scratch\f13b\T113-REPORT.md`。
