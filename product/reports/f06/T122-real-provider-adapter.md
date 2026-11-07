@@ -280,6 +280,28 @@ $ python -m pytest tests/f06 -q
 覆盖 T122 e2e + 全量 f06 串行）。按批次 §2.1 的新协议，本次运行与 T114 的 `pytest tests/f03`
 同处 correctness 窗口；184 条全绿，**无需隔离重跑**，证据即本次并发运行（`lock-context.txt`）。
 
+### 6.1 集成分支 merge 后复跑（最终树）
+
+- merge：`integration/t113-t114-t122` @ `22eb645`（T114 已合入）→ merge commit `1ab71c7`
+  （`Merge branch 'integration/t113-t114-t122' into t/t122-real-provider-adapter`）。
+- 冲突解决（只保留双方，不裁剪任何一方）：`cmd/api/main.go`（T122 的 `WithCatalog` + T114 的
+  `SetStubServiceDelay` 并存）、`internal/config/config_test.go`（T122 3 条 + T114 1 条测试并存）、
+  `PROGRESS.md`（T122 与 T114 小节并存）。`config.go`/`provider.go`/`modelproxy_test.go` 自动合并。
+- 合并后最终树门禁（`go-*-merged.log`）：
+  ```
+  go build ./...   exit=0
+  go vet ./...     exit=0
+  go test ./...    exit=0（0 个 FAIL 行）
+  ```
+- 合并后真实栈复跑（同一天，最终树）：
+  ```
+  $ python -m pytest tests/f06/test_t122_real_provider.py -q
+  11 passed in 99.20s (0:01:39)
+  $ python -m pytest tests/f06 -q
+  184 passed in 1390.38s (0:23:10)
+  ```
+  合并后真实栈占用 1499s = 25.0 min（≤30 min），`t122-merge.owner.txt` 由运行者删除。
+
 ## 7. 复现命令
 
 ```powershell

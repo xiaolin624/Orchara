@@ -2843,6 +2843,9 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 门禁：`go build ./...` / `go vet ./...` / `go test ./...` exit 0；`gofmt -l internal cmd tools` 空；
   `pytest tests/f06/test_t122_real_provider.py` **11 passed in 132.51s (0:02:12)**；
   `pytest tests/f06` **184 passed in 1398.11s (0:23:18)**；`python tools/sync_spec.py --check` no drift。
+- 集成分支 `22eb645` 已 merge（`1ab71c7`）；merge 后最终树复跑：`go build/vet/test ./...` exit 0，
+  `pytest tests/f06/test_t122_real_provider.py` **11 passed in 99.20s**、
+  `pytest tests/f06` **184 passed in 1390.38s (0:23:10)**。
 - 诚实边界：**真实厂商 end-to-end = blocked**（无获批端点/凭据/配额/外发批准），未用 fake
   provider 冒充；`provider=stub` 行为不变。T044 时代"真实 provider 流式必 adapter_unavailable"
   的断言被本票语义取代（测试改名并保留 fail-closed 断言，报告 §9 记录）。
