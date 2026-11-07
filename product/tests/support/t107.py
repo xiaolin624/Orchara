@@ -20,6 +20,7 @@ import ctypes
 import datetime as dt
 import json
 import os
+import sys
 import uuid
 from ctypes import wintypes
 from pathlib import Path
@@ -28,6 +29,38 @@ from support import stack as st
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_PATH = PRODUCT_ROOT / "reports" / "f13b" / "T107-faults.json"
+
+_TOOLS_ROOT = PRODUCT_ROOT / "tools"
+if str(_TOOLS_ROOT) not in sys.path:  # pragma: no cover - pytest adds it already
+    sys.path.insert(0, str(_TOOLS_ROOT))
+from evidence_redaction import (  # noqa: E402
+    REDACTED,
+    find_violations,
+    is_sensitive_key,
+    redact_value,
+)
+
+
+def _credential_values(value: object) -> set[str]:
+    """Every string held under a credential-named member, at any depth.
+
+    The named-member rewriter replaces the value at its own key, but the same
+    token can be embedded inside a *different* string (T107 reads a
+    ``run_waitings`` row whose ``body`` is a JSON string carrying the attempt
+    token). Collecting the values first lets the writer scrub those embedded
+    copies too.
+    """
+    found: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if is_sensitive_key(key) and isinstance(item, str) and item.strip():
+                found.add(item)
+            else:
+                found |= _credential_values(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found |= _credential_values(item)
+    return found
 
 # Windows constants used by the process probes.
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -257,13 +290,33 @@ class Faults:
         }
 
     def write_if_enabled(self) -> Path | None:
+        """Persist the evidence with credentials redacted at the source.
+
+        T107 serializes real database facts, and a real ``platform.run_attempts``
+        row carries the live attempt token. The token is revoked when the run
+        ends, but a credential must never reach a committed report: redact the
+        JSON-shaped document (the shared redactor replaces ``*_token`` members)
+        and refuse to write if the leak scanner still finds a credential shape.
+        """
         if os.environ.get("F13B_WRITE_EVIDENCE") != "1":
             return None
+        document = self.document()
+        secrets = _credential_values(document)
+        payload = redact_value(document)
+        serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        # Named members are redacted by ``redact_value``; the same secret may
+        # still be embedded in another string (a JSONB body), so scrub the
+        # collected values everywhere before the final leak scan.
+        for secret in secrets:
+            serialized = serialized.replace(secret, REDACTED)
+        violations = find_violations(serialized)
+        if violations:
+            raise AssertionError(
+                "refusing to write T107 evidence with credential-shaped values: "
+                f"{violations}"
+            )
         EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        EVIDENCE_PATH.write_text(
-            json.dumps(self.document(), indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        EVIDENCE_PATH.write_text(serialized, encoding="utf-8")
         return EVIDENCE_PATH
 
 

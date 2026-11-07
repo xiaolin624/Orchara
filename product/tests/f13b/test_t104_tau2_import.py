@@ -380,6 +380,43 @@ def test_reject_empty_reward_basis() -> None:
     assert "no_actions" not in reasons  # the actions are real; only the basis is empty
 
 
+def test_reject_a_reward_basis_component_without_assertions() -> None:
+    """A declared component with no check is a vacuous reward (upstream returns 1).
+
+    The fixed upstream evaluator multiplies an empty ``env_assertions`` list from
+    the 1.0 start, so ``actions`` non-empty + ``env_assertions`` empty +
+    ``reward_basis=["ENV_ASSERTION"]`` always rewards 1.0. The gate must refuse it
+    rather than accept a checker that can never fail.
+    """
+    task = source_task(ext.load_external().pin, "39")
+    task["evaluation_criteria"] = {
+        "actions": task["evaluation_criteria"]["actions"],
+        "env_assertions": [],
+        "communicate_info": [],
+        "nl_assertions": [],
+        "reward_basis": ["ENV_ASSERTION"],
+    }
+    reasons = ext.reject_reason(task)
+    assert "reward_basis_without_assertions" in reasons
+    assert "empty_reward_basis" not in reasons
+    assert "no_actions" not in reasons  # the actions are real
+
+    # The DB and ACTION components are built from ``actions`` too: an empty
+    # action list with a non-empty env assertion list still cannot score them.
+    task["evaluation_criteria"] = {
+        "actions": [],
+        "env_assertions": [{"env_type": "assistant", "func_name": "x", "arguments": {}}],
+        "communicate_info": [],
+        "nl_assertions": [],
+        "reward_basis": ["DB"],
+    }
+    assert "reward_basis_without_assertions" in ext.reject_reason(task)
+
+    # A task whose declared components are all backed by checks stays accepted.
+    task = source_task(ext.load_external().pin, "39")
+    assert "reward_basis_without_assertions" not in ext.reject_reason(task)
+
+
 def test_reject_the_missing_reward_basis_default_trap() -> None:
     task = source_task(ext.load_external().pin, "39")
     del task["evaluation_criteria"]["reward_basis"]

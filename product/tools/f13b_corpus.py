@@ -327,7 +327,17 @@ def is_decidable(case: Any, registry_entry: Any) -> tuple[bool, list[str]]:
     if not isinstance(declared, list) or not declared:
         return False, sorted(set(reasons + ["missing_required_facts"]))
     required = set(declared)
-    missing = [f"missing_fact:{fact}" for fact in CATEGORY_FACTS.values() if fact not in required]
+    # A case only needs the fact its **own** category's truth depends on. The
+    # first version required every category's fact (a copy/paste bug), which
+    # made all 46 frozen cases undecidable even though every registry entry
+    # declared exactly its category fact plus the collection/assertion facts.
+    category = case.get("category") if isinstance(case, dict) else None
+    category_fact = CATEGORY_FACTS.get(category)
+    missing: list[str] = []
+    if category_fact is None:
+        missing.append("missing_fact:category")
+    elif category_fact not in required:
+        missing.append(f"missing_fact:{category_fact}")
     missing.extend(
         f"missing_fact:{fact}" for fact in COLLECTION_FACTS if fact not in required
     )

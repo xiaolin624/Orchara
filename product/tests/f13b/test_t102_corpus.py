@@ -545,6 +545,31 @@ def test_reject_reasons_refuse_broken_cases(
     assert f13b_corpus.validate_case(broken), name
 
 
+def test_every_frozen_case_is_decidable(corpus: f13b_corpus.Corpus) -> None:
+    """The 46 frozen cases must be decidable, not merely schema-valid.
+
+    The first implementation required *every* category's fact on every case,
+    so ``is_decidable`` reported 0/46 even though each registry entry declares
+    its own category fact plus the collection/assertion facts. A corpus that
+    cannot produce a verdict for any case is not a frozen acceptance corpus.
+    """
+    assert len(corpus.cases) == 46
+    undecidable = {}
+    for case in corpus.cases:
+        ok, reasons = f13b_corpus.is_decidable(
+            case, corpus.registry["cases"].get(case["case_id"])
+        )
+        if not ok:
+            undecidable[case["case_id"]] = reasons
+    assert undecidable == {}, undecidable
+    # And the category fact really is the one the case's own category names.
+    for case in corpus.cases:
+        registry_entry = corpus.registry["cases"][case["case_id"]]
+        assert f13b_corpus.CATEGORY_FACTS[case["category"]] in registry_entry[
+            "required_facts"
+        ], case["case_id"]
+
+
 def test_empty_or_incomplete_cases_are_not_decidable(
     corpus: f13b_corpus.Corpus,
 ) -> None:

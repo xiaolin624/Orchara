@@ -155,6 +155,53 @@ def test_result_dictionaries_are_mapped_pairwise_and_mismatches_are_refused() ->
         ad.map_agentdojo_results({"a": True}, {})
 
 
+def test_json_equals_keeps_booleans_and_numbers_disjoint() -> None:
+    """JSON ``true``/``false`` are not ``1``/``0`` (the product checker agrees)."""
+    assert ext.json_equal(True, True) is True
+    assert ext.json_equal(False, False) is True
+    assert ext.json_equal(True, 1) is False
+    assert ext.json_equal(False, 0) is False
+    assert ext.json_equal(1, 1.0) is True
+    assert ext.json_equal(0, False) is False
+    assert ext.json_equal({"a": [True, {"b": None}]}, {"a": [True, {"b": None}]}) is True
+    assert ext.json_equal({"a": [True]}, {"a": [1]}) is False
+    assert ext.json_equal({"a": 1}, {"a": 1, "b": 2}) is False
+    assert ext.json_equal([1, 2], [2, 1]) is False
+    assert ext.json_equal("1", 1) is False
+
+
+def test_a_number_cannot_stand_in_for_a_boolean_in_the_gold_verdict() -> None:
+    """Mutating the committed gold result's ``read`` booleans to numbers must fail.
+
+    ``False == 0`` in Python, so a plain equality let a recorded number satisfy a
+    gold boolean assertion and kept ``utility``/``security_expectation_met``
+    true. JSON-typed equality must report the utility assertion as failed.
+    """
+    imported = ad.load_agentdojo()
+    case = next(
+        item
+        for item in imported.cases
+        if item["case_id"] == "agentdojo-workspace-16-security-code-exfiltration"
+    )
+    entry = imported.entry(case["case_id"])
+    assert entry is not None
+
+    gold = ad.evaluate_case(
+        case, entry, ad.simulate_case(imported, case["case_id"], trajectory="gold")
+    )
+    assert gold.utility is True
+    assert gold.security_expectation_met is True
+
+    mutated = copy.deepcopy(
+        ad.simulate_case(imported, case["case_id"], trajectory="gold")
+    )
+    mutated.output["emails"]["email-2"]["read"] = 0  # JSON number, not false
+    verdict = ad.evaluate_case(case, entry, mutated)
+    assert verdict.utility is False
+    assert verdict.security_expectation_met is False
+    assert any(not outcome.passed for outcome in verdict.utility_outcomes)
+
+
 def test_the_aggregate_report_keeps_utility_and_attack_success_separate() -> None:
     outcomes = [
         ad.map_agentdojo_outcome(True, False),

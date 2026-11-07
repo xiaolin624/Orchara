@@ -2794,3 +2794,26 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - **无新 Linux 部署环境/三名未参与开发者**：F15B 与 T115 未开始，已写明解除条件。
 - 两个产品修复（T101 manifest 属主、T110 CSV CR）是本批唯一的非测试产品改动；其余票未改产品语义。
 
+
+## F13B 复核修复：5 项 P2（2026-11-07）
+
+- 复核范围 `30642be..edc59b4`；5 项 P2 全部修复，逐条（原缺陷/根因/修复/红→绿）见
+  `reports/f13b/REVIEW-FIXES.md`。
+- **Standards**：
+  1. T111 证据聚合：固定 10 条 `EXPECTED_CASE_IDS`；任一 case `failed` → 汇总 `failed`，
+     blocked/缺失/多余/重复 → `partial`；`write_if_enabled` 只在完整且全 passed 时写，
+     部分/失败运行不再覆盖已提交记录；
+  2. T107 报告写入前统一 `redact_value` + 嵌入字符串逐字替换 + `find_violations` 拒绝写；
+     已提交 `T107-faults.json` 重生成，旧 attempt token 已清除。
+- **Spec**：
+  3. T102 `is_decidable` 只要求本类别事实（0/46 → **46/46**）；新增正向测试；
+  4. T104 τ² 门禁拒绝「所有被声明 reward_basis 分量都没有实际检查」的 vacuous checker
+     （真实任务 39 的空 COMMUNICATE 分量仍合法）；新增负向测试与正向对照；
+  5. T105 `json_equal` 区分 JSON bool 与 number（`False != 0`、`True != 1`），
+     gold `read=false` 改成 `0` 后 `utility`/`security_expectation_met` 均为 false。
+- 证据：`reports/f13b/T111-isolation.json`、`reports/f13b/T107-faults.json` 重生成；
+  T107 `find_violations=[]`；T111 `status=passed, complete=true`。
+- 门禁：`pytest tests/f13b` **233 passed in 415.76s**（新增 14 条）；`tests/f12`
+  **447 passed in 273.73s**；Go build/vet/test 0；`gofmt` 空；`sync_spec --check` no drift。
+- 未改 `docs/spec/**`、`contracts/**`、迁移、产品 auth/审批/沙箱语义。
+

@@ -27,6 +27,23 @@ from support import t037
 PRODUCT_ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_PATH = PRODUCT_ROOT / "reports" / "f13b" / "T111-isolation.json"
 
+#: The complete attack set the acceptance evidence must contain. A run that
+#: records only a subset (or records one attack with ``verdict="failed"``) can
+#: never be reported as ``passed``: the check below is what keeps the committed
+#: JSON an acceptance record instead of "whatever the last partial run wrote".
+EXPECTED_CASE_IDS = (
+    "run-files-credentials-mounts-privilege",
+    "run-network-positive-control",
+    "run-config-policy-refusal",
+    "run-timeout-reclaim",
+    "build-hostile-setup-hook",
+    "build-fork-limit",
+    "build-memory-limit",
+    "build-disk-quota",
+    "build-timeout-reclaim",
+    "end-to-end-tool-run",
+)
+
 WSL_DISTRO = "Ubuntu-24.04"
 SANDBOX_STATE_ROOT = "/var/tmp/orchara-sandbox"
 SANDBOX_ROOTFS = "/opt/orchara-sandbox/python-rootfs"
@@ -623,6 +640,12 @@ class Evidence:
         self.not_run.append({"item": item, "why": why})
 
     def document(self) -> dict:
+        produced = sorted(case["id"] for case in self.cases)
+        missing = sorted(set(EXPECTED_CASE_IDS) - set(produced))
+        unexpected = sorted(set(produced) - set(EXPECTED_CASE_IDS))
+        failed = sorted(
+            case["id"] for case in self.cases if case.get("verdict") != "passed"
+        )
         return {
             "ticket": "T111",
             "issue": 112,
@@ -643,20 +666,48 @@ class Evidence:
             "cases": self.cases,
             "blocked": self.blocked,
             "not_run": self.not_run,
-            "produced_cases": sorted(case["id"] for case in self.cases),
+            "expected_cases": list(EXPECTED_CASE_IDS),
+            "produced_cases": produced,
+            "missing_cases": missing,
+            "unexpected_cases": unexpected,
+            "failed_cases": failed,
+            "complete": not missing and not unexpected and not self.blocked,
         }
 
     def _status(self) -> str:
-        if self.blocked:
+        """Aggregate the case set; a partial or failed run is never ``passed``.
+
+        ``passed`` requires every expected case exactly once, every verdict
+        ``passed`` and no blocked item. A failed case makes the whole run
+        ``failed``; a missing/unexpected/blocked case makes it ``partial``.
+        """
+        produced = [case["id"] for case in self.cases]
+        missing = set(EXPECTED_CASE_IDS) - set(produced)
+        unexpected = set(produced) - set(EXPECTED_CASE_IDS)
+        duplicates = {case_id for case_id in produced if produced.count(case_id) > 1}
+        failed = [case for case in self.cases if case.get("verdict") != "passed"]
+        if failed:
+            return "failed"
+        if self.blocked or missing or unexpected or duplicates:
             return "partial"
-        return "passed" if self.cases else "partial"
+        return "passed"
 
     def write_if_enabled(self) -> Path | None:
+        """Write the evidence only when the run covers the complete case set.
+
+        A teardown, a single-test run or a partially executed matrix must not
+        overwrite the committed acceptance record with a subset. The incomplete
+        document stays in memory (and is visible through ``document()``); only a
+        complete run is persisted.
+        """
         if os.environ.get("F13B_WRITE_EVIDENCE") != "1":
+            return None
+        document = self.document()
+        if not document["complete"] or document["status"] != "passed":
             return None
         EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
         EVIDENCE_PATH.write_text(
-            json.dumps(self.document(), indent=2, ensure_ascii=False) + "\n",
+            json.dumps(document, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         return EVIDENCE_PATH

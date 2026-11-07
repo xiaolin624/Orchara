@@ -281,6 +281,28 @@ def reject_reason(task: Any, environment: dict | None = None) -> list[str]:
         reasons.add("empty_reward_basis")
     elif set(reward_basis) - REWARD_BASIS:
         reasons.add("invalid_reward_basis")
+    else:
+        # A declared reward component with no check behind it makes the fixed
+        # upstream evaluator return reward=1.0 for that component: ``DB`` builds
+        # the gold environment from ``actions``, ``ACTION`` compares those same
+        # actions, ``ENV_ASSERTION`` multiplies an empty env_assertions list
+        # (start value 1.0), and the NL/communicate components behave the same.
+        # A task is only *effectively empty* when **no** declared component has
+        # a check; a real upstream task may legitimately declare a vacuous
+        # component alongside a substantive one (e.g. airline task 39:
+        # ``reward_basis`` contains COMMUNICATE with an empty communicate_info
+        # but 11 DB actions). Requiring at least one substantive component is
+        # what makes ``reward_basis=["ENV_ASSERTION"]`` with empty
+        # env_assertions a refusal instead of a default success.
+        component_checks = {
+            "DB": action_count,
+            "ACTION": action_count,
+            "ENV_ASSERTION": env_count,
+            "NL_ASSERTION": len(lists["nl_assertions"]),
+            "COMMUNICATE": len(lists["communicate_info"]),
+        }
+        if all(component_checks.get(basis, 0) == 0 for basis in reward_basis):
+            reasons.add("reward_basis_without_assertions")
     return sorted(reasons)
 
 
@@ -1236,6 +1258,40 @@ def _compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def json_equal(left: Any, right: Any) -> bool:
+    """JSON-typed equality: ``true``/``false`` never equal ``1``/``0``.
+
+    Python's ``==`` treats ``bool`` as an ``int`` subclass, so ``True == 1`` and
+    ``False == 0`` hold. That is not JSON semantics: the product's checker keeps
+    the boolean/number distinction, and the imported AgentDojo gold results use
+    booleans (``read: false``). A plain ``==`` let a gold ``false`` match a
+    recorded ``0`` and reported a security expectation as met. This recursive
+    comparison keeps the JSON types disjoint; numbers compare by value (JSON has
+    a single number type), lists by position and objects by exact key set.
+    """
+    if isinstance(left, bool) or isinstance(right, bool):
+        return (
+            isinstance(left, bool)
+            and isinstance(right, bool)
+            and left == right
+        )
+    if left is None or right is None:
+        return left is None and right is None
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return float(left) == float(right)
+    if isinstance(left, str) and isinstance(right, str):
+        return left == right
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            json_equal(a, b) for a, b in zip(left, right)
+        )
+    if isinstance(left, dict) and isinstance(right, dict):
+        return set(left) == set(right) and all(
+            json_equal(left[key], right[key]) for key in left
+        )
+    return False
+
+
 def evaluate_assertions(case: dict, result: SimulationResult) -> list[Outcome]:
     """Mirror the five contract assertion kinds against a simulation result.
 
@@ -1249,7 +1305,7 @@ def evaluate_assertions(case: dict, result: SimulationResult) -> list[Outcome]:
         if kind == "json_equals":
             actual, found = _resolve_pointer(result.output, str(item.get("pointer", "")))
             expected = item.get("expected")
-            passed = found and actual == expected
+            passed = found and json_equal(actual, expected)
             outcomes.append(
                 Outcome(
                     kind=kind,

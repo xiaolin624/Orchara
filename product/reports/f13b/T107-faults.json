@@ -3,9 +3,9 @@
   "issue": 108,
   "title": "fault injection: old graph, live old worker, cancel race and event races",
   "status": "passed",
-  "branch": "t/t107-lifecycle-faults",
-  "commit": "e904e0c65b629a0c9a0f4a5583d44b809d93c726",
-  "generated_at": "2026-11-07T11:16:34.486324Z",
+  "branch": "integration/f13b",
+  "commit": "edc59b444dffb17d1b3722c9946ac09a674599eb",
+  "generated_at": "2026-11-07T14:29:20.941787Z",
   "environment": {
     "profile": "dev-stub",
     "model": "stub only; no real vendor credential or endpoint",
@@ -18,33 +18,33 @@
       "id": "FAULT-04",
       "title": "publish v2 after a v1 Run/snapshot exists, then resume/recover v1",
       "verdict": "passed",
-      "recorded_at": "2026-11-07T11:16:14.581987Z",
+      "recorded_at": "2026-11-07T14:29:02.432890Z",
       "injection_point": "real POST /applications/{id}/submit + /reviews/{id}/decision publishes v2 (new platform.application_versions row and sealed v2 manifest artifact); then the v1 sealed manifest object is deleted from the real object store before `orchara-admin runs recover`",
       "inputs": {
-        "run_id": "079aad75-7fe9-48b7-89af-ee10c656231f",
-        "v1_snapshot_id": "6c228602-d753-4220-b6e3-9013687d248f",
-        "v1_manifest_artifact_id": "a98e116c-ee42-408d-a19f-50017d7aefeb",
+        "run_id": "bf244cc9-c3c9-47ad-9d55-bb8f8c8abb50",
+        "v1_snapshot_id": "46d82a7e-5036-42c3-b3cc-d06a30f314b4",
+        "v1_manifest_artifact_id": "c311f136-8101-4b96-a27e-a78af8de10ce",
         "v1_manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
-        "v1_version_id": "de908b2d-49b3-4956-af93-075d51ac51fa",
-        "v2_version_id": "30f4bb78-dd60-4932-a9b0-7046f0c80d1b",
+        "v1_version_id": "18e829c9-7327-4d94-a6b4-1404c5c7cb26",
+        "v2_version_id": "73c2ba73-f672-43ee-ae3a-3c2c8985134e",
         "v2_manifest_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
-        "v2_manifest_artifact_id": "d9a91cd9-630f-4cc1-a265-6b38d32eee7a",
+        "v2_manifest_artifact_id": "9ca77b9a-2d95-4fe4-8591-22c4c82a98f7",
         "golden_manifest_bytes_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686"
       },
       "independent_truth": {
         "checked_in_golden_manifest": "tests/snapshots/sales/manifest.jcs + manifest.sha256",
         "object_bytes_v1_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
         "object_bytes_v2_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
-        "platform.runs.execution_snapshot_id": "6c228602-d753-4220-b6e3-9013687d248f",
+        "platform.runs.execution_snapshot_id": "46d82a7e-5036-42c3-b3cc-d06a30f314b4",
         "platform.runs.manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
         "platform.execution_snapshots": {
           "v1": {
             "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
-            "manifest_artifact_id": "a98e116c-ee42-408d-a19f-50017d7aefeb"
+            "manifest_artifact_id": "c311f136-8101-4b96-a27e-a78af8de10ce"
           },
           "v2": {
             "manifest_sha256": "eac3a5dbb1a09dfbf69510b7edc609363f98af0a10d8274b196889c5634ecf10",
-            "manifest_artifact_id": "d9a91cd9-630f-4cc1-a265-6b38d32eee7a"
+            "manifest_artifact_id": "9ca77b9a-2d95-4fe4-8591-22c4c82a98f7"
           }
         },
         "platform.application_versions": [
@@ -62,15 +62,15 @@
           "code": "artifact_unavailable",
           "message": "the sealed manifest object is unavailable: opening the sealed manifest object: object does not exist",
           "check_only": false,
-          "run_id": "079aad75-7fe9-48b7-89af-ee10c656231f",
+          "run_id": "bf244cc9-c3c9-47ad-9d55-bb8f8c8abb50",
           "state": "recovery_pending",
           "recovery_reason": "lease_expired",
-          "recovery_since": "2026-11-07T11:16:13.500944Z",
+          "recovery_since": "2026-11-07T14:29:01.336473Z",
           "execution_unit_id": "t107-fault04-v1b",
-          "attempt_started_at": "2026-11-07 19:16:13.173528+08",
-          "heartbeat_at": "2026-11-07 19:14:13.173528+08",
-          "lease_deadline": "2026-11-07 19:14:13.28587+08",
-          "job_id": "b62535ff-4e68-41c2-8707-2a8ca3a8291b",
+          "attempt_started_at": "2026-11-07 22:29:01.0547+08",
+          "heartbeat_at": "2026-11-07 22:27:01.0547+08",
+          "lease_deadline": "2026-11-07 22:27:01.146584+08",
+          "job_id": "1938d46b-1a20-4865-b390-e431d4240d24",
           "evidence_sha256": "3c3a6f36fd56af1395784ab936da6e8c980d2d04a944397b48a93b11f5c27211",
           "checks": [
             {
@@ -91,7 +91,7 @@
             {
               "name": "old_execution",
               "status": "passed",
-              "detail": "last heartbeat 2026-11-07 19:14:13.173528+08 is older than the grace window"
+              "detail": "last heartbeat 2026-11-07 22:27:01.0547+08 is older than the grace window"
             },
             {
               "name": "job",
@@ -117,7 +117,7 @@
         "claim_1": {
           "manifest_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
           "manifest_url_sha256": "9cc418d167377e667c77284ce7b35819c7374c0459ec90e41f4131719aef5686",
-          "execution_snapshot_id": "6c228602-d753-4220-b6e3-9013687d248f"
+          "execution_snapshot_id": "46d82a7e-5036-42c3-b3cc-d06a30f314b4"
         },
         "recovery_1": {
           "status": "recovered",
@@ -155,54 +155,54 @@
       "id": "FAULT-05",
       "title": "a live old supervisor holds an expired lease; recovery_pending without a second run",
       "verdict": "passed",
-      "recorded_at": "2026-11-07T11:16:00.836185Z",
-      "injection_point": "the compiled real `cmd/supervisor exec --once` claims attempt 8420f63a.. on run 5bc409a2-d0a2-4daa-a59d-51d4c2c61065; the process is suspended with NtSuspendProcess (heartbeat stops, process+DB session stay alive); then `UPDATE platform.run_attempts SET lease_deadline = now() - 120s` and the real `orchara-admin runs sweep-leases --grace 1s` parks the Run",
+      "recorded_at": "2026-11-07T14:28:48.426234Z",
+      "injection_point": "the compiled real `cmd/supervisor exec --once` claims attempt 3348f6be.. on run b3792956-183c-4654-8467-1836fd73d8e6; the process is suspended with NtSuspendProcess (heartbeat stops, process+DB session stay alive); then `UPDATE platform.run_attempts SET lease_deadline = now() - 120s` and the real `orchara-admin runs sweep-leases --grace 1s` parks the Run",
       "inputs": {
-        "run_id": "5bc409a2-d0a2-4daa-a59d-51d4c2c61065",
-        "execution_unit_id": "t107-old-worker-c33c28fcd6",
-        "attempt_token_prefix": "8420f63a",
-        "supervisor_pid": 64356,
-        "supervisor_application_name": "t107-old-worker-db-070d38e8bc",
+        "run_id": "b3792956-183c-4654-8467-1836fd73d8e6",
+        "execution_unit_id": "t107-old-worker-9c59753e50",
+        "attempt_token_prefix": "3348f6be",
+        "supervisor_pid": 60720,
+        "supervisor_application_name": "t107-old-worker-db-2005b0a8b8",
         "suspend": {
-          "pid": 64356,
+          "pid": 60720,
           "operation": "NtSuspendProcess",
           "status": 0
         },
         "commands": {
           "sweep": "orchara-admin runs sweep-leases --grace 1s",
-          "recover": "orchara-admin runs recover --run 5bc409a2-d0a2-4daa-a59d-51d4c2c61065 --evidence <json>"
+          "recover": "orchara-admin runs recover --run b3792956-183c-4654-8467-1836fd73d8e6 --evidence <json>"
         }
       },
       "independent_truth": {
         "process": {
           "before": {
-            "pid": 64356,
+            "pid": 60720,
             "alive": true,
-            "creation_time_epoch": 1794050156.718189
+            "creation_time_epoch": 1794061724.151173
           },
           "while_parked": {
-            "pid": 64356,
+            "pid": 60720,
             "alive": true,
-            "creation_time_epoch": 1794050156.718189
+            "creation_time_epoch": 1794061724.151173
           },
           "verdict": "still alive (STILL_ACTIVE) with the same creation time"
         },
         "pg_stat_activity_sessions": [
           {
-            "pid": 50836,
-            "application_name": "t107-old-worker-db-070d38e8bc",
+            "pid": 66616,
+            "application_name": "t107-old-worker-db-2005b0a8b8",
             "state": "idle",
-            "backend_start": "2026-11-07T11:15:56.878350Z",
-            "state_change": "2026-11-07T11:15:57.017218Z"
+            "backend_start": "2026-11-07T14:28:44.306433Z",
+            "state_change": "2026-11-07T14:28:44.436694Z"
           }
         ],
         "sessions_after_park": [
           {
-            "pid": 50836,
-            "application_name": "t107-old-worker-db-070d38e8bc",
+            "pid": 66616,
+            "application_name": "t107-old-worker-db-2005b0a8b8",
             "state": "idle",
-            "backend_start": "2026-11-07T11:15:56.878350Z",
-            "state_change": "2026-11-07T11:15:57.017218Z"
+            "backend_start": "2026-11-07T14:28:44.306433Z",
+            "state_change": "2026-11-07T14:28:44.436694Z"
           }
         ],
         "sessions_after_exit": [],
@@ -216,33 +216,33 @@
           "skipped": 0,
           "runs": [
             {
-              "run_id": "5bc409a2-d0a2-4daa-a59d-51d4c2c61065",
-              "job_id": "b72a0738-e5dc-4a32-ad62-bac110228cad",
-              "execution_unit_id": "t107-old-worker-c33c28fcd6",
-              "lease_deadline": "2026-11-07 19:13:57.46218+08",
-              "heartbeat_at": "2026-11-07 19:13:57.026856+08",
+              "run_id": "b3792956-183c-4654-8467-1836fd73d8e6",
+              "job_id": "1ae7b966-5937-4779-b6d4-2cf210e41af0",
+              "execution_unit_id": "t107-old-worker-9c59753e50",
+              "lease_deadline": "2026-11-07 22:26:44.887307+08",
+              "heartbeat_at": "2026-11-07 22:26:44.444081+08",
               "action": "parked"
             }
           ],
           "note": "a parked run keeps its held job and its execution slot; no requeue, token swap or second executor happens here. Re-queueing requires cmd/admin runs recover with audited operator evidence."
         },
         "platform.run_attempts": {
-          "token_prefix": "8420f63a",
+          "token_prefix": "3348f6be",
           "exited_at_while_parked": null,
           "revoked_at_while_parked": null,
           "attempt_count_before_recovery": 1
         },
         "supervisor_report": {
           "status": "failed",
-          "run_id": "5bc409a2-d0a2-4daa-a59d-51d4c2c61065",
-          "job_id": "b72a0738-e5dc-4a32-ad62-bac110228cad",
-          "execution_unit_id": "t107-old-worker-c33c28fcd6",
+          "run_id": "b3792956-183c-4654-8467-1836fd73d8e6",
+          "job_id": "1ae7b966-5937-4779-b6d4-2cf210e41af0",
+          "execution_unit_id": "t107-old-worker-9c59753e50",
           "outcome": "error",
           "error_code": "sandbox_failed",
           "error": "the attempt lease was lost while the sandbox ran: the sandbox was stopped because the attempt lease was lost: internal API 409 stale_attempt: the attempt token does not own a live lease on this run",
           "heartbeats": 1,
           "sandbox": {
-            "sandbox_id": "t107-old-worker-c33c28fcd6",
+            "sandbox_id": "t107-old-worker-9c59753e50",
             "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5",
             "started": true,
             "exit_code": 0,
@@ -250,17 +250,17 @@
             "cancelled": false,
             "duration_ms": 0,
             "cleanup": {
-              "sandbox_list_matches": 0,
-              "pid": 457,
+              "sandbox_list_matches": 1,
+              "pid": 452,
               "pid_alive": false,
               "ps_matches": 0,
               "workspace_removed": true
             }
           },
-          "duration_ms": 2782
+          "duration_ms": 2729
         },
-        "supervisor_stderr_tail": "orchara-supervisor 2026/11/07 11:15:59 run_id=5bc409a2-d0a2-4daa-a59d-51d4c2c61065: node.status stats=failed was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 11:15:59 run_id=5bc409a2-d0a2-4daa-a59d-51d4c2c61065: node.status end=skipped was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 11:15:59 exec: status=failed outcome=error run=5bc409a2-d0a2-4daa-a59d-51d4c2c61065 code=sandbox_failed\n",
-        "independent_late_heartbeat": "{\"error\":{\"code\":\"stale_attempt\",\"message\":\"the attempt token does not own a live lease on this run\",\"request_id\":\"21a709dea5acf86b03d3dfa5e4d3a082\"}}\n"
+        "supervisor_stderr_tail": "orchara-supervisor 2026/11/07 14:28:47 run_id=b3792956-183c-4654-8467-1836fd73d8e6: node.status stats=failed was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 14:28:47 run_id=b3792956-183c-4654-8467-1836fd73d8e6: node.status end=skipped was not recorded: internal API 409 run_state_conflict: the run is not executing; waiting/finalizing/cancelling/reconciliation permit only heartbeat, exit and receipt/query calls\norchara-supervisor 2026/11/07 14:28:47 exec: status=failed outcome=error run=b3792956-183c-4654-8467-1836fd73d8e6 code=sandbox_failed\n",
+        "independent_late_heartbeat": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token does not own a live lease on this run\", \"request_id\": \"cbb2e247d36a2e8e2d52558f6623e1ed\"}}"
       },
       "expected": {
         "parked": "run state recovery_pending, reason lease_expired, job held, allocation not released",
@@ -296,52 +296,52 @@
       "id": "FAULT-06",
       "title": "cancel then late result/exit/duplicate queue delivery/events: no revival, no new capability",
       "verdict": "passed",
-      "recorded_at": "2026-11-07T11:16:23.263227Z",
+      "recorded_at": "2026-11-07T14:29:10.612189Z",
       "injection_point": "real POST /runs/{id}/cancel while the claimed attempt is running; after the supervisor's real exit commits cancelled, replay the pre-cancel worker event, send fresh result/event/upload/capability calls, poll the claim endpoint again, and call `orchara-admin runs recover` on the terminal Run",
       "inputs": {
-        "run_id": "201af11a-dd7e-4ed4-a997-2eb7bed30a02",
-        "attempt_token_prefix": "4d9dd2c6",
-        "cancel_requested_at": "2026-11-07 19:16:19.212252+08",
-        "pre_cancel_event_id": "cfcad160-0581-46fd-b2cc-7a04174f9c72",
+        "run_id": "e9c32637-de39-45cd-a236-60e86543ab9d",
+        "attempt_token_prefix": "866bf5c4",
+        "cancel_requested_at": "2026-11-07 22:29:07.208113+08",
+        "pre_cancel_event_id": "e55b4614-e7bc-4a83-9149-e6149828693b",
         "pre_cancel_event_seq": 3,
         "terminal_revision": 4,
         "late_deliveries": [
           {
             "delivery": "late_result",
             "note": "a fresh result after cancelled",
-            "at": "2026-11-07T11:16:19.898619Z",
+            "at": "2026-11-07T14:29:07.879132Z",
             "status": 409,
             "code": "run_terminal",
-            "body": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"fdd58e255126c926346f128e68837038\"}}\n"
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"bc8f048799c851c8d0dc69a36d4cf0e8\"}}"
           },
           {
             "delivery": "duplicate_late_result",
             "note": "the same result body replayed",
-            "at": "2026-11-07T11:16:19.902168Z",
+            "at": "2026-11-07T14:29:07.883512Z",
             "status": 409,
             "code": "run_terminal",
-            "body": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"17c2f33309a0e77a30640d63df161298\"}}\n"
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"2f4bf0b600580e0a75769c2b93b18873\"}}"
           },
           {
             "delivery": "replay_pre_cancel_event",
             "note": "same event_id/content replayed",
-            "at": "2026-11-07T11:16:19.917680Z",
+            "at": "2026-11-07T14:29:07.885927Z",
             "status": 409,
             "code": "run_terminal",
-            "body": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"7405ec160afbe847098ee379602d7100\"}}\n"
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"2f535bd332e8992f5a1348c696e1084c\"}}"
           },
           {
             "delivery": "late_new_event",
             "note": "a new node.status after cancelled",
-            "at": "2026-11-07T11:16:19.934144Z",
+            "at": "2026-11-07T14:29:07.888922Z",
             "status": 409,
             "code": "run_terminal",
-            "body": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"57eff801812b19a2d5230fb771a682a0\"}}\n"
+            "body": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"6af940003f5d96ea23f647d87a8babf4\"}}"
           },
           {
             "delivery": "duplicate_queue_delivery",
             "note": "claim poll after cancelled",
-            "at": "2026-11-07T11:16:19.943404Z",
+            "at": "2026-11-07T14:29:07.898341Z",
             "status": 204,
             "code": null,
             "body": ""
@@ -349,63 +349,63 @@
           {
             "delivery": "replay_same_exit",
             "note": "identical exit evidence",
-            "at": "2026-11-07T11:16:19.967230Z",
+            "at": "2026-11-07T14:29:07.907364Z",
             "status": 200,
             "code": null,
-            "body": "{\"id\":\"4d9dd2c6-0241-442c-af0a-5cd1852ecf89\",\"state\":\"exited\"}\n"
+            "body": "{\"id\": \"<redacted>\", \"state\": \"exited\"}"
           },
           {
             "delivery": "different_exit",
             "note": "different exit evidence",
-            "at": "2026-11-07T11:16:19.967230Z",
+            "at": "2026-11-07T14:29:07.907364Z",
             "status": 409,
             "code": "attempt_evidence_conflict",
-            "body": "{\"error\":{\"code\":\"attempt_evidence_conflict\",\"message\":\"this attempt already exited with different evidence\",\"request_id\":\"987d27dd2883dbec60de76a2c26b2503\"}}\n"
+            "body": "{\"error\": {\"code\": \"attempt_evidence_conflict\", \"message\": \"this attempt already exited with different evidence\", \"request_id\": \"6230ed1229d67abf116ad29534ae8522\"}}"
           },
           {
             "delivery": "late_artifact_upload",
             "note": "a new capability/artifact call",
-            "at": "2026-11-07T11:16:19.994487Z",
+            "at": "2026-11-07T14:29:07.910558Z",
             "status": 409,
             "code": "stale_attempt",
-            "body": "{\"error\":{\"code\":\"stale_attempt\",\"message\":\"the attempt token does not own a live lease on this run\",\"request_id\":\"f5c8027e41077c534c4588993f51ac83\"}}\n"
+            "body": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token does not own a live lease on this run\", \"request_id\": \"4520b55f27983f7fa4a0a0cc247a4ea3\"}}"
           },
           {
             "delivery": "late_capability_call",
             "note": "a new model capability call",
-            "at": "2026-11-07T11:16:20.025586Z",
+            "at": "2026-11-07T14:29:07.918553Z",
             "status": 403,
             "code": "stale_attempt",
-            "body": "{\"error\":{\"code\":\"stale_attempt\",\"message\":\"the attempt token is not a live lease of this run\",\"request_id\":\"9f51a44fad19ecef1c3811d01abcf316\"}}\n"
+            "body": "{\"error\": {\"code\": \"stale_attempt\", \"message\": \"the attempt token is not a live lease of this run\", \"request_id\": \"f1ae838fc2944a2ce0d17e08df7e7c25\"}}"
           },
           {
             "delivery": "foreign_owner_read",
             "note": "another owner reads the cancelled run",
-            "at": "2026-11-07T11:16:20.790662Z",
+            "at": "2026-11-07T14:29:08.767654Z",
             "status": 404,
             "code": "resource_not_found",
-            "body": "{\"error\":{\"code\":\"resource_not_found\",\"message\":\"that run does not exist\",\"request_id\":\"53759e14b3f043319f07cadb66ba72b0\"}}\n"
+            "body": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that run does not exist\", \"request_id\": \"e7c12e950edc560d8d9c0cbd5aad2a59\"}}"
           },
           {
             "delivery": "recover_cancelled_run",
             "note": "operator recover after terminal",
-            "at": "2026-11-07T11:16:20.885879Z",
+            "at": "2026-11-07T14:29:08.871985Z",
             "status": 1,
             "code": "not_recovery_pending",
-            "body": "{\"status\":\"refused\",\"code\":\"not_recovery_pending\",\"message\":\"the run is cancelled, not recovery_pending\",\"check_only\":false,\"run_id\":\"201af11a-dd7e-4ed4-a997-2eb7bed30a02\",\"state\":\"cancelled\",\"evidence_sha256\":\"74091b6f711db29855e7e8c5a9646bf2d5cc0a71d0e4a04b9ddb8120e5d80073\",\"checks\":[{\"name\":\"run_state\",\"status\":\"skipped\",\"detail\":\"the run is cancelled\"}]}\n"
+            "body": "{\"status\": \"refused\", \"code\": \"not_recovery_pending\", \"message\": \"the run is cancelled, not recovery_pending\", \"check_only\": false, \"run_id\": \"e9c32637-de39-45cd-a236-60e86543ab9d\", \"state\": \"cancelled\", \"evidence_sha256\": \"74091b6f711db29855e7e8c5a9646bf2d5cc0a71d0e4a04b9ddb8120e5d80073\", \"checks\": [{\"name\": \"run_state\", \"status\": \"skipped\", \"detail\": \"the run is cancelled\"}]}"
           }
         ]
       },
       "independent_truth": {
         "platform.runs": {
-          "id": "201af11a-dd7e-4ed4-a997-2eb7bed30a02",
-          "owner_id": "c23f7ba0-b97c-496a-9ee0-60b87d861ef9",
+          "id": "e9c32637-de39-45cd-a236-60e86543ab9d",
+          "owner_id": "9ffe6996-f9f4-4ab7-a8f4-433667dd1f08",
           "state": "cancelled",
           "phase": "idle",
           "revision": 4,
-          "cancel_requested_at": "2026-11-07 19:16:19.212252+08",
+          "cancel_requested_at": "2026-11-07 22:29:07.208113+08",
           "error_code": null,
-          "finished_at": "2026-11-07 19:16:19.500006+08",
+          "finished_at": "2026-11-07 22:29:07.466625+08",
           "output_artifact_id": null
         },
         "platform.run_events": [
@@ -444,22 +444,22 @@
         "next_event_seq": 6,
         "run_attempts": [
           {
-            "token": "4d9dd2c6-0241-442c-af0a-5cd1852ecf89",
-            "job_id": "30a8dc93-ec17-4462-b5cc-cf5d471b00ac",
-            "run_id": "201af11a-dd7e-4ed4-a997-2eb7bed30a02",
+            "token": "<redacted>",
+            "job_id": "0d1d183d-afea-4b3a-bb31-4a94b53ba904",
+            "run_id": "e9c32637-de39-45cd-a236-60e86543ab9d",
             "worker_id": "t029-supervisor",
             "execution_unit_id": "t107-fault06",
-            "lease_deadline": "2026-11-07 19:21:18.965297+08",
-            "exited_at": "2026-11-07 19:16:19.500006+08",
-            "revoked_at": "2026-11-07 19:16:19.500006+08"
+            "lease_deadline": "2026-11-07 22:34:06.954883+08",
+            "exited_at": "2026-11-07 22:29:07.466625+08",
+            "revoked_at": "2026-11-07 22:29:07.466625+08"
           }
         ],
         "jobs": {
-          "id": "30a8dc93-ec17-4462-b5cc-cf5d471b00ac",
-          "run_id": "201af11a-dd7e-4ed4-a997-2eb7bed30a02",
+          "id": "0d1d183d-afea-4b3a-bb31-4a94b53ba904",
+          "run_id": "e9c32637-de39-45cd-a236-60e86543ab9d",
           "kind": "start",
           "state": "completed",
-          "available_at": "2026-11-07 19:16:18.898576+08",
+          "available_at": "2026-11-07 22:29:06.872751+08",
           "current_attempt_token": null,
           "resume_artifact_id": null
         },
@@ -474,7 +474,7 @@
           "code": "not_recovery_pending",
           "message": "the run is cancelled, not recovery_pending",
           "check_only": false,
-          "run_id": "201af11a-dd7e-4ed4-a997-2eb7bed30a02",
+          "run_id": "e9c32637-de39-45cd-a236-60e86543ab9d",
           "state": "cancelled",
           "evidence_sha256": "74091b6f711db29855e7e8c5a9646bf2d5cc0a71d0e4a04b9ddb8120e5d80073",
           "checks": [
@@ -581,13 +581,13 @@
       "id": "FAULT-10",
       "title": "duplicate events and two concurrent opposite approval decisions",
       "verdict": "passed",
-      "recorded_at": "2026-11-07T11:16:34.139984Z",
+      "recorded_at": "2026-11-07T14:29:20.598026Z",
       "injection_point": "two real supervisor mTLS clients race `POST /internal/v1/runs/{id}/waiting-resolution` with approved/rejected over separate connections (threading.Barrier); duplicate worker events replay the same event_id through the real `POST /internal/v1/runs/{id}/events` endpoint, including after the real terminal finalizer committed failed",
       "inputs": {
-        "event_run_id": "0a6edb50-05b9-49f6-926c-7dba3d8025ce",
-        "event_id": "7904d511-582f-4f10-b941-457dd7cdcc59",
+        "event_run_id": "882d9bcd-8889-4058-af7f-76f1358a5f17",
+        "event_id": "9253c1f7-7148-4773-9a76-76491289071e",
         "duplicate_local_sequence": 9,
-        "decision_run_id": "c106d1f7-2de7-47d0-9c35-3358a1f19407",
+        "decision_run_id": "9d2414cd-129c-4a27-8d34-1bddd4d384aa",
         "race_outcomes": [
           "approved",
           "rejected"
@@ -599,33 +599,33 @@
         "decision_statuses": [
           {
             "index": 0,
-            "status": 200,
-            "body": "{\"run_id\":\"c106d1f7-2de7-47d0-9c35-3358a1f19407\",\"kind\":\"approval\",\"outcome\":\"approved\",\"decision_at\":\"2026-11-07T11:16:31.268719Z\",\"resume_job_id\":null}\n"
+            "status": 409,
+            "body": "{\"error\": {\"code\": \"decision_conflict\", \"message\": \"a different waiting resolution is already stored\", \"request_id\": \"85697b780e8f98e0f95347116015cfaa\"}}"
           },
           {
             "index": 1,
-            "status": 409,
-            "body": "{\"error\":{\"code\":\"decision_conflict\",\"message\":\"a different waiting resolution is already stored\",\"request_id\":\"4df25135f792d1f7713f8dc5654b0a1e\"}}\n"
+            "status": 200,
+            "body": "{\"run_id\": \"9d2414cd-129c-4a27-8d34-1bddd4d384aa\", \"kind\": \"approval\", \"outcome\": \"rejected\", \"decision_at\": \"2026-11-07T14:29:18.084941Z\", \"resume_job_id\": null}"
           }
         ]
       },
       "independent_truth": {
         "platform.run_waitings": {
-          "run_id": "c106d1f7-2de7-47d0-9c35-3358a1f19407",
+          "run_id": "9d2414cd-129c-4a27-8d34-1bddd4d384aa",
           "kind": "approval",
           "checkpoint_id": "ckpt-t107-fault10",
-          "decision": "{\"kind\": \"approval\", \"outcome\": \"approved\", \"reference\": \"t107-race-approve\"}",
-          "decision_at": "2026-11-07 19:16:31.268719+08",
-          "exit_confirmed_at": "2026-11-07 19:16:32.164468+08",
-          "resume_job_id": "b68a60e4-38de-456b-b3ca-34d396fe8974",
-          "resume_artifact_id": "f5b38ca0-262e-462a-8bff-ca18155f8ee6",
-          "created_at": "2026-11-07 19:16:30.841339+08",
-          "updated_at": "2026-11-07 19:16:32.164468+08"
+          "decision": "{\"kind\": \"approval\", \"outcome\": \"rejected\", \"reference\": \"t107-race-reject\"}",
+          "decision_at": "2026-11-07 22:29:18.084941+08",
+          "exit_confirmed_at": "2026-11-07 22:29:18.996364+08",
+          "resume_job_id": "f8402ce8-aff1-432f-9973-0af48bfa41a2",
+          "resume_artifact_id": "3373fd55-ca73-40a8-acb5-b9b6df2530d0",
+          "created_at": "2026-11-07 22:29:17.666736+08",
+          "updated_at": "2026-11-07 22:29:18.996364+08"
         },
         "stored_decision": {
           "kind": "approval",
-          "outcome": "approved",
-          "reference": "t107-race-approve"
+          "outcome": "rejected",
+          "reference": "t107-race-reject"
         },
         "waiting_rows_for_run": 1,
         "platform.run_events_waiting_run": [
@@ -683,16 +683,16 @@
           }
         ],
         "resume_job": {
-          "id": "b68a60e4-38de-456b-b3ca-34d396fe8974",
-          "run_id": "c106d1f7-2de7-47d0-9c35-3358a1f19407",
+          "id": "f8402ce8-aff1-432f-9973-0af48bfa41a2",
+          "run_id": "9d2414cd-129c-4a27-8d34-1bddd4d384aa",
           "kind": "resume",
           "state": "ready",
           "current_attempt_token": null,
-          "resume_artifact_id": "f5b38ca0-262e-462a-8bff-ca18155f8ee6",
-          "created_at": "2026-11-07 19:16:32.164468+08"
+          "resume_artifact_id": "3373fd55-ca73-40a8-acb5-b9b6df2530d0",
+          "created_at": "2026-11-07 22:29:18.996364+08"
         },
-        "late_duplicate_event_response": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"847339b161c064728bc2bb7009548e40\"}}\n",
-        "late_new_event_response": "{\"error\":{\"code\":\"run_terminal\",\"message\":\"the run is already terminal; a late result never revives it\",\"request_id\":\"36af78629cd8441826505bee331f18c7\"}}\n"
+        "late_duplicate_event_response": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"e87aedcaab1a2a84a30da472fc7c4342\"}}",
+        "late_new_event_response": "{\"error\": {\"code\": \"run_terminal\", \"message\": \"the run is already terminal; a late result never revives it\", \"request_id\": \"ad4e4e2dd8ac8e806c6e22c5493d3da8\"}}"
       },
       "expected": {
         "concurrent_decisions": "exactly one 200, the other 409 decision_conflict; one stored decision row",
@@ -706,8 +706,8 @@
           200,
           409
         ],
-        "stored_outcome": "approved",
-        "stored_reference": "t107-race-approve",
+        "stored_outcome": "rejected",
+        "stored_reference": "t107-race-reject",
         "decision_rows": 1,
         "resume_jobs": 1,
         "waiting_run_states": [
