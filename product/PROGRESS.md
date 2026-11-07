@@ -3028,8 +3028,9 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   `pytest tests/f13b/test_t114_cancel_exit.py -q` → **1 passed in 33.10s**；
   `pytest tests/f13b/test_t114_capacity.py -q`（short）→ **2 passed, 1 skipped in 155.00s**；
   `pytest tests/f13b/test_t113_cache_comparison.py -q` → **6 passed in 77.49s**；
-  `pytest tests/f10/test_t067_cache.py -q` → 见 `B2-REVIEW-FIXES.md` §8.4。
-  结束前 `git merge integration/t113-t114-t122`（本分支基线即其 tip；up-to-date）。
+  `pytest tests/f10/test_t067_cache.py -q` → **8 passed in 75.04s**。
+  S7 证据行：`T122-EVIDENCE ... "git_head": "3c7713c..."`（证据运行树 = 最终交付树 commit；
+  随后仅 docs-only 提交写入该行）。结束前 `git merge integration/t113-t114-t122` → **Already up to date**。
 - **未改**：`docs/spec/**`、`contracts/**`、迁移；未 push；未弱化既有票断言（S1/S4/S2 的
   harness/fixture 收紧与 S6 的失败路径测试是 brief 要求的新增/收紧）。
 - **原始日志**：`E:\Orchara\.scratch\f13b\review-fixes\`；摘要

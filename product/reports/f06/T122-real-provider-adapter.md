@@ -414,14 +414,29 @@ B2 复核对本票的发现按 H1/H2/H3/S2/S3/S7 修复。逐条见
 
 - 旧报告唯一 `T122-EVIDENCE` 行 `git_head=ae1af91`（改动前基线）；merge 后复跑无机器可读行。
 - 修复：在最终交付树上以 `T122_GIT_HEAD=<本票代码 commit>` 重跑本套件并捕获
-  `T122-EVIDENCE`：
+  `T122-EVIDENCE`（`-s`，`gate-t122-evidence.log`）：
 
 ```text
-<见 §10.7 补充>
+T122-EVIDENCE {"charged_amount": "0.00002500",
+  "git_head": "3c7713cdc2f167c611087e67b1579e7d144d8a94",
+  "model_id": "fake-vendor-model-1",
+  "model_profile_version_id": "22222222-2222-4222-8222-222222222222",
+  "params_sha256": "ed59ed7c047dd96d7f5c17df85d827230d1ba185e46eef40a4aa901a2a84546a",
+  "price_version": "price-v1:22222222-2222-4222-8222-222222222222:in=1.00:out=2.00:USD",
+  "profile": "dev-stub + explicit ORCHARA_MODEL_ENDPOINT (loopback fake provider)",
+  "provider": "openai-compatible",
+  "receipt_artifact_sha256": "f332165a26f3caf682f25b048ded043dd30ef2775ebea6f3d6e8cf8c2988b882",
+  "receipt_size_bytes": 169, "tokens_in": 11, "tokens_out": 7}
+13 passed in 109.97s (0:01:49)
 ```
 
-- 该行对应本票最终**代码** commit；之后仅有报告/PROGRESS 的 docs 提交
-  （`git diff <code commit>..<docs commit> --stat` 只含文档）。
+- 该行对应本票最终**代码+文档交付树** commit `3c7713c...`（`ad9b39a` 代码 commit + 报告/
+  ADR/PROGRESS 的 docs commit）；本报告随后**只新增这一行证据**（docs-only）。验证方式：
+  `git diff 3c7713c..HEAD --stat` 只含文档。证据跑在自己的 `T122_GIT_HEAD` 值上打印，不是
+  事后回填的旧基线。`gate-t122-evidence.log` 中 PowerShell 把 fake provider 的
+  `ConnectionResetError`（H2 取消用例主动断开连接的预期噪声）记成 stderr/exit 1；pytest 结果为
+  **13 passed**，前一门禁跑（`-q`，无 stderr 噪声）同样 **13 passed** 且进程 exit 0。
+
 
 ### 10.7 最终树门禁 tail
 
@@ -435,6 +450,11 @@ no drift: spec copy and contract snapshot match the manifest
 
 $ python -m pytest tests/f06/test_t122_real_provider.py -q
 13 passed in 110.24s (0:01:50)
+
+# 证据复跑（-s，T122_GIT_HEAD=最终交付树 commit）
+$ python -m pytest tests/f06/test_t122_real_provider.py -q -s
+13 passed in 109.97s (0:01:49)   # 见 §10.6 的 T122-EVIDENCE 行
 ```
-（原始日志：`E:\Orchara\.scratch\f13b\review-fixes\gate-t122.log`、`gate-go.log`。）
+（原始日志：`E:\Orchara\.scratch\f13b\review-fixes\gate-t122.log`、
+`gate-t122-evidence.log`、`gate-go.log`。）
 
