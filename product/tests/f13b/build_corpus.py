@@ -1750,6 +1750,15 @@ def build() -> dict[str, bytes]:
         raise FileNotFoundError(
             f"the T104 external import registry is missing: {external_registry_path}"
         )
+    # F13B/T105: the same relationship for the adapted AgentDojo subset. It is a
+    # separate registry so neither importer can silently absorb the other's cases.
+    agentdojo_registry_path = (
+        PRODUCT_ROOT / "tests" / "f13b" / "external" / "agentdojo" / "registry.json"
+    )
+    if not agentdojo_registry_path.exists():
+        raise FileNotFoundError(
+            f"the T105 AgentDojo import registry is missing: {agentdojo_registry_path}"
+        )
 
     registry = {
         "schema": f13b_corpus.REGISTRY_SCHEMA,
@@ -1795,6 +1804,27 @@ def build() -> dict[str, bytes]:
                 "corpus's dev split, and their results are not released-benchmark "
                 "scores; the external registry pins this relationship."
             ),
+            "agentdojo": {
+                "registry_path": (
+                    "product/tests/f13b/external/agentdojo/registry.json"
+                ),
+                "registry_sha256": hashlib.sha256(
+                    agentdojo_registry_path.read_bytes()
+                ).hexdigest(),
+                "source": (
+                    "ethz-spylab/agentdojo@"
+                    "089ed468cf3ed0322acc66b0211f26d9d90dbf60"
+                ),
+                "source_commit": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+                "label": "adapted_external",
+                "rule": (
+                    "Imported adapted cases are frozen_test only. Their utility and "
+                    "attack_success results are reported separately, security=True "
+                    "from AgentDojo maps to attack_success=true, families/templates "
+                    "and near duplicates must not overlap this corpus, and their "
+                    "results are not released-benchmark scores."
+                ),
+            },
         },
     }
     files["registry.json"] = _dump(registry)
