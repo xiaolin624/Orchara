@@ -1,9 +1,15 @@
 # T109（GitHub #110）故障注入：删除、限流、Redis 丢唤醒与权限撤销（FAULT-09/11/12/14）
 
-状态：**partial** —— FAULT-09 / FAULT-11 / FAULT-14 **passed（真实栈）**；FAULT-12 的
-PostgreSQL-notifier 与 SSE 回放半 **passed**，但本构建**没有 Redis 适配器/实例**，Redis 重启
-半按规则记 **blocked**，不冒充 Redis 通过。真实厂商 429/5xx 端点仍 `not_run`（dev-stub 故障
-model id 代替并逐处标注）。
+状态：**passed（编排者裁决，2026-11-07）** —— FAULT-09 / FAULT-11 / FAULT-14 **passed（真实栈）**；
+FAULT-12 的 PostgreSQL-notifier 丢唤醒、maintenance 重启与 SSE 回放半 **passed**；本构建
+**没有 Redis 适配器/实例**，Redis 重启传输变体按 AC5「缺条件标 blocked」记 **blocked**，
+**不冒充 Redis 通过**。真实厂商 429/5xx 端点仍 `not_run`（dev-stub 故障 model id 代替并逐处标注）。
+
+> 裁决说明：issue #110 的 AC1 要求复现 FAULT-09/11/12/14 的实际注入点，AC5 明确允许对缺失条件
+> 标 `blocked`。FAULT-12 的语义期望（job/事实不丢、SSE 从 PG 回放）已用**真实丢失唤醒**
+> （无消费者 InProcessNotifier）+ **真实 maintenance 进程重启**证明；Redis 只是该 notifier 的
+> 另一种传输实现，本构建不存在（T022/T024 亦记 `not_run`），故该传输变体记 blocked，
+> 不把 PG 结果写成 Redis 通过，也不因此把其余三条真实故障判为未完成。
 
 - 分支 / worktree：`t/t109-data-faults` / `E:\Orchara-wt\t109`
 - 基线：`integration/f13b` @ `d593c1e`；结束前 merge `integration/f13b`，其上重跑门禁。

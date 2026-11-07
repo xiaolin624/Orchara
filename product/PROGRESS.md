@@ -2671,6 +2671,10 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 
 ## F13B T109（GitHub #110）：删除、限流、Redis 丢唤醒与权限撤销故障注入（2026-11-07）
 
+- **状态裁决（2026-11-07）**：T109 记 **passed**（FAULT-09/11/14 真实栈 passed；FAULT-12 的 PG-notifier
+  丢唤醒/maintenance 重启/SSE 回放半 passed，Redis 传输变体因本构建无 adapter/server 记 `blocked`）。
+  issue AC5 允许缺失条件标 `blocked`；未把 PG 结果写成 Redis 通过，证据与原始 tail 不变。
+
 - 分支 `t/t109-data-faults` / worktree `E:\Orchara-wt\t109`；基线 `integration/f13b` @ `d593c1e`，结束前 merge `integration/f13b` @ `f6e0394`（T106 最终证据）→ 合并提交 `4175a53`，最终门禁在合并树上重跑。
 - 交付：`tests/f13b/test_t109_data_faults.py`（4 条真实栈故障，FAULT-09/11/12/14）、`tests/support/t109.py`（fault 证据 writer + 真实 grants/后台任务/进程探针）、`reports/f13b/T109-faults.json`（4 条 fault 记录，FAULT-12 含 `blocked` 的 Redis 子项）、`reports/f13b/T109-data-faults.md`；未改 `docs/spec/**`、`contracts/**`、迁移、产品 Go/Python 代码与既有票断言。
 - FAULT-09 passed：真实打开 PostgreSQL 检索缓存并命中后，经真实 `DELETE /knowledge-documents/{id}` 删除文档；删除后检索无该文档 item、`cache.hit=false`、无正文；citation 404 无 text/citation；把已删 item 注入当前 key 的活缓存行 → `hit=false/discarded=true/item_unreadable`；reindex 404、ingest 重放 `failed/source_deleted`（business）、删除源文件后重摄取 404；真实 stale 缓存行 `hit_count=0`（stale hits=0）。
