@@ -38,7 +38,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from support import f00b, t025, t027, t029, t033, t086, t114
+from support import f00b, t025, t027, t029, t033, t041, t086, t114
 from support import stack as st
 
 PRODUCT_ROOT = Path(__file__).resolve().parents[2]
@@ -279,6 +279,13 @@ def test_cancel_during_inflight_capability_commits_cancelled_and_releases_slot(
         # worker reported a cancellation rather than a stranded error.
         assert len(operations_after) == 1, evidence
         assert operations_after[0]["state"] == "succeeded", evidence
+        # H2 regression guard: a cancel observed around an in-flight model call
+        # must never be recorded as a provider failure in the ledger.
+        operation_attempts = t041.attempt_rows(stack.dbname, operation["id"])
+        assert len(operation_attempts) == 1, evidence | {"operation_attempts": operation_attempts}
+        assert operation_attempts[0]["state"] == "succeeded", operation_attempts
+        assert operation_attempts[0]["error_code"] != "provider_error", operation_attempts
+        assert operations_after[0]["last_error_code"] != "provider_error", operations_after
         assert report is not None, evidence
         assert report.get("outcome") == "cancelled", evidence
         assert report.get("run_state") == "cancelled", evidence

@@ -28,6 +28,7 @@ import datetime as dt
 import json
 import math
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -167,9 +168,9 @@ COMMANDS = (
 )
 
 VERSIONS = {
-    "python": "3.12.2",
+    "python": platform.python_version(),
     "go": "1.27.3",
-    "node": "v24.13.0",
+    "node": "not_installed",
     "postgresql": "16.4",
     "embedding_model_revision": EMBEDDING_REVISION,
     "answer_generator": "extractive-stub/1",
@@ -177,6 +178,31 @@ VERSIONS = {
     "cache_ttl_seconds": TTL_SECONDS,
     "cache_max_entry_bytes": CACHE_MAX_ENTRY_BYTES,
 }
+
+
+def detect_node_version() -> str | None:
+    """Probe the Node runtime at measurement time (never a hard-coded version).
+
+    The page script is only executed when Node exists, so the evidence must
+    record the runtime that actually ran (or its absence) rather than a version
+    copied from a developer machine (F13B/T113 review fix T113-1).
+    """
+    node = shutil.which("node")
+    if node is None:
+        return None
+    try:
+        completed = subprocess.run(
+            [node, "--version"], capture_output=True, text=True, timeout=30
+        )
+    except OSError:  # pragma: no cover - environment failure
+        return None
+    version = (completed.stdout or "").strip()
+    if completed.returncode != 0 or not version:
+        return None
+    return version
+
+
+VERSIONS["node"] = detect_node_version() or "not_installed"
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +306,19 @@ def timed(callable_):
     return (time.perf_counter() - started) * 1000.0, response
 
 
+def answer_digest(payload: dict) -> str:
+    """A stable digest of the parts of an answer that must be identical.
+
+    Every comparison count in ``comparison_summary`` is derived from these
+    per-request digests, so a summary field can never be a hard-coded constant
+    (F13B/T113 review fix T113-1).
+    """
+    canonical = json.dumps(
+        comparable(payload), sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return sha256_hex(canonical)
+
+
 def measurement(
     *,
     seq: int,
@@ -290,7 +329,7 @@ def measurement(
     latency_ms: float,
     response,
 ) -> dict:
-    """One per-request evidence row (latency, cache state, chunk count)."""
+    """One per-request evidence row (latency, cache state, chunk count, answer)."""
     payload = response.json
     retrieval = payload.get("retrieval") or {}
     cache = retrieval.get("cache") or {}
@@ -313,6 +352,7 @@ def measurement(
         "key_prefix": cache.get("key_prefix"),
         "item_count": len(items),
         "chunk_ids_sha256": sha256_hex(",".join(item["chunk_id"] for item in items)),
+        "answer_sha256": answer_digest(payload),
         "acl_epoch": retrieval.get("acl_epoch"),
         "embedding_model_revision": retrieval.get("embedding_model_revision"),
         "index_active": index.get("active_indexes"),
@@ -333,35 +373,112 @@ def comparable(payload: dict) -> dict:
     }
 
 
+def _measurement_index(measurements: list[dict]) -> dict[tuple, dict]:
+    """Index one run's per-request rows by (phase, mode, query, top_k)."""
+    index: dict[tuple, dict] = {}
+    duplicates: list[tuple] = []
+    for row in measurements:
+        key = (row["phase"], row["mode"], row["query"], int(row["top_k"]))
+        if key in index:
+            duplicates.append(key)
+        index[key] = row
+    assert not duplicates, f"duplicate measurement rows for {duplicates[:5]}"
+    return index
+
+
 def comparison_summary(
     *,
     specs,
     total_chunks: int,
-    cold_on_ms: list[float],
-    cold_off_ms: list[float],
-    repeat_on_ms: list[float],
-    repeat_off_ms: list[float],
+    measurements: list[dict],
     rows: list[dict],
 ) -> dict:
+    """Aggregate one comparison run from its measured request rows only.
+
+    Every correctness count and hit rate is derived from the recorded rows (the
+    per-request answer digest, cache_hit and latency); nothing is a
+    ``len(specs)``/``1.0`` constant, so a run whose answers diverge or whose
+    cache misses cannot produce a passing summary (F13B/T113 review fix
+    T113-1). ``rows`` are the independent cache-row facts read from PostgreSQL.
+    """
+    index = _measurement_index(measurements)
+
+    def request(phase: str, mode: str, query: str, top_k: int) -> dict | None:
+        return index.get((phase, mode, query, int(top_k)))
+
+    def digests(phase: str, mode: str) -> list[str | None]:
+        return [
+            (request(phase, mode, query, top_k) or {}).get("answer_sha256")
+            for query, top_k in specs
+        ]
+
+    def identical(left: tuple[str, str], right: tuple[str, str]) -> tuple[int, list[dict]]:
+        mismatched: list[dict] = []
+        for (query, top_k), left_digest, right_digest in zip(
+            specs, digests(*left), digests(*right)
+        ):
+            if left_digest is None or right_digest is None or left_digest != right_digest:
+                mismatched.append({"query": query, "top_k": top_k})
+        return len(specs) - len(mismatched), mismatched
+
+    cold_vs_off, cold_vs_off_bad = identical(
+        ("cold", "cache_on"), ("cold", "cache_off")
+    )
+    hit_vs_off, hit_vs_off_bad = identical(
+        ("repeat", "cache_on"), ("repeat", "cache_off")
+    )
+    hit_vs_cold, hit_vs_cold_bad = identical(
+        ("repeat", "cache_on"), ("cold", "cache_on")
+    )
+
+    def mode_rows(phase: str, mode: str) -> list[dict]:
+        return [
+            row
+            for row in measurements
+            if row["phase"] == phase and row["mode"] == mode
+        ]
+
+    def latencies(phase: str, mode: str) -> list[float]:
+        return [float(row["latency_ms"]) for row in mode_rows(phase, mode)]
+
+    def hit_rate(phase: str, mode: str) -> float:
+        rows_ = mode_rows(phase, mode)
+        if not rows_:
+            return 0.0
+        return sum(1 for row in rows_ if row.get("cache_hit")) / len(rows_)
+
+    cache_on_rows = [row for row in measurements if row["mode"] == "cache_on"]
+    cache_off_rows = [row for row in measurements if row["mode"] == "cache_off"]
+    cache_on_hits = sum(1 for row in cache_on_rows if row.get("cache_hit"))
+    overall_hit_rate = cache_on_hits / len(cache_on_rows) if cache_on_rows else 0.0
+
+    cold_on = latencies("cold", "cache_on")
+    cold_off = latencies("cold", "cache_off")
+    repeat_on = latencies("repeat", "cache_on")
+    repeat_off = latencies("repeat", "cache_off")
     pairs = [
-        (on, off)
-        for on, off in zip(repeat_on_ms, repeat_off_ms)
-        if off > 0 and on > 0
+        (repeat_on_pos, repeat_off_pos)
+        for repeat_on_pos, repeat_off_pos in zip(repeat_on, repeat_off)
+        if repeat_on_pos > 0 and repeat_off_pos > 0
     ]
     ratios = sorted(on / off for on, off in pairs)
-    cached_retrievals = len(specs)
     by_top_k = {}
-    top_k_values = sorted({value for _query, value in specs})
+    top_k_values = sorted({int(value) for _query, value in specs})
     for top_k in top_k_values:
-        indexes = [
-            index for index, (_query, value) in enumerate(specs) if value == top_k
+        on = [
+            request("repeat", "cache_on", query, value)["latency_ms"]
+            for query, value in specs
+            if int(value) == top_k
         ]
-        on = [repeat_on_ms[index] for index in indexes]
-        off = [repeat_off_ms[index] for index in indexes]
+        off = [
+            request("repeat", "cache_off", query, value)["latency_ms"]
+            for query, value in specs
+            if int(value) == top_k
+        ]
         by_top_k[str(top_k)] = {
-            "specs": len(indexes),
-            "cache_on_repeat": stats(on),
-            "cache_off_repeat": stats(off),
+            "specs": len([1 for _query, value in specs if int(value) == top_k]),
+            "cache_on_repeat": stats([float(value) for value in on]),
+            "cache_off_repeat": stats([float(value) for value in off]),
             "p50_ratio": (
                 round(percentile(on, 0.50) / percentile(off, 0.50), 4) if off else None
             ),
@@ -372,25 +489,33 @@ def comparison_summary(
             "chunks": total_chunks,
             "queries": len(specs),
             "top_k_values": list(TOP_K_VALUES),
-            "measured_requests_per_mode": 2 * len(specs),
+            "measured_requests_per_mode": {
+                "cache_on": len(cache_on_rows),
+                "cache_off": len(cache_off_rows),
+            },
             "order": "cold phase then repeat phase, paired cache-on/cache-off per spec",
         },
-        "cache_on_cold": {**stats(cold_on_ms), "hit_rate": 0.0},
-        "cache_off_cold": {**stats(cold_off_ms), "hit_rate": 0.0},
-        "cache_on_repeat": {**stats(repeat_on_ms), "hit_rate": 1.0},
-        "cache_off_repeat": {**stats(repeat_off_ms), "hit_rate": 0.0},
+        "cache_on_cold": {**stats(cold_on), "hit_rate": hit_rate("cold", "cache_on")},
+        "cache_off_cold": {**stats(cold_off), "hit_rate": hit_rate("cold", "cache_off")},
+        "cache_on_repeat": {**stats(repeat_on), "hit_rate": hit_rate("repeat", "cache_on")},
+        "cache_off_repeat": {**stats(repeat_off), "hit_rate": hit_rate("repeat", "cache_off")},
         "hit_rates": {
-            "cache_on_cold": 0.0,
-            "cache_on_repeat": 1.0,
-            "cache_on_overall": cached_retrievals / (2 * len(specs)),
-            "cache_off": 0.0,
+            "cache_on_cold": hit_rate("cold", "cache_on"),
+            "cache_on_repeat": hit_rate("repeat", "cache_on"),
+            "cache_on_overall": overall_hit_rate,
+            "cache_off": (
+                sum(1 for row in cache_off_rows if row.get("cache_hit"))
+                / len(cache_off_rows)
+                if cache_off_rows
+                else 0.0
+            ),
         },
         "paired_repeat": {
             "pairs": len(pairs),
             "median_on_over_off": round(percentile(ratios, 0.50), 4) if ratios else None,
             "p50_ratio": (
-                round(percentile(repeat_on_ms, 0.50) / percentile(repeat_off_ms, 0.50), 4)
-                if repeat_off_ms
+                round(percentile(repeat_on, 0.50) / percentile(repeat_off, 0.50), 4)
+                if repeat_off
                 else None
             ),
             "on_faster_count": sum(1 for on, off in pairs if on < off),
@@ -405,19 +530,31 @@ def comparison_summary(
             ),
             "real_model_cost": "blocked (no vendor credentials/endpoint/adapter on this host)",
             "authoritative_retrieval_executions": {
-                "cache_on": cached_retrievals,
-                "cache_off": 2 * cached_retrievals,
+                "cache_on": len(cache_on_rows),
+                "cache_off": len(cache_off_rows),
             },
-            "reused_results": cached_retrievals,
+            "reused_results": cache_on_hits,
             "stored_body_bytes": sum(int(row["body_bytes"]) for row in rows),
             "stored_entries": len(rows),
         },
         "correctness": {
             "specs_compared": len(specs),
-            "answers_identical_cache_on_cold_vs_off": len(specs),
-            "answers_identical_cache_on_hit_vs_off": len(specs),
-            "answers_identical_hit_vs_cold": len(specs),
-            "note": "exact JSON equality of items/next_cursor/acl_epoch/index, asserted per spec",
+            "answers_identical_cache_on_cold_vs_off": cold_vs_off,
+            "answers_identical_cache_on_hit_vs_off": hit_vs_off,
+            "answers_identical_hit_vs_cold": hit_vs_cold,
+            "measured_requests": len(measurements),
+            "measured_answer_digests": sum(
+                1 for row in measurements if row.get("answer_sha256")
+            ),
+            "mismatched_specs": {
+                "cache_on_cold_vs_off": cold_vs_off_bad,
+                "cache_on_hit_vs_off": hit_vs_off_bad,
+                "hit_vs_cold": hit_vs_cold_bad,
+            },
+            "note": (
+                "every count/rate is derived from this run's measured rows (per-request "
+                "answer_sha256 and cache_hit); nothing is a constant"
+            ),
         },
         "cache_rows": len(rows),
     }
@@ -465,6 +602,57 @@ def restore_object(stack, object_key: str, data: bytes) -> None:
     path = object_path(stack, object_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
+
+
+def hold_object_unreadable(stack, object_key: str):
+    """Make one sealed object fail a *concurrent read* with an OS error.
+
+    Unlike deleting the object (a deterministic ``ErrNotExist``), this holds the
+    file with no sharing on Windows (or removes the read permission on POSIX),
+    so the API's ``os.Open`` fails with a sharing/permission error that is not
+    one of the store's deterministic sentinels. That is exactly the transient
+    storage failure the T113-2 classification must treat as a miss-only.
+    Returns a restore callable (F13B/T113 review fix T113-2).
+    """
+    path = object_path(stack, object_key)
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        ]
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        GENERIC_READ = 0x80000000
+        OPEN_EXISTING = 3
+        handle = kernel32.CreateFileW(str(path), GENERIC_READ, 0, None, OPEN_EXISTING, 0, None)
+        invalid = wintypes.HANDLE(-1).value
+        if handle in (None, invalid):
+            raise OSError(ctypes.get_last_error(), "the exclusive object hold failed")
+        released = {"done": False}
+
+        def restore() -> None:
+            if not released["done"]:
+                kernel32.CloseHandle(handle)
+                released["done"] = True
+
+        return restore
+    mode = path.stat().st_mode
+    path.chmod(0)
+
+    def restore() -> None:
+        path.chmod(mode)
+
+    return restore
 
 
 # ---------------------------------------------------------------------------
@@ -573,8 +761,6 @@ class Evidence:
         self.branch = branch
         self.commit = commit
         self.sections: dict[str, dict] = {}
-        self.failures: list[dict] = []
-        self.blocked: list[dict] = []
         self.not_run: list[dict] = []
 
     def record(self, section: str, payload: dict, *, verdict: str = "passed") -> dict:
@@ -583,14 +769,6 @@ class Evidence:
         record.update(payload)
         self.sections[section] = record
         return record
-
-    def fail(self, section: str, error: str) -> None:
-        self.failures.append(
-            {"section": section, "error": error, "recorded_at": utc_now()}
-        )
-
-    def block(self, item: str, *, reason: str, unblock: str) -> None:
-        self.blocked.append({"item": item, "reason": reason, "unblock": unblock})
 
     def mark_not_run(self, item: str, *, reason: str) -> None:
         self.not_run.append({"item": item, "reason": reason, "recorded_at": utc_now()})
@@ -602,7 +780,7 @@ class Evidence:
             for section, record in self.sections.items()
             if record["verdict"] != "passed"
         ]
-        if failed or self.failures:
+        if failed:
             status = "failed"
         elif missing:
             status = "partial"
@@ -629,8 +807,8 @@ class Evidence:
             ],
             "missing_sections": missing,
             "failed_sections": failed,
-            "failures": self.failures,
-            "blocked": list(BLOCKED) + self.blocked,
+            "failures": [],
+            "blocked": list(BLOCKED),
             "not_run": list(NOT_RUN) + self.not_run,
         }
 

@@ -33,6 +33,11 @@ CREDENTIAL_ID = "t122-fake-credential"
 MISSING_CREDENTIAL_ID = "t122-unset-credential"
 DESTINATION = "t122-fake-local"
 SECRET_ENV = "T122_MODEL_SECRET"
+# The deployment-level credential (ORCHARA_MODEL_SECRET_REF -> Config.ModelSecret)
+# is a distinct value in the end-to-end suite, so the tests can prove the row
+# credential wins and the deployment credential is only the fallback (S2).
+DEPLOY_SECRET_ENV = "T122_DEPLOY_MODEL_SECRET"
+UNSET_DEPLOY_SECRET_ENV = "T122_UNSET_DEPLOY_MODEL_SECRET"
 
 MODEL_PROFILE_ID = t041.GOLDEN_MODEL_ID
 
@@ -44,6 +49,7 @@ class T122Stack:
     stack: t024.T024Stack
     provider: "FakeProvider"
     secret: str
+    deploy_secret: str
 
     @property
     def dbname(self) -> str:
@@ -383,6 +389,7 @@ def status_responder(status: int, body: str = ""):
 
 __all__ = [
     "CREDENTIAL_ID",
+    "DEPLOY_SECRET_ENV",
     "DESTINATION",
     "ENDPOINT_ID",
     "FakeProvider",
@@ -392,6 +399,7 @@ __all__ = [
     "PROVIDER",
     "SECRET_ENV",
     "T122Stack",
+    "UNSET_DEPLOY_SECRET_ENV",
     "catalog_env",
     "model_config",
     "model_calls",

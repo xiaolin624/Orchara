@@ -251,3 +251,18 @@ func (item retrievalCacheItem) chunkView() ChunkView {
 		Score:            item.Score,
 	}
 }
+
+// matchesSealedBody proves this memoized item is still exactly the sealed body:
+// the bytes and their sha256 both have to equal what the entry stored. The
+// database rows alone cannot prove this (the object is the authoritative byte
+// store). It lives on the item it inspects rather than taking the item as a
+// free-function argument (F13B/T113 review fix T113-4, Feature Envy).
+func (item retrievalCacheItem) matchesSealedBody(sealedText string) (bool, string) {
+	if sealedText != item.Text {
+		return false, CacheDiscardItemMismatch
+	}
+	if cacheBodySHA256(sealedText) != item.BodySHA256 {
+		return false, CacheDiscardItemMismatch
+	}
+	return true, ""
+}

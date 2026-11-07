@@ -102,9 +102,12 @@ func run(logger *log.Logger) error {
 	}
 	// The provider set is built from deployment configuration only. A candidate's
 	// endpoint_ref/secret_ref are references; no request can add an endpoint or a
-	// credential.
+	// credential. The deployment-level credential reference
+	// (ORCHARA_MODEL_SECRET_REF) is the fallback for a row whose own reference
+	// cannot be resolved (F13B/T122 review fix S2); the row keeps priority.
 	providers := modelproxy.NewProviders(cfg.Profile, cfg.ModelEndpoint, cfg.SecretDir, config.FromEnv()).
-		WithCatalog(modelCatalog)
+		WithCatalog(modelCatalog).
+		WithDeploySecret(string(cfg.ModelSecret))
 	// F13B/T114: the capacity-stub stand-in service time (module docs: it is
 	// deployment configuration and only the capacity-stub profile may carry it).
 	providers.SetStubServiceDelay(cfg.CapacityStubServiceDelay)

@@ -8,6 +8,7 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/modelproxy"
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/providercodes"
 )
 
 // T024's five internal endpoints. They are all maintenance-role routes on the
@@ -306,22 +307,22 @@ func (s *Server) writeJobDataError(w http.ResponseWriter, r *http.Request, err e
 			"this logical model call was already used with different parameters")
 		return false
 	case errors.Is(err, modelproxy.ErrNotConfigured):
-		writeError(w, r, http.StatusServiceUnavailable, "provider_not_configured",
+		writeError(w, r, http.StatusServiceUnavailable, providercodes.NotConfigured,
 			"no real model endpoint is configured on this server")
 		return false
 	case errors.Is(err, modelproxy.ErrAdapterUnavailable):
-		writeError(w, r, http.StatusServiceUnavailable, "provider_adapter_unavailable",
+		writeError(w, r, http.StatusServiceUnavailable, providercodes.DispatchAdapterUnavailable,
 			"no vendor adapter is compiled for this provider in this build")
 		return false
 	case errors.Is(err, modelproxy.ErrDestinationUnapproved):
 		// F06/T122: a candidate names a destination the deployer did not register.
-		writeError(w, r, http.StatusServiceUnavailable, "provider_destination_not_approved",
+		writeError(w, r, http.StatusServiceUnavailable, providercodes.DestinationNotApproved,
 			"the model endpoint destination is not approved by the deployment catalog")
 		return false
 	case modelproxy.IsTransient(err):
 		// F06/T122: 429/5xx/timeout. The job retry table treats this as an
 		// infrastructure failure (bounded retry), never as a delivered answer.
-		writeError(w, r, http.StatusServiceUnavailable, "provider_transient",
+		writeError(w, r, http.StatusServiceUnavailable, providercodes.Transient,
 			"the model provider failed transiently")
 		return false
 	case modelproxy.ProviderCode(err) != "":

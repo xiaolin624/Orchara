@@ -18,6 +18,8 @@ import hashlib
 import json
 import os
 import secrets
+import threading
+import time
 from decimal import Decimal
 
 import pytest
@@ -30,9 +32,12 @@ from support.certs import make_stack_certificates, unique_internal_addr
 # ---------------------------------------------------------------------------
 # the real stack
 # ---------------------------------------------------------------------------
-def _build_stack(*, tmp_path, fresh_database, go_binaries, api_server, endpoint: bool):
+def _build_stack(
+    *, tmp_path, fresh_database, go_binaries, api_server, endpoint: bool, deployment_secret: bool
+):
     provider = t122.FakeProvider()
     secret = t122.new_secret()
+    deploy_secret = t122.new_secret()
     try:
         dsn, dbname = fresh_database
         st.migrate_or_fail(go_binaries["admin"], dsn)
@@ -53,8 +58,16 @@ def _build_stack(*, tmp_path, fresh_database, go_binaries, api_server, endpoint:
         env.update(t122.catalog_env())
         if endpoint:
             env["ORCHARA_MODEL_ENDPOINT"] = provider.url + "/v1"
-            env["ORCHARA_MODEL_SECRET_REF"] = "env:" + t122.SECRET_ENV
             env[t122.SECRET_ENV] = secret
+            if deployment_secret:
+                # A distinct deployment-level credential: the row credential must
+                # keep priority and this is the fallback (S2).
+                env["ORCHARA_MODEL_SECRET_REF"] = "env:" + t122.DEPLOY_SECRET_ENV
+                env[t122.DEPLOY_SECRET_ENV] = deploy_secret
+            else:
+                # The pair rule still requires a reference, but its environment
+                # variable is not set: the deployment credential is unusable.
+                env["ORCHARA_MODEL_SECRET_REF"] = "env:" + t122.UNSET_DEPLOY_SECRET_ENV
         server = api_server(dsn, extra_env=env)
         stack = t024.T024Stack(
             server=server,
@@ -66,7 +79,9 @@ def _build_stack(*, tmp_path, fresh_database, go_binaries, api_server, endpoint:
             signing_key=signing_key,
         )
         f00b.wait_for_internal(stack)
-        yield t122.T122Stack(stack=stack, provider=provider, secret=secret)
+        yield t122.T122Stack(
+            stack=stack, provider=provider, secret=secret, deploy_secret=deploy_secret
+        )
     finally:
         provider.close()
 
@@ -79,6 +94,20 @@ def t122_stack(tmp_path, fresh_database, go_binaries, api_server):
         go_binaries=go_binaries,
         api_server=api_server,
         endpoint=True,
+        deployment_secret=True,
+    )
+
+
+@pytest.fixture
+def t122_stack_without_deployment_secret(tmp_path, fresh_database, go_binaries, api_server):
+    """Endpoint configured, but the deployment-level credential does not resolve."""
+    yield from _build_stack(
+        tmp_path=tmp_path,
+        fresh_database=fresh_database,
+        go_binaries=go_binaries,
+        api_server=api_server,
+        endpoint=True,
+        deployment_secret=False,
     )
 
 
@@ -90,6 +119,7 @@ def t122_stack_without_endpoint(tmp_path, fresh_database, go_binaries, api_serve
         go_binaries=go_binaries,
         api_server=api_server,
         endpoint=False,
+        deployment_secret=False,
     )
 
 
@@ -116,8 +146,9 @@ def invoke_text(harness: t122.T122Stack, lease: dict, *, operation_id: str, logi
 
 def assert_no_secret(harness: t122.T122Stack, *rendered: str) -> None:
     for text in rendered:
-        assert harness.secret not in text, "the vendor credential leaked into an observable surface"
-        assert "Bearer " + harness.secret not in text
+        for secret in (harness.secret, harness.deploy_secret):
+            assert secret not in text, "a model credential leaked into an observable surface"
+            assert "Bearer " + secret not in text
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +463,10 @@ def test_malformed_and_oversized_answers_are_terminal(t122_stack) -> None:
 # ---------------------------------------------------------------------------
 # AC4: fail closed without an approved destination or a resolvable credential
 # ---------------------------------------------------------------------------
-def test_unregistered_destination_and_unresolvable_credential_fail_closed(t122_stack) -> None:
+def test_unregistered_destination_and_unresolvable_credential_fail_closed(
+    t122_stack_without_deployment_secret,
+) -> None:
+    t122_stack = t122_stack_without_deployment_secret
     owner = t041.owner(t122_stack.stack)
     t122.register_model(t122_stack.dbname, endpoint_ref="t122-rogue-endpoint")
     _, run, lease = t041.claimed_run(t122_stack.stack, run_owner=owner)
@@ -469,6 +503,125 @@ def test_unregistered_destination_and_unresolvable_credential_fail_closed(t122_s
     assert protocol.json["error"]["code"] == "adapter_unavailable"
     assert t122.operation_count(t122_stack.dbname, run["id"]) == 0
     assert t122_stack.provider.requests() == []
+
+
+def test_deployment_level_secret_ref_is_the_credential_fallback(t122_stack) -> None:
+    """F13B/T122 review fix S2: ORCHARA_MODEL_SECRET_REF is a real deployment knob.
+
+    The candidate row's ``secret_ref`` is tried first. A row whose reference cannot
+    be resolved falls back to the deployment-level credential; without a resolvable
+    deployment credential the same row is ``provider_not_configured`` (covered by
+    the fixture above). Both states are observed through the real capability
+    endpoint, the real loopback provider and the real ledger.
+    """
+    harness = t122_stack
+    owner = t041.owner(harness.stack)
+    t122.register_model(harness.dbname, secret_ref=t122.MISSING_CREDENTIAL_ID)
+    _, run, lease = t041.claimed_run(harness.stack, run_owner=owner)
+    harness.provider.respond_once(content="fallback answer", usage=(3, 2))
+    fallback_operation = t041.new_uuid()
+    fallback = invoke_text(harness, lease, operation_id=fallback_operation)
+    assert fallback.status == 200, fallback.text
+    assert fallback.json["state"] == "succeeded", fallback.json
+    requests = harness.provider.requests()
+    assert len(requests) == 1, requests
+    assert requests[0]["headers"]["authorization"] == "Bearer " + harness.deploy_secret
+    attempts = t041.attempt_rows(harness.dbname, fallback_operation)
+    assert len(attempts) == 1 and attempts[0]["state"] == "succeeded", attempts
+
+    # Priority: a resolvable row credential always wins over the deployment one.
+    t122.register_model(harness.dbname, secret_ref=t122.CREDENTIAL_ID)
+    harness.provider.respond_once(content="row answer", usage=(2, 1))
+    row_operation = t041.new_uuid()
+    row_call = invoke_text(harness, lease, operation_id=row_operation, logical_key="call-2")
+    assert row_call.status == 200, row_call.text
+    requests = harness.provider.requests()
+    assert len(requests) == 2, requests
+    assert requests[1]["headers"]["authorization"] == "Bearer " + harness.secret
+    assert harness.deploy_secret != harness.secret
+
+    ledger = t041.ledger_items(owner.creator, run["id"])
+    assert len(ledger) == 2, ledger
+    for entry in ledger:
+        assert entry["stub"] is False, entry
+    assert_no_secret(
+        harness,
+        fallback.text,
+        row_call.text,
+        json.dumps(ledger),
+        harness.server.logs(),
+    )
+
+
+def test_caller_cancellation_is_not_recorded_as_a_provider_failure(t122_stack) -> None:
+    """F06/T122 B2 review fix H2 (non-streaming caller cancellation).
+
+    A real worker capability request is aborted client-side while the loopback
+    provider is still answering the in-flight call. The API request context is
+    cancelled, so the adapter returns the caller's cancellation; the capability
+    service must close the real attempt/operation as ``caller_cancelled`` with a
+    detached clean-up context - never as ``provider_error``, never with a charge,
+    never with a retry/fallback and never with a receipt artifact. This is the
+    non-streaming analogue of the T044 stream-disconnect test.
+    """
+    _, run, lease = claimed_run(t122_stack)
+    t122_stack.provider.respond_once(content="late answer", usage=(5, 5), delay=6.0)
+    operation_id = t041.new_uuid()
+    worker = t041.worker_client(t122_stack.stack)
+    body = {
+        "attempt_token": lease["attempt_token"],
+        "operation_id": operation_id,
+        "logical_key": "call-cancel",
+        "capability_version": t041.GOLDEN_MODEL_ID,
+        "params": t041.model_params(
+            messages=[{"role": "user", "content": "Summarize the sales file."}]
+        ),
+        "capability_kind": "model",
+    }
+    outcome: dict[str, object] = {}
+
+    def invoke() -> None:
+        try:
+            outcome["response"] = worker.post(
+                f"/internal/v1/runs/{lease['run_id']}/capabilities", body, timeout=2.0
+            )
+        except OSError as exc:  # the client aborts the request
+            outcome["error"] = f"{type(exc).__name__}: {exc}"
+
+    thread = threading.Thread(target=invoke, name="t122-caller-cancel", daemon=True)
+    thread.start()
+    try:
+        deadline = time.time() + 20.0
+        while not t122_stack.provider.requests() and time.time() < deadline:
+            time.sleep(0.02)
+        assert t122_stack.provider.requests(), "the provider call never started"
+        thread.join(timeout=20.0)
+        assert not thread.is_alive(), "the aborted capability request did not return"
+        assert "error" in outcome, outcome
+
+        operation = None
+        deadline = time.time() + 30.0
+        while time.time() < deadline:
+            operations = t041.operation_rows(t122_stack.dbname, run["id"])
+            if operations and operations[0]["state"] in ("failed", "succeeded"):
+                operation = operations[0]
+                break
+            time.sleep(0.05)
+        assert operation is not None, "the cancelled operation was never closed"
+        assert operation["state"] == "failed", operation
+        assert operation["last_error_code"] == "caller_cancelled", operation
+        assert operation["receipt_artifact_id"] is None, operation
+        attempts = t041.attempt_rows(t122_stack.dbname, operation_id)
+        assert len(attempts) == 1, attempts
+        assert attempts[0]["state"] == "failed", attempts
+        assert attempts[0]["error_code"] == "caller_cancelled", attempts
+        assert attempts[0]["settlement_state"] == "released", attempts
+        assert Decimal(attempts[0]["charged_amount"] or "0") == 0, attempts
+        # One physical request really crossed the wire; the aborted request never
+        # produced a second retry or a fallback.
+        assert len(t122_stack.provider.requests()) == 1, t122_stack.provider.requests()
+    finally:
+        thread.join(timeout=1.0)
 
 
 def test_missing_endpoint_is_provider_not_configured_without_a_ledger_row(

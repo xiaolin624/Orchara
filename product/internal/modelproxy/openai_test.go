@@ -23,11 +23,14 @@ import (
 )
 
 const (
-	t122EndpointID  = "fake-endpoint"
-	t122Credential  = "fake-credential"
-	t122Destination = "fake-local"
-	t122SecretEnv   = "T122_MODEL_KEY"
-	t122Secret      = "t122-secret-do-not-log"
+	t122EndpointID      = "fake-endpoint"
+	t122Credential      = "fake-credential"
+	t122Destination     = "fake-local"
+	t122SecretEnv       = "T122_MODEL_KEY"
+	t122Secret          = "t122-secret-do-not-log"
+	t122UnsetCredential = "unset-credential"
+	t122DeploySecretEnv = "T122_DEPLOY_MODEL_KEY"
+	t122DeploySecret    = "t122-deploy-secret-do-not-log"
 )
 
 // fakeCatalog builds the deployer catalog the adapter must approve destinations
@@ -36,7 +39,9 @@ func fakeCatalog(t *testing.T) *modelregistry.Catalog {
 	t.Helper()
 	endpoints := `[{"id":"` + t122EndpointID + `","data_destination":"` + t122Destination +
 		`","credential_ref":"` + t122Credential + `","description":"t122 fake"}]`
-	credentials := `[{"id":"` + t122Credential + `","description":"t122 fake key","env":"` + t122SecretEnv + `"}]`
+	credentials := `[{"id":"` + t122Credential + `","description":"t122 fake key","env":"` + t122SecretEnv + `"},` +
+		`{"id":"` + t122UnsetCredential + `","description":"registered credential whose env is unset",` +
+		`"env":"T122_UNSET_MODEL_KEY"}]`
 	catalog, err := modelregistry.FromEnv(func(key string) string {
 		switch key {
 		case modelregistry.EnvModelEndpoints:
@@ -55,6 +60,18 @@ func fakeCatalog(t *testing.T) *modelregistry.Catalog {
 func secretLookup(key string) (string, bool) {
 	if key == t122SecretEnv {
 		return t122Secret, true
+	}
+	return "", false
+}
+
+// deploymentSecretLookup resolves both the row-level credential env and the
+// deployment-level credential env (S2).
+func deploymentSecretLookup(key string) (string, bool) {
+	switch key {
+	case t122SecretEnv:
+		return t122Secret, true
+	case t122DeploySecretEnv:
+		return t122DeploySecret, true
 	}
 	return "", false
 }
@@ -668,6 +685,134 @@ func TestCallCancellationIsNotReportedAsATransientProviderFailure(t *testing.T) 
 	}
 	if IsTransient(err) {
 		t.Fatal("a caller cancellation must not be labelled a transient provider failure")
+	}
+}
+
+// TestDeploymentLevelSecretIsTheCredentialFallback covers F13B/T122 review fix
+// S2: Config.ModelSecret (ORCHARA_MODEL_SECRET_REF) is a real deployment
+// credential, not a validated-but-unused knob. The candidate row's secret_ref
+// keeps priority; the deployment credential is the fallback when the row
+// reference cannot be resolved; neither resolving is provider_not_configured.
+func TestDeploymentLevelSecretIsTheCredentialFallback(t *testing.T) {
+	var authorization string
+	fake := newFakeProvider(t, func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		authorization = r.Header.Get("Authorization")
+		writeJSON(w, http.StatusOK, `{"choices":[{"message":{"content":"ok"}}]}`)
+	})
+	broken := chatCandidate(t122EndpointID, t122UnsetCredential)
+	call := func(provider Provider, candidate *Candidate) error {
+		_, err := provider.Call(context.Background(), CallRequest{
+			Candidate: candidate,
+			Params:    chatParams(map[string]any{"role": "user", "content": "hi"}),
+		})
+		return err
+	}
+
+	// (1) No deployment credential: the row reference is registered but its
+	// environment variable is unset, so the provider is not configured.
+	rowOnly := realProviders(t, fake.url(), deploymentSecretLookup)
+	rowOnlyProvider, err := rowOnly.For(broken)
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if err := rowOnlyProvider.Available(broken); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("without a deployment credential the unresolvable row must fail closed, got %v", err)
+	}
+	if err := call(rowOnlyProvider, broken); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("the call must fail closed, got %v", err)
+	}
+	if authorization != "" {
+		t.Fatalf("a not-configured provider must not dispatch, got Authorization %q", authorization)
+	}
+
+	// (2) With the deployment credential, the same row resolves and the real
+	// request carries the deployment credential.
+	withFallback := realProviders(t, fake.url(), deploymentSecretLookup).
+		WithDeploySecret("env:" + t122DeploySecretEnv)
+	fallbackProvider, err := withFallback.For(broken)
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if err := fallbackProvider.Available(broken); err != nil {
+		t.Fatalf("the deployment credential must make the provider available, got %v", err)
+	}
+	if err := call(fallbackProvider, broken); err != nil {
+		t.Fatalf("the fallback call failed: %v", err)
+	}
+	if authorization != "Bearer "+t122DeploySecret {
+		t.Fatalf("Authorization = %q, want the deployment credential", authorization)
+	}
+
+	// (3) Priority: a resolvable row credential always wins over the deployment
+	// credential.
+	rowCandidate := chatCandidate(t122EndpointID, t122Credential)
+	rowProvider, err := withFallback.For(rowCandidate)
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if err := call(rowProvider, rowCandidate); err != nil {
+		t.Fatalf("the row-credential call failed: %v", err)
+	}
+	if authorization != "Bearer "+t122Secret {
+		t.Fatalf("Authorization = %q, want the candidate row credential to win", authorization)
+	}
+	if t122DeploySecret == t122Secret {
+		t.Fatal("the test must use distinct row and deployment credentials to observe priority")
+	}
+}
+
+// TestRoutingFixtureCallSynthesisesTheRoutingControlPrompt covers the second
+// job-scoped fixture caller the adapter serves (F08 routing control). It has no
+// real-stack e2e of its own, so the wire shape is pinned here: the server-built
+// routing prompt becomes a system/user pair, the registered model id is sent and
+// the documented decision fields are lifted into Data (B2 review fix S3).
+func TestRoutingFixtureCallSynthesisesTheRoutingControlPrompt(t *testing.T) {
+	var wire map[string]any
+	fake := newFakeProvider(t, func(w http.ResponseWriter, _ *http.Request, body map[string]any) {
+		wire = body
+		writeJSON(w, http.StatusOK,
+			`{"choices":[{"message":{"content":"{\"decision\":\"no_match\",\"reason\":\"no candidate fits\"}"}}]}`)
+	})
+	candidate := chatCandidate(t122EndpointID, t122Credential)
+	providers := realProviders(t, fake.url(), secretLookup)
+	provider, err := providers.For(candidate)
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	fixture := []byte(`{"task":"route","candidates":[{"candidate_version_id":"11111111-2222-4333-8444-555555555555"}]}`)
+	response, err := provider.Call(context.Background(), CallRequest{
+		Candidate: candidate,
+		Params:    map[string]any{"task": "route"},
+		Fixture:   fixture,
+	})
+	if err != nil {
+		t.Fatalf("the routing fixture call failed: %v", err)
+	}
+
+	if wire["model"] != candidate.ModelID {
+		t.Fatalf("model = %v, want the registered id %q", wire["model"], candidate.ModelID)
+	}
+	messages, ok := wire["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("the routing call must send a system/user pair: %#v", wire["messages"])
+	}
+	system, _ := messages[0].(map[string]any)
+	user, _ := messages[1].(map[string]any)
+	systemContent, _ := system["content"].(string)
+	if system["role"] != "system" || !strings.Contains(systemContent, "routing control model") {
+		t.Fatalf("the routing system prompt is missing: %#v", system)
+	}
+	if user["role"] != "user" || user["content"] != string(fixture) {
+		t.Fatalf("the fixture bytes must be the user message: %#v", user)
+	}
+	if responseFormat, ok := wire["response_format"].(map[string]any); !ok || responseFormat["type"] != "json_object" {
+		t.Fatalf("a fixture call must request a JSON object: %#v", wire["response_format"])
+	}
+	if response.Data["decision"] != "no_match" || response.Data["reason"] != "no candidate fits" {
+		t.Fatalf("the routing decision fields were not lifted into Data: %#v", response.Data)
+	}
+	if response.Data["model_id"] != candidate.ModelID || response.Data["stub"] != false {
+		t.Fatalf("the projection identity is wrong: %#v", response.Data)
 	}
 }
 
