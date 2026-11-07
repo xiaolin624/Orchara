@@ -127,15 +127,59 @@ def test_the_gate_fails_on_an_injected_unimplemented_operation(
     # runtime status: the unknown route answers with the same 404 envelope as a
     # missing resource, so only the registry can prove it was never implemented.
     assert record["route_registered"] is False
+    assert record["implementation_status"] == "missing"
+    assert record["functional_probe"]["checked"] is False
     assert "MISSING OPERATION: f12InjectedMissingOperation" in completed.stdout, completed.stdout
     # The 106 real operations are still judged in the same run.
     assert len(report["operations"]) == 107
     assert report["summary"]["operations"] == 107
-    assert report["summary"]["implemented"] == 106
     real = [item for item in report["operations"] if item["operation_id"] != "f12InjectedMissingOperation"]
-    assert all(item["implemented"] for item in real), [
-        item["operation_id"] for item in real if not item["implemented"]
+    assert report["summary"]["route_registered"] == 106
+    # Route registration and functional coverage are separate counts: the
+    # registered-but-unprobed operations are route_only, never implemented.
+    # The mutant run reuses the session stack, so a few normal probes may also
+    # fail on the already-mutated fixtures (probe_failed); count them explicitly.
+    assert (
+        report["summary"]["functional_probe"]
+        + report["summary"]["route_only"]
+        + report["summary"]["probe_failed"]
+        == 106
+    )
+    assert report["summary"]["implemented"] == report["summary"]["functional_probe"]
+    assert all(
+        item["implementation_status"] in ("functional", "route_only", "probe_failed")
+        for item in real
+    ), [
+        item["operation_id"]
+        for item in real
+        if item["implementation_status"] not in ("functional", "route_only", "probe_failed")
     ]
+    assert all(not item["implemented"] for item in real if item["implementation_status"] == "route_only")
+
+
+def test_a_registered_but_always_401_operation_is_not_counted_as_implemented(
+    f12_report: dict,
+) -> None:
+    """The mutation the first review missed: route exists, function never verified.
+
+    ``getVersion`` is registered and the anonymous probe reaches the handler (401),
+    but the gate has no published version fixture, so no normal-path probe ran.
+    It must be route_only, not implemented. This is the in-memory proof; the CLI
+    mutation above proves the route-missing path.
+    """
+    record = next(
+        item
+        for item in f12_report["operations"]
+        if item["operation_id"] == "getVersion"
+    )
+    assert record["route_registered"] is True
+    assert record["runtime_reached"] is True
+    assert record["implementation_status"] == "route_only"
+    assert record["implemented"] is False
+    assert record["functional_probe"]["checked"] is False
+    assert record["implementation_evidence"]["probe"] == "anonymous"
+    assert record["implementation_evidence"]["status"] == 401
+
 
 
 def test_the_gate_cli_reproduces_the_session_verdict(
@@ -150,28 +194,42 @@ def test_the_gate_cli_reproduces_the_session_verdict(
     """
     out = tmp_path / "cli-report.json"
     completed = _run_gate(f12_cli_stack, CONTRACT, out)
-    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    # 3 = honest route_only verdict: every route is registered, but functional
+    # probes cover only the operations the public API can construct. This is not
+    # a failure and not a false "106/106 implemented".
+    assert completed.returncode == 3, (completed.stdout, completed.stderr)
     assert out.exists(), (completed.stdout, completed.stderr)
     report = json.loads(out.read_text(encoding="utf-8"))
     summary = report["summary"]
     assert summary["operations"] == 106
-    assert summary["implemented"] == 106
+    assert summary["route_registered"] == 106
+    assert summary["functional_probe"] + summary["route_only"] == 106
+    assert summary["implemented"] == summary["functional_probe"]
     assert summary["missing_operations"] == []
     assert summary["authorization_failed"] == []
     assert summary["invariant_failures"] == []
-    assert summary["verdict"] == f12_report["summary"]["verdict"] == "passed"
+    assert summary["verdict"] == f12_report["summary"]["verdict"] == "route_only"
     assert set(summary["by_epic"]) == set(f12_report["summary"]["by_epic"])
     assert set(summary["not_run"]) == set(f12_report["summary"]["not_run"])
-    assert "F12 API gate: 106/106 operations implemented" in completed.stdout, completed.stdout
+    assert "route-registered 106/106" in completed.stdout, completed.stdout
+    assert "functional probe" in completed.stdout, completed.stdout
+    assert "ROUTE-ONLY" in completed.stdout, completed.stdout
+    assert "106/106 operations implemented" not in completed.stdout, completed.stdout
 
 
 def test_the_gate_reports_the_same_verdict_as_its_exit_code(f12_report: dict) -> None:
-    assert f12_report["summary"]["verdict"] in ("passed", "failed")
+    assert f12_report["summary"]["verdict"] in ("passed", "route_only", "failed")
     if f12_report["summary"]["verdict"] == "failed":
         assert (
             f12_report["summary"]["missing_operations"]
+            or f12_report["summary"]["probe_failed_operations"]
             or f12_report["summary"]["authorization_failed"]
             or f12_report["summary"]["invariant_failures"]
             or f12_report["summary"]["per_operation_failed"]
+            or f12_report["summary"]["cross_principal_isolation"]["failures"]
             or f12_report["summary"]["errors"]
         ), "a failed verdict must name the failure"
+    if f12_report["summary"]["verdict"] == "route_only":
+        assert f12_report["summary"]["route_only"] > 0
+        assert f12_report["summary"]["missing_operations"] == []
+        assert f12_report["summary"]["probe_failed"] == 0

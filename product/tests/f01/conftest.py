@@ -21,6 +21,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -42,6 +43,91 @@ import toolchain  # noqa: E402
 GO = toolchain.go_binary()
 WEB_DIR = PRODUCT_ROOT / "apps" / "web" / "src"
 SESSION_COOKIE = "platform_session"
+
+# ---------------------------------------------------------------------------
+# page credential guard: fail closed, never "zero keys extracted so pass"
+# ---------------------------------------------------------------------------
+_QUERY_PARAMETER_NAMES = {"error", "run", "version"}
+_GET_CALL_RE = re.compile(r"""\.get\(\s*(['"])(?P<key>[^'"\s]+)\1\s*\)""")
+_URLSEARCH_CALL_RE = re.compile(r"new\s+URLSearchParams\s*\((?P<argument>[^)]*)\)")
+_URLSEARCH_OBJECT_RE = re.compile(r"\{(?P<body>[^}]*)\}")
+_URLSEARCH_STRING_RE = re.compile(r"""^\s*(['"])(?P<query>[^'"]*)\1\s*$""")
+_OBJECT_PROPERTY_RE = re.compile(r"""(?:^|,)\s*['"]?(?P<key>[A-Za-z0-9_]+)['"]?\s*:""")
+
+
+def query_parameter_keys(body: str) -> tuple[set[str], bool]:
+    """Return (keys read from a URL query, whether an unparsed query read exists).
+
+    The guard accepts both quote styles and both idioms
+    (``new URLSearchParams(location.search).get('x')`` and
+    ``new URL(...).searchParams.get("x")``). A query read whose key cannot be
+    extracted (a variable key, an unknown argument) is reported as unparsed so
+    the caller fails closed instead of silently checking an empty set.
+    """
+    keys = {match.group("key") for match in _GET_CALL_RE.finditer(body)}
+    unparsed = False
+
+    for match in _URLSEARCH_CALL_RE.finditer(body):
+        argument = match.group("argument").strip()
+        if not argument:
+            # A local builder, e.g. ``const query = new URLSearchParams();
+            # query.set('limit', ...)``: it does not read the address bar.
+            continue
+        string_literal = _URLSEARCH_STRING_RE.match(argument)
+        if string_literal is not None:
+            query = string_literal.group("query")
+            keys.update(
+                part.split("=", 1)[0]
+                for part in query.split("&")
+                if part and "=" in part
+            )
+            continue
+        object_literal = _URLSEARCH_OBJECT_RE.fullmatch(argument)
+        if object_literal is not None:
+            keys.update(
+                key
+                for key in _OBJECT_PROPERTY_RE.findall(object_literal.group("body"))
+            )
+            continue
+        if "location.search" in argument or ".searchParams" in argument:
+            # The address-bar read; its keys come from the matching .get(...).
+            continue
+        # An argument we cannot parse. ``location.search`` / ``.searchParams``
+        # are already covered by the caller; any other expression may still be a
+        # query read, so fail closed.
+        unparsed = True
+
+    if "location.search" in body or ".searchParams" in body:
+        # The read is definitely from the address bar. If no key came out, the
+        # guard cannot prove which parameters are allowed.
+        if not keys:
+            unparsed = True
+    return keys, unparsed
+
+
+def assert_no_token_in_url_or_storage(body: str, page: str) -> None:
+    """No credential may ride in a URL or sit in client storage.
+
+    The pages do read a few *non-secret* query parameters: a run id (the chat
+    page's run deep link), a fixed application version, and the stable code that
+    tells the login page why the previous session ended. The allowlist is
+    checked fail-closed: a query read with no extractable key (double quotes, a
+    ``searchParams`` accessor, or a key held in a variable) fails instead of
+    passing over an empty set.
+    """
+    for forbidden in ("localStorage", "sessionStorage"):
+        assert forbidden not in body, f"{page} uses {forbidden}"
+    queried, unparsed = query_parameter_keys(body)
+    assert not unparsed, (
+        f"{page} reads a URL query parameter but the guard could not extract its key; "
+        "fail closed rather than admit an unrecognised parameter"
+    )
+    assert queried <= _QUERY_PARAMETER_NAMES, (
+        f"{page} reads unexpected query parameters: "
+        f"{sorted(queried - _QUERY_PARAMETER_NAMES)}"
+    )
+    assert "?token=" not in body, f"{page} puts a token in a URL"
+    assert "?csrf" not in body, f"{page} puts a CSRF token in a URL"
 
 
 # ---------------------------------------------------------------------------

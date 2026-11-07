@@ -52,3 +52,4 @@ def test_journey_1_account_bringup_invite_activate_login(t100_stack) -> None:
         ],
     ) as journey:
         run_account_journey(t100_stack, journey)
+        journey.mark_passed()

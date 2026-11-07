@@ -53,3 +53,4 @@ def test_journey_2_model_registration_validation_and_report(t100_stack) -> None:
         ],
     ) as journey:
         run_models_journey(t100_stack, journey)
+        journey.mark_passed()

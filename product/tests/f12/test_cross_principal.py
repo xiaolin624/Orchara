@@ -64,6 +64,8 @@ def test_lists_are_acl_filtered_for_another_principal(f12_gate: gate_module.Gate
     assert fixtures["conversation_id"] not in {item["id"] for item in conversations["items"]}
     memories = _json(member.client.get("/api/v1/memories?limit=100"))
     assert memories["items"] == []
+    knowledge = _json(member.client.get("/api/v1/knowledge-bases?limit=100"))
+    assert fixtures["knowledge_base_id"] not in {item["id"] for item in knowledge["items"]}
 
 
 def test_an_administrator_still_cannot_read_personal_memory(f12_gate: gate_module.Gate) -> None:

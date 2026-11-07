@@ -53,3 +53,4 @@ def test_journey_5_background_job_claim_heartbeat_result(t100_stack) -> None:
         ],
     ) as journey:
         run_background_journey(t100_stack, journey)
+        journey.mark_passed()
