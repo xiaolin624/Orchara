@@ -116,3 +116,37 @@ T098 的四条手机端旅程在**可执行手段**（真实栈 + Node 执行真
 都有真实服务端事实与页面反馈，引用撤销后不回退缓存，个人数据控制默认不代替用户做选择，删除的
 “立即停止访问”与“异步物理清理”被分开陈述。像素级移动端渲染与真机交互仍是 `not_run`，没有被写成通过。
 本报告为编码事故后的重写版；内容依据当前代码、测试与真实运行 tail，而不是已丢失的旧文本。
+
+## 7. 第二轮复核后修正（2026-11-07，F1/F2）
+
+> 本节是**第二轮独立复核后**的补充，不删除也不改写上面的旧结论；旧结论在当时的代码/测试
+> 范围内仍然成立，本节记录其后修正的部分。
+
+第二轮复核对 `1cdff9c...e3aa1e1` 提了两条页面发现，修复提交 `83307b1`；本轮补齐红→绿测试并
+追加两处修正（逐条出处、复现、红/绿 tail 见 `reports/f12/REVIEW2-FIXES.md` §1/§2/§6）：
+
+- **F1（Standards P1）诊断授权“默认不勾选”实际授权整个 Run。**
+  `internal/diagnostics/grants.go:8-10,395-423` 在缺少 `X-Diagnostic-Object-Scope` 时推导该 Run
+  的全部对象；旧页面空选择时省略该头。现在 `personal-data.js:367-378` 在空选择时抛错，
+  页面把原因写进 `#grant-status`，非空选择总是发送等于选择的头。
+  另修：复选框值原本是 `artifact:<uuid>` 而构造器期望裸 uuid（`personal-data.js:716`），
+  否则用户一勾选就得到“artifact id 必须是 UUID”且 0 请求。
+- **F2（Standards P2）重建中/失败的资料被说成不可检索。**
+  ADR 0018:26,58-59 规定重建期间/失败后旧活动索引仍可读；旧文案却写“完成前检索为空”、
+  “不会返回旧正文”。`personal-data.js:185,194` 已改为同时说明“旧的仍是检索来源”与“首次索引才为空”。
+
+本轮新增测试（Node 执行 **已提交真实字节** + 最小 DOM/fetch shim，不是 Playwright）：
+
+```text
+tests/f12/test_t098_review2.py::test_an_empty_diagnostic_grant_selection_is_refused_and_never_sent PASSED
+tests/f12/test_t098_review2.py::test_rebuild_and_failure_notes_keep_the_previous_index_readable PASSED
+5 passed in 0.79s          # 连同 T096 的两条 F3/F4 用例
+```
+
+红证据：在 `e3aa1e1` 的独立 detached worktree 上（只拷入新测试、不改源码）两条都失败，
+其中空选择报告 `empty_helper_threw=false`、`empty_csrf_calls=1`；旧 `indexing` note 命中
+`完成前检索为空`（tail 见 `REVIEW2-FIXES.md` §5.1）。受影响的
+`tests/f11/test_t073_pages.py:165-171` 旧断言“空选择省略头”已随行为更新为断言抛错。
+
+边界不变：仍是 Node 执行真实字节，不是真实浏览器；诊断授权的真实服务端解析由 F11/T073
+既有真实栈用例覆盖，本轮未改其接口/存储，也未改 `docs/spec/**` 与 `contracts/**`。
