@@ -1,0 +1,95 @@
+{
+  "bookings": [
+    {
+      "booked_hours_ago": 10,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": false,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "420.50",
+      "reservation_id": "8C8K4E",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 72,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": false,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "0.00",
+      "reservation_id": "UDMOP1",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 5,
+      "cabin": "basic_economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": false,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "0.00",
+      "reservation_id": "XAZ3C0",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 60,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": false,
+      "has_insurance": true,
+      "passenger_illness": true,
+      "refund_amount": "315.25",
+      "reservation_id": "LU15PA",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 48,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": true,
+      "flight_departed": false,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "260.00",
+      "reservation_id": "MSJ4OA",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 30,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": true,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "0.00",
+      "reservation_id": "I6M8JQ",
+      "status": "confirmed"
+    },
+    {
+      "booked_hours_ago": 48,
+      "cabin": "economy",
+      "flight_cancelled_by_airline": false,
+      "flight_departed": false,
+      "has_insurance": false,
+      "passenger_illness": false,
+      "refund_amount": "0.00",
+      "reservation_id": "4XGCCM",
+      "status": "confirmed"
+    }
+  ],
+  "fixture_version": "tau2-airline-adapted/1",
+  "policy": {
+    "never_refundable_if_any": [
+      "cabin == basic_economy",
+      "flight_departed"
+    ],
+    "policy_id": "refund-eligibility-adapted-1",
+    "refundable_if_any": [
+      "booked_hours_ago <= 24",
+      "has_insurance and passenger_illness",
+      "flight_cancelled_by_airline"
+    ]
+  },
+  "source_task": "39"
+}

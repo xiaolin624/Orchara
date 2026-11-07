@@ -1930,6 +1930,14 @@
     ],
     "rule": "A case may be scored only when every required fact was collected. An empty, skipped or incomplete case is not_run, never passed."
   },
+  "external_imports": {
+    "label": "adapted_external",
+    "registry_path": "product/tests/f13b/external/registry.json",
+    "registry_sha256": "6a9036b86abc6a51b71b2b05c3ca957613a5ee0713e1e67070da287b9a795a1c",
+    "rule": "Imported adapted cases are frozen_test only. Their families, normalized templates and near duplicates must not overlap this corpus's dev split, and their results are not released-benchmark scores; the external registry pins this relationship.",
+    "source": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+    "source_commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754"
+  },
   "families": {
     "approval-dev-human-approval": {
       "category": "approval_effects",

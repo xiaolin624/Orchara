@@ -2554,3 +2554,40 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   `start->end` 链以 `tool_unsupported_graph` 失败，而基线实际成功并封印 `{}`，**属基线既有红，非本票引入**。
 - 证据：`reports/f13b/T103-hard-vs-quality.md`；`probes/f13b_quality/**`（compare/adapter probe/矩阵/证据）；
   原始 tail `E:\Orchara\.scratch\f13b\T103\`。
+
+## F13B T104（GitHub #105）：导入 τ²-bench 改编任务并拒绝空判定器（2026-11-07）
+
+- 分支 `t/t104-tau2-import` / worktree `E:\Orchara-wt\t104`；基线 `integration/f13b` @ `5c7c506`，
+  结束时 merge `integration/f13b` @ `c132e8e` → **Already up to date**（分支已包含），工作区干净。
+- 来源：`sierra-research/tau2-bench` @ `da0835f6c67baef58bdda18f2a3b037dfb3a1754`（MIT；LICENSE
+  sha256 `74741b87…`）；`git init` + `git fetch --depth 1 origin <commit>` 真实克隆到
+  `E:\Orchara\.scratch\f13b\T104\upstream`（不提交上游代码）。`tasks.json`/`policy.md`/
+  `split_tasks.json`/`db.json`/`tasks.py`/`evaluator.py`/`pyproject.toml` 的 SHA-256 与抓取命令在
+  `tests/f13b/external/tau2/source_pin.json`；上游 evaluator:134-139 的缺 criteria → reward=1.0
+  陷阱记录为 `empty_checker_trap`。
+- 导入 3 条改编 airline 任务（上游 task 11/39/40）：`tau2-airline-39-refund-eligibility`（退款资格
+  拒绝；3/7 可取消；refund_total 995.75）、`tau2-airline-11-flight-downgrade`（不得改乘客数，降舱
+  退款 5244.00）、`tau2-airline-40-passenger-correction`（乘客改名）。全部 `frozen_test`/
+  `approval_effects`，改写为隔离本地 booking fixture（JSON + `/booking-desk` 端点面），
+  `origin=adapted_external`、`license_review=reviewed`、reference 带 repo@commit#task#path；改编
+  说明在 `external/registry.json`，未塞入 schema 禁止字段。共 23 条断言；产品 `ParseDataset` 由
+  `internal/evaluation/dataset_t104_external_test.go` 证明可加载。
+- 空判定器门禁 `tools/f13b_external.py`：稳定码 `missing_checker`/`empty_criteria`/
+  `empty_reward_basis`/`text_only_checker`/`no_actions`/`no_environment`/`default_success` 等；真实
+  τ² 形状负例（缺 criteria、空 reward_basis、仅 nl 文本、无环境）与适配 case 负例（仅 run_state、
+  text_similarity、无环境、未审许可、未知 source task、错 reference、伪造跨 split）共 24 条全部按
+  预期拒绝；`validate_tau2_source` 重校验 commit/LICENSE sha/criteria sha。
+- 离线端到端（stub，非产品/非榜单）：loader → 门禁 → 参考轨迹 → 本地 fixture 模拟 → 五类断言
+  镜像；3 条 gold 轨迹 23/23 断言通过，2 条错误轨迹（多取消 4 条不可退、移除乘客）按预期失败。
+- T102 集成：`corpus/registry.json` 增加 `external_imports`（外部 registry sha256 + commit +
+  `adapted_external` 标签），七类 case 文档字节不变；T102 36 条测试与两套 builder 复现全绿。
+- 未改 `docs/spec/**`、`contracts/**`、迁移、产品 worker 代码。
+- 门禁（真实 tail，从 `product/`）：`pytest tests/f13b -q` → **88 passed in 47.79s**（T104 48 +
+  T102 36 + T103 真栈 4）；`pytest tests/tooling -q` → **21 passed in 4.72s**；
+  `go build ./...`/`go vet ./...`/`go test ./...` exit 0（`go test` 39 ok / 0 FAIL）；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → **no drift**；
+  `tools/f13b_external.py --summary` → exit 0（gate_issues=[]，23/23 stub）；两个 builder `matches`。
+- `not_run`：产品 evaluation runner 执行适配 case（本构建无 booking 应用）、真实模型、τ² 官方
+  suite/用户模拟、recovery 边界（三条任务无恢复语义）、上游全文件离线重算（需 pinned clone）、
+  db.json 重构（仅 pin hash）；仅根 MIT 已审，域内第三方数据未逐项审计。
+- 证据：`reports/f13b/T104-tau2-import.md`；原始 tail `E:\Orchara\.scratch\f13b\T104\`。
