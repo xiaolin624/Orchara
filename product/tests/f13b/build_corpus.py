@@ -1740,6 +1740,26 @@ def build() -> dict[str, bytes]:
     summary = f13b_corpus.summarize(probe)
     schema_bytes = (PRODUCT_ROOT / "contracts" / "evaluation-case.schema.json").read_bytes()
 
+    # F13B/T104: the frozen corpus references (does not absorb) the imported
+    # tau2-bench subset, so the two builders stay independent and the T102
+    # seven-category documents are not polluted with external tasks. The
+    # imported subset pins this relationship the other way: its own registry
+    # names the corpus registry by path, while this pin makes drift visible.
+    external_registry_path = PRODUCT_ROOT / "tests" / "f13b" / "external" / "registry.json"
+    if not external_registry_path.exists():
+        raise FileNotFoundError(
+            f"the T104 external import registry is missing: {external_registry_path}"
+        )
+    # F13B/T105: the same relationship for the adapted AgentDojo subset. It is a
+    # separate registry so neither importer can silently absorb the other's cases.
+    agentdojo_registry_path = (
+        PRODUCT_ROOT / "tests" / "f13b" / "external" / "agentdojo" / "registry.json"
+    )
+    if not agentdojo_registry_path.exists():
+        raise FileNotFoundError(
+            f"the T105 AgentDojo import registry is missing: {agentdojo_registry_path}"
+        )
+
     registry = {
         "schema": f13b_corpus.REGISTRY_SCHEMA,
         "generated_by": "tests/f13b/build_corpus.py",
@@ -1770,6 +1790,42 @@ def build() -> dict[str, bytes]:
         "fixtures": fixtures,
         "routing_catalogs": ROUTING_CATALOGS,
         "rag_sources": RAG_SOURCES,
+        "external_imports": {
+            "registry_path": "product/tests/f13b/external/registry.json",
+            "registry_sha256": hashlib.sha256(
+                external_registry_path.read_bytes()
+            ).hexdigest(),
+            "source": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+            "source_commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+            "label": "adapted_external",
+            "rule": (
+                "Imported adapted cases are frozen_test only. Their families, "
+                "normalized templates and near duplicates must not overlap this "
+                "corpus's dev split, and their results are not released-benchmark "
+                "scores; the external registry pins this relationship."
+            ),
+            "agentdojo": {
+                "registry_path": (
+                    "product/tests/f13b/external/agentdojo/registry.json"
+                ),
+                "registry_sha256": hashlib.sha256(
+                    agentdojo_registry_path.read_bytes()
+                ).hexdigest(),
+                "source": (
+                    "ethz-spylab/agentdojo@"
+                    "089ed468cf3ed0322acc66b0211f26d9d90dbf60"
+                ),
+                "source_commit": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+                "label": "adapted_external",
+                "rule": (
+                    "Imported adapted cases are frozen_test only. Their utility and "
+                    "attack_success results are reported separately, security=True "
+                    "from AgentDojo maps to attack_success=true, families/templates "
+                    "and near duplicates must not overlap this corpus, and their "
+                    "results are not released-benchmark scores."
+                ),
+            },
+        },
     }
     files["registry.json"] = _dump(registry)
     return files

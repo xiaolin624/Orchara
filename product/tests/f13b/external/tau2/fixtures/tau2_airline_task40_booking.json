@@ -1,0 +1,33 @@
+{
+  "booking": {
+    "cabin": "economy",
+    "fare_paid": "540.00",
+    "flights": [
+      {
+        "date": "2024-05-18",
+        "flight_number": "HAT117"
+      }
+    ],
+    "passengers": [
+      {
+        "dob": "1992-11-12",
+        "first_name": "Anya",
+        "last_name": "Garcia"
+      },
+      {
+        "dob": "1989-12-13",
+        "first_name": "Mei",
+        "last_name": "Lee"
+      }
+    ],
+    "payment_id": "credit_card_4456188",
+    "reservation_id": "3RK2T9",
+    "status": "confirmed"
+  },
+  "fixture_version": "tau2-airline-adapted/1",
+  "policy": {
+    "policy_id": "passenger-correction-adapted-1",
+    "rule": "one passenger name correction on an existing booking; the rest of the booking is unchanged"
+  },
+  "source_task": "40"
+}

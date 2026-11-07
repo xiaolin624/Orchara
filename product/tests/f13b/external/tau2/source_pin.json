@@ -1,0 +1,316 @@
+{
+  "acquisition": {
+    "commands": [
+      "git init E:\\Orchara\\.scratch\\f13b\\T104\\upstream",
+      "git -C <dir> remote add origin https://github.com/sierra-research/tau2-bench",
+      "git -C <dir> fetch --depth 1 origin da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+      "git -C <dir> -c advice.detachedHead=false checkout FETCH_HEAD",
+      "git -C <dir> rev-parse HEAD -> da0835f6c67baef58bdda18f2a3b037dfb3a1754"
+    ],
+    "method": "git init, remote add, git fetch --depth 1 origin <commit>, then a detached checkout of FETCH_HEAD",
+    "network": "available",
+    "read_at": "2026-11-07",
+    "result": "ok",
+    "upstream_dir": "E:\\Orchara\\.scratch\\f13b\\T104\\upstream (not committed)",
+    "verified_head": "da0835f6c67baef58bdda18f2a3b037dfb3a1754"
+  },
+  "commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+  "commit_date_utc": "2026-10-30",
+  "commit_subject": "Merge pull request #692 from RunVid/submission/pine-voice-1.0",
+  "committed_at": "2026-10-29T22:37:05-07:00",
+  "empty_checker_trap": {
+    "condition": "task.evaluation_criteria is None",
+    "import_gate": "reject",
+    "lines": "134-139",
+    "observed": "return RewardInfo(reward=1.0, reward_basis=None, info={\"note\": \"No evaluation criteria\"})",
+    "path": "src/tau2/evaluator/evaluator.py",
+    "reason_codes": [
+      "missing_checker",
+      "empty_criteria",
+      "empty_reward_basis",
+      "default_success"
+    ],
+    "rule": "The upstream evaluator scores a task without evaluation criteria as reward=1.0. Import refuses that default success; a task must carry a non-empty checker and a non-empty reward_basis."
+  },
+  "environment": {
+    "db_path": "data/tau2/domains/airline/db.json",
+    "db_sha256": "7184914bd3720d93f1160a09bb2724c3a5601d8ca39d02d371cbbfa62626f7e2",
+    "domain": "airline",
+    "note": "The upstream airline environment is not copied or executed. The adapted cases use committed local JSON fixtures and a local HTTP endpoint surface; the upstream db.json is pinned by hash only.",
+    "policy_path": "data/tau2/domains/airline/policy.md",
+    "policy_sha256": "7db375ddcce5061cf9f48a5aabe1fc3e52aa2936d6a65b7c5b62e3c7ca54cfe4",
+    "split_tasks_path": "data/tau2/domains/airline/split_tasks.json",
+    "split_tasks_sha256": "8249d7af4c654a48e5fa776993c3416c3b68c7213a26d00ec89e976c28363e97"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "74741b87a33d4704c6f33e5c71742542446c984233f7a7e4905bf36f4da5a33b",
+      "size_bytes": 1093
+    },
+    {
+      "path": "data/tau2/domains/airline/tasks.json",
+      "role": "tasks",
+      "sha256": "34dfcf0622792d0d0fa32aa491d21582e1b5d3ec1948e7743bae881885f878ea",
+      "size_bytes": 159049
+    },
+    {
+      "path": "data/tau2/domains/airline/policy.md",
+      "role": "policy",
+      "sha256": "7db375ddcce5061cf9f48a5aabe1fc3e52aa2936d6a65b7c5b62e3c7ca54cfe4",
+      "size_bytes": 7842
+    },
+    {
+      "path": "data/tau2/domains/airline/split_tasks.json",
+      "role": "split",
+      "sha256": "8249d7af4c654a48e5fa776993c3416c3b68c7213a26d00ec89e976c28363e97",
+      "size_bytes": 1550
+    },
+    {
+      "path": "data/tau2/domains/airline/db.json",
+      "role": "environment_db",
+      "sha256": "7184914bd3720d93f1160a09bb2724c3a5601d8ca39d02d371cbbfa62626f7e2",
+      "size_bytes": 7247917
+    },
+    {
+      "path": "src/tau2/data_model/tasks.py",
+      "role": "data_model",
+      "sha256": "dd169761cf3449a504b528a452ad4d1ef6667ce18336eacd4a033630ad43c61e",
+      "size_bytes": 23889
+    },
+    {
+      "path": "src/tau2/evaluator/evaluator.py",
+      "role": "evaluator",
+      "sha256": "b7de29656b0c5f31c5b0b7ac9a7cdf58e90595f54aa03b7d326e3ebb1f8b1ecf",
+      "size_bytes": 15431
+    },
+    {
+      "path": "pyproject.toml",
+      "role": "dependency_declaration",
+      "sha256": "b9e5d3880fceb2ae2ccad2178d261c5ec6f7acbb4d13055c4ccb62bf26d6220c",
+      "size_bytes": 2931
+    }
+  ],
+  "license": {
+    "committed_path": "tau2/LICENSE.tau2-mit.txt",
+    "copyright": "Copyright (c) 2025 Sierra Research",
+    "notes": "The upstream repository root LICENSE is MIT and was reviewed. Per-domain or third-party data was not re-audited; the import keeps the pinned licence hash and does not claim a broader licence review.",
+    "review": "reviewed",
+    "sha256": "74741b87a33d4704c6f33e5c71742542446c984233f7a7e4905bf36f4da5a33b",
+    "source_url": "https://github.com/sierra-research/tau2-bench/blob/da0835f6c67baef58bdda18f2a3b037dfb3a1754/LICENSE",
+    "spdx": "MIT"
+  },
+  "read_at": "2026-11-07",
+  "repo": "sierra-research/tau2-bench",
+  "repo_url": "https://github.com/sierra-research/tau2-bench",
+  "schema": "orchara.f13b-tau2-source-pin/1",
+  "tasks": [
+    {
+      "canonical_sha256": "c76cd2fd76c9328c2bbfe5a59705707ba14a53da31fd8a451a3c4ad8ef443224",
+      "criteria": {
+        "actions": [
+          {
+            "action_id": "11_0",
+            "arguments": {
+              "cabin": "basic_economy",
+              "flights": [
+                {
+                  "date": "2024-05-19",
+                  "flight_number": "HAT003"
+                },
+                {
+                  "date": "2024-05-20",
+                  "flight_number": "HAT290"
+                }
+              ],
+              "payment_id": "gift_card_1642017",
+              "reservation_id": "GV1N64"
+            },
+            "info": null,
+            "name": "update_reservation_flights"
+          }
+        ],
+        "communicate_info": [
+          "5244"
+        ],
+        "nl_assertions": [
+          "Check that agent does not remove passenger since changing the number of passengers is not allowed.",
+          "Check that agent downgrades all passengers to basic economy.",
+          "Check that agent refunds $5244 to original payment method."
+        ],
+        "reward_basis": [
+          "DB",
+          "COMMUNICATE"
+        ]
+      },
+      "criteria_sha256": "15a582789a0b81a5a1e77160498c1f789502bbc80c940150b5f8276f9eb3a92b",
+      "path": "data/tau2/domains/airline/tasks.json",
+      "purpose": "Test that agent does not change the number of passenger for a flight.",
+      "selected_because": "flight downgrade without removing a passenger; exact 5244 refund",
+      "task_id": "11",
+      "user_instructions_sha256": "895061f8fc84f608cfeaf6c842da48d2ef97db203c19a1a4181f25bb4b2d41c5"
+    },
+    {
+      "canonical_sha256": "a455a77004ea68543172d7c7fdacae21cb36a2a53aabc93fdc5d3dd084c64e7e",
+      "criteria": {
+        "actions": [
+          {
+            "action_id": "39_0",
+            "arguments": {
+              "user_id": "amelia_davis_8890"
+            },
+            "info": null,
+            "name": "get_user_details"
+          },
+          {
+            "action_id": "39_1",
+            "arguments": {
+              "reservation_id": "8C8K4E"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_2",
+            "arguments": {
+              "reservation_id": "UDMOP1"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_3",
+            "arguments": {
+              "reservation_id": "XAZ3C0"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_4",
+            "arguments": {
+              "reservation_id": "LU15PA"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_5",
+            "arguments": {
+              "reservation_id": "MSJ4OA"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_6",
+            "arguments": {
+              "reservation_id": "I6M8JQ"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_7",
+            "arguments": {
+              "reservation_id": "4XGCCM"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "39_8",
+            "arguments": {
+              "reservation_id": "8C8K4E"
+            },
+            "info": null,
+            "name": "cancel_reservation"
+          },
+          {
+            "action_id": "39_9",
+            "arguments": {
+              "reservation_id": "LU15PA"
+            },
+            "info": null,
+            "name": "cancel_reservation"
+          },
+          {
+            "action_id": "39_10",
+            "arguments": {
+              "reservation_id": "MSJ4OA"
+            },
+            "info": null,
+            "name": "cancel_reservation"
+          }
+        ],
+        "communicate_info": [],
+        "nl_assertions": [
+          "Agent cancels reservation 8C8K4E.",
+          "Agent cancels reservation LU15PA.",
+          "Agent cancels reservation MSJ4OA.",
+          "Agent does not cancel  any other reservation."
+        ],
+        "reward_basis": [
+          "DB",
+          "COMMUNICATE"
+        ]
+      },
+      "criteria_sha256": "2f978bbc36b4d60c163c59b998f8aac9c3df9697e131de6c69a842654fdef63d",
+      "path": "data/tau2/domains/airline/tasks.json",
+      "purpose": "Check that agent doesn't cancel reservations if the refund is not applicable even if the user asks. Agents must follow airline policy and only cancel flights that are eligible for refunds, even though the tool itself would process any cancellation.\nAlso user is not a native English speaker.",
+      "selected_because": "refund-eligibility refusal; 3 of 7 reservations may be cancelled",
+      "task_id": "39",
+      "user_instructions_sha256": "4b7a446d0f90424f1e60f973fed7a3a6d6a8a769085bc2a97ed6a459c559ee90"
+    },
+    {
+      "canonical_sha256": "4928c624f06a934ce5dd8d0bdc1394082384cc2d358f7fed065dbd4753d27920",
+      "criteria": {
+        "actions": [
+          {
+            "action_id": "40_0",
+            "arguments": {
+              "reservation_id": "3RK2T9"
+            },
+            "info": null,
+            "name": "get_reservation_details"
+          },
+          {
+            "action_id": "40_1",
+            "arguments": {
+              "passengers": [
+                {
+                  "dob": "1992-11-12",
+                  "first_name": "Anya",
+                  "last_name": "Garcia"
+                },
+                {
+                  "dob": "1989-12-13",
+                  "first_name": "Mei",
+                  "last_name": "Garcia"
+                }
+              ],
+              "reservation_id": "3RK2T9"
+            },
+            "info": null,
+            "name": "update_reservation_passengers"
+          }
+        ],
+        "communicate_info": [],
+        "nl_assertions": [
+          "Agent updates reservation 3RK2T9 to passenger Mei Garcia."
+        ],
+        "reward_basis": [
+          "DB",
+          "COMMUNICATE"
+        ]
+      },
+      "criteria_sha256": "3d11b4f8aa35704e95997261baeb56dce1c8b565fa464b2492275ea74ddaac1b",
+      "path": "data/tau2/domains/airline/tasks.json",
+      "purpose": "Test agent's capacity to handle a flight change.",
+      "selected_because": "passenger-name correction on an existing reservation",
+      "task_id": "40",
+      "user_instructions_sha256": "42a33238e9d7c91c814711ea8b63197af219590b7ec0e0840d3ef30d4e374873"
+    }
+  ]
+}
