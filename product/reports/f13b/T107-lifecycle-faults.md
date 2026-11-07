@@ -7,8 +7,9 @@
 见 §7 `not_run`。
 
 - 分支 / worktree：`t/t107-lifecycle-faults` / `E:\Orchara-wt\t107`
-- 基线：`integration/f13b` @ `834ca68`；结束前 merge `integration/f13b` @ `f234e72`（T105），
-  合并提交 `db94214`，其上重跑全部门禁；证据生成树 `e904e0c`（含一条仅改证据字段的 test 提交）。
+- 基线：`integration/f13b` @ `834ca68`；结束前 merge `integration/f13b` @ `1ce0d65`（其中已含
+  T106 与 T107 早先的 `e8e9311`）→ 合并提交 `636135e`，其上重跑全部门禁；证据生成树
+  `e904e0c`（与最终代码/测试树仅差文档；T107 测试代码未再变）。
 - 环境：PostgreSQL 16.4 `127.0.0.1:55432`；Go 1.27.3；Python 3.12.2；
   WSL2 Ubuntu-24.04 + runsc release-20241118.0（rootfs sha256 `03c3f647…`）；模型 dev-stub。
 - 交付：
@@ -173,7 +174,8 @@ event Run seq 1..6，终态 `failed`；waiting Run seq 1..4（`queued→running�
 ## 8. 命令与原始 tail（cwd=`product/`）
 
 真实栈互斥：`E:\Orchara\.scratch\f13b\locks\realstack\t107.lock`（运行前创建，结束后删除）。
-以下 tail 为 merge 后树 `db94214` 上的门禁；证据最后一轮在 `e904e0c` 树上重跑 4 条用例。
+以下 tail 先在 merge 后树 `db94214` 上取得（T107 与 T105），再在最终合并树 `636135e`
+（含 T106）上复跑 `tests/f13b`；T107 证据最后一轮在 `e904e0c` 树上。
 
 ```text
 $ python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q
@@ -212,15 +214,18 @@ $ python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q
 
 合并：`git merge integration/f13b` → merge commit `db94214`（无冲突；PROGRESS 双段未冲突）。
 
-最终树复跑（代码/测试树 `e8e9311`；其后 `d8ab6f3` 仅补本报告与 PROGRESS 的 tail，不改代码/测试）：
+最终合并树复跑（代码/测试树 `636135e`，含 T106；其后仅文档提交）：
 
 ```text
 $ python -m pytest tests/f13b -q
-........................................................................ [ 39%]
-........................................................................ [ 78%]
-.......................................                                  [100%]
-183 passed in 220.05s (0:03:40)
+........................................................................ [ 38%]
+........................................................................ [ 77%]
+..........................................                               [100%]
+186 passed in 321.82s (0:05:21)
 ```
+
+（`e8e9311` 是 T107 自身代码/测试树，合并前的复跑为 183 passed in 220.05s；T107 专项
+证据轮 4 passed in 59.60s。）
 
 ## 9. 残余风险 / 边界
 
