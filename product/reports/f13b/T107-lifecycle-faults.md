@@ -212,7 +212,7 @@ $ python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q
 
 合并：`git merge integration/f13b` → merge commit `db94214`（无冲突；PROGRESS 双段未冲突）。
 
-最终树复跑（`e8e9311`，即交付提交；相对 `db94214` 只多一条 test 证据字段修改与本文档/证据）：
+最终树复跑（代码/测试树 `e8e9311`；其后 `d8ab6f3` 仅补本报告与 PROGRESS 的 tail，不改代码/测试）：
 
 ```text
 $ python -m pytest tests/f13b -q
