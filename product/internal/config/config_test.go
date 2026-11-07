@@ -622,3 +622,63 @@ func TestApprovalSweepIntervalDefaultsAndBounds(t *testing.T) {
 		t.Fatalf("sweep interval = %s", cfg.ApprovalSweepInterval)
 	}
 }
+
+// F06/T122: an explicitly configured real-model destination is read out under a
+// stub profile too, so a deployment can exercise the compiled provider adapter
+// against a controlled endpoint (a local fake provider in tests) while stub
+// candidates keep behaving exactly as before.
+func TestStubProfilesReadAnExplicitModelDestination(t *testing.T) {
+	for _, profile := range []string{"dev-stub", "capacity-stub"} {
+		env := validStubEnv()
+		env[EnvProfile] = profile
+		cfg, err := Load(lookupFrom(env))
+		if err != nil {
+			t.Fatalf("%s without a destination: %v", profile, err)
+		}
+		if cfg.ModelEndpoint != "" || cfg.ModelSecret != "" || !cfg.Stub() {
+			t.Fatalf("%s defaults = %q/%q stub=%v",
+				profile, cfg.ModelEndpoint, cfg.ModelSecret, cfg.Stub())
+		}
+
+		env[EnvModelEndpoint] = "http://127.0.0.1:18080/v1"
+		env[EnvModelSecretRef] = "env:ORCHARA_MODEL_KEY"
+		cfg, err = Load(lookupFrom(env))
+		if err != nil {
+			t.Fatalf("%s with a destination: %v", profile, err)
+		}
+		if cfg.ModelEndpoint != "http://127.0.0.1:18080/v1" {
+			t.Fatalf("%s endpoint = %q", profile, cfg.ModelEndpoint)
+		}
+		if cfg.ModelSecret != "env:ORCHARA_MODEL_KEY" {
+			t.Fatalf("%s secret ref = %q", profile, cfg.ModelSecret)
+		}
+		if !cfg.Stub() {
+			t.Fatalf("%s must stay a stub profile even with a declared destination", profile)
+		}
+	}
+}
+
+func TestStubProfilesRefuseAHalfConfiguredDestination(t *testing.T) {
+	env := validStubEnv()
+	env[EnvModelEndpoint] = "http://127.0.0.1:18080/v1"
+	_, err := Load(lookupFrom(env))
+	var invalidErr *ValidationError
+	if !errors.As(err, &invalidErr) || invalidErr.Variable != EnvModelSecretRef {
+		t.Fatalf("an endpoint without its secret reference must be refused, got %v", err)
+	}
+
+	env = validStubEnv()
+	env[EnvModelSecretRef] = "env:ORCHARA_MODEL_KEY"
+	_, err = Load(lookupFrom(env))
+	if !errors.As(err, &invalidErr) || invalidErr.Variable != EnvModelEndpoint {
+		t.Fatalf("a secret reference without an endpoint must be refused, got %v", err)
+	}
+
+	env = validStubEnv()
+	env[EnvModelEndpoint] = "http://127.0.0.1:18080/v1?key=value"
+	env[EnvModelSecretRef] = "env:ORCHARA_MODEL_KEY"
+	_, err = Load(lookupFrom(env))
+	if !errors.As(err, &invalidErr) || invalidErr.Variable != EnvModelEndpoint {
+		t.Fatalf("an endpoint with a query must be refused, got %v", err)
+	}
+}

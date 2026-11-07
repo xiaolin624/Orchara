@@ -191,10 +191,26 @@ func TestStubStreamCanEmitAnIncompleteToolCall(t *testing.T) {
 	}
 }
 
-func TestRealStreamingIsAdapterUnavailable(t *testing.T) {
+// F06/T122 changes this seam: a real candidate now selects the compiled
+// chat-completions adapter (it implements StreamProvider), but an unconfigured
+// endpoint or an unregistered protocol still fails closed before anything is
+// streamed — never a fabricated stream.
+func TestRealStreamingFailsClosedWithoutAnEndpoint(t *testing.T) {
 	providers := stubProviderFor(t, config.ProfileDevStub)
-	if _, err := providers.StreamingFor(testCandidate("openai")); !errors.Is(err, ErrAdapterUnavailable) {
-		t.Fatalf("want ErrAdapterUnavailable for a real provider, got %v", err)
+	streaming, err := providers.StreamingFor(testCandidate("openai"))
+	if err != nil {
+		t.Fatalf("the compiled adapter must be selectable, got %v", err)
+	}
+	candidate := testCandidate("openai")
+	_, _, err = collectStream(t, streaming, CallRequest{
+		Candidate: candidate,
+		Params:    streamParams(nil),
+	})
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("want ErrNotConfigured without a deployed endpoint, got %v", err)
+	}
+	if errors.Is(err, ErrAdapterUnavailable) {
+		t.Fatalf("the compiled adapter must not answer adapter_unavailable for a chat profile: %v", err)
 	}
 }
 
