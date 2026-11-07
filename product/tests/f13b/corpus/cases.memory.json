@@ -1,0 +1,318 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/memory/status"
+        },
+        {
+          "expected": "espresso",
+          "kind": "json_equals",
+          "pointer": "/memory/active_value"
+        },
+        {
+          "expected": 1,
+          "kind": "json_equals",
+          "pointer": "/memory/revision"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-dev-confirm-preference",
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "input": {
+        "application_id": "app-personal-notes",
+        "decision": "confirm",
+        "proposal": {
+          "field": "beverage",
+          "value": "espresso"
+        },
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-memory-dev-confirmation",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "rejected",
+          "kind": "json_equals",
+          "pointer": "/memory/status"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/memory/active_value"
+        },
+        {
+          "expected": 0,
+          "kind": "json_equals",
+          "pointer": "/memory/revision"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-dev-reject-preference",
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "input": {
+        "application_id": "app-personal-notes",
+        "decision": "reject",
+        "proposal": {
+          "field": "beverage",
+          "value": "espresso"
+        },
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-memory-dev-confirmation",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "needs_clarification",
+          "kind": "json_equals",
+          "pointer": "/memory/status"
+        },
+        {
+          "expected": "espresso",
+          "kind": "json_equals",
+          "pointer": "/memory/active_value"
+        },
+        {
+          "expected": 1,
+          "kind": "json_equals",
+          "pointer": "/memory/revision"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-dev-contradictory-preference",
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "input": {
+        "application_id": "app-personal-notes",
+        "decision": "confirm",
+        "existing": {
+          "field": "beverage",
+          "value": "espresso"
+        },
+        "proposal": {
+          "field": "beverage",
+          "value": "tea"
+        },
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-memory-dev-confirmation",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/memory/status"
+        },
+        {
+          "expected": "green tea",
+          "kind": "json_equals",
+          "pointer": "/memory/active_value"
+        },
+        {
+          "expected": 2,
+          "kind": "json_equals",
+          "pointer": "/memory/revision"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-frozen-modify-preference",
+      "category": "memory",
+      "family_id": "memory-frozen-revision",
+      "fixture_id": "memory-frozen-store-v3",
+      "input": {
+        "application_id": "app-personal-notes",
+        "decision": "modify",
+        "proposal": {
+          "field": "beverage",
+          "value": "green tea"
+        },
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-memory-frozen-revision",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "deleted",
+          "kind": "json_equals",
+          "pointer": "/memory/status"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/memory/active_value"
+        },
+        {
+          "expected": 3,
+          "kind": "json_equals",
+          "pointer": "/memory/revision"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-frozen-delete-preference",
+      "category": "memory",
+      "family_id": "memory-frozen-revision",
+      "fixture_id": "memory-frozen-store-v3",
+      "input": {
+        "application_id": "app-personal-notes",
+        "decision": "delete",
+        "proposal": {
+          "field": "beverage",
+          "value": "green tea"
+        },
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-memory-frozen-revision",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/memory/visible_to_other_user"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/memory/visible_to_other_application"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "memory-frozen-user-isolation",
+      "category": "memory",
+      "family_id": "memory-frozen-isolation",
+      "fixture_id": "memory-frozen-store-v3",
+      "input": {
+        "application_id": "app-a",
+        "other_application_id": "app-b",
+        "other_user_id": "user-43",
+        "user_id": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-memory-frozen-isolation",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}

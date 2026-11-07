@@ -2496,3 +2496,28 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 边界：dev-stub 模型、回环 connector stub（非真实供应商）、WSL2+runsc 真实执行；真实模型/真实第三方
   供应商 `not_run`；写操作由文档化 worker capability 协议发出（J6b 记图分发缺口）；证据重生成后
   `Select-String` 复查无明文凭据。
+
+## F13B T102：冻结七类内部案例并证明没有切分泄漏（2026-11-07）
+
+- 分支 `t/t102-frozen-cases`（worktree `E:\Orchara-wt\t102`，基线 `integration/f13b` @ `30642be`）。
+- 交付：`tests/f13b/corpus/**`（7 个 `cases.<category>.json` + `registry.json` + 6 个 CSV fixture）、
+  `tests/f13b/build_corpus.py`（确定性生成器，registry 与 case 文档可由其重放）、
+  `tools/f13b_corpus.py`（loader/validator/切分泄漏检测/拒绝原因）、
+  `tests/f13b/test_t102_corpus.py`（离线测试）、
+  `internal/evaluation/dataset_f13b_corpus_test.go`（产品严格 `ParseDataset` 装载证明）、
+  `reports/f13b/T102-frozen-cases.md`。
+- 语料：**46 案例（25 dev / 21 frozen_test，20 families，178 assertions）**，覆盖
+  sales/routing/rag/memory/delegation/approval_effects/lifecycle 七类；每 case 至少 1 assertion、
+  family、split、provenance/licence，并在 registry 中有独立真值说明与采集事实清单。
+- 切分隔离实测：跨 split family **0/20**、归一化模板 **0/20**、字符 5-gram Jaccard 最大跨 split
+  **0.4018 < 0.75**（同 split 最大 0.6606，证明指标非零）；伪造跨 split family/template/近似重复均被拒绝。
+- 真值：sales 由 `tests/f13a/reference/sales_reference.py`（stdlib+Decimal，不 import 产品工具）从 fixture 重算；
+  routing 由 catalog 快照机械推导；rag 由来源快照（id/page/version/status/text）核对；
+  memory/delegation/approval/lifecycle 采用人工标注 + 账本/状态不变量。
+- 空/跳过/不完整：`reject_reasons` 8 个稳定码 + `is_decidable` 缺事实即不可判定；
+  20 条负向检查（含伪造跨 split、重复 case_id、文件/schema pin 篡改）全部断言原因码。
+- 未改 `docs/spec/**`、`contracts/**`、迁移与既有 `tests/f13a` 文件。
+- 门禁（真实 tail）：`pytest tests/f13b` **36 passed in 16.12s**；`pytest tests/tooling` **21 passed in 15.02s**；
+  `pytest tests/f13a/test_t056_fixtures.py`（离线子集）**7 passed in 1.31s**；`go build/vet/test` exit 0；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：case 执行器/真实模型、真实 artifact 采集、debug snapshot 发布、完整 `tests/f13a` 真实栈套件（按离线票范围）。

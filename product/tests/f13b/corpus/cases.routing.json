@@ -1,0 +1,302 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "auto_execute",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": "support-knowledge",
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-dev-unique-match",
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "input": {
+        "catalog_version": "support-dev-v3",
+        "request": {
+          "requested_family": "support",
+          "required_capability": "support.knowledge.search",
+          "text": "Find the onboarding knowledge article about invoice fields."
+        },
+        "requester": {
+          "id": "user-42"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-routing-dev-support-catalog",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "clarify",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-dev-ambiguous-match",
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "input": {
+        "catalog_version": "support-dev-v3",
+        "request": {
+          "requested_family": "support",
+          "required_capability": "support.inbox.triage",
+          "text": "Triage this inbound support message."
+        },
+        "requester": {
+          "id": "user-42"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-routing-dev-support-catalog",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "clarify",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-dev-missing-input",
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "input": {
+        "catalog_version": "support-dev-v3",
+        "request": {
+          "text": "Route this request."
+        },
+        "requester": {
+          "id": "user-42"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-routing-dev-support-catalog",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "reject",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-frozen-no-match",
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "input": {
+        "catalog_version": "operations-frozen-v7",
+        "request": {
+          "requested_family": "operations",
+          "required_capability": "operations.billing.audit",
+          "text": "Run the quarterly operations billing audit."
+        },
+        "requester": {
+          "id": "user-77"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-routing-frozen-operations-catalog",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "reject",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-frozen-unseen-application",
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "input": {
+        "catalog_version": "operations-frozen-v7",
+        "request": {
+          "requested_family": "security-incident",
+          "required_capability": "security.incident.respond",
+          "text": "Open a security incident response task."
+        },
+        "requester": {
+          "id": "user-77"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-routing-frozen-operations-catalog",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "reject",
+          "kind": "json_equals",
+          "pointer": "/routing/decision"
+        },
+        {
+          "expected": null,
+          "kind": "json_equals",
+          "pointer": "/routing/selected_application_id"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "routing-frozen-unauthorized-candidate",
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "input": {
+        "catalog_version": "operations-frozen-v7",
+        "request": {
+          "requested_family": "operations",
+          "required_capability": "operations.runbook.execute",
+          "text": "Execute the production runbook."
+        },
+        "requester": {
+          "id": "user-42"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-routing-frozen-operations-catalog",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}

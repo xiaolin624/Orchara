@@ -1,0 +1,269 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": 2,
+          "kind": "json_equals",
+          "pointer": "/delegation/child_runs"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/delegation/distinct_threads"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-dev-same-subapp-concurrency",
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "input": {
+        "child_application_id": "app-child-a",
+        "concurrent_requests": 2,
+        "parent_run_id": "run-parent-1"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-delegation-dev-parallel-children",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": 1,
+          "kind": "json_equals",
+          "pointer": "/delegation/child_runs"
+        },
+        {
+          "capability": "delegation.child_dispatch",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-dev-duplicate-delivery",
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "input": {
+        "child_application_id": "app-child-a",
+        "delivery_count": 2,
+        "idempotency_key": "idem-child-a-1",
+        "parent_run_id": "run-parent-1"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-delegation-dev-parallel-children",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": 2,
+          "kind": "json_equals",
+          "pointer": "/delegation/child_runs"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/delegation/distinct_threads"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/delegation/joined_once"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-dev-independent-threads",
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "input": {
+        "child_application_id": "app-child-b",
+        "concurrent_requests": 2,
+        "nested": true,
+        "parent_run_id": "run-parent-2"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-delegation-dev-parallel-children",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/delegation/over_budget_rejected"
+        },
+        {
+          "capability": "delegation.child_dispatch",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-frozen-parent-budget",
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "input": {
+        "child_application_id": "app-child-c",
+        "parent_budget": 1,
+        "parent_run_id": "run-parent-3",
+        "requested_children": 2
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-delegation-frozen-limits",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/delegation/waited_for_slot"
+        },
+        {
+          "expected": 2,
+          "kind": "json_equals",
+          "pointer": "/delegation/child_runs"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-frozen-full-slot-wait",
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "input": {
+        "child_application_id": "app-child-c",
+        "concurrent_parents": 2,
+        "parent_run_id": "run-parent-4",
+        "slot_capacity": 1
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-delegation-frozen-limits",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": 1,
+          "kind": "json_equals",
+          "pointer": "/delegation/join_count"
+        },
+        {
+          "capability": "delegation.child_dispatch",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "delegation-frozen-skipped-child-join",
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "input": {
+        "child_application_id": "app-child-c",
+        "children": [
+          {
+            "status": "skipped"
+          },
+          {
+            "status": "succeeded"
+          }
+        ],
+        "parent_run_id": "run-parent-5"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-delegation-frozen-limits",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}
