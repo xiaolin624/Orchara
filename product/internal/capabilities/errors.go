@@ -26,9 +26,11 @@
 //     operation is only `succeeded` once a ready artifact owned by the run (or
 //     the server-sealed reported data) exists.
 //   - The stub provider is labeled stub everywhere: the projection carries
-//     stub=true and the ledger read surfaces it. No real vendor adapter is
-//     compiled in this batch; real providers fail closed with
-//     provider_not_configured/adapter_unavailable and are never retried.
+//     stub=true and the ledger read surfaces it. F06/T122 compiles the real
+//     OpenAI-compatible chat-completions adapter; a real provider that is
+//     unconfigured, names an unapproved destination or speaks another protocol
+//     fails closed (provider_not_configured / provider_destination_not_approved /
+//     adapter_unavailable) before any ledger row exists.
 package capabilities
 
 import (
@@ -59,8 +61,14 @@ const (
 	CodeAdapterUnavailable      = "adapter_unavailable"
 	CodeProviderTransient       = "provider_transient"
 	CodeProviderResponseInvalid = "provider_response_invalid"
-	CodeParamsInvalid           = "validation_failed"
-	CodeInternal                = "internal_error"
+	// F06/T122 provider protocol vocabulary: the destination is not one the
+	// deployer registered, or the provider answer exceeded the adapter's 8 MiB
+	// protocol limit (the existing provider_response_invalid covers malformed
+	// chat-completions and provider status refusals below).
+	CodeProviderDestinationNotApproved = "provider_destination_not_approved"
+	CodeProviderResponseTooLarge       = "provider_response_too_large"
+	CodeParamsInvalid                  = "validation_failed"
+	CodeInternal                       = "internal_error"
 	// F06/T046 budget vocabulary.
 	CodeBudgetExhausted        = "budget_exhausted"
 	CodeBudgetCurrencyMismatch = "budget_currency_mismatch"

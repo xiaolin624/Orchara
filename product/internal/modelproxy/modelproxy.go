@@ -19,9 +19,11 @@
 //     only for candidates registered with provider "stub"; its output is
 //     labelled stub and derived deterministically from the fixture bytes. The
 //     real-provider path reads its credential through the candidate's
-//     secret_ref inside Go and fails closed (503 provider_not_configured) when
-//     no endpoint is deployed. No vendor protocol is compiled in this batch
-//     (F06 owns the adapters), so the real path can never pretend to have run.
+//     secret_ref inside Go and speaks exactly one wire protocol: the
+//     OpenAI-compatible chat-completions adapter in openai.go (F06/T122). It
+//     fails closed (503 provider_not_configured / provider_destination_not_approved)
+//     when the deployment endpoint, the registered destination or the candidate's
+//     credential is missing, and it never fabricates a call that did not happen.
 package modelproxy
 
 import (

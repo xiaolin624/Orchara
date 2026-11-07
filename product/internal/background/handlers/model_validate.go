@@ -219,6 +219,17 @@ func outcomeFor(err error) background.Outcome {
 			return background.Failed(background.CodeProviderNotConfigured)
 		case "provider_adapter_unavailable":
 			return background.Failed(background.CodeProviderAdapterUnavailable)
+		case "provider_transient":
+			// F06/T122: 429/5xx/timeout is an infrastructure failure the fixed
+			// retry table may retry; it is never a compatibility verdict.
+			return background.Failed(background.CodeTransientInternal)
+		case "provider_destination_not_approved", "provider_call_invalid",
+			"provider_permission_denied", "provider_model_not_found",
+			"provider_request_rejected", "provider_redirected",
+			"provider_response_invalid", "provider_response_too_large":
+			// F06/T122: a terminal provider refusal or malformed answer. Retrying
+			// the same request cannot change it, so it is a business failure.
+			return background.Failed(background.CodeModelCallRefused)
 		case "candidate_mismatch", "candidate_unavailable", "model_not_allowed",
 			"model_call_conflict", "fixture_missing", "fixture_not_synthetic":
 			return background.Failed(background.CodeModelCallRefused)
