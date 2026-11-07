@@ -1079,7 +1079,7 @@ def test_fault_10_duplicate_events_and_concurrent_opposite_decisions(
             ],
         },
         independent_truth={
-            "platform.run_waitings": waiting,
+            "platform.run_waitings": t035.waiting_row(dbname, wait_run),
             "stored_decision": decision,
             "waiting_rows_for_run": 1,
             "platform.run_events_waiting_run": [
