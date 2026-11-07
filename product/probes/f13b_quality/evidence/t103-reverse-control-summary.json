@@ -1,0 +1,67 @@
+{
+  "author_cases": {
+    "case_count": 5,
+    "categories": [
+      "normal",
+      "bad_input",
+      "ambiguity_or_out_of_bounds",
+      "tool_failure",
+      "output_check"
+    ],
+    "evidence": [
+      {
+        "case_id": "author-normal-1",
+        "categories": [
+          "normal",
+          "output_check"
+        ]
+      },
+      {
+        "case_id": "author-normal-2",
+        "categories": [
+          "normal",
+          "output_check"
+        ]
+      },
+      {
+        "case_id": "author-bad-input",
+        "categories": [
+          "bad_input"
+        ],
+        "failure_reason": "node_input_invalid"
+      },
+      {
+        "case_id": "author-out-of-bounds",
+        "categories": [
+          "ambiguity_or_out_of_bounds"
+        ],
+        "failure_reason": "row_limit_exceeded"
+      },
+      {
+        "case_id": "author-tool-failure",
+        "categories": [
+          "tool_failure"
+        ],
+        "failure_reason": "sandbox_unavailable"
+      }
+    ],
+    "minimum_cases": 5,
+    "missing": [],
+    "satisfied": true
+  },
+  "evaluation_id": "8e2067d0-a5d1-4fef-8fe0-8f70e4f4a369",
+  "quality": {
+    "adapter": "heuristic-local/1",
+    "informational": true,
+    "note": "a deliberately poor local proxy score; informational only",
+    "score": 0.0
+  },
+  "report_id": "473e3744-98ae-4fe0-87cf-ac2ed49c4eb4",
+  "report_status": "passed",
+  "review_id": "c06155c8-4019-4810-b00e-8755f4953863",
+  "submit_body": {
+    "id": "c06155c8-4019-4810-b00e-8755f4953863",
+    "state": "submitted"
+  },
+  "submit_http_status": 202
+}

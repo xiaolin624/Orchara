@@ -476,8 +476,14 @@ def finish_crafted_report(
     status: str = "passed",
     checks: list[str] | None = None,
     evaluator: str | None = None,
+    quality: dict | None = None,
 ) -> dict:
-    """Upload one crafted sealed report and let the real completion guard decide."""
+    """Upload one crafted sealed report and let the real completion guard decide.
+
+    ``quality`` is the optional informational quality slot (F13B/T103). The guard
+    does not read it; it exists so a test can prove that a recorded score cannot
+    change the verdict or the publication decision.
+    """
     document = t062.crafted_document(
         stack,
         started["evaluation"],
@@ -485,6 +491,7 @@ def finish_crafted_report(
         cases=report_cases,
         checks=checks,
         **({"evaluator": evaluator} if evaluator is not None else {}),
+        **({"quality": quality} if quality is not None else {}),
     )
     artifact_id = t062.upload_ready_report(
         stack, started["client"], started["lease"], t062.report_bytes(document)
@@ -610,6 +617,7 @@ def _seed_terminal_run(stack, run_id: str, state: str, error_code: str | None) -
 def seeded_passed_report(
     stack, *, login: str | None = None, cases: int = 5,
     session=None, application_id: str | None = None,
+    quality: dict | None = None,
 ) -> dict:
     """A guard-accepted five-category report over real (seeded-terminal) runs.
 
@@ -686,6 +694,7 @@ def seeded_passed_report(
     finished = finish_crafted_report(
         stack, started, report_cases, status="passed",
         checks=["run_state", "json_equals", "failure_reason"],
+        quality=quality,
     )
     assert finished["result"].status == 200, finished["result"].text
     assert finished["result"].json["state"] == "succeeded", finished["result"].json

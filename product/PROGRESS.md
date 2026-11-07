@@ -2471,3 +2471,31 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 `not_run`。真实服务器 410→页面重建仍由 `test_t096_stack.py::test_real_410_drives_the_page_snapshot_rebuild`
 覆盖（未改）。F1 页面路径只证明请求形状与“没有请求”，真实服务端解析由 F11/T073 既有真实栈用例覆盖。
 跨 epic 既有红（f03/f02a/f00b）未触碰、未修。
+
+## F13B T103（GitHub #104）：同一录制结果的 hard checker vs 质量评分（2026-11-07）
+
+- 分支 `t/t103-quality-vs-hard` / worktree `E:\Orchara-wt\t103`；基线 `integration/f13b` @ `30642be`。
+  本票 test/probe-only：**未改** `docs/spec/**`、`contracts/**`、迁移、`internal/evaluation` 语义或任何产品代码；
+  唯一 tracked 改动是 `tests/support/t068.py` 增加可选 `quality` 槽参数（向后兼容）。
+- 真实栈（PostgreSQL 16.4 + 编译二进制 + 真实 maintenance 双池 + 真实 supervisor + 真实 completion guard）：
+  真实 runner 产出单条录制结果 `a42cc60e…`（`status=failed`，quality 槽如实 `not_installed/null`）：
+  `t103-hard-pass` 的 `run_state`+`json_equals("", {})` 全过；`t103-hard-fail` 的
+  `json_equals("", {"total":"100.00"})` 对真实输出 `{}` 硬失败。
+  `probes/f13b_quality/compare.py` 从 `cases[].assertions` 独立复算 = `failed`，与产品 status 一致，
+  且 `quality_used=false`。
+- 同一 case 证据经真实 job-scoped 封印为 `status=failed` + `quality={adapter:"heuristic-local/1", score:1.0}`：
+  completion guard 接受；真实 `POST /api/v1/applications/{id}/submit` → **HTTP 422 `evaluation_not_passed`**
+  （`details.report_status=failed`），0 条 review。反向对照：passed 五类作者案例 + `quality.score=0.0`
+  → **HTTP 202 submitted**，review 创建，`author_cases.satisfied=true`。质量分只是信息。
+- 适配器（隔离 venv/npm 真实安装 + 真实最小调用 + 回环代理 trap）：`heuristic-local/1` outbound=0、tokens=0、$0；
+  DeepEval 4.3.3 确定性 `ExactMatch` 本地跑通（0 出站），语义指标报 `OpenAI API key is not configured` → `blocked`；
+  Ragas 0.4.3 导入因 `langchain_community.chat_models.vertexai` 缺失失败 → `blocked`；
+  Promptfoo 0.125.1 离线确定性 eval 通过，但默认 telemetry/update 发出 6 条真实出站
+  （`api.promptfoo.dev:443`、`a.promptfoo.app:443`、`r.promptfoo.app:443`）→ 无 opt-out 时数据外发策略淘汰，
+  语义 role 仍 `blocked`。获批 judge 运行 = `not_run`（无端点/凭据），无任何伪造的 judge 分数/费用。
+- 门禁：`pytest tests/f13b` 全绿（本票 4 条 + T102 corpus 用例）；Go `build=0/vet=0/test=0`；
+  `gofmt -l` 空；`sync_spec --check` no drift。`pytest tests/f13a` = **3 failed / 48 passed**，
+  经 stash 本票唯一 tracked 改动后原样复现（3 failed in 98.65s）：三个既有 F13A 用例仍假设最小
+  `start->end` 链以 `tool_unsupported_graph` 失败，而基线实际成功并封印 `{}`，**属基线既有红，非本票引入**。
+- 证据：`reports/f13b/T103-hard-vs-quality.md`；`probes/f13b_quality/**`（compare/adapter probe/矩阵/证据）；
+  原始 tail `E:\Orchara\.scratch\f13b\T103\`。
