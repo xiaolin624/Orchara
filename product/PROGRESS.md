@@ -2657,3 +2657,39 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 门禁（真实 tail，合并 `f234e72` 后树，cwd=`product/`）：`pytest tests/f13b/test_t107_lifecycle_faults.py -q` → **4 passed in 76.85s**；`pytest tests/f13b -q` → **183 passed in 192.65s**；`pytest tests/f12 -q` → **447 passed in 374.23s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。最终代码/测试树 `e8e9311` 复跑 `pytest tests/f13b -q` → **183 passed in 220.05s**，`pytest tests/f13b/test_t107_lifecycle_faults.py -q`（证据轮）→ **4 passed in 59.60s**；合并 `integration/f13b` @ `1ce0d65`（含 T106）后最终树 `636135e` 复跑 `pytest tests/f13b -q` → **186 passed in 321.82s**；其后仅文档提交。
 - 证据：`reports/f13b/T107-lifecycle-faults.md` + `reports/f13b/T107-faults.json`（`F13B_WRITE_EVIDENCE=1`，HEAD `e904e0c`）；原始 tail `E:\Orchara\.scratch\f13b\T107\`。
 - `not_run`：真实厂商模型/真实外部写供应商；生产部署上的 v1→v2 升级恢复；网络分区/宿主机失联恢复；浏览器 DOM/SSE UI；多机 supervisor 竞争与多轮并发压力。
+
+## F13B T111（GitHub #112）：在正式 Linux 重跑构建与脚本隔离攻击（2026-11-07）
+
+- 分支 `t/t111-linux-isolation` / worktree `E:\Orchara-wt\t111`；基线 `integration/f13b` @
+  `f6e0394`；结束前 merge 集成分支。
+- 交付：`tests/f13b/test_t111_linux_isolation.py`（10 用例：run 4 + build 5 + 端到端 1）、
+  `tests/support/t111.py`（WSL 宿主事实/清理真值/证据记录器）、
+  `reports/f13b/T111-isolation.json`、`reports/f13b/T111-linux-isolation.md`；
+  `deploy/sandbox/isolation_probe.py` 仅新增观测字段（host/env/mount/capability/userns/errno），
+  OCI bundle、driver 与 build_tool 的安全语义未改。
+- 真实验收宿主（ADR 0002）：WSL2 Ubuntu-24.04 / `6.6.87.2-microsoft-standard-WSL2` / gVisor
+  `runsc release-20241118.0`（spec 1.1.0-rc.1）/ rootfs digest
+  `sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5`；每条证据记录
+  host/kernel/runsc/digest，未用 Windows 结果冒充 runsc。
+- run 阶段（`cmd/sandboxprobe`）：宿主 `/etc`、`/mnt`、另一 Run workspace、PID1 environ、证书/密钥路径
+  全部 ENOENT/EACCES；沙箱 env 仅 OCI 6 项，宿主注入的 `ORCHARA_*` 不可见；setuid/setgid/mount-ns/
+  capset/clear-no_new_privs EPERM/EINVAL；非特权 userns 被 gVisor 允许但无宿主权限（uid 仍 65534、
+  `setuid(0)` EINVAL、宿主读仍 ENOENT、仅沙箱本地 tmpfs）；`1.1.1.1/8.8.8.8/169.254.169.254`
+  EHOSTUNREACH、宿主 loopback ECONNREFUSED，客人 listener 正控制 CONNECTED；超限 profile 在任何
+  单元创建前被产品 `OptionsFromEnv` 拒绝；2s 超时 2.6s kill 且 cleanup 全清。
+- build 阶段（真实 `tool_build` + 恶意 `setup.py`）：10 条精确宿主/对象目录/DSN/证书/另一 Run 路径
+  全部 ENOENT，只读挂载写 EACCES，`/workspace` 可写；钩子与 PID1 env 无凭据；构建仍 ready 且 digest
+  与 source/lock/SBOM 独立重算一致。fork：12 子在 64 限额成功、16 子在 64 停止但 128 成功、200 次
+  攻击 failed 无 digest；内存：1 GiB 对照 512 MiB 成功、192 MiB 下停在 152 MiB；磁盘：8 MiB quota
+  在 7 MiB ENOSPC、宿主卷 0 增长；时间：2s 预算 kill，`build_timeout`，无 digest。
+- 清理：每条用例后 `runsc list` 空、本 sandbox id 无进程/目录/挂载、宿主 staging 空；共享 state root
+  只有更早的 `t033-manual-1` 遗留（非本票），新增目录 0。
+- 发现（只报告未修复）：gVisor 超 pids 直接停容器（无 EAGAIN，默认 64 的用户余量约 13）；非特权
+  userns 被允许但无宿主能力；driver 把 runtime SIGKILL 137 误标 timeout（校准 64 MiB 内存限额时见，
+  最终 192 MiB 用例避开）。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t111_linux_isolation.py -q` **10 passed in 131.98s**；
+  `pytest tests/f05/test_t033_sandbox_run.py tests/f05/test_t037_build_isolation.py -q`
+  **10 passed in 177.56s**；`pytest tests/f13b -q` **196 passed in 307.44s**；`go build/vet/test`
+  exit 0（39 ok / 0 FAIL）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：宿主级 filesystem project quota（WSL2 无该能力）、完整 ICMP/UDP/DNS/代理矩阵、
+  WSL2 外独立生产宿主、真实供应商模型/connector。
