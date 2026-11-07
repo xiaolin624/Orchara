@@ -57,6 +57,7 @@ def test_service_account_journey(t101_stack) -> None:
     ) as record:
         result = j101_service_accounts.run(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()
 
 
 def test_write_approval_journey(t101_stack) -> None:
@@ -66,6 +67,7 @@ def test_write_approval_journey(t101_stack) -> None:
     ) as record:
         result = j101_approvals.run(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()
 
 
 def test_knowledge_ingestion_journey(t101_stack) -> None:
@@ -75,6 +77,7 @@ def test_knowledge_ingestion_journey(t101_stack) -> None:
     ) as record:
         result = j101_knowledge.run(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()
 
 
 def test_personal_memory_journey(t101_stack) -> None:
@@ -84,6 +87,7 @@ def test_personal_memory_journey(t101_stack) -> None:
     ) as record:
         result = j101_memory.run(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()
 
 
 def test_request_journeys(t101_stack) -> None:
@@ -94,9 +98,11 @@ def test_request_journeys(t101_stack) -> None:
     ) as record:
         result = j101_requests.run_natural_language(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()
     with t101.journey(
         t101.J1_REQUEST,
         "请求 -> Run -> 结果：显式固定版本入口 + 真实 supervisor + 独立 Decimal 真值",
     ) as record:
         result = j101_requests.run_request_to_result(t101_stack, record)
         record.note("result", result)
+        record.mark_passed()

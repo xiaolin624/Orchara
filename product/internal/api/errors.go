@@ -45,6 +45,26 @@ func ContractErrors(next http.Handler) http.Handler {
 	})
 }
 
+// ContractErrorsFor applies ContractErrors only to requests whose path starts
+// with one of the given prefixes.
+//
+// The public mux serves both the REST API and the static pages. API.md §1 fixes
+// the error envelope for the API surface; a page route is not part of that
+// contract, so an unknown page must keep the server's ordinary 404/405 instead
+// of being rewritten into {"error":...}. T093's scope is REST/SSE.
+func ContractErrorsFor(prefixes []string, next http.Handler) http.Handler {
+	scoped := ContractErrors(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				scoped.ServeHTTP(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 type contractErrorWriter struct {
 	http.ResponseWriter
 	request     *http.Request

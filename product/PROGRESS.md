@@ -1,4 +1,4 @@
-﻿# 产品实现进度（权威）
+# 产品实现进度（权威）
 
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
@@ -2332,3 +2332,43 @@ DB/对象目录只用于**独立断言**外部副作用真值。票面「不重�
 `reports/f12/T101-journeys.{md,json}`、本小节、`E:\Orchara\.scratch\f12\T101-REPORT.md`。
 提交：`test(f12): reproduce five F12 key journeys on the real stack`（T101）；`git merge integration/f12`
 = **Already up to date**（集成分支仍为 `60d9de0`）。
+
+## F12 复核修复（两轴 review A–K，2026-11-07）
+
+基线 `integration/f12` @ `cacfc44`，分支 `t/f12-review-fixes`（worktree `E:\Orchara-wt\review-f12`）。
+逐条发现/修法/红→绿证据见 `reports/f12/REVIEW-FIXES.md`；本节是进度摘要。
+
+| 条目 | 结果 |
+|---|---|
+| A 凭据进证据（P0） | 旧 `T101-journeys.json` 含一次性测试 API key 明文 + `x-connector-secret` 值；新增 `tools/evidence_redaction.py`，在 `t101_support`/`t100_support`/`f12_api_gate._report`/`j101_service_accounts:105` 源头脱敏，三个证据 JSON 重新生成。当前形状：`"secret": "<redacted>"`、`"x-connector-secret": "<redacted>"`；`test_evidence_redaction.py` 扫描先红后绿（4 passed）。key 所属库已 drop、不可再认证；**git 历史不改写**（分支已推送、issue tracker 引用 SHA） |
+| B `not_run` 假 `passed`（P0） | 删除 `t101_support.journey()` 与 `t100_support.__exit__` 的隐式改写；`passed` 必须旅程体显式 `mark_passed()` 且断言数 >0，`record()/persist()` 强制校验。空旅程保持 `not_run`；T100 5 条、T101 5+1 条重跑真实断言（J1b 仍 blocked）。`test_journey_status.py` 10 passed |
+| C F01 查询守卫假通过（P1） | 守卫集中到 `tests/f01/conftest.py`；单/双引号、`searchParams.get`、变量 key 全覆盖；地址栏读取但 0 key → fail closed；key ⊆ `{error,run,version}`。`test_page_query_guard.py` 9 passed |
+| D F01 源码字面量（P1） | 删除 `test_t019_pages.py:80-84` 三条字面量断言；新增 Node 执行 **served app.js 真实字节** 测试：401 → `/login?error=session_revoked`、两个 `[data-auth-content]` 清空、第二次调用不重复导航。`1 passed in 6.41s` |
+| E1 `nav.js` 重复导出（P2） | 删除 `items`，保留 `navItemsFor`；无调用点；`node --check` 通过 |
+| E2 重复分类器 | **保留**：页面总先加载 `runstream.js`，但 20+ 个既有 Node 页面测试单独加载 `runs.js/chat.js/runview.js`，删除会破坏隔离 harness；报告说明 |
+| E3 fixture 四处复制 | **不修**：已知重复，参数化生命周期风险大于收益 |
+| E4 门禁 60/106 + 源码正则 | 记录为**已声明边界**（T093 报告 §5.6）；未扩大改写 |
+| G T093 route-only 冒充 implemented（P0） | `route_registered / runtime_reached / functional_probe / implementation_status / implemented` 分离；`implemented` 只计 functional；summary 增 `route_only`/coverage；verdict `route_only`、CLI 退出码 3。证据：route-registered 106/106、functional 60/106、route_only 46、0 失败。T093 报告顶部/AC/§5.1/§5.5/§5.6/§7 全部改正；新增 `getVersion` 已注册但只有 401 的变异测试（5 passed） |
+| H T093 跨主体内容隔离（P0） | 新 pass 对 18 个 list/get 真实断言 member 看不到 creator 的资源 id；13 条无夹具读操作明确 `not_run`；每条记录 `cross_principal_isolation`（member 状态/items 数/foreign_id_visible/isolation_ok）。`test_operations.py` 106 条 parametrized 隔离断言 + summary 断言；T093 报告不再说“每条都有 403/404” |
+| I T098 报告乱码（P1） | 原文件 BOM + 276 PUA，不可逆；按代码/测试重写 118 行，UTF-8 无 BOM、PUA=0、U+FFFD=0；新增 `test_report_encoding.py` 扫描 `reports/f12/**`；T098 真实重跑 `14 passed in 28.38s`。顺带记录未修的 `reports/f13a/T065…md` BOM、`reports/f15a/runs.json` U+FFFD |
+| J T101 AC2（P1） | 原报告称“scope/ACL/人类批准同时满足”，实际 J5 只读无审批、J2 有人类审批但无 key scope；**改判 `partial`**，T101 状态 `passed → partial`，报告 §2/§5 重写；不谎称产品缺口（`approverForOwnerTx` 支持 service-owned Run → responsible human），剩余三合一 E2E 写清 `not_run` |
+| K `ContractErrors` 越界页面（P2） | 新增 `ContractErrorsFor([]string{"/api/"}, mux)`；页面 404/405 保持原行为；Go 测试 `TestContractErrorsForOnlyWrapsAPIPaths` 等 2 条通过 |
+
+**门禁（修复后，真实 tail）**
+
+- `pytest tests/f12 -q` → **441 passed in 233.72s (0:03:53)**（基线 318，无退化；新增 123 条）
+- `pytest tests/f12/test_gate_mutations.py -q` → **5 passed in 51.19s**
+- `pytest tests/f12/test_operations.py -q`（证据运行）→ **319 passed in 26.44s**
+- `pytest tests/f12/test_t100_{...}.py -q`（证据运行）→ **5 passed in 69.56s**
+- `pytest tests/f12/test_t101_journeys.py -q`（证据运行）→ **5 passed in 74.29s**
+- `pytest tests/f12/test_t098_* -q` → **14 passed in 28.38s**
+- `pytest tests/f12/test_journey_status.py` → **10 passed**；`test_evidence_redaction.py` → **4 passed**；
+  `test_report_encoding.py` → **1 passed**；`tests/f01/test_page_query_guard.py` → **9 passed**
+- `pytest tests/f01 -q` → **165 passed in 714.73s (0:11:54)**（基线 155，无退化）
+- Go：`build=0`、`vet=0`、`test=0`、`gofmt -l internal cmd tools` 空、`sync_spec --check` → `no drift`；
+  `node --check apps/web/src/assets/nav.js` exit 0
+- 真实栈串行锁 `E:\Orchara\.scratch\f12\locks\realstack` 本工作树持有至收尾并删除。
+
+提交：`fix(f12): redact evidence, truthful journey status, page guards and gate classification` /
+`test(f12): regression tests for redaction, statuses, page guards and gate semantics` /
+`docs(f12): review-fixes report, rewritten T098 report and regenerated evidence`（最终 SHA 见 `git log`）。

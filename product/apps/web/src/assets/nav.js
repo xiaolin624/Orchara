@@ -224,7 +224,6 @@
   }
 
   global.OrcharaNav = {
-    items: navItemsFor,
     navItemsFor: navItemsFor,
     hasRole: hasRole,
     isHuman: isHuman,

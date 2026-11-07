@@ -53,3 +53,4 @@ def test_journey_4_worker_result_and_exit_dual_evidence(t100_stack) -> None:
         ],
     ) as journey:
         run_worker_exit_journey(t100_stack, journey)
+        journey.mark_passed()

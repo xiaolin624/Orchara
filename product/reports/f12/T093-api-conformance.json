@@ -2,17 +2,17 @@
   "ticket": "T093",
   "issue": 94,
   "title": "外部客户端验证全量 REST/SSE 共同契约",
-  "generated_at": "2026-11-06T11:14:52Z",
+  "generated_at": "2026-11-07T05:52:08Z",
   "generated_by": "product/tools/f12_api_gate.py",
   "environment": {
-    "base_url": "http://127.0.0.1:63220",
+    "base_url": "http://127.0.0.1:65206",
     "profile": "dev-stub",
     "transport": "real HTTP over a socket against a running cmd/api process (no in-process handler calls)",
     "internal_listener": true,
-    "requests": 377
+    "requests": 395
   },
   "contract": {
-    "path": "E:\\Orchara-wt\\t093\\product\\contracts\\openapi.json",
+    "path": "E:\\Orchara-wt\\review-f12\\product\\contracts\\openapi.json",
     "sha256": "bf191b9697f99b362bd61c287964724637e1281153232699aacf582157fc3e91",
     "expected_operations": 106,
     "operations": 106
@@ -75,23 +75,23 @@
     }
   ],
   "fixture_ids": {
-    "id": "facce065-9684-4bbd-a2fe-f55885b229dd",
-    "application_id": "0ae499bd-1ec5-442e-8292-d929f54883e8",
-    "run_id": "f980f0b8-a6a8-4f26-9f64-08abc5f32488",
-    "conversation_id": "c544524a-8dd1-419f-8798-522bb3a2db09",
-    "memory_id": "feb94aea-bf8a-4af2-b110-59c4a3693f6f",
-    "knowledge_base_id": "14bd9d99-7335-4660-8ffa-f29c5d352ef6",
-    "artifact_id": "7d5a535a-e8cd-4c12-acde-23deec05a206",
-    "model_version_id": "5b6928a5-dc44-41d4-b773-c86dc624e09b",
-    "service_account_id": "f4afed9e-2963-4886-a4c0-82d5a3bc38a0",
-    "key_id": "15280210-4494-41ae-8e7e-a3166b232c03",
-    "grant_id": "02b60eb0-0f74-4cee-b0a1-5fea5184676f",
-    "job_id": "efb262a9-75ff-44f7-98bb-b09fe79a3a4c",
-    "request_id": "2ab9dfc1-31b3-4dc1-a1d7-b9f918e39a84",
-    "resource_grant_id": "69f590b1-48ee-4126-9762-063a37a8b9c9",
-    "attempt_token": "9ba0b0c5-aad8-49c5-8cfb-95c37137bb1f",
-    "claimed_run_id": "bd5efc40-34f5-418e-b1d8-1911005cf739",
-    "deletion_id": "6dd88b89-07b7-4adf-a2d9-9add2c2ea4f5"
+    "id": "0d1e3260-80b3-47bd-976a-0be6e1c17b02",
+    "application_id": "a4199a70-d2fa-4d23-bf09-bc71b066132a",
+    "run_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
+    "conversation_id": "eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a",
+    "memory_id": "a1ef8d01-3f3a-476c-bdb9-9346c6e53adf",
+    "knowledge_base_id": "a374bf5c-691a-426d-9641-a4509a733c5e",
+    "artifact_id": "9029f6a8-d688-4fd1-a9e5-788ca5344b48",
+    "model_version_id": "f7e2e11c-4d26-40e3-99c7-54c254877a05",
+    "service_account_id": "1f634678-6427-4064-b5c4-f697e99dc8ef",
+    "key_id": "e0a64034-ea13-4c6f-96b8-6b82a1429165",
+    "grant_id": "abf1355e-1d56-4437-9240-dd942b0ea684",
+    "job_id": "3ac5074b-7385-4f05-9f1c-f19edbc24cd9",
+    "request_id": "79ef0420-6232-47ff-b25c-aa6a57c9255e",
+    "resource_grant_id": "3e88d800-a3b2-4fbe-b66f-4d7575d30132",
+    "attempt_token": "<redacted>",
+    "claimed_run_id": "dba88bca-b0f2-4c41-928c-1fef9bf1c7e2",
+    "deletion_id": "138519c2-5fe6-4e5a-916e-9610cc6a1eaf"
   },
   "operations": [
     {
@@ -101,8 +101,20 @@
       "epic": "F01",
       "security": "public",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 409,
@@ -134,8 +146,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "cancelRequest",
@@ -146,6 +163,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -157,7 +186,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/requests/370d5573-73af-4982-bcc8-19c449f0f0e1/cancel"
+            "path": "/api/v1/requests/5f5d6a23-a468-4416-a6bc-94ec476f1619/cancel"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -177,7 +206,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/requests/d759c0fb-a11d-452b-98eb-636a2ac79256/cancel"
+            "path": "/api/v1/requests/96adad67-d688-44cc-b4fb-dca83f6fea21/cancel"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -216,6 +245,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -228,6 +262,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -239,7 +285,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/cancel"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/cancel"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -259,7 +305,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/cancel"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/cancel"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -298,6 +344,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -310,6 +361,19 @@
       "internal_role": "maintenance",
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 204,
+        "ok": true,
+        "expected_statuses": [
+          200,
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 200,
@@ -406,6 +470,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -418,6 +487,19 @@
       "internal_role": "supervisor",
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200,
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 200,
@@ -514,6 +596,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -524,8 +611,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -537,12 +636,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/result"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/result"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/result: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/result: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -554,7 +653,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/result"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/result"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -583,7 +682,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/result"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/result"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -601,8 +700,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "completeBackgroundUpload",
@@ -611,8 +715,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -624,12 +740,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -641,7 +757,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -670,7 +786,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -688,8 +804,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "completeUpload",
@@ -700,6 +821,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -711,7 +844,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -731,7 +864,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -770,6 +903,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -780,8 +918,20 @@
       "epic": "F03/F04A",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -793,12 +943,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -810,7 +960,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -839,7 +989,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/complete"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/complete"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -857,8 +1007,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "confirmAttemptExit",
@@ -867,8 +1022,20 @@
       "epic": "F03",
       "security": "internal",
       "internal_role": "supervisor",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 422,
@@ -880,12 +1047,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/attempts/5948b76f-ddd0-4531-bd2c-cf61d0adcab2/exited"
+            "path": "/internal/v1/attempts/561b2881-2184-427b-a4f1-ea2cfebffe64/exited"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/attempts/5948b76f-ddd0-4531-bd2c-cf61d0adcab2/exited: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/attempts/561b2881-2184-427b-a4f1-ea2cfebffe64/exited: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
           "expected": {
             "statuses": null,
             "codes": null
@@ -897,7 +1064,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/attempts/7e8e3071-448f-44b2-b0b4-5f9d6381a3ae/exited"
+            "path": "/internal/v1/attempts/789b50f6-27b5-4327-8a1e-d11da892b1cc/exited"
           },
           "status": 422,
           "content_type": "application/json; charset=utf-8",
@@ -926,7 +1093,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/attempts/eb5d85d8-b42c-4220-8201-0200ae84f429/exited"
+            "path": "/internal/v1/attempts/3168959a-5f60-47c7-9cc3-0f40e50d85ed/exited"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -944,8 +1111,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "createApiKey",
@@ -956,6 +1128,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1026,6 +1210,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1038,6 +1227,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1108,6 +1309,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1118,8 +1324,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -1131,12 +1349,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-downloads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-downloads"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-downloads: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-downloads: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
           "expected": {
             "statuses": null,
             "codes": null
@@ -1148,7 +1366,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-downloads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-downloads"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -1177,7 +1395,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-downloads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-downloads"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -1195,8 +1413,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "createBackgroundUpload",
@@ -1205,8 +1428,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          201
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -1218,12 +1453,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-uploads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-uploads"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-uploads: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-uploads: EOF occurred in violation of protocol (_ssl.c:2406)",
           "expected": {
             "statuses": null,
             "codes": null
@@ -1235,7 +1470,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-uploads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-uploads"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -1264,7 +1499,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-uploads"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-uploads"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -1282,8 +1517,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "createConversation",
@@ -1294,6 +1534,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1362,6 +1614,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1374,6 +1631,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1442,6 +1711,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1454,6 +1728,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1524,6 +1810,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1536,6 +1827,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1606,6 +1909,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1618,6 +1926,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1686,6 +2006,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1696,8 +2021,20 @@
       "epic": "F03/F04A",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -1709,12 +2046,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-downloads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-downloads"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-downloads: EOF occurred in violation of protocol (_ssl.c:2406)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-downloads: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -1726,7 +2063,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-downloads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-downloads"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -1755,7 +2092,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-downloads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-downloads"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -1773,8 +2110,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "createWorkerUpload",
@@ -1783,8 +2125,20 @@
       "epic": "F03/F04A",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          201
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -1796,12 +2150,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-uploads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-uploads"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-uploads: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-uploads: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -1813,7 +2167,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-uploads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-uploads"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -1842,7 +2196,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-uploads"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-uploads"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -1860,8 +2214,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "debugDraft",
@@ -1872,6 +2231,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1883,7 +2254,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/debug-runs"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/debug-runs"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -1903,7 +2274,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/debug-runs"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/debug-runs"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -1942,6 +2313,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -1952,8 +2328,20 @@
       "epic": "F06",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -1965,7 +2353,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/approvals/b286c1c1-b603-4b91-af26-275fd3e29d24/decision"
+            "path": "/api/v1/approvals/85db5460-4ea1-44fb-b406-5f907a039de7/decision"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -1985,7 +2373,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/approvals/37828081-b41e-4d89-b9fb-b4ec8a407c8f/decision"
+            "path": "/api/v1/approvals/eb86a4e9-3f18-4c41-bf83-1b88167eb8eb/decision"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2005,8 +2393,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "decideMemoryCandidate",
@@ -2015,8 +2408,20 @@
       "epic": "F09",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2028,7 +2433,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/memory-candidates/16e209d0-d113-41ea-8aba-fa6933bb976c/decision"
+            "path": "/api/v1/memory-candidates/2e090fad-f242-40a8-b474-3a1f3590ccc7/decision"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2048,7 +2453,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/memory-candidates/2682c837-01f5-408f-a701-a3f48fccacca/decision"
+            "path": "/api/v1/memory-candidates/5741b396-3a86-4074-b665-34833bbe76f6/decision"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2068,8 +2473,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "deleteArtifact",
@@ -2078,8 +2488,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2091,7 +2513,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2111,7 +2533,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2131,8 +2553,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "deleteConversation",
@@ -2143,6 +2570,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2154,7 +2593,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2174,7 +2613,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2213,6 +2652,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -2223,8 +2667,20 @@
       "epic": "F10",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2236,7 +2692,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/knowledge-documents/7fdd82c5-3a17-4e91-8820-f3c51e295752"
+            "path": "/api/v1/knowledge-documents/0608f7c5-4c54-4927-9e72-15dc23ca5f0b"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2256,7 +2712,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/knowledge-documents/c8870ad2-f118-4cbd-ab4e-eeb90f80a6a8"
+            "path": "/api/v1/knowledge-documents/5b44752c-9b4b-4a39-9f31-a075aeda3544"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2276,8 +2732,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "deleteMemory",
@@ -2288,6 +2749,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2299,7 +2772,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2319,7 +2792,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2358,6 +2831,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -2368,8 +2846,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2381,7 +2871,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/download"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/download"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2401,7 +2891,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/download"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/download"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2421,8 +2911,18 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "artifact_id",
+        "member_status": 404,
+        "foreign_id": "9029f6a8-d688-4fd1-a9e5-788ca5344b48",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "evaluateDraft",
@@ -2431,8 +2931,20 @@
       "epic": "F13A",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2444,7 +2956,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/evaluations"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/evaluations"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2464,7 +2976,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/evaluations"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/evaluations"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -2484,8 +2996,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getApplication",
@@ -2496,6 +3013,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2507,7 +3036,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2527,7 +3056,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2566,6 +3095,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "application_id",
+        "member_status": 404,
+        "foreign_id": "a4199a70-d2fa-4d23-bf09-bc71b066132a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -2576,8 +3115,20 @@
       "epic": "F06",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2589,7 +3140,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/approvals/f2d1a6a5-fdcb-4e6d-99f5-4161caf6270f"
+            "path": "/api/v1/approvals/0deabfcd-0197-4ac8-810f-de6fed638f46"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2609,7 +3160,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/approvals/39697c7f-e553-4e06-acd9-914250c3fe58"
+            "path": "/api/v1/approvals/3365d5fc-e9fa-4792-b3dd-7e23ca74877c"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2629,8 +3180,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no approval fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getArtifact",
@@ -2641,6 +3197,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2652,7 +3220,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2672,7 +3240,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2711,6 +3279,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "artifact_id",
+        "member_status": 404,
+        "foreign_id": "9029f6a8-d688-4fd1-a9e5-788ca5344b48",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -2721,8 +3299,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -2734,12 +3324,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-status"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-status"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-status: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-status: EOF occurred in violation of protocol (_ssl.c:2406)",
           "expected": {
             "statuses": null,
             "codes": null
@@ -2751,7 +3341,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-status"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-status"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -2780,7 +3370,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/artifact-status"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/artifact-status"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -2798,8 +3388,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getBackgroundJob",
@@ -2808,8 +3403,20 @@
       "epic": "F00B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2821,7 +3428,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/background-jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c"
+            "path": "/api/v1/background-jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2841,7 +3448,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/background-jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c"
+            "path": "/api/v1/background-jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2861,8 +3468,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no background-job fixture is selected by the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getConversation",
@@ -2873,6 +3485,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2884,7 +3508,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2904,7 +3528,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -2943,6 +3567,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "conversation_id",
+        "member_status": 404,
+        "foreign_id": "eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -2955,6 +3589,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -2966,7 +3612,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/deletions/9699db76-47aa-4e67-8be0-baa822044fab"
+            "path": "/api/v1/deletions/72379316-597a-457f-a95c-2d26d5e8bf1e"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -2986,7 +3632,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/deletions/dfbd2788-1958-483b-b3de-b91a31bd838c"
+            "path": "/api/v1/deletions/a3d7822e-50f7-459f-a9c4-e50bfd1a5a82"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3025,6 +3671,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no deletion fixture exists before the destructive normal probes"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3037,6 +3688,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3048,7 +3711,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/draft"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/draft"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3068,7 +3731,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/draft"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/draft"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3107,6 +3770,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "application_id",
+        "member_status": 404,
+        "foreign_id": "a4199a70-d2fa-4d23-bf09-bc71b066132a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3117,8 +3790,20 @@
       "epic": "F13A",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3130,7 +3815,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/evaluations/4d0b459a-a2d1-4a59-806f-c710317fb22c"
+            "path": "/api/v1/evaluations/93a59ed8-3422-45e1-a2f7-dd875f14c273"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3150,7 +3835,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/evaluations/d3dee2c1-9647-4e1d-a245-a52e578dd889"
+            "path": "/api/v1/evaluations/749fce73-bab0-438a-a4c0-c780c16e442c"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3170,8 +3855,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no evaluation fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getEvaluationReport",
@@ -3180,8 +3870,20 @@
       "epic": "F13A",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3193,7 +3895,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/evaluation-reports/273094b9-2aca-4e4c-9275-9aa224c88c4a"
+            "path": "/api/v1/evaluation-reports/c2c37905-7239-4be5-a741-aef0e17a9166"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3213,7 +3915,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/evaluation-reports/f3821c41-4ad4-44b8-bedb-1d5f388a49d9"
+            "path": "/api/v1/evaluation-reports/5310184b-db11-4922-9ae7-7a4b29a3f4b9"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3233,8 +3935,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no evaluation-report fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getIdentity",
@@ -3245,6 +3952,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3313,6 +4032,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "self-scoped identity read; there is no foreign body to hide"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3325,6 +4049,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3336,7 +4072,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3356,7 +4092,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3395,6 +4131,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "knowledge_base_id",
+        "member_status": 404,
+        "foreign_id": "a374bf5c-691a-426d-9641-a4509a733c5e",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3405,8 +4151,20 @@
       "epic": "F10",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3418,7 +4176,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-documents/5c7303b6-ee84-4bcc-836d-53838a89ce00"
+            "path": "/api/v1/knowledge-documents/30ba58b2-e49a-4f80-b5ca-e38542d37f05"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3438,7 +4196,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-documents/94530b9e-7c55-4825-8f23-a2d77305d136"
+            "path": "/api/v1/knowledge-documents/f8cfb352-cf3f-4354-92fc-35eff088bbc2"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3458,8 +4216,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no ingested knowledge-document fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getMemory",
@@ -3470,6 +4233,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3481,7 +4256,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3501,7 +4276,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3540,6 +4315,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "memory_id",
+        "member_status": 404,
+        "foreign_id": "a1ef8d01-3f3a-476c-bdb9-9346c6e53adf",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3552,6 +4337,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3563,7 +4360,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/models/5b6928a5-dc44-41d4-b773-c86dc624e09b"
+            "path": "/api/v1/models/f7e2e11c-4d26-40e3-99c7-54c254877a05"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3583,7 +4380,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/models/5b6928a5-dc44-41d4-b773-c86dc624e09b"
+            "path": "/api/v1/models/f7e2e11c-4d26-40e3-99c7-54c254877a05"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3622,6 +4419,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "shared model catalog; the model version is deployer-registered, not per-principal"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3632,8 +4434,20 @@
       "epic": "F02B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3645,7 +4459,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/reviews/0107a22e-db30-45b1-87e2-9c6461842c01"
+            "path": "/api/v1/reviews/44ce61d7-966a-4143-a14e-0349d4146a08"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3665,7 +4479,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/reviews/889d9e69-81b8-440d-b9bb-272fb7d39c83"
+            "path": "/api/v1/reviews/eff2017f-3323-45ec-9921-eafdf6e99cd4"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3685,8 +4499,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no publication-review fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getRequest",
@@ -3697,6 +4516,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3708,7 +4539,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/requests/08dc008c-7d9d-4793-8170-45e0efa12ad8"
+            "path": "/api/v1/requests/32600e3c-6d89-4d60-9983-a44d39041c52"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3728,7 +4559,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/requests/39af2b8c-d791-45ab-97ed-d41bad425e1d"
+            "path": "/api/v1/requests/fff175a0-b3ce-4458-8d84-76b832aba13a"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3767,6 +4598,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "the request fixture is created by the request normal-path probe after this pass"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3779,6 +4615,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3790,7 +4638,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3810,7 +4658,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3849,6 +4697,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "run_id",
+        "member_status": 404,
+        "foreign_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -3859,8 +4717,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3872,7 +4742,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/tools/a55d5f08-836f-46f8-af4d-cab5f34c795a"
+            "path": "/api/v1/tools/1d163578-aeb9-4cf9-861c-a20fb5045a42"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3892,7 +4762,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/tools/04e816fa-6c1d-460e-a229-a36905906cc3"
+            "path": "/api/v1/tools/3efb2cdc-5622-4082-905d-02036d594967"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3912,8 +4782,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no tool-version fixture is selected by the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getVersion",
@@ -3922,8 +4797,20 @@
       "epic": "F02B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -3935,7 +4822,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/versions/13ed3d4a-2951-4e0c-a8a8-31f547f34064"
+            "path": "/api/v1/versions/fe4830a4-0842-47d7-a941-fbf5840f0f6f"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -3955,7 +4842,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/versions/c01fec51-de06-472b-8120-534d588eb35f"
+            "path": "/api/v1/versions/0d1e9d65-c1d8-4738-92c8-6226b3277503"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -3975,8 +4862,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no published version fixture exists in the gate"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "getWorkerArtifactStatus",
@@ -3985,8 +4877,20 @@
       "epic": "F03/F04A",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -3998,12 +4902,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-status"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-status"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-status: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-status: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -4015,7 +4919,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-status"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-status"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -4044,7 +4948,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifact-status"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifact-status"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -4062,8 +4966,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "grantDiagnostics",
@@ -4072,8 +4981,20 @@
       "epic": "F11",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          201
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4125,8 +5046,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "grantResource",
@@ -4137,6 +5063,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4207,6 +5145,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4219,6 +5162,18 @@
       "internal_role": "worker",
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -4230,12 +5185,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/heartbeat"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/heartbeat"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/heartbeat: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/heartbeat: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -4247,7 +5202,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/heartbeat"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/heartbeat"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -4276,7 +5231,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/heartbeat"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/heartbeat"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -4313,6 +5268,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4323,8 +5283,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -4336,12 +5308,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/heartbeat"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/heartbeat"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/heartbeat: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/heartbeat: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -4353,7 +5325,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/heartbeat"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/heartbeat"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -4382,7 +5354,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/heartbeat"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/heartbeat"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -4400,8 +5372,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "ingestDocument",
@@ -4410,8 +5387,20 @@
       "epic": "F10",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4423,7 +5412,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6/documents"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e/documents"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -4443,7 +5432,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6/documents"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e/documents"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -4463,8 +5452,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "inviteUser",
@@ -4475,6 +5469,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4545,6 +5551,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4555,8 +5566,20 @@
       "epic": "F00B",
       "security": "internal",
       "internal_role": "maintenance",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -4568,12 +5591,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/model-calls"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/model-calls"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/model-calls: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/model-calls: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -4585,7 +5608,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/model-calls"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/model-calls"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -4614,7 +5637,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/background/jobs/efb262a9-75ff-44f7-98bb-b09fe79a3a4c/model-calls"
+            "path": "/internal/v1/background/jobs/3ac5074b-7385-4f05-9f1c-f19edbc24cd9/model-calls"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -4632,8 +5655,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "invokeCapability",
@@ -4642,8 +5670,20 @@
       "epic": "F06",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 422,
@@ -4655,12 +5695,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/capabilities"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/capabilities"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/capabilities: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/capabilities: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -4672,7 +5712,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/capabilities"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/capabilities"
           },
           "status": 422,
           "content_type": "application/json; charset=utf-8",
@@ -4701,7 +5741,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/capabilities"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/capabilities"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -4719,8 +5759,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "listApplications",
@@ -4731,6 +5776,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4799,6 +5856,17 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "list",
+        "resource": "application_id",
+        "member_status": 200,
+        "items_returned": 0,
+        "foreign_id": "a4199a70-d2fa-4d23-bf09-bc71b066132a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4811,6 +5879,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4879,6 +5959,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no approval fixture is created by the gate; the member's empty list is the only observation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4891,6 +5976,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -4959,6 +6056,17 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "list",
+        "resource": "conversation_id",
+        "member_status": 200,
+        "items_returned": 1,
+        "foreign_id": "eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -4971,6 +6079,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5041,6 +6161,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "administrator-only deployment configuration; not a per-principal body"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5053,6 +6178,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5121,6 +6258,17 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "list",
+        "resource": "knowledge_base_id",
+        "member_status": 200,
+        "items_returned": 1,
+        "foreign_id": "a374bf5c-691a-426d-9641-a4509a733c5e",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5133,6 +6281,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5144,7 +6304,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6/documents"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e/documents"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -5164,7 +6324,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/knowledge-bases/14bd9d99-7335-4660-8ffa-f29c5d352ef6/documents"
+            "path": "/api/v1/knowledge-bases/a374bf5c-691a-426d-9641-a4509a733c5e/documents"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -5203,6 +6363,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "knowledge_base_id",
+        "member_status": 404,
+        "foreign_id": "a374bf5c-691a-426d-9641-a4509a733c5e",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5215,6 +6385,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5283,6 +6465,17 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "list",
+        "resource": "memory_id",
+        "member_status": 200,
+        "items_returned": 0,
+        "foreign_id": "a1ef8d01-3f3a-476c-bdb9-9346c6e53adf",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5295,6 +6488,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5363,6 +6568,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no memory-candidate fixture is created by the gate"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5375,6 +6585,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5386,7 +6608,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09/messages"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a/messages"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -5406,7 +6628,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/conversations/c544524a-8dd1-419f-8798-522bb3a2db09/messages"
+            "path": "/api/v1/conversations/eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a/messages"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -5445,6 +6667,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "conversation_id",
+        "member_status": 404,
+        "foreign_id": "eb0a0d8e-6eef-4fa5-9c56-9ee992ac461a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5457,6 +6689,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5527,6 +6771,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "administrator-only deployment configuration; not a per-principal body"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5539,6 +6788,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5607,6 +6868,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "shared deployer catalog; the response is not scoped to one principal"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5619,6 +6885,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5687,6 +6965,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "administrator review queue; a plain member is refused before any body is built"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5699,6 +6982,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5710,7 +7005,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -5730,7 +7025,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -5769,6 +7064,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "run_id",
+        "member_status": 404,
+        "foreign_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5781,6 +7086,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5849,6 +7166,17 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "list",
+        "resource": "run_id",
+        "member_status": 200,
+        "items_returned": 0,
+        "foreign_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5861,6 +7189,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5929,6 +7269,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "shared published catalog; the response is not scoped to one principal"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -5941,6 +7286,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -5952,7 +7309,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/versions"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/versions"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -5972,7 +7329,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/versions"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/versions"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -6011,6 +7368,16 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "application_id",
+        "member_status": 404,
+        "foreign_id": "a4199a70-d2fa-4d23-bf09-bc71b066132a",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6023,6 +7390,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 200,
@@ -6071,6 +7450,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6083,6 +7467,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6133,6 +7529,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6145,6 +7546,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 204,
+        "ok": true,
+        "expected_statuses": [
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6213,6 +7626,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6223,8 +7641,20 @@
       "epic": "F06",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          201
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 403,
@@ -6236,12 +7666,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/approvals"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/approvals"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/approvals: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/approvals: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -6253,7 +7683,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/approvals"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/approvals"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6282,7 +7712,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/approvals"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/approvals"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6300,8 +7730,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "proposeMemoryCandidate",
@@ -6310,8 +7745,20 @@
       "epic": "F09",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          201
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 403,
@@ -6323,12 +7770,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/memory-candidates"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/memory-candidates"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/memory-candidates: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/memory-candidates: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -6340,7 +7787,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/memory-candidates"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/memory-candidates"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6369,7 +7816,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/memory-candidates"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/memory-candidates"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6387,8 +7834,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "readArtifactContent",
@@ -6397,8 +7849,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6410,7 +7874,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/content"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/content"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6430,7 +7894,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/artifacts/7d5a535a-e8cd-4c12-acde-23deec05a206/content"
+            "path": "/api/v1/artifacts/9029f6a8-d688-4fd1-a9e5-788ca5344b48/content"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -6450,8 +7914,18 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": true,
+        "kind": "detail",
+        "resource": "artifact_id",
+        "member_status": 404,
+        "foreign_id": "9029f6a8-d688-4fd1-a9e5-788ca5344b48",
+        "foreign_id_visible": false,
+        "isolation_ok": true
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "readiness",
@@ -6462,6 +7936,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 200,
@@ -6510,6 +7996,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6520,8 +8011,20 @@
       "epic": "F06",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6533,7 +8036,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/operations/506e8e10-ad47-4157-b787-d5ed1f5aa82f/reconcile"
+            "path": "/api/v1/operations/9b16a389-2596-4f04-8d20-5073c98810d5/reconcile"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6553,7 +8056,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/operations/6f350f15-3786-4e25-bec0-fd696026c7a4/reconcile"
+            "path": "/api/v1/operations/6a580125-653e-44d0-9e13-4ffb6e5920ed/reconcile"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -6573,8 +8076,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "registerModel",
@@ -6585,6 +8093,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 201,
+        "ok": true,
+        "expected_statuses": [
+          201
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6655,6 +8175,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -6665,8 +8190,20 @@
       "epic": "F03/F04A",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -6678,12 +8215,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -6695,7 +8232,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -6724,7 +8261,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/artifacts"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/artifacts"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6742,8 +8279,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "replyInteraction",
@@ -6752,8 +8294,20 @@
       "epic": "F08",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6765,7 +8319,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/requests/9ec79de0-1f79-4d49-8ec3-9b3a144b48f1/reply"
+            "path": "/api/v1/requests/7ebf1b82-9c49-4da5-bb93-b6d07dd899bc/reply"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6785,7 +8339,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/requests/3489c7dc-1d55-4f73-b8aa-487d3f15dfda/reply"
+            "path": "/api/v1/requests/f71d98b1-2371-4b15-81d7-6ff35873fe22/reply"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -6805,8 +8359,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "reviewPublication",
@@ -6815,8 +8374,20 @@
       "epic": "F02B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6828,7 +8399,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/reviews/e0f17f8d-a399-445a-8899-a9e24e469091/decision"
+            "path": "/api/v1/reviews/2b5ae5e3-4c1b-405a-9bf9-f37de10ec10f/decision"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6848,7 +8419,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/reviews/17019a48-d7e4-40a8-9906-d405f0ea0059/decision"
+            "path": "/api/v1/reviews/741d7923-b1c1-4090-b70f-dbc5390c995d/decision"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6868,8 +8439,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "reviewTool",
@@ -6878,8 +8454,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6891,7 +8479,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/tools/41270b74-80fc-4b34-a0de-1e45f60261c1/review"
+            "path": "/api/v1/tools/1be6ca7a-613e-4835-ad52-587120c3206c/review"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6911,7 +8499,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/tools/163c92fa-0afc-4a36-b499-8b6985a152ac/review"
+            "path": "/api/v1/tools/e5f64fce-b26d-4fe6-b4a2-b929ad2ba323/review"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -6931,8 +8519,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "revokeApiKey",
@@ -6943,6 +8536,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 204,
+        "ok": true,
+        "expected_statuses": [
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -6954,7 +8559,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/admin/api-keys/15280210-4494-41ae-8e7e-a3166b232c03"
+            "path": "/api/v1/admin/api-keys/e0a64034-ea13-4c6f-96b8-6b82a1429165"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -6974,7 +8579,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/admin/api-keys/15280210-4494-41ae-8e7e-a3166b232c03"
+            "path": "/api/v1/admin/api-keys/e0a64034-ea13-4c6f-96b8-6b82a1429165"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7013,6 +8618,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7025,6 +8635,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 204,
+        "ok": true,
+        "expected_statuses": [
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7036,7 +8658,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/diagnostic-grants/02b60eb0-0f74-4cee-b0a1-5fea5184676f"
+            "path": "/api/v1/diagnostic-grants/abf1355e-1d56-4437-9240-dd942b0ea684"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7056,7 +8678,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/diagnostic-grants/02b60eb0-0f74-4cee-b0a1-5fea5184676f"
+            "path": "/api/v1/diagnostic-grants/abf1355e-1d56-4437-9240-dd942b0ea684"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -7095,6 +8717,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7107,6 +8734,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 204,
+        "ok": true,
+        "expected_statuses": [
+          204
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7118,7 +8757,7 @@
           "kind": "anonymous",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/admin/grants/02b60eb0-0f74-4cee-b0a1-5fea5184676f"
+            "path": "/api/v1/admin/grants/abf1355e-1d56-4437-9240-dd942b0ea684"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7138,7 +8777,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "DELETE",
-            "path": "/api/v1/admin/grants/02b60eb0-0f74-4cee-b0a1-5fea5184676f"
+            "path": "/api/v1/admin/grants/abf1355e-1d56-4437-9240-dd942b0ea684"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7177,6 +8816,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7187,8 +8831,20 @@
       "epic": "F02B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7200,7 +8856,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/versions/10faca64-412a-4bf4-aa9e-28a34b843505/revoke"
+            "path": "/api/v1/versions/8f15350d-a376-4ced-9d41-40727151167a/revoke"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7220,7 +8876,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/versions/b7956119-95b1-46d0-8117-d7af6eaff948/revoke"
+            "path": "/api/v1/versions/1de63ec6-f949-4a97-9211-f3083127b66f/revoke"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7240,8 +8896,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "runEvents",
@@ -7250,8 +8911,20 @@
       "epic": "F03",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7263,7 +8936,7 @@
           "kind": "anonymous",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7283,7 +8956,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "GET",
-            "path": "/api/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events"
+            "path": "/api/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -7303,8 +8976,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": true,
+        "checked": false,
+        "reason": "no second-principal fixture exists for this read"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "saveDraft",
@@ -7315,6 +8993,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7326,7 +9016,7 @@
           "kind": "anonymous",
           "request": {
             "method": "PUT",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/draft"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/draft"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7346,7 +9036,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "PUT",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/draft"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/draft"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7385,6 +9075,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7395,8 +9090,20 @@
       "epic": "F01",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7408,7 +9115,7 @@
           "kind": "anonymous",
           "request": {
             "method": "PUT",
-            "path": "/api/v1/admin/users/aef23321-9673-44b6-9b6b-604735840ea7/roles"
+            "path": "/api/v1/admin/users/a451d63e-c1ef-41e4-a8c4-9ccca167ca7c/roles"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7428,7 +9135,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "PUT",
-            "path": "/api/v1/admin/users/7ebf2004-ab95-490c-b93b-6120763c7b51/roles"
+            "path": "/api/v1/admin/users/ab548e82-9d56-4ee2-a60a-08aa1176cba2/roles"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7448,8 +9155,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "spawnChild",
@@ -7458,8 +9170,20 @@
       "epic": "F07",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -7471,12 +9195,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/children"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/children"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/children: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/children: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -7488,7 +9212,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/children"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/children"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -7517,7 +9241,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/children"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/children"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7535,8 +9259,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "streamModelCall",
@@ -7545,8 +9274,20 @@
       "epic": "F06",
       "security": "internal",
       "internal_role": "worker",
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 422,
@@ -7558,12 +9299,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/model-stream"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/model-stream"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/model-stream: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/model-stream: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -7575,7 +9316,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/model-stream"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/model-stream"
           },
           "status": 422,
           "content_type": "application/json; charset=utf-8",
@@ -7604,7 +9345,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/model-stream"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/model-stream"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7622,8 +9363,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "submitApplication",
@@ -7632,8 +9378,20 @@
       "epic": "F02B",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7645,7 +9403,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/submit"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/submit"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -7665,7 +9423,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/submit"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/submit"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7685,8 +9443,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "submitRequest",
@@ -7697,6 +9460,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7768,6 +9543,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7778,8 +9558,20 @@
       "epic": "F05",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          202
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -7831,8 +9623,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "submitWorkerEvents",
@@ -7843,6 +9640,18 @@
       "internal_role": "worker",
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -7854,12 +9663,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events: Remote end closed connection without response",
           "expected": {
             "statuses": null,
             "codes": null
@@ -7871,7 +9680,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -7900,7 +9709,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/events"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/events"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -7937,6 +9746,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -7949,6 +9763,18 @@
       "internal_role": "worker",
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "correct_internal_role",
         "status": 409,
@@ -7960,12 +9786,12 @@
           "kind": "unauthenticated",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/result"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/result"
           },
           "status": null,
           "content_type": null,
           "error_code": null,
-          "transport_error": "POST /internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/result: Remote end closed connection without response",
+          "transport_error": "POST /internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/result: [SSL: TLSV13_ALERT_CERTIFICATE_REQUIRED] tlsv13 alert certificate required (_ssl.c:2559)",
           "expected": {
             "statuses": null,
             "codes": null
@@ -7977,7 +9803,7 @@
           "kind": "correct_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/result"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/result"
           },
           "status": 409,
           "content_type": "application/json; charset=utf-8",
@@ -8006,7 +9832,7 @@
           "kind": "wrong_internal_role",
           "request": {
             "method": "POST",
-            "path": "/internal/v1/runs/f980f0b8-a6a8-4f26-9f64-08abc5f32488/result"
+            "path": "/internal/v1/runs/87a6adde-f2c9-4c5b-afbd-96b259ddd395/result"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -8043,6 +9869,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -8055,6 +9886,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -8066,7 +9909,7 @@
           "kind": "anonymous",
           "request": {
             "method": "PATCH",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -8086,7 +9929,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "PATCH",
-            "path": "/api/v1/memories/feb94aea-bf8a-4af2-b110-59c4a3693f6f"
+            "path": "/api/v1/memories/a1ef8d01-3f3a-476c-bdb9-9346c6e53adf"
           },
           "status": 404,
           "content_type": "application/json; charset=utf-8",
@@ -8125,6 +9968,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -8135,8 +9983,20 @@
       "epic": "F01",
       "security": "session",
       "internal_role": null,
-      "implemented": true,
+      "implemented": false,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": null,
+        "ok": false,
+        "expected_statuses": [
+          200
+        ],
+        "checked": false
+      },
+      "implementation_status": "route_only",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -8148,7 +10008,7 @@
           "kind": "anonymous",
           "request": {
             "method": "PATCH",
-            "path": "/api/v1/admin/principals/76337cb3-cd28-4e52-b0d0-73141336bb4a"
+            "path": "/api/v1/admin/principals/36d104bf-b385-4264-ba27-3beea0a86052"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -8168,7 +10028,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "PATCH",
-            "path": "/api/v1/admin/principals/aed6224d-cb32-4ac1-83c7-b2a32033e315"
+            "path": "/api/v1/admin/principals/bf78762e-5fa4-4434-9acc-b8effd5cde9e"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -8188,8 +10048,13 @@
         }
       ],
       "normal_path": null,
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
-      "verdict": "pass"
+      "verdict": "route_only"
     },
     {
       "operation_id": "validateApplication",
@@ -8200,6 +10065,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 200,
+        "ok": true,
+        "expected_statuses": [
+          200
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -8211,7 +10088,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/validate"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/validate"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -8231,7 +10108,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/applications/0ae499bd-1ec5-442e-8292-d929f54883e8/validate"
+            "path": "/api/v1/applications/a4199a70-d2fa-4d23-bf09-bc71b066132a/validate"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -8270,6 +10147,11 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     },
@@ -8282,6 +10164,18 @@
       "internal_role": null,
       "implemented": true,
       "route_registered": true,
+      "runtime_reached": true,
+      "route_only": true,
+      "functional_probe": {
+        "kind": "normal_path",
+        "status": 202,
+        "ok": true,
+        "expected_statuses": [
+          202
+        ],
+        "checked": true
+      },
+      "implementation_status": "functional",
       "implementation_evidence": {
         "probe": "anonymous",
         "status": 401,
@@ -8293,7 +10187,7 @@
           "kind": "anonymous",
           "request": {
             "method": "POST",
-            "path": "/api/v1/models/5b6928a5-dc44-41d4-b773-c86dc624e09b/validate"
+            "path": "/api/v1/models/f7e2e11c-4d26-40e3-99c7-54c254877a05/validate"
           },
           "status": 401,
           "content_type": "application/json; charset=utf-8",
@@ -8313,7 +10207,7 @@
           "kind": "wrong_principal",
           "request": {
             "method": "POST",
-            "path": "/api/v1/models/5b6928a5-dc44-41d4-b773-c86dc624e09b/validate"
+            "path": "/api/v1/models/f7e2e11c-4d26-40e3-99c7-54c254877a05/validate"
           },
           "status": 403,
           "content_type": "application/json; charset=utf-8",
@@ -8352,17 +10246,115 @@
         "note": "",
         "error_envelope_ok": null
       },
+      "cross_principal_isolation": {
+        "applicable": false,
+        "checked": false,
+        "reason": "not a list/get read operation"
+      },
       "failures": [],
       "verdict": "pass"
     }
   ],
   "summary": {
     "operations": 106,
-    "implemented": 106,
+    "implemented": 60,
+    "route_registered": 106,
+    "functional_probe": 60,
+    "functional_coverage": "60/106",
+    "route_only": 46,
+    "route_only_operations": [
+      "activateUser",
+      "completeBackgroundJob",
+      "completeBackgroundUpload",
+      "completeWorkerUpload",
+      "confirmAttemptExit",
+      "createBackgroundDownload",
+      "createBackgroundUpload",
+      "createWorkerDownload",
+      "createWorkerUpload",
+      "decideApproval",
+      "decideMemoryCandidate",
+      "deleteArtifact",
+      "deleteDocument",
+      "downloadArtifact",
+      "evaluateDraft",
+      "getApproval",
+      "getBackgroundArtifactStatus",
+      "getBackgroundJob",
+      "getEvaluation",
+      "getEvaluationReport",
+      "getKnowledgeDocument",
+      "getPublicationReview",
+      "getTool",
+      "getVersion",
+      "getWorkerArtifactStatus",
+      "grantDiagnostics",
+      "heartbeatBackgroundJob",
+      "ingestDocument",
+      "invokeBackgroundModel",
+      "invokeCapability",
+      "prepareApproval",
+      "proposeMemoryCandidate",
+      "readArtifactContent",
+      "reconcileOperation",
+      "registerRunArtifact",
+      "replyInteraction",
+      "reviewPublication",
+      "reviewTool",
+      "revokeVersion",
+      "runEvents",
+      "setUserRoles",
+      "spawnChild",
+      "streamModelCall",
+      "submitApplication",
+      "submitTool",
+      "updatePrincipal"
+    ],
+    "probe_failed": 0,
+    "probe_failed_operations": [],
     "missing_operations": [],
     "authorization_failed": [],
     "per_operation_failed": [],
     "invariant_failures": [],
+    "cross_principal_isolation": {
+      "checked": 18,
+      "checked_operations": [
+        "downloadArtifact",
+        "getApplication",
+        "getArtifact",
+        "getConversation",
+        "getDraft",
+        "getKnowledgeBase",
+        "getMemory",
+        "getRun",
+        "listApplications",
+        "listConversations",
+        "listKnowledgeBases",
+        "listKnowledgeDocuments",
+        "listMemories",
+        "listMessages",
+        "listRunArtifacts",
+        "listRuns",
+        "listVersions",
+        "readArtifactContent"
+      ],
+      "not_run": [
+        "getApproval",
+        "getBackgroundJob",
+        "getDeletion",
+        "getEvaluation",
+        "getEvaluationReport",
+        "getKnowledgeDocument",
+        "getPublicationReview",
+        "getRequest",
+        "getTool",
+        "getVersion",
+        "listApprovals",
+        "listMemoryCandidates",
+        "runEvents"
+      ],
+      "failures": []
+    },
     "not_run": {
       "sse_frames": [
         "410 event_cursor_expired + snapshot_url: requires an event older than ORCHARA_RUN_EVENT_RETENTION; the development stack keeps 24h, so this branch was not exercised"
@@ -8372,96 +10364,185 @@
     "by_epic": {
       "F01": {
         "operations": 12,
-        "implemented": 12,
+        "implemented": 9,
+        "route_only": 3,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "activateUser",
+          "setUserRoles",
+          "updatePrincipal"
+        ]
       },
       "F08": {
         "operations": 9,
-        "implemented": 9,
+        "implemented": 8,
+        "route_only": 1,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "replyInteraction"
+        ]
       },
       "F03": {
         "operations": 10,
-        "implemented": 10,
+        "implemented": 8,
+        "route_only": 2,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "confirmAttemptExit",
+          "runEvents"
+        ]
       },
       "F00B": {
         "operations": 9,
-        "implemented": 9,
+        "implemented": 1,
+        "route_only": 8,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "completeBackgroundJob",
+          "completeBackgroundUpload",
+          "createBackgroundDownload",
+          "createBackgroundUpload",
+          "getBackgroundArtifactStatus",
+          "getBackgroundJob",
+          "heartbeatBackgroundJob",
+          "invokeBackgroundModel"
+        ]
       },
       "F05": {
         "operations": 10,
-        "implemented": 10,
+        "implemented": 4,
+        "route_only": 6,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "deleteArtifact",
+          "downloadArtifact",
+          "getTool",
+          "readArtifactContent",
+          "reviewTool",
+          "submitTool"
+        ]
       },
       "F03/F04A": {
         "operations": 5,
-        "implemented": 5,
+        "implemented": 0,
+        "route_only": 5,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "completeWorkerUpload",
+          "createWorkerDownload",
+          "createWorkerUpload",
+          "getWorkerArtifactStatus",
+          "registerRunArtifact"
+        ]
       },
       "F02A": {
         "operations": 8,
         "implemented": 8,
+        "route_only": 0,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": []
       },
       "F10": {
         "operations": 7,
-        "implemented": 7,
+        "implemented": 4,
+        "route_only": 3,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "deleteDocument",
+          "getKnowledgeDocument",
+          "ingestDocument"
+        ]
       },
       "F09": {
         "operations": 8,
-        "implemented": 8,
+        "implemented": 6,
+        "route_only": 2,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "decideMemoryCandidate",
+          "proposeMemoryCandidate"
+        ]
       },
       "F06": {
         "operations": 13,
-        "implemented": 13,
+        "implemented": 7,
+        "route_only": 6,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "decideApproval",
+          "getApproval",
+          "invokeCapability",
+          "prepareApproval",
+          "reconcileOperation",
+          "streamModelCall"
+        ]
       },
       "F13A": {
         "operations": 3,
-        "implemented": 3,
+        "implemented": 0,
+        "route_only": 3,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "evaluateDraft",
+          "getEvaluation",
+          "getEvaluationReport"
+        ]
       },
       "F11": {
         "operations": 3,
-        "implemented": 3,
+        "implemented": 2,
+        "route_only": 1,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "grantDiagnostics"
+        ]
       },
       "F02B": {
         "operations": 6,
-        "implemented": 6,
+        "implemented": 1,
+        "route_only": 5,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "getPublicationReview",
+          "getVersion",
+          "reviewPublication",
+          "revokeVersion",
+          "submitApplication"
+        ]
       },
       "F00/D00": {
         "operations": 2,
         "implemented": 2,
+        "route_only": 0,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": []
       },
       "F07": {
         "operations": 1,
-        "implemented": 1,
+        "implemented": 0,
+        "route_only": 1,
         "failed": 0,
-        "missing": []
+        "missing": [],
+        "route_only_operations": [
+          "spawnChild"
+        ]
       }
     },
-    "verdict": "passed"
+    "verdict": "route_only"
   },
   "invariants": {
     "error_envelope": {
@@ -8469,11 +10550,11 @@
       "passed": true,
       "observations": [
         {
-          "error_responses": 189,
+          "error_responses": 202,
           "unknown_path": {
             "request": {
               "method": "GET",
-              "path": "/api/v1/f12-nonexistent-b57fec80465742999e0e931b087d94a0"
+              "path": "/api/v1/f12-nonexistent-bfd52df381594f9e8ddabd14c3fcb463"
             },
             "status": 404,
             "content_type": "application/json; charset=utf-8",
@@ -8625,7 +10706,7 @@
             "has_next_cursor": true
           },
           "cursor_round_trip": {
-            "next_cursor": "MjAyNi0xMS0wNlQxMToxNDo0Mi4wMzE5NjlafDlhYmFkYTcxLWVmMmMtNDQxZC04NWY4LTRmMzRlOTJiYmE1OQ",
+            "next_cursor": "MjAyNi0xMS0wN1QwNTo1MTo1OS4xMzE0NjVafDc0OTU2MWY4LTUwZmYtNDQyZC05NTFhLTM5MDkzZWQwMmQ4YQ",
             "status": 200,
             "items": 1
           },
@@ -8887,11 +10968,11 @@
           "case": "debugDraft",
           "first": {
             "status": 202,
-            "run_id": "bd5efc40-34f5-418e-b1d8-1911005cf739"
+            "run_id": "dba88bca-b0f2-4c41-928c-1fef9bf1c7e2"
           },
           "replay": {
             "status": 202,
-            "run_id": "bd5efc40-34f5-418e-b1d8-1911005cf739"
+            "run_id": "dba88bca-b0f2-4c41-928c-1fef9bf1c7e2"
           },
           "same_key_different_body": {
             "status": 409,
@@ -9002,12 +11083,12 @@
               "event": "run.status",
               "data": {
                 "schema_version": "1.0",
-                "event_id": "f4160b8c-bba1-4419-a23c-3bdbab4de7d4",
-                "run_id": "f980f0b8-a6a8-4f26-9f64-08abc5f32488",
+                "event_id": "b8607419-ba8e-4c81-a672-e5ca1f53273f",
+                "run_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
                 "seq": 1,
                 "revision": 1,
                 "type": "run.status",
-                "created_at": "2026-11-06T11:14:41.92952Z",
+                "created_at": "2026-11-07T05:51:59.0795Z",
                 "payload": {
                   "state": "queued"
                 }
@@ -9020,12 +11101,12 @@
               "event": "run.status",
               "data": {
                 "schema_version": "1.0",
-                "event_id": "da7b2920-8960-4fef-8c15-7a8a1711d61b",
-                "run_id": "f980f0b8-a6a8-4f26-9f64-08abc5f32488",
+                "event_id": "2e438270-7dc0-4b3a-896c-09f05d4e9c9f",
+                "run_id": "87a6adde-f2c9-4c5b-afbd-96b259ddd395",
                 "seq": 2,
                 "revision": 2,
                 "type": "run.status",
-                "created_at": "2026-11-06T11:14:42.35552Z",
+                "created_at": "2026-11-07T05:51:59.384319Z",
                 "payload": {
                   "state": "running"
                 }
@@ -9057,7 +11138,7 @@
             "unknown_path": {
               "request": {
                 "method": "GET",
-                "path": "/api/v1/f12-nonexistent-3c22615c9ec34f18a0539b59433144ee"
+                "path": "/api/v1/f12-nonexistent-863c775cb2cc4a6aab50a062ac997301"
               },
               "status": 404,
               "content_type": "application/json; charset=utf-8",
@@ -9091,7 +11172,7 @@
               "internal\\api\\internal.go",
               "cmd\\api\\main.go"
             ],
-            "registered_patterns": 199,
+            "registered_patterns": 201,
             "contract_operations": 106,
             "missing_registrations": [],
             "missing_operation_ids": [],
@@ -9108,7 +11189,7 @@
       "passed": true,
       "observations": [
         {
-          "id_fields_checked": 123
+          "id_fields_checked": 125
         }
       ],
       "failures": [],
@@ -9119,7 +11200,7 @@
       "passed": true,
       "observations": [
         {
-          "timestamp_fields_checked": 22
+          "timestamp_fields_checked": 23
         }
       ],
       "failures": [],
@@ -9141,7 +11222,7 @@
       "passed": true,
       "observations": [
         {
-          "json_responses_checked": 371
+          "json_responses_checked": 389
         }
       ],
       "failures": [],

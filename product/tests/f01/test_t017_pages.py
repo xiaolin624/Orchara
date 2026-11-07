@@ -8,12 +8,11 @@ no token may appear in a URL, in the address bar or in browser storage.
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from conftest import (
     api_server,
+    assert_no_token_in_url_or_storage,
     fresh_database,
     go_binaries,
 )
@@ -24,25 +23,6 @@ def pages_server(fresh_database, api_server):
     # The pages do not read the database, but the API refuses to start without one.
     dsn, _dbname = fresh_database
     return api_server(dsn)
-
-
-def assert_no_token_in_url_or_storage(body: str, page: str) -> None:
-    """No credential may ride in a URL or sit in client storage.
-
-    The pages do read a few *non-secret* query parameters: a run id (the chat
-    page's run deep link), a fixed application version, and the stable code that
-    tells the login page why the previous session ended. A blanket ban on
-    ``location.search`` / ``URLSearchParams`` contradicted those, so the reads are
-    checked against a small allowlist instead - an unrecognised parameter still
-    fails the guard.
-    """
-    for forbidden in ("localStorage", "sessionStorage"):
-        assert forbidden not in body, f"{page} uses {forbidden}"
-    queried = set(re.findall(r"URLSearchParams\([^)]*\)\.get\(\s*'([^']+)'", body))
-    allowed = {"error", "run", "version"}
-    assert queried <= allowed, f"{page} reads unexpected query parameters: {sorted(queried - allowed)}"
-    assert "?token=" not in body, f"{page} puts a token in a URL"
-    assert "?csrf" not in body, f"{page} puts a CSRF token in a URL"
 
 
 def test_login_page_is_served_and_posts_the_contract_path(pages_server) -> None:

@@ -60,3 +60,4 @@ def test_journey_3_draft_evaluation_publication(t100_stack, tmp_path: Path) -> N
         ],
     ) as journey:
         run_publication_journey(t100_stack, journey, tmp_path)
+        journey.mark_passed()

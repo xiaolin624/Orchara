@@ -137,15 +137,26 @@ def test_the_report_is_machine_readable_and_has_the_required_sections(f12_report
     assert set(summary) >= {
         "operations",
         "implemented",
+        "route_registered",
+        "functional_probe",
+        "functional_coverage",
+        "route_only",
+        "route_only_operations",
+        "probe_failed",
         "missing_operations",
         "authorization_failed",
         "per_operation_failed",
         "invariant_failures",
+        "cross_principal_isolation",
         "not_run",
         "by_epic",
         "verdict",
     }
     assert summary["operations"] == 106
+    assert summary["route_registered"] == 106
+    assert summary["implemented"] == summary["functional_probe"]
+    assert summary["functional_coverage"] == f"{summary['functional_probe']}/106"
+    assert summary["route_only_operations"], "the declared route_only set must be listed"
     assert isinstance(summary["by_epic"], dict) and summary["by_epic"]
-    assert summary["verdict"] in ("passed", "failed")
+    assert summary["verdict"] in ("passed", "route_only", "failed")
     assert f12_report["environment"]["transport"].startswith("real HTTP")

@@ -217,8 +217,11 @@ func run(logger *log.Logger) error {
 	})
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           api.WithRequestLogging(logger, api.WithRequestID(api.ContractErrors(mux))),
+		Addr: cfg.HTTPAddr,
+		// The envelope is an API contract (§1); static pages are outside it, so
+		// only /api/ paths get the rewriting middleware. An unknown page keeps
+		// the ordinary net/http 404 text.
+		Handler:           api.WithRequestLogging(logger, api.WithRequestID(api.ContractErrorsFor([]string{"/api/"}, mux))),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
