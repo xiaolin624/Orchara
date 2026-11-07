@@ -2372,3 +2372,61 @@ DB/对象目录只用于**独立断言**外部副作用真值。票面「不重�
 提交：`fix(f12): redact evidence, truthful journey status, page guards and gate classification` /
 `test(f12): regression tests for redaction, statuses, page guards and gate semantics` /
 `docs(f12): review-fixes report, rewritten T098 report and regenerated evidence`（最终 SHA 见 `git log`）。
+## 批次完成记录：F12 #94–#102 / T093–T101（2026-11-07）
+
+- 基线 `1cdff9c`（= `integration/t083-t091` tip）→ 集成分支 `integration/f12` tip 见 `E:\Orchara\.scratch\f12\MERGE-LOG.md`。
+- 范围：本批 **6 票**（GitHub #94/#96/#97/#99/#101/#102），全部按 native `blocked_by` 顺序推进：
+  T093 → {T095, T096} → T098 → {T100, T101}。
+- 范围外未动：F14 #93/#95/#98/#100（blocked by #91）、F13B #103–#115、F15B #117–#122、T090 训练/模型实验。
+- 契约/规格：未改 `contracts/**`、`docs/spec/**`、迁移编号；`python tools/sync_spec.py --check` **no drift**。
+
+### 票状态（最终）
+
+| 票 | Issue | 状态 | 说明 |
+|---|---|---|---|
+| T093 | #94 | **passed（门禁交付）** | 外部客户端门禁：`route_registered 106/106`、`functional probe 60/106`、`route_only 46`、`missing 0`、跨主体隔离 18 条真实断言、13 条读操作 `not_run`。**裁决为 `route_only`（不是 `passed`）**，CLI 退出码 3 |
+| T095 | #96 | **passed** | 22 页统一角色导航 + 统一 401/403 出口 + 只读/创作者入口真实性 + 分页跟随；服务端鉴权链未改 |
+| T096 | #97 | **passed** | SSE 断线去重 / 410+快照真重建 / `phase=finalizing`≠终态 / 取消不声称撤销外部写 / 父子与产物 readiness |
+| T098 | #99 | **passed（像素级 `not_run`）** | 手机四类路径响应式 + 冲突/过期/无结果反馈 + 撤销引用 404 不复用缓存 + 候选默认不勾选 |
+| T100 | #101 | **passed（1 条产品缺口 blocked）** | 五条旅程真实跑通；聊天正文当 Run 输入 → `node_input_invalid` 记 `blocked`，未用绕法声称 |
+| T101 | #102 | **partial（issue 已重开）** | 五条旅程真实跑通；**AC2「scope/ACL/人类批准同时满足」未满足**：J5 是读且无审批，J2 有人类审批但无 key scope，三合一外部写 `not_run` |
+
+### 两轴复核与修复（`reports/f12/REVIEW-FIXES.md`，A–K）
+
+Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
+1. **凭据泄漏（P0）**：`T101-journeys.json` 曾含明文 API key 与 connector secret → 新增
+   `tools/evidence_redaction.py` 在**源头**脱敏并重生成三份证据；新增 `test_evidence_redaction.py` 守卫。
+   该 key 属已 drop 的测试库、不可再认证；**git 历史仍保留该失效字符串，未改写**（分支已推送、issue 引用 SHA）。
+2. **旅程状态被隐式改写（P0）**：`not_run`→`passed` 的强制转换删除，`passed` 必须有事前断言且由旅程体显式设置；
+   空断言无法被持久化为通过（`test_journey_status.py`）。
+3. **门禁把「路由存在」当「已实现」（P0）**：拆分为 route_registered / functional_probe / route_only；
+   新增「已注册但只有匿名 401」的变异测试；报告不再声称 106/106。
+4. **授权记录空转（P0）**：17 条会话内 list 操作原以「wrong_principal 期望 200」为通过 → 改为 18 条跨主体
+   内容隔离断言 + 13 条 `not_run` 说明。
+5. **T098 报告乱码（P1）**：原文件编码损坏且不可反解（PUA 字符），按代码/测试/PROGRESS 重写，UTF-8 无 BOM；
+   新增 `test_report_encoding.py`。
+6. **T101 AC2 被替代（P1）**：改判 `partial`，issue 重开。
+7. **F01 查询参数守卫假绿（P1）**：守卫集中到 `tests/f01/conftest.py`，单/双引号、`searchParams.get`、
+   变量 key、未知参数一律 fail closed；`test_page_query_guard.py`。
+8. **F01 401 断言用源码字面量（P1）**：改为 Node 执行 **served app.js**，断言真实导航到 `/login?error=session_revoked`
+   且 `[data-auth-content]` 清空。
+9. **越界（P2）**：`ContractErrors` 限定在 `/api/` 前缀，页面 404/405 恢复原行为。
+
+### 最终门禁（集成树）
+
+| 套件 | 结果 |
+|---|---|
+| `pytest tests/f12` | **441 passed in 239.12s** |
+| `pytest tests/f01`（必须单跑） | **165 passed in 721.29s** |
+| Go | `build=0` / `vet=0` / `test=0`；`gofmt -l internal cmd tools` 空；`sync_spec --check` no drift |
+
+### 诚实边界（本批不掩盖）
+
+- **T093 的功能覆盖只有 60/106**；另外 46 条是 `route_only`，其实现由各自功能 epic 的测试覆盖，
+  但本门禁不为它们背书。T101 的 AC2 仍未满足。
+- **无浏览器 DOM**（无 Playwright）：所有界面结论都是「Node 执行已提交真实字节 + 最小 DOM/fetch shim」，
+  CSS 断点/像素布局/真实事件冒泡/触屏手势 `not_run`。
+- **无真实厂商模型/端点/凭据**：全部 `ORCHARA_PROFILE=dev-stub`；F14 仍 `blocked`。
+- **生产图执行是 Go `internal/presetexec`**，不是 LangGraph（ADR 0034）。
+- 既有跨 epic 红（f03/f02a/f00b 各 2 条）与本批无关，已在 baseline `1cdff9c` 复现，未修。
+- 证据文件已脱敏，但**历史提交仍含一个已失效的测试 key 字符串**；如需清除须单独走历史改写。
