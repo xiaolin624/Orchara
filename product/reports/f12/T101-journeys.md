@@ -7,9 +7,10 @@
   按实际行为保持 `blocked`。J6 的真实运行还暴露并修复了一个 **P1 产品缺陷**：published Run 的 sealed
   manifest artifact 属主相等规则会让任何非发布者的已发布 Run 无法调用任何 capability（503
   `manifest_unavailable`），见 §2/§5/§7.5）。
-- 分支：`t/t101-three-in-one`；worktree：`E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`
+- 分支：`t/t101-three-in-one`；worktree：`E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`，
+  完成前 merge 了推进后的 `integration/f13b` @ `ffe4022`（T102 两个提交），合并提交 `3921c81`
+  （`PROGRESS.md` 尾部两边都追加的文本冲突按保留双方小节解决）；最终门禁在合并树上复跑（§6.6）。
   （原 F12 旅程分支 `t/t101-data-journeys`、复核修复分支 `t/f12-review-fixes` 的事实保留在 §6.3/§9）。
-- 完成前 `git merge integration/f13b` = **Already up to date**。
 - 证据：`reports/f12/T101-journeys.json`（8 条 journey 记录：J1/J1b/J2/J3/J4/J5/J6/J6b；真实入口/用时/
   独立真值/断言点/失败原因；`passed` 由旅程体显式 `mark_passed()` 设置，`blocked` 由 `record.block()` 设置，
   证据文本在写入源头脱敏）。
@@ -20,7 +21,7 @@
 
 | 项 | 实测值 | 命令/来源 |
 |---|---|---|
-| 分支 / 基线 | `t/t101-three-in-one` / `integration/f13b` @ `30642be` | `git rev-parse` |
+| 分支 / 基线 | `t/t101-three-in-one`；基线 `integration/f13b` @ `30642be`，收尾 merge `@ ffe4022`（`3921c81`） | `git rev-parse` |
 | Go | go1.27.3 windows/amd64 | `go version` |
 | Python / pytest | Python 3.12.2 / pytest 9.0.3 | `python --version`、`python -m pytest --version` |
 | PostgreSQL | `running: true`，port 55432，server 16.4 | `python tools/pg_dev.py status` |
@@ -39,18 +40,18 @@
 | 4. 通过端到端入口实际演示；失败、当前授权与重试/恢复边界有断言 | **满足** | 越权：跨用户 Run/artifact 404、陌生人审批 404、admin 批准 403、服务 key 个人数据 403；拒绝/过期/取消：审批 reject→失败、expiry→失败、cancel→invalidated；重复投递：同幂等键请求不建第二个 Run、同 logical key 不二次外写、丢回执重复 invoke 不重发；恢复：resume 恰好一次、丢回执→`needs_reconciliation`→证据 reconcile 成功且只 1 次物理写 |
 | 5. 记录版本、输入/hash、命令、原始结果与 profile；stub/real 分报，缺条件 blocked、未运行 not_run | **满足** | 每条 journey 记录 entry/truth/assertions/facts；报告 §1/§4/§6/§7 含版本、输入 hash、命令、原始 tail、profile；`UV_*`/真实模型/真实外部供应商 not_run 均已列明 |
 
-## 3. 逐旅程结果表（来自 `T101-journeys.json`）
+## 3. 逐旅程结果表（来自 `T101-journeys.json`；用时为 §6.6 合并树最终证据运行）
 
 | journey_id | 状态 | 真实入口（摘要） | 用时 | 独立真值来源 | 断言数 | 失败原因 |
 |---|---|---|---|---|---|---|
-| `J1-request-to-run-result` | **passed** | `POST /api/v1/requests` 显式 `application_version_id` → `cmd/supervisor exec --once` → `GET /runs/{id}`、`GET /requests/{id}`、`GET /artifacts/{id}/content` | 4.04s（版本发布在 J1b 前置一次完成） | 封存 request_input 对象字节 + `platform.runs` 行 + `summary.csv` 对 `tests/support/t049.py` 的独立 Decimal 复算 | 16 | — |
-| `J1b-natural-language-request` | **blocked** | 同一显式版本入口，`message` 为自然语言正文 → 真实 supervisor | 8.97s（含一次性真实五类评测发布） | 封存 request_input 对象字节（纯文本）+ `platform.runs.state/error_code` + node-results 空数据行 | 5 | F08↔F04B 产品缺口：正文原字节当 Run 输入 → `node_input_invalid`（§7.1） |
-| `J2-write-approval` | **passed** | 管理员 `POST /admin/connectors`（write 风险）→ worker mTLS `invokeCapability` → owner `POST /approvals/{id}/decision` → supervisor 恢复租约 → 真实回环外写 | 6.96s | 回环连接器自己的请求日志 `server.records`（物理写次数）+ `platform.approvals/operations/operation_attempts` + 封存 proposal 对象字节 | 34 | — |
-| `J3-personal-memory` | **passed** | worker mTLS `POST /internal/v1/runs/{id}/memory-candidates` → `GET /memory-candidates` → `POST .../decision` → 3 次真实 agent Run 的 context trace 与封存模型请求 → `PATCH/DELETE /memories/{id}` | 16.54s | `platform.memory_candidates/memories` + 封存 body 对象字节 + run 的 context-trace 与 model request artifact | 28 | — |
-| `J4-knowledge-ingestion` | **passed** | `POST /knowledge-bases` → 真实 signed-link 上传 + `artifact_finalize` → `POST .../documents` + `cmd/maintenance run --once --kinds document_ingest` → 检索 → `GET /knowledge-citations/{chunk}` → `DELETE /knowledge-documents/{id}` | 2.13s | 封存源对象字节的 sha256 与 rune 切片**由测试重算**（不是 chunk 行回读）+ `platform.knowledge_documents/chunks/background_jobs` | 19 | — |
-| `J5-service-account` | **passed** | admin `POST /admin/service-accounts` → `POST /admin/api-keys` → 仅 Bearer 的 HTTP 调用 → `PATCH /admin/principals/{id}`（禁用负责人） | 5.52s | `platform.api_keys`（仅 SHA-256、scopes、expires_at、revoked_at） | 24 | — |
-| `J6-service-key-write-approval` | **passed** | 真实发布链（五类评测→`POST /applications/{id}/submit`→admin `POST /reviews/{id}/decision`）→ admin `POST /admin/grants` → 服务 key `POST /requests`（Bearer only）→ supervisor mTLS claim → worker mTLS `kind=connector` 写操作 → 负责人 `POST /approvals/{id}/decision` → waiting/exit → resume → 恰好 1 次回环写 → 真实 F03 finalizer 结束 Run | 12.77s | 回环端点 `server.records`（物理写次数）+ `platform.approvals/operations/operation_attempts/api_keys/resource_grants/application_versions` + 封存 manifest/proposal/receipt/run-output 对象字节 | 49 | — |
-| `J6b-graph-dispatch-write-gap` | **blocked** | 同一服务 key、同一已发布版本再提交一次 → 真实 `cmd/supervisor exec --once` 执行图到 succeeded | 1.79s | `platform.operations`（该 Run 0 条 connector operation）+ 回环 `records` 不变 + 真实 node results/output | 7 | 产品分派缺口：图里没有 connector 节点，agent tool call 恒为 `kind=tool`，所以已发布图自己无法发出受控外部写（§5/§7.6）；J6 用文档化的 worker capability 协议补证授权/审批/恰好一次 |
+| `J1-request-to-run-result` | **passed** | `POST /api/v1/requests` 显式 `application_version_id` → `cmd/supervisor exec --once` → `GET /runs/{id}`、`GET /requests/{id}`、`GET /artifacts/{id}/content` | 6.20s（版本发布在 J1b 前置一次完成） | 封存 request_input 对象字节 + `platform.runs` 行 + `summary.csv` 对 `tests/support/t049.py` 的独立 Decimal 复算 | 16 | — |
+| `J1b-natural-language-request` | **blocked** | 同一显式版本入口，`message` 为自然语言正文 → 真实 supervisor | 15.03s（含一次性真实五类评测发布） | 封存 request_input 对象字节（纯文本）+ `platform.runs.state/error_code` + node-results 空数据行 | 5 | F08↔F04B 产品缺口：正文原字节当 Run 输入 → `node_input_invalid`（§7.1） |
+| `J2-write-approval` | **passed** | 管理员 `POST /admin/connectors`（write 风险）→ worker mTLS `invokeCapability` → owner `POST /approvals/{id}/decision` → supervisor 恢复租约 → 真实回环外写 | 8.74s | 回环连接器自己的请求日志 `server.records`（物理写次数）+ `platform.approvals/operations/operation_attempts` + 封存 proposal 对象字节 | 34 | — |
+| `J3-personal-memory` | **passed** | worker mTLS `POST /internal/v1/runs/{id}/memory-candidates` → `GET /memory-candidates` → `POST .../decision` → 3 次真实 agent Run 的 context trace 与封存模型请求 → `PATCH/DELETE /memories/{id}` | 27.26s | `platform.memory_candidates/memories` + 封存 body 对象字节 + run 的 context-trace 与 model request artifact | 28 | — |
+| `J4-knowledge-ingestion` | **passed** | `POST /knowledge-bases` → 真实 signed-link 上传 + `artifact_finalize` → `POST .../documents` + `cmd/maintenance run --once --kinds document_ingest` → 检索 → `GET /knowledge-citations/{chunk}` → `DELETE /knowledge-documents/{id}` | 2.92s | 封存源对象字节的 sha256 与 rune 切片**由测试重算**（不是 chunk 行回读）+ `platform.knowledge_documents/chunks/background_jobs` | 19 | — |
+| `J5-service-account` | **passed** | admin `POST /admin/service-accounts` → `POST /admin/api-keys` → 仅 Bearer 的 HTTP 调用 → `PATCH /admin/principals/{id}`（禁用负责人） | 5.99s | `platform.api_keys`（仅 SHA-256、scopes、expires_at、revoked_at） | 24 | — |
+| `J6-service-key-write-approval` | **passed** | 真实发布链（五类评测→`POST /applications/{id}/submit`→admin `POST /reviews/{id}/decision`）→ admin `POST /admin/grants` → 服务 key `POST /requests`（Bearer only）→ supervisor mTLS claim → worker mTLS `kind=connector` 写操作 → 负责人 `POST /approvals/{id}/decision` → waiting/exit → resume → 恰好 1 次回环写 → 真实 F03 finalizer 结束 Run | 18.67s | 回环端点 `server.records`（物理写次数）+ `platform.approvals/operations/operation_attempts/api_keys/resource_grants/application_versions` + 封存 manifest/proposal/receipt/run-output 对象字节 | 49 | — |
+| `J6b-graph-dispatch-write-gap` | **blocked** | 同一服务 key、同一已发布版本再提交一次 → 真实 `cmd/supervisor exec --once` 执行图到 succeeded | 3.10s | `platform.operations`（该 Run 0 条 connector operation）+ 回环 `records` 不变 + 真实 node results/output | 7 | 产品分派缺口：图里没有 connector 节点，agent tool call 恒为 `kind=tool`，所以已发布图自己无法发出受控外部写（§5/§7.6）；J6 用文档化的 worker capability 协议补证授权/审批/恰好一次 |
 
 ## 4. 旅程细节（真实入口、独立真值、断言点）
 
@@ -309,7 +310,8 @@ python -m pytest tests/f12/test_t101_journeys.py -q
 
 （6 个测试函数、8 条 journey 记录：J1/J2/J3/J4/J5/J6 `passed`，J1b/J6b `blocked`；状态由旅程体显式
 `mark_passed()` / `record.block()` 设置：没有“正常退出就 passed”的隐式改写。证据文本在
-`t101_support._short()` / `record()` / `persist()` 源头脱敏。）
+`t101_support._short()` / `record()` / `persist()` 源头脱敏。合并 `integration/f13b` 之后又用同一命令
+重跑了一次（§6.6，`6 passed in 137.57s`），**提交的 JSON 由该最终运行重生成**，§3 的用时即该次。）
 
 ### 6.2 全量 F12 套件（不破坏 T093/T095/T096/T098）
 
@@ -463,6 +465,39 @@ ok  	orchara/platform/internal/capabilities	1.597s
 ```
 
 J6 修复后真实运行：`6 passed in 87.93s`（证据运行，J6 49 断言全过；见 §6.1）。
+
+### 6.6 合并 `integration/f13b` 后的最终树复跑
+
+`git merge integration/f13b`（tip `ffe4022`，含 T102）→ 合并提交 `3921c81`；`PROGRESS.md` 的尾部
+双追加冲突按保留双方小节解决。合并树重跑全部门禁：
+
+```powershell
+$env:T101_WRITE_EVIDENCE='1'
+python -m pytest tests/f12/test_t101_journeys.py -q
+python -m pytest tests/f12 -q
+go build ./... ; go vet ./... ; go test ./...
+gofmt -l internal cmd tools ; python tools/sync_spec.py --check
+```
+
+```
+# targeted（证据重生成）
+......                                                                   [100%]
+6 passed in 137.57s (0:02:17)
+
+# full f12
+447 passed in 489.77s (0:08:09)
+
+# Go / 静态
+build_exit=0
+vet_exit=0
+go_test_exit=0
+gofmt_exit=0
+no drift: spec copy and contract snapshot match the manifest
+sync_exit=0
+```
+
+（合并树重跑比 §6.1/§6.2 慢，原因是共享宿主上同期有其它真实栈任务；结果全绿、计数不变。
+原始日志：`E:\Orchara\.scratch\f13b\T101\gate-*-merged.log`。）
 
 ## 7. 已知产品缺口与诚实边界（blocked / not_run）
 

@@ -1,7 +1,7 @@
 {
   "ticket": "T101",
   "issue": 102,
-  "generated_at": "2026-11-07T17:25:56+0800",
+  "generated_at": "2026-11-07T17:38:58+0800",
   "journeys": [
     {
       "journey_id": "J1-request-to-run-result",
@@ -15,14 +15,14 @@
         "POST /api/v1/conversations",
         "POST /api/v1/requests (explicit application_version_id) -> 202",
         "cmd/supervisor exec --once (real WSL2/runsc execution of the dispatched Run)",
-        "GET /api/v1/runs/4fb3ea6a-798e-41c4-ac13-7c88a7046ab6 -> 200",
-        "GET /api/v1/requests/98ef482c-cb87-4baa-a76c-ed3129b5a5cd -> 200",
-        "GET /api/v1/artifacts/717138a9-8298-4b4a-a414-0837ca4bf63e/content -> 200",
-        "GET /api/v1/runs/4fb3ea6a-798e-41c4-ac13-7c88a7046ab6 (publisher) -> 404",
+        "GET /api/v1/runs/3e61dfda-8b09-4f0e-81fa-71d20f47f5b1 -> 200",
+        "GET /api/v1/requests/f3933446-c6e7-43ae-bd1e-6a04c6c20b09 -> 200",
+        "GET /api/v1/artifacts/84c726cf-c6e2-4480-aa57-56d46afc1325/content -> 200",
+        "GET /api/v1/runs/3e61dfda-8b09-4f0e-81fa-71d20f47f5b1 (publisher) -> 404",
         "POST /api/v1/requests (same Idempotency-Key) -> 202",
         "POST /api/v1/requests (revoked version) -> 409"
       ],
-      "duration_s": 4.04,
+      "duration_s": 6.2,
       "truth_sources": [
         "sealed request input artifact bytes + platform.runs row via psql",
         "summary.csv bytes checked against tests/support/t049.py Decimal truth",
@@ -32,42 +32,42 @@
         {
           "name": "the explicit-version request dispatches in the same transaction",
           "ok": true,
-          "detail": "{\"id\": \"98ef482c-cb87-4baa-a76c-ed3129b5a5cd\", \"state\": \"dispatched\", \"run_id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"interaction\": null, \"error_code\": null}"
+          "detail": "{\"id\": \"f3933446-c6e7-43ae-bd1e-6a04c6c20b09\", \"state\": \"dispatched\", \"run_id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"interaction\": null, \"error_code\": null}"
         },
         {
           "name": "the response names the pinned application version",
           "ok": true,
-          "detail": "[\"47606166-ff5a-456b-a916-a1b73c70884f\"]"
+          "detail": "[\"0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8\"]"
         },
         {
           "name": "the durable request row pins the requested version and the sealed message",
           "ok": true,
-          "detail": "{\"id\": \"98ef482c-cb87-4baa-a76c-ed3129b5a5cd\", \"conversation_id\": \"60d5bbd7-f4cf-4a78-b4a5-2dbab794c179\", \"owner_id\": \"ede44397-e41b-4d1b-b177-4e7188eb4fe4\", \"input_artifact_id\": \"7640440a-dc07-408a-a81e-405d6ae9bb62\", \"state\": \"dispatched\", \"revision\": 2, \"error_code\": null, \"requested_version_id\": \"47606166-ff5a-456b-a916-a1b73c70884f\", \"control_calls\": 0, \"created_at\": \"2026-11-07 17:25:35.5..."
+          "detail": "{\"id\": \"f3933446-c6e7-43ae-bd1e-6a04c6c20b09\", \"conversation_id\": \"b2f2df29-963f-4655-a37f-34581f94f920\", \"owner_id\": \"8a97d68d-e95e-41a0-a44e-f259f1435462\", \"input_artifact_id\": \"6eba3c04-eecc-4a61-b049-79e3f8642bbb\", \"state\": \"dispatched\", \"revision\": 2, \"error_code\": null, \"requested_version_id\": \"0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8\", \"control_calls\": 0, \"created_at\": \"2026-11-07 17:38:23.5..."
         },
         {
           "name": "the Run input is the exact sealed task document, byte for byte",
           "ok": true,
-          "detail": "{\"artifact\": {\"id\": \"7640440a-dc07-408a-a81e-405d6ae9bb62\", \"owner_id\": \"ede44397-e41b-4d1b-b177-4e7188eb4fe4\", \"object_key\": \"sealed/f47cd48fff0079c325d0aa6bbbbbff23956031fde9ac52a2d573e7843d482bc1\", \"purpose\": \"request_input\", \"sha256\": \"1193e34a0e5a104057902cd0e9cfe5b4dfe277e019b27848d095207a19662edd\", \"media_type\": \"text/plain; charset=utf-8\", \"size_bytes\": 126, \"state\": \"ready\", \"revision\"..."
+          "detail": "{\"artifact\": {\"id\": \"6eba3c04-eecc-4a61-b049-79e3f8642bbb\", \"owner_id\": \"8a97d68d-e95e-41a0-a44e-f259f1435462\", \"object_key\": \"sealed/287e0be0c10486977b9c76acc31c436735bf6a2dec8a606606d7ee761404e3c6\", \"purpose\": \"request_input\", \"sha256\": \"1193e34a0e5a104057902cd0e9cfe5b4dfe277e019b27848d095207a19662edd\", \"media_type\": \"text/plain; charset=utf-8\", \"size_bytes\": 126, \"state\": \"ready\", \"revision\"..."
         },
         {
           "name": "the real supervisor executes the dispatched Run to success",
           "ok": true,
-          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"job_id\": \"a9353ddc-eada-4efd-a31d-1d5652517b0a\", \"execution_unit_id\": \"exec-AI-58928-2d7ad650\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 12, \"sandbox\": {\"sandbox_id\": \"exec-ai-58928-2d7ad650\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208..."
+          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"job_id\": \"dd40b1c2-4923-488a-9346-ae3c542e2605\", \"execution_unit_id\": \"exec-AI-61860-1b636754\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 16, \"sandbox\": {\"sandbox_id\": \"exec-ai-61860-1b636754\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208..."
         },
         {
           "name": "the durable Run is a published version Run owned by the requester and succeeded",
           "ok": true,
-          "detail": "{\"id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"state\": \"succeeded\", \"error_code\": null, \"kind\": \"published\", \"application_version_id\": \"47606166-ff5a-456b-a916-a1b73c70884f\", \"input_artifact_id\": \"7640440a-dc07-408a-a81e-405d6ae9bb62\", \"owner_id\": \"ede44397-e41b-4d1b-b177-4e7188eb4fe4\", \"finished_at\": \"2026-11-07 17:25:36.97563+08\"}"
+          "detail": "{\"id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"state\": \"succeeded\", \"error_code\": null, \"kind\": \"published\", \"application_version_id\": \"0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8\", \"input_artifact_id\": \"6eba3c04-eecc-4a61-b049-79e3f8642bbb\", \"owner_id\": \"8a97d68d-e95e-41a0-a44e-f259f1435462\", \"finished_at\": \"2026-11-07 17:38:25.761073+08\"}"
         },
         {
           "name": "the result is readable through the contract Run view",
           "ok": true,
-          "detail": "{\"id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"state\": \"succeeded\", \"revision\": 3, \"application_version_id\": \"47606166-ff5a-456b-a916-a1b73c70884f\", \"parent_run_id\": null, \"output_artifact_id\": \"e4f52398-1b4f-43c5-af01-9ac78135efd3\", \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"fcc4402b-1ff1-403e-992c-f8c4f922dd62\", \"phase\": \"idle\"}"
+          "detail": "{\"id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"state\": \"succeeded\", \"revision\": 3, \"application_version_id\": \"0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8\", \"parent_run_id\": null, \"output_artifact_id\": \"182f4546-b6a9-4054-bd10-17c37f2b7cfd\", \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"d7a4dfac-0d8f-4d16-aa2b-d12e9f377ff9\", \"phase\": \"idle\"}"
         },
         {
           "name": "the request view returns the dispatched state and the Run id",
           "ok": true,
-          "detail": "{\"id\": \"98ef482c-cb87-4baa-a76c-ed3129b5a5cd\", \"state\": \"dispatched\", \"run_id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"interaction\": null, \"error_code\": null}"
+          "detail": "{\"id\": \"f3933446-c6e7-43ae-bd1e-6a04c6c20b09\", \"state\": \"dispatched\", \"run_id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"interaction\": null, \"error_code\": null}"
         },
         {
           "name": "the node results include the summary.csv and summary.json outputs",
@@ -82,12 +82,12 @@
         {
           "name": "the recorded artifact hash is the exact downloaded bytes",
           "ok": true,
-          "detail": "{\"id\": \"717138a9-8298-4b4a-a414-0837ca4bf63e\", \"owner_id\": \"ede44397-e41b-4d1b-b177-4e7188eb4fe4\", \"object_key\": \"sealed/cf3b7840f30ca74f395c59a9233b54d67e008931fc43f4440ae5360e6dc4bcb4\", \"purpose\": \"node_output\", \"sha256\": \"bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65\", \"media_type\": \"text/csv\", \"size_bytes\": 40, \"state\": \"ready\", \"revision\": 3, \"deleted_at\": null}"
+          "detail": "{\"id\": \"84c726cf-c6e2-4480-aa57-56d46afc1325\", \"owner_id\": \"8a97d68d-e95e-41a0-a44e-f259f1435462\", \"object_key\": \"sealed/a2f7b3b3f5000b188ca491405754361ad40fa3b46f636204a9228c7f2b54fa5d\", \"purpose\": \"node_output\", \"sha256\": \"bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65\", \"media_type\": \"text/csv\", \"size_bytes\": 40, \"state\": \"ready\", \"revision\": 3, \"deleted_at\": null}"
         },
         {
           "name": "the Run has a linked final output artifact",
           "ok": true,
-          "detail": "{\"output_artifact_id\": \"e4f52398-1b4f-43c5-af01-9ac78135efd3\"}"
+          "detail": "{\"output_artifact_id\": \"182f4546-b6a9-4054-bd10-17c37f2b7cfd\"}"
         },
         {
           "name": "the publisher and an anonymous caller cannot read the requester's Run or result",
@@ -97,12 +97,12 @@
         {
           "name": "a repeated delivery replays the committed request and creates no second Run",
           "ok": true,
-          "detail": "{\"replay\": {\"id\": \"98ef482c-cb87-4baa-a76c-ed3129b5a5cd\", \"state\": \"dispatched\", \"run_id\": \"4fb3ea6a-798e-41c4-ac13-7c88a7046ab6\", \"interaction\": null, \"error_code\": null}, \"rows\": 1}"
+          "detail": "{\"replay\": {\"id\": \"f3933446-c6e7-43ae-bd1e-6a04c6c20b09\", \"state\": \"dispatched\", \"run_id\": \"3e61dfda-8b09-4f0e-81fa-71d20f47f5b1\", \"interaction\": null, \"error_code\": null}, \"rows\": 1}"
         },
         {
           "name": "a revoked version refuses a fresh request and creates nothing",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"version_revoked\", \"message\": \"that application version was revoked; a new Run may never bind it\", \"request_id\": \"30559ccec20562779edf03a02ceed503\"}}"
+          "detail": "{\"error\": {\"code\": \"version_revoked\", \"message\": \"that application version was revoked; a new Run may never bind it\", \"request_id\": \"0888f905bd2c39aba83fa9d623db3610\"}}"
         },
         {
           "name": "the failed request created no second Run for the primary conversation",
@@ -112,25 +112,25 @@
       ],
       "assertion_count": 16,
       "facts": {
-        "published_version_id": "47606166-ff5a-456b-a916-a1b73c70884f",
+        "published_version_id": "0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8",
         "evaluation_cases": 5,
-        "evaluation_report_id": "4105ed66-e638-4591-a890-0261fa0e0a5e",
+        "evaluation_report_id": "822e18eb-fc4e-4663-b49e-b1bdb8795f45",
         "evaluation_status": "passed",
         "journey": {
-          "request_id": "98ef482c-cb87-4baa-a76c-ed3129b5a5cd",
-          "run_id": "4fb3ea6a-798e-41c4-ac13-7c88a7046ab6",
-          "version_id": "47606166-ff5a-456b-a916-a1b73c70884f",
+          "request_id": "f3933446-c6e7-43ae-bd1e-6a04c6c20b09",
+          "run_id": "3e61dfda-8b09-4f0e-81fa-71d20f47f5b1",
+          "version_id": "0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8",
           "csv_sha256": "bb60f9428113f627e31b70eda2c3f2373339699d675f774ac8f0ba9825fd7a65",
-          "output_artifact_id": "e4f52398-1b4f-43c5-af01-9ac78135efd3",
-          "grant_id": "20731c6a-d049-44a0-93a5-6d2f67551392",
+          "output_artifact_id": "182f4546-b6a9-4054-bd10-17c37f2b7cfd",
+          "grant_id": "a2df9e4a-0a19-4559-b599-9bd6acb6cdef",
           "execution": "succeeded"
         },
         "result": {
-          "request_id": "98ef482c-cb87-4baa-a76c-ed3129b5a5cd",
-          "run_id": "4fb3ea6a-798e-41c4-ac13-7c88a7046ab6",
-          "version_id": "47606166-ff5a-456b-a916-a1b73c70884f",
-          "csv_artifact_id": "717138a9-8298-4b4a-a414-0837ca4bf63e",
-          "output_artifact_id": "e4f52398-1b4f-43c5-af01-9ac78135efd3"
+          "request_id": "f3933446-c6e7-43ae-bd1e-6a04c6c20b09",
+          "run_id": "3e61dfda-8b09-4f0e-81fa-71d20f47f5b1",
+          "version_id": "0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8",
+          "csv_artifact_id": "84c726cf-c6e2-4480-aa57-56d46afc1325",
+          "output_artifact_id": "182f4546-b6a9-4054-bd10-17c37f2b7cfd"
         }
       },
       "failure": null,
@@ -149,9 +149,9 @@
         "python -m pytest tests/f12/test_t101_journeys.py -k natural_language",
         "POST /api/v1/requests (natural-language message, explicit version) -> 202",
         "cmd/supervisor exec --once (the dispatched natural-language Run)",
-        "GET /api/v1/runs/fef5416d-670d-41b0-8bfc-1c22a99aed28/node-results (failed Run) -> 200"
+        "GET /api/v1/runs/b378fa6e-ea42-47d2-967c-541153e8439d/node-results (failed Run) -> 200"
       ],
-      "duration_s": 8.97,
+      "duration_s": 15.03,
       "truth_sources": [
         "sealed request_input artifact bytes (the chat text) under the real object directory",
         "platform.runs row: state/error_code/finished_at via psql",
@@ -161,17 +161,17 @@
         {
           "name": "the natural-language request is accepted and dispatched (no test-side rejection)",
           "ok": true,
-          "detail": "{\"id\": \"8062d625-5dee-4539-9dc0-feb1ce3c0bcc\", \"state\": \"dispatched\", \"run_id\": \"fef5416d-670d-41b0-8bfc-1c22a99aed28\", \"interaction\": null, \"error_code\": null}"
+          "detail": "{\"id\": \"b441c479-c312-4fb7-941d-1e94e1510c8f\", \"state\": \"dispatched\", \"run_id\": \"b378fa6e-ea42-47d2-967c-541153e8439d\", \"interaction\": null, \"error_code\": null}"
         },
         {
           "name": "F08 sealed the chat text verbatim as the Run input",
           "ok": true,
-          "detail": "{\"artifact\": {\"id\": \"2acf4114-17fe-43f3-b215-f46ee7cd48db\", \"owner_id\": \"add13bed-2fa2-419e-b4e4-0d1e91df9fe8\", \"object_key\": \"sealed/fda056bab5fcaf11d8239b857714ec28f97511284498bf7e65b732d09ad530a4\", \"purpose\": \"request_input\", \"sha256\": \"1df758150014276be2b42b1e5e6684a9da19257081a8d0b1f8cd3c671446c58b\", \"media_type\": \"text/plain; charset=utf-8\", \"size_bytes\": 81, \"state\": \"ready\", \"revision\":..."
+          "detail": "{\"artifact\": {\"id\": \"32b320ea-b1ac-4eec-9863-e907c491ae81\", \"owner_id\": \"4977a394-2af1-4447-89d0-3051b9119cb7\", \"object_key\": \"sealed/d80db5c38797eebf66855717f0616d6be0c7f660cbbbc11f4d08c0248317616f\", \"purpose\": \"request_input\", \"sha256\": \"1df758150014276be2b42b1e5e6684a9da19257081a8d0b1f8cd3c671446c58b\", \"media_type\": \"text/plain; charset=utf-8\", \"size_bytes\": 81, \"state\": \"ready\", \"revision\":..."
         },
         {
           "name": "the Run fails with node_input_invalid before any sandbox output",
           "ok": true,
-          "detail": "{\"run\": {\"id\": \"fef5416d-670d-41b0-8bfc-1c22a99aed28\", \"state\": \"failed\", \"error_code\": \"node_input_invalid\", \"kind\": \"published\", \"application_version_id\": \"47606166-ff5a-456b-a916-a1b73c70884f\", \"input_artifact_id\": \"2acf4114-17fe-43f3-b215-f46ee7cd48db\", \"owner_id\": \"add13bed-2fa2-419e-b4e4-0d1e91df9fe8\", \"finished_at\": \"2026-11-07 17:25:34.416635+08\"}, \"supervisor\": {\"status\": \"failed\", \"ru..."
+          "detail": "{\"run\": {\"id\": \"b378fa6e-ea42-47d2-967c-541153e8439d\", \"state\": \"failed\", \"error_code\": \"node_input_invalid\", \"kind\": \"published\", \"application_version_id\": \"0dfbdaf2-3ca4-48aa-a8c3-7b62045aafd8\", \"input_artifact_id\": \"32b320ea-b1ac-4eec-9863-e907c491ae81\", \"owner_id\": \"4977a394-2af1-4447-89d0-3051b9119cb7\", \"finished_at\": \"2026-11-07 17:38:21.78696+08\"}, \"supervisor\": {\"status\": \"failed\", \"run..."
         },
         {
           "name": "the failed Run produced no output artifact",
@@ -181,7 +181,7 @@
         {
           "name": "the node-results read model has no data rows for the rejected input",
           "ok": true,
-          "detail": "{\"items\": [], \"next_cursor\": null, \"generated_at\": \"2026-11-07T09:25:34Z\"}"
+          "detail": "{\"items\": [], \"next_cursor\": null, \"generated_at\": \"2026-11-07T09:38:22Z\"}"
         }
       ],
       "assertion_count": 5,
@@ -197,8 +197,8 @@
           "second_gap_not_run": "natural-language *routing* (no explicit application_version_id) also needs a route_control model that cannot be registered through the public API (internal/modelregistry/modelregistry.go:92-102); only SQL seeding exists."
         },
         "result": {
-          "request_id": "8062d625-5dee-4539-9dc0-feb1ce3c0bcc",
-          "run_id": "fef5416d-670d-41b0-8bfc-1c22a99aed28",
+          "request_id": "b441c479-c312-4fb7-941d-1e94e1510c8f",
+          "run_id": "b378fa6e-ea42-47d2-967c-541153e8439d",
           "state": "failed",
           "error_code": "node_input_invalid"
         }
@@ -229,11 +229,11 @@
         "POST /api/v1/approvals/{id}/decision (reject) -> 200",
         "POST /api/v1/approvals/{id}/decision (expired) -> 409",
         "point_expiry_past: UPDATE platform.approvals SET expires_at = now() - interval '1 minute' (time's effect; the decision path re-checks it lazily)",
-        "POST /api/v1/runs/4e4d8ce1-88f3-4015-961b-0332e76eae50/cancel -> 202",
+        "POST /api/v1/runs/b0cd17b9-de95-40b9-8ba9-801db3fd3dd2/cancel -> 202",
         "POST /internal/v1/runs/{id}/capabilities (receipt connection dropped) -> 200",
         "POST /api/v1/operations/{id}/reconcile -> 200"
       ],
-      "duration_s": 6.96,
+      "duration_s": 8.74,
       "truth_sources": [
         "connector server request log (server.records) = physical write count",
         "platform.approvals / platform.operations / platform.operation_attempts via psql",
@@ -243,12 +243,12 @@
         {
           "name": "the write-risk call parks as awaiting_approval and creates one approval",
           "ok": true,
-          "detail": "{\"id\": \"1577a721-da58-4f3a-b4f6-613bff213180\", \"run_id\": \"27d7b75f-66bc-4159-a5c2-923d25820ce1\", \"operation_id\": \"524b7932-5a22-4b9d-a115-e84ea120b50a\", \"node_key\": \"agent:approval-node\", \"proposal_artifact_id\": \"529624c8-1aee-4cbf-8289-178cbeb48ac7\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"b899b6d5-6629-4ff5-92b0-d535dd13c673\", \"stat..."
+          "detail": "{\"id\": \"b7fc79d8-bb77-41db-bf94-ee504b09409f\", \"run_id\": \"49343d42-2b12-424c-80f3-d51c90228861\", \"operation_id\": \"7f5ad622-1ef8-40e3-848d-ff0d99d22124\", \"node_key\": \"agent:approval-node\", \"proposal_artifact_id\": \"b033d5c9-21a2-4984-96fe-6c09c01c898a\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"7579b651-66a8-4245-963e-2dedd623632a\", \"stat..."
         },
         {
           "name": "the approver is the Run owner",
           "ok": true,
-          "detail": "b899b6d5-6629-4ff5-92b0-d535dd13c673"
+          "detail": "7579b651-66a8-4245-963e-2dedd623632a"
         },
         {
           "name": "the approval is bound to the operation's exact params hash",
@@ -258,7 +258,7 @@
         {
           "name": "the sealed proposal carries the exact target and the exact params literal",
           "ok": true,
-          "detail": "{\"approval_version\": 1, \"capability_kind\": \"connector\", \"capability_version\": \"fc58d411-1108-4168-a1fe-1c368ad2abce\", \"data_destination\": \"http://127.0.0.1:64000\", \"expires_at\": \"2026-11-07T10:24:53Z\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"manifest_sha256\": \"ba79db0d91a60e084b7f5a9687b491dbf88850d30271b9d5becad80e9dbf65c8\", \"node_key\": \"agent:approval-node\", \"operation_id\": \"524b79..."
+          "detail": "{\"approval_version\": 1, \"capability_kind\": \"connector\", \"capability_version\": \"c2f513a2-c2b3-47ce-9cad-f19b51859b6d\", \"data_destination\": \"http://127.0.0.1:53437\", \"expires_at\": \"2026-11-07T10:37:17Z\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"manifest_sha256\": \"033ab45a628d89eb29c7dd1ce8bca084dc4e3ed788148c4505b61fdfe6be9a9f\", \"node_key\": \"agent:approval-node\", \"operation_id\": \"7f5ad6..."
         },
         {
           "name": "no external write happened before the human decision",
@@ -273,17 +273,17 @@
         {
           "name": "the administrator is refused as approver (approver_mismatch)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approver_mismatch\", \"message\": \"only the designated human approver may decide this run approval\", \"request_id\": \"486f81a1d6026603f0eb7446aa0abdee\"}}"
+          "detail": "{\"error\": {\"code\": \"approver_mismatch\", \"message\": \"only the designated human approver may decide this run approval\", \"request_id\": \"fd19e42c22796e55edf69c0819c7f8b3\"}}"
         },
         {
           "name": "a changed params object on the same logical call is a conflict",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"operation_conflict\", \"message\": \"that operation id/logical key is already recorded with different parameters\", \"request_id\": \"ac58c39710bec877957bbe60e33aa06d\"}}"
+          "detail": "{\"error\": {\"code\": \"operation_conflict\", \"message\": \"that operation id/logical key is already recorded with different parameters\", \"request_id\": \"6c86a93914227a0796423fac92909c88\"}}"
         },
         {
           "name": "the decision must present the exact params hash",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_params_mismatch\", \"message\": \"the decision must carry the approval's exact params_sha256\", \"request_id\": \"e8321c9a1e6aae38758d47092a3af24e\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_params_mismatch\", \"message\": \"the decision must carry the approval's exact params_sha256\", \"request_id\": \"e9a8a2aa3f1d406cbd80deca095708eb\"}}"
         },
         {
           "name": "the refused attempts did not mutate the approval or send anything",
@@ -293,7 +293,7 @@
         {
           "name": "the owner's approval is stored",
           "ok": true,
-          "detail": "{\"id\": \"1577a721-da58-4f3a-b4f6-613bff213180\", \"run_id\": \"27d7b75f-66bc-4159-a5c2-923d25820ce1\", \"state\": \"approved\", \"proposal_artifact_id\": \"529624c8-1aee-4cbf-8289-178cbeb48ac7\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:24:53Z\"}"
+          "detail": "{\"id\": \"b7fc79d8-bb77-41db-bf94-ee504b09409f\", \"run_id\": \"49343d42-2b12-424c-80f3-d51c90228861\", \"state\": \"approved\", \"proposal_artifact_id\": \"b033d5c9-21a2-4984-96fe-6c09c01c898a\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:37:17Z\"}"
         },
         {
           "name": "the approval path itself never sends (resume still pending the exit fact)",
@@ -303,27 +303,27 @@
         {
           "name": "the confirmed exit creates exactly one resume job",
           "ok": true,
-          "detail": "[{\"id\": \"c6e7d95e-fc7d-4ac2-98f5-c00a0ea23d59\", \"run_id\": \"27d7b75f-66bc-4159-a5c2-923d25820ce1\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"e5d2cc67-b562-4936-b317-2939bac59d9c\", \"created_at\": \"2026-11-07 17:24:54.150353+08\"}]"
+          "detail": "[{\"id\": \"3389a570-8a38-4747-813c-f1fd769f9694\", \"run_id\": \"49343d42-2b12-424c-80f3-d51c90228861\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"39c081ad-9534-4d07-99ea-9e26485f1379\", \"created_at\": \"2026-11-07 17:37:18.831088+08\"}]"
         },
         {
           "name": "the resumed call succeeds",
           "ok": true,
-          "detail": "{\"operation_id\": \"524b7932-5a22-4b9d-a115-e84ea120b50a\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"2faf933b-789f-455a-b057-ea85fb143a44\", \"approval_id\": null, \"data\": {\"body\": {\"ok\": true, \"write_id\": \"t101-write-1\"}, \"connector_policy_version_id\": \"fc58d411-1108-4168-a1fe-1c368ad2abce\", \"headers\": {\"content-length\": \"40\", \"content-type\": \"application/json\", \"date\": \"Sat, 07 Nov 2026 09:24:..."
+          "detail": "{\"operation_id\": \"7f5ad622-1ef8-40e3-848d-ff0d99d22124\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"b1e3c476-f82e-48f6-a07c-0b2b84ee1062\", \"approval_id\": null, \"data\": {\"body\": {\"ok\": true, \"write_id\": \"t101-write-1\"}, \"connector_policy_version_id\": \"c2f513a2-c2b3-47ce-9cad-f19b51859b6d\", \"headers\": {\"content-length\": \"40\", \"content-type\": \"application/json\", \"date\": \"Sat, 07 Nov 2026 09:37:..."
         },
         {
           "name": "the endpoint observed exactly one physical write",
           "ok": true,
-          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:64000\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:53437\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
         },
         {
           "name": "the operation is succeeded with one attempt and a real receipt",
           "ok": true,
-          "detail": "{\"operation\": {\"id\": \"524b7932-5a22-4b9d-a115-e84ea120b50a\", \"run_id\": \"27d7b75f-66bc-4159-a5c2-923d25820ce1\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"fc58d411-1108-4168-a1fe-1c368ad2abce\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"fc332e10-c1..."
+          "detail": "{\"operation\": {\"id\": \"7f5ad622-1ef8-40e3-848d-ff0d99d22124\", \"run_id\": \"49343d42-2b12-424c-80f3-d51c90228861\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"c2f513a2-c2b3-47ce-9cad-f19b51859b6d\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"b160a0d2-e0..."
         },
         {
           "name": "the sealed receipt wraps the endpoint's real 2xx body",
           "ok": true,
-          "detail": "\"b'{\\\"body\\\":{\\\"ok\\\":true,\\\"write_id\\\":\\\"t101-write-1\\\"},\\\"capability_kind\\\":\\\"connector\\\",\\\"connector_policy_version_id\\\":\\\"fc58d411-1108-4168-a1fe-1c368ad2abce\\\",\\\"headers\\\":{\\\"content-length\\\":\\\"40\\\",\\\"content-type\\\":\\\"application/json\\\",\\\"date\\\":\\\"Sat, 07 Nov 2026 09:24:54 GMT\\\"},\\\"method\\\":\\\"POST\\\",\\\"origin\\\":\\\"http://127.0.0.1:64000\\\",\\\"path_prefix\\\":\\\"/v1\\\",\\\"policy_sha256\\\":\\\"4893e81515..."
+          "detail": "\"b'{\\\"body\\\":{\\\"ok\\\":true,\\\"write_id\\\":\\\"t101-write-1\\\"},\\\"capability_kind\\\":\\\"connector\\\",\\\"connector_policy_version_id\\\":\\\"c2f513a2-c2b3-47ce-9cad-f19b51859b6d\\\",\\\"headers\\\":{\\\"content-length\\\":\\\"40\\\",\\\"content-type\\\":\\\"application/json\\\",\\\"date\\\":\\\"Sat, 07 Nov 2026 09:37:19 GMT\\\"},\\\"method\\\":\\\"POST\\\",\\\"origin\\\":\\\"http://127.0.0.1:53437\\\",\\\"path_prefix\\\":\\\"/v1\\\",\\\"policy_sha256\\\":\\\"0b1e090736..."
         },
         {
           "name": "a duplicate delivery of the same logical call never sends a second write",
@@ -333,42 +333,42 @@
         {
           "name": "reject is stored and the operation fails without any egress",
           "ok": true,
-          "detail": "{\"id\": \"3325bfed-8212-428a-9370-154b016b8bba\", \"run_id\": \"dc660e9d-5763-4b6a-94e0-3fd5dcaf5fab\", \"state\": \"rejected\", \"proposal_artifact_id\": \"04f47932-5d26-451f-8fff-9353263f72b7\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:24:54Z\"}"
+          "detail": "{\"id\": \"e012e2cf-fb58-4040-b9d6-6ad6a2fe2cdd\", \"run_id\": \"0e8f6d84-1c39-436c-86d8-d11bbb907671\", \"state\": \"rejected\", \"proposal_artifact_id\": \"bdae087a-67d9-437e-89c9-d15827501edc\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:37:20Z\"}"
         },
         {
           "name": "the rejected Run is failed with approval_rejected and has no resume",
           "ok": true,
-          "detail": "{\"id\": \"dc660e9d-5763-4b6a-94e0-3fd5dcaf5fab\", \"state\": \"failed\", \"error_code\": \"approval_rejected\", \"revision\": 4, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 17:24:55.02365+08\"}"
+          "detail": "{\"id\": \"0e8f6d84-1c39-436c-86d8-d11bbb907671\", \"state\": \"failed\", \"error_code\": \"approval_rejected\", \"revision\": 4, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 17:37:20.365033+08\"}"
         },
         {
           "name": "an expired approval cannot be approved",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_expired\", \"message\": \"that approval has expired; it cannot authorise the operation\", \"request_id\": \"2cc9f784daad983d3cf31aa6798c0d74\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_expired\", \"message\": \"that approval has expired; it cannot authorise the operation\", \"request_id\": \"11d1b1a5c3dd1929bc28157488b0f3fe\"}}"
         },
         {
           "name": "the expired Run fails with approval_expired and nothing is sent",
           "ok": true,
-          "detail": "{\"id\": \"e1547c59-9998-439f-8983-a5c27ab68544\", \"state\": \"failed\", \"error_code\": \"approval_expired\", \"revision\": 4, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 17:24:55.45281+08\"}"
+          "detail": "{\"id\": \"2f2ef67d-b48b-4ca0-8714-5b454798aeb4\", \"state\": \"failed\", \"error_code\": \"approval_expired\", \"revision\": 4, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 17:37:20.890841+08\"}"
         },
         {
           "name": "cancellation accepted",
           "ok": true,
-          "detail": "{\"id\": \"4e4d8ce1-88f3-4015-961b-0332e76eae50\", \"state\": \"cancelling\", \"revision\": 4, \"application_version_id\": null, \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"debug\", \"execution_snapshot_id\": \"c7cc4211-ca65-4226-9a29-3ad8d2847176\", \"phase\": \"waiting\"}"
+          "detail": "{\"id\": \"b0cd17b9-de95-40b9-8ba9-801db3fd3dd2\", \"state\": \"cancelling\", \"revision\": 4, \"application_version_id\": null, \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"debug\", \"execution_snapshot_id\": \"66b5fcf7-7e83-431b-b53b-ab70782dd031\", \"phase\": \"waiting\"}"
         },
         {
           "name": "cancelling the Run invalidates its pending approval",
           "ok": true,
-          "detail": "{\"id\": \"5b4631fe-659c-4e1a-95fa-0839f8b3e36f\", \"run_id\": \"4e4d8ce1-88f3-4015-961b-0332e76eae50\", \"operation_id\": \"8c88e59a-5b15-4aba-9e97-de0c7f5a21c2\", \"node_key\": \"agent:approval-node\", \"proposal_artifact_id\": \"7d26ba20-82dc-4266-9517-d3e1fb5d95b8\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"b899b6d5-6629-4ff5-92b0-d535dd13c673\", \"stat..."
+          "detail": "{\"id\": \"a84c220f-72d3-4a42-9a4c-48aee61fa747\", \"run_id\": \"b0cd17b9-de95-40b9-8ba9-801db3fd3dd2\", \"operation_id\": \"78fa43e3-36b5-42ed-a901-f50df86e9c82\", \"node_key\": \"agent:approval-node\", \"proposal_artifact_id\": \"2d825144-f20d-4d31-852b-cd4ca109ab68\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"7579b651-66a8-4245-963e-2dedd623632a\", \"stat..."
         },
         {
           "name": "a decision after cancellation is refused",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_not_pending\", \"message\": \"that approval was invalidated\", \"request_id\": \"67574c59ac046a46fae61e15e1e641ea\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_not_pending\", \"message\": \"that approval was invalidated\", \"request_id\": \"c96cd3c8f63ee48d7cde9973679fc7d3\"}}"
         },
         {
           "name": "the cancelled path never sent",
           "ok": true,
-          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:64000\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:53437\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
         },
         {
           "name": "control: the approved lost-receipt run has not sent yet",
@@ -378,17 +378,17 @@
         {
           "name": "the real write is received and the response is lost (state=unknown)",
           "ok": true,
-          "detail": "{\"operation_id\": \"5e44c044-4e43-400d-a0ed-4ed2648b782e\", \"state\": \"unknown\", \"receipt_artifact_id\": null, \"approval_id\": null, \"data\": {\"dispatch_error_code\": \"connector_transport_error\", \"error_code\": \"operation_unknown\", \"limitation\": \"no_idempotency_or_query_support\", \"reconciliation_status\": \"pending\", \"requires_reconciliation\": true}}"
+          "detail": "{\"operation_id\": \"16b9f6da-006a-4249-8e30-b47c82c81484\", \"state\": \"unknown\", \"receipt_artifact_id\": null, \"approval_id\": null, \"data\": {\"dispatch_error_code\": \"connector_transport_error\", \"error_code\": \"operation_unknown\", \"limitation\": \"no_idempotency_or_query_support\", \"reconciliation_status\": \"pending\", \"requires_reconciliation\": true}}"
         },
         {
           "name": "the endpoint observed exactly one physical write",
           "ok": true,
-          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:64001\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
+          "detail": "[{\"method\": \"POST\", \"path\": \"/v1/orders\", \"headers\": {\"host\": \"127.0.0.1:53438\", \"user-agent\": \"Go-http-client/1.1\", \"content-length\": \"32\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"x-connector-secret\": \"<redacted>\", \"accept-encoding\": \"gzip\", \"connection\": \"close\"}, \"body\": \"{\\\"amount\\\": 1250, \\\"currency\\\": \\\"CNY\\\"}\"}]"
         },
         {
           "name": "the operation is unknown with one dispatching attempt and no receipt",
           "ok": true,
-          "detail": "{\"id\": \"5e44c044-4e43-400d-a0ed-4ed2648b782e\", \"run_id\": \"b68513c7-721d-457d-9d4c-32f5d59ea405\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"16028fae-58ed-4abe-b3be-6f4751a94a29\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"5b126e53-49c8-47c7-b440-f..."
+          "detail": "{\"id\": \"16b9f6da-006a-4249-8e30-b47c82c81484\", \"run_id\": \"3a3dff54-97b7-4039-a73a-07bfa1ed186b\", \"logical_key\": \"agent:approval-node:tool:call-1\", \"capability_version\": \"82469935-793f-4f8f-bdfe-ef5919ff0f14\", \"capability_kind\": \"connector\", \"risk_class\": \"write\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"params_artifact_id\": \"8fdb86eb-e823-4539-bee8-f..."
         },
         {
           "name": "a duplicate delivery of the unknown operation never resends",
@@ -398,12 +398,12 @@
         {
           "name": "after the attempt exits the Run parks in needs_reconciliation",
           "ok": true,
-          "detail": "{\"id\": \"b68513c7-721d-457d-9d4c-32f5d59ea405\", \"state\": \"needs_reconciliation\", \"error_code\": \"unknown_operations\", \"revision\": 6, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": null}"
+          "detail": "{\"id\": \"3a3dff54-97b7-4039-a73a-07bfa1ed186b\", \"state\": \"needs_reconciliation\", \"error_code\": \"unknown_operations\", \"revision\": 6, \"phase\": \"idle\", \"cancel_requested_at\": null, \"finished_at\": null}"
         },
         {
           "name": "the owner's evidence settles the unknown write as succeeded",
           "ok": true,
-          "detail": "{\"id\": \"5e44c044-4e43-400d-a0ed-4ed2648b782e\", \"state\": \"succeeded\"}"
+          "detail": "{\"id\": \"16b9f6da-006a-4249-8e30-b47c82c81484\", \"state\": \"succeeded\"}"
         },
         {
           "name": "reconciliation used the owner's uploaded evidence and never resent",
@@ -413,7 +413,7 @@
       ],
       "assertion_count": 34,
       "facts": {
-        "connector_origin": "http://127.0.0.1:64000",
+        "connector_origin": "http://127.0.0.1:53437",
         "approved_write": {
           "records": 1,
           "operation": "succeeded"
@@ -424,9 +424,9 @@
           "settled_state": "succeeded"
         },
         "result": {
-          "approval_id": "1577a721-da58-4f3a-b4f6-613bff213180",
-          "run_id": "27d7b75f-66bc-4159-a5c2-923d25820ce1",
-          "operation_id": "524b7932-5a22-4b9d-a115-e84ea120b50a",
+          "approval_id": "b7fc79d8-bb77-41db-bf94-ee504b09409f",
+          "run_id": "49343d42-2b12-424c-80f3-d51c90228861",
+          "operation_id": "7f5ad622-1ef8-40e3-848d-ff0d99d22124",
           "writes": 1,
           "reconciled": true
         }
@@ -453,14 +453,14 @@
         "POST /api/v1/memory-candidates/{id}/decision (confirm)",
         "UPDATE platform.memory_candidates SET expires_at = now() - interval '60 seconds' (time's effect; the decision path re-checks it)",
         "cmd/supervisor exec --once (agent node, dev-stub model)",
-        "GET /api/v1/memories/59514bd0-abea-4249-abf3-faf791ddd27c -> 200",
-        "PATCH /api/v1/memories/59514bd0-abea-4249-abf3-faf791ddd27c -> 200",
+        "GET /api/v1/memories/7a7fd24d-9786-4d29-aa42-2fb574c459c7 -> 200",
+        "PATCH /api/v1/memories/7a7fd24d-9786-4d29-aa42-2fb574c459c7 -> 200",
         "cmd/supervisor exec --once (agent node, dev-stub model)",
-        "DELETE /api/v1/memories/59514bd0-abea-4249-abf3-faf791ddd27c -> 202",
+        "DELETE /api/v1/memories/7a7fd24d-9786-4d29-aa42-2fb574c459c7 -> 202",
         "cmd/supervisor exec --once (agent node, dev-stub model)",
         "GET /api/v1/memories (after delete) -> 200"
       ],
-      "duration_s": 16.54,
+      "duration_s": 27.26,
       "truth_sources": [
         "platform.memory_candidates / platform.memories / sealed body artifacts via psql + object dir",
         "runs/{id}/node-results context trace + sealed model request artifact"
@@ -469,12 +469,12 @@
         {
           "name": "the worker's candidate is pending and sealed with the exact bytes",
           "ok": true,
-          "detail": "{\"candidate\": {\"id\": \"08c3f587-f8fc-40ff-8429-3c69a0153a98\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"text\": \"t101-memory-marker: the user prefers concise weekly summaries.\", \"state\": \"pending\", \"expires_at\": \"2026-11-14T09:25:08Z\"}, \"row\": {\"id\": \"08c3f587-f8fc-40ff-8429-3c69a0153a98\", \"owner_id\": \"8567e14d-2eff-40ed-a431-5599f5868abc\", \"application_id\": \"ad6565c1-6139-4d2c-a..."
+          "detail": "{\"candidate\": {\"id\": \"1bd29616-093e-418f-8e7d-651ab4ae1a07\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"text\": \"t101-memory-marker: the user prefers concise weekly summaries.\", \"state\": \"pending\", \"expires_at\": \"2026-11-14T09:37:38Z\"}, \"row\": {\"id\": \"1bd29616-093e-418f-8e7d-651ab4ae1a07\", \"owner_id\": \"d59133b7-25ee-4b0e-b8e9-18c4cbbfb0b4\", \"application_id\": \"601bc609-e5cc-4191-a..."
         },
         {
           "name": "the candidate is scoped to the run's application and owner",
           "ok": true,
-          "detail": "{\"id\": \"08c3f587-f8fc-40ff-8429-3c69a0153a98\", \"owner_id\": \"8567e14d-2eff-40ed-a431-5599f5868abc\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"body_artifact_id\": \"2f78f225-9c8c-485f-afe0-3a003615d0ba\", \"source_run_id\": \"3e7118d1-27fe-432d-a511-91c33dfa8a1d\", \"logical_key\": \"agent:memory-node:memory:1\", \"state\": \"pending\", \"expires_at\": \"2026-11-14 17:25:08.257317+08\", \"created_at..."
+          "detail": "{\"id\": \"1bd29616-093e-418f-8e7d-651ab4ae1a07\", \"owner_id\": \"d59133b7-25ee-4b0e-b8e9-18c4cbbfb0b4\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"body_artifact_id\": \"23cff849-7335-43ad-b227-ecff33361132\", \"source_run_id\": \"7d96e5e8-60f0-4a28-9461-1ccc5088ce6c\", \"logical_key\": \"agent:memory-node:memory:1\", \"state\": \"pending\", \"expires_at\": \"2026-11-14 17:37:38.043287+08\", \"created_at..."
         },
         {
           "name": "a pending candidate is not yet a memory",
@@ -484,7 +484,7 @@
         {
           "name": "the owner's queue contains both candidates",
           "ok": true,
-          "detail": "{\"items\": [{\"id\": \"74454fd4-20aa-421c-9913-013acb4c813c\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"text\": \"t101-memory-pending-marker: an unconfirmed guess.\", \"state\": \"pending\", \"expires_at\": \"2026-11-14T09:25:08Z\"}, {\"id\": \"08c3f587-f8fc-40ff-8429-3c69a0153a98\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"text\": \"t101-memory-marker: the user prefers concise we..."
+          "detail": "{\"items\": [{\"id\": \"f77cb176-ca58-4b5d-9456-64501a1c810a\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"text\": \"t101-memory-pending-marker: an unconfirmed guess.\", \"state\": \"pending\", \"expires_at\": \"2026-11-14T09:37:38Z\"}, {\"id\": \"1bd29616-093e-418f-8e7d-651ab4ae1a07\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"text\": \"t101-memory-marker: the user prefers concise we..."
         },
         {
           "name": "another human sees an empty queue (owner-scoped, not a global one)",
@@ -494,7 +494,7 @@
         {
           "name": "a service credential can never touch personal memory",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"a092894848e33f25a3521d0c1b220652\"}}"
+          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"ddf17405f04c91d9a354079791ce9ef4\"}}"
         },
         {
           "name": "the personal-data refusal is the only thing the key hit; the candidate queue is unchanged",
@@ -504,12 +504,12 @@
         {
           "name": "a stranger's decision is the same not-found shape as a missing candidate",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that memory candidate does not exist\", \"request_id\": \"ccdb943a6f23a098054f384f66c5b3cb\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that memory candidate does not exist\", \"request_id\": \"48e685d882e18e7a6ef8023cbf34334c\"}}"
         },
         {
           "name": "the confirmed candidate becomes exactly one memory with the sealed bytes",
           "ok": true,
-          "detail": "{\"id\": \"59514bd0-abea-4249-abf3-faf791ddd27c\", \"owner_id\": \"8567e14d-2eff-40ed-a431-5599f5868abc\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"body_artifact_id\": \"2f78f225-9c8c-485f-afe0-3a003615d0ba\", \"candidate_id\": \"08c3f587-f8fc-40ff-8429-3c69a0153a98\", \"revision\": 1, \"confirmed_at\": \"2026-11-07 17:25:09.336635+08\", \"confirmed_by\": \"8567e14d-2eff-40ed-a431-5599f5868abc\", \"del..."
+          "detail": "{\"id\": \"7a7fd24d-9786-4d29-aa42-2fb574c459c7\", \"owner_id\": \"d59133b7-25ee-4b0e-b8e9-18c4cbbfb0b4\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"body_artifact_id\": \"23cff849-7335-43ad-b227-ecff33361132\", \"candidate_id\": \"1bd29616-093e-418f-8e7d-651ab4ae1a07\", \"revision\": 1, \"confirmed_at\": \"2026-11-07 17:37:39.485159+08\", \"confirmed_by\": \"d59133b7-25ee-4b0e-b8e9-18c4cbbfb0b4\", \"del..."
         },
         {
           "name": "the pending candidate stayed pending and created no memory",
@@ -519,22 +519,22 @@
         {
           "name": "a second, opposite decision on a confirmed candidate is refused",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"memory_candidate_confirmed\", \"message\": \"that memory candidate is already confirmed and has a memory\", \"request_id\": \"4f3c9ff53d78903bbb5371265d40d0c2\"}}"
+          "detail": "{\"error\": {\"code\": \"memory_candidate_confirmed\", \"message\": \"that memory candidate is already confirmed and has a memory\", \"request_id\": \"2ff2752a453c9a45aa32766709f84497\"}}"
         },
         {
           "name": "an expired candidate cannot produce a memory",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"memory_candidate_expired\", \"message\": \"that memory candidate has expired\", \"request_id\": \"2a2d750ef5592a88d61fcb31917446ea\"}}"
+          "detail": "{\"error\": {\"code\": \"memory_candidate_expired\", \"message\": \"that memory candidate has expired\", \"request_id\": \"3320adbc8f1031d05ce0811967281012\"}}"
         },
         {
           "name": "recall after confirm: the real supervisor run succeeds",
           "ok": true,
-          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"58ce06a9-e981-40cc-8098-0260f1445384\", \"job_id\": \"5bae1542-2d4c-4c78-b9c7-77681671445f\", \"execution_unit_id\": \"exec-AI-59040-77a7088c\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 30, \"sandbox\": {\"sandbox_id\": \"exec-ai-59040-77a7088c-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
+          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"fdcbae00-e1e1-4a7f-a131-74caff217f9a\", \"job_id\": \"4101a562-890c-4ec6-9a34-70fab6249683\", \"execution_unit_id\": \"exec-AI-48384-f7224dcf\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 43, \"sandbox\": {\"sandbox_id\": \"exec-ai-48384-f7224dcf-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
         },
         {
           "name": "the confirmed memory is recalled with memory_state=included",
           "ok": true,
-          "detail": "{\"turn\": {\"budget_tokens\": 123904, \"estimated_tokens\": 174, \"memory_budget_tokens\": 30976, \"memory_state\": \"included\", \"memory_tokens\": 41, \"protected\": [\"order_count\", \"stats\", \"total\"], \"reserved_output_tokens\": 4096, \"sources\": [{\"estimated_tokens\": 21, \"kind\": \"python\", \"label\": \"stats\", \"node_id\": \"stats\", \"protected\": true}, {\"estimated_tokens\": 29, \"kind\": \"memory\", \"label\": \"memory:5951..."
+          "detail": "{\"turn\": {\"budget_tokens\": 123904, \"estimated_tokens\": 174, \"memory_budget_tokens\": 30976, \"memory_state\": \"included\", \"memory_tokens\": 41, \"protected\": [\"order_count\", \"stats\", \"total\"], \"reserved_output_tokens\": 4096, \"sources\": [{\"estimated_tokens\": 21, \"kind\": \"python\", \"label\": \"stats\", \"node_id\": \"stats\", \"protected\": true}, {\"estimated_tokens\": 29, \"kind\": \"memory\", \"label\": \"memory:7a7f..."
         },
         {
           "name": "the recall respects the product-reported context budget",
@@ -564,22 +564,22 @@
         {
           "name": "the memory is revised to revision 2",
           "ok": true,
-          "detail": "{\"id\": \"59514bd0-abea-4249-abf3-faf791ddd27c\", \"application_id\": \"ad6565c1-6139-4d2c-a770-5bda35db2024\", \"revision\": 2, \"text\": \"t101-memory-revised-marker: the user prefers quarterly totals.\"}"
+          "detail": "{\"id\": \"7a7fd24d-9786-4d29-aa42-2fb574c459c7\", \"application_id\": \"601bc609-e5cc-4191-a3cb-a61275094833\", \"revision\": 2, \"text\": \"t101-memory-revised-marker: the user prefers quarterly totals.\"}"
         },
         {
           "name": "an old If-Match cannot overwrite the newer revision",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"precondition_failed\", \"message\": \"the memory has moved on; fetch it again and retry with the current ETag\", \"request_id\": \"234169c795c3602289c0f144324e5b36\", \"details\": {\"current_etag\": \"\\\"2\\\"\", \"current_revision\": 2}}}"
+          "detail": "{\"error\": {\"code\": \"precondition_failed\", \"message\": \"the memory has moved on; fetch it again and retry with the current ETag\", \"request_id\": \"32d74ad048d51cdd8f3e1df4651b0af5\", \"details\": {\"current_etag\": \"\\\"2\\\"\", \"current_revision\": 2}}}"
         },
         {
           "name": "recall after revision: the real supervisor run succeeds",
           "ok": true,
-          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"8e013446-e6fb-4b5a-a752-45dd51224a8a\", \"job_id\": \"f1a9db3a-7364-41ef-ad43-f2a8ba70d274\", \"execution_unit_id\": \"exec-AI-57840-a577aede\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 30, \"sandbox\": {\"sandbox_id\": \"exec-ai-57840-a577aede-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
+          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"2aef6526-6667-443a-be8a-cf341b8edbc1\", \"job_id\": \"58209d58-88ae-4bdc-9a79-b3d8a6095939\", \"execution_unit_id\": \"exec-AI-58612-cd069259\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 40, \"sandbox\": {\"sandbox_id\": \"exec-ai-58612-cd069259-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
         },
         {
           "name": "the revised text is recalled and the superseded text is not",
           "ok": true,
-          "detail": "{\"sources\": \"{'59514bd0-abea-4249-abf3-faf791ddd27c'}\"}"
+          "detail": "{\"sources\": \"{'7a7fd24d-9786-4d29-aa42-2fb574c459c7'}\"}"
         },
         {
           "name": "the recalled revision count matches the durable memory revision",
@@ -589,12 +589,12 @@
         {
           "name": "the deletion is accepted as a real background job",
           "ok": true,
-          "detail": "{\"id\": \"9970abb2-173e-4314-8959-a3e1d707a03b\", \"state\": \"pending\", \"resource_id\": \"59514bd0-abea-4249-abf3-faf791ddd27c\"}"
+          "detail": "{\"id\": \"42403ee6-af63-482b-bf91-0e1b8ee0df09\", \"state\": \"pending\", \"resource_id\": \"7a7fd24d-9786-4d29-aa42-2fb574c459c7\"}"
         },
         {
           "name": "recall after delete: the real supervisor run succeeds",
           "ok": true,
-          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"f9655c1a-1b21-4207-8d11-8757c64d6205\", \"job_id\": \"13cee6f5-c1c7-4f32-8358-16d5dc0eb4a7\", \"execution_unit_id\": \"exec-AI-54984-19b2533e\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 31, \"sandbox\": {\"sandbox_id\": \"exec-ai-54984-19b2533e-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
+          "detail": "{\"returncode\": 0, \"report\": {\"status\": \"executed\", \"run_id\": \"7ca46713-f50f-4e95-a09e-03fddfcbcb52\", \"job_id\": \"69797814-5ebe-49e5-96ff-679b8bed9a2d\", \"execution_unit_id\": \"exec-AI-61528-3318eb89\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 35, \"sandbox\": {\"sandbox_id\": \"exec-ai-61528-3318eb89-a6a198632\", \"rootfs_digest\": \"sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd..."
         },
         {
           "name": "the deleted memory is no longer recalled",
@@ -610,21 +610,21 @@
       "assertion_count": 28,
       "facts": {
         "recall": {
-          "run_after_confirm": "58ce06a9-e981-40cc-8098-0260f1445384",
+          "run_after_confirm": "fdcbae00-e1e1-4a7f-a131-74caff217f9a",
           "confirm_sources": [
-            "59514bd0-abea-4249-abf3-faf791ddd27c"
+            "7a7fd24d-9786-4d29-aa42-2fb574c459c7"
           ],
           "budget": 30976,
           "tokens": 41,
           "after_revision_sources": [
-            "59514bd0-abea-4249-abf3-faf791ddd27c"
+            "7a7fd24d-9786-4d29-aa42-2fb574c459c7"
           ],
           "after_delete_sources": []
         },
         "result": {
-          "candidate_id": "08c3f587-f8fc-40ff-8429-3c69a0153a98",
-          "memory_id": "59514bd0-abea-4249-abf3-faf791ddd27c",
-          "recall_run_id": "58ce06a9-e981-40cc-8098-0260f1445384",
+          "candidate_id": "1bd29616-093e-418f-8e7d-651ab4ae1a07",
+          "memory_id": "7a7fd24d-9786-4d29-aa42-2fb574c459c7",
+          "recall_run_id": "fdcbae00-e1e1-4a7f-a131-74caff217f9a",
           "after_delete_sources": []
         }
       },
@@ -648,15 +648,15 @@
         "POST /api/v1/knowledge-bases/{id}/documents -> 202",
         "cmd/maintenance run --once --kinds document_ingest",
         "POST /api/v1/knowledge-bases/{id}/retrieval-queries -> 200",
-        "GET /api/v1/knowledge-citations/e9dd8fbc-bad9-417a-8164-6d6f9356f845 -> 200",
+        "GET /api/v1/knowledge-citations/073dc95a-f0be-4042-9712-cafa799881cd -> 200",
         "POST /api/v1/knowledge-bases/{id}/retrieval-queries (stranger) -> 404",
-        "GET /api/v1/knowledge-citations/e9dd8fbc-bad9-417a-8164-6d6f9356f845 (stranger) -> 404",
-        "DELETE /api/v1/knowledge-documents/21181cd7-4708-4d82-bf93-9bd40459669a -> 202",
-        "GET /api/v1/knowledge-citations/e9dd8fbc-bad9-417a-8164-6d6f9356f845 (after delete) -> 404",
+        "GET /api/v1/knowledge-citations/073dc95a-f0be-4042-9712-cafa799881cd (stranger) -> 404",
+        "DELETE /api/v1/knowledge-documents/5277abc3-111b-46e0-a920-baf1e820fe1b -> 202",
+        "GET /api/v1/knowledge-citations/073dc95a-f0be-4042-9712-cafa799881cd (after delete) -> 404",
         "POST /api/v1/knowledge-bases/{id}/retrieval-queries (after delete) -> 200",
-        "GET /api/v1/deletions/9a0d0926-5a16-44fb-aa7f-bd5574bba8ad -> 200"
+        "GET /api/v1/deletions/0cbd15bf-a132-4219-86e9-31af2325753e -> 200"
       ],
-      "duration_s": 2.13,
+      "duration_s": 2.92,
       "truth_sources": [
         "sealed source object bytes: sha256 + rune slice recomputed in the test",
         "platform.knowledge_documents / platform.knowledge_chunks / platform.background_jobs via psql",
@@ -666,27 +666,27 @@
         {
           "name": "knowledge base created",
           "ok": true,
-          "detail": "{\"id\": \"5a003214-580f-4cb0-a581-7850477fd8cf\", \"state\": \"active\"}"
+          "detail": "{\"id\": \"61b5e875-a5b5-42c6-88ab-9a629e2c0cb9\", \"state\": \"active\"}"
         },
         {
           "name": "the source artifact is truly sealed and ready",
           "ok": true,
-          "detail": "{\"id\": \"a8559296-43cb-497b-9a58-2c413fdefce2\", \"owner_id\": \"9bf2dedc-13da-4bc3-a493-709de863f790\", \"object_key\": \"sealed/225c17609be4e3f915e066cc65181bd4fcef8c2276c377388e2e554f474cfe56\", \"staging_object_key\": \"staging/726b410462969f7436f64ca4b708c9ea4c27689068d470cd7ce1acaec6e67265\", \"expected_sha256\": \"373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d\", \"sha256\": \"373653c453ae1..."
+          "detail": "{\"id\": \"31f44e3c-c38a-41d5-a750-217ab74243f1\", \"owner_id\": \"2b0f7876-7620-46a5-8fd1-78324ac39092\", \"object_key\": \"sealed/b04df15498363b0103f84461b756056c6a4c97c645d143b595319f741de542ab\", \"staging_object_key\": \"staging/abfce77805bd6457e40268b8434093e2abd9e934f82e58919ef809facb68de1b\", \"expected_sha256\": \"373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d\", \"sha256\": \"373653c453ae1..."
         },
         {
           "name": "the document ingest is accepted in the scanning state",
           "ok": true,
-          "detail": "{\"id\": \"21181cd7-4708-4d82-bf93-9bd40459669a\", \"state\": \"scanning\"}"
+          "detail": "{\"id\": \"5277abc3-111b-46e0-a920-baf1e820fe1b\", \"state\": \"scanning\"}"
         },
         {
           "name": "the document reaches ready",
           "ok": true,
-          "detail": "{\"id\": \"21181cd7-4708-4d82-bf93-9bd40459669a\", \"knowledge_base_id\": \"5a003214-580f-4cb0-a581-7850477fd8cf\", \"state\": \"ready\", \"revision\": 1, \"source_artifact_id\": \"a8559296-43cb-497b-9a58-2c413fdefce2\"}"
+          "detail": "{\"id\": \"5277abc3-111b-46e0-a920-baf1e820fe1b\", \"knowledge_base_id\": \"61b5e875-a5b5-42c6-88ab-9a629e2c0cb9\", \"state\": \"ready\", \"revision\": 1, \"source_artifact_id\": \"31f44e3c-c38a-41d5-a750-217ab74243f1\"}"
         },
         {
           "name": "the durable document row is ready at revision 1 with a succeeded job",
           "ok": true,
-          "detail": "{\"document\": {\"id\": \"21181cd7-4708-4d82-bf93-9bd40459669a\", \"knowledge_base_id\": \"5a003214-580f-4cb0-a581-7850477fd8cf\", \"source_artifact_id\": \"a8559296-43cb-497b-9a58-2c413fdefce2\", \"revision\": 1, \"state\": \"ready\", \"active_revision\": 1, \"parser_version\": \"orchara-text-parser/1\", \"chunker_version\": \"orchara-paragraph-overlap-chunker/1\", \"embedding_model_revision\": \"local-hash-v1\", \"error_code\":..."
+          "detail": "{\"document\": {\"id\": \"5277abc3-111b-46e0-a920-baf1e820fe1b\", \"knowledge_base_id\": \"61b5e875-a5b5-42c6-88ab-9a629e2c0cb9\", \"source_artifact_id\": \"31f44e3c-c38a-41d5-a750-217ab74243f1\", \"revision\": 1, \"state\": \"ready\", \"active_revision\": 1, \"parser_version\": \"orchara-text-parser/1\", \"chunker_version\": \"orchara-paragraph-overlap-chunker/1\", \"embedding_model_revision\": \"local-hash-v1\", \"error_code\":..."
         },
         {
           "name": "the ingestion produced ordered traceable chunks",
@@ -696,12 +696,12 @@
         {
           "name": "the retrieval returns ranked items",
           "ok": true,
-          "detail": "{\"items\":[{\"chunk_id\":\"e9dd8fbc-bad9-417a-8164-6d6f9356f845\",\"document_id\":\"21181cd7-4708-4d82-bf93-9bd40459669a\",\"document_revision\":1,\"document_state\":\"ready\",\"chunk_no\":0,\"score\":0.21821789023599233,\"text\":\"# 销售资料\\n\\n华北地区十月的销售额是 1234.50 元，订单数为 42。\\n\\n华东地区十月的销售额是 987.25 元，订单数为 31。\\n\\n退款政策：订单完成后 30 天内可申请退款。\",\"span\":{\"start_char\":0,\"end_char\":93,\"start_line\":1,\"end_line\":7},\"citation\":{\"span\":{..."
+          "detail": "{\"items\":[{\"chunk_id\":\"073dc95a-f0be-4042-9712-cafa799881cd\",\"document_id\":\"5277abc3-111b-46e0-a920-baf1e820fe1b\",\"document_revision\":1,\"document_state\":\"ready\",\"chunk_no\":0,\"score\":0.21821789023599233,\"text\":\"# 销售资料\\n\\n华北地区十月的销售额是 1234.50 元，订单数为 42。\\n\\n华东地区十月的销售额是 987.25 元，订单数为 31。\\n\\n退款政策：订单完成后 30 天内可申请退款。\",\"span\":{\"start_char\":0,\"end_char\":93,\"start_line\":1,\"end_line\":7},\"citation\":{\"span\":{..."
         },
         {
           "name": "the citation opens and is the same body the query returned",
           "ok": true,
-          "detail": "{\"chunk_id\":\"e9dd8fbc-bad9-417a-8164-6d6f9356f845\",\"document_id\":\"21181cd7-4708-4d82-bf93-9bd40459669a\",\"document_revision\":1,\"document_state\":\"ready\",\"chunk_no\":0,\"text\":\"# 销售资料\\n\\n华北地区十月的销售额是 1234.50 元，订单数为 42。\\n\\n华东地区十月的销售额是 987.25 元，订单数为 31。\\n\\n退款政策：订单完成后 30 天内可申请退款。\",\"span\":{\"start_char\":0,\"end_char\":93,\"start_line\":1,\"end_line\":7},\"citation\":{\"span\":{\"end_char\":93,\"end_line\":7,\"start_char\":0"
+          "detail": "{\"chunk_id\":\"073dc95a-f0be-4042-9712-cafa799881cd\",\"document_id\":\"5277abc3-111b-46e0-a920-baf1e820fe1b\",\"document_revision\":1,\"document_state\":\"ready\",\"chunk_no\":0,\"text\":\"# 销售资料\\n\\n华北地区十月的销售额是 1234.50 元，订单数为 42。\\n\\n华东地区十月的销售额是 987.25 元，订单数为 31。\\n\\n退款政策：订单完成后 30 天内可申请退款。\",\"span\":{\"start_char\":0,\"end_char\":93,\"start_line\":1,\"end_line\":7},\"citation\":{\"span\":{\"end_char\":93,\"end_line\":7,\"start_char\":0"
         },
         {
           "name": "the citation's source hash is the sealed source object's real sha256",
@@ -716,7 +716,7 @@
         {
           "name": "the citation names the document, revision and chunk number",
           "ok": true,
-          "detail": "{\"span\": {\"end_char\": 93, \"end_line\": 7, \"start_char\": 0, \"start_line\": 1}, \"chunk_no\": 0, \"document_id\": \"21181cd7-4708-4d82-bf93-9bd40459669a\", \"offset_unit\": \"rune\", \"source_sha256\": \"373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d\", \"parser_version\": \"orchara-text-parser/1\", \"chunker_version\": \"orchara-paragraph-overlap-chunker/1\", \"document_revision\": 1, \"source_media_type..."
+          "detail": "{\"span\": {\"end_char\": 93, \"end_line\": 7, \"start_char\": 0, \"start_line\": 1}, \"chunk_no\": 0, \"document_id\": \"5277abc3-111b-46e0-a920-baf1e820fe1b\", \"offset_unit\": \"rune\", \"source_sha256\": \"373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d\", \"parser_version\": \"orchara-text-parser/1\", \"chunker_version\": \"orchara-paragraph-overlap-chunker/1\", \"document_revision\": 1, \"source_media_type..."
         },
         {
           "name": "the chunk body artifact bytes are the same text",
@@ -726,37 +726,37 @@
         {
           "name": "another human gets the same not-found shape for the base",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"01c2c04278aedad7e8a5c795d27f2695\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"e33679707916bccbb7487b9a0da2c155\"}}"
         },
         {
           "name": "another human cannot open the citation",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"df0c1d446189ca648cec62f4b39dfdb2\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"fda7e36b077d6cb0257324bab1861fd7\"}}"
         },
         {
           "name": "deletion is accepted with a readable job",
           "ok": true,
-          "detail": "{\"id\": \"9a0d0926-5a16-44fb-aa7f-bd5574bba8ad\", \"state\": \"pending\", \"resource_id\": \"21181cd7-4708-4d82-bf93-9bd40459669a\"}"
+          "detail": "{\"id\": \"0cbd15bf-a132-4219-86e9-31af2325753e\", \"state\": \"pending\", \"resource_id\": \"5277abc3-111b-46e0-a920-baf1e820fe1b\"}"
         },
         {
           "name": "the deleted citation is a 404 with no body/citation fallback",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"af043679b32cb1d6390a3056b0500e0d\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"c73823c0c6b1e2b721c6ab78a1e64491\"}}"
         },
         {
           "name": "retrieval no longer returns the deleted document (no cache fallback)",
           "ok": true,
-          "detail": "{\"items\": [], \"next_cursor\": null, \"retrieval\": {\"embedding_model_revision\": \"local-hash-v1\", \"top_k\": 3, \"acl_epoch\": 1, \"index\": {\"embedding_model_revision\": \"local-hash-v1\", \"active_indexes\": 0, \"excluded_indexes\": 0}, \"cache\": {\"enabled\": true, \"hit\": false, \"discarded\": false, \"key_prefix\": \"f23991084685ae22\", \"validated_chunks\": 0, \"stored\": false, \"ttl_seconds\": 900}}}"
+          "detail": "{\"items\": [], \"next_cursor\": null, \"retrieval\": {\"embedding_model_revision\": \"local-hash-v1\", \"top_k\": 3, \"acl_epoch\": 1, \"index\": {\"embedding_model_revision\": \"local-hash-v1\", \"active_indexes\": 0, \"excluded_indexes\": 0}, \"cache\": {\"enabled\": true, \"hit\": false, \"discarded\": false, \"key_prefix\": \"43f1c836b3cf389f\", \"validated_chunks\": 0, \"stored\": false, \"ttl_seconds\": 900}}}"
         },
         {
           "name": "the deletion job is readable with its remaining scopes",
           "ok": true,
-          "detail": "{\"id\": \"9a0d0926-5a16-44fb-aa7f-bd5574bba8ad\", \"state\": \"pending\", \"remaining_scopes\": [\"backup_catalog\", \"checkpoints\", \"object_store\", \"retrieval_cache\", \"sandbox_temp\", \"search_index\", \"third_party_history\"]}"
+          "detail": "{\"id\": \"0cbd15bf-a132-4219-86e9-31af2325753e\", \"state\": \"pending\", \"remaining_scopes\": [\"backup_catalog\", \"checkpoints\", \"object_store\", \"retrieval_cache\", \"sandbox_temp\", \"search_index\", \"third_party_history\"]}"
         },
         {
           "name": "the deleted document is a 404 through the document route",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"1c0112f275046a6e04d2580f9d3c48ea\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that knowledge resource does not exist\", \"request_id\": \"231bb9acef75fa6f239e461a0e159843\"}}"
         }
       ],
       "assertion_count": 19,
@@ -768,18 +768,18 @@
             "enabled": true,
             "hit": false,
             "discarded": false,
-            "key_prefix": "f23991084685ae22",
+            "key_prefix": "43f1c836b3cf389f",
             "validated_chunks": 0,
             "stored": false,
             "ttl_seconds": 900
           }
         },
         "result": {
-          "knowledge_base_id": "5a003214-580f-4cb0-a581-7850477fd8cf",
-          "document_id": "21181cd7-4708-4d82-bf93-9bd40459669a",
-          "source_artifact_id": "a8559296-43cb-497b-9a58-2c413fdefce2",
+          "knowledge_base_id": "61b5e875-a5b5-42c6-88ab-9a629e2c0cb9",
+          "document_id": "5277abc3-111b-46e0-a920-baf1e820fe1b",
+          "source_artifact_id": "31f44e3c-c38a-41d5-a750-217ab74243f1",
           "chunks": 3,
-          "chunk_id": "e9dd8fbc-bad9-417a-8164-6d6f9356f845",
+          "chunk_id": "073dc95a-f0be-4042-9712-cafa799881cd",
           "citation_sha256": "373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d",
           "deleted_citation_status": 404
         }
@@ -805,11 +805,11 @@
         "POST /api/v1/admin/api-keys -> 201",
         "GET /api/v1/auth/me (bearer) -> 200",
         "GET /api/v1/applications (bearer, no grant) -> 200",
-        "GET /api/v1/applications/0701ecb7-18f5-4005-afc6-e797ca4c8b2d (bearer, no grant) -> 404",
+        "GET /api/v1/applications/b96d3907-3a52-4011-90ad-6d9fe3b3c75d (bearer, no grant) -> 404",
         "POST /api/v1/admin/api-keys (application:write) -> 201",
-        "GET /api/v1/applications/0701ecb7-18f5-4005-afc6-e797ca4c8b2d (write-scoped key) -> 403",
+        "GET /api/v1/applications/b96d3907-3a52-4011-90ad-6d9fe3b3c75d (write-scoped key) -> 403",
         "POST /api/v1/admin/grants",
-        "GET /api/v1/applications/0701ecb7-18f5-4005-afc6-e797ca4c8b2d (bearer, granted) -> 200",
+        "GET /api/v1/applications/b96d3907-3a52-4011-90ad-6d9fe3b3c75d (bearer, granted) -> 200",
         "POST /api/v1/applications (read-scoped key) -> 403",
         "POST /api/v1/applications (write-scoped key) -> 201",
         "GET /api/v1/memories (bearer) -> 403",
@@ -817,10 +817,10 @@
         "GET /api/v1/auth/me (revoked key) -> 401",
         "GET /api/v1/auth/me (expired key) -> 401",
         "sleep 3.5s (the real key deadline passes; nothing is injected)",
-        "PATCH /api/v1/admin/principals/01981d7f-f3d8-4503-833c-7efc4f0c8a52 -> 200",
-        "GET /api/v1/applications/0701ecb7-18f5-4005-afc6-e797ca4c8b2d (responsible disabled) -> 401"
+        "PATCH /api/v1/admin/principals/eb261150-24d6-42d4-830f-b39785553ef8 -> 200",
+        "GET /api/v1/applications/b96d3907-3a52-4011-90ad-6d9fe3b3c75d (responsible disabled) -> 401"
       ],
-      "duration_s": 5.52,
+      "duration_s": 5.99,
       "truth_sources": [
         "platform.api_keys (key_hash only, scopes, expires_at, revoked_at) via psql"
       ],
@@ -828,17 +828,17 @@
         {
           "name": "service account created",
           "ok": true,
-          "detail": "{\"id\": \"6163ebbb-a5c5-4bb3-ac63-df03c250b9b3\", \"state\": \"active\"}"
+          "detail": "{\"id\": \"df3877ad-c6c5-448a-a401-aff1f3410675\", \"state\": \"active\"}"
         },
         {
           "name": "service account is a named principal with an active state",
           "ok": true,
-          "detail": "{\"id\": \"6163ebbb-a5c5-4bb3-ac63-df03c250b9b3\", \"state\": \"active\"}"
+          "detail": "{\"id\": \"df3877ad-c6c5-448a-a401-aff1f3410675\", \"state\": \"active\"}"
         },
         {
           "name": "scoped key issued",
           "ok": true,
-          "detail": "{\"id\": \"41f11705-b13b-49aa-8ed3-b586a9e641df\", \"secret\": \"<redacted>\"}"
+          "detail": "{\"id\": \"e5235326-c599-4d06-aa62-7420df3fa18f\", \"secret\": \"<redacted>\"}"
         },
         {
           "name": "the secret is returned once under the documented prefix",
@@ -858,12 +858,12 @@
         {
           "name": "the key authenticates",
           "ok": true,
-          "detail": "{\"principal_id\": \"6163ebbb-a5c5-4bb3-ac63-df03c250b9b3\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:24:44Z\"}"
+          "detail": "{\"principal_id\": \"df3877ad-c6c5-448a-a401-aff1f3410675\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:37:05Z\"}"
         },
         {
           "name": "a service credential is kind=service with no roles and no CSRF token",
           "ok": true,
-          "detail": "{\"principal_id\": \"6163ebbb-a5c5-4bb3-ac63-df03c250b9b3\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:24:44Z\"}"
+          "detail": "{\"principal_id\": \"df3877ad-c6c5-448a-a401-aff1f3410675\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:37:05Z\"}"
         },
         {
           "name": "with the read scope but no grant the catalog is empty",
@@ -873,37 +873,37 @@
         {
           "name": "with the read scope but no grant the detail is the same 404 as a missing id",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that application does not exist\", \"request_id\": \"eaaeb5ebcd4f72975fb1612c2827844a\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that application does not exist\", \"request_id\": \"6cad72c81a2007c4cdd12ee117c07c93\"}}"
         },
         {
           "name": "a write-scoped key is refused before the ACL (403 insufficient_scope)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:read scope\", \"request_id\": \"3749a30526ea4b79664eb744486a10f6\"}}"
+          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:read scope\", \"request_id\": \"21f342bf7abae282f9c896d8dadc60ab\"}}"
         },
         {
           "name": "scope + ACL together allow the same call that was 404 without the grant",
           "ok": true,
-          "detail": "{\"id\": \"0701ecb7-18f5-4005-afc6-e797ca4c8b2d\", \"name\": \"t101 service-account target\", \"active_version_id\": null}"
+          "detail": "{\"id\": \"b96d3907-3a52-4011-90ad-6d9fe3b3c75d\", \"name\": \"t101 service-account target\", \"active_version_id\": null}"
         },
         {
           "name": "the read-scoped key is refused on the write route",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:write scope\", \"request_id\": \"4db7755fd2349eb4c5d5d0434bb716a5\"}}"
+          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:write scope\", \"request_id\": \"59a505acb15e9ada24460d5ba4ef3ec2\"}}"
         },
         {
           "name": "the write-scoped key creates an application (scope is necessary and sufficient here)",
           "ok": true,
-          "detail": "{\"id\": \"bbd62c1c-61e1-48b7-ba37-1f627d6b6e15\", \"name\": \"t101 service-owned application\", \"active_version_id\": null}"
+          "detail": "{\"id\": \"1fcf1738-2951-4737-a3de-17909cb174ff\", \"name\": \"t101 service-owned application\", \"active_version_id\": null}"
         },
         {
           "name": "the personal-memory endpoint refuses a service credential with the personal-data code",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"b81c8088358658a6185a035b3aa6343e\"}}"
+          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"f3988a8551163817f0f8a25222c074c6\"}}"
         },
         {
           "name": "the write side of personal memory is refused by the same credential rule",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"683424b81d4a2eeca187e659c2fbf52c\"}}"
+          "detail": "{\"error\": {\"code\": \"personal_scope_forbidden\", \"message\": \"personal memory belongs to human users; a service account cannot read or write it\", \"request_id\": \"491d6500ea807b19b4f26dec331de5a8\"}}"
         },
         {
           "name": "control: the second read key works before revocation",
@@ -918,41 +918,41 @@
         {
           "name": "a revoked key is refused on the very next call",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"872be7fe6f41584d6d09ee024dc9ff4b\"}}"
+          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"5e07c2150f61a658b58ba49351cfb93c\"}}"
         },
         {
           "name": "control: the short-lived key works before its deadline",
           "ok": true,
-          "detail": "{\"principal_id\": \"6163ebbb-a5c5-4bb3-ac63-df03c250b9b3\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T09:24:47Z\"}"
+          "detail": "{\"principal_id\": \"df3877ad-c6c5-448a-a401-aff1f3410675\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T09:37:09Z\"}"
         },
         {
           "name": "an expired key is refused with the same invalid_key shape",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"90fabd52d3b36a16066fcc9517dab510\"}}"
+          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"5f468c85ae50fef488c56aba31f2959a\"}}"
         },
         {
           "name": "the responsible human is disabled",
           "ok": true,
-          "detail": "{\"id\": \"01981d7f-f3d8-4503-833c-7efc4f0c8a52\", \"state\": \"disabled\"}"
+          "detail": "{\"id\": \"eb261150-24d6-42d4-830f-b39785553ef8\", \"state\": \"disabled\"}"
         },
         {
           "name": "the still-valid secret is dead on the next call after its responsible human is disabled",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"df4f0c10bd6f6585dadb1b9ed669ca07\"}}"
+          "detail": "{\"error\": {\"code\": \"invalid_key\", \"message\": \"that API key is not recognised\", \"request_id\": \"19dca8a08d13a0c7c2942fe537badd09\"}}"
         },
         {
           "name": "the disable transaction really revoked the service key (independent key row)",
           "ok": true,
-          "detail": "{\"revoked_at\": \"2026-11-07 17:24:48.371936+08\", \"expires_at\": \"2026-11-07 19:24:44+08\"}"
+          "detail": "{\"revoked_at\": \"2026-11-07 17:37:09.861741+08\", \"expires_at\": \"2026-11-07 19:37:05+08\"}"
         }
       ],
       "assertion_count": 24,
       "facts": {
-        "api_key_id": "41f11705-b13b-49aa-8ed3-b586a9e641df",
+        "api_key_id": "e5235326-c599-4d06-aa62-7420df3fa18f",
         "responsible_disable_semantics": "official PATCH revokes the responsible person's service keys (SECURITY.md §1) -> 401 invalid_key with revoked_at set; the 403 responsible_disabled branch needs a key row that survives the disable and is not reachable via this API",
         "three_way_gate": {
           "scope": "application:read present on the credential",
-          "acl": "unexpired read grant 0221a2de-2505-4d3d-8bde-43e689664fcc on 0701ecb7-18f5-4005-afc6-e797ca4c8b2d",
+          "acl": "unexpired read grant 7f37305b-138f-4df9-8044-10d41eb22142 on b96d3907-3a52-4011-90ad-6d9fe3b3c75d",
           "human": "responsible user enabled",
           "all_three_allow": 200,
           "missing_acl": 404,
@@ -971,11 +971,11 @@
           "remaining_not_run": "publish a version whose definition contains an approval-gated write node, submit it with a write-scoped service key that also holds the application grant, then have the responsible human approve and assert exactly one egress"
         },
         "result": {
-          "service_principal_id": "6163ebbb-a5c5-4bb3-ac63-df03c250b9b3",
-          "responsible_principal_id": "01981d7f-f3d8-4503-833c-7efc4f0c8a52",
-          "api_key_id": "41f11705-b13b-49aa-8ed3-b586a9e641df",
-          "grant_id": "0221a2de-2505-4d3d-8bde-43e689664fcc",
-          "application_id": "0701ecb7-18f5-4005-afc6-e797ca4c8b2d",
+          "service_principal_id": "df3877ad-c6c5-448a-a401-aff1f3410675",
+          "responsible_principal_id": "eb261150-24d6-42d4-830f-b39785553ef8",
+          "api_key_id": "e5235326-c599-4d06-aa62-7420df3fa18f",
+          "grant_id": "7f37305b-138f-4df9-8044-10d41eb22142",
+          "application_id": "b96d3907-3a52-4011-90ad-6d9fe3b3c75d",
           "all_three_status": 200
         }
       },
@@ -1009,19 +1009,19 @@
         "POST /api/v1/requests (read-only key, same grant) -> 403",
         "POST /api/v1/requests (scope + grant, bearer only) -> 202",
         "POST /internal/v1/jobs/claim (supervisor mTLS; the published Run's live attempt)",
-        "POST /internal/v1/runs/{id}/capabilities (worker mTLS, kind=connector) <support.stack.Response object at 0x00000149C5767D10>",
-        "POST /api/v1/approvals/{id}/decision (service key, write scope) <support.stack.Response object at 0x00000149C57668A0>",
+        "POST /internal/v1/runs/{id}/capabilities (worker mTLS, kind=connector) <support.stack.Response object at 0x0000022523C537A0>",
+        "POST /api/v1/approvals/{id}/decision (service key, write scope) <support.stack.Response object at 0x0000022523C52840>",
         "POST /api/v1/approvals/{id}/decision (stranger) -> 404",
         "POST /api/v1/approvals/{id}/decision (admin) -> 403",
         "POST /api/v1/approvals/{id}/decision (wrong params hash) -> 409",
-        "POST /internal/v1/runs/{id}/result (waiting_approval, checkpoint capability:<op>) <support.stack.Response object at 0x00000149C577E4B0>",
-        "POST /api/v1/approvals/{id}/decision (the responsible human approves) <support.stack.Response object at 0x00000149C5B3DD90>",
+        "POST /internal/v1/runs/{id}/result (waiting_approval, checkpoint capability:<op>) <support.stack.Response object at 0x000002252405BB90>",
+        "POST /api/v1/approvals/{id}/decision (the responsible human approves) <support.stack.Response object at 0x0000022524059370>",
         "POST /internal/v1/attempts/{token}/exited (supervisor mTLS; exit fact)",
-        "POST /internal/v1/runs/{id}/capabilities (resumed worker, same operation) <support.stack.Response object at 0x00000149C577E6F0>",
+        "POST /internal/v1/runs/{id}/capabilities (resumed worker, same operation) <support.stack.Response object at 0x000002252405ADB0>",
         "worker artifact protocol: createWorkerUpload -> PUT -> completeWorkerUpload -> artifact_finalize -> register(relation=output)",
-        "GET /api/v1/runs/aeaeffcd-45ec-4f8a-ab4b-559921061926 (service key, read scope) -> 200"
+        "GET /api/v1/runs/2acdc21b-6de0-402f-a946-6a389a3ca158 (service key, read scope) -> 200"
       ],
-      "duration_s": 12.77,
+      "duration_s": 18.67,
       "truth_sources": [
         "loopback connector server request log (server.records) = physical write count",
         "platform.approvals / operations / operation_attempts / api_keys / resource_grants / applications / application_versions via psql",
@@ -1031,32 +1031,32 @@
         {
           "name": "the administrator registered one approved write-risk connector policy",
           "ok": true,
-          "detail": "{\"policy_id\": \"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\", \"risk_class\": \"write\", \"origin\": \"http://127.0.0.1:55135\"}"
+          "detail": "{\"policy_id\": \"f0546a3e-a5de-41c2-805a-01b2f7ab7426\", \"risk_class\": \"write\", \"origin\": \"http://127.0.0.1:62423\"}"
         },
         {
           "name": "the real five-category evaluation produced a passed report",
           "ok": true,
-          "detail": "{\"report_id\": \"2ef1e55c-aebd-47a1-a9f9-826b87e901ca\", \"status\": \"passed\", \"cases\": [[\"sales-happy-csv\", \"passed\"], [\"sales-bad-schema-1\", \"passed\"], [\"sales-over-limit\", \"passed\"], [\"sales-tool-failure\", \"passed\"], [\"sales-bad-schema-2\", \"passed\"]]}"
+          "detail": "{\"report_id\": \"5768ea79-a8af-47ee-91dd-f32a252e11a7\", \"status\": \"passed\", \"cases\": [[\"sales-happy-csv\", \"passed\"], [\"sales-bad-schema-1\", \"passed\"], [\"sales-over-limit\", \"passed\"], [\"sales-tool-failure\", \"passed\"], [\"sales-bad-schema-2\", \"passed\"]]}"
         },
         {
           "name": "the creator submits the publication against the frozen evaluation report",
           "ok": true,
-          "detail": "{\"review_id\": \"59e415ae-8269-4510-b248-3eb6f9ec2fb1\", \"state\": \"submitted\", \"manifest_sha256\": \"ff9ea90f11c39f7688d38074674c47193c1a21c25f37fdce57e7b80c181a50e7\"}"
+          "detail": "{\"review_id\": \"b3fb28a3-04a5-4c02-9c49-41594c35ce96\", \"state\": \"submitted\", \"manifest_sha256\": \"f0aa82d3d74d4316f12407de454a3fd2f69bf8eff6caf9caa20280a5a6eceb80\"}"
         },
         {
           "name": "the administrator's review decision activates a real published version",
           "ok": true,
-          "detail": "{\"id\": \"59e415ae-8269-4510-b248-3eb6f9ec2fb1\", \"state\": \"approved\", \"version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\"}"
+          "detail": "{\"id\": \"b3fb28a3-04a5-4c02-9c49-41594c35ce96\", \"state\": \"approved\", \"version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\"}"
         },
         {
           "name": "the published manifest bytes hash to the version's frozen digest",
           "ok": true,
-          "detail": "{\"version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\", \"manifest_sha256\": \"ff9ea90f11c39f7688d38074674c47193c1a21c25f37fdce57e7b80c181a50e7\"}"
+          "detail": "{\"version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\", \"manifest_sha256\": \"f0aa82d3d74d4316f12407de454a3fd2f69bf8eff6caf9caa20280a5a6eceb80\"}"
         },
         {
           "name": "the published manifest carries the exact write-risk connector policy",
           "ok": true,
-          "detail": "[{\"policy_sha256\": \"f77eb2233a73718d80f66d06885de529151a812e8ba46ee60b78c0ef8826b6e7\", \"version_id\": \"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\"}]"
+          "detail": "[{\"policy_sha256\": \"ed721a905d24ef65abb3b707a31f17f18a9cf6aa6a244d89e254071fe2187b5d\", \"version_id\": \"f0546a3e-a5de-41c2-805a-01b2f7ab7426\"}]"
         },
         {
           "name": "the published manifest also freezes the preset tool the graph declares",
@@ -1066,22 +1066,22 @@
         {
           "name": "the run owner is a named service principal whose responsible human is the approver-to-be",
           "ok": true,
-          "detail": "{\"id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"kind\": \"service\", \"disabled_at\": null, \"responsible_user_id\": \"3f97f679-fa83-4cf3-8257-9c110786a07d\", \"human_principal_id\": \"3f97f679-fa83-4cf3-8257-9c110786a07d\"}"
+          "detail": "{\"id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"kind\": \"service\", \"disabled_at\": null, \"responsible_user_id\": \"78bec4b4-1bd6-4839-8898-43c6068a77e9\", \"human_principal_id\": \"78bec4b4-1bd6-4839-8898-43c6068a77e9\"}"
         },
         {
           "name": "the API key stores only the secret's SHA-256 with exactly the requested scopes",
           "ok": true,
-          "detail": "{\"scopes\": [\"application:read\", \"application:write\"], \"key_id\": \"413eb208-bc98-4d7f-a08d-0c9ad26342b5\"}"
+          "detail": "{\"scopes\": [\"application:read\", \"application:write\"], \"key_id\": \"9b792c43-70c1-4305-8840-fcbf26235a11\"}"
         },
         {
           "name": "the bearer <redacted> is kind=service with no roles and no CSRF token",
           "ok": true,
-          "detail": "{\"principal_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:25:50Z\"}"
+          "detail": "{\"principal_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"kind\": \"service\", \"roles\": [], \"csrf_token\": null, \"expires_at\": \"2026-11-07T11:38:48Z\"}"
         },
         {
           "name": "with the write scope but no read grant the published version is invisible (404)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that application version does not exist\", \"request_id\": \"8b0f16ecc13b2b9592c9499937ee79d8\"}}"
+          "detail": "{\"error\": {\"code\": \"resource_not_found\", \"message\": \"that application version does not exist\", \"request_id\": \"00fb598e9d4e24be4eb6bd753351e574\"}}"
         },
         {
           "name": "the refused request created no Request and no Run",
@@ -1091,27 +1091,27 @@
         {
           "name": "the grant is one live read grant for the service principal on the application",
           "ok": true,
-          "detail": "[{\"id\": \"ac97cc00-278c-424a-b405-60527e9eb935\", \"principal_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"resource_type\": \"application\", \"resource_id\": \"83e059c3-f861-4aaa-8f5a-51f5dca2602f\", \"action\": \"read\", \"expires_at\": null}]"
+          "detail": "[{\"id\": \"437292f4-9720-40c5-bb01-f8f7997dd7ec\", \"principal_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"resource_type\": \"application\", \"resource_id\": \"8e3d28ed-7b83-49cb-ac6c-3053398ddcb4\", \"action\": \"read\", \"expires_at\": null}]"
         },
         {
           "name": "the same request with a read-only key is refused before the ACL (403 insufficient_scope)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:write scope\", \"request_id\": \"bfe0a8e309658ed58675e7d235bd2c6a\"}}"
+          "detail": "{\"error\": {\"code\": \"insufficient_scope\", \"message\": \"the API key does not carry the application:write scope\", \"request_id\": \"11751db1fad2601731a5653f42e811c0\"}}"
         },
         {
           "name": "scope + grant together dispatch the published version (202, dispatched)",
           "ok": true,
-          "detail": "{\"id\": \"30df49d2-9f96-4c63-8948-48f91d0d9c71\", \"state\": \"dispatched\", \"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"interaction\": null, \"error_code\": null}"
+          "detail": "{\"id\": \"e3cc4e7b-0b8c-4f96-aedb-00168806a899\", \"state\": \"dispatched\", \"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"interaction\": null, \"error_code\": null}"
         },
         {
           "name": "the response pins the explicit application version",
           "ok": true,
-          "detail": "[\"c255230b-fe88-49a2-bacb-f8fa5e8046d8\"]"
+          "detail": "[\"654fd381-fa93-4293-97d8-f4842bd3fd4d\"]"
         },
         {
           "name": "the durable Request belongs to the service principal and pins the version",
           "ok": true,
-          "detail": "{\"id\": \"30df49d2-9f96-4c63-8948-48f91d0d9c71\", \"conversation_id\": \"eb790dc4-1e50-400c-88c5-f7e111c92054\", \"owner_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"input_artifact_id\": \"2b938e45-92f7-474b-b1b1-be63ef4bf74d\", \"state\": \"dispatched\", \"revision\": 2, \"error_code\": null, \"requested_version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\", \"control_calls\": 0, \"created_at\": \"2026-11-07 17:25:51.0..."
+          "detail": "{\"id\": \"e3cc4e7b-0b8c-4f96-aedb-00168806a899\", \"conversation_id\": \"c0dc522b-40e9-4261-b1e2-d14d0cc6e6b0\", \"owner_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"input_artifact_id\": \"fb7348be-8b6c-4db0-95d5-2fef02e5c36d\", \"state\": \"dispatched\", \"revision\": 2, \"error_code\": null, \"requested_version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\", \"control_calls\": 0, \"created_at\": \"2026-11-07 17:38:50.4..."
         },
         {
           "name": "the Run input is the exact sealed task document, byte for byte",
@@ -1121,32 +1121,32 @@
         {
           "name": "the dispatched Run is a published Run owned by the service principal",
           "ok": true,
-          "detail": "{\"kind\": \"published\", \"owner_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"application_version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\"}"
+          "detail": "{\"kind\": \"published\", \"owner_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"application_version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\"}"
         },
         {
           "name": "the supervisor claims exactly the dispatched Run's start job",
           "ok": true,
-          "detail": "{\"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"job_kind\": \"start\"}"
+          "detail": "{\"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"job_kind\": \"start\"}"
         },
         {
           "name": "the live lease manifest carries the frozen write policy",
           "ok": true,
-          "detail": "[{\"version_id\": \"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\", \"policy_sha256\": \"f77eb2233a73718d80f66d06885de529151a812e8ba46ee60b78c0ef8826b6e7\"}]"
+          "detail": "[{\"version_id\": \"f0546a3e-a5de-41c2-805a-01b2f7ab7426\", \"policy_sha256\": \"ed721a905d24ef65abb3b707a31f17f18a9cf6aa6a244d89e254071fe2187b5d\"}]"
         },
         {
           "name": "the write-risk connector call parks as awaiting_approval",
           "ok": true,
-          "detail": "{\"operation_id\": \"d8082f7f-98d1-46f4-8078-d641b5bc81bd\", \"state\": \"awaiting_approval\", \"receipt_artifact_id\": null, \"approval_id\": \"5b2dc744-e910-4481-8a76-e8c2dcce482a\", \"data\": {\"connector_policy_version_id\": \"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\", \"error_code\": \"approval_required\", \"risk_class\": \"write\", \"status\": \"awaiting_approval\"}}"
+          "detail": "{\"operation_id\": \"fa38598a-8a04-4e1f-9e01-04ef87a13a55\", \"state\": \"awaiting_approval\", \"receipt_artifact_id\": null, \"approval_id\": \"370e84a3-66fd-4862-ad77-ef98a0be107f\", \"data\": {\"connector_policy_version_id\": \"f0546a3e-a5de-41c2-805a-01b2f7ab7426\", \"error_code\": \"approval_required\", \"risk_class\": \"write\", \"status\": \"awaiting_approval\"}}"
         },
         {
           "name": "the approval is pending on the exact operation of this Run",
           "ok": true,
-          "detail": "{\"id\": \"5b2dc744-e910-4481-8a76-e8c2dcce482a\", \"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"operation_id\": \"d8082f7f-98d1-46f4-8078-d641b5bc81bd\", \"node_key\": \"t101-j6:orders:submit:1\", \"proposal_artifact_id\": \"20223123-a8ff-4308-a52c-d98d504014ab\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"3f97f679-fa83-4cf3-8257-9c110786a07d\", \"..."
+          "detail": "{\"id\": \"370e84a3-66fd-4862-ad77-ef98a0be107f\", \"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"operation_id\": \"fa38598a-8a04-4e1f-9e01-04ef87a13a55\", \"node_key\": \"t101-j6:orders:submit:1\", \"proposal_artifact_id\": \"2e8606e7-27c5-4930-afe1-a2c48d6fed92\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"approver_id\": \"78bec4b4-1bd6-4839-8898-43c6068a77e9\", \"..."
         },
         {
           "name": "the approver is the service account's responsible human, not the service principal",
           "ok": true,
-          "detail": "{\"approver_id\": \"3f97f679-fa83-4cf3-8257-9c110786a07d\", \"service_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\", \"responsible_id\": \"3f97f679-fa83-4cf3-8257-9c110786a07d\"}"
+          "detail": "{\"approver_id\": \"78bec4b4-1bd6-4839-8898-43c6068a77e9\", \"service_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\", \"responsible_id\": \"78bec4b4-1bd6-4839-8898-43c6068a77e9\"}"
         },
         {
           "name": "the approval is bound to the operation's exact params hash and write risk",
@@ -1156,7 +1156,7 @@
         {
           "name": "the sealed proposal carries the exact target, params literal and frozen policy digest",
           "ok": true,
-          "detail": "{\"target\": {\"method\": \"POST\", \"origin\": \"http://127.0.0.1:55135\", \"path\": \"/v1/orders\", \"path_prefix\": \"/v1\"}, \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"policy_sha256\": \"f77eb2233a73718d80f66d06885de529151a812e8ba46ee60b78c0ef8826b6e7\"}"
+          "detail": "{\"target\": {\"method\": \"POST\", \"origin\": \"http://127.0.0.1:62423\", \"path\": \"/v1/orders\", \"path_prefix\": \"/v1\"}, \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"policy_sha256\": \"ed721a905d24ef65abb3b707a31f17f18a9cf6aa6a244d89e254071fe2187b5d\"}"
         },
         {
           "name": "no external write and no unauthorized attempt happened before the human decision",
@@ -1166,22 +1166,22 @@
         {
           "name": "the service key itself cannot decide its own Run's approval (404, not the approver)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_not_found\", \"message\": \"that approval does not exist\", \"request_id\": \"58966b52d2765fea77e76596fa0d75fe\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_not_found\", \"message\": \"that approval does not exist\", \"request_id\": \"784ef192ace2c14ef31b026e371be049\"}}"
         },
         {
           "name": "an unrelated human cannot even see the approval (404)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_not_found\", \"message\": \"that approval does not exist\", \"request_id\": \"48c8d36e549be7e673600d634f84b37e\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_not_found\", \"message\": \"that approval does not exist\", \"request_id\": \"f05278fdcdac0bbe3a96344a96a39e2a\"}}"
         },
         {
           "name": "the administrator is refused as approver (403 approver_mismatch)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approver_mismatch\", \"message\": \"only the designated human approver may decide this run approval\", \"request_id\": \"50caa6f634b01fa333438f47ce0ecb6e\"}}"
+          "detail": "{\"error\": {\"code\": \"approver_mismatch\", \"message\": \"only the designated human approver may decide this run approval\", \"request_id\": \"e2296001cfa5a1ab96388d0a6df17299\"}}"
         },
         {
           "name": "the designated human must present the exact params hash (409 approval_params_mismatch)",
           "ok": true,
-          "detail": "{\"error\": {\"code\": \"approval_params_mismatch\", \"message\": \"the decision must carry the approval's exact params_sha256\", \"request_id\": \"44636a5f1e6aca6853965d26df55ce55\"}}"
+          "detail": "{\"error\": {\"code\": \"approval_params_mismatch\", \"message\": \"the decision must carry the approval's exact params_sha256\", \"request_id\": \"55373224d529a31409285e7c9a6c3aa4\"}}"
         },
         {
           "name": "none of the refused decisions authorized or sent anything",
@@ -1191,12 +1191,12 @@
         {
           "name": "the worker's waiting proposal parks the attempt on the operation checkpoint",
           "ok": true,
-          "detail": "{\"id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"state\": \"waiting_approval\", \"revision\": 3, \"application_version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\", \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"2cf70975-8ca4-4a12-b837-c0090efb3ab7\", \"phase\": \"waiting\"}"
+          "detail": "{\"id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"state\": \"waiting_approval\", \"revision\": 3, \"application_version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\", \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"dcd785be-ea99-4723-9c75-2c788bbe8151\", \"phase\": \"waiting\"}"
         },
         {
           "name": "the responsible human's approval is stored with that human as decided_by",
           "ok": true,
-          "detail": "{\"id\": \"5b2dc744-e910-4481-8a76-e8c2dcce482a\", \"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"state\": \"approved\", \"proposal_artifact_id\": \"20223123-a8ff-4308-a52c-d98d504014ab\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:25:51Z\"}"
+          "detail": "{\"id\": \"370e84a3-66fd-4862-ad77-ef98a0be107f\", \"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"state\": \"approved\", \"proposal_artifact_id\": \"2e8606e7-27c5-4930-afe1-a2c48d6fed92\", \"params_sha256\": \"99287ef0aec379832ae14e371d7d9ddaffc4904d37e05bf6db58f02c3755a86e\", \"expires_at\": \"2026-11-07T10:38:51Z\"}"
         },
         {
           "name": "the decision alone still sends nothing and creates no resume",
@@ -1206,17 +1206,17 @@
         {
           "name": "the confirmed exit creates exactly one resume job for the same Run",
           "ok": true,
-          "detail": "[{\"id\": \"0ce68404-2884-4583-9ab2-92ab9b267b83\", \"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"ce99c88a-91b6-4a43-988f-f3bda3d3f2bb\", \"created_at\": \"2026-11-07 17:25:53.269438+08\"}]"
+          "detail": "[{\"id\": \"e692e7f1-26fc-4f63-b73c-b50d5ff6864c\", \"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"kind\": \"resume\", \"state\": \"ready\", \"current_attempt_token\": null, \"resume_artifact_id\": \"12827445-b118-423b-8b87-0abd1e95e49a\", \"created_at\": \"2026-11-07 17:38:53.596608+08\"}]"
         },
         {
           "name": "the supervisor claims the one resume job of the same Run",
           "ok": true,
-          "detail": "{\"run_id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"job_kind\": \"resume\"}"
+          "detail": "{\"run_id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"job_kind\": \"resume\"}"
         },
         {
           "name": "the resumed capability call dispatches and succeeds",
           "ok": true,
-          "detail": "{\"operation_id\": \"d8082f7f-98d1-46f4-8078-d641b5bc81bd\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"b425c438-cac1-46e2-86df-59e5d30dba27\", \"approval_id\": null, \"data\": {\"body\": {\"ok\": true, \"write_id\": \"t101-j6-order-1\"}, \"connector_policy_version_id\": \"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\", \"headers\": {\"content-length\": \"43\", \"content-type\": \"application/json\", \"date\": \"Sat, 07 Nov 2026 09:..."
+          "detail": "{\"operation_id\": \"fa38598a-8a04-4e1f-9e01-04ef87a13a55\", \"state\": \"succeeded\", \"receipt_artifact_id\": \"14ed9cd3-0f55-42cd-8567-a9b1cfd68c81\", \"approval_id\": null, \"data\": {\"body\": {\"ok\": true, \"write_id\": \"t101-j6-order-1\"}, \"connector_policy_version_id\": \"f0546a3e-a5de-41c2-805a-01b2f7ab7426\", \"headers\": {\"content-length\": \"43\", \"content-type\": \"application/json\", \"date\": \"Sat, 07 Nov 2026 09:..."
         },
         {
           "name": "the real loopback endpoint received exactly one physical write",
@@ -1236,7 +1236,7 @@
         {
           "name": "the sealed receipt wraps the endpoint's real 2xx body",
           "ok": true,
-          "detail": "{\"body\":{\"ok\":true,\"write_id\":\"t101-j6-order-1\"},\"capability_kind\":\"connector\",\"connector_policy_version_id\":\"0e3dafa2-4e1f-40d7-8768-164a4bb756b9\",\"headers\":{\"content-length\":\"43\",\"content-type\":\"application/json\",\"date\":\"Sat, 07 Nov 2026 09:25:53 GMT\"},\"method\":\"POST\",\"origin\":\"http://127.0.0.1:55"
+          "detail": "{\"body\":{\"ok\":true,\"write_id\":\"t101-j6-order-1\"},\"capability_kind\":\"connector\",\"connector_policy_version_id\":\"f0546a3e-a5de-41c2-805a-01b2f7ab7426\",\"headers\":{\"content-length\":\"43\",\"content-type\":\"application/json\",\"date\":\"Sat, 07 Nov 2026 09:38:53 GMT\"},\"method\":\"POST\",\"origin\":\"http://127.0.0.1:62"
         },
         {
           "name": "a duplicate delivery of the same logical call never sends a second write",
@@ -1251,22 +1251,22 @@
         {
           "name": "the worker's succeeded proposal is stored on the live attempt",
           "ok": true,
-          "detail": "{\"id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"state\": \"running\", \"revision\": 5, \"application_version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\", \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"2cf70975-8ca4-4a12-b837-c0090efb3ab7\", \"phase\": \"finalizing\"}"
+          "detail": "{\"id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"state\": \"running\", \"revision\": 5, \"application_version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\", \"parent_run_id\": null, \"output_artifact_id\": null, \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"dcd785be-ea99-4723-9c75-2c788bbe8151\", \"phase\": \"finalizing\"}"
         },
         {
           "name": "the supervisor exit lets the real finalizer commit the terminal Run",
           "ok": true,
-          "detail": "{\"id\": \"55412dc4-bcc5-4ee3-979f-ff11d9a04e53\", \"state\": \"exited\"}"
+          "detail": "{\"id\": \"83b3d9df-c8dc-4b60-929e-9b19aeab1f98\", \"state\": \"exited\"}"
         },
         {
           "name": "the published Run is succeeded with the receipt-linked output and no error",
           "ok": true,
-          "detail": "{\"state\": \"succeeded\", \"output_artifact_id\": \"cf4232da-97ae-4cc5-a585-83db5d2c2f8a\", \"finished_at\": \"2026-11-07 17:25:54.210096+08\"}"
+          "detail": "{\"state\": \"succeeded\", \"output_artifact_id\": \"c18fd9de-b274-4fab-ad42-c321999a5c32\", \"finished_at\": \"2026-11-07 17:38:54.647161+08\"}"
         },
         {
           "name": "the service key can read its own succeeded Run through the contract view",
           "ok": true,
-          "detail": "{\"id\": \"aeaeffcd-45ec-4f8a-ab4b-559921061926\", \"state\": \"succeeded\", \"revision\": 6, \"application_version_id\": \"c255230b-fe88-49a2-bacb-f8fa5e8046d8\", \"parent_run_id\": null, \"output_artifact_id\": \"cf4232da-97ae-4cc5-a585-83db5d2c2f8a\", \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"2cf70975-8ca4-4a12-b837-c0090efb3ab7\", \"phase\": \"idle\"}"
+          "detail": "{\"id\": \"2acdc21b-6de0-402f-a946-6a389a3ca158\", \"state\": \"succeeded\", \"revision\": 6, \"application_version_id\": \"654fd381-fa93-4293-97d8-f4842bd3fd4d\", \"parent_run_id\": null, \"output_artifact_id\": \"c18fd9de-b274-4fab-ad42-c321999a5c32\", \"error_code\": null, \"kind\": \"published\", \"execution_snapshot_id\": \"dcd785be-ea99-4723-9c75-2c788bbe8151\", \"phase\": \"idle\"}"
         },
         {
           "name": "the Run output download equals the sealed receipt bytes",
@@ -1278,19 +1278,19 @@
       "facts": {
         "publication": {
           "method": "genuine evaluation -> submit -> admin review decision",
-          "evaluation_id": "60ea18e4-7582-412c-bef8-a82500c69f3d",
-          "evaluation_report_id": "2ef1e55c-aebd-47a1-a9f9-826b87e901ca",
+          "evaluation_id": "d8e1fa8f-9a4c-4ec3-9934-4bd8b1532d21",
+          "evaluation_report_id": "5768ea79-a8af-47ee-91dd-f32a252e11a7",
           "evaluation_cases": 5,
-          "review_id": "59e415ae-8269-4510-b248-3eb6f9ec2fb1",
-          "version_id": "c255230b-fe88-49a2-bacb-f8fa5e8046d8",
-          "manifest_sha256": "ff9ea90f11c39f7688d38074674c47193c1a21c25f37fdce57e7b80c181a50e7",
-          "policy_id": "0e3dafa2-4e1f-40d7-8768-164a4bb756b9",
-          "policy_sha256": "f77eb2233a73718d80f66d06885de529151a812e8ba46ee60b78c0ef8826b6e7"
+          "review_id": "b3fb28a3-04a5-4c02-9c49-41594c35ce96",
+          "version_id": "654fd381-fa93-4293-97d8-f4842bd3fd4d",
+          "manifest_sha256": "f0aa82d3d74d4316f12407de454a3fd2f69bf8eff6caf9caa20280a5a6eceb80",
+          "policy_id": "f0546a3e-a5de-41c2-805a-01b2f7ab7426",
+          "policy_sha256": "ed721a905d24ef65abb3b707a31f17f18a9cf6aa6a244d89e254071fe2187b5d"
         },
         "three_way_gate": {
           "scope": "application:read + application:write on the API key",
-          "acl": "unexpired read grant ac97cc00-278c-424a-b405-60527e9eb935 on 83e059c3-f861-4aaa-8f5a-51f5dca2602f",
-          "human": "responsible human 3f97f679-fa83-4cf3-8257-9c110786a07d approved approval 5b2dc744-e910-4481-8a76-e8c2dcce482a",
+          "acl": "unexpired read grant 437292f4-9720-40c5-bb01-f8f7997dd7ec on 8e3d28ed-7b83-49cb-ac6c-3053398ddcb4",
+          "human": "responsible human 78bec4b4-1bd6-4839-8898-43c6068a77e9 approved approval 370e84a3-66fd-4862-ad77-ef98a0be107f",
           "external_write": "1 physical POST /v1/orders observed by the endpoint",
           "approval_approver_is_human": true,
           "service_key_decision_status": 404
@@ -1309,11 +1309,11 @@
           "recorded_as": "J6b = blocked (graph-originated dispatch); J6 = passed for AC2's gate"
         },
         "result": {
-          "request_id": "30df49d2-9f96-4c63-8948-48f91d0d9c71",
-          "run_id": "aeaeffcd-45ec-4f8a-ab4b-559921061926",
-          "approval_id": "5b2dc744-e910-4481-8a76-e8c2dcce482a",
-          "operation_id": "d8082f7f-98d1-46f4-8078-d641b5bc81bd",
-          "output_artifact_id": "cf4232da-97ae-4cc5-a585-83db5d2c2f8a",
+          "request_id": "e3cc4e7b-0b8c-4f96-aedb-00168806a899",
+          "run_id": "2acdc21b-6de0-402f-a946-6a389a3ca158",
+          "approval_id": "370e84a3-66fd-4862-ad77-ef98a0be107f",
+          "operation_id": "fa38598a-8a04-4e1f-9e01-04ef87a13a55",
+          "output_artifact_id": "c18fd9de-b274-4fab-ad42-c321999a5c32",
           "writes": 1,
           "run_state": "succeeded"
         }
@@ -1332,10 +1332,10 @@
       "status": "blocked",
       "entry": [
         "python -m pytest tests/f12/test_t101_journeys.py -k service_key_write",
-        "POST /api/v1/requests (same service key, same published version) <support.stack.Response object at 0x00000149C577EF00>",
+        "POST /api/v1/requests (same service key, same published version) <support.stack.Response object at 0x0000022523FF6450>",
         "cmd/supervisor exec --once (real graph execution of the published Run, WSL2/runsc)"
       ],
-      "duration_s": 1.79,
+      "duration_s": 3.1,
       "truth_sources": [
         "platform.operations (zero connector operations for this Run) via psql",
         "loopback connector server request log (unchanged physical write count)",
@@ -1350,17 +1350,17 @@
         {
           "name": "the graph Run is a published Run of the service principal pinned to the version",
           "ok": true,
-          "detail": "{\"state\": \"succeeded\", \"kind\": \"published\", \"owner_id\": \"fcaaf6b7-4de1-45e7-ab25-bec790d657f3\"}"
+          "detail": "{\"state\": \"succeeded\", \"kind\": \"published\", \"owner_id\": \"7adb923c-dbf9-44bf-b22e-5fe49c025440\"}"
         },
         {
           "name": "the executed graph produced its real node outputs (python + end)",
           "ok": true,
-          "detail": "[\"data\", \"summary.json\", \"summary.csv\", \"log\"]"
+          "detail": "[\"data\", \"summary.csv\", \"summary.json\", \"log\"]"
         },
         {
           "name": "the graph Run has a real linked final output artifact",
           "ok": true,
-          "detail": "{\"output_artifact_id\": \"6d7d89f6-1e57-4ced-a83f-8c47eb25d594\"}"
+          "detail": "{\"output_artifact_id\": \"844ef5c4-d75e-4dbd-8b30-e9cb4c58b10d\"}"
         },
         {
           "name": "the graph produced zero connector operations (no write node exists to emit one)",
@@ -1375,7 +1375,7 @@
         {
           "name": "the Run's frozen manifest really carries the write policy the graph cannot call",
           "ok": true,
-          "detail": "{\"snapshot_kind\": \"published\", \"manifest_sha256\": \"ff9ea90f11c39f7688d38074674c47193c1a21c25f37fdce57e7b80c181a50e7\"}"
+          "detail": "{\"snapshot_kind\": \"published\", \"manifest_sha256\": \"f0aa82d3d74d4316f12407de454a3fd2f69bf8eff6caf9caa20280a5a6eceb80\"}"
         }
       ],
       "assertion_count": 7,
@@ -1394,8 +1394,8 @@
           ]
         },
         "result": {
-          "request_id": "b88e9a84-5257-4350-9379-c628babd9493",
-          "run_id": "05882937-c35e-46b2-adcd-3848a257014f",
+          "request_id": "71cbf134-c2d1-4c1b-af05-173d7114240d",
+          "run_id": "7bc5126b-2cf3-42c8-9785-ba89b1895655",
           "run_state": "succeeded",
           "connector_operations": 0,
           "endpoint_writes": 1

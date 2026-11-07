@@ -2475,7 +2475,8 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 ## F13B T101 收尾（GitHub #102，2026-11-07）
 
 - 分支 `t/t101-three-in-one`，worktree `E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`；
-  完成前 `git merge integration/f13b` = **Already up to date**。
+  完成前 merge 了推进后的 `integration/f13b` @ `ffe4022`（T102），合并提交 `3921c81`；
+  `PROGRESS.md` 尾部双追加冲突按保留双方小节解决。
 - 交付：新增 `J6-service-key-write-approval`（49 断言）与 `J6b-graph-dispatch-write-gap`（7 断言，`blocked`）。
   AC2 从 `partial` 改判为**满足（平台/授权边界）**：服务 key 的 `application:read`+`write` scope + application
   read grant + 服务账号负责人的人类 operation 审批，作用在**同一个真实回环外部写**上（回环端点自己的
@@ -2493,6 +2494,9 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   证据重跑（`T101_WRITE_EVIDENCE=1`）→ **6 passed in 87.93s**，普通运行不改写 JSON；
   `pytest tests/f12 -q` → **447 passed in 262.76s**；`go build=0`、`go vet=0`、`go test=0`；
   `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 合并树最终复跑（`3921c81`，含 T102）：targeted 证据 **6 passed in 137.57s**、
+  `pytest tests/f12 -q` **447 passed in 489.77s**、`go build/vet/test` = 0、gofmt 空、sync `no drift`
+  （共享宿主同期有其它真实栈任务，耗时高于首跑，结果全绿）。
 - 边界：dev-stub 模型、回环 connector stub（非真实供应商）、WSL2+runsc 真实执行；真实模型/真实第三方
   供应商 `not_run`；写操作由文档化 worker capability 协议发出（J6b 记图分发缺口）；证据重生成后
   `Select-String` 复查无明文凭据。
