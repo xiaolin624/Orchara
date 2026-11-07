@@ -2279,3 +2279,30 @@ DOM/fetch shim；CSS 断点/像素布局/真机触控标 `not_run`。证据：
 `b2d3089 test(f12)`（页面 8 + 真实栈 6）→ 本文档提交。`git merge integration/f12` = **Already up to date**
 （集成分支仍为 `1ba9d01`）；合并后在最终树复跑 `tests/f12` **308 passed in 132.16s**、本票 14 passed、
 Go/静态/语法门禁全绿。最终 HEAD 见 `E:\Orchara\.scratch\f12\T098-REPORT.md`。
+
+## F12/T101 请求、审批、记忆、知识及服务账号五旅程真实复现（GitHub #102）（2026-11-07）
+
+T101 已交付，状态 **`passed`**（手段真实 + 覆盖完整 + 裁决诚实）。五条旅程全部在真实栈上复跑：
+真实 HTTP `/api/v1/**`、真实 PostgreSQL 16.4、真实内部 mTLS（worker/supervisor/maintenance）、
+真实 `cmd/supervisor exec --once`（WSL2/runsc）、真实 `cmd/maintenance run --once`、真实对象目录；
+DB/对象目录只用于**独立断言**外部副作用真值。票面「不重复实现功能页面」：本票不写页面、不做 DOM。
+证据：`reports/f12/T101-journeys.md` + `reports/f12/T101-journeys.json`（6 条 journey 记录）；
+分支 `t/t101-data-journeys`（worktree `E:\Orchara-wt\t101`），基线 `integration/f12` @ `60d9de0`。
+
+| 交付点 | 结果 |
+|---|---|
+| J1 请求→Run→结果（AC1/AC4） | **passed，16 断言**。版本来自真实五类评测 + `POST /applications/{id}/submit` + admin `POST /reviews/{id}/decision`；请求用规格内的显式 `application_version_id` 入口（IMPLEMENTATION-DETAILS §5）同事务 dispatch；真实 supervisor 执行 → Run `succeeded`；`GET /runs/{id}`/`GET /requests/{id}` 可读；`summary.csv` 字节 == 文档化期望并经 `tests/support/t049.py` 独立 Decimal 复算；封存 request_input 对象字节 == 提交任务文档且 sha256 一致；发布者/匿名读为 404/401；同幂等键重投 202 同 request 且不建第二个 Run；已撤销版本新请求 `409 version_revoked` |
+| J1b 请求（自然语言）→Run（AC4 边界） | **blocked（产品缺口实测，非跳过）**。同一显式版本入口提交纯中文正文 → 请求 202 dispatched → 真实 supervisor Run `failed/node_input_invalid`、无 output、node-results 空。链路 `internal/requests/submit.go:131 → :646-690` → `internal/presetexec/linear.go:177-187`。属 F08↔F04B，本票不修，报告 §7.1 显式声明 |
+| J2 写操作审批（AC2/AC4） | **passed，34 断言**。write 风险连接器（真实回环 HTTP）→ `invokeCapability` park → approver=Run owner；`params_sha256` 绑定精确参数；陌生人 404 / admin 403 `approver_mismatch`；改参数 409 `operation_conflict`；错 hash 409 `approval_params_mismatch`；owner 批准 + 真实 exit → 恰 1 个 resume → 回环端点**恰好 1 次**真实写，receipt 为端点真实 2xx body，重放不重发；reject→`approval_rejected`、expire→`approval_expired`、cancel→approval invalidated，均 0 外写；写后丢回执→operation `unknown`、重复 invoke 不重发、Run `needs_reconciliation`（`unknown_operations`）、owner 证据 reconcile 后 succeeded 且物理写仍 1 次 |
+| J3 个人记忆（AC2/AC4） | **passed，28 断言**。真实 Run 租约 + worker mTLS propose → pending 候选（封存字节/应用与 owner 作用域）→ 人类 confirm 恰 1 条 memory；pending 不是记忆；陌生人队列空/决定 404；服务 key `403 personal_scope_forbidden`；真实 agent Run 召回（`memory_state=included`、`0 < 41 ≤ 30976 tokens`、模型请求含正文、trace 不泄漏正文）；修订后召回新文本旧文本消失、旧 If-Match `412`；删除 202 后下一次 Run sources 为空、`GET /memories` 空。诚实边界：生产图无 memory 节点，候选由真实 worker 身份直接调内部端点（F09/T054 既有事实） |
+| J4 知识摄取（AC1/AC4） | **passed，19 断言**。`POST /knowledge-bases` → 真实上传+finalize → `POST .../documents` + 真实 `document_ingest` maintenance → ready（row revision=1、chunks 连续、job succeeded）→ 检索 → 引用 200；引用**独立复算**（封存源字节 sha256 + span rune 重切 == 返回文本，chunk body 同文）；陌生人 404；删除 202 → 同一引用立即 404（无 text/citation）且检索 `items=[]`（`cache.hit=false`，不回退缓存）；删除任务可读 |
+| J5 服务账号（AC2/AC4） | **passed，24 断言**。admin `createServiceAccount` → `createApiKey`（secret 一次返回、库中仅 SHA-256）；`/auth/me` kind=service/roles=[]/csrf=null；**scope+ACL+负责人三条件同时满足**：三者齐备时 200，去 scope 403 `insufficient_scope`，去 grant 404，禁用负责人后 401 且独立读 `platform.api_keys.revoked_at` 证明禁用事务撤销（SECURITY.md §1）；人类专属 `/memories` 403；撤销 204→401；3 秒真实寿命到期→401 |
+| 测试 | `tests/f12/journeys/j101_requests.py`、`j101_approvals.py`、`j101_memory.py`、`j101_knowledge.py`、`j101_service_accounts.py`；`tests/f12/t101_support.py`（每测试独立真实栈 + 证书 + connector secret + 证据记录器）；`tests/f12/test_t101_journeys.py` **5 passed**（6 条 journey 记录） |
+| 门禁 | `pytest tests/f12/test_t101_journeys.py -q` → **5 passed in 76.88s**；`pytest tests/f12 -q` → **313 passed in 235.96s**，最终提交树复跑 **313 passed in 232.72s**（基线 308 全保留）；`pytest tests/f01 -q`（单跑）→ **2 failed, 153 passed in 967.73s**，2 个失败为**基线既有**页面标记陈旧（`git diff 60d9de0 -- product/tests/f01 product/apps/web` 为空；login 页旧 `window.location.assign('/admin')`、apps 页旧空态标记），服务账号/身份用例全过；`go build/vet/test ./...` 全 exit 0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` → no drift |
+| 边界/not_run | 无显式版本的自然语言路由 **not_run**（路由控制模型不能经公开 API 注册，`internal/modelregistry/modelregistry.go:92-102`，只能 SQL 播种）；真实厂商模型/连接器/embedding **not_run**（只有 dev-stub + 本机回环）；capability 审批过期是决策路径惰性检查（无 sweeper），用时间效果验证；J2 工具↔连接器绑定、J1 撤销边界第二版本为既有测试缝，报告已逐条声明；不声称真实模型质量/供应商后台 |
+| 未修（归属 epic） | F08↔F04B 聊天正文输入缺口；路由控制模型注册；真实厂商凭据；`tests/f01` 既有 34 collection error 与 2 个页面标记失败；服务账号无 list/rotate key 端点 |
+
+交付文件：`tests/f12/{t101_support.py,test_t101_journeys.py,journeys/j101_*.py}`、
+`reports/f12/T101-journeys.{md,json}`、本小节、`E:\Orchara\.scratch\f12\T101-REPORT.md`。
+提交：`test(f12): reproduce five F12 key journeys on the real stack`（T101）；`git merge integration/f12`
+= **Already up to date**（集成分支仍为 `60d9de0`）。
