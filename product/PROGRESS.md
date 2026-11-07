@@ -2700,3 +2700,43 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - 门禁（真实 tail，合并树 `40e54cc`，cwd=`product/`）：`pytest tests/f13b/test_t110_security_regression.py -q`（`F13B_WRITE_EVIDENCE=1`）→ **15 passed in 41.24s**；普通运行 → **15 passed in 31.95s**；`pytest tests/f13b -q` → **209 passed in 448.58s**；`pytest tests/f12 -q` → **447 passed in 344.78s**；`go build/vet/test` exit 0（39 ok / 0 FAIL / 12 no test files）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。合并前同一代码树（`5c9102d`）亦跑：f13b **201 passed in 190.05s**、f12 **447 passed in 293.47s**（合并后新增 T108/T109 用例）。
 - 边界/`not_run`：真实浏览器 DOM（Node+shim 不是浏览器）、真实第三方 connector、真实厂商模型对注入的服从/拒绝、Excel/LibreOffice 打开导出 CSV、活动 DNS rebinding、`canvas.js` 生成 bundle、OS/沙箱隔离（T111）；signed link 的 bearer 边界与 admin 读 approval 为文档化行为。原始 tail/摘要：`E:\Orchara\.scratch\f13b\T110\`、`E:\Orchara\.scratch\f13b\T110-REPORT.md`。
 
+## F13B T111（GitHub #112）：在正式 Linux 重跑构建与脚本隔离攻击（2026-11-07）
+
+- 分支 `t/t111-linux-isolation` / worktree `E:\Orchara-wt\t111`；基线 `integration/f13b` @
+  `f6e0394`；结束前 merge 集成分支。
+- 交付：`tests/f13b/test_t111_linux_isolation.py`（10 用例：run 4 + build 5 + 端到端 1）、
+  `tests/support/t111.py`（WSL 宿主事实/清理真值/证据记录器）、
+  `reports/f13b/T111-isolation.json`、`reports/f13b/T111-linux-isolation.md`；
+  `deploy/sandbox/isolation_probe.py` 仅新增观测字段（host/env/mount/capability/userns/errno），
+  OCI bundle、driver 与 build_tool 的安全语义未改。
+- 真实验收宿主（ADR 0002）：WSL2 Ubuntu-24.04 / `6.6.87.2-microsoft-standard-WSL2` / gVisor
+  `runsc release-20241118.0`（spec 1.1.0-rc.1）/ rootfs digest
+  `sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5`；每条证据记录
+  host/kernel/runsc/digest，未用 Windows 结果冒充 runsc。
+- run 阶段（`cmd/sandboxprobe`）：宿主 `/etc`、`/mnt`、另一 Run workspace、PID1 environ、证书/密钥路径
+  全部 ENOENT/EACCES；沙箱 env 仅 OCI 6 项，宿主注入的 `ORCHARA_*` 不可见；setuid/setgid/mount-ns/
+  capset/clear-no_new_privs EPERM/EINVAL；非特权 userns 被 gVisor 允许但无宿主权限（uid 仍 65534、
+  `setuid(0)` EINVAL、宿主读仍 ENOENT、仅沙箱本地 tmpfs）；`1.1.1.1/8.8.8.8/169.254.169.254`
+  EHOSTUNREACH、宿主 loopback ECONNREFUSED，客人 listener 正控制 CONNECTED；超限 profile 在任何
+  单元创建前被产品 `OptionsFromEnv` 拒绝；2s 超时 2.6s kill 且 cleanup 全清。
+- build 阶段（真实 `tool_build` + 恶意 `setup.py`）：10 条精确宿主/对象目录/DSN/证书/另一 Run 路径
+  全部 ENOENT，只读挂载写 EACCES，`/workspace` 可写；钩子与 PID1 env 无凭据；构建仍 ready 且 digest
+  与 source/lock/SBOM 独立重算一致。fork：12 子在 64 限额成功、16 子在 64 停止但 128 成功、200 次
+  攻击 failed 无 digest；内存：1 GiB 对照 512 MiB 成功、192 MiB 下停在 152 MiB；磁盘：8 MiB quota
+  在 7 MiB ENOSPC、宿主卷 0 增长；时间：2s 预算 kill，`build_timeout`，无 digest。
+- 清理：每条用例后 `runsc list` 空、本 sandbox id 无进程/目录/挂载、宿主 staging 空；共享 state root
+  只有更早的 `t033-manual-1` 遗留（非本票），新增目录 0。
+- 发现（只报告未修复）：gVisor 超 pids 直接停容器（无 EAGAIN，默认 64 的用户余量约 13）；非特权
+  userns 被允许但无宿主能力；driver 把 runtime SIGKILL 137 误标 timeout（校准 64 MiB 内存限额时见，
+  最终 192 MiB 用例避开）。
+- 门禁（真实 tail）：`pytest tests/f13b/test_t111_linux_isolation.py -q` **10 passed in 131.98s**；
+  `pytest tests/f05/test_t033_sandbox_run.py tests/f05/test_t037_build_isolation.py -q`
+  **10 passed in 177.56s**；`pytest tests/f13b -q` **196 passed in 307.44s**；`go build/vet/test`
+  exit 0（39 ok / 0 FAIL）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：宿主级 filesystem project quota（WSL2 无该能力）、完整 ICMP/UDP/DNS/代理矩阵、
+  WSL2 外独立生产宿主、真实供应商模型/connector。
+
+- 合并后（merge `integration/f13b` @ `5a210c0` → merge commit `abfd01a`，PROGRESS 冲突保留双方
+  小节：T108/T109 + T111）复跑：T111 **10 passed in 113.56s**、T033/T037 **10 passed in
+  138.34s**、`pytest tests/f13b -q` **204 passed in 446.46s**；Go `build/vet/test` 全 0、
+  gofmt 空、`sync_spec --check` → `no drift`；证据 JSON 在 `abfd01a` 树重新生成（commit=abfd01a）。
