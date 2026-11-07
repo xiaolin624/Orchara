@@ -1,0 +1,2003 @@
+{
+  "ticket": "T108",
+  "issue": 109,
+  "title": "Fault injection: same-parent child concurrency, a full child pool and nested branch joins",
+  "generated_at": "2026-11-07T19:59:01+0800",
+  "branch": "t/t108-delegation-faults",
+  "product_commit": "203b2d599c3dab40c20937ec5aac203e6b268e59",
+  "product_commit_note": "HEAD checked out when this evidence run started; the ticket's sources are committed on the same branch (the evidence file itself is committed after it)",
+  "environment": {
+    "profile": "dev-stub (ORCHARA_PROFILE=dev-stub; no vendor credentials or endpoint)",
+    "postgres": "PostgreSQL 16.4 at 127.0.0.1:55432; one throwaway database per stack",
+    "api": "compiled cmd/api: real mTLS internal listener, real object store, HMAC signed links",
+    "supervisor": "compiled cmd/supervisor exec --once as a real one-shot OS process",
+    "maintenance": "compiled cmd/maintenance artifact_finalize worker beside each supervisor run",
+    "sandbox": "WSL2/runsc is available on this host but these faults execute no python node: the delegated children are start->end and start->agent->end graphs",
+    "not_run": [
+      "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+      "a real browser DOM",
+      "a resident supervisor daemon (the production one-shot `exec --once` shape is used)",
+      "20 parents each with simultaneously in-flight children (the child pool is deliberately shrunk to two slots, so at most two child attempts execute at once)"
+    ]
+  },
+  "faults": [
+    {
+      "fault_id": "FAULT-07",
+      "title": "One parent Run calls the same pinned child application version twice at the same time",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "two barrier-synchronised POST /internal/v1/runs/{parent_run_id}/children (contract spawnChild) requests from one claimed real parent attempt, same application_version_id, distinct logical keys call_app:left / call_app:right; one child slot is then held by a real claim while a real cmd/supervisor exec --once process executes the other child, and the parent is resumed by another supervisor process that replays both invocations through the real graph scheduler",
+      "input": {},
+      "seed": {
+        "child_application_version_id": "1f23be2e-f70c-4897-96aa-6af3dca25dbf",
+        "child_manifest_sha256": "5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd",
+        "parent_definition_sha256": "35a092bb104ca94699abbf92ae2cad4cbb761442715a7ca0d2f78bfc92faa9a7",
+        "logical_keys": [
+          "call_app:left",
+          "call_app:right"
+        ],
+        "inputs": {
+          "call_app:left": {
+            "source": "alpha"
+          },
+          "call_app:right": {
+            "source": "beta"
+          }
+        },
+        "concurrency": "threading.Barrier(2); two independent real mTLS HTTP connections",
+        "parent_application_id": "228aef1d-d604-4670-9077-05fa7890b02b",
+        "parent_run_id": "844a747a-7e0b-41ed-a6e4-7192777fefa0"
+      },
+      "expected": [
+        "two child Runs with distinct ids, distinct checkpoint threads and distinct attempts",
+        "each child seals only its own mapped input (alpha / beta) and returns only its own echo",
+        "both child attempts are provably live at the same instant and each active child holds exactly two live child-slot allocations (global + parent)",
+        "the resumed parent converges at one join and succeeds with both child outputs in place"
+      ],
+      "observed": {
+        "spawn_overlap": {
+          "max_started_at": 30976.652161,
+          "min_finished_at": 30976.7563643,
+          "all_started_before_any_finished": true
+        },
+        "held_child_allocations": [
+          {
+            "id": "83dd91b5-27cc-40a2-8136-06f421fbcbb3",
+            "scope": "global",
+            "dimension": "child_slots",
+            "holder_key": "job:b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc",
+            "released_at": null
+          },
+          {
+            "id": "065c30b6-e6f2-47ae-98ae-a467ebce098a",
+            "scope": "parent:844a747a-7e0b-41ed-a6e4-7192777fefa0",
+            "dimension": "child_slots",
+            "holder_key": "job:b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc",
+            "released_at": null
+          }
+        ],
+        "child_slot_overlap": {
+          "sampled_peak_child_slots_used": 2,
+          "sampler_reads": 19,
+          "durable": {
+            "held_live_attempts": 1,
+            "held_started_at": "2026-11-07T19:57:54.673742+08:00",
+            "executing_exited_attempts": 1,
+            "executing_started_at": "2026-11-07T19:58:03.085658+08:00",
+            "executing_exited_at": "2026-11-07T19:58:03.375338+08:00",
+            "held_started_before_executing": true,
+            "executing_interval_ordered": true
+          }
+        },
+        "slot_counters": {
+          "child_pool": {
+            "scope": "global",
+            "dimension": "child_slots",
+            "used": 0,
+            "capacity": 8
+          },
+          "parent_scope": {
+            "scope": "parent:844a747a-7e0b-41ed-a6e4-7192777fefa0",
+            "dimension": "child_slots",
+            "used": 0,
+            "capacity": 3
+          },
+          "execution_pool": {
+            "scope": "global",
+            "dimension": "execution_slots",
+            "used": 0,
+            "capacity": 2
+          }
+        }
+      },
+      "independent_truth": {
+        "parent_attempt_start": {
+          "parent_run_id": "844a747a-7e0b-41ed-a6e4-7192777fefa0",
+          "attempt_token_sha256": "0426812d0236a3f837b2b7e17522fdd1fd8d0fcd8ddd0f486003f935003682b3",
+          "execution_slots_used": 1
+        },
+        "children": {
+          "call_app:left": {
+            "child_run_id": "5f1bc53b-d656-41a8-9db2-24f1f4bb6343",
+            "checkpoint_thread_id": "87bb590b-9ebd-45a8-823c-3bf8fd73d735",
+            "sealed_input_sha256": "39ebab756a244d517bc3aaa99b8d252a0963e60575d9b572d7eab743effb185e",
+            "output": {
+              "echo": "alpha"
+            },
+            "attempts": [
+              {
+                "token_sha256": "bcbd251adffb94a4730402159853b6347da5bf305b4701daf4d289c5971732fd",
+                "job_id": "b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc",
+                "started_at": "2026-11-07 19:57:54.673742+08",
+                "exited_at": "2026-11-07 19:58:03.572262+08",
+                "exit_evidence": {
+                  "started": false,
+                  "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "manifest_sha256": "5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd",
+                  "sandbox_started": false,
+                  "protocol_version": "1.0"
+                }
+              },
+              {
+                "token_sha256": "031462d66665f0dd4475d8addeae49260f03ce89307c2cc2cfc8b21ee09cc36e",
+                "job_id": "b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc",
+                "started_at": "2026-11-07 19:58:04.105832+08",
+                "exited_at": "2026-11-07 19:58:04.248939+08",
+                "exit_evidence": {
+                  "started": true,
+                  "heartbeats": 1,
+                  "sandbox_id": "",
+                  "sandbox_pid": 0,
+                  "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "identity_source": "sealed_manifest",
+                  "manifest_sha256": "5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd",
+                  "sandbox_cleanup": {
+                    "pid": 0,
+                    "pid_alive": false,
+                    "ps_matches": 0,
+                    "workspace_removed": false,
+                    "sandbox_list_matches": 0
+                  },
+                  "sandbox_started": false,
+                  "protocol_version": "1.0",
+                  "db_writes_drained": true,
+                  "execution_unit_id": "exec-AI-70652-4da61349",
+                  "sandbox_exit_code": 0,
+                  "sandbox_started_at": "0001-01-01T00:00:00Z",
+                  "sandbox_rootfs_digest": "",
+                  "sandbox_cleanup_verified": false
+                }
+              }
+            ]
+          },
+          "call_app:right": {
+            "child_run_id": "b237adb3-767f-45bc-99c5-efec3fcb3d73",
+            "checkpoint_thread_id": "8ca6ed1d-7178-42c5-890a-89b52b8f5133",
+            "sealed_input_sha256": "97a1c86dafe395b74599e2715791e9938bb7c0ae4f27e14f55de5f7b81a63d30",
+            "output": {
+              "echo": "beta"
+            },
+            "attempts": [
+              {
+                "token_sha256": "d9f729fcb59e321d608693247c5c1f49d5812c8ef349c7d1876edbe7c14401c4",
+                "job_id": "84b0c90d-ea99-4463-a489-2db3dd7cabea",
+                "started_at": "2026-11-07 19:58:03.085658+08",
+                "exited_at": "2026-11-07 19:58:03.375338+08",
+                "exit_evidence": {
+                  "started": true,
+                  "heartbeats": 2,
+                  "sandbox_id": "",
+                  "sandbox_pid": 0,
+                  "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "identity_source": "sealed_manifest",
+                  "manifest_sha256": "5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd",
+                  "sandbox_cleanup": {
+                    "pid": 0,
+                    "pid_alive": false,
+                    "ps_matches": 0,
+                    "workspace_removed": false,
+                    "sandbox_list_matches": 0
+                  },
+                  "sandbox_started": false,
+                  "protocol_version": "1.0",
+                  "db_writes_drained": true,
+                  "execution_unit_id": "exec-AI-64440-019f2da1",
+                  "sandbox_exit_code": 0,
+                  "sandbox_started_at": "0001-01-01T00:00:00Z",
+                  "sandbox_rootfs_digest": "",
+                  "sandbox_cleanup_verified": false
+                }
+              }
+            ]
+          }
+        },
+        "parent": {
+          "run_id": "844a747a-7e0b-41ed-a6e4-7192777fefa0",
+          "state": "succeeded",
+          "attempts": 2,
+          "final_output": {
+            "results": {
+              "left": {
+                "status": "succeeded",
+                "value": {
+                  "echo": "alpha"
+                }
+              },
+              "right": {
+                "status": "succeeded",
+                "value": {
+                  "echo": "beta"
+                }
+              }
+            }
+          },
+          "join_firing": {
+            "data_rows": 1,
+            "artifact_ids": [
+              "4ab861d1-d601-43f9-89af-abd5f0e60201"
+            ],
+            "succeeded_event_seqs": [
+              17
+            ]
+          },
+          "event_seq": {
+            "event_count": 22,
+            "first_seq": 1,
+            "last_seq": 22,
+            "contiguous": true,
+            "seqs": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22
+            ],
+            "types": [
+              "run.status",
+              "run.status",
+              "run.status",
+              "run.status",
+              "run.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "run.status",
+              "run.status"
+            ]
+          }
+        }
+      },
+      "assertions": [
+        {
+          "name": "both spawnChild calls were accepted (202)",
+          "ok": true,
+          "detail": "[[202, \"{\\\"id\\\":\\\"b237adb3-767f-45bc-99c5-efec3fcb3d73\\\",\\\"state\\\":\\\"queued\\\",\\\"revision\\\":1,\\\"application_version_id\\\":\\\"1f23be2e-f70c-4897-96aa-6af3dca25dbf\\\",\\\"parent_run_id\\\":\\\"844a747a-7e0b-41ed-a6e4-7192777fefa0\\\",\\\"outpu\"], [202, \"{\\\"id\\\":\\\"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\\\",\\\"state\\\":\\\"queued\\\",\\\"revision\\\":1,\\\"application_version_id\\\":\\\"1f23be2e-f70c-4897-96aa-6af3dca25dbf\\\",\\\"parent_run_id\\\":\\\"844a747a-7e0b-41ed-a6e4-7192777fefa0\\\",\\\"outpu\"]]"
+        },
+        {
+          "name": "the two spawnChild requests were simultaneously in flight",
+          "ok": true,
+          "detail": "{\"max_started_at\": 30976.652161, \"min_finished_at\": 30976.7563643, \"all_started_before_any_finished\": true}"
+        },
+        {
+          "name": "the platform returned two distinct child Runs for the same parent",
+          "ok": true,
+          "detail": "[\"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"b237adb3-767f-45bc-99c5-efec3fcb3d73\"]"
+        },
+        {
+          "name": "both logical keys have their own run_children receipt",
+          "ok": true,
+          "detail": "[\"call_app:left\", \"call_app:right\"]"
+        },
+        {
+          "name": "the sealed input for call_app:left is exactly its own mapping",
+          "ok": true,
+          "detail": "{\"sealed\": {\"source\": \"alpha\"}, \"expected_source\": \"alpha\"}"
+        },
+        {
+          "name": "the sealed input hash for call_app:left matches the receipt",
+          "ok": true,
+          "detail": "{\"recorded\": \"39ebab756a244d517bc3aaa99b8d252a0963e60575d9b572d7eab743effb185e\", \"recomputed\": \"39ebab756a244d517bc3aaa99b8d252a0963e60575d9b572d7eab743effb185e\"}"
+        },
+        {
+          "name": "call_app:left is an independent child Run of the same parent version",
+          "ok": true,
+          "detail": "{\"id\": \"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"state\": \"queued\", \"phase\": \"idle\", \"revision\": 1, \"kind\": \"published\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_invocation_key\": \"call_app:left\", \"owner_id\": \"b16dece1-a9b3-464d-81f5-8ca260605d00\", \"application_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"execution_snapshot_id\": \"e4b5c08b-1e78-41af-9c94-133b2bcabf64\", \"checkpoint_thread_id\": \"87bb590b-9ebd-45a8-823c-3bf8fd73d735\", \"input_artifact_id\": \"8edfc4cb-e43e-4137-bcf2-c4232c7b9987\", \"output_artifact_id\": null, \"error_code\": null, \"conversation_id\": null, \"budget_limit\": \"1.00000000\", \"currency\": \"USD\", \"max_active_ms\": 300000, \"cancel_requested_at\": null, \"created_at\": \"2026-11-07 19:57:53.907169+08\", \"finished_at\": null}"
+        },
+        {
+          "name": "the child receipt for call_app:left froze depth 1 and the pinned version",
+          "ok": true,
+          "detail": "{\"child_run_id\": \"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_attempt_token\": \"<redacted>\", \"parent_invocation_key\": \"call_app:left\", \"child_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"input_sha256\": \"39ebab756a244d517bc3aaa99b8d252a0963e60575d9b572d7eab743effb185e\", \"input_artifact_id\": \"8edfc4cb-e43e-4137-bcf2-c4232c7b9987\", \"io_mapping\": \"{\\\"fields\\\": [\\\"source\\\"], \\\"node_id\\\": \\\"left\\\"}\", \"input_schema_sha256\": \"6055c544e6d5dffaae127494d16501f8b3fedd2a8165a06dcc868f7793fc6e11\", \"output_schema_sha256\": \"d8973bb6314ea87559067dbc8362ef0a6bac3172552fb417391b30ce5013244c\", \"required\": true, \"depth\": 1, \"created_at\": \"2026-11-07 19:57:53.907169+08\"}"
+        },
+        {
+          "name": "the sealed input for call_app:right is exactly its own mapping",
+          "ok": true,
+          "detail": "{\"sealed\": {\"source\": \"beta\"}, \"expected_source\": \"beta\"}"
+        },
+        {
+          "name": "the sealed input hash for call_app:right matches the receipt",
+          "ok": true,
+          "detail": "{\"recorded\": \"97a1c86dafe395b74599e2715791e9938bb7c0ae4f27e14f55de5f7b81a63d30\", \"recomputed\": \"97a1c86dafe395b74599e2715791e9938bb7c0ae4f27e14f55de5f7b81a63d30\"}"
+        },
+        {
+          "name": "call_app:right is an independent child Run of the same parent version",
+          "ok": true,
+          "detail": "{\"id\": \"b237adb3-767f-45bc-99c5-efec3fcb3d73\", \"state\": \"queued\", \"phase\": \"idle\", \"revision\": 1, \"kind\": \"published\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_invocation_key\": \"call_app:right\", \"owner_id\": \"b16dece1-a9b3-464d-81f5-8ca260605d00\", \"application_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"execution_snapshot_id\": \"6bc0d9d6-8f70-4cbb-9a40-1867327b8fb8\", \"checkpoint_thread_id\": \"8ca6ed1d-7178-42c5-890a-89b52b8f5133\", \"input_artifact_id\": \"7615937f-c405-4af5-a92a-99399b6a4c8a\", \"output_artifact_id\": null, \"error_code\": null, \"conversation_id\": null, \"budget_limit\": \"1.00000000\", \"currency\": \"USD\", \"max_active_ms\": 300000, \"cancel_requested_at\": null, \"created_at\": \"2026-11-07 19:57:53.954999+08\", \"finished_at\": null}"
+        },
+        {
+          "name": "the child receipt for call_app:right froze depth 1 and the pinned version",
+          "ok": true,
+          "detail": "{\"child_run_id\": \"b237adb3-767f-45bc-99c5-efec3fcb3d73\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_attempt_token\": \"<redacted>\", \"parent_invocation_key\": \"call_app:right\", \"child_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"input_sha256\": \"97a1c86dafe395b74599e2715791e9938bb7c0ae4f27e14f55de5f7b81a63d30\", \"input_artifact_id\": \"7615937f-c405-4af5-a92a-99399b6a4c8a\", \"io_mapping\": \"{\\\"fields\\\": [\\\"source\\\"], \\\"node_id\\\": \\\"left\\\"}\", \"input_schema_sha256\": \"6055c544e6d5dffaae127494d16501f8b3fedd2a8165a06dcc868f7793fc6e11\", \"output_schema_sha256\": \"d8973bb6314ea87559067dbc8362ef0a6bac3172552fb417391b30ce5013244c\", \"required\": true, \"depth\": 1, \"created_at\": \"2026-11-07 19:57:53.954999+08\"}"
+        },
+        {
+          "name": "the two children have distinct checkpoint threads, both distinct from the parent",
+          "ok": true,
+          "detail": "{\"parent\": \"3b06aadc-4054-4672-81b1-c98eb0f774e3\", \"children\": {\"call_app:left\": \"87bb590b-9ebd-45a8-823c-3bf8fd73d735\", \"call_app:right\": \"8ca6ed1d-7178-42c5-890a-89b52b8f5133\"}}"
+        },
+        {
+          "name": "one child holds a real live child-slot lease: two live allocations (global + parent)",
+          "ok": true,
+          "detail": "[{\"id\": \"83dd91b5-27cc-40a2-8136-06f421fbcbb3\", \"scope\": \"global\", \"dimension\": \"child_slots\", \"holder_key\": \"job:b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc\", \"released_at\": null}, {\"id\": \"065c30b6-e6f2-47ae-98ae-a467ebce098a\", \"scope\": \"parent:844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"dimension\": \"child_slots\", \"holder_key\": \"job:b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc\", \"released_at\": null}]"
+        },
+        {
+          "name": "the real supervisor executed the other child while the first lease was live",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"b237adb3-767f-45bc-99c5-efec3fcb3d73\", \"job_id\": \"84b0c90d-ea99-4463-a489-2db3dd7cabea\", \"execution_unit_id\": \"exec-AI-64440-019f2da1\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"6113cb1f-e87f-41e8-a041-a75b840128c6\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 15}], \"duration_ms\": 338}"
+        },
+        {
+          "name": "the durable attempts show both children live at the same instant",
+          "ok": true,
+          "detail": "{\"held_live_attempts\": 1, \"held_started_at\": \"2026-11-07T19:57:54.673742+08:00\", \"executing_exited_attempts\": 1, \"executing_started_at\": \"2026-11-07T19:58:03.085658+08:00\", \"executing_exited_at\": \"2026-11-07T19:58:03.375338+08:00\", \"held_started_before_executing\": true, \"executing_interval_ordered\": true}"
+        },
+        {
+          "name": "the held attempt is released as never-started and the Run is requeued",
+          "ok": true,
+          "detail": "{\"status\": 200, \"text\": \"{\\\"id\\\": \\\"a5f0b8e1-72a5-43ba-a793-d5db720369ef\\\", \\\"state\\\": \\\"exited\\\"}\"}"
+        },
+        {
+          "name": "the requeue released the held child slot exactly once",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 8}"
+        },
+        {
+          "name": "the real supervisor then executed the requeued child",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"job_id\": \"b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc\", \"execution_unit_id\": \"exec-AI-70652-4da61349\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"ccb707af-0322-4b85-b301-54a54e072616\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 16}], \"duration_ms\": 170}"
+        },
+        {
+          "name": "the child for call_app:left really succeeded with a sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"state\": \"succeeded\", \"phase\": \"idle\", \"revision\": 5, \"kind\": \"published\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_invocation_key\": \"call_app:left\", \"owner_id\": \"b16dece1-a9b3-464d-81f5-8ca260605d00\", \"application_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"execution_snapshot_id\": \"e4b5c08b-1e78-41af-9c94-133b2bcabf64\", \"checkpoint_thread_id\": \"87bb590b-9ebd-45a8-823c-3bf8fd73d735\", \"input_artifact_id\": \"8edfc4cb-e43e-4137-bcf2-c4232c7b9987\", \"output_artifact_id\": \"ccb707af-0322-4b85-b301-54a54e072616\", \"error_code\": null, \"conversation_id\": null, \"budget_limit\": \"1.00000000\", \"currency\": \"USD\", \"max_active_ms\": 300000, \"cancel_requested_at\": null, \"created_at\": \"2026-11-07 19:57:53.907169+08\", \"finished_at\": \"2026-11-07 19:58:04.248939+08\"}"
+        },
+        {
+          "name": "the held child for call_app:left has one never-started attempt and one executed one",
+          "ok": true,
+          "detail": "[{\"token_sha256\": \"bcbd251adffb94a4730402159853b6347da5bf305b4701daf4d289c5971732fd\", \"job_id\": \"b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc\", \"started_at\": \"2026-11-07 19:57:54.673742+08\", \"exited_at\": \"2026-11-07 19:58:03.572262+08\", \"exit_evidence\": {\"started\": false, \"image_digest\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"manifest_sha256\": \"5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd\", \"sandbox_started\": false, \"protocol_version\": \"1.0\"}}, {\"token_sha256\": \"031462d66665f0dd4475d8addeae49260f03ce89307c2cc2cfc8b21ee09cc36e\", \"job_id\": \"b1fc9dfe-eb3e-404a-a7e8-aea7fcbc7cdc\", \"started_at\": \"2026-11-07 19:58:04.105832+08\", \"exited_at\": \"2026-11-07 19:58:04.248939+08\", \"exit_evidence\": {\"started\": true, \"heartbeats\": 1, \"sandbox_id\": \"\", \"sandbox_pid\": 0, \"image_digest\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
+        },
+        {
+          "name": "the child for call_app:right really succeeded with a sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"b237adb3-767f-45bc-99c5-efec3fcb3d73\", \"state\": \"succeeded\", \"phase\": \"idle\", \"revision\": 3, \"kind\": \"published\", \"parent_run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"parent_invocation_key\": \"call_app:right\", \"owner_id\": \"b16dece1-a9b3-464d-81f5-8ca260605d00\", \"application_version_id\": \"1f23be2e-f70c-4897-96aa-6af3dca25dbf\", \"execution_snapshot_id\": \"6bc0d9d6-8f70-4cbb-9a40-1867327b8fb8\", \"checkpoint_thread_id\": \"8ca6ed1d-7178-42c5-890a-89b52b8f5133\", \"input_artifact_id\": \"7615937f-c405-4af5-a92a-99399b6a4c8a\", \"output_artifact_id\": \"6113cb1f-e87f-41e8-a041-a75b840128c6\", \"error_code\": null, \"conversation_id\": null, \"budget_limit\": \"1.00000000\", \"currency\": \"USD\", \"max_active_ms\": 300000, \"cancel_requested_at\": null, \"created_at\": \"2026-11-07 19:57:53.954999+08\", \"finished_at\": \"2026-11-07 19:58:03.375338+08\"}"
+        },
+        {
+          "name": "the executing child for call_app:right ran exactly one real attempt",
+          "ok": true,
+          "detail": "[{\"token_sha256\": \"d9f729fcb59e321d608693247c5c1f49d5812c8ef349c7d1876edbe7c14401c4\", \"job_id\": \"84b0c90d-ea99-4463-a489-2db3dd7cabea\", \"started_at\": \"2026-11-07 19:58:03.085658+08\", \"exited_at\": \"2026-11-07 19:58:03.375338+08\", \"exit_evidence\": {\"started\": true, \"heartbeats\": 2, \"sandbox_id\": \"\", \"sandbox_pid\": 0, \"image_digest\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"identity_source\": \"sealed_manifest\", \"manifest_sha256\": \"5e04d448c236af80af7f26e68497b0896c4051d9c37d7e7ac4465bdd0e8200fd\", \"sandbox_cleanup\": {\"pid\": 0, \"pid_alive\": false, \"ps_matches\": 0, \"workspace_removed\": false, \"sandbox_list_matches\": 0}, \"sandbox_started\": false, \"protocol_version\": \"1.0\", \"db_writes_drained\": true, \"execution_unit_id\": \"exec-AI-64440-019f2da1\", \"sandbox_exit_code\": 0, \"sandbox_started_at\": \"0001-01-01T00:00:00Z\", \"sandbox_rootfs_digest\": \"\", \"sandbox_cleanu..."
+        },
+        {
+          "name": "each child executed its own sealed input (no crosstalk)",
+          "ok": true,
+          "detail": "{\"call_app:left\": {\"echo\": \"alpha\"}, \"call_app:right\": {\"echo\": \"beta\"}}"
+        },
+        {
+          "name": "the child pool was fully released after both children exited",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 8}"
+        },
+        {
+          "name": "the parent really parked at the children checkpoint",
+          "ok": true,
+          "detail": "{\"run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"kind\": \"children\", \"checkpoint_id\": \"child:5f1bc53b-d656-41a8-9db2-24f1f4bb6343\", \"decision\": null, \"decision_at\": null, \"exit_confirmed_at\": \"2026-11-07 19:58:05.562142+08\", \"resume_job_id\": null, \"resume_artifact_id\": null, \"created_at\": \"2026-11-07 19:58:05.543054+08\", \"updated_at\": \"2026-11-07 19:58:05.562142+08\"}"
+        },
+        {
+          "name": "the parked parent released its own top-level execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 0, \"capacity\": 2}"
+        },
+        {
+          "name": "the real supervisor resumed and succeeded the same parent Run",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"job_id\": \"87f8e2fc-44f1-4b70-8e25-b035e8340afc\", \"execution_unit_id\": \"exec-AI-69912-2e63d46e\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 6, \"artifacts\": [{\"id\": \"1fee390f-d377-46cf-a27c-6a8ddf0921be\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 15}, {\"id\": \"7fd7a335-928e-4cb6-ae18-7e40781f8b3f\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 16}, {\"id\": \"4ab861d1-d601-43f9-89af-abd5f0e60201\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 123}, {\"id\": \"533b5620-dca5-481c-9afb-4874d5ef8ce6\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 123}], \"duration_ms\": 574}"
+        },
+        {
+          "name": "the resumed parent converged at one join with the two distinct child results",
+          "ok": true,
+          "detail": "{\"results\": {\"left\": {\"status\": \"succeeded\", \"value\": {\"echo\": \"alpha\"}}, \"right\": {\"status\": \"succeeded\", \"value\": {\"echo\": \"beta\"}}}}"
+        },
+        {
+          "name": "the join fired exactly once",
+          "ok": true,
+          "detail": "{\"data_rows\": 1, \"artifact_ids\": [\"4ab861d1-d601-43f9-89af-abd5f0e60201\"], \"succeeded_event_seqs\": [17]}"
+        },
+        {
+          "name": "no second child was created by the resumed attempt",
+          "ok": true,
+          "detail": "{\"receipts\": 2, \"children\": 2}"
+        },
+        {
+          "name": "the parent ran twice (spawn + replay) and each child has one succeeded attempt",
+          "ok": true,
+          "detail": "{\"parent\": 2, \"held_child\": 2, \"executing_child\": 1}"
+        },
+        {
+          "name": "every child-slot allocation is released exactly once",
+          "ok": true,
+          "detail": "{\"child\": {\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 8}, \"parent\": {\"scope\": \"parent:844a747a-7e0b-41ed-a6e4-7192777fefa0\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 3}, \"execution\": {\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 0, \"capacity\": 2}}"
+        },
+        {
+          "name": "the parent's durable event sequence stayed contiguous",
+          "ok": true,
+          "detail": "{\"event_count\": 22, \"first_seq\": 1, \"last_seq\": 22, \"contiguous\": true, \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22], \"types\": [\"run.status\", \"run.status\", \"run.status\", \"run.status\", \"run.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"run.status\", \"run.status\"]}"
+        }
+      ],
+      "assertion_count": 34,
+      "commands": [
+        "python -m pytest tests/f13b/test_t108_delegation_faults.py -q"
+      ],
+      "not_run": [
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)",
+        "20 parents each with simultaneously in-flight children (the child pool is deliberately shrunk to two slots, so at most two child attempts execute at once)"
+      ],
+      "duration_s": 17.02,
+      "failure": null
+    },
+    {
+      "fault_id": "FAULT-07/08-boundaries",
+      "title": "Delegation admission boundaries: a full child pool queues (never drops), an empty parent allowance refuses the child instead of starting it",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "global/child_slots capacity 0 with a real parent waiting on its spawned child; a real parent Run whose budget_limit is 0.00000000 at spawnChild time",
+      "input": {},
+      "seed": {},
+      "expected": [
+        "a spawn under a full child pool is accepted and durably queued, with no attempt",
+        "the queued child claims and completes once a slot exists; the parent succeeds",
+        "a spawn with no remaining parent allowance is 429 budget_exhausted with no child Run"
+      ],
+      "observed": {},
+      "independent_truth": {
+        "queue_boundary": {
+          "parent_run_id": "1bdf1827-a886-4f2f-9008-f5b654b2da44",
+          "child_run_id": "aeeb38e3-af18-4bae-abe3-dca2790d196e",
+          "child_pool_capacity_at_spawn": 0,
+          "queued_state": "queued"
+        },
+        "allowance_boundary": {
+          "parent_run_id": "6780e617-4297-4e47-8437-8aece6f31f14",
+          "refused_status": 429,
+          "refused_code": "budget_exhausted"
+        }
+      },
+      "assertions": [
+        {
+          "name": "the parent parked waiting on its child although the child pool is full",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"1bdf1827-a886-4f2f-9008-f5b654b2da44\", \"job_id\": \"e3c72fb9-0ada-44bc-b678-e10bc6c1d0c6\", \"execution_unit_id\": \"exec-AI-71236-24dc3d28\", \"outcome\": \"waiting_children\", \"run_state\": \"waiting_children\", \"error_code\": \"children_pending\", \"heartbeats\": 0, \"duration_ms\": 206}"
+        },
+        {
+          "name": "the spawned child is durably queued, not silently dropped",
+          "ok": true,
+          "detail": "{\"run\": {\"id\": \"aeeb38e3-af18-4bae-abe3-dca2790d196e\", \"state\": \"queued\", \"phase\": \"idle\", \"revision\": 1, \"kind\": \"published\", \"parent_run_id\": \"1bdf1827-a886-4f2f-9008-f5b654b2da44\", \"parent_invocation_key\": \"call_app:child\", \"owner_id\": \"13646c02-d72e-4074-adba-3455febeeeef\", \"application_version_id\": \"1e418264-d890-4b6a-aed1-e478d8f125ec\", \"execution_snapshot_id\": \"a7c44bae-fb5b-4e55-bf21-0ee7f34b2cd4\", \"checkpoint_thread_id\": \"ede22004-b330-49ed-ba8d-bc7265421011\", \"input_artifact_id\": \"7ec942a0-d33f-4b62-8f65-ca646ceccd01\", \"output_artifact_id\": null, \"error_code\": null, \"conversation_id\": null, \"budget_limit\": \"1.00000000\", \"currency\": \"USD\", \"max_active_ms\": 300000, \"cancel_requested_at\": null, \"created_at\": \"2026-11-07 19:58:57.651893+08\", \"finished_at\": null}, \"jobs\": [{\"id\": \"a31fed64-9e51-40bc-8857-27e46be5fb09\", \"kind\": \"start\", \"state\": \"ready\", \"current_attempt_token\": n..."
+        },
+        {
+          "name": "the queued child has no attempt and holds no child slot",
+          "ok": true,
+          "detail": "{\"attempts\": [], \"child_pool\": {\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 0}, \"parent_scope\": null}"
+        },
+        {
+          "name": "the queued child claims and completes once a slot exists",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"aeeb38e3-af18-4bae-abe3-dca2790d196e\", \"job_id\": \"a31fed64-9e51-40bc-8857-27e46be5fb09\", \"execution_unit_id\": \"exec-AI-70048-bfe46139\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"3edc73af-afd1-4668-97e7-2851c150a2a6\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 17}], \"duration_ms\": 211}"
+        },
+        {
+          "name": "the parent's wait is resolved and the parent succeeds",
+          "ok": true,
+          "detail": "{\"kind\": \"children\", \"outcome\": \"succeeded\", \"child_run_id\": \"aeeb38e3-af18-4bae-abe3-dca2790d196e\"}"
+        },
+        {
+          "name": "the resumed parent succeeded with its child's echo",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"1bdf1827-a886-4f2f-9008-f5b654b2da44\", \"job_id\": \"0fcdb1b9-aabb-46ec-a815-2c8d4ba06b3a\", \"execution_unit_id\": \"exec-AI-24008-3cc7f60d\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 3, \"artifacts\": [{\"id\": \"7bf5ba44-1f1f-4134-a308-66f9af82d2f9\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 17}, {\"id\": \"b74e5ffc-351f-4f50-bb2b-32a062efe10d\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 17}], \"duration_ms\": 389}"
+        },
+        {
+          "name": "a spawn with no remaining allowance is refused with a stable code",
+          "ok": true,
+          "detail": "{\"status\": 429, \"body\": {\"error\": {\"code\": \"budget_exhausted\", \"message\": \"the parent run's shared budget has no remaining allowance for a new child Run\", \"request_id\": \"1c8073a556686b38631297d00c89b82d\", \"details\": {\"currency\": \"USD\", \"remaining_amount\": \"0.00000000\"}}}}"
+        },
+        {
+          "name": "the refused spawn created no child Run, receipt or sealed input",
+          "ok": true,
+          "detail": "{\"receipts\": [], \"children\": 0}"
+        }
+      ],
+      "assertion_count": 8,
+      "commands": [
+        "python -m pytest tests/f13b/test_t108_delegation_faults.py -q"
+      ],
+      "not_run": [
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)",
+        "20 parents each with simultaneously in-flight children (the child pool is deliberately shrunk to two slots, so at most two child attempts execute at once)"
+      ],
+      "duration_s": 5.1,
+      "failure": null
+    },
+    {
+      "fault_id": "FAULT-08",
+      "title": "20 parent Runs waiting on children do not starve a two-slot child pool",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "20 real debug parent Runs each claim -> spawnChild -> waiting_children; the global/execution_slots pool is saturated to one live top-level Run and the independent global/child_slots pool is shrunk from 8 to 2 (platform.quota_counters)",
+      "input": {},
+      "seed": {
+        "parents": 20,
+        "execution_pool_capacity": 1,
+        "child_pool_capacity": 2,
+        "child_graph": "start -> end echo child executed by the real supervisor",
+        "saturating_top_level_run": "a real claimed debug Run that owns the only Python slot",
+        "parent_application_id": "0679df21-f69c-48bf-aeea-ef490e48bc46",
+        "child_application_version_id": "1075166e-f0d9-437a-86a2-62559540df39"
+      },
+      "expected": [
+        "children still claim and complete while all 20 parents wait (no pool starvation)",
+        "at most two children are ever active and the other 18 are queued with no attempt",
+        "completion is monotonic and every parent receives exactly one children decision",
+        "the parents' resume jobs are explicitly blocked by the foreign top-level slot, not lost: releasing it lets the queue drain"
+      ],
+      "observed": {
+        "latency": {
+          "p50_total_s": 8.5987705,
+          "p95_total_s": 12.72794,
+          "p50_queue_s": 8.433874,
+          "p95_queue_s": 12.585440250000001,
+          "samples": 20,
+          "finished": 20
+        },
+        "samples": [
+          {
+            "label": "after-setup",
+            "active": 0,
+            "queued": 20,
+            "completed": 0,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 20
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "two-children-active",
+            "active": 2,
+            "queued": 18,
+            "completed": 0,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 20
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 2,
+            "execution_pool_used": 1,
+            "claimable_jobs": 18
+          },
+          {
+            "label": "after-first-completion",
+            "active": 1,
+            "queued": 18,
+            "completed": 1,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 19,
+              "queued": 1
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 1,
+            "execution_pool_used": 1,
+            "claimable_jobs": 19
+          },
+          {
+            "label": "slot-backfilled",
+            "active": 2,
+            "queued": 17,
+            "completed": 1,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 19,
+              "queued": 1
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 2,
+            "execution_pool_used": 1,
+            "claimable_jobs": 18
+          },
+          {
+            "label": "three-completed",
+            "active": 0,
+            "queued": 17,
+            "completed": 3,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 17,
+              "queued": 3
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-0",
+            "active": 0,
+            "queued": 16,
+            "completed": 4,
+            "failed": 0,
+            "parents_by_state": {
+              "waiting_children": 16,
+              "queued": 4
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-1",
+            "active": 0,
+            "queued": 15,
+            "completed": 5,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 5,
+              "waiting_children": 15
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-2",
+            "active": 0,
+            "queued": 14,
+            "completed": 6,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 6,
+              "waiting_children": 14
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-3",
+            "active": 0,
+            "queued": 13,
+            "completed": 7,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 7,
+              "waiting_children": 13
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-4",
+            "active": 0,
+            "queued": 12,
+            "completed": 8,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 8,
+              "waiting_children": 12
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-5",
+            "active": 0,
+            "queued": 11,
+            "completed": 9,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 9,
+              "waiting_children": 11
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-6",
+            "active": 0,
+            "queued": 10,
+            "completed": 10,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 10,
+              "waiting_children": 10
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-7",
+            "active": 0,
+            "queued": 9,
+            "completed": 11,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 11,
+              "waiting_children": 9
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-8",
+            "active": 0,
+            "queued": 8,
+            "completed": 12,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 12,
+              "waiting_children": 8
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-9",
+            "active": 0,
+            "queued": 7,
+            "completed": 13,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 13,
+              "waiting_children": 7
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-10",
+            "active": 0,
+            "queued": 6,
+            "completed": 14,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 14,
+              "waiting_children": 6
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-11",
+            "active": 0,
+            "queued": 5,
+            "completed": 15,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 15,
+              "waiting_children": 5
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-12",
+            "active": 0,
+            "queued": 4,
+            "completed": 16,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 16,
+              "waiting_children": 4
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-13",
+            "active": 0,
+            "queued": 3,
+            "completed": 17,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 17,
+              "waiting_children": 3
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-14",
+            "active": 0,
+            "queued": 2,
+            "completed": 18,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 18,
+              "waiting_children": 2
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-15",
+            "active": 0,
+            "queued": 1,
+            "completed": 19,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 19,
+              "waiting_children": 1
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          },
+          {
+            "label": "supervisor-16",
+            "active": 0,
+            "queued": 0,
+            "completed": 20,
+            "failed": 0,
+            "parents_by_state": {
+              "queued": 20
+            },
+            "parents_with_waiting_row": 20,
+            "child_pool_used": 0,
+            "execution_pool_used": 1,
+            "claimable_jobs": 20
+          }
+        ],
+        "max_active_observed": 2,
+        "max_queued_observed": 20
+      },
+      "independent_truth": {
+        "saturating_run": {
+          "run_id": "1ba39c68-0f0b-4819-9e60-e24df9e938be",
+          "state": "running",
+          "execution_slots_used": 1
+        },
+        "setup": {
+          "parents": 20,
+          "children_queued": 20,
+          "execution_slots_used": 1,
+          "child_slots_used": 0
+        },
+        "final": {
+          "children_succeeded": 20,
+          "errors": 0,
+          "parents_with_decision": 20,
+          "execution_slots_used": 0,
+          "child_slots_used": 0,
+          "latency": {
+            "p50_total_s": 8.5987705,
+            "p95_total_s": 12.72794,
+            "p50_queue_s": 8.433874,
+            "p95_queue_s": 12.585440250000001,
+            "samples": 20,
+            "finished": 20
+          },
+          "samples": 22
+        }
+      },
+      "assertions": [
+        {
+          "name": "after setup no child is executing and every child is queued",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052701.063, \"children\": {\"f3a3c663-663f-4499-a938-6ef5914944e8\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"a34a9cf8-4696-4351-90d5-5f2da8700c8a\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"6fa166ad-4881-4be0-a488-80e4fde14569\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "queued children have no attempt: queueing is not execution",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052701.063, \"children\": {\"f3a3c663-663f-4499-a938-6ef5914944e8\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"a34a9cf8-4696-4351-90d5-5f2da8700c8a\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"6fa166ad-4881-4be0-a488-80e4fde14569\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "the two-slot child pool admitted exactly two simultaneous active children",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052701.319, \"children\": {\"6fa166ad-4881-4be0-a488-80e4fde14569\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f1f3fede-cd10-4145-98c9-ed74e3de2594\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "each active child holds its own live attempt and two live child-slot allocations",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052701.319, \"children\": {\"6fa166ad-4881-4be0-a488-80e4fde14569\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f1f3fede-cd10-4145-98c9-ed74e3de2594\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "a third child cannot claim while both slots are taken",
+          "ok": true,
+          "detail": "{\"child_pool\": {\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 2, \"capacity\": 2}}"
+        },
+        {
+          "name": "completion is monotonic: one completed, one still active, the rest queued",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052702.089, \"children\": {\"6fa166ad-4881-4be0-a488-80e4fde14569\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f1f3fede-cd10-4145-98c9-ed74e3de2594\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "the freed child slot was immediately backfilled from the queue",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052702.216, \"children\": {\"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f1f3fede-cd10-4145-98c9-ed74e3de2594\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"59675734-55e6-422d-986b-d42dfed15f35\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_ch..."
+        },
+        {
+          "name": "three children completed through the protocol with no leak",
+          "ok": true,
+          "detail": "{\"at_epoch_s\": 1794052703.277, \"children\": {\"a34a9cf8-4696-4351-90d5-5f2da8700c8a\": {\"state\": \"succeeded\", \"attempts\": 1, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"25b37e31-66be-4c1a-a978-16d739a19ec7\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"720b697f-a36d-4f27-ac76-efdadcf07338\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"cf9408b4-f93b-4dae-8f41-f57fef827910\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f594e040-9f9d-4f23-8434-5cc32a23ec78\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"f1f3fede-cd10-4145-98c9-ed74e3de2594\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live_child_allocations\": 0}, \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\": {\"state\": \"queued\", \"attempts\": 0, \"live_attempts\": 0, \"live..."
+        },
+        {
+          "name": "real supervisor execution 0 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"25b37e31-66be-4c1a-a978-16d739a19ec7\", \"job_id\": \"fecd24a8-5d57-4e9a-ae28-6401bdb8f804\", \"execution_unit_id\": \"exec-AI-56212-c948bae2\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"4e4e312f-eca5-4646-ab3f-cdcbb3231f03\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 196}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 1 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"cf9408b4-f93b-4dae-8f41-f57fef827910\", \"job_id\": \"c0858752-c222-4474-91ab-7152280ac22d\", \"execution_unit_id\": \"exec-AI-64968-f8c2c27a\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"de113249-0f6a-48bd-8140-a3ee48b3a525\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 314}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 2 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"f594e040-9f9d-4f23-8434-5cc32a23ec78\", \"job_id\": \"c0447395-8ef7-436b-acc3-507257c5c6d8\", \"execution_unit_id\": \"exec-AI-68124-bd3408ae\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"2d596f22-fd49-40cb-9760-1dd2ee7d205f\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 151}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 3 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"720b697f-a36d-4f27-ac76-efdadcf07338\", \"job_id\": \"69cf3b84-d53f-44db-9d09-91eb14059841\", \"execution_unit_id\": \"exec-AI-67032-ad34471b\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"c7cb945f-3494-462d-9e3f-f49c34c98ae8\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 266}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 4 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"f1f3fede-cd10-4145-98c9-ed74e3de2594\", \"job_id\": \"328aba0c-f84a-4254-b0ac-ff6682abd89a\", \"execution_unit_id\": \"exec-AI-49372-8ada4bec\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"b3c4114d-9821-436e-b40c-05f2178719fa\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 220}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 5 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\", \"job_id\": \"546cc449-d505-426e-9476-077e4fd93f26\", \"execution_unit_id\": \"exec-AI-22724-15b62828\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"f1f8a52b-0f81-4057-8a9d-02c9b6c8e8b5\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 195}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 6 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"59675734-55e6-422d-986b-d42dfed15f35\", \"job_id\": \"fa5a2e02-2a7e-4a1f-8b13-b0a4d11c8f8f\", \"execution_unit_id\": \"exec-AI-70492-b535b929\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"3f6f76ef-6a1c-4b8e-8f3d-b68f2708b870\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 188}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 7 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"5325260b-3358-4a69-afda-97cf6d4984eb\", \"job_id\": \"d59d3cbf-bde7-472b-ae6c-48423bcac3e4\", \"execution_unit_id\": \"exec-AI-18900-a71aed9c\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"f2421084-23e6-45ae-af38-c8b9e02d6bf6\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 213}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 8 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"b67df348-6c26-4cbd-8817-f50123d25e3f\", \"job_id\": \"554a834d-fd3f-4064-a3d5-891174aa2808\", \"execution_unit_id\": \"exec-AI-6796-31bd33c5\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"174df111-4ad5-479a-87ea-a0172ebaaa00\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 169}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 9 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"386e4a56-743b-4497-ad47-09243a81d63c\", \"job_id\": \"9907dc08-382a-495a-8758-3d4cb6e32b90\", \"execution_unit_id\": \"exec-AI-69540-3b972ceb\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"7ff9d3f0-728f-418e-97ba-2d95c10dc6eb\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 164}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 10 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"04ceaae2-7236-4dbd-949f-b879cf4b33f4\", \"job_id\": \"6b5ed221-55e0-4ade-a29c-c275571f2bbb\", \"execution_unit_id\": \"exec-AI-71184-93a2492e\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"e7eabf73-977f-41a3-bdc9-43c1fcb0dce6\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 205}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 11 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"937d60c7-03cc-47c5-8f8b-40d564e0ef3f\", \"job_id\": \"79b53e78-1bac-4359-b300-4cd650099e04\", \"execution_unit_id\": \"exec-AI-70920-b3ee3f92\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"6794a899-5326-434f-b2b4-357d9c661ebf\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 194}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 12 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"f621dc5f-a0aa-4b2c-a3f4-4aa4127240b5\", \"job_id\": \"3975cd17-c803-4f74-80b5-3e80e7f4b10e\", \"execution_unit_id\": \"exec-AI-69992-f378a2da\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"1927cdee-6fcb-441f-b226-8304a9771c03\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 207}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 13 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"a9602404-898d-49e6-bd89-a8f55428ad9a\", \"job_id\": \"951a1175-cc32-4233-8753-6dd5851d1a9f\", \"execution_unit_id\": \"exec-AI-67156-302fafbe\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"37d084ea-a01b-4d6a-8b9c-f8f6e7adfee8\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 372}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 14 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"5679a72b-ca38-4577-b53b-fbcd7ed51919\", \"job_id\": \"e025fffd-8650-4aa7-a831-8a2e602639ac\", \"execution_unit_id\": \"exec-AI-67648-dc25172b\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"d37c75f0-2168-4083-b603-d7a03c39ff11\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 303}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 15 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"9c6dcd1f-4c6c-484e-92f1-687f353d03c0\", \"job_id\": \"c871850f-fc4a-4638-88e9-732556ce327f\", \"execution_unit_id\": \"exec-AI-67828-ac94af89\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 1, \"artifacts\": [{\"id\": \"7c8db739-84d2-45ef-94d2-1c4fe806202a\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 180}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "real supervisor execution 16 ran a queued child while the Python pool stayed saturated",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"1063e16b-7d3a-45b7-a994-b899f3d9d4af\", \"job_id\": \"a096320e-ef99-4558-a35a-74ea59f63d35\", \"execution_unit_id\": \"exec-AI-64492-bffb39cf\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"f6dc4409-149b-4384-baf5-e53484d2e864\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 280}"
+        },
+        {
+          "name": "the child execution consumed no Python execution slot",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}"
+        },
+        {
+          "name": "every remaining child completed exactly once",
+          "ok": true,
+          "detail": "{\"executed\": 17, \"remaining\": 17}"
+        },
+        {
+          "name": "child f3a3c663 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"f3a3c663-663f-4499-a938-6ef5914944e8\", \"state\": \"succeeded\", \"output_artifact_id\": \"f703228f-d2c0-4105-b549-d6bc518421b2\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child a34a9cf8 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"a34a9cf8-4696-4351-90d5-5f2da8700c8a\", \"state\": \"succeeded\", \"output_artifact_id\": \"086585b1-c731-43c9-8459-3f55f5508a40\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 6fa166ad is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"6fa166ad-4881-4be0-a488-80e4fde14569\", \"state\": \"succeeded\", \"output_artifact_id\": \"fbda2471-2c1d-43d2-8c11-7b19a545bd5d\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 25b37e31 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"25b37e31-66be-4c1a-a978-16d739a19ec7\", \"state\": \"succeeded\", \"output_artifact_id\": \"4e4e312f-eca5-4646-ab3f-cdcbb3231f03\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child cf9408b4 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"cf9408b4-f93b-4dae-8f41-f57fef827910\", \"state\": \"succeeded\", \"output_artifact_id\": \"de113249-0f6a-48bd-8140-a3ee48b3a525\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child f594e040 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"f594e040-9f9d-4f23-8434-5cc32a23ec78\", \"state\": \"succeeded\", \"output_artifact_id\": \"2d596f22-fd49-40cb-9760-1dd2ee7d205f\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 720b697f is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"720b697f-a36d-4f27-ac76-efdadcf07338\", \"state\": \"succeeded\", \"output_artifact_id\": \"c7cb945f-3494-462d-9e3f-f49c34c98ae8\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child f1f3fede is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"f1f3fede-cd10-4145-98c9-ed74e3de2594\", \"state\": \"succeeded\", \"output_artifact_id\": \"b3c4114d-9821-436e-b40c-05f2178719fa\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child b2f89c16 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\", \"state\": \"succeeded\", \"output_artifact_id\": \"f1f8a52b-0f81-4057-8a9d-02c9b6c8e8b5\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 59675734 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"59675734-55e6-422d-986b-d42dfed15f35\", \"state\": \"succeeded\", \"output_artifact_id\": \"3f6f76ef-6a1c-4b8e-8f3d-b68f2708b870\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 5325260b is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"5325260b-3358-4a69-afda-97cf6d4984eb\", \"state\": \"succeeded\", \"output_artifact_id\": \"f2421084-23e6-45ae-af38-c8b9e02d6bf6\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child b67df348 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"b67df348-6c26-4cbd-8817-f50123d25e3f\", \"state\": \"succeeded\", \"output_artifact_id\": \"174df111-4ad5-479a-87ea-a0172ebaaa00\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 386e4a56 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"386e4a56-743b-4497-ad47-09243a81d63c\", \"state\": \"succeeded\", \"output_artifact_id\": \"7ff9d3f0-728f-418e-97ba-2d95c10dc6eb\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 04ceaae2 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"04ceaae2-7236-4dbd-949f-b879cf4b33f4\", \"state\": \"succeeded\", \"output_artifact_id\": \"e7eabf73-977f-41a3-bdc9-43c1fcb0dce6\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 937d60c7 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"937d60c7-03cc-47c5-8f8b-40d564e0ef3f\", \"state\": \"succeeded\", \"output_artifact_id\": \"6794a899-5326-434f-b2b4-357d9c661ebf\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child f621dc5f is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"f621dc5f-a0aa-4b2c-a3f4-4aa4127240b5\", \"state\": \"succeeded\", \"output_artifact_id\": \"1927cdee-6fcb-441f-b226-8304a9771c03\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child a9602404 is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"a9602404-898d-49e6-bd89-a8f55428ad9a\", \"state\": \"succeeded\", \"output_artifact_id\": \"37d084ea-a01b-4d6a-8b9c-f8f6e7adfee8\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 5679a72b is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"5679a72b-ca38-4577-b53b-fbcd7ed51919\", \"state\": \"succeeded\", \"output_artifact_id\": \"d37c75f0-2168-4083-b603-d7a03c39ff11\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 9c6dcd1f is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"9c6dcd1f-4c6c-484e-92f1-687f353d03c0\", \"state\": \"succeeded\", \"output_artifact_id\": \"7c8db739-84d2-45ef-94d2-1c4fe806202a\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "child 1063e16b is succeeded with one attempt and one sealed output",
+          "ok": true,
+          "detail": "{\"id\": \"1063e16b-7d3a-45b7-a994-b899f3d9d4af\", \"state\": \"succeeded\", \"output_artifact_id\": \"f6dc4409-149b-4384-baf5-e53484d2e864\", \"attempts\": 1, \"error_code\": null}"
+        },
+        {
+          "name": "no child failed",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "parent t108-parent-00 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"e35141c5-06e7-43aa-aee0-876608fa6833\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"f3a3c663-663f-4499-a938-6ef5914944e8\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-01 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"63f3e42c-5337-4217-890c-3f8d67f9915e\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"a34a9cf8-4696-4351-90d5-5f2da8700c8a\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-02 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"0d91b034-ede6-4634-bf3f-1f0213f3da80\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"6fa166ad-4881-4be0-a488-80e4fde14569\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-03 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"88b57698-d13a-40de-84d6-c9ba5e3d592b\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"25b37e31-66be-4c1a-a978-16d739a19ec7\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-04 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"8bee5fe0-1ba1-4251-b29b-69b0141a0279\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"cf9408b4-f93b-4dae-8f41-f57fef827910\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-05 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"af0f809d-88b6-4d3b-bce9-d6b10b6e60a3\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"f594e040-9f9d-4f23-8434-5cc32a23ec78\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-06 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"53fca505-d637-4891-a589-705baec536cc\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"720b697f-a36d-4f27-ac76-efdadcf07338\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-07 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"31a1b3f6-9706-403c-969d-a0c80b09b27a\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"f1f3fede-cd10-4145-98c9-ed74e3de2594\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-08 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"7aa06bad-4f6a-4980-a47e-61e67710590f\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"b2f89c16-55b4-40f4-bd9f-a8bc693939a4\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-09 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"6a7f1748-1049-4da2-b2f4-99fb9d061555\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"59675734-55e6-422d-986b-d42dfed15f35\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-10 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"f5242eee-7002-47df-987b-4ad160dee9b0\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"5325260b-3358-4a69-afda-97cf6d4984eb\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-11 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"7b4bf7cf-4d87-44d2-9ed7-0b5b04e29f3f\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"b67df348-6c26-4cbd-8817-f50123d25e3f\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-12 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"f06ed659-f806-4895-a21e-36277afe333d\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"386e4a56-743b-4497-ad47-09243a81d63c\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-13 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"a080a73e-a881-42eb-a405-d83e9bb850bb\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"04ceaae2-7236-4dbd-949f-b879cf4b33f4\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-14 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"b8a5adc1-3a89-470e-bd2f-492d1d98bbc2\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"937d60c7-03cc-47c5-8f8b-40d564e0ef3f\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-15 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"26991b80-cb3c-4a14-ae88-eb7dcf24dbeb\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"f621dc5f-a0aa-4b2c-a3f4-4aa4127240b5\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-16 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"da8be9c9-b036-46cc-b224-8ab62deaa5ef\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"a9602404-898d-49e6-bd89-a8f55428ad9a\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-17 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"541179b5-66ca-4bcc-aea0-ae1995cd95c8\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"5679a72b-ca38-4577-b53b-fbcd7ed51919\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-18 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"2498f6ed-288c-456b-9cd2-509d9ef44b6f\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"9c6dcd1f-4c6c-484e-92f1-687f353d03c0\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "parent t108-parent-19 has one succeeded children decision and one resume job",
+          "ok": true,
+          "detail": "{\"id\": \"1b438af0-df13-41cf-a875-63adb91d6833\", \"state\": \"queued\", \"waitings\": 1, \"decision\": \"{\\\"kind\\\": \\\"children\\\", \\\"outcome\\\": \\\"succeeded\\\", \\\"child_run_id\\\": \\\"1063e16b-7d3a-45b7-a994-b899f3d9d4af\\\"}\", \"resume_jobs\": 1, \"resume_job_state\": \"ready\"}"
+        },
+        {
+          "name": "every child has a completion timestamp and the latency sample is complete",
+          "ok": true,
+          "detail": "{\"p50_total_s\": 8.5987705, \"p95_total_s\": 12.72794, \"p50_queue_s\": 8.433874, \"p95_queue_s\": 12.585440250000001, \"samples\": 20, \"finished\": 20}"
+        },
+        {
+          "name": "no child slot or Python slot leaked",
+          "ok": true,
+          "detail": "{\"child\": {\"scope\": \"global\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 2}, \"execution\": {\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}, \"one_parent\": {\"scope\": \"parent:e35141c5-06e7-43aa-aee0-876608fa6833\", \"dimension\": \"child_slots\", \"used\": 0, \"capacity\": 3}}"
+        },
+        {
+          "name": "nothing is claimable while the foreign top-level slot is held (explicit block)",
+          "ok": true,
+          "detail": "{\"execution\": {\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 1, \"capacity\": 1}, \"ready_parent_jobs\": 20}"
+        },
+        {
+          "name": "releasing the foreign Python slot returns it exactly once",
+          "ok": true,
+          "detail": "{\"scope\": \"global\", \"dimension\": \"execution_slots\", \"used\": 0, \"capacity\": 1}"
+        },
+        {
+          "name": "a blocked parent resume is claimable once the foreign slot is free",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"e35141c5-06e7-43aa-aee0-876608fa6833\", \"job_id\": \"2f4c0d87-ebf7-4b2e-a4d4-0cf5e5e84c23\", \"execution_unit_id\": \"exec-AI-46088-1e2e118d\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"f34f873f-73ba-420b-a79b-0798414e6a20\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 25}, {\"id\": \"83da90ac-7968-4d46-9a64-3e78f1860719\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 25}], \"duration_ms\": 222}"
+        },
+        {
+          "name": "the drained parent really succeeds and replays its one child",
+          "ok": true,
+          "detail": "{\"children\": 1}"
+        },
+        {
+          "name": "the drained parent's output is its own child's echo",
+          "ok": true,
+          "detail": "{\"echo\": \"t108-parent-00\"}"
+        }
+      ],
+      "assertion_count": 91,
+      "commands": [
+        "python -m pytest tests/f13b/test_t108_delegation_faults.py -q"
+      ],
+      "not_run": [
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)",
+        "20 parents each with simultaneously in-flight children (the child pool is deliberately shrunk to two slots, so at most two child attempts execute at once)"
+      ],
+      "duration_s": 20.65,
+      "failure": null
+    },
+    {
+      "fault_id": "FAULT-13",
+      "title": "Nested branch regions with a skipped branch and a required failing branch: join fires exactly once or the run fails explicitly, never waits forever",
+      "status": "passed",
+      "verdict": "passed",
+      "injection_point": "a real debug Run of a nested condition/join graph (choose -> choose2 -> {deep|shallow} -> join2 -> join <- direct) whose branch nodes are real call_app delegations; sub-case A executes the selected child normally, sub-case B gives the parent a 0.00000001 USD allowance so the required child's real model reservation is refused (budget_exhausted)",
+      "input": {},
+      "seed": {
+        "nested_join_graph": "4d2f3836f9738e68a1dd23dc4f0d754d80f4bbb68cce120ceeff5f3f45cab7a1",
+        "echo_child_version_id": "ddf054f2-c54e-4c15-988c-4f179827b5cd",
+        "success_parent_run_id": "95d67492-0cab-40f8-801e-811f53bf2cc3",
+        "required_failure_child_version_id": "3343f579-efde-40ba-b5f6-28a7ceb5c34a",
+        "required_failure_allowance": "1E-8",
+        "failure_parent_run_id": "b7ade333-524b-4d31-81f0-404b49e894cc"
+      },
+      "expected": [
+        "sub-case A: each join fires exactly once; the envelope names one activated and one skipped source; the run succeeds",
+        "sub-case B: the required child's real failure fails the run with its stable code; neither join fires and no node waits forever",
+        "the durable run event sequence stays contiguous and every skip is published once"
+      ],
+      "observed": {
+        "sub_cases": {
+          "nested_success": {
+            "parent_run_id": "95d67492-0cab-40f8-801e-811f53bf2cc3",
+            "join2_firings": 1,
+            "join_firings": 1
+          },
+          "required_failure": {
+            "parent_run_id": "b7ade333-524b-4d31-81f0-404b49e894cc",
+            "error_code": "budget_exhausted",
+            "join2_firings": 0,
+            "join_firings": 0
+          }
+        }
+      },
+      "independent_truth": {
+        "nested_success": {
+          "parent_run_id": "95d67492-0cab-40f8-801e-811f53bf2cc3",
+          "state": "succeeded",
+          "child_run_id": "af2f7fed-ad4e-4e95-a12b-e1d88e132ff9",
+          "node_states": {
+            "start": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "choose": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "choose2": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "deep": [
+              "pending",
+              "running",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "join2": [
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "join": [
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "shallow": [
+              "skipped"
+            ],
+            "direct": [
+              "skipped"
+            ],
+            "end": [
+              "pending",
+              "running",
+              "succeeded"
+            ]
+          },
+          "join2": {
+            "artifact_id": "d8a6ecde-7a52-4a75-a41f-69d999704388",
+            "envelope": {
+              "results": {
+                "deep": {
+                  "status": "succeeded",
+                  "value": {
+                    "echo": "deep"
+                  }
+                },
+                "shallow": {
+                  "status": "skipped"
+                }
+              }
+            },
+            "firing_seq": [
+              31
+            ]
+          },
+          "join": {
+            "artifact_id": "ae650bc6-209e-46ba-89c7-62515195acf3",
+            "envelope": {
+              "results": {
+                "direct": {
+                  "status": "skipped"
+                },
+                "join2": {
+                  "status": "succeeded",
+                  "value": {
+                    "results": {
+                      "deep": {
+                        "status": "succeeded",
+                        "value": {
+                          "echo": "deep"
+                        }
+                      },
+                      "shallow": {
+                        "status": "skipped"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "firing_seq": [
+              34
+            ]
+          },
+          "join_inputs": {
+            "join2": {
+              "fork_id": "choose2",
+              "sources": [
+                "deep",
+                "shallow"
+              ],
+              "required": [
+                "deep",
+                "shallow"
+              ],
+              "optional": [],
+              "activated": [
+                "deep"
+              ],
+              "skipped": [
+                "shallow"
+              ]
+            },
+            "join": {
+              "fork_id": "choose",
+              "sources": [
+                "join2",
+                "direct"
+              ],
+              "required": [
+                "join2",
+                "direct"
+              ],
+              "optional": [],
+              "activated": [
+                "join2"
+              ],
+              "skipped": [
+                "direct"
+              ]
+            }
+          },
+          "event_seq": {
+            "event_count": 41,
+            "first_seq": 1,
+            "last_seq": 41,
+            "contiguous": true,
+            "seqs": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41
+            ],
+            "types": [
+              "run.status",
+              "run.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "run.status",
+              "run.status",
+              "run.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "run.status",
+              "run.status"
+            ]
+          },
+          "child_children": {
+            "children": 1,
+            "attempts": 1
+          }
+        },
+        "required_failure": {
+          "parent_run_id": "b7ade333-524b-4d31-81f0-404b49e894cc",
+          "state": "failed",
+          "error_code": "budget_exhausted",
+          "child_run_id": "91b8b853-5b1c-4751-a641-971bffd84d6c",
+          "child_budget": [
+            "0.00000001",
+            "USD"
+          ],
+          "node_states": {
+            "start": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "choose": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "choose2": [
+              "pending",
+              "running",
+              "succeeded",
+              "pending",
+              "running",
+              "succeeded"
+            ],
+            "deep": [
+              "pending",
+              "running",
+              "pending",
+              "running",
+              "failed"
+            ],
+            "shallow": [
+              "skipped"
+            ],
+            "join2": [
+              "skipped"
+            ],
+            "direct": [
+              "skipped"
+            ],
+            "join": [
+              "skipped"
+            ],
+            "end": [
+              "skipped"
+            ]
+          },
+          "join_firings": {
+            "join2": {
+              "data_rows": 0,
+              "artifact_ids": [],
+              "succeeded_event_seqs": []
+            },
+            "join": {
+              "data_rows": 0,
+              "artifact_ids": [],
+              "succeeded_event_seqs": []
+            }
+          },
+          "event_seq": {
+            "event_count": 35,
+            "first_seq": 1,
+            "last_seq": 35,
+            "contiguous": true,
+            "seqs": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35
+            ],
+            "types": [
+              "run.status",
+              "run.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "run.status",
+              "run.status",
+              "run.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "node.status",
+              "run.status",
+              "run.status"
+            ]
+          },
+          "children": 1
+        }
+      },
+      "assertions": [
+        {
+          "name": "the parent attempt spawned the selected branch child and parked on children",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"95d67492-0cab-40f8-801e-811f53bf2cc3\", \"job_id\": \"49a914a4-9296-4537-9590-b0bff6d586aa\", \"execution_unit_id\": \"exec-AI-62440-21cd79d3\", \"outcome\": \"waiting_children\", \"run_state\": \"waiting_children\", \"error_code\": \"children_pending\", \"heartbeats\": 3, \"artifacts\": [{\"id\": \"4e16d25a-0e70-46ed-a15d-1676547d7c86\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}, {\"id\": \"4fd0a8bf-e8a6-47cf-904e-5de327c24e62\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}], \"duration_ms\": 521}"
+        },
+        {
+          "name": "the parent parked at the stable child checkpoint",
+          "ok": true,
+          "detail": "{\"run_id\": \"95d67492-0cab-40f8-801e-811f53bf2cc3\", \"kind\": \"children\", \"checkpoint_id\": \"child:af2f7fed-ad4e-4e95-a12b-e1d88e132ff9\", \"decision\": null, \"decision_at\": null, \"exit_confirmed_at\": \"2026-11-07 19:58:43.08521+08\", \"resume_job_id\": null, \"resume_artifact_id\": null, \"created_at\": \"2026-11-07 19:58:43.031896+08\", \"updated_at\": \"2026-11-07 19:58:43.08521+08\"}"
+        },
+        {
+          "name": "the skipped branch nodes and the joins are not published on the waiting hand-over",
+          "ok": true,
+          "detail": "{\"start\": [\"pending\", \"running\", \"succeeded\"], \"choose\": [\"pending\", \"running\", \"succeeded\"], \"choose2\": [\"pending\", \"running\", \"succeeded\"], \"deep\": [\"pending\", \"running\"]}"
+        },
+        {
+          "name": "the selected branch child really executed and succeeded",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"af2f7fed-ad4e-4e95-a12b-e1d88e132ff9\", \"job_id\": \"85467ccf-e70d-498f-8a63-d32514227c51\", \"execution_unit_id\": \"exec-AI-67312-c60a1d92\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"941ec679-4130-4156-be29-8478ba89f904\", \"purpose\": \"final_output\", \"relation\": \"output\", \"state\": \"ready\", \"size_bytes\": 15}], \"duration_ms\": 291}"
+        },
+        {
+          "name": "the lifecycle hook resolved the wait once with the child's outcome",
+          "ok": true,
+          "detail": "{\"kind\": \"children\", \"outcome\": \"succeeded\", \"child_run_id\": \"af2f7fed-ad4e-4e95-a12b-e1d88e132ff9\"}"
+        },
+        {
+          "name": "the resumed parent converged and succeeded",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"95d67492-0cab-40f8-801e-811f53bf2cc3\", \"job_id\": \"b070c184-9227-4a51-abf5-9a2366dae821\", \"execution_unit_id\": \"exec-AI-56476-03cb8716\", \"outcome\": \"succeeded\", \"run_state\": \"succeeded\", \"heartbeats\": 9, \"artifacts\": [{\"id\": \"0f1a4fd6-14b6-47d6-beda-b9212de71871\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}, {\"id\": \"d5b179d4-bfa5-41a7-85bb-76891a71ba14\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}, {\"id\": \"6d1d5ff5-b8ae-421a-b65e-b51978d18f0b\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 15}, {\"id\": \"d8a6ecde-7a52-4a75-a41f-69d999704388\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 98}, {\"id\": \"ae650bc6-209e-46ba-89c7-62515195acf3\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"rea..."
+        },
+        {
+          "name": "each join fired exactly once (one data artifact, one succeeded event)",
+          "ok": true,
+          "detail": "{\"join2\": {\"data_rows\": 1, \"artifact_ids\": [\"d8a6ecde-7a52-4a75-a41f-69d999704388\"], \"succeeded_event_seqs\": [31]}, \"join\": {\"data_rows\": 1, \"artifact_ids\": [\"ae650bc6-209e-46ba-89c7-62515195acf3\"], \"succeeded_event_seqs\": [34]}}"
+        },
+        {
+          "name": "the inner join envelope names the activated and the skipped branch",
+          "ok": true,
+          "detail": "{\"results\": {\"deep\": {\"status\": \"succeeded\", \"value\": {\"echo\": \"deep\"}}, \"shallow\": {\"status\": \"skipped\"}}}"
+        },
+        {
+          "name": "the outer join envelope nests the inner region and skips the unselected branch",
+          "ok": true,
+          "detail": "{\"results\": {\"direct\": {\"status\": \"skipped\"}, \"join2\": {\"status\": \"succeeded\", \"value\": {\"results\": {\"deep\": {\"status\": \"succeeded\", \"value\": {\"echo\": \"deep\"}}, \"shallow\": {\"status\": \"skipped\"}}}}}}"
+        },
+        {
+          "name": "the run's final output is exactly the outer join envelope",
+          "ok": true,
+          "detail": "{\"results\": {\"direct\": {\"status\": \"skipped\"}, \"join2\": {\"status\": \"succeeded\", \"value\": {\"results\": {\"deep\": {\"status\": \"succeeded\", \"value\": {\"echo\": \"deep\"}}, \"shallow\": {\"status\": \"skipped\"}}}}}}"
+        },
+        {
+          "name": "the skipped branch nodes were published as skipped exactly once",
+          "ok": true,
+          "detail": "{\"start\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose2\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"deep\": [\"pending\", \"running\", \"pending\", \"running\", \"succeeded\"], \"join2\": [\"pending\", \"running\", \"succeeded\"], \"join\": [\"pending\", \"running\", \"succeeded\"], \"shallow\": [\"skipped\"], \"direct\": [\"skipped\"], \"end\": [\"pending\", \"running\", \"succeeded\"]}"
+        },
+        {
+          "name": "the executed branch and the end node reached succeeded",
+          "ok": true,
+          "detail": "{\"start\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose2\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"deep\": [\"pending\", \"running\", \"pending\", \"running\", \"succeeded\"], \"join2\": [\"pending\", \"running\", \"succeeded\"], \"join\": [\"pending\", \"running\", \"succeeded\"], \"shallow\": [\"skipped\"], \"direct\": [\"skipped\"], \"end\": [\"pending\", \"running\", \"succeeded\"]}"
+        },
+        {
+          "name": "join2 waited only for its activated required source",
+          "ok": true,
+          "detail": "{\"fork_id\": \"choose2\", \"sources\": [\"deep\", \"shallow\"], \"required\": [\"deep\", \"shallow\"], \"optional\": [], \"activated\": [\"deep\"], \"skipped\": [\"shallow\"]}"
+        },
+        {
+          "name": "join waited only for its activated required source",
+          "ok": true,
+          "detail": "{\"fork_id\": \"choose\", \"sources\": [\"join2\", \"direct\"], \"required\": [\"join2\", \"direct\"], \"optional\": [], \"activated\": [\"join2\"], \"skipped\": [\"direct\"]}"
+        },
+        {
+          "name": "the success run's event sequence is contiguous",
+          "ok": true,
+          "detail": "{\"event_count\": 41, \"first_seq\": 1, \"last_seq\": 41, \"contiguous\": true, \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41], \"types\": [\"run.status\", \"run.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"run.status\", \"run.status\", \"run.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"run.status\", \"run.status\"]}"
+        },
+        {
+          "name": "the required-failure parent also parked on its required child",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"b7ade333-524b-4d31-81f0-404b49e894cc\", \"job_id\": \"1a64ec7e-4697-4592-b22e-4153236d1bf0\", \"execution_unit_id\": \"exec-AI-66616-39e1f206\", \"outcome\": \"waiting_children\", \"run_state\": \"waiting_children\", \"error_code\": \"children_pending\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"ddfec980-eadb-4e86-98d7-e241669ca9cb\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}, {\"id\": \"45535e82-a4f4-4a2c-ba79-d79fd8e2a31f\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}], \"duration_ms\": 265}"
+        },
+        {
+          "name": "the required child inherited the parent's tiny allowance",
+          "ok": true,
+          "detail": "{\"child\": [\"0.00000001\", \"USD\"], \"parent\": [\"0.00000001\", \"USD\"]}"
+        },
+        {
+          "name": "the required child's real model reservation was refused (budget_exhausted)",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"91b8b853-5b1c-4751-a641-971bffd84d6c\", \"job_id\": \"7fca4349-9f5a-47cf-b2d3-0cc0227bdc45\", \"execution_unit_id\": \"exec-AI-71288-512dd1e7\", \"outcome\": \"failed\", \"run_state\": \"failed\", \"error_code\": \"budget_exhausted\", \"error\": \"the agent model call was refused by the platform\", \"heartbeats\": 0, \"duration_ms\": 135}"
+        },
+        {
+          "name": "the child's failure is the authoritative budget_exhausted row",
+          "ok": true,
+          "detail": "{\"id\": \"91b8b853-5b1c-4751-a641-971bffd84d6c\", \"state\": \"failed\", \"phase\": \"idle\", \"revision\": 3, \"next_event_seq\": 12, \"budget_limit\": \"0.00000001\", \"currency\": \"USD\", \"started_at\": \"2026-11-07 19:58:48.747564+08\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 19:58:48.850642+08\", \"input_artifact_id\": \"2d33a78b-c79c-44e1-90f0-184813ba2f4a\", \"output_artifact_id\": null, \"error_code\": \"budget_exhausted\", \"execution_snapshot_id\": \"e481b8df-f797-4de1-82be-f409b006e64b\"}"
+        },
+        {
+          "name": "the lifecycle hook resolved the required child's failure once",
+          "ok": true,
+          "detail": "{\"kind\": \"children\", \"outcome\": \"failed\", \"child_run_id\": \"91b8b853-5b1c-4751-a641-971bffd84d6c\"}"
+        },
+        {
+          "name": "the parent fails explicitly with the child's stable code",
+          "ok": true,
+          "detail": "{\"status\": \"executed\", \"run_id\": \"b7ade333-524b-4d31-81f0-404b49e894cc\", \"job_id\": \"6adbd65d-d79f-46cb-9de7-98fbfcb71df0\", \"execution_unit_id\": \"exec-AI-69432-0b7b31f4\", \"outcome\": \"failed\", \"run_state\": \"failed\", \"error_code\": \"budget_exhausted\", \"error\": \"the required child Run ended failed\", \"heartbeats\": 2, \"artifacts\": [{\"id\": \"e77b8678-c000-4739-a435-dabc230eaa29\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}, {\"id\": \"c3c78ae1-2208-4b74-9a3a-4da740190b14\", \"purpose\": \"node_output\", \"relation\": \"artifact\", \"state\": \"ready\", \"size_bytes\": 31}], \"duration_ms\": 255}"
+        },
+        {
+          "name": "the failed run is terminal, not parked",
+          "ok": true,
+          "detail": "{\"id\": \"b7ade333-524b-4d31-81f0-404b49e894cc\", \"state\": \"failed\", \"phase\": \"idle\", \"revision\": 6, \"next_event_seq\": 36, \"budget_limit\": \"0.00000001\", \"currency\": \"USD\", \"started_at\": \"2026-11-07 19:58:47.868324+08\", \"cancel_requested_at\": null, \"finished_at\": \"2026-11-07 19:58:49.433628+08\", \"input_artifact_id\": \"b8b9efe5-9e89-4d29-abbb-4dd321cd1c10\", \"output_artifact_id\": null, \"error_code\": \"budget_exhausted\", \"execution_snapshot_id\": \"8a64dee0-8a78-40ab-8104-887d4c0fc09b\"}"
+        },
+        {
+          "name": "the required branch node failed and none of the joins ever fired",
+          "ok": true,
+          "detail": "{\"start\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose2\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"deep\": [\"pending\", \"running\", \"pending\", \"running\", \"failed\"], \"shallow\": [\"skipped\"], \"join2\": [\"skipped\"], \"direct\": [\"skipped\"], \"join\": [\"skipped\"], \"end\": [\"skipped\"]}"
+        },
+        {
+          "name": "no join data artifact and no join succeeded event exists for the failed run",
+          "ok": true,
+          "detail": "{\"join2\": {\"data_rows\": 0, \"artifact_ids\": [], \"succeeded_event_seqs\": []}, \"join\": {\"data_rows\": 0, \"artifact_ids\": [], \"succeeded_event_seqs\": []}}"
+        },
+        {
+          "name": "the skipped nodes were published as skipped after the failure",
+          "ok": true,
+          "detail": "{\"start\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"choose2\": [\"pending\", \"running\", \"succeeded\", \"pending\", \"running\", \"succeeded\"], \"deep\": [\"pending\", \"running\", \"pending\", \"running\", \"failed\"], \"shallow\": [\"skipped\"], \"join2\": [\"skipped\"], \"direct\": [\"skipped\"], \"join\": [\"skipped\"], \"end\": [\"skipped\"]}"
+        },
+        {
+          "name": "the failed run's event sequence is contiguous",
+          "ok": true,
+          "detail": "{\"event_count\": 35, \"first_seq\": 1, \"last_seq\": 35, \"contiguous\": true, \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35], \"types\": [\"run.status\", \"run.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"run.status\", \"run.status\", \"run.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"node.status\", \"run.status\", \"run.status\"]}"
+        }
+      ],
+      "assertion_count": 26,
+      "commands": [
+        "python -m pytest tests/f13b/test_t108_delegation_faults.py -q"
+      ],
+      "not_run": [
+        "a real vendor model (dev-stub profile; no credentials/endpoint on this host)",
+        "a real browser DOM",
+        "a resident supervisor daemon (the production one-shot `exec --once` shape is used)",
+        "20 parents each with simultaneously in-flight children (the child pool is deliberately shrunk to two slots, so at most two child attempts execute at once)"
+      ],
+      "duration_s": 9.92,
+      "failure": null
+    }
+  ]
+}
