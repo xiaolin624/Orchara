@@ -212,6 +212,16 @@ $ python -m pytest tests/f13b/test_t107_lifecycle_faults.py -q
 
 合并：`git merge integration/f13b` → merge commit `db94214`（无冲突；PROGRESS 双段未冲突）。
 
+最终树复跑（`e8e9311`，即交付提交；相对 `db94214` 只多一条 test 证据字段修改与本文档/证据）：
+
+```text
+$ python -m pytest tests/f13b -q
+........................................................................ [ 39%]
+........................................................................ [ 78%]
+.......................................                                  [100%]
+183 passed in 220.05s (0:03:40)
+```
+
 ## 9. 残余风险 / 边界
 
 - FAULT-05 的“旧进程活着”证据来自 OS suspend + 同一 PID/creation time + 真实 PG backend；
