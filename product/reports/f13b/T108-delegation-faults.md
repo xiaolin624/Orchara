@@ -9,7 +9,9 @@ spawnChild / submitWorkerResult / attempt-exit / waiting）。模型仍只有
 - 分支 / worktree：`t/t108-delegation-faults` / `E:\Orchara-wt\t108`
 - 基线：`integration/f13b` @ `f234e72`；测试代码提交 `1f0bfd5`；结束前 merge
   `integration/f13b` @ `d593c1e`（其中已含 T106、T107）→ 合并提交 `203b2d5`；
-  门禁与证据都在合并后的树 `203b2d5` 上重跑。
+  门禁与证据都在合并后的树 `203b2d5` 上重跑。其后 integration 又合入本票（`883ca35`
+  的树与 `ee1c2d5` 相同），本分支再 merge 该 tip；此后的提交均为 docs-only
+  （代码/测试树自 `ee1c2d5` 未变）。
 - 环境：PostgreSQL 16.4 `127.0.0.1:55432`（每个 stack 一个一次性数据库）；Go 1.27.3；
   Python 3.12.2；WSL2 Ubuntu-24.04 + runsc release-20241118.0（**本票不执行任何 python
   节点，不使用沙箱**）；模型 dev-stub。
@@ -264,6 +266,17 @@ $ $env:F13B_WRITE_EVIDENCE='1'; python -m pytest tests/f13b/test_t108_delegation
 
 普通 pytest 运行不会重写已提交的证据 JSON（`support/t108.py` 的 `persist` 在
 `F13B_WRITE_EVIDENCE!=1` 时直接返回；T101/T106 同一约定）。
+
+**最终树复跑（`ee1c2d5`，含 T106 最终证据文档的 docs-only merge）：**
+
+```text
+$ python -m pytest tests/f13b/test_t108_delegation_faults.py -q   -> 4 passed in 84.78s
+$ python -m pytest tests/f13b -q                                  -> 190 passed in 301.17s
+$ python -m pytest tests/f12 -q                                   -> 447 passed in 322.25s
+$ go build/vet/test ./...                                         -> 0 / 0 / 0
+$ gofmt -l internal cmd tools                                     -> 空
+$ python tools/sync_spec.py --check                               -> no drift
+```
 
 ## 8. 覆盖边界与 `not_run`
 
