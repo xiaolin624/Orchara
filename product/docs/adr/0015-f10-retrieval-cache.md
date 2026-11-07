@@ -4,7 +4,9 @@
 - 日期：2026-11-04
 - 相关：F10 / T067（GitHub #68，规划 ID F10.05）；分支 `t/t067-retrieval-cache`；
   报告 `product/reports/f10/T067-retrieval-cache.md`；
-  迁移 `product/db/migrations/0037_knowledge_retrieval_cache.sql`。
+  迁移 `product/db/migrations/0037_knowledge_retrieval_cache.sql`；
+  后续复核：F13B/T113（GitHub #114，`product/reports/f13b/T113-cache-comparison.md`，
+  命中复检补强为“重读封存正文 + sha256”，并记录其延迟成本）。
 - 前置：T055（`reports/f10/T055-knowledge-ingest.md`、ADR 0010、迁移 `0034_knowledge.sql`、
   `internal/knowledge` 的 SQL 先过滤后排序检索）与 T064（`reports/f10/T064-grounded-citations.md`、
   ADR 0012、`Answer`/`GetChunk` 返回前复检）。
@@ -80,6 +82,11 @@ T055 交付了"SQL 先做 ACL/当前版本过滤，再对有界候选集排序"�
    `currentReadableChunkSQL` **唯一定义**，检索（`rankRetrieval`）与引用打开（`GetChunk`）
    复用同一片段——此前三处各抄一份，T061 激活切换时须同时改三份，权限条件有漂移风险。
    缓存这一处只多传 owner 参数位（`$3`）与自己的候选集条件。
+   **F13B/T113（2026-11-08）补强**：上述数据库行复核之后，命中还要重读每条返回 chunk 的
+   封存正文，要求正文与 sha256 都仍等于缓存行记录的值；对象缺失/不可读按 miss 处理
+   （`item_unreadable`）。原因：只比对 `artifacts.sha256` 列时，封存对象缺失/被替换的
+   条目仍会被当作命中，而权威 miss 路径会跳过该候选——缓存命中必须与权威答案一致，
+   不能把“对象暂时不可读”掩盖成命中。
 7. 只有全部通过才返回缓存正文，并 `hit_count+1`/`last_hit_at=now()`。
 
 因此：**异步驱逐只是优化**。删除/撤权先在权威表生效，旧键不再被查找；即使旧行还在
