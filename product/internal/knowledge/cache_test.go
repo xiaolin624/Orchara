@@ -147,3 +147,27 @@ func TestRetrievalCacheTTLIsBoundedAndPositive(t *testing.T) {
 		t.Fatalf("RetrievalCacheDefaultTTL = %s is outside the documented bound", RetrievalCacheDefaultTTL)
 	}
 }
+
+func TestCachedBodyVerificationRejectsChangedSealedBytes(t *testing.T) {
+	// F13B/T113: a hit may only serve the bytes that are still sealed under the
+	// chunk's body artifact. The database sha comparison alone is not enough: a
+	// temporarily unreadable or replaced object would otherwise be served from the
+	// memoized text while the authoritative path skips it.
+	text := "华北地区十月的销售额是 1234.50 元"
+	item := retrievalCacheItem{
+		ChunkID:    "chunk-1",
+		Text:       text,
+		BodySHA256: cacheBodySHA256(text),
+	}
+	if ok, reason := cachedBodyMatches(item, text); !ok {
+		t.Fatalf("identical sealed bytes must match (reason %q)", reason)
+	}
+	if ok, reason := cachedBodyMatches(item, text+"篡改"); ok || reason != CacheDiscardItemMismatch {
+		t.Fatalf("changed bytes must be a mismatch (ok=%v reason=%q)", ok, reason)
+	}
+	changedSHA := item
+	changedSHA.BodySHA256 = strings.Repeat("0", 64)
+	if ok, reason := cachedBodyMatches(changedSHA, text); ok || reason != CacheDiscardItemMismatch {
+		t.Fatalf("a body whose sha no longer matches must be a mismatch (ok=%v reason=%q)", ok, reason)
+	}
+}

@@ -9,7 +9,9 @@ package knowledge
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -224,14 +226,17 @@ func (s *Service) cachedRetrieval(
 	return chunks, info, nil
 }
 
-// validateCachedItems re-checks every returned chunk's document in one SQL
-// statement, using exactly the retrieval/citation predicates: owner ACL, KB and
-// document tombstones, ready + active revision, chunk revision = current revision,
-// body artifact ready/not-deleted/same owner. The predicate itself is
-// `currentReadableChunkSQL` (readable_chunk.go), the one definition retrieval,
-// citation open and this hit check share. The body artifact's content hash and
-// the chunk provenance must equal the stored values, so a memoized body is only
-// served while it is still the sealed body of the current chunk.
+// validateCachedItems re-checks every returned chunk against the authoritative
+// rows and the sealed object bytes, using exactly the retrieval/citation
+// predicates: owner ACL, KB and document tombstones, ready + active revision,
+// chunk revision = current revision, body artifact ready/not-deleted/same owner.
+// The predicate itself is `currentReadableChunkSQL` (readable_chunk.go), the one
+// definition retrieval, citation open and this hit check share. The body
+// artifact's content hash and the chunk provenance must equal the stored values,
+// and (F13B/T113) the sealed object is re-read: its bytes must still be the
+// stored text with the stored sha256. A now-unreadable object is a miss because
+// the authoritative path would skip that candidate; serving the memoized text
+// would otherwise make a cache hit answer differently from a cache miss.
 func (s *Service) validateCachedItems(
 	ctx context.Context, key retrievalCacheKey, items []retrievalCacheItem,
 ) (bool, string) {
@@ -244,7 +249,7 @@ func (s *Service) validateCachedItems(
 	}
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.body_artifact_id::text, coalesce(a.sha256, '')`+
+		       kc.body_artifact_id::text, coalesce(a.sha256, ''), a.object_key`+
 		// The same "current readable chunk" predicate retrieval and citation open
 		// use (readable_chunk.go), so a permission condition cannot drift between
 		// the cached answer and the authoritative one. The owner is $3 here.
@@ -264,6 +269,7 @@ func (s *Service) validateCachedItems(
 		chunkNo        int
 		bodyArtifactID string
 		bodySHA256     string
+		objectKey      string
 	}
 	found := make(map[string]currentChunk, len(items))
 	for rows.Next() {
@@ -273,7 +279,7 @@ func (s *Service) validateCachedItems(
 		)
 		if err := rows.Scan(
 			&chunkID, &current.documentID, &current.revision, &current.chunkNo,
-			&current.bodyArtifactID, &current.bodySHA256,
+			&current.bodyArtifactID, &current.bodySHA256, &current.objectKey,
 		); err != nil {
 			return false, CacheDiscardUnavailable
 		}
@@ -297,6 +303,35 @@ func (s *Service) validateCachedItems(
 			current.bodySHA256 != item.BodySHA256 {
 			return false, CacheDiscardItemMismatch
 		}
+		sealedText, err := s.readChunkText(current.objectKey)
+		if err != nil {
+			// The object is missing/unreadable now. The authoritative miss path
+			// skips such a candidate (and refuses to memoize a partial result), so
+			// a hit must not serve it either.
+			return false, CacheDiscardItemUnreadable
+		}
+		if ok, reason := cachedBodyMatches(item, sealedText); !ok {
+			return false, reason
+		}
+	}
+	return true, ""
+}
+
+// cacheBodySHA256 is the content hash of one sealed chunk body.
+func cacheBodySHA256(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// cachedBodyMatches proves a memoized item is still exactly the sealed body: the
+// bytes and their sha256 both have to equal what the entry stored. The database
+// rows alone cannot prove this (the object is the authoritative byte store).
+func cachedBodyMatches(item retrievalCacheItem, sealedText string) (bool, string) {
+	if sealedText != item.Text {
+		return false, CacheDiscardItemMismatch
+	}
+	if cacheBodySHA256(sealedText) != item.BodySHA256 {
+		return false, CacheDiscardItemMismatch
 	}
 	return true, ""
 }

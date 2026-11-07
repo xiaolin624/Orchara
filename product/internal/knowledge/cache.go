@@ -14,8 +14,11 @@ package knowledge
 //     eviction is an optimization, never a permission guarantee.
 //   - every hit re-checks each returned chunk's document in SQL (not deleted, the
 //     chunk belongs to the document's active ready index version, body artifact
-//     ready/not deleted/same owner) and the body artifact's content hash. Any
-//     disagreement discards the entry and the request proceeds as a miss.
+//     ready/not deleted/same owner) and re-reads the sealed body artifact: its
+//     bytes must equal the stored text and its sha256 must equal the stored body
+//     hash. Any disagreement, or an object that has become unreadable (which the
+//     authoritative path would skip), discards the entry and the request proceeds
+//     as a miss. The memoized text is never returned without the bytes behind it.
 //   - the row is looked up by (cache_key, principal_id, knowledge_base_id), so a
 //     stored body can never be served to a different principal.
 //   - `expires_at` is a TTL, not an authorization: a hit inside the TTL still runs
