@@ -2356,7 +2356,7 @@ DB/对象目录只用于**独立断言**外部副作用真值。票面「不重�
 
 **门禁（修复后，真实 tail）**
 
-- `pytest tests/f12 -q` → **441 passed in 232.18s (0:03:52)**（基线 318，无退化；新增 123 条）
+- `pytest tests/f12 -q` → **441 passed in 233.72s (0:03:53)**（基线 318，无退化；新增 123 条）
 - `pytest tests/f12/test_gate_mutations.py -q` → **5 passed in 51.19s**
 - `pytest tests/f12/test_operations.py -q`（证据运行）→ **319 passed in 26.44s**
 - `pytest tests/f12/test_t100_{...}.py -q`（证据运行）→ **5 passed in 69.56s**
@@ -2364,7 +2364,7 @@ DB/对象目录只用于**独立断言**外部副作用真值。票面「不重�
 - `pytest tests/f12/test_t098_* -q` → **14 passed in 28.38s**
 - `pytest tests/f12/test_journey_status.py` → **10 passed**；`test_evidence_redaction.py` → **4 passed**；
   `test_report_encoding.py` → **1 passed**；`tests/f01/test_page_query_guard.py` → **9 passed**
-- `pytest tests/f01 -q` → **165 passed in 754.53s (0:12:34)**（基线 155，无退化）
+- `pytest tests/f01 -q` → **165 passed in 714.73s (0:11:54)**（基线 155，无退化）
 - Go：`build=0`、`vet=0`、`test=0`、`gofmt -l internal cmd tools` 空、`sync_spec --check` → `no drift`；
   `node --check apps/web/src/assets/nav.js` exit 0
 - 真实栈串行锁 `E:\Orchara\.scratch\f12\locks\realstack` 本工作树持有至收尾并删除。
