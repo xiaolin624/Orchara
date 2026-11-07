@@ -402,3 +402,45 @@ T096 的三条用户可见 AC（取消中不显示已撤销、finalizing 与终�
 **真实栈 + 已提交页面字节**上均有执行型证据；410 保留窗口分支（T093 的 `not_run`）已由本票用
 `ORCHARA_RUN_EVENT_RETENTION=50ms` 的真实栈跑出，并证明页面会拉快照、重建且不静默续传。未修的缺口
 全部属于其它 epic 或环境边界，已如实列在 §10/§12，没有写成通过。
+
+## 14. 第二轮复核后修正（2026-11-07，F3/F4）
+
+> 本节是**第二轮独立复核后**的补充；§1–§13 的旧结论不删除，在其代码/测试范围内仍成立。
+> 逐条出处、复现、红/绿 tail 见 `reports/f12/REVIEW2-FIXES.md` §3/§4/§6。
+
+第二轮复核对 `1cdff9c...e3aa1e1` 提了两条页面发现，修复提交 `83307b1`；本轮补红→绿测试，
+并修掉 renderer 里一个会让修复在真实执行时失效的变量错误：
+
+- **F3（Spec P2）调试页 410 后无法重建快照。**
+  旧 `runs.js:2026` 在 410 分支固定调用 `showRunDetail`，而 `debug.html` 没有 `#detail-id` 等
+  `/runs` 详情锚点，读到快照后抛 `TypeError`。现在 `runs.js:1994-2029` 由调用页提供
+  `options.renderSnapshot`：没有 renderer 且页面无锚点时明确报错、**不读取快照**；
+  `debug.js:414-428` 传入自己的 renderer（`beginRunView` 重建节点视图）。
+  **追加修正**：`debug.js:419` 原写未定义的 `draftRevision`（`initDebug` 作用域只有
+  `frozenRevision`），`node --check` 能过、renderer 一执行就 `ReferenceError`；已改为
+  `frozenRevision`（`:422`）。没有这一改，F3 的“调试页能恢复”仍然不成立。
+- **F4（Spec P2）迟到的快照覆盖新选择。**
+  旧 `runs.js:2012` `await apiFull(snapshotPath)` 之后没有校验；等 A 快照时切到 B，A 返回后会把
+  `displayedRun(ID)`/详情覆盖成 A 并追加一行。现在 `runs.js:2047-2051` 在 await 之后、
+  任何渲染/追加/状态写入之前用 `isCancelled`（`beginRunTimeline` 的 generation）丢弃过期快照。
+
+本轮新增测试（Node 执行 **已提交真实字节**；`debug.js` 按真实 `debug.html` id 集合搭 shim；
+不是 Playwright）：
+
+```text
+tests/f12/test_t096_review2.py::test_a_410_without_detail_anchors_does_not_throw_and_uses_the_renderer PASSED
+tests/f12/test_t096_review2.py::test_the_debug_page_passes_its_own_snapshot_renderer_to_the_timeline PASSED
+tests/f12/test_t096_review2.py::test_a_late_410_snapshot_never_overwrites_the_newer_run_selection PASSED
+5 passed in 0.79s          # 连同 T098 的 F1/F2 两条
+```
+
+红证据：`e3aa1e1` 独立 detached worktree（只拷入新测试、不改源码）三条全红，其中
+410 无锚点页的状态被旧 `.catch` 吞成“事件流读取失败：Cannot set properties of null”，
+迟到快照用例的 `detail_id` 变成 A；`83307b1` 的 `debug.js` 单独复现
+`ReferenceError: draftRevision is not defined at debug.js:419`（tail 见
+`REVIEW2-FIXES.md` §5.1）。§9 第 1 条“410 真重建”对 `/runs` 仍然成立；本轮补的是
+`/debug` 的 renderer 契约与“迟到快照不得覆盖新选择”。
+
+边界不变：仍无浏览器 DOM/真实 `EventSource`；410 由 harness 的 fetch 410 响应驱动，
+真实服务器 410 的端到端页面证据仍由 `test_t096_stack.py::test_real_410_drives_the_page_snapshot_rebuild`
+提供，本轮未改该用例。

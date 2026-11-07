@@ -2430,3 +2430,42 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - **生产图执行是 Go `internal/presetexec`**，不是 LangGraph（ADR 0034）。
 - 既有跨 epic 红（f03/f02a/f00b 各 2 条）与本批无关，已在 baseline `1cdff9c` 复现，未修。
 - 证据文件已脱敏，但**历史提交仍含一个已失效的测试 key 字符串**；如需清除须单独走历史改写。
+
+## F12 第二轮复核修复（page findings F1–F4，2026-11-07）
+
+- 分支 `t/f12-review2`，worktree `E:\Orchara-wt\review2`；基线 `integration/f12` @ `e3aa1e1`；
+  被复核修复提交 `83307b1`。逐条出处/复现/红→绿真实 tail 见
+  `reports/f12/REVIEW2-FIXES.md`；T096/T098 报告各追加“第二轮复核后修正”小节。
+- 手段：无 Playwright/真实浏览器；Node 执行**已提交真实字节** + 最小 DOM/fetch shim。
+  红证据在 `e3aa1e1` 的独立 detached worktree 上生成（只拷入新测试、不改源码，已删除）。
+- 范围：`apps/web/src/assets/{runs,debug,personal-data}.js`、
+  `tests/f12/test_t096_review2.py`、`tests/f12/test_t098_review2.py`、
+  `tests/f11/test_t073_pages.py`（旧断言随行为更新）、`reports/f12/**`、本节。
+  未改 `docs/spec/**`、`contracts/**`、迁移；未回退 `83307b1`。
+
+| 发现 | 结论 | 关键证据 |
+|---|---|---|
+| F1 空选择=授权整个 Run（Standards P1） | **已修** | 空选择 `throw` 且无 api/csrf/fetch；单选/多选发送等于选择的 `X-Diagnostic-Object-Scope`；页面原因进 `#grant-status`。`grants.go:8-10,395-423` 是“缺头推导全部”的服务端依据 |
+| F1 追加：勾选后仍发不出请求 | **已修** | 复选框值原为 `artifact:<uuid>`，构造器期望裸 uuid → “artifact id 必须是 UUID”+0 POST（`83307b1` 上复现）；`personal-data.js:716` 改为 artifact id |
+| F2 重建中/失败被说成不可检索（Standards P2） | **已修** | `indexing`/`failed` note 不再含旧两句假话，明确“旧索引仍可能是检索来源”+“首次”；ADR 0018:26,58-59 |
+| F3 调试页 410 后无法重建（Spec P2） | **已修** | 无 renderer 且无 `#detail-id` → 明确报错、不取快照、不抛；`debug.js` 传入真 renderer |
+| F3 追加：renderer 引用未定义变量 | **已修** | `debug.js:419 draftRevision` → renderer 一执行就 `ReferenceError`（`node --check` 不报）；改为 `frozenRevision` |
+| F4 迟到快照覆盖新选择（Spec P2） | **已修** | await 后按 generation 丢弃：`displayedRunID`/`displayedRun`/详情仍为 B，时间线不追加，renderer 不调用 |
+
+新增 5 条回归用例（先红后绿）：F12 全量从 **441** 变为 **446 passed**；`test_t096_review2.py`
+3 条、`test_t098_review2.py` 2 条；红证据 5 条在 `e3aa1e1` 上全红（`5 failed in 1.38s`）。
+
+**门禁（真实 tail）**
+
+- `pytest tests/f12 -q` → **446 passed in 238.13s (0:03:58)**
+- `pytest tests/f01 -q`（单跑）→ **165 passed in 733.40s (0:12:13)**（无退化）
+- Go：`build=0`、`vet=0`、`test=0`；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`
+- `node --check` on `runs.js`/`debug.js`/`personal-data.js` → exit 0
+- `pytest tests/f11/test_t073_pages.py::test_the_diagnostic_grant_helpers_execute_under_node`
+  + `tests/f12/test_t096_pages.py` + `test_t098_mobile_pages.py` → **19 passed in 1.82s**
+- `git merge integration/f12` → **Already up to date.**（集成分支 tip 仍为 `e3aa1e1`）
+
+**诚实边界**：仍是 Node 执行真实字节，不是浏览器；CSS/真实 `EventSource`/表单控件语义
+`not_run`。真实服务器 410→页面重建仍由 `test_t096_stack.py::test_real_410_drives_the_page_snapshot_rebuild`
+覆盖（未改）。F1 页面路径只证明请求形状与“没有请求”，真实服务端解析由 F11/T073 既有真实栈用例覆盖。
+跨 epic 既有红（f03/f02a/f00b）未触碰、未修。
