@@ -2,9 +2,11 @@
 
 - **状态：`passed`**（真实栈上 FAULT-01/02/03 三个故障全部注入并通过；真实供应商/真实模型 `not_run`）
 - 分支：`t/t106-approval-faults`；worktree `E:\Orchara-wt\t106`
-- 基线：`integration/f13b` @ `c132e8e`；完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`），
-  merge commit `cb20f85`；`PROGRESS.md` 冲突保留 T104/T105/T106 三节
-- 证据生成时的 HEAD：`cb20f85`（证据 JSON 的 `product_commit` 字段即此值）
+- 基线：`integration/f13b` @ `c132e8e`；完成前先 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`）
+  → merge commit `cb20f85`；随后 `integration/f13b` 又推进到 `1ce0d65`（T107 + 已合并的 T106），再次 merge
+  → merge commit `18e2bd4`；`PROGRESS.md` 冲突保留 T104/T105/T106/T107 四节
+- 证据生成时的 HEAD：`cb20f85`（证据 JSON 的 `product_commit` 字段即此值；其后只追加了 T107 的测试/文档
+  与本次 merge，T106 代码未变）
 - 交付（全部为新增文件，未改动 `docs/spec/**`、`contracts/**`、迁移或既有票测试断言）：
   - `product/tests/f13b/test_t106_approval_faults.py`：3 条真实栈测试（FAULT-01/02/03），共 53 条断言
   - `product/tests/f13b/fault_support.py`：`Fault` 记录（注入点/输入/预期/实际/独立账本/命令）、
@@ -229,7 +231,22 @@ $ python -m pytest tests/f13b/test_t106_approval_faults.py -q --basetemp=...   #
 3 passed in 64.16s
 ```
 
-两次均：
+再 merge `integration/f13b` @ `1ce0d65`（T107 + 已合并的 T106）后（merge commit `18e2bd4`）：
+
+```text
+$ python -m pytest tests/f13b -q
+........................................................................ [ 38%]
+........................................................................ [ 77%]
+..........................................                               [100%]
+186 passed in 211.65s (0:03:31)
+
+$ python -m pytest tests/f12 -q
+........................................................................ [ 96%]
+...............                                                          [100%]
+447 passed in 311.84s (0:05:11)
+```
+
+三次均：
 
 ```text
 $ go build ./...          # exit 0（无输出）

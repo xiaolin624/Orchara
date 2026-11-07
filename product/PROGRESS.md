@@ -2609,7 +2609,9 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 ## F13B T106（GitHub #107）：故障注入审批重启、换参与写后丢回执（2026-11-07）
 
 - 分支 `t/t106-approval-faults` / worktree `E:\Orchara-wt\t106`；基线 `integration/f13b` @ `c132e8e`，
-  完成前 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`），`PROGRESS.md` 双方小节保留。
+  完成前先 merge 推进后的 `integration/f13b`（T104/T105，`f234e72`）→ `cb20f85`；随后集成 tip 又推进到
+  `1ce0d65`（T107 + 已合并的 T106），再次 merge → `18e2bd4`；`PROGRESS.md` 冲突保留
+  T104/T105/T106/T107 四节。
 - 交付：新增 `tests/f13b/fault_support.py`（Fault/进程/PG/证据 writer，仅 `F13B_WRITE_EVIDENCE=1` 重写）、
   `tests/f13b/t106_worker.py`（真实 worker OS 进程）、`tests/f13b/test_t106_approval_faults.py`
   （3 条真实栈测试，53 条断言）、`reports/f13b/T106-faults.json`（3 个故障记录）、
@@ -2636,6 +2638,9 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   `pytest tests/f12` **447 passed in 488.01s**；证据重生成 **3 passed in 64.16s**
   （`T106-faults.json` 的 `product_commit=cb20f85`）；Go `build/vet/test` 全 0；gofmt 空；
   `sync_spec --check` → `no drift`。原始 tail 在 `E:\Orchara\.scratch\f13b\T106\*`。
+- 再 merge `integration/f13b` @ `1ce0d65`（T107 + 已合并的 T106）后（merge commit `18e2bd4`）复跑：
+  `pytest tests/f13b` **186 passed in 211.65s**；`pytest tests/f12` **447 passed in 311.84s**；
+  Go `build/vet/test` 全 0；gofmt 空；`sync_spec --check` → `no drift`。
 
 ## F13B T107（GitHub #108）：旧图、活旧进程、取消与事件竞态故障注入（2026-11-07）
 - 分支 `t/t107-lifecycle-faults` / worktree `E:\Orchara-wt\t107`；基线 `integration/f13b` @ `834ca68`，结束前 merge `integration/f13b` @ `f234e72`（T105）→ 合并提交 `db94214`，其上重跑门禁；证据最后一轮在 `e904e0c` 树。
