@@ -9,7 +9,9 @@ spawnChild / submitWorkerResult / attempt-exit / waiting）。模型仍只有
 - 分支 / worktree：`t/t108-delegation-faults` / `E:\Orchara-wt\t108`
 - 基线：`integration/f13b` @ `f234e72`；测试代码提交 `1f0bfd5`；结束前 merge
   `integration/f13b` @ `d593c1e`（其中已含 T106、T107）→ 合并提交 `203b2d5`；
-  门禁与证据都在合并后的树 `203b2d5` 上重跑。
+  门禁与证据都在合并后的树 `203b2d5` 上重跑。其后 integration 又合入本票（`883ca35`
+  的树与 `ee1c2d5` 相同），本分支再 merge 该 tip；此后的提交均为 docs-only
+  （代码/测试树自 `ee1c2d5` 未变）。
 - 环境：PostgreSQL 16.4 `127.0.0.1:55432`（每个 stack 一个一次性数据库）；Go 1.27.3；
   Python 3.12.2；WSL2 Ubuntu-24.04 + runsc release-20241118.0（**本票不执行任何 python
   节点，不使用沙箱**）；模型 dev-stub。
