@@ -1990,7 +1990,24 @@ let runTimelineGeneration = 0;
  * the timeline, and returns the rebuilt snapshot. It never restarts the stream
  * from the expired cursor.
  */
-async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list) {
+/** True when this page carries the runs-page Run detail anchors. */
+function pageHasRunDetailAnchors() {
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function') {
+    return false;
+  }
+  return Boolean(document.getElementById('detail-id'));
+}
+
+async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list, options) {
+  const settings = options && typeof options === 'object' ? options : {};
+  // The page that started the timeline owns the rendering: /runs has the detail
+  // anchors, /debug has the node-state panel. Falling back to showRunDetail on a
+  // page without those anchors used to throw after the snapshot had been read,
+  // which is why the debug page could never recover from a 410.
+  const isStale = typeof settings.isCancelled === 'function' ? settings.isCancelled : null;
+  const renderSnapshot = typeof settings.renderSnapshot === 'function'
+    ? settings.renderSnapshot
+    : (pageHasRunDetailAnchors() ? showRunDetail : null);
   const snapshotPath = typeof runStreamSnapshotPath === 'function'
     ? runStreamSnapshotPath(failure, runId)
     : String((failure && (failure.snapshotPath || failure.snapshotURL)) || '');
@@ -1998,6 +2015,14 @@ async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list) {
     setStatus(
       '事件保留窗口已过期（410），但没有可安全使用的 Run 快照路径；' +
         '页面停止时间线，不静默续传，也不伪造历史。',
+      'bad',
+    );
+    return null;
+  }
+  if (renderSnapshot === null) {
+    setStatus(
+      '事件保留窗口已过期（410）：本页没有 Run 快照渲染函数，' +
+        '因此不重建、不静默续传，也不伪造历史。',
       'bad',
     );
     return null;
@@ -2019,11 +2044,16 @@ async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list) {
     );
     return null;
   }
+  // The snapshot may have been in flight while the user selected another Run.
+  // A late answer must not overwrite the newer selection or append to its list.
+  if (isStale && isStale()) {
+    return null;
+  }
   const facts = runRuntimeFacts(result.headers);
   const correction = typeof runStreamSnapshotCorrection === 'function'
     ? runStreamSnapshotCorrection(failure, runId, result)
     : null;
-  const shown = showRunDetail(result.payload, facts);
+  const shown = renderSnapshot(result.payload, facts);
   if (list && typeof document !== 'undefined' && document.createElement) {
     const item = document.createElement('li');
     item.textContent = correction
@@ -2097,6 +2127,12 @@ function beginRunTimeline(runId, elements) {
         outcome.failure,
         setStatus,
         list,
+        {
+          // The calling page decides how a rebuilt snapshot is rendered, and the
+          // generation tells us whether the user has already moved on.
+          renderSnapshot: elements && elements.renderSnapshot,
+          isCancelled: isCancelled,
+        },
       );
     }
     return outcome;

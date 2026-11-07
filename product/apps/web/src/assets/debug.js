@@ -408,6 +408,24 @@ function initDebug() {
           listID: 'run-timeline',
           statusID: 'run-timeline-status',
           previewID: 'run-preview',
+          // F12/T096 review fix: this page has no /runs detail anchors, so it must
+          // supply its own 410 snapshot renderer. Rebuilding the node view from
+          // the snapshot is the debug page's equivalent of "回快照".
+          renderSnapshot: function (run) {
+            if (typeof beginRunView === 'function') {
+              beginRunView({
+                runID: run && run.id ? run.id : summary.id,
+                applicationID: applicationId,
+                draftRevision: draftRevision,
+                run: run,
+              });
+            }
+            debugStatus(
+              '事件保留窗口已过期（410）：已按当前 Run 快照重建节点视图，未回放旧帧。',
+              'ok',
+            );
+            return run;
+          },
           onEvent: function (events, event) {
             if (typeof runViewOnEvent === 'function') {
               runViewOnEvent(events, event);
