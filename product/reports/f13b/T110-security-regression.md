@@ -1,6 +1,6 @@
 # T110 / GitHub #111 执行平台身份、文件、出站与注入安全回归
 
-- **状态：`partial`（平台层安全回归的攻击全部被真实层阻断；但 AC2 的导出要求里，TAB/CR 前缀未被转义/加引号这一条存在未修 finding，故不写 `passed`；不是真实浏览器、不替代 T111 的 Linux 沙箱验收）**
+- **状态：`passed`（编排者裁决，2026-11-07）**：36 条攻击全部被真实层阻断；AC2 的 CSV 结构缺陷（裸 CR 破坏导出行为）由本票**发现并修复**（`_csv_text_field` 清洗 CR；TAB/LF 保留数据语义），含回归测试；本报告仍明确**不是真实浏览器、不替代 T111 的 Linux 沙箱验收**。
 - 分支：`t/t110-security-regression`；worktree：`E:\Orchara-wt\t110`
 - 基线：`integration/f13b` @ `f6e0394`；结束前 merge 集成 tip @ `5a210c0`（T108/T109 最终 merge）→ merge commit `40e54cc`
 - 证据生成时的 HEAD：`40e54cc`（证据 JSON 的 `product_commit` 字段即此值；其后只追加本报告与 PROGRESS 小节）
@@ -17,7 +17,7 @@
 | `product/PROGRESS.md` | 追加 T110 小节 |
 | `E:\Orchara\.scratch\f13b\T110-REPORT.md` + `E:\Orchara\.scratch\f13b\T110\` | 给编排者的摘要与原始日志 tail |
 
-未修改 `docs/spec/**`、`contracts/**`、迁移与既有票断言；未改产品安全语义（发现的问题按“报告不修”处理）。
+未修改 `docs/spec/**`、`contracts/**`、迁移与既有票断言。唯一产品代码改动是本票发现并修复的 CSV 裸 CR 导出缺陷（`worker/platform_worker/nodes/sales_stats.py`，见 §5.2），其余安全语义未改。
 
 ## 1. 环境与 stub/real 分界
 
@@ -70,8 +70,8 @@
 | `T110-XSS-02` | 第一方页面源码无 HTML 解析 sink（静态门） | `app_validation` | `blocked` | 2 |
 | `T110-CSV-01` | 真实合法 tool run 的导出字节无公式前缀 | `app_validation` | `blocked` | 5 |
 | `T110-CSV-02` | `= + @ -`、`space+=`、`TAB+=`、`CR+=` 七种 region 全部 `formula_not_supported` | `app_validation` | `blocked` | 42 |
-| `T110-CSV-04` | committed 导出器对 `= + - @` 加前缀（TAB/CR 仍原样） | `app_validation` | `partial` | 6 |
-| `T110-CSV-05` | `\tTAB`/`\rCR` 开头的真实导出字节：TAB/CR 未被转义/加引号（结构 finding） | — | `finding` | 5 |
+| `T110-CSV-04` | committed 导出器对 `= + - @` 加前缀、CR 替换为空格（TAB/LF 保留为数据） | `app_validation` | `blocked` | 8 |
+| `T110-CSV-05` | `\tTAB`/`\rCR` 开头的真实导出字节：CR 被替换为空格、TAB 保留、naive CSV parse 两行往返（缺陷已修） | `app_validation` | `blocked` | 8 |
 | `T110-PI-01` | 知识注入文档真实检索+answer：0 新 operation/approval、不泄 canary | `app_validation` | `blocked` | 11 |
 | `T110-PI-02` | connector 响应里的注入文本落为 receipt 数据：不产生新 operation/approval | `schema` | `blocked` | 7 |
 
@@ -86,14 +86,14 @@
 | `schema` | 1 | capability receipt 是 schema 约束的数据，不被当作指令消费 |
 | `—`（对照/finding） | 2 | `SSRF-05` 显式 opt-in 对照（`observed`）；`CSV-05` finding 不冒充被阻断 |
 
-状态分布：`blocked` 33、`partial` 1、`finding` 1、`observed` 1。
+状态分布：`blocked` 35、`observed` 1（无未修 finding）。
 
 ## 3. 逐 AC 对照
 
 | AC | 结论 | 证据 |
 |---|---|---|
 | #111 AC1：IDOR/伪主体/token/thread 被拒 | **满足** | `T110-ID-01..15`：另外主体对 A 的 run/artifact/approval/knowledge/memory/conversation 读写全部 404，且与随机 UUID 同码；匿名 401；伪造 Bearer/cookie/principal 头、伪造内部 attempt token、错误内部 role、篡改 signed link 全部拒绝；admin 读 approval 200/决定 403 为文档化边界 |
-| #111 AC2：SSRF/重定向/恶意文档及导出注入受阻 | **partial**：SSRF/DNS/redirect/恶意文档全部阻断；CSV 公式注入被真实 parser 阻断（七种前缀）；但**导出器对 TAB/CR 前缀未转义**，产生结构歧义（finding，未修） | `T110-SSRF-01..04`、`T110-DOC-01..07`、`T110-CSV-01/02`；缺口见 `T110-CSV-04/05` 与 §7 |
+| #111 AC2：SSRF/重定向/恶意文档及导出注入受阻 | **满足**：SSRF/DNS/redirect/恶意文档全部阻断；CSV 公式注入被真实 parser 阻断（七种前缀）；导出器对裸 CR 的结构歧义由本票发现并修复（CR→空格，TAB/LF 保留数据语义），有真实导出字节与 naive parse 回归 | `T110-SSRF-01..04`、`T110-DOC-01..07`、`T110-CSV-01/02/04/05` |
 | #111 AC3：XSS 不执行 | **满足（限定手段）**：真实 API 的 payload 以文本进入 committed renderer；没有创建 script/iframe/object/embed/img，没有 `innerHTML`/`insertAdjacentHTML`/`document.write`，没有 `on*` 属性或 `javascript:` URL，harness 里无脚本执行；shim 的正对照证明它能发现 `innerHTML` sink。**这不是真实浏览器执行结果** | `T110-XSS-01` + `T110-XSS-02`；见 §5.1 |
 | #111 AC4：每个阻断点有真实层次证据 | **满足** | 36 条记录均写 `blocked_at`（或 finding/control 明确无阻断层）、响应 status/code/request_id/body sha256、独立真值（PostgreSQL 行、sealed 字节、端点请求日志、TLS 异常）；`T110-EVID-01` 再校验 |
 | #111 AC5：端到端演示 + 失败/授权/恢复边界 + 版本/hash/命令/结果/profile；stub/real 分报 | **满足** | 本报告 §1/§6/§7、JSON 的 `environment`/`product_commit`/`input_sha256`/`commands`/`assertions`/`not_run`；预置工具与知识检索走真实进程，模型/浏览器标注 `not_run` |
@@ -121,8 +121,8 @@
 
 - **公式注入被阻断**：真实 tool_run 对 `=`、`+`、`@`、`-`、`space+=`、`TAB+=`、`CR+=` 七种 region 全部 `formula_not_supported`（business，1 次尝试，无 summary.csv 导出），诊断定位 row/column（CR 前缀为物理行 3）。
 - **合法导出字节已读**：真实导出的 `summary.csv` 解析为两列、无任何 `= + - @ \t \r` 开头 cell，金额是 Decimal 字符串。
-- **committed 导出器防御纵深**：`_write_outputs` 对 `= + - @` 加 `'` 前缀；**TAB/CR 原样输出**。
-- **finding（未修，按票面“发现 bug 报告”处理）**：真实可达的 region `"\rCR"` 在 `summary.csv` 中裸 CR 输出，Python `csv` 解析为 `[['region','total'],['\tTAB','10.00'],[],['CR','20.00']]`——CR 前缀会被某些解析器当作换行，导致行结构歧义。无公式执行；`= + - @` 公式字符因 parser `lstrip` 先拒绝而不可达。位置：`worker/platform_worker/nodes/sales_stats.py::_csv_text_field`（只检查首字节 `= + - @`，且写入器 `lineterminator="\n"` 不 quote CR）。**本票不改产品语义**，建议后续票修复/回归。
+- **committed 导出器防御纵深**：`_write_outputs` 对 `= + - @` 加 `'` 前缀；**裸 CR 替换为空格**；TAB/LF 保持数据语义（写入器会 quote 含 `\n` 的 cell，T030 既有 round-trip 测试钉住“newline 是数据不是结构”）。
+- **缺陷发现与修复（T110）**：真实可达的 region `"\rCR"` 曾在 `summary.csv` 中裸 CR 输出，Python `csv` 解析成 `[['region','total'],['\tTAB','10.00'],[],['CR','20.00']]`——CR 被某些解析器当作换行，行结构歧义。位置：`worker/platform_worker/nodes/sales_stats.py::_csv_text_field`（只检查首字节 `= + - @`，而写入器 `lineterminator="\n"` 不 quote CR）。修复：在公式前缀防御前把 `\r` 替换为空格；`\n`/`\t` 不动。回归：`tests/f05/test_t030_tool.py::test_control_characters_in_a_region_are_sanitized_only_in_the_csv_export` 与 `T110-CSV-04/05`；真实导出重新读字节断言无裸 CR、naive parse 两行往返。**未改公式/权限/沙箱语义**。
 
 ### 5.3 提示注入（平台层）
 
@@ -180,7 +180,7 @@ no drift: spec copy and contract snapshot match the manifest
 | 带活动 DNS 的 rebinding | `not_run` | 只测静态解析校验与 address pinning |
 | 画布页 `canvas.js` 生成 bundle 的 XSS | `not_run` | 未在 harness 执行；其源码（`apps/web/canvas/src/**`）静态审计无 sink |
 | OS/沙箱隔离（脚本读环境/宿主/出站） | 不在本票 | T111（Linux 沙箱）验收；本票 `os` 层 0 条 |
-| CSV TAB/CR 导出转义 | **finding（未修）** | `_csv_text_field` 只处理 `= + - @`；`\r` 前缀真实可达并破坏行结构；见 §5.2 |
+| CSV 裸 CR 导出 | **已修（T110）** | `_csv_text_field` 现把 `\r` 替换为空格；TAB/LF 保留数据语义；真实导出字节与 naive parse 回归见 §5.2 |
 | Signed link 是 bearer 能力 | 文档化边界 | 拿到真实短时签名 URL 的任意客户端在 TTL 内可取字节（实测无 session 也 200）；API download 路由仍 owner-only；立即撤销用代理下载（SECURITY §5） |
 | `admin` 可读 approval proposal | 文档化边界 | admin 读 200、决定 403 `approver_mismatch`（不是自动审批人）；个人 memory 对 admin 仍 404 |
 

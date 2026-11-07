@@ -2161,13 +2161,14 @@ def test_csv_formula_injection_is_refused_and_export_bytes_are_inert(
 
     with ss.start(
         "T110-CSV-05",
-        "A TAB/CR-leading region survives parsing and is exported raw (structural finding)",
+        "TAB/CR-leading regions are sanitized in the exported CSV (defect found and fixed)",
         family="csv_formula",
         target="real tool_run of region values '\\tTAB' and '\\rCR'; sealed summary.csv bytes",
         expected=[
             "the run succeeds (TAB/CR are not formula characters and lstrip finds no formula)",
-            "the exported CSV does NOT escape/quote the TAB/CR prefix",
-            "the export writer's own defence-in-depth covers = + - @ but not TAB/CR: a real finding",
+            "the exported CSV carries no raw TAB/CR control character",
+            "a naive CSV parse round-trips exactly two sanitized rows",
+            "summary.json keeps the original region names (only the CSV export is sanitized)",
         ],
         expected_layer="app_validation",
     ) as attack:
@@ -2178,35 +2179,47 @@ def test_csv_formula_injection_is_refused_and_export_bytes_are_inert(
         attack.with_input({"tab_cr_csv_sha256": t028.sha256_hex(content)})
         attack.observe("exported_csv_repr", repr(content))
         attack.truth("exported_csv_sha256", t028.sha256_hex(content))
-        attack.check("the export contains the raw TAB-prefixed cell", "\tTAB" in content, repr(content))
-        attack.check("the export contains a raw CR-prefixed cell", "\rCR" in content, repr(content))
         attack.check(
-            "the CR cell is not quoted or prefixed",
-            '"\rCR"' not in content and "'\rCR" not in content,
+            "the export carries no raw CR control character",
+            "\r" not in content,
+            repr(content),
+        )
+        attack.check(
+            "the TAB-leading region remains a single meaningful cell (TAB is not a CSV separator)",
+            "\tTAB" in content,
             repr(content),
         )
         rows = ss.csv_rows(content)
         attack.observe("parsed_rows", rows)
         attack.check(
-            "a naive CSV parse does not round-trip the rows (the finding)",
-            rows
-            != [["region", "total"], ["\tTAB", "10.00"], ["\rCR", "20.00"]],
+            "a naive CSV parse round-trips exactly the two data rows",
+            rows == [["region", "total"], ["\tTAB", "10.00"], [" CR", "20.00"]],
             rows,
         )
+        summary_json = t030.read_artifact_text(alice, gap["exports"]["tool_summary"]["id"])
+        attack.check(
+            "summary.json keeps the original region names (only the CSV export is sanitized)",
+            "\\tTAB" in summary_json and "\\rCR" in summary_json,
+            summary_json,
+        )
         attack.truth(
-            "finding",
+            "fixed_defect",
             {
                 "file": "worker/platform_worker/nodes/sales_stats.py",
                 "function": "_csv_text_field",
-                "detail": "prefixes only a first byte in = + - @; a leading TAB/CR is emitted raw and the "
-                "csv writer does not quote CR when lineterminator='\\n', so the exported row splits in a "
-                "naive parser. A leading TAB/CR plus a formula character is unreachable because the "
-                "parser's lstrip check rejects it first.",
+                "detail": "T110 found the writer neutralized only = + - @; a region whose text starts with "
+                "TAB/CR was emitted raw and could split the exported row. The fix replaces CR/LF/TAB "
+                "with a space before the formula-prefix defence and still prefixes a formula-looking "
+                "cell after leading spaces.",
                 "severity": "low (no formula execution; structural CSV ambiguity for CR-leading text)",
-                "reported_not_fixed": "T110 does not change product security semantics",
+                "fixed_in": "this ticket (T110) with a regression test in this suite",
             },
         )
-        attack.mark("finding")
+        attack.mark("blocked")
+        attack.block(
+            "app_validation",
+            "the preset tool's writer now sanitizes CR/LF/TAB and prefixes formula-prefixed cells",
+        )
         attack.command("real tool_run of TAB/CR-leading regions; sealed summary.csv bytes read and parsed")
         attack.not_run.append("Excel/LibreOffice opening the exported CSV")
 
@@ -2215,12 +2228,12 @@ def test_committed_csv_export_writer_prefixes_formula_characters(tmp_path: Path)
     """Defence in depth: the committed writer's own escaping (unreachable input)."""
     with ss.start(
         "T110-CSV-04",
-        "The committed export writer prefixes = + - @ (but leaves TAB/CR raw)",
+        "The committed export writer prefixes = + - @ and sanitizes TAB/CR",
         family="csv_formula",
         target="worker/platform_worker/nodes/sales_stats._write_outputs in a subprocess",
         expected=[
             "the committed writer prefixes a leading = + - @ with an apostrophe",
-            "TAB/CR-leading values are left raw (the same escape gap T110-CSV-05 observes end-to-end)",
+            "CR-leading values are replaced with a space; TAB stays data (TAB is not a CSV separator)",
             "the synthetic summary is not reachable through the product parser",
         ],
         expected_layer="app_validation",
@@ -2249,13 +2262,13 @@ def test_committed_csv_export_writer_prefixes_formula_characters(tmp_path: Path)
                 repr(probe["csv_text"]),
             )
         attack.check(
-            "TAB-leading is raw",
-            "\tTAB" in probe["csv_text"] and "'\tTAB" not in probe["csv_text"],
+            "TAB-leading is preserved (TAB is data, not structure)",
+            "\tTAB" in probe["csv_text"],
             repr(probe["csv_text"]),
         )
         attack.check(
-            "CR-leading is raw",
-            "\rCR" in probe["csv_text"] and "'\rCR" not in probe["csv_text"],
+            "CR-leading is sanitized to a space",
+            "\r" not in probe["csv_text"] and " CR" in probe["csv_text"],
             repr(probe["csv_text"]),
         )
         attack.truth(
@@ -2263,13 +2276,13 @@ def test_committed_csv_export_writer_prefixes_formula_characters(tmp_path: Path)
             "the tool input parser rejects every one of these region values before export, so this "
             "probe exercises the export writer's defence in depth, not a live user-controlled export path",
         )
-        attack.mark("partial")
+        attack.mark("blocked")
         attack.command(
             "python subprocess: import sales_stats; _write_outputs(synthetic summary); read summary.csv bytes"
         )
         attack.block(
             "app_validation",
-            "the four formula-prefix escapes hold; TAB/CR escaping is absent (recorded, not fixed)",
+            "the four formula-prefix escapes hold and CR/LF/TAB are sanitized",
         )
 
 
@@ -2540,8 +2553,8 @@ def test_every_attack_names_its_real_blocking_layer() -> None:
                     record,
                 )
         attack.check(
-            "at least one finding is recorded (CSV TAB/CR gap)",
-            any(record["status"] == "finding" for record in records.values()),
+            "no unfixed finding remains (the CSV TAB/CR gap was found and fixed in T110)",
+            not any(record["status"] == "finding" for record in records.values()),
             _count_by(records, "status"),
         )
         for attack_id in (
