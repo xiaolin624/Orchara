@@ -2457,13 +2457,15 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 
 **门禁（真实 tail）**
 
-- `pytest tests/f12 -q` → **446 passed in 238.13s (0:03:58)**
-- `pytest tests/f01 -q`（单跑）→ **165 passed in 733.40s (0:12:13)**（无退化）
+- `pytest tests/f12 -q` → **446 passed in 245.06s (0:04:05)**（最终提交树重跑）
+- `pytest tests/f01 -q`（单跑）→ **165 passed in 737.24s (0:12:17)**（无退化）
 - Go：`build=0`、`vet=0`、`test=0`；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`
 - `node --check` on `runs.js`/`debug.js`/`personal-data.js` → exit 0
 - `pytest tests/f11/test_t073_pages.py::test_the_diagnostic_grant_helpers_execute_under_node`
   + `tests/f12/test_t096_pages.py` + `test_t098_mobile_pages.py` → **19 passed in 1.82s**
 - `git merge integration/f12` → **Already up to date.**（集成分支 tip 仍为 `e3aa1e1`）
+- 最终门禁在提交 `ca498e0` 的树上重跑；其后只把真实 tail 写回本文件与
+  `reports/f12/REVIEW2-FIXES.md`（不改代码/测试）。
 
 **诚实边界**：仍是 Node 执行真实字节，不是浏览器；CSS/真实 `EventSource`/表单控件语义
 `not_run`。真实服务器 410→页面重建仍由 `test_t096_stack.py::test_real_410_drives_the_page_snapshot_rebuild`
