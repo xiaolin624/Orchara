@@ -1,0 +1,2 @@
+order_id,date,region,amount
+F1,2026-01-01,东区,=SUM(10)

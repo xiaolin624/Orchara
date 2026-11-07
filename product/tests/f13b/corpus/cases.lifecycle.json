@@ -1,0 +1,268 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "v1",
+          "kind": "json_equals",
+          "pointer": "/recovery/graph_version"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/recovery/used_mirror"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-dev-old-graph-restore",
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "input": {
+        "attempted_revision": "v2",
+        "mirror_present": true,
+        "published_version": "v1"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-lifecycle-dev-graph-restore",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/run/terminal_state_stable"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/recovery/resurrected"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-dev-terminal-late-event",
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "input": {
+        "event": "late_terminal_event",
+        "event_state": "succeeded",
+        "terminal_state": "succeeded"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-lifecycle-dev-graph-restore",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "recovery_pending",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/recovery/second_execution"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/recovery/recovery_pending"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-dev-lease-expired-old-worker",
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "input": {
+        "attempt_count": 1,
+        "lease_expired": true,
+        "old_worker_alive": true
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-lifecycle-dev-graph-restore",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/recovery/input_restored"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/recovery/refused_deleted_input"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-frozen-delete-then-recover",
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "input": {
+        "deleted_object_id": "object-deleted-1",
+        "input_deleted": true,
+        "restore_attempted": true
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-lifecycle-frozen-recovery",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": true,
+          "kind": "json_equals",
+          "pointer": "/recovery/events_replayed"
+        },
+        {
+          "expected": "postgres",
+          "kind": "json_equals",
+          "pointer": "/recovery/state_source"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-frozen-redis-loss",
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "input": {
+        "jobs_lost_from_memory": true,
+        "postgres_state": "running",
+        "redis_restarted": true
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-lifecycle-frozen-recovery",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/recovery/deleted_input_reused"
+        },
+        {
+          "expected": false,
+          "kind": "json_equals",
+          "pointer": "/cache/served_deleted_body"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "lifecycle-frozen-deleted-input-reuse",
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "input": {
+        "cached_object_id": "object-deleted-2",
+        "cached_reference": true,
+        "input_deleted": true
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-lifecycle-frozen-recovery",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}

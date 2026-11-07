@@ -2472,6 +2472,61 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 覆盖（未改）。F1 页面路径只证明请求形状与“没有请求”，真实服务端解析由 F11/T073 既有真实栈用例覆盖。
 跨 epic 既有红（f03/f02a/f00b）未触碰、未修。
 
+## F13B T101 收尾（GitHub #102，2026-11-07）
+
+- 分支 `t/t101-three-in-one`，worktree `E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`；
+  完成前 merge 了推进后的 `integration/f13b` @ `ffe4022`（T102），合并提交 `3921c81`；
+  `PROGRESS.md` 尾部双追加冲突按保留双方小节解决。
+- 交付：新增 `J6-service-key-write-approval`（49 断言）与 `J6b-graph-dispatch-write-gap`（7 断言，`blocked`）。
+  AC2 从 `partial` 改判为**满足（平台/授权边界）**：服务 key 的 `application:read`+`write` scope + application
+  read grant + 服务账号负责人的人类 operation 审批，作用在**同一个真实回环外部写**上（回环端点自己的
+  请求日志恰好 1 次物理写、1 条 succeeded attempt、真实 receipt）；同一请求去掉任一条件均被拒：
+  无 grant 404、只有 read scope 403 `insufficient_scope`、service key 自己批准 404、admin 403
+  `approver_mismatch`、错 hash 409。版本由**真实五类评测 → submit → admin review decision** 发布。
+- 发现并修复 **P1 产品缺陷**：`internal/capabilities/service.go` 的 `loadAuthorizedRun` 要求 sealed
+  manifest artifact 属主 == Run owner，导致任何非发布者提交的 published Run 调用任何 capability 都被
+  503 `manifest_unavailable`；修复只对 `run.Kind == "published"` 放宽属主相等，保留 artifact ready、
+  snapshot digest 相等、字节 sha256 == `runs.manifest_sha256`；Go 回归测试
+  `internal/capabilities/manifest_owner_test.go`（published 允许 / 三类摘要拒绝 / debug 仍拒）。
+- 未解：**J6b `blocked`**（已发布图本身发不出 connector operation：图执行器无 connector 节点、agent
+  tool call 恒为 `kind=tool`）；J1b 保持 `blocked`（F08↔F04B 输入缺口）。
+- 门禁（真实 tail）：`pytest tests/f12/test_t101_journeys.py -q` → **6 passed in 90.82s**；
+  证据重跑（`T101_WRITE_EVIDENCE=1`）→ **6 passed in 87.93s**，普通运行不改写 JSON；
+  `pytest tests/f12 -q` → **447 passed in 262.76s**；`go build=0`、`go vet=0`、`go test=0`；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 合并树最终复跑（`3921c81`，含 T102）：targeted 证据 **6 passed in 137.57s**、
+  `pytest tests/f12 -q` **447 passed in 489.77s**、`go build/vet/test` = 0、gofmt 空、sync `no drift`
+  （共享宿主同期有其它真实栈任务，耗时高于首跑，结果全绿）。
+- 边界：dev-stub 模型、回环 connector stub（非真实供应商）、WSL2+runsc 真实执行；真实模型/真实第三方
+  供应商 `not_run`；写操作由文档化 worker capability 协议发出（J6b 记图分发缺口）；证据重生成后
+  `Select-String` 复查无明文凭据。
+
+## F13B T102：冻结七类内部案例并证明没有切分泄漏（2026-11-07）
+
+- 分支 `t/t102-frozen-cases`（worktree `E:\Orchara-wt\t102`，基线 `integration/f13b` @ `30642be`）。
+- 交付：`tests/f13b/corpus/**`（7 个 `cases.<category>.json` + `registry.json` + 6 个 CSV fixture）、
+  `tests/f13b/build_corpus.py`（确定性生成器，registry 与 case 文档可由其重放）、
+  `tools/f13b_corpus.py`（loader/validator/切分泄漏检测/拒绝原因）、
+  `tests/f13b/test_t102_corpus.py`（离线测试）、
+  `internal/evaluation/dataset_f13b_corpus_test.go`（产品严格 `ParseDataset` 装载证明）、
+  `reports/f13b/T102-frozen-cases.md`。
+- 语料：**46 案例（25 dev / 21 frozen_test，20 families，178 assertions）**，覆盖
+  sales/routing/rag/memory/delegation/approval_effects/lifecycle 七类；每 case 至少 1 assertion、
+  family、split、provenance/licence，并在 registry 中有独立真值说明与采集事实清单。
+- 切分隔离实测：跨 split family **0/20**、归一化模板 **0/20**、字符 5-gram Jaccard 最大跨 split
+  **0.4018 < 0.75**（同 split 最大 0.6606，证明指标非零）；伪造跨 split family/template/近似重复均被拒绝。
+- 真值：sales 由 `tests/f13a/reference/sales_reference.py`（stdlib+Decimal，不 import 产品工具）从 fixture 重算；
+  routing 由 catalog 快照机械推导；rag 由来源快照（id/page/version/status/text）核对；
+  memory/delegation/approval/lifecycle 采用人工标注 + 账本/状态不变量。
+- 空/跳过/不完整：`reject_reasons` 8 个稳定码 + `is_decidable` 缺事实即不可判定；
+  20 条负向检查（含伪造跨 split、重复 case_id、文件/schema pin 篡改）全部断言原因码。
+- 未改 `docs/spec/**`、`contracts/**`、迁移与既有 `tests/f13a` 文件。
+- 门禁（真实 tail）：`pytest tests/f13b` **36 passed in 16.12s**；`pytest tests/tooling` **21 passed in 15.02s**；
+  `pytest tests/f13a/test_t056_fixtures.py`（离线子集）**7 passed in 1.31s**；`go build/vet/test` exit 0；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- `not_run`：case 执行器/真实模型、真实 artifact 采集、debug snapshot 发布、完整 `tests/f13a` 真实栈套件（按离线票范围）。
+
+ HEAD
 ## F13B T103（GitHub #104）：同一录制结果的 hard checker vs 质量评分（2026-11-07）
 
 - 分支 `t/t103-quality-vs-hard` / worktree `E:\Orchara-wt\t103`；基线 `integration/f13b` @ `30642be`。

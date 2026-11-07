@@ -1,12 +1,18 @@
-"""F13B test package: the real publication stack (T103).
+"""F13B test package: the T102 offline corpus helpers + the T103 real stack.
 
-The stack is the same real one F13A/T052 and F02B/T068 use: a throwaway
-PostgreSQL database migrated by the real ``cmd/admin`` binary, the compiled
-``cmd/api`` with a real object store, HMAC signed links and the internal mTLS
-listener, the real ``cmd/maintenance`` pools and the real ``cmd/supervisor exec``
-executor. A ``start -> end`` application executes without the WSL2 sandbox, so
-the T103 hard-vs-quality evidence can be produced without depending on the
-shared sandbox being free.
+``tests/f13b`` hosts two tickets. T102's corpus tests are **offline only**: they
+freeze the internal evaluation corpus and need the product root (``contracts/``,
+``tools/``) and the tests root (the F13A independent sales reference) importable;
+they never start PostgreSQL, the real stack, a sandbox or a model. T103's
+hard-vs-quality evidence needs the opposite: the real publication stack.
+
+The ``t103_stack`` fixture is the same real stack F13A/T052 and F02B/T068 use: a
+throwaway PostgreSQL database migrated by the real ``cmd/admin`` binary, the
+compiled ``cmd/api`` with a real object store, HMAC signed links and the internal
+mTLS listener, the real ``cmd/maintenance`` pools and the real
+``cmd/supervisor exec`` executor. A ``start -> end`` application executes without
+the WSL2 sandbox tool, so the T103 evidence does not depend on the shared sandbox
+being free.
 """
 
 from __future__ import annotations
@@ -17,8 +23,11 @@ from pathlib import Path
 import pytest
 
 TESTS_ROOT = Path(__file__).resolve().parents[1]
-if str(TESTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(TESTS_ROOT))
+PRODUCT_ROOT = TESTS_ROOT.parent
+
+for entry in (str(PRODUCT_ROOT / "tools"), str(TESTS_ROOT)):
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
 from support import f00b, t024, t025, t026  # noqa: E402
 from support import stack as st  # noqa: E402
