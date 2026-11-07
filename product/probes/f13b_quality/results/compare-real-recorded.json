@@ -1,0 +1,179 @@
+{
+  "cost": {
+    "basis": "local CPU only; the heuristic adapter made no vendor call",
+    "judge_cost": "not_run",
+    "usd": 0.0,
+    "vendor_tokens": 0
+  },
+  "gate": {
+    "code": null,
+    "decision": "not_observed",
+    "details": null,
+    "http_status": null,
+    "source": "no --gate-result was supplied"
+  },
+  "hard_checker": {
+    "agrees_with_declared_status": true,
+    "case_count": 2,
+    "cases": [
+      {
+        "assertion_count": 2,
+        "assertions": [
+          {
+            "actual": "succeeded",
+            "agrees_with_recorded_outcome": true,
+            "expected": "succeeded",
+            "kind": "run_state",
+            "reason": "",
+            "recomputed_passed": true,
+            "recorded_passed": true
+          },
+          {
+            "actual": "{}",
+            "agrees_with_recorded_outcome": true,
+            "expected": "{}",
+            "kind": "json_equals",
+            "reason": "",
+            "recomputed_passed": true,
+            "recorded_passed": true
+          }
+        ],
+        "declared_reason_code": null,
+        "declared_status": "passed",
+        "detail": "every declared assertion passed against a finished run",
+        "id": "t103-hard-pass",
+        "recomputed_status": "passed",
+        "run_completed": true,
+        "run_state": "succeeded"
+      },
+      {
+        "assertion_count": 2,
+        "assertions": [
+          {
+            "actual": "succeeded",
+            "agrees_with_recorded_outcome": true,
+            "expected": "succeeded",
+            "kind": "run_state",
+            "reason": "",
+            "recomputed_passed": true,
+            "recorded_passed": true
+          },
+          {
+            "actual": "{}",
+            "agrees_with_recorded_outcome": true,
+            "expected": "{\"total\":\"100.00\"}",
+            "kind": "json_equals",
+            "reason": "the JSON value differs",
+            "recomputed_passed": false,
+            "recorded_passed": false
+          }
+        ],
+        "declared_reason_code": "assertion_failed",
+        "declared_status": "failed",
+        "detail": "at least one declared assertion fails against the recorded evidence",
+        "id": "t103-hard-fail",
+        "recomputed_status": "failed",
+        "run_completed": true,
+        "run_state": "succeeded"
+      }
+    ],
+    "declared_product_status": "failed",
+    "failed_assertions": [
+      {
+        "actual": "{}",
+        "agrees_with_recorded_outcome": true,
+        "case_id": "t103-hard-fail",
+        "expected": "{\"total\":\"100.00\"}",
+        "kind": "json_equals",
+        "reason": "the JSON value differs",
+        "recomputed_passed": false,
+        "recorded_passed": false
+      }
+    ],
+    "quality_used": false,
+    "recompute_source": "cases[].assertions + cases[].facts",
+    "verdict": "failed",
+    "version": "t103-independent-hard/1"
+  },
+  "outbound": {
+    "connections": 0,
+    "observation": "non-loopback socket.connect/connect_ex/create_connection calls made while the local quality score was computed",
+    "targets": []
+  },
+  "quality": {
+    "adapter": "heuristic-local/1",
+    "advisory_only": true,
+    "cases": [
+      {
+        "case_id": "t103-hard-pass",
+        "score": 1.0,
+        "signals": {
+          "assertions_evaluated": true,
+          "citations_accounted": true,
+          "effects_accounted": true,
+          "explained": true,
+          "run_recorded": true
+        }
+      },
+      {
+        "case_id": "t103-hard-fail",
+        "score": 1.0,
+        "signals": {
+          "assertions_evaluated": true,
+          "citations_accounted": true,
+          "effects_accounted": true,
+          "explained": true,
+          "run_recorded": true
+        }
+      }
+    ],
+    "judge_blocked_reason": "no approved judge endpoint or credential exists on this host; the only model profile is ORCHARA_PROFILE=dev-stub, so a semantic judge run is not_run",
+    "judge_run": "not_run",
+    "recorded_slot": {
+      "adapter": "not_installed",
+      "informational": true,
+      "note": "no judge adapter is installed in this build; this score is informational and never gates the verdict",
+      "score": null
+    },
+    "rubric": {
+      "aggregation": "mean of the five per-case booleans, then mean over cases",
+      "case_signals": {
+        "assertions_evaluated": "every assertion kind is supported and has a collected actual",
+        "citations_accounted": "facts.citation_sources is a list, or the run produced no output to cite",
+        "effects_accounted": "facts.effect_counts is an object, or effect_evidence explains why not",
+        "explained": "a passed case carries no refusal reason; a non-passed case carries reason + detail",
+        "run_recorded": "facts.run_id and facts.run_state are present"
+      },
+      "explicitly_not_a_judge": true,
+      "version": "heuristic-local/1"
+    },
+    "score": 1.0
+  },
+  "report": {
+    "case_count": 2,
+    "dataset_sha256": "3de21d559453ea8f637799b518dd67d4aa6d561344080159193b03915db42865",
+    "declared_status": "failed",
+    "evaluation_id": "f48d4d5a-43a1-4869-8650-4763d5742720",
+    "evaluation_kind": "application",
+    "evaluator": "orchara-platform-runner/1",
+    "kind": "evaluation",
+    "manifest_sha256": "27f5a398faa3fda47e4283f99c469a52ccb9d18b73d952fe451d7cef3c43bf3a",
+    "path": "probes\\f13b_quality\\evidence\\t103-real-recorded-report.json",
+    "quality_slot": {
+      "adapter": "not_installed",
+      "informational": true,
+      "note": "no judge adapter is installed in this build; this score is informational and never gates the verdict",
+      "score": null
+    },
+    "report_version": 1,
+    "sha256": "a42cc60e4f2cf0abef6d1648b21eaa83830c2b6615c76c9ee0477ee3d20354d9"
+  },
+  "schema": "orchara-t103-quality-compare/1",
+  "verdict": {
+    "gate": "not_observed",
+    "hard": "failed",
+    "quality": 1.0,
+    "quality_adapter": "heuristic-local/1",
+    "quality_can_override_hard": false
+  }
+}

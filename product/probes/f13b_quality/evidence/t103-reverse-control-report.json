@@ -1,0 +1,167 @@
+{
+  "case_count": 5,
+  "cases": [
+    {
+      "assertions": [
+        {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "kind": "run_state",
+          "passed": true
+        },
+        {
+          "actual": "{}",
+          "expected": "{}",
+          "kind": "json_equals",
+          "passed": true,
+          "pointer": ""
+        }
+      ],
+      "facts": {
+        "citation_sources": [],
+        "effect_counts": {},
+        "run_error_code": "",
+        "run_id": "265535b7-884f-4e18-9223-e07829d2f6f1",
+        "run_state": "succeeded"
+      },
+      "id": "author-normal-1",
+      "status": "passed",
+      "verdict": "passed"
+    },
+    {
+      "assertions": [
+        {
+          "actual": "succeeded",
+          "expected": "succeeded",
+          "kind": "run_state",
+          "passed": true
+        },
+        {
+          "actual": "{}",
+          "expected": "{}",
+          "kind": "json_equals",
+          "passed": true,
+          "pointer": ""
+        }
+      ],
+      "facts": {
+        "citation_sources": [],
+        "effect_counts": {},
+        "run_error_code": "",
+        "run_id": "f630ba38-7166-477c-a8c0-7c323a9b6811",
+        "run_state": "succeeded"
+      },
+      "id": "author-normal-2",
+      "status": "passed",
+      "verdict": "passed"
+    },
+    {
+      "assertions": [
+        {
+          "actual": "failed",
+          "expected": "failed",
+          "kind": "run_state",
+          "passed": true
+        },
+        {
+          "actual": "node_input_invalid",
+          "expected": "node_input_invalid",
+          "kind": "failure_reason",
+          "passed": true
+        }
+      ],
+      "facts": {
+        "citation_sources": [],
+        "effect_counts": {},
+        "run_error_code": "node_input_invalid",
+        "run_id": "65c02fa3-6aa2-4ed5-b1d6-a3b053e63511",
+        "run_state": "failed"
+      },
+      "id": "author-bad-input",
+      "status": "passed",
+      "verdict": "passed"
+    },
+    {
+      "assertions": [
+        {
+          "actual": "failed",
+          "expected": "failed",
+          "kind": "run_state",
+          "passed": true
+        },
+        {
+          "actual": "row_limit_exceeded",
+          "expected": "row_limit_exceeded",
+          "kind": "failure_reason",
+          "passed": true
+        }
+      ],
+      "facts": {
+        "citation_sources": [],
+        "effect_counts": {},
+        "run_error_code": "row_limit_exceeded",
+        "run_id": "1dcda6d7-dec1-4361-b632-988c3ad4e60b",
+        "run_state": "failed"
+      },
+      "id": "author-out-of-bounds",
+      "status": "passed",
+      "verdict": "passed"
+    },
+    {
+      "assertions": [
+        {
+          "actual": "failed",
+          "expected": "failed",
+          "kind": "run_state",
+          "passed": true
+        },
+        {
+          "actual": "sandbox_unavailable",
+          "expected": "sandbox_unavailable",
+          "kind": "failure_reason",
+          "passed": true
+        }
+      ],
+      "facts": {
+        "citation_sources": [],
+        "effect_counts": {},
+        "run_error_code": "sandbox_unavailable",
+        "run_id": "7e52893c-c487-4e8a-a9b7-e2a6aabc51ca",
+        "run_state": "failed"
+      },
+      "id": "author-tool-failure",
+      "status": "passed",
+      "verdict": "passed"
+    }
+  ],
+  "checks": [
+    "run_state",
+    "json_equals",
+    "failure_reason"
+  ],
+  "dataset_artifact_id": "5edddca2-9fdf-4717-b9e6-6dcb338817fa",
+  "dataset_sha256": "6ffe9058f8b0633546055f1b7f15c4d2342902708243241d36ec17f20b217a51",
+  "evaluation_id": "8e2067d0-a5d1-4fef-8fe0-8f70e4f4a369",
+  "evaluation_kind": "application",
+  "evaluator": "orchara-platform-runner/1",
+  "kind": "evaluation",
+  "manifest_sha256": "263efe548429e6fb420a03cb5459fdcf4ab603cfc5537e3fe0b773d667b368c7",
+  "provenance": {
+    "application_id": "58c4ab36-ae74-4ea9-9968-9b55908bb35a",
+    "compiler_version": "orchara-compiler/1.0.0",
+    "dataset_artifact_id": "5edddca2-9fdf-4717-b9e6-6dcb338817fa",
+    "draft_revision": 2,
+    "snapshot_id": "baa37fa4-6fe5-46b4-b7ae-981cf3b7c1cf",
+    "state_schema_version": "orchara-state/1.0",
+    "worker_image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "quality": {
+    "adapter": "heuristic-local/1",
+    "informational": true,
+    "note": "a deliberately poor local proxy score; informational only",
+    "score": 0.0
+  },
+  "report_version": 1,
+  "status": "passed",
+  "synthetic": false
+}

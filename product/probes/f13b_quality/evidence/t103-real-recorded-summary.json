@@ -1,0 +1,12 @@
+{
+  "dataset_sha256": "3de21d559453ea8f637799b518dd67d4aa6d561344080159193b03915db42865",
+  "evaluation_id": "f48d4d5a-43a1-4869-8650-4763d5742720",
+  "hard_verdict_recomputed": "failed",
+  "local_quality_score": 1.0,
+  "manifest_sha256": "27f5a398faa3fda47e4283f99c469a52ccb9d18b73d952fe451d7cef3c43bf3a",
+  "report_id": "37962747-157f-43f3-8261-0c43390dccb8",
+  "report_status": "failed",
+  "result_artifact_id": "b516225f-1bcb-4af3-8815-fa727baf6584",
+  "sealed_sha256": "a42cc60e4f2cf0abef6d1648b21eaa83830c2b6615c76c9ee0477ee3d20354d9",
+  "snapshot_id": "8a124a42-bef7-402b-99b0-ebb923cbbb73"
+}

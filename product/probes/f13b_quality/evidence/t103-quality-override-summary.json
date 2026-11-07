@@ -1,0 +1,17 @@
+{
+  "case_runs": {
+    "t103-hard-fail": "bec8c169-7eb9-453c-9a03-d61452aa283f",
+    "t103-hard-pass": "7841baea-f968-42f1-a375-cd3dc319a258"
+  },
+  "evaluation_id": "e62f5bee-4c87-4a2b-b6be-b501b2daae68",
+  "manifest_sha256": "3701348db0bf086f7cb195400a07bc70bd8107ab6458f8cebe28fe7bd74e51f8",
+  "quality": {
+    "adapter": "heuristic-local/1",
+    "informational": true,
+    "note": "deterministic local proxy score; this value never gates the verdict",
+    "score": 1.0
+  },
+  "report_id": "f13511bc-f97e-4fcb-b8d3-f2442372107a",
+  "report_status": "failed",
+  "sealed_sha256": "06c72b8f329dc460cf4bce25064ef6faf595a40e51ff6c326d67710ffc5be1ed"
+}
