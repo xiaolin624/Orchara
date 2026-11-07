@@ -1,0 +1,528 @@
+{
+  "cases": {
+    "tau2-airline-11-flight-downgrade": {
+      "adaptation": {
+        "changed": [
+          "user scenario rewritten as one Orchara booking-desk request",
+          "airline ids and passenger names kept as local fixture data",
+          "the DB-hash check replaced by per-booking status and refund_total assertions",
+          "nl_assertions recorded as adaptation notes, never used as a checker"
+        ],
+        "not_preserved": [
+          "the tau2 user simulator and its LLM calls",
+          "the tau2 airline environment, tools and db.json",
+          "LLM-judged nl_assertions and communicate matching"
+        ],
+        "preserved": [
+          "the upstream reference action trajectory (lookups plus write actions)",
+          "the upstream DB end-state idea: which reservations may change and which must not",
+          "the upstream reward_basis intent: database/environment truth rather than answer text",
+          "the upstream task purpose: a passenger cannot be removed; downgrade and refund the difference"
+        ],
+        "summary": "Rewritten from tau2-bench airline task 11 into an isolated corporate booking fixture with a local HTTP endpoint surface; tau2's user simulator, tools and database are not reused."
+      },
+      "adapted_actions": [
+        {
+          "arguments": {
+            "cabin": "basic_economy",
+            "flights": [
+              {
+                "date": "2024-05-19",
+                "flight_number": "HAT003"
+              },
+              {
+                "date": "2024-05-20",
+                "flight_number": "HAT290"
+              }
+            ],
+            "payment_id": "gift_card_1642017",
+            "reservation_id": "GV1N64"
+          },
+          "capability": "booking.update_flights",
+          "name": "update_reservation_flights"
+        }
+      ],
+      "assertion_kinds": [
+        "decimal_equals",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "environment": {
+        "base_path": "/booking-desk",
+        "endpoints": [
+          {
+            "capability": "booking.get_customer",
+            "method": "GET",
+            "path": "/customers/{customer_id}"
+          },
+          {
+            "capability": "booking.get_reservation",
+            "method": "GET",
+            "path": "/bookings/{reservation_id}"
+          },
+          {
+            "capability": "booking.update_flights",
+            "method": "POST",
+            "path": "/bookings/{reservation_id}/flights"
+          }
+        ],
+        "fixture_id": "tau2-airline-task11-booking",
+        "kind": "local_http_fixture"
+      },
+      "family_id": "tau2-airline-flight-change-refund",
+      "fixture_id": "tau2-airline-task11-booking",
+      "label": "adapted_external",
+      "license": {
+        "license_id": "MIT-tau2-bench",
+        "notes": "Adapted from sierra-research/tau2-bench at da0835f6c67baef58bdda18f2a3b037dfb3a1754 (MIT, see tau2/source_pin.json and tau2/LICENSE.tau2-mit.txt). The adapted case, fixture and actions are new Orchara data.",
+        "origin": "adapted_external",
+        "redistributable": true,
+        "review": "reviewed"
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=11#data/tau2/domains/airline/tasks.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/bookings/GV1N64/cabin",
+        "result_json:/bookings/GV1N64/flights",
+        "result_json:/bookings/GV1N64/passengers",
+        "result_json:/refund_total",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:booking.update_flights",
+        "stub_ledger:booking.update_passengers"
+      ],
+      "scenario": "A customer asks to remove one passenger; policy forbids changing the passenger count, so the whole booking is downgraded to basic economy and the exact fare difference is refunded.",
+      "source": {
+        "canonical_sha256": "c76cd2fd76c9328c2bbfe5a59705707ba14a53da31fd8a451a3c4ad8ef443224",
+        "commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+        "criteria_sha256": "15a582789a0b81a5a1e77160498c1f789502bbc80c940150b5f8276f9eb3a92b",
+        "path": "data/tau2/domains/airline/tasks.json",
+        "purpose": "Test that agent does not change the number of passenger for a flight.",
+        "repo": "sierra-research/tau2-bench",
+        "selected_because": "flight downgrade without removing a passenger; exact 5244 refund",
+        "task_id": "11"
+      },
+      "split": "frozen_test",
+      "template": "downgrade-the-whole-booking-without-changing-the-passenger-count",
+      "truth": {
+        "derivation": "Apply the upstream reference action 11_0 to the committed fixture, which changes only the cabin and the flight list. refund_total is recomputed as Decimal(fare_paid 12880.00) - Decimal(fare_after_change 7636.00) = 5244.00, which equals the upstream communicate_info value 5244; the passenger list is asserted unchanged because the source task forbids removing a passenger.",
+        "source": "adapted_source_actions_and_committed_fixture"
+      }
+    },
+    "tau2-airline-39-refund-eligibility": {
+      "adaptation": {
+        "changed": [
+          "user scenario rewritten as one Orchara booking-desk request",
+          "airline ids and passenger names kept as local fixture data",
+          "the DB-hash check replaced by per-booking status and refund_total assertions",
+          "nl_assertions recorded as adaptation notes, never used as a checker"
+        ],
+        "not_preserved": [
+          "the tau2 user simulator and its LLM calls",
+          "the tau2 airline environment, tools and db.json",
+          "LLM-judged nl_assertions and communicate matching"
+        ],
+        "preserved": [
+          "the upstream reference action trajectory (lookups plus write actions)",
+          "the upstream DB end-state idea: which reservations may change and which must not",
+          "the upstream reward_basis intent: database/environment truth rather than answer text",
+          "the upstream task purpose: only reservations whose refund policy applies may be cancelled"
+        ],
+        "summary": "Rewritten from tau2-bench airline task 39 into an isolated corporate booking fixture with a local HTTP endpoint surface; tau2's user simulator, tools and database are not reused."
+      },
+      "adapted_actions": [
+        {
+          "arguments": {
+            "customer_id": "amelia_davis_8890"
+          },
+          "name": "get_customer"
+        },
+        {
+          "arguments": {
+            "reservation_id": "8C8K4E"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "UDMOP1"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "XAZ3C0"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "LU15PA"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "MSJ4OA"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "I6M8JQ"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "4XGCCM"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "8C8K4E"
+          },
+          "capability": "booking.cancel",
+          "name": "cancel_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "LU15PA"
+          },
+          "capability": "booking.cancel",
+          "name": "cancel_reservation"
+        },
+        {
+          "arguments": {
+            "reservation_id": "MSJ4OA"
+          },
+          "capability": "booking.cancel",
+          "name": "cancel_reservation"
+        }
+      ],
+      "assertion_kinds": [
+        "decimal_equals",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "environment": {
+        "base_path": "/booking-desk",
+        "endpoints": [
+          {
+            "capability": "booking.get_customer",
+            "method": "GET",
+            "path": "/customers/{customer_id}"
+          },
+          {
+            "capability": "booking.get_reservation",
+            "method": "GET",
+            "path": "/bookings/{reservation_id}"
+          },
+          {
+            "capability": "booking.cancel",
+            "method": "POST",
+            "path": "/bookings/{reservation_id}/cancel"
+          }
+        ],
+        "fixture_id": "tau2-airline-task39-bookings",
+        "kind": "local_http_fixture"
+      },
+      "family_id": "tau2-airline-refund-eligibility",
+      "fixture_id": "tau2-airline-task39-bookings",
+      "label": "adapted_external",
+      "license": {
+        "license_id": "MIT-tau2-bench",
+        "notes": "Adapted from sierra-research/tau2-bench at da0835f6c67baef58bdda18f2a3b037dfb3a1754 (MIT, see tau2/source_pin.json and tau2/LICENSE.tau2-mit.txt). The adapted case, fixture and actions are new Orchara data.",
+        "origin": "adapted_external",
+        "redistributable": true,
+        "review": "reviewed"
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=39#data/tau2/domains/airline/tasks.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/bookings/4XGCCM/status",
+        "result_json:/bookings/8C8K4E/status",
+        "result_json:/bookings/I6M8JQ/status",
+        "result_json:/bookings/LU15PA/status",
+        "result_json:/bookings/MSJ4OA/status",
+        "result_json:/bookings/UDMOP1/status",
+        "result_json:/bookings/XAZ3C0/status",
+        "result_json:/refund_total",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:booking.cancel"
+      ],
+      "scenario": "A customer asks to cancel every upcoming reservation; only the three reservations whose fixture fields meet the refund policy may be cancelled, and only those add to the refund total.",
+      "source": {
+        "canonical_sha256": "a455a77004ea68543172d7c7fdacae21cb36a2a53aabc93fdc5d3dd084c64e7e",
+        "commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+        "criteria_sha256": "2f978bbc36b4d60c163c59b998f8aac9c3df9697e131de6c69a842654fdef63d",
+        "path": "data/tau2/domains/airline/tasks.json",
+        "purpose": "Check that agent doesn't cancel reservations if the refund is not applicable even if the user asks. Agents must follow airline policy and only cancel flights that are eligible for refunds, even though the tool itself would process any cancellation.\nAlso user is not a native English speaker.",
+        "repo": "sierra-research/tau2-bench",
+        "selected_because": "refund-eligibility refusal; 3 of 7 reservations may be cancelled",
+        "task_id": "39"
+      },
+      "split": "frozen_test",
+      "template": "cancel-only-the-reservations-whose-refund-policy-applies",
+      "truth": {
+        "derivation": "Recompute refund eligibility from the committed fixture policy (booked_hours_ago <= 24, insurance plus illness, or an airline-cancelled flight; basic_economy and departed flights are excluded). The three eligible reservation ids equal the upstream cancel_reservation actions 39_8..39_10, and refund_total is the Decimal sum of their fixture refund_amount values (995.75).",
+        "source": "adapted_source_actions_and_committed_fixture"
+      }
+    },
+    "tau2-airline-40-passenger-correction": {
+      "adaptation": {
+        "changed": [
+          "user scenario rewritten as one Orchara booking-desk request",
+          "airline ids and passenger names kept as local fixture data",
+          "the DB-hash check replaced by per-booking status and refund_total assertions",
+          "nl_assertions recorded as adaptation notes, never used as a checker"
+        ],
+        "not_preserved": [
+          "the tau2 user simulator and its LLM calls",
+          "the tau2 airline environment, tools and db.json",
+          "LLM-judged nl_assertions and communicate matching"
+        ],
+        "preserved": [
+          "the upstream reference action trajectory (lookups plus write actions)",
+          "the upstream DB end-state idea: which reservations may change and which must not",
+          "the upstream reward_basis intent: database/environment truth rather than answer text",
+          "the upstream task purpose: correct the second passenger's surname and keep the rest of the booking"
+        ],
+        "summary": "Rewritten from tau2-bench airline task 40 into an isolated corporate booking fixture with a local HTTP endpoint surface; tau2's user simulator, tools and database are not reused."
+      },
+      "adapted_actions": [
+        {
+          "arguments": {
+            "reservation_id": "3RK2T9"
+          },
+          "name": "get_reservation"
+        },
+        {
+          "arguments": {
+            "passengers": [
+              {
+                "dob": "1992-11-12",
+                "first_name": "Anya",
+                "last_name": "Garcia"
+              },
+              {
+                "dob": "1989-12-13",
+                "first_name": "Mei",
+                "last_name": "Garcia"
+              }
+            ],
+            "reservation_id": "3RK2T9"
+          },
+          "capability": "booking.update_passengers",
+          "name": "update_reservation_passengers"
+        }
+      ],
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "environment": {
+        "base_path": "/booking-desk",
+        "endpoints": [
+          {
+            "capability": "booking.get_customer",
+            "method": "GET",
+            "path": "/customers/{customer_id}"
+          },
+          {
+            "capability": "booking.get_reservation",
+            "method": "GET",
+            "path": "/bookings/{reservation_id}"
+          },
+          {
+            "capability": "booking.update_passengers",
+            "method": "POST",
+            "path": "/bookings/{reservation_id}/passengers"
+          }
+        ],
+        "fixture_id": "tau2-airline-task40-booking",
+        "kind": "local_http_fixture"
+      },
+      "family_id": "tau2-airline-passenger-correction",
+      "fixture_id": "tau2-airline-task40-booking",
+      "label": "adapted_external",
+      "license": {
+        "license_id": "MIT-tau2-bench",
+        "notes": "Adapted from sierra-research/tau2-bench at da0835f6c67baef58bdda18f2a3b037dfb3a1754 (MIT, see tau2/source_pin.json and tau2/LICENSE.tau2-mit.txt). The adapted case, fixture and actions are new Orchara data.",
+        "origin": "adapted_external",
+        "redistributable": true,
+        "review": "reviewed"
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=40#data/tau2/domains/airline/tasks.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/bookings/3RK2T9/cabin",
+        "result_json:/bookings/3RK2T9/passengers",
+        "result_json:/bookings/3RK2T9/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:booking.update_flights",
+        "stub_ledger:booking.update_passengers"
+      ],
+      "scenario": "A customer asks to correct the second passenger's surname on an existing booking; the passenger list is the environment truth and the rest of the booking must not change.",
+      "source": {
+        "canonical_sha256": "4928c624f06a934ce5dd8d0bdc1394082384cc2d358f7fed065dbd4753d27920",
+        "commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+        "criteria_sha256": "3d11b4f8aa35704e95997261baeb56dce1c8b565fa464b2492275ea74ddaac1b",
+        "path": "data/tau2/domains/airline/tasks.json",
+        "purpose": "Test agent's capacity to handle a flight change.",
+        "repo": "sierra-research/tau2-bench",
+        "selected_because": "passenger-name correction on an existing reservation",
+        "task_id": "40"
+      },
+      "split": "frozen_test",
+      "template": "correct-one-passenger-name-on-an-existing-booking",
+      "truth": {
+        "derivation": "Apply the upstream reference action 40_1 to the committed fixture: the first passenger is unchanged and the second becomes Mei Garcia (dob 1989-12-13), which is the full passenger list asserted by the adapted checker. No flight write may be recorded.",
+        "source": "adapted_source_actions_and_committed_fixture"
+      }
+    }
+  },
+  "categories": {
+    "approval_effects": {
+      "cases": 3,
+      "dev": 0,
+      "families": [
+        "tau2-airline-flight-change-refund",
+        "tau2-airline-passenger-correction",
+        "tau2-airline-refund-eligibility"
+      ],
+      "frozen_test": 3
+    }
+  },
+  "collection": {
+    "required_facts": [
+      "collection.complete",
+      "eval.artifact_manifest",
+      "run.id",
+      "run.input_sha256",
+      "fixture.sha256"
+    ],
+    "rule": "An imported case may be scored only when every required fact was collected. An empty, skipped or incomplete case is not_run, never passed."
+  },
+  "corpus_reference": {
+    "isolation_rule": "The imported cases are frozen_test. Their families, normalized templates and near duplicates must not overlap the T102 corpus dev split; the T102 registry pins this file's SHA-256.",
+    "registry_path": "product/tests/f13b/corpus/registry.json"
+  },
+  "families": {
+    "tau2-airline-flight-change-refund": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "downgrade-the-whole-booking-without-changing-the-passenger-count"
+    },
+    "tau2-airline-passenger-correction": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "correct-one-passenger-name-on-an-existing-booking"
+    },
+    "tau2-airline-refund-eligibility": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "cancel-only-the-reservations-whose-refund-policy-applies"
+    }
+  },
+  "files": {
+    "tau2/LICENSE.tau2-mit.txt": {
+      "sha256": "74741b87a33d4704c6f33e5c71742542446c984233f7a7e4905bf36f4da5a33b",
+      "size_bytes": 1093
+    },
+    "tau2/fixtures/tau2_airline_task11_booking.json": {
+      "sha256": "269eecd7741975960c15bdf8219c5d15f2272dcda7c12bc76569f7432dde60ed",
+      "size_bytes": 930
+    },
+    "tau2/fixtures/tau2_airline_task39_bookings.json": {
+      "sha256": "e6183c071bf45252c8bf9d5664fc3d91a313d4cebd55eb0d468b627505b7bb72",
+      "size_bytes": 2524
+    },
+    "tau2/fixtures/tau2_airline_task40_booking.json": {
+      "sha256": "95cf8eea3756f4ea25e27478a2ae33f65a7a65fc8dd89eeea05822467c81a860",
+      "size_bytes": 756
+    },
+    "tau2/source_pin.json": {
+      "sha256": "2e7f6a0bf8db7bc9fa9c1828bba3bdb81f8a641a57140c8d234cb24389990a36",
+      "size_bytes": 11452
+    },
+    "tau2/tasks.json": {
+      "cases": 3,
+      "sha256": "5c90f04b9be06d4f58cdfbe26fc7a4d9bcbd1ee7c19848cc598db52e9fad5823",
+      "size_bytes": 7273
+    }
+  },
+  "fixtures": {
+    "tau2-airline-task11-booking": {
+      "description": "One local booking with the passengers and fares the adapted downgrade/refund case asserts on.",
+      "kind": "file",
+      "media_type": "application/json",
+      "path": "tau2/fixtures/tau2_airline_task11_booking.json",
+      "sha256": "269eecd7741975960c15bdf8219c5d15f2272dcda7c12bc76569f7432dde60ed",
+      "size_bytes": 930
+    },
+    "tau2-airline-task39-bookings": {
+      "description": "Seven local bookings with the fields the adapted refund policy derives eligibility from; no tau2 database or tooling is used.",
+      "kind": "file",
+      "media_type": "application/json",
+      "path": "tau2/fixtures/tau2_airline_task39_bookings.json",
+      "sha256": "e6183c071bf45252c8bf9d5664fc3d91a313d4cebd55eb0d468b627505b7bb72",
+      "size_bytes": 2524
+    },
+    "tau2-airline-task40-booking": {
+      "description": "One local booking with the passenger list the adapted name correction asserts on.",
+      "kind": "file",
+      "media_type": "application/json",
+      "path": "tau2/fixtures/tau2_airline_task40_booking.json",
+      "sha256": "95cf8eea3756f4ea25e27478a2ae33f65a7a65fc8dd89eeea05822467c81a860",
+      "size_bytes": 756
+    }
+  },
+  "generated_by": "tests/f13b/build_external.py",
+  "license": {
+    "license_file": "tau2/LICENSE.tau2-mit.txt",
+    "license_id": "MIT-tau2-bench",
+    "notes": "The upstream repository root LICENSE is MIT. Only the root licence was reviewed; per-domain or third-party data was not re-audited, so the import keeps a pin rather than a claim.",
+    "redistributable": true,
+    "review": "reviewed",
+    "sha256": "74741b87a33d4704c6f33e5c71742542446c984233f7a7e4905bf36f4da5a33b",
+    "spdx": "MIT"
+  },
+  "schema": "orchara.f13b-external-import/1",
+  "source_pin": {
+    "commit": "da0835f6c67baef58bdda18f2a3b037dfb3a1754",
+    "path": "tau2/source_pin.json",
+    "sha256": "2e7f6a0bf8db7bc9fa9c1828bba3bdb81f8a641a57140c8d234cb24389990a36"
+  },
+  "usage_label": "adapted_external"
+}

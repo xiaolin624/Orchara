@@ -1,0 +1,39 @@
+{
+  "booking": {
+    "cabin": "economy",
+    "fare_after_change": "7636.00",
+    "fare_paid": "12880.00",
+    "flights": [
+      {
+        "date": "2024-05-19",
+        "flight_number": "HAT003"
+      },
+      {
+        "date": "2024-05-20",
+        "flight_number": "HAT290"
+      }
+    ],
+    "passengers": [
+      {
+        "dob": "1982-05-30",
+        "first_name": "James",
+        "last_name": "Patel"
+      },
+      {
+        "dob": "1985-08-14",
+        "first_name": "Sophia",
+        "last_name": "Patel"
+      }
+    ],
+    "payment_id": "gift_card_1642017",
+    "reservation_id": "GV1N64",
+    "status": "confirmed"
+  },
+  "fixture_version": "tau2-airline-adapted/1",
+  "policy": {
+    "passenger_count_may_not_change": true,
+    "policy_id": "fare-difference-adapted-1",
+    "refund_rule": "downgrade the whole booking; refund fare_paid - fare_after_change to the original payment method"
+  },
+  "source_task": "11"
+}

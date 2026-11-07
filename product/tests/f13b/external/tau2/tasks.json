@@ -1,0 +1,245 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "capability": "booking.cancel",
+          "expected": 3,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        },
+        {
+          "expected": "cancelled",
+          "kind": "json_equals",
+          "pointer": "/bookings/8C8K4E/status"
+        },
+        {
+          "expected": "cancelled",
+          "kind": "json_equals",
+          "pointer": "/bookings/LU15PA/status"
+        },
+        {
+          "expected": "cancelled",
+          "kind": "json_equals",
+          "pointer": "/bookings/MSJ4OA/status"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/bookings/UDMOP1/status"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/bookings/XAZ3C0/status"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/bookings/I6M8JQ/status"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/bookings/4XGCCM/status"
+        },
+        {
+          "expected": "995.75",
+          "kind": "decimal_equals",
+          "pointer": "/refund_total"
+        }
+      ],
+      "case_id": "tau2-airline-39-refund-eligibility",
+      "category": "approval_effects",
+      "family_id": "tau2-airline-refund-eligibility",
+      "fixture_id": "tau2-airline-task39-bookings",
+      "input": {
+        "channel": "corporate-booking-desk",
+        "customer": {
+          "customer_id": "amelia_davis_8890",
+          "display_name": "Amelia Davis"
+        },
+        "policy_ref": "tau2-airline-adapted-policy-1",
+        "request": {
+          "intent": "cancel_all_upcoming_reservations",
+          "utterance": "Please cancel all of my upcoming reservations today. I understand that not all of them will be refundable."
+        }
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=39#data/tau2/domains/airline/tasks.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "tau2-airline-adapted-fixture",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "capability": "booking.update_flights",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        },
+        {
+          "capability": "booking.update_passengers",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        },
+        {
+          "expected": "basic_economy",
+          "kind": "json_equals",
+          "pointer": "/bookings/GV1N64/cabin"
+        },
+        {
+          "expected": [
+            {
+              "date": "2024-05-19",
+              "flight_number": "HAT003"
+            },
+            {
+              "date": "2024-05-20",
+              "flight_number": "HAT290"
+            }
+          ],
+          "kind": "json_equals",
+          "pointer": "/bookings/GV1N64/flights"
+        },
+        {
+          "expected": [
+            {
+              "dob": "1982-05-30",
+              "first_name": "James",
+              "last_name": "Patel"
+            },
+            {
+              "dob": "1985-08-14",
+              "first_name": "Sophia",
+              "last_name": "Patel"
+            }
+          ],
+          "kind": "json_equals",
+          "pointer": "/bookings/GV1N64/passengers"
+        },
+        {
+          "expected": "5244.00",
+          "kind": "decimal_equals",
+          "pointer": "/refund_total"
+        }
+      ],
+      "case_id": "tau2-airline-11-flight-downgrade",
+      "category": "approval_effects",
+      "family_id": "tau2-airline-flight-change-refund",
+      "fixture_id": "tau2-airline-task11-booking",
+      "input": {
+        "channel": "corporate-booking-desk",
+        "customer": {
+          "customer_id": "james_patel_9828",
+          "display_name": "James Patel"
+        },
+        "policy_ref": "tau2-airline-adapted-policy-1",
+        "request": {
+          "intent": "remove_one_passenger_then_downgrade",
+          "utterance": "I want to take one passenger off reservation GV1N64. If the number of passengers cannot change, downgrade every passenger to basic economy and refund the difference to my gift card."
+        }
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=11#data/tau2/domains/airline/tasks.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "tau2-airline-adapted-fixture",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "capability": "booking.update_passengers",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        },
+        {
+          "capability": "booking.update_flights",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        },
+        {
+          "expected": [
+            {
+              "dob": "1992-11-12",
+              "first_name": "Anya",
+              "last_name": "Garcia"
+            },
+            {
+              "dob": "1989-12-13",
+              "first_name": "Mei",
+              "last_name": "Garcia"
+            }
+          ],
+          "kind": "json_equals",
+          "pointer": "/bookings/3RK2T9/passengers"
+        },
+        {
+          "expected": "economy",
+          "kind": "json_equals",
+          "pointer": "/bookings/3RK2T9/cabin"
+        },
+        {
+          "expected": "confirmed",
+          "kind": "json_equals",
+          "pointer": "/bookings/3RK2T9/status"
+        }
+      ],
+      "case_id": "tau2-airline-40-passenger-correction",
+      "category": "approval_effects",
+      "family_id": "tau2-airline-passenger-correction",
+      "fixture_id": "tau2-airline-task40-booking",
+      "input": {
+        "channel": "corporate-booking-desk",
+        "customer": {
+          "customer_id": "anya_garcia_5901",
+          "display_name": "Anya Garcia"
+        },
+        "policy_ref": "tau2-airline-adapted-policy-1",
+        "request": {
+          "intent": "correct_passenger_name",
+          "utterance": "Please change the passenger name on reservation 3RK2T9 from Mei Lee to Mei Garcia."
+        }
+      },
+      "provenance": {
+        "license_review": "reviewed",
+        "origin": "adapted_external",
+        "reference": "sierra-research/tau2-bench@da0835f6c67baef58bdda18f2a3b037dfb3a1754#task=40#data/tau2/domains/airline/tasks.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "tau2-airline-adapted-fixture",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}
