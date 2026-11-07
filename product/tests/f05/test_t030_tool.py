@@ -323,6 +323,30 @@ def test_the_example_csv_produces_the_published_expected_json(tmp_path) -> None:
     assert sorted(path.name for path in run.artifacts_dir.iterdir()) == ["summary.csv", "summary.json"]
 
 
+def test_control_characters_in_a_region_are_sanitized_only_in_the_csv_export(tmp_path) -> None:
+    """T110 (GitHub #111): a TAB/CR region must not split the exported CSV row.
+
+    The business summary keeps the real region text; only the spreadsheet export
+    replaces CR/LF/TAB with a space (and prefixes formula-looking cells), because
+    a raw CR is not quoted by the csv writer's minimal quoting.
+    """
+    content = (
+        "order_id,date,region,amount\n"
+        'A1,2026-01-01,"\tTAB",10.00\n'
+        'A2,2026-01-02,"\rCR",20.00\n'
+    ).encode("utf-8")
+    run = run_tool(tmp_path, content)
+    assert run.returncode == 0, (run.stdout, run.stderr)
+    summary = json.loads(run.artifact("summary.json").decode("utf-8"))
+    assert summary["regions"] == {"\tTAB": "10.00", "\rCR": "20.00"}
+
+    exported = run.artifact("summary.csv").decode("utf-8")
+    assert exported == "region,total\n\tTAB,10.00\n CR,20.00\n"
+    assert "\r" not in exported
+    rows = list(csv.reader(io.StringIO(exported)))
+    assert rows == [["region", "total"], ["\tTAB", "10.00"], [" CR", "20.00"]]
+
+
 def test_the_example_xlsx_produces_the_same_result(tmp_path) -> None:
     content = (EXAMPLES / "input.xlsx").read_bytes()
     run = run_tool(tmp_path, content, media_type=XLSX_MEDIA_TYPE, file_name="input.xlsx")
