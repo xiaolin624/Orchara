@@ -1,0 +1,594 @@
+{
+  "ticket": "T100",
+  "issue": 101,
+  "title": "复现账号到发布和后台执行的关键旅程",
+  "created_at": "2026-11-07T04:53:25Z",
+  "generated_at": "2026-11-07T04:54:31Z",
+  "environment": {
+    "profile": "ORCHARA_PROFILE=dev-stub (no vendor credentials, endpoints or GPU)",
+    "python": "3.12.2",
+    "pytest": "9.0.3",
+    "go": "go version go1.27.3 windows/amd64",
+    "node": "v24.13.0",
+    "postgres": "16.4",
+    "database": "orchara_t100_54c9ad96cdac",
+    "migrations": {
+      "count": 52,
+      "head": "0052_handoff_scope_bounds.sql"
+    },
+    "git_head": "60d9de0115c006a281050ad5e1a7445c54b9c040",
+    "contract_sha256": "bf191b9697f99b362bd61c287964724637e1281153232699aacf582157fc3e91",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "sandbox": {
+      "available": true,
+      "runsc": "runsc version release-20241118.0",
+      "distro": "Ubuntu-24.04",
+      "rootfs": "/opt/orchara-sandbox/python-rootfs",
+      "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5"
+    },
+    "network": "loopback only; real HTTP (external) + real mTLS (internal)"
+  },
+  "journeys": [
+    {
+      "journey_id": "T100-J1",
+      "title": "账号启动：migrate → bootstrap → 邀请 → 激活 → 登录",
+      "status": "passed",
+      "entry_commands": [
+        "cmd/admin migrate (real compiled binary, stack fixture)",
+        "cmd/admin bootstrap --login admin --display-name 'Platform Admin' (real binary, password on stdin)",
+        "cmd/admin bootstrap --login admin2 (boundary replay of the same real binary)"
+      ],
+      "entry_http": [
+        "POST /api/v1/auth/login {login: admin}",
+        "GET /api/v1/auth/me (admin)",
+        "POST /api/v1/admin/users {login, display_name, roles:[creator]} (admin + CSRF)",
+        "POST /api/v1/auth/activate {activation_token, password}",
+        "POST /api/v1/auth/login {login: t100.creator-*}",
+        "GET /api/v1/auth/me (creator)",
+        "POST /api/v1/admin/users (anonymous; creator; duplicate login; missing CSRF; bad role)",
+        "POST /api/v1/auth/activate (unknown token; weak password; expired token; reused token)",
+        "POST /api/v1/auth/login (wrong password)"
+      ],
+      "truth_sources": [
+        "platform.schema_migrations (continuous chain, real cmd/admin migrate)",
+        "platform.principals / platform.users / platform.role_bindings / platform.audit_events (bootstrap-once + invitation facts)",
+        "platform.activation_tokens (token_hash = sha256(raw), consumed_at, expires_at)",
+        "platform.sessions (token_hash/csrf_hash = sha256(raw), revoked_at)",
+        "cmd/admin bootstrap stdout/stderr + exit code"
+      ],
+      "assertions": [
+        "real cmd/admin migrate applied a continuous migration chain (52 rows, head 0052=0052_handoff_scope_bounds.sql)",
+        "real cmd/admin bootstrap created exactly one admin principal (user row, admin role, bootstrap audit event, argon2id hash); the password never appears in the hash",
+        "a second real `cmd/admin bootstrap` exits non-zero with 'already exists' and creates no second principal/user",
+        "POST /auth/login returns a real session cookie + CSRF; GET /auth/me returns the admin identity and the cookie/CSRF are stored only as SHA-256 in platform.sessions",
+        "POST /admin/users returns a one-time activation token; PostgreSQL holds only its SHA-256, the user keeps the !pending-activation sentinel and the creator role + user.invited audit event are real rows",
+        "anonymous POST /admin/users is 401 unauthenticated; a non-admin creator gets 403 forbidden and no user row is created",
+        "duplicate invite is 409 login_taken; a missing CSRF header is 403 csrf_invalid; an unknown role is 422 validation_failed; all three create no user row",
+        "an unknown activation token is 409 activation_invalid",
+        "a weak password is 422 validation_failed and does not consume the token (sentinel and consumed_at unchanged); the same token then activates with a valid password",
+        "an invitation whose server-side deadline has passed is 409 activation_expired and stays unconsumed (clock-only SQL write, no fabricated business state)",
+        "POST /auth/activate succeeds exactly once: argon2id hash stored, must_change_password cleared, token consumed; reusing the old token is 409 activation_consumed",
+        "POST /auth/login with the activated password returns the creator session; GET /auth/me returns its principal/roles/CSRF",
+        "a wrong password is 401 invalid_credentials and creates no session row",
+        "every principal has a user row (5 principals / 5 users); the session/role/token tables hold only real rows written by the exercised endpoints"
+      ],
+      "notes": [
+        "expiry boundary: only the token's server-side expires_at was moved into the past (clock-only write); the token and user were created by the real invite API",
+        "f01's known collection conflict is avoided: this suite imports only tests/support helpers (never tests/f01/conftest.py), so no separate pytest process is needed for this account evidence"
+      ],
+      "facts": {
+        "migrations": {
+          "count": 52,
+          "head_version": "0052",
+          "head": "0052_handoff_scope_bounds.sql"
+        },
+        "bootstrap_admin": {
+          "principal_id": "963546bd-6c7b-4881-b308-09b1c6449bce",
+          "login": "admin",
+          "role": "admin",
+          "audit_action": "admin.bootstrap",
+          "password_hash": "argon2id (secret never stored in clear)"
+        },
+        "admin_session": {
+          "principal_id": "963546bd-6c7b-4881-b308-09b1c6449bce",
+          "roles": [
+            "admin"
+          ],
+          "session_cookie_stored_as_sha256": true,
+          "csrf_stored_as_sha256": true
+        },
+        "invitation": {
+          "login": "t100.creator-cb4854",
+          "principal_id": "cdab04ee-9cfa-4182-8d13-1841d900a438",
+          "roles": [
+            "creator"
+          ],
+          "token_stored_as_sha256": true,
+          "token_consumed": false,
+          "user_password_sentinel": "!pending-activation"
+        },
+        "activated_user": {
+          "login": "t100.creator-cb4854",
+          "principal_id": "cdab04ee-9cfa-4182-8d13-1841d900a438",
+          "roles": [
+            "creator"
+          ]
+        },
+        "final_identity_counts": {
+          "principals": 5,
+          "users": 5,
+          "sessions": 3,
+          "role_bindings": 5,
+          "activation_tokens": 4
+        }
+      },
+      "variants": [],
+      "failure_reason": null,
+      "started_at": "2026-11-07T04:53:30Z",
+      "duration_seconds": 6.297
+    },
+    {
+      "journey_id": "T100-J2",
+      "title": "模型登记 → validate → 评测读取 → 通过（dev-stub）",
+      "status": "passed",
+      "entry_commands": [
+        "cmd/maintenance run --once --kinds model_validate (real compiled binary)",
+        "cmd/maintenance run --kinds artifact_finalize (real compiled binary beside it, required because the validation handler waits for its own sealed report)"
+      ],
+      "entry_http": [
+        "POST /api/v1/models {provider:stub, model_id:stub-model-1, endpoint_ref, secret_ref, config, data_destination} (admin + CSRF)",
+        "POST /api/v1/models/{id}/validate (admin + CSRF + Idempotency-Key)",
+        "GET /api/v1/models/{id}",
+        "GET /api/v1/evaluations/{evaluation_id}",
+        "GET /api/v1/evaluation-reports/{report_id}",
+        "GET /api/v1/models (non-admin visibility)",
+        "POST /api/v1/models + /validate as a creator (403 boundary)",
+        "POST /api/v1/models/{id}/validate without Idempotency-Key (400 boundary)",
+        "POST /api/v1/models + /validate for an incompatible stub model and for an undeployed real provider (failure boundaries)"
+      ],
+      "truth_sources": [
+        "platform.model_profile_versions (validation_state, evaluation_report_id, manifest)",
+        "platform.evaluation_jobs (state, report_id, background_job_id, error_code)",
+        "platform.evaluation_reports (status, manifest_sha256, dataset_sha256)",
+        "object directory: sealed compatibility document + sealed dataset bytes (sha256)",
+        "platform.platform_model_calls (the maintenance handler's model-call ledger)",
+        "platform.background_jobs (kind/state/attempt_count of model_validate)",
+        "cmd/maintenance stdout JSON reports + exit code"
+      ],
+      "assertions": [
+        "POST /models by the admin returns 201 {id, state:pending}; PostgreSQL holds a real pending model profile version with a 64-hex manifest and the stub destination",
+        "a non-admin creator gets 403 forbidden for POST /models and POST /models/{id}/validate, and no background job is created",
+        "validate without Idempotency-Key is 400 idempotency_key_required (located on the header) and creates no background job",
+        "POST /models/{id}/validate returns 202 EvaluationJob(kind=model, state=queued); the same Idempotency-Key replays the identical body and creates exactly one evaluation + one model_validate background job",
+        "the real `cmd/maintenance run --once --kinds model_validate` (beside a real artifact_finalize worker) claims and completes the job with result=succeeded",
+        "GET /evaluations/{id} is 200 state=succeeded with the report id; GET /evaluation-reports/{id} is 200 status=passed; GET /models/{id} reports validation_state=passed and the same report id",
+        "independent truth agrees: model row passed + report bound; evaluation row succeeded; report row passed; the sealed dataset's sha256 equals the report's dataset_sha256; the sealed compatibility document says provider=stub, stub=true, compatible=true; the model-call ledger holds exactly one succeeded row bound to the report artifact",
+        "a non-admin creator sees the passed model in GET /models (validation controls visibility)",
+        "an incompatible stub model completes the job but records a failed report and a failed model; the failed model is invisible to non-admin listModels (only the passed one stays)",
+        "a model naming an undeployed real provider fails validation with the located terminal code provider_not_configured, the evaluation row fails, and no report row is written"
+      ],
+      "notes": [
+        "stub/real split: the registry, validation job, maintenance handler, sealed report and contract reads are real product code; the compatibility verdict is produced by the dev-stub adapter (document.provider=stub, document.stub=true) and is reported as stub"
+      ],
+      "facts": {
+        "model_registration": {
+          "model_profile_version_id": "a3ebc125-c44c-49d1-b7c5-c7669f33adf1",
+          "provider": "stub",
+          "model_id": "stub-model-1",
+          "endpoint_ref": "stub-endpoint",
+          "data_destination": "local-stub",
+          "manifest_sha256": "57f173b299644e706c75318a2c9a9ebff69e6b0c3cd068f87f89c63eb236e79d"
+        },
+        "evaluation_submission": {
+          "evaluation_id": "2ea6e141-067c-479e-8540-f3b864d9eb83",
+          "background_job_id": "d26b26a2-2134-48fe-858e-370a3f55988d",
+          "idempotency_key": "t100-model-validate-133761e2fd8d",
+          "replay_created_second_job": false
+        },
+        "independent_truth": {
+          "model_validation_state": "passed",
+          "evaluation_state": "succeeded",
+          "report_status": "passed",
+          "report_manifest_sha256": "57f173b299644e706c75318a2c9a9ebff69e6b0c3cd068f87f89c63eb236e79d",
+          "dataset_sha256_matches_sealed_bytes": true,
+          "report_provider": "stub",
+          "report_stub": true,
+          "model_calls_ledger_rows": 1
+        }
+      },
+      "variants": [
+        {
+          "variant_id": "real-vendor-model",
+          "status": "blocked",
+          "evidence": "this environment has ORCHARA_PROFILE=dev-stub only: no vendor endpoint, credential or GPU exists, so no real model's compatibility/quality was exercised or claimed"
+        }
+      ],
+      "failure_reason": null,
+      "started_at": "2026-11-07T04:53:54Z",
+      "duration_seconds": 3.937
+    },
+    {
+      "journey_id": "T100-J3",
+      "title": "草稿 → validate → 真实评测 → 审核 → 不可变发布版本",
+      "status": "passed",
+      "entry_commands": [
+        "cmd/maintenance run --once (real full-kind pools: application_evaluate + artifact_finalize; started by T068's runner helper)",
+        "cmd/supervisor exec --once (real compiled supervisor per evaluation case; WSL2/runsc sandbox)"
+      ],
+      "entry_http": [
+        "POST /api/v1/admin/users + POST /api/v1/auth/activate + /auth/login (creator)",
+        "POST /api/v1/applications",
+        "GET/PUT /api/v1/applications/{id}/draft (If-Match revision)",
+        "POST /api/v1/applications/{id}/validate",
+        "POST /api/v1/applications/{id}/evaluations (Idempotency-Key; 5-case dataset artifact)",
+        "GET /api/v1/evaluations/{id}",
+        "GET /api/v1/evaluation-reports/{report_id}",
+        "POST /api/v1/applications/{id}/publication-preview (non-contract route; pre-submit read)",
+        "POST /api/v1/applications/{id}/submit",
+        "POST /api/v1/reviews/{id}/decision (non-admin; mismatched hash; admin approve; replay)",
+        "GET /api/v1/versions/{version_id}, GET /api/v1/applications/{id}",
+        "GET/PUT /api/v1/applications/{id}/draft + POST /validate (immutability re-check)",
+        "POST /api/v1/conversations + POST /api/v1/requests (chat-text gap probe, explicit application_version_id) + GET /api/v1/runs/{id} + node-results"
+      ],
+      "truth_sources": [
+        "platform.manifest_artifacts + object directory sealed manifest bytes (sha256)",
+        "platform.evaluation_jobs / platform.evaluation_reports / sealed report document",
+        "platform.publication_reviews (frozen snapshot, report binding, decision)",
+        "platform.application_versions + sealed manifest artifact bytes (immutability)",
+        "platform.applications.active_version_id, platform.outbox, platform.audit_events",
+        "platform.runs (chat-input gap: state/error_code/output_artifact_id) and artifacts",
+        "cmd/maintenance + cmd/supervisor stdout JSON reports and exit codes"
+      ],
+      "assertions": [
+        "POST /applications/{id}/validate returns {valid:true, errors:[]} and a 64-hex X-Manifest-SHA256; the compiler's sealed manifest artifact has the same hash and its object bytes hash back to it",
+        "validate of a draft depending on a pending model returns valid:false with the located dependency_not_ready error, no X-Manifest-SHA256 header, no manifest artifact and no version",
+        "the real five-category evaluation (maintenance pools + one real `cmd/supervisor exec --once` per case in WSL2/runsc) ends in a passed sealed report",
+        "GET /evaluations/{id} is 200 state=succeeded with the report id and GET /evaluation-reports/{id} is 200 status=passed (both owner-readable contract reads)",
+        "the evaluated snapshot's manifest hash equals the validated manifest hash; the sealed report covers five genuine categories (succeeded, node_input_invalid x2, row_limit_exceeded, sandbox_unavailable)",
+        "POST /applications/{id}/submit returns 202 {id, state:submitted}; the review row freezes the same manifest hash and a snapshot whose author_cases cover all five categories",
+        "submission boundaries: another creator gets 404 resource_not_found (no review created), a wrong expected manifest hash is 409 manifest_mismatch, a missing Idempotency-Key is 400 idempotency_key_required",
+        "review decision boundaries: a non-admin creator is 403 forbidden, a mismatched manifest hash is 409 manifest_mismatch with the reviewed hash in details; the admin approval is 200 {state:approved, version_id} and creates exactly one version",
+        "independent truth: exactly one application_versions row (version_no 1) bound to the approved review and the validated manifest artifact; the sealed manifest bytes hash to the evaluated manifest; the active pointer, one catalog_index outbox row and the publication.approved audit event are real rows; GET /versions and GET /applications agree",
+        "immutability: a second decision is 409 review_conflict(state=approved), identical re-submission returns the same approved review (no second review/version), and a real draft edit + revalidate yields a different manifest hash while the published version row and sealed bytes stay byte-identical and the active pointer does not move"
+      ],
+      "notes": [
+        "POST /applications/{id}/publication-preview is a real product route but is NOT one of the 106 OpenAPI operations (non-contract route); it is only a pre-submit read here",
+        "known product gap recorded separately (status blocked): chat text as a published Run input fails node_input_invalid; see reports/f12/T100-journeys.md §已知产品缺口"
+      ],
+      "facts": {
+        "evaluation": {
+          "evaluation_id": "e32f8ae6-1c83-4be5-9bd2-ebd468d20047",
+          "report_id": "d9632a3b-81f8-4c43-b443-750fc2b8ebbb",
+          "report_status": "passed",
+          "manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "snapshot_manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "cases": {
+            "sales-happy-csv": {
+              "run_state": "succeeded",
+              "run_error_code": null
+            },
+            "sales-bad-schema-1": {
+              "run_state": "failed",
+              "run_error_code": "node_input_invalid"
+            },
+            "sales-over-limit": {
+              "run_state": "failed",
+              "run_error_code": "row_limit_exceeded"
+            },
+            "sales-tool-failure": {
+              "run_state": "failed",
+              "run_error_code": "sandbox_unavailable"
+            },
+            "sales-bad-schema-2": {
+              "run_state": "failed",
+              "run_error_code": "node_input_invalid"
+            }
+          }
+        },
+        "published_version": {
+          "application_id": "f095f448-bd30-442d-a16b-072a93bdf8bd",
+          "version_id": "9074a95e-3155-4b16-a778-e2959263dd61",
+          "version_no": 1,
+          "manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "manifest_artifact_id": "6047c332-b11b-4001-886b-da82829be9b0",
+          "review_id": "8cdc3a1f-7686-48a2-8087-2c9880aab2dd",
+          "outbox_publish_rows": 1,
+          "audit_actions": [
+            "publication.approved"
+          ]
+        },
+        "immutability": {
+          "draft_revalidated_manifest_sha256": "b10eab92b404359ff06c175f5d3f950288ed9873947f8d4b32443812a8cf7cfe",
+          "published_manifest_sha256": "17fcf0cac7a684dad2759132aabd5e754d5aac8f78d4c38b0731964cd23b9dbc",
+          "published_row_unchanged": true,
+          "published_sealed_bytes_unchanged": true
+        }
+      },
+      "variants": [],
+      "failure_reason": null,
+      "started_at": "2026-11-07T04:54:03Z",
+      "duration_seconds": 12.968
+    },
+    {
+      "journey_id": "T100-J4",
+      "title": "worker 终结双证据：submitWorkerResult + confirmAttemptExit（两种顺序）",
+      "status": "passed",
+      "entry_commands": [
+        "cmd/maintenance run --once --kinds artifact_finalize (real binary: upload completion -> sealed output artifact)",
+        "cmd/supervisor exec --once (real product executor variant; WSL2/runsc)"
+      ],
+      "entry_http": [
+        "POST /api/v1/applications + PUT /draft (real creator/application)",
+        "POST /api/v1/applications/{id}/debug-runs (real debug Run)",
+        "POST /internal/v1/jobs/claim (real supervisor mTLS client certificate)",
+        "POST /internal/v1/runs/{id}/artifact-uploads + signed PUT + complete + POST /internal/v1/runs/{id}/artifacts (real output registration)",
+        "POST /internal/v1/runs/{run_id}/result (worker certificate; result-first and exit-first)",
+        "POST /internal/v1/attempts/{token}/exited (supervisor certificate; both orders)",
+        "GET /api/v1/runs/{id}, GET /api/v1/runs/{id}/node-results"
+      ],
+      "truth_sources": [
+        "platform.runs (state, phase, revision, finished_at, output_artifact_id, error_code)",
+        "platform.jobs (state, current_attempt_token) and platform.run_attempts (reported_result, exited_at, revoked_at)",
+        "platform.quota_counters + platform.quota_allocations (one released slot)",
+        "platform.run_artifacts (exactly input+output links)",
+        "object directory: sealed output artifact bytes + sha256",
+        "cmd/supervisor exec stdout JSON report; node results via the owner read",
+        "independent Decimal truth computed by the test from the input CSV bytes"
+      ],
+      "assertions": [
+        "result-first: submitWorkerResult is only a proposal — the Run stays state=running, phase=finalizing, unfinished; the job stays leased, the attempt records the result and the execution slot is still allocated",
+        "result-first: confirmAttemptExit commits the terminal Run exactly once (revision 3, succeeded, idle, finished_at set, output artifact linked), completes the job, stamps exited_at+revoked_at on the attempt, releases the single quota allocation and keeps exactly the input+output artifact links; the owner read and the artifact content agree",
+        "result-first boundaries: a repeated identical exit is idempotent (Run unchanged), a late result is 409 run_terminal, and different exit evidence is 409 attempt_evidence_conflict with no state change",
+        "exit-first: confirmAttemptExit alone parks the Run in recovery_pending (phase=idle, no finished_at, revision 3), holds the job instead of completing it, and releases the execution slot",
+        "exit-first: the later submitWorkerResult commits the same terminal Run once (revision 4, succeeded, output artifact), completes the held job and keeps exactly one released allocation",
+        "exit-first boundaries: a repeated identical exit is idempotent and a late result is 409 run_terminal; neither changes the committed Run",
+        "roles: only a worker certificate may submit a result and only a supervisor certificate may confirm exit (maintenance is 403 on both); the needs_reconciliation proposal needs the exit to commit, then stays non-terminal (no finished_at) and a late proposal is 409 run_state_conflict",
+        "a result carrying another attempt's token is 409 stale_attempt and stores nothing on either attempt",
+        "real executor: `cmd/supervisor exec --once` claims and runs start->python->end in WSL2/runsc; the Run is succeeded with one attempt carrying exited_at+revoked_at, the job is completed, four node results are owner-readable, and the product's Decimal summary equals this test's independently computed decimals from the input bytes"
+      ],
+      "notes": [],
+      "facts": {
+        "result_first": {
+          "run_id": "371cd01a-30a1-44c1-a42a-c8a59489066d",
+          "job_id": "f7632d61-55dc-4696-81f5-37d8b5667626",
+          "output_artifact_id": "936effda-f9c7-4013-bca4-c3b11cb6977a",
+          "output_sha256": "6365003e32468310289cfbcb18913794629315c76914b78c561d34201fe97285",
+          "revision_after_proposal": 2,
+          "revision_after_exit": 3,
+          "phase_after_proposal": "finalizing",
+          "state_after_exit": "succeeded",
+          "quota_released": true
+        },
+        "exit_first": {
+          "run_id": "36da0861-1a43-4fac-a665-e83f4a1efdd2",
+          "job_id": "cf05d4f8-f571-46b3-b700-fed9b158b7cd",
+          "output_artifact_id": "15f0b183-722e-44df-b8e8-0fb9d0106f3e",
+          "state_after_exit_only": "recovery_pending",
+          "revision_after_exit_only": 3,
+          "revision_after_result": 4,
+          "state_after_result": "succeeded",
+          "job_state_after_exit_only": "held",
+          "quota_released_after_exit_only": true
+        },
+        "role_and_stale": {
+          "interim_state": "running",
+          "parked_state": "needs_reconciliation",
+          "parked_finished_at": null,
+          "stale_token_run_id": "62f96df0-6db5-445c-ada0-bb546e8d1f11",
+          "stale_token_error": "stale_attempt"
+        },
+        "real_supervisor_exec": {
+          "run_id": "0a763563-33ea-4df2-ac45-00e8253f2bc1",
+          "executor_report": {
+            "status": "executed",
+            "outcome": "succeeded",
+            "run_state": "succeeded",
+            "error_code": null
+          },
+          "sandbox": {
+            "started": true,
+            "exit_code": 0,
+            "cleanup": {
+              "sandbox_list_matches": 0,
+              "pid": 842,
+              "pid_alive": false,
+              "ps_matches": 0,
+              "workspace_removed": true
+            }
+          },
+          "attempts": 1,
+          "node_result_items": 4,
+          "independent_decimal_truth": {
+            "total": "250.00",
+            "regions": {
+              "东区": "200.00",
+              "西区": "50.00"
+            },
+            "order_count": 3
+          },
+          "product_summary": {
+            "order_count": 3,
+            "regions": {
+              "东区": "200.00",
+              "西区": "50.00"
+            },
+            "total": "250.00"
+          }
+        }
+      },
+      "variants": [
+        {
+          "variant_id": "real-supervisor-exec",
+          "status": "passed",
+          "evidence": "run 0a763563-33ea-4df2-ac45-00e8253f2bc1: outcome=succeeded, attempt exited+revoked, sandbox cleanup={'sandbox_list_matches': 0, 'pid': 842, 'pid_alive': False, 'ps_matches': 0, 'workspace_removed': True}"
+        }
+      ],
+      "failure_reason": null,
+      "started_at": "2026-11-07T04:54:20Z",
+      "duration_seconds": 10.641
+    },
+    {
+      "journey_id": "T100-J5",
+      "title": "后台任务：领取 → 心跳 → 结果（真实 tool_run 处理器 + 内部协议）",
+      "status": "passed",
+      "entry_commands": [
+        "cmd/maintenance run --once --kinds tool_run,artifact_finalize (real compiled binary, two real pools; the preset tool runs as a real Python subprocess)"
+      ],
+      "entry_http": [
+        "POST /api/v1/tool-runs (owner + CSRF + Idempotency-Key)",
+        "GET /api/v1/tool-runs/{job_id}",
+        "GET /api/v1/artifacts/{id}/content (sealed tool summary)",
+        "GET /api/v1/background-jobs/{job_id} (contract read of the same job)",
+        "POST /internal/v1/background/jobs/claim (maintenance mTLS certificate; worker/supervisor certificates are refused)",
+        "POST /internal/v1/background/jobs/{job_id}/heartbeat",
+        "POST /internal/v1/background/jobs/{job_id}/result (retryable failure -> retry; terminal business failure; duplicate event; different event)"
+      ],
+      "truth_sources": [
+        "platform.background_jobs (kind, state, attempt_count, lease_token, worker_id, result_event_id, failure_class, error_code, finished_at, available_at)",
+        "platform.background_job_artifacts + platform.artifacts (tool_summary/tool_artifact)",
+        "object directory: sealed summary bytes (sha256) and their Decimal facts",
+        "platform.idempotency_keys (the /tool-runs receipt row)",
+        "independent Decimal truth computed by the test from the input CSV bytes",
+        "cmd/maintenance stdout JSON job reports and exit code"
+      ],
+      "assertions": [
+        "POST /api/v1/tool-runs (owner + CSRF + Idempotency-Key) returns 202 {id, state, tool, artifact_id}; PostgreSQL holds a ready tool_run job with attempt_count 0",
+        "the same Idempotency-Key replays the identical 202 body and creates exactly one job",
+        "the real `cmd/maintenance run --once --kinds tool_run,artifact_finalize` claims the job, executes the preset tool and completes it with result=succeeded",
+        "independent truth: the job row is succeeded with attempt_count 1, a result_event_id, a finished_at and no error; the job owns ready tool_summary/tool_artifact links; the sealed summary bytes hash to the artifact row and their Decimal total/regions/count equal this test's own Decimal computation from the input CSV (250.00 total, 3 orders); the content route returns the same document; one idempotency receipt was recorded",
+        "public boundaries: another creator (and an admin) get 404 for the job and its summary artifact content; a missing Idempotency-Key is 400; the same key with a different body is 409 idempotency_conflict; an unknown tool is 422 with details.field=tool — no job created",
+        "claimBackgroundJob rejects worker and supervisor client certificates with 403 forbidden (only the maintenance capacity may claim background work)",
+        "claimBackgroundJob (maintenance certificate) returns the real lease and PostgreSQL shows state=leased, attempt_count=1, lease_token=attempt_token and the claiming worker id",
+        "a second claim for the same kind is 204: the leased job cannot be taken twice",
+        "heartbeatBackgroundJob returns {id, state:leased} and the database lease_deadline moves forward while the token and state stay unchanged",
+        "retry/recovery boundary: a retryable infrastructure result (tool_timeout) returns the job to ready with failure_class=infrastructure, attempt_count 1, no result event, no finish, and the old attempt token is refused with 409 stale_attempt on result and heartbeat",
+        "the retried job is claimable again after its backoff: a second claim returns a new attempt token and attempt_count=2, and the new token can heartbeat",
+        "completeBackgroundJob commits the terminal business result: state=failed, failure_class=business, attempt_count=2, result_event_id/finished_at set, lease cleared, no third attempt, and the public GET /tool-runs/{id} shows the same state/error_code",
+        "duplicate delivery is safe: the identical terminal event replays 200 without changing the row; a different event after the terminal result is 409 event_conflict; no further claim is possible for the finished job"
+      ],
+      "notes": [],
+      "facts": {
+        "tool_run_enqueued": {
+          "job_id": "b8a1c6af-3e68-4afd-a9ae-4a3410bfde25",
+          "kind": "tool_run",
+          "state": "ready",
+          "artifact_id": "c9c848a6-fae9-447e-911e-929d7ec481ef",
+          "input_sha256": "f226b1fef2d09026714dfbc29a01f1439d1353ba0bfb4a98fd3531db1fc612da"
+        },
+        "tool_run_result": {
+          "job_state": "succeeded",
+          "attempt_count": 1,
+          "failure_class": null,
+          "finished_at": "2026-11-07 12:53:45.548629+08",
+          "result_event_id": "8ddd9e08-2698-4af9-bcf4-86206964c687",
+          "summary_artifact_id": "89c0dd53-cfc1-47b9-bd25-6a7403ab1de0",
+          "summary_sha256": "84751af4c9cd7057707d57c93055593f7cebc0f1c634c81f3f9a9c9a58d83987",
+          "product_summary": {
+            "total": "250.00",
+            "regions": {
+              "东区": "200.00",
+              "西区": "50.00"
+            },
+            "order_count": 3
+          },
+          "independent_decimal_truth": {
+            "total": "250.00",
+            "regions": {
+              "东区": "200.00",
+              "西区": "50.00"
+            },
+            "order_count": 3
+          },
+          "idempotency_receipt": {
+            "path": "/api/v1/tool-runs",
+            "response_code": 202
+          }
+        },
+        "claim": {
+          "job_id": "d97cd05c-c7ad-41d0-a5e5-623153fd91ce",
+          "attempt_token": "bf860a61-0b29-4161-aef9-88a64354bb9c",
+          "attempt_count": 1,
+          "worker_id": "t100-maintenance-unit",
+          "lease_deadline": "2026-11-07 12:54:17.858796+08"
+        },
+        "heartbeat": {
+          "lease_deadline_before": "2026-11-07 12:54:17.858796+08",
+          "lease_deadline_after": "2026-11-07 12:54:17.979683+08",
+          "renewed": true
+        },
+        "complete": {
+          "retry_event": "71ce5e7f-003c-4d33-a3f2-99d9efae0301",
+          "terminal_event": "db368f64-bdca-40d5-a32b-93b8ed2395df",
+          "state": "failed",
+          "failure_class": "business",
+          "error_code": "negative_amount",
+          "attempt_count": 2,
+          "finished_at": "2026-11-07 12:53:48.75507+08"
+        }
+      },
+      "variants": [],
+      "failure_reason": null,
+      "started_at": "2026-11-07T04:53:42Z",
+      "duration_seconds": 6.14
+    }
+  ],
+  "known_gaps": [
+    {
+      "gap_id": "GAP-chat-input-as-run-input",
+      "title": "聊天正文作为已发布 Run 输入（F08↔F04B 产品缺口）",
+      "status": "blocked",
+      "entry_http": [
+        "POST /api/v1/conversations (201)",
+        "POST /api/v1/requests {message: '把这份销售明细汇总成报告', application_version_id: <published version>} (202 dispatched)",
+        "GET /api/v1/requests/{id}",
+        "GET /api/v1/runs/{id}",
+        "GET /api/v1/runs/{id}/node-results"
+      ],
+      "entry_commands": [
+        "cmd/supervisor exec --once (real compiled supervisor, WSL2/runsc)"
+      ],
+      "truth_sources": [
+        "platform.runs.state / error_code / output_artifact_id",
+        "platform.requests + artifacts (the sealed request_input bytes equal the message)",
+        "object directory: the Run's input artifact bytes",
+        "platform.run_node_outputs (no node output rows)"
+      ],
+      "observed": {
+        "exit_code": 1,
+        "executor_report": {
+          "status": "failed",
+          "outcome": "refused",
+          "run_state": "failed",
+          "error_code": "node_input_invalid"
+        },
+        "run_row": {
+          "state": "failed",
+          "error_code": "node_input_invalid",
+          "output_artifact_id": null
+        },
+        "run_read_status": 200,
+        "run_read": {
+          "id": "2bee5627-2788-4034-90a3-7e8a2609057f",
+          "state": "failed",
+          "revision": 3,
+          "application_version_id": "9074a95e-3155-4b16-a778-e2959263dd61",
+          "parent_run_id": null,
+          "output_artifact_id": null,
+          "error_code": "node_input_invalid",
+          "kind": "published",
+          "execution_snapshot_id": "9c47081e-ef65-4db4-835d-870fba3977a8",
+          "phase": "idle"
+        },
+        "node_results_status": 200,
+        "node_results_items": 0,
+        "request_input_artifact": {
+          "purpose": "request_input",
+          "sha256": "58d072877b357fa3112127e09812bcb57391443442d47e0408153795bb7ea95b",
+          "message_bytes_equal": true
+        }
+      },
+      "reason": "The Request path seals the chat message verbatim as the Run input (internal/requests/submit.go:131,646-690) while the executor requires a JSON object (internal/presetexec/linear.go:177-187 / graphrun.go:929-937), so the real execution fails with node_input_invalid before any sandbox starts. This is the known F08<->F04B integration gap, not a test-authoring shortcut; the ticket's structured entry (explicit application_version_id + JSON task document) is the in-spec alternative and was not used to claim this chat-text capability.",
+      "recorded_at": "2026-11-07T04:54:16Z"
+    }
+  ]
+}
