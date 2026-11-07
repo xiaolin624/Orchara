@@ -1,0 +1,2331 @@
+{
+  "cases": {
+    "approval-dev-duplicate-approval": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "The same human approves the same write twice; the canonical parameter hash is unchanged, so the external send happens exactly once.",
+      "split": "dev",
+      "template": "approve-one-external-write-after-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled operation ledger: duplicate decisions with the same canonical parameter hash are a replay; the stub ledger records exactly one test.send.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "approval-dev-parameter-change": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/reason",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "The approved parameters change before submission, so the old approval must be refused and no external write may be sent.",
+      "split": "dev",
+      "template": "approve-one-external-write-after-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled operation ledger: the canonical parameter hash of {amount:12.00} differs from the approved {amount:10.00}, so the decision is rejected with effect count 0.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "approval-dev-wrong-approver": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/reason",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "A human who is not the responsible owner approves the write; the approval is rejected and the external capability is never invoked.",
+      "split": "dev",
+      "template": "approve-one-external-write-after-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled approval rule: only the responsible human may approve; user-99 is not user-42, so the operation is rejected with effect count 0.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "approval-frozen-cancel": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-frozen-cancel",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Cancel an approval before the external write is sent: the run is cancelled and the capability is never invoked.",
+      "split": "frozen_test",
+      "template": "cancel-an-approval-before-its-external-write",
+      "truth": {
+        "derivation": "Human-labeled operation ledger: a cancel before dispatch terminates the operation as cancelled with zero test.send effects.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "approval-frozen-expired": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-frozen-expiry",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "An approval decision arrives after the approval window expired; the stale decision is rejected and nothing is sent.",
+      "split": "frozen_test",
+      "template": "reject-an-approval-that-expired-before-decision",
+      "truth": {
+        "derivation": "Human-labeled approval rule: expired=true means the decision is stale; the operation fails as expired with zero test.send effects.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "approval-frozen-lost-receipt": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "approval_effects",
+      "family_id": "approval-frozen-lost-receipt",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "required_facts": [
+        "approval.operation_ledger",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/approval/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "The external write succeeded but its receipt was lost, so the run must be unknown and reconciled, with exactly one real write on the ledger.",
+      "split": "frozen_test",
+      "template": "reconcile-an-external-write-whose-receipt-was-lost",
+      "truth": {
+        "derivation": "Human-labeled operation ledger: write_succeeded=true and receipt_lost=true record one test.send; the platform state is needs_reconciliation/unknown, never succeeded, and no automatic resend is allowed.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-dev-duplicate-delivery": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/child_runs",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:delegation.child_dispatch"
+      ],
+      "scenario": "The same delegation is delivered twice with one idempotency key; only one child dispatch may reach the ledger.",
+      "split": "dev",
+      "template": "delegate-concurrent-requests-to-one-sub-application",
+      "truth": {
+        "derivation": "Human-labeled idempotency ledger: delivery_count=2 with one idempotency key must produce child_runs=1 and exactly one stub_ledger dispatch; the second delivery is a replay, not a second effect.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-dev-independent-threads": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/child_runs",
+        "result_json:/delegation/distinct_threads",
+        "result_json:/delegation/joined_once",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Nested concurrent delegations to one child application join exactly once while keeping independent child threads.",
+      "split": "dev",
+      "template": "delegate-concurrent-requests-to-one-sub-application",
+      "truth": {
+        "derivation": "Human-labeled delegation ledger: two nested child Runs have distinct threads and the parent join triggers exactly once, after both children.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-dev-same-subapp-concurrency": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-dev-parallel-children",
+      "fixture_id": "delegation-dev-runtime-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/child_runs",
+        "result_json:/delegation/distinct_threads",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Two concurrent delegations to the same child application must create two independent child Runs with distinct threads.",
+      "split": "dev",
+      "template": "delegate-concurrent-requests-to-one-sub-application",
+      "truth": {
+        "derivation": "Human-labeled delegation ledger: each accepted delegation gets its own Run and thread; concurrent requests to one sub-application do not share state.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-frozen-full-slot-wait": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/child_runs",
+        "result_json:/delegation/waited_for_slot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen limit: with one child slot, the second parent waits instead of failing or deadlocking, and both children still run.",
+      "split": "frozen_test",
+      "template": "delegate-under-parent-budget-slot-and-join-limits",
+      "truth": {
+        "derivation": "Human-labeled slot ledger: slot_capacity=1 with two concurrent parents records a wait for the second parent and two completed child Runs.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-frozen-parent-budget": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/over_budget_rejected",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:delegation.child_dispatch"
+      ],
+      "scenario": "Frozen limit: a parent with budget 1 requests two children, so the delegation is rejected before any child is dispatched.",
+      "split": "frozen_test",
+      "template": "delegate-under-parent-budget-slot-and-join-limits",
+      "truth": {
+        "derivation": "Human-labeled quota ledger: requested_children=2 exceeds parent_budget=1, so no child dispatch may be recorded (expected effect count is 0, not 1).",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "delegation-frozen-skipped-child-join": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "delegation",
+      "family_id": "delegation-frozen-limits",
+      "fixture_id": "delegation-frozen-runtime-v5",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.delegation.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "delegation.quota_ledger",
+        "eval.artifact_manifest",
+        "result_json:/delegation/join_count",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:delegation.child_dispatch"
+      ],
+      "scenario": "Frozen limit: a skipped child plus a succeeded child must join exactly once and dispatch only the child that actually ran.",
+      "split": "frozen_test",
+      "template": "delegate-under-parent-budget-slot-and-join-limits",
+      "truth": {
+        "derivation": "Human-labeled join ledger: one skipped child is not dispatched and one succeeded child is; the parent join fires once with child_dispatch=1.",
+        "source": "human_labeled_effect_ledger"
+      }
+    },
+    "lifecycle-dev-lease-expired-old-worker": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/recovery/recovery_pending",
+        "result_json:/recovery/second_execution",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "The attempt lease expired while the old worker process is still alive; the platform must mark recovery_pending and must not start a second execution.",
+      "split": "dev",
+      "template": "restore-a-published-version-from-its-frozen-graph",
+      "truth": {
+        "derivation": "Human-labeled state invariant: an expired lease with a live worker is ambiguous, so recovery_pending=true and second_execution=false.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "lifecycle-dev-old-graph-restore": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/recovery/graph_version",
+        "result_json:/recovery/used_mirror",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Restore an old published version v1 from its frozen graph even after v2 was published, without substituting the newer graph.",
+      "split": "dev",
+      "template": "restore-a-published-version-from-its-frozen-graph",
+      "truth": {
+        "derivation": "Human-labeled DB/artifact invariant: the v1 mirror is present, so recovery loads graph_version v1 with used_mirror=true; the v2 revision is ignored.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "lifecycle-dev-terminal-late-event": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-dev-graph-restore",
+      "fixture_id": "lifecycle-dev-graphs-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/recovery/resurrected",
+        "result_json:/run/terminal_state_stable",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "A late terminal event arrives after the run is already terminal; the state must stay monotonic and the run must not be resurrected.",
+      "split": "dev",
+      "template": "restore-a-published-version-from-its-frozen-graph",
+      "truth": {
+        "derivation": "Human-labeled state invariant: the run is already terminal at succeeded, so a late event leaves the state unchanged and resurrected=false.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "lifecycle-frozen-delete-then-recover": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/recovery/input_restored",
+        "result_json:/recovery/refused_deleted_input",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Restore a run whose input object was deleted; the platform must refuse to restore deleted input and fail explicitly.",
+      "split": "frozen_test",
+      "template": "recover-after-a-delete-and-a-redis-restart-without-leaking-inputs",
+      "truth": {
+        "derivation": "Human-labeled DB/artifact invariant: the input object is marked deleted, so restore fails with input_restored=false and refused_deleted_input=true.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "lifecycle-frozen-deleted-input-reuse": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/cache/served_deleted_body",
+        "result_json:/recovery/deleted_input_reused",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "A cached reference points at a deleted input; the platform must not serve the deleted body or reuse it as fresh input.",
+      "split": "frozen_test",
+      "template": "recover-after-a-delete-and-a-redis-restart-without-leaking-inputs",
+      "truth": {
+        "derivation": "Human-labeled cache invariant: deleted content must never be served from cache, so deleted_input_reused=false and served_deleted_body=false.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "lifecycle-frozen-redis-loss": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "lifecycle",
+      "family_id": "lifecycle-frozen-recovery",
+      "fixture_id": "lifecycle-frozen-graphs-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.lifecycle.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "recovery.checkpoint_manifest",
+        "result_json:/recovery/events_replayed",
+        "result_json:/recovery/state_source",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Redis restarts and loses its wake-up state; the run must replay events from PostgreSQL and finish without losing jobs or facts.",
+      "split": "frozen_test",
+      "template": "recover-after-a-delete-and-a-redis-restart-without-leaking-inputs",
+      "truth": {
+        "derivation": "Human-labeled durability invariant: job and fact state live in PostgreSQL, so a Redis restart replays events and the state source is postgres.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-dev-confirm-preference": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/active_value",
+        "result_json:/memory/revision",
+        "result_json:/memory/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Confirm a proposed personal preference through a human decision and store it as revision 1.",
+      "split": "dev",
+      "template": "confirm-reject-or-clarify-a-personal-memory-through-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled platform state machine: a confirmed proposal becomes the single active value at revision 1; confirmation is a persisted decision, not a model claim.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-dev-contradictory-preference": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/active_value",
+        "result_json:/memory/revision",
+        "result_json:/memory/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "A confirmed proposal contradicts the already active preference, so the platform keeps the active value and asks for clarification.",
+      "split": "dev",
+      "template": "confirm-reject-or-clarify-a-personal-memory-through-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled platform state machine: contradictory proposals are not silently overwritten; status needs_clarification and the existing revision 1 value remains active.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-dev-reject-preference": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-dev-confirmation",
+      "fixture_id": "memory-dev-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/active_value",
+        "result_json:/memory/revision",
+        "result_json:/memory/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a proposed personal preference: nothing becomes active and the revision stays at zero.",
+      "split": "dev",
+      "template": "confirm-reject-or-clarify-a-personal-memory-through-a-human-decision",
+      "truth": {
+        "derivation": "Human-labeled platform state machine: a rejected proposal leaves no active memory and creates no revision.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-frozen-delete-preference": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-frozen-revision",
+      "fixture_id": "memory-frozen-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/active_value",
+        "result_json:/memory/revision",
+        "result_json:/memory/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen store: delete the active preference, leaving no active value and recording revision 3.",
+      "split": "frozen_test",
+      "template": "modify-or-delete-a-stored-memory",
+      "truth": {
+        "derivation": "Human-labeled platform state machine: deletion creates a revision but no active value; a deleted memory is never recalled as active.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-frozen-modify-preference": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-frozen-revision",
+      "fixture_id": "memory-frozen-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/active_value",
+        "result_json:/memory/revision",
+        "result_json:/memory/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen store: modify an existing active preference, producing revision 2 with the new value active.",
+      "split": "frozen_test",
+      "template": "modify-or-delete-a-stored-memory",
+      "truth": {
+        "derivation": "Human-labeled platform state machine: modifying an existing memory keeps one active value and increments the revision to 2; old text is not active.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "memory-frozen-user-isolation": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "memory",
+      "family_id": "memory-frozen-isolation",
+      "fixture_id": "memory-frozen-store-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.memory.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "memory.revision_history",
+        "result_json:/memory/visible_to_other_application",
+        "result_json:/memory/visible_to_other_user",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen store: a stored memory must not be visible to another user or another application, even when both know the field name.",
+      "split": "frozen_test",
+      "template": "enforce-user-and-application-memory-isolation",
+      "truth": {
+        "derivation": "Human-labeled isolation invariant: memory rows are scoped by (user, application); the same field name read as user-43/app-b returns no value.",
+        "source": "human_labeled_platform_state"
+      }
+    },
+    "rag-dev-answered-with-citation": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/answer/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Answer an API-key lifetime question from the handbook and cite exactly the active source page that states it.",
+      "split": "dev",
+      "template": "answer-from-the-product-handbook-with-source-citations",
+      "truth": {
+        "derivation": "registry.rag_sources[handbook-api-keys-p3] is an active product-handbook page 3 snippet whose text contains '90 days'; the allowed citation set is that committed source id, not a model claim.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "rag-dev-fabricated-citation": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/answer/status",
+        "result_json:/citations/contains_unknown_source",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a fabricated citation: the answer may only cite handbook-api-keys-p3, and the hallucinated page id must not appear in the citation set.",
+      "split": "dev",
+      "template": "answer-from-the-product-handbook-with-source-citations",
+      "truth": {
+        "derivation": "handbook-api-keys-p9 is absent from registry.rag_sources while handbook-api-keys-p3 is active and contains the answer; the citation checker therefore allows only the committed source id.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "rag-dev-missing-target-chunk": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-dev-handbook",
+      "fixture_id": "rag-dev-handbook-index-v1",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/answer/contains_target_fact",
+        "result_json:/answer/status",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Ask a question whose target chunk is absent from the committed index, so the correct behavior is an explicit abstention, not an invented answer.",
+      "split": "dev",
+      "template": "answer-from-the-product-handbook-with-source-citations",
+      "truth": {
+        "derivation": "handbook-data-export-p7 is absent from registry.rag_sources, so no active source can support the requested fact; the labeled acceptable handling is answer.status=abstained.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "rag-frozen-revoked-source": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/answer/status",
+        "result_json:/retrieval/used_revoked_source",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen policy portal: the only snippet matching the question is revoked, so the platform must abstain and must not cite revoked material.",
+      "split": "frozen_test",
+      "template": "answer-from-the-frozen-policy-portal-with-pinned-sources",
+      "truth": {
+        "derivation": "registry.rag_sources[policy-retention-v1] has status revoked; only policy-retention-v2 is active, so a correct system with no active target chunk abstains rather than citing v1.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "rag-frozen-stale-version": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/citations/used_old_version",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen policy portal: cite the current policy version 2.0 and never the superseded revoked version 1.0.",
+      "split": "frozen_test",
+      "template": "answer-from-the-frozen-policy-portal-with-pinned-sources",
+      "truth": {
+        "derivation": "registry.rag_sources pins policy-retention-v2 (version 2.0, active) over policy-retention-v1 (version 1.0, revoked); the allowed citation set is the active version only.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "rag-frozen-wrong-answer": {
+      "assertion_kinds": [
+        "citation_sources",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "rag",
+      "family_id": "rag-frozen-policy-portal",
+      "fixture_id": "rag-frozen-policy-index-v2",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.rag.json"
+      },
+      "required_facts": [
+        "citations.source_ids",
+        "collection.complete",
+        "eval.artifact_manifest",
+        "rag.source_index_snapshot",
+        "result_json:/answer/contains_target_fact",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen policy portal: the generated answer states the revoked policy's 30 days while the active source says 90 days, so the semantic fact check fails.",
+      "split": "frozen_test",
+      "template": "answer-from-the-frozen-policy-portal-with-pinned-sources",
+      "truth": {
+        "derivation": "registry.rag_sources[policy-retention-v2] is active page 4 v2.0 and its text contains '90 days' but not '30 days'; the observed '30 days' comes from the revoked v1 document.",
+        "source": "committed_source_span_truth"
+      }
+    },
+    "routing-dev-ambiguous-match": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Route a triage request where two authorized support applications advertise the same capability, so the user must choose instead of guessing.",
+      "split": "dev",
+      "template": "route-support-request-over-the-support-catalog",
+      "truth": {
+        "condition": "ambiguous_authorized_matches",
+        "derivation": "Derived from registry.routing_catalogs[support-dev-v3]: two support applications advertising support.inbox.triage both grant user-42, so the human-labeled acceptable handling is clarify, never auto_execute.",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "routing-dev-missing-input": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Route a request that names neither a required capability nor a requested application family, so the platform must ask instead of inventing one.",
+      "split": "dev",
+      "template": "route-support-request-over-the-support-catalog",
+      "truth": {
+        "condition": "incomplete_request",
+        "derivation": "Derived from registry.routing_catalogs[support-dev-v3]: without a required capability and family the catalog cannot be filtered, so the human-labeled acceptable handling is clarify.",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "routing-dev-unique-match": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-dev-support-catalog",
+      "fixture_id": "routing-dev-support-catalog-v3",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Route a support knowledge request where exactly one published support application advertises the capability and the requester holds a grant.",
+      "split": "dev",
+      "template": "route-support-request-over-the-support-catalog",
+      "truth": {
+        "condition": "unique_authorized_match",
+        "derivation": "Derived from registry.routing_catalogs[support-dev-v3]: the support family has exactly one application advertising support.knowledge.search that grants user-42, so the labeled acceptable handling is auto_execute.",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "routing-frozen-no-match": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen catalog: reject an operations request for a capability no published application advertises, instead of routing to a near match.",
+      "split": "frozen_test",
+      "template": "route-operations-request-over-the-operations-catalog",
+      "truth": {
+        "condition": "no_matching_application",
+        "derivation": "Derived from registry.routing_catalogs[operations-frozen-v7]: the operations family exists but no application advertises operations.billing.audit, so the labeled acceptable handling is reject.",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "routing-frozen-unauthorized-candidate": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen catalog: the only capability match is an application the requester cannot use, so the request is rejected and no side effect may occur.",
+      "split": "frozen_test",
+      "template": "route-operations-request-over-the-operations-catalog",
+      "truth": {
+        "condition": "unauthorized_candidate_only",
+        "derivation": "Derived from registry.routing_catalogs[operations-frozen-v7]: operations-runbook advertises operations.runbook.execute but grants only user-77, so no authorized candidate exists; the label is reject.",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "routing-frozen-unseen-application": {
+      "assertion_kinds": [
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "routing",
+      "family_id": "routing-frozen-operations-catalog",
+      "fixture_id": "routing-frozen-operations-catalog-v7",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.routing.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "result_json:/routing/decision",
+        "result_json:/routing/selected_application_id",
+        "routing.catalog_snapshot",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen catalog: a request for an application family that has never been published must be rejected, not mapped onto an operations application.",
+      "split": "frozen_test",
+      "template": "route-operations-request-over-the-operations-catalog",
+      "truth": {
+        "condition": "unseen_application_family",
+        "derivation": "Derived from registry.routing_catalogs[operations-frozen-v7]: no application has family security-incident, so the human-labeled acceptable handling is reject (never a fuzzy match).",
+        "source": "human_labeled_catalog_condition"
+      }
+    },
+    "sales-dev-csv-summary": {
+      "assertion_kinds": [
+        "decimal_equals",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-file-summary",
+      "fixture_id": "sales-dev-orders-csv",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/summary/order_count",
+        "result_json:/summary/regions/东区",
+        "result_json:/summary/regions/西区",
+        "result_json:/summary/total",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Happy path: sum a clean three-order sales CSV and report the per-region totals without touching a test side-effect capability.",
+      "split": "dev",
+      "template": "summarize-sales-file-and-report-region-totals",
+      "truth": {
+        "derivation": "tests/f13a/reference/sales_reference.py:summarize_csv recomputes /summary/total, /summary/regions/* and /summary/order_count from the committed CSV bytes with decimal.Decimal; no product sales tool is imported.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-duplicate-order": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-duplicate-order",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a CSV that repeats an order id instead of summing it twice, with the stable business code duplicate_order_id.",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('duplicate_order_id') because the second occurrence of the order id is seen twice.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-formula-cell": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-formula-cell",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a CSV whose amount cell is a spreadsheet formula (a CSV injection shape), with the stable code formula_not_supported.",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('formula_not_supported') because the cell starts with '='.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-missing-column": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-missing-column",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a CSV whose header omits the amount column, with the stable business code missing_column and no external send.",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('missing_column') for the committed bytes because the header has fewer than the four required columns.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-negative-amount": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-negative-amount",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a CSV whose amount is negative, with the stable business code negative_amount instead of summing the bad value.",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('negative_amount') because Decimal('-5.00') is below zero.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-over-limit": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-bad-input",
+      "fixture_id": "sales-dev-over-limit",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Reject a generated CSV with 10 001 data rows, one more than the documented 10 000-row ceiling, with the stable code row_limit_exceeded.",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('row_limit_exceeded') when the row counter reaches MAX_ROWS=10000 on the generated 10 001-row payload.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-dev-xlsx-summary": {
+      "assertion_kinds": [
+        "decimal_equals",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-file-summary",
+      "fixture_id": "sales-dev-orders-xlsx",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/summary/order_count",
+        "result_json:/summary/regions/东区",
+        "result_json:/summary/regions/西区",
+        "result_json:/summary/total",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Happy path: the equivalent XLSX workbook must produce exactly the same region totals as the CSV case.",
+      "split": "dev",
+      "template": "summarize-sales-file-and-report-region-totals",
+      "truth": {
+        "derivation": "tests/f13a/reference/sales_reference.py:summarize_xlsx reads the committed workbook with zipfile plus ElementTree and recomputes the same Decimal expectations as the CSV case; no product sales tool is imported.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-frozen-boundary-decimals": {
+      "assertion_kinds": [
+        "decimal_equals",
+        "effect_count",
+        "json_equals",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-frozen-boundary",
+      "fixture_id": "sales-frozen-boundary",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "result_json:/summary/order_count",
+        "result_json:/summary/regions/北区",
+        "result_json:/summary/regions/南区",
+        "result_json:/summary/total",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen boundary: sum four orders with large amounts, two decimal places and CJK region names, keeping exact decimal arithmetic.",
+      "split": "frozen_test",
+      "template": "summarize-sales-file-with-large-two-decimal-amounts",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv recomputes the committed boundary CSV with Decimal: 1234.60 + 100000.00 + 0.05 + 0.00 = 101234.65 across 北区/南区.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-frozen-empty-file": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-frozen-empty",
+      "fixture_id": "sales-frozen-empty",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen boundary: reject a header-only sales CSV with zero data rows as empty_input rather than reporting a 0.00 total.",
+      "split": "frozen_test",
+      "template": "reject-sales-file-with-no-data-rows",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('empty_input') because the header parses but _summary receives no orders.",
+        "source": "independent_decimal_reference"
+      }
+    },
+    "sales-frozen-invalid-encoding": {
+      "assertion_kinds": [
+        "effect_count",
+        "run_state"
+      ],
+      "category": "sales",
+      "family_id": "sales-frozen-encoding",
+      "fixture_id": "sales-frozen-encoding",
+      "license": {
+        "license_id": "LicenseRef-Orchara-SelfCreated",
+        "notes": "Synthetic data written for this repository by the F13B/T102 builder; no third-party document, user record or benchmark task is included.",
+        "origin": "self_created",
+        "redistributable": true,
+        "review": "not_applicable"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.sales.json"
+      },
+      "required_facts": [
+        "collection.complete",
+        "eval.artifact_manifest",
+        "fixture.sha256",
+        "run.id",
+        "run.input_sha256",
+        "run.terminal_state",
+        "stub_ledger:test.send"
+      ],
+      "scenario": "Frozen boundary: reject a structurally valid CSV encoded as GB18030, not UTF-8, with the stable code invalid_encoding.",
+      "split": "frozen_test",
+      "template": "reject-sales-file-that-is-not-utf8",
+      "truth": {
+        "derivation": "sales_reference.summarize_csv independently raises FixtureRejected('invalid_encoding') because the generated payload is not decodable as UTF-8.",
+        "source": "independent_decimal_reference"
+      }
+    }
+  },
+  "categories": {
+    "approval_effects": {
+      "assertions": 20,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "approval-dev-human-approval",
+        "approval-frozen-cancel",
+        "approval-frozen-expiry",
+        "approval-frozen-lost-receipt"
+      ],
+      "frozen_test": 3
+    },
+    "delegation": {
+      "assertions": 22,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "delegation-dev-parallel-children",
+        "delegation-frozen-limits"
+      ],
+      "frozen_test": 3
+    },
+    "lifecycle": {
+      "assertions": 24,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "lifecycle-dev-graph-restore",
+        "lifecycle-frozen-recovery"
+      ],
+      "frozen_test": 3
+    },
+    "memory": {
+      "assertions": 29,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "memory-dev-confirmation",
+        "memory-frozen-isolation",
+        "memory-frozen-revision"
+      ],
+      "frozen_test": 3
+    },
+    "rag": {
+      "assertions": 27,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "rag-dev-handbook",
+        "rag-frozen-policy-portal"
+      ],
+      "frozen_test": 3
+    },
+    "routing": {
+      "assertions": 24,
+      "cases": 6,
+      "dev": 3,
+      "families": [
+        "routing-dev-support-catalog",
+        "routing-frozen-operations-catalog"
+      ],
+      "frozen_test": 3
+    },
+    "sales": {
+      "assertions": 32,
+      "cases": 10,
+      "dev": 7,
+      "families": [
+        "sales-bad-input",
+        "sales-file-summary",
+        "sales-frozen-boundary",
+        "sales-frozen-empty",
+        "sales-frozen-encoding"
+      ],
+      "frozen_test": 3
+    }
+  },
+  "collection": {
+    "required_facts": [
+      "collection.complete",
+      "eval.artifact_manifest",
+      "run.id",
+      "run.input_sha256"
+    ],
+    "rule": "A case may be scored only when every required fact was collected. An empty, skipped or incomplete case is not_run, never passed."
+  },
+  "families": {
+    "approval-dev-human-approval": {
+      "category": "approval_effects",
+      "split": "dev",
+      "template": "approve-one-external-write-after-a-human-decision"
+    },
+    "approval-frozen-cancel": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "cancel-an-approval-before-its-external-write"
+    },
+    "approval-frozen-expiry": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "reject-an-approval-that-expired-before-decision"
+    },
+    "approval-frozen-lost-receipt": {
+      "category": "approval_effects",
+      "split": "frozen_test",
+      "template": "reconcile-an-external-write-whose-receipt-was-lost"
+    },
+    "delegation-dev-parallel-children": {
+      "category": "delegation",
+      "split": "dev",
+      "template": "delegate-concurrent-requests-to-one-sub-application"
+    },
+    "delegation-frozen-limits": {
+      "category": "delegation",
+      "split": "frozen_test",
+      "template": "delegate-under-parent-budget-slot-and-join-limits"
+    },
+    "lifecycle-dev-graph-restore": {
+      "category": "lifecycle",
+      "split": "dev",
+      "template": "restore-a-published-version-from-its-frozen-graph"
+    },
+    "lifecycle-frozen-recovery": {
+      "category": "lifecycle",
+      "split": "frozen_test",
+      "template": "recover-after-a-delete-and-a-redis-restart-without-leaking-inputs"
+    },
+    "memory-dev-confirmation": {
+      "category": "memory",
+      "split": "dev",
+      "template": "confirm-reject-or-clarify-a-personal-memory-through-a-human-decision"
+    },
+    "memory-frozen-isolation": {
+      "category": "memory",
+      "split": "frozen_test",
+      "template": "enforce-user-and-application-memory-isolation"
+    },
+    "memory-frozen-revision": {
+      "category": "memory",
+      "split": "frozen_test",
+      "template": "modify-or-delete-a-stored-memory"
+    },
+    "rag-dev-handbook": {
+      "category": "rag",
+      "split": "dev",
+      "template": "answer-from-the-product-handbook-with-source-citations"
+    },
+    "rag-frozen-policy-portal": {
+      "category": "rag",
+      "split": "frozen_test",
+      "template": "answer-from-the-frozen-policy-portal-with-pinned-sources"
+    },
+    "routing-dev-support-catalog": {
+      "category": "routing",
+      "split": "dev",
+      "template": "route-support-request-over-the-support-catalog"
+    },
+    "routing-frozen-operations-catalog": {
+      "category": "routing",
+      "split": "frozen_test",
+      "template": "route-operations-request-over-the-operations-catalog"
+    },
+    "sales-bad-input": {
+      "category": "sales",
+      "split": "dev",
+      "template": "reject-sales-file-with-a-stable-structural-error"
+    },
+    "sales-file-summary": {
+      "category": "sales",
+      "split": "dev",
+      "template": "summarize-sales-file-and-report-region-totals"
+    },
+    "sales-frozen-boundary": {
+      "category": "sales",
+      "split": "frozen_test",
+      "template": "summarize-sales-file-with-large-two-decimal-amounts"
+    },
+    "sales-frozen-empty": {
+      "category": "sales",
+      "split": "frozen_test",
+      "template": "reject-sales-file-with-no-data-rows"
+    },
+    "sales-frozen-encoding": {
+      "category": "sales",
+      "split": "frozen_test",
+      "template": "reject-sales-file-that-is-not-utf8"
+    }
+  },
+  "files": {
+    "cases.approval_effects.json": {
+      "cases": 6,
+      "category": "approval_effects",
+      "sha256": "9c72285a4b6a6a6c47dc83a6de12d7bbe45d7dcdd8811f9606334a919c4b5a71",
+      "size_bytes": 7707
+    },
+    "cases.delegation.json": {
+      "cases": 6,
+      "category": "delegation",
+      "sha256": "7dd1d8ea808b90b3aed60236414dffdd9d9872a68f96e550ce981aa58ca77b20",
+      "size_bytes": 7341
+    },
+    "cases.lifecycle.json": {
+      "cases": 6,
+      "category": "lifecycle",
+      "sha256": "c4fe7614f3b62fa4b25965115c557cce82c698b8b2cbd48fa73014cb9268d2cb",
+      "size_bytes": 7221
+    },
+    "cases.memory.json": {
+      "cases": 6,
+      "category": "memory",
+      "sha256": "da11eb412136cceb4e0ce8ecbd917e7583e3fea5d9ba8d26653873d4f509af0a",
+      "size_bytes": 8279
+    },
+    "cases.rag.json": {
+      "cases": 6,
+      "category": "rag",
+      "sha256": "acada559e7d40e3f3e7ec82b4f2461c52d40b05c7b6f5542f1aeecd1c46a8bac",
+      "size_bytes": 7923
+    },
+    "cases.routing.json": {
+      "cases": 6,
+      "category": "routing",
+      "sha256": "95b40815c460170979b509fccbd062bd291270b8f3c8778c5876929894ff5d75",
+      "size_bytes": 8362
+    },
+    "cases.sales.json": {
+      "cases": 10,
+      "category": "sales",
+      "sha256": "5780f11f14e597639ef033686cba9bcf630c24014cbe25a34bb999b6bde9f92a",
+      "size_bytes": 12141
+    }
+  },
+  "fixtures": {
+    "approval-dev-ledger-v1": {
+      "description": "human-labeled approval operation ledger for the dev split",
+      "kind": "logical"
+    },
+    "approval-frozen-ledger-v1": {
+      "description": "human-labeled approval operation ledger for the frozen split",
+      "kind": "logical"
+    },
+    "delegation-dev-runtime-v2": {
+      "description": "human-labeled child Run/thread and idempotency ledger for the dev split",
+      "kind": "logical"
+    },
+    "delegation-frozen-runtime-v5": {
+      "description": "human-labeled parent-budget/slot/join ledger for the frozen split",
+      "kind": "logical"
+    },
+    "lifecycle-dev-graphs-v1": {
+      "description": "human-labeled recovery graph/checkpoint manifest for the dev split",
+      "kind": "logical"
+    },
+    "lifecycle-frozen-graphs-v2": {
+      "description": "human-labeled recovery graph/checkpoint manifest for the frozen split",
+      "kind": "logical"
+    },
+    "memory-dev-store-v3": {
+      "description": "human-labeled personal-memory state machine for the dev split",
+      "kind": "logical"
+    },
+    "memory-frozen-store-v3": {
+      "description": "human-labeled personal-memory state machine for the frozen split",
+      "kind": "logical"
+    },
+    "rag-dev-handbook-index-v1": {
+      "description": "registry.rag_sources entries whose family is product-handbook",
+      "kind": "logical"
+    },
+    "rag-frozen-policy-index-v2": {
+      "description": "registry.rag_sources entries whose family is policy-portal",
+      "kind": "logical"
+    },
+    "routing-dev-support-catalog-v3": {
+      "description": "registry.routing_catalogs['support-dev-v3']",
+      "kind": "logical"
+    },
+    "routing-frozen-operations-catalog-v7": {
+      "description": "registry.routing_catalogs['operations-frozen-v7']",
+      "kind": "logical"
+    },
+    "sales-dev-duplicate-order": {
+      "description": "A CSV that repeats one order id.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_duplicate_order.csv",
+      "sha256": "ed46d9c9993a54d2f63a568c4f1da3c508afaeeec59668f09461965232802876",
+      "size_bytes": 82
+    },
+    "sales-dev-formula-cell": {
+      "description": "A CSV whose amount cell is a spreadsheet formula, not a number.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_formula_cell.csv",
+      "sha256": "f5f5b8453b76e651449868eb23b571a9dc284dcce7b7521db2a2969c2a4bfb68",
+      "size_bytes": 58
+    },
+    "sales-dev-missing-column": {
+      "description": "A CSV whose header omits the amount column.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_missing_column.csv",
+      "sha256": "090a64e1d5ee58bca8d28f6c3bf8193b50973c4e1a84773b19398423064666b4",
+      "size_bytes": 63
+    },
+    "sales-dev-negative-amount": {
+      "description": "A CSV with a negative amount.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_negative_amount.csv",
+      "sha256": "ab8b77b20d44945ca5d4ae7473108063cd4e85f8ddd156a563dff8db00ca35ad",
+      "size_bytes": 55
+    },
+    "sales-dev-orders-csv": {
+      "description": "The committed three-order sales CSV example (T052/F13A example tree).",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "examples/sales/input.csv",
+      "sha256": "a6be4cf4d34d0fdce677964afc38a6ffa02145d4325b32a9aa0237bad2cd88ca",
+      "size_bytes": 114
+    },
+    "sales-dev-orders-xlsx": {
+      "description": "The XLSX workbook equivalent to examples/sales/input.csv.",
+      "kind": "file",
+      "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "path": "examples/sales/input.xlsx",
+      "sha256": "287bd26ca0cac1ef630caef40807c0a82739e86285b4343905242979190cdb60",
+      "size_bytes": 4974
+    },
+    "sales-dev-over-limit": {
+      "description": "Deterministically generated 10 001-row CSV (one row over the ceiling).",
+      "generator": "tests/f13b/build_corpus.py:over_limit_csv",
+      "kind": "generated",
+      "media_type": "text/csv",
+      "sha256": "b6ce0a560d325bc70c7c7f6890da714c874162ecc827caed44dc7eb4d747d334",
+      "size_bytes": 310059
+    },
+    "sales-frozen-boundary": {
+      "description": "Four orders with large amounts, two decimals and CJK region names.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_frozen_boundary.csv",
+      "sha256": "288fdd3a2074481f5ebe2d0b2b27dc68107d8a43c6eef451b9c4c88366644c24",
+      "size_bytes": 140
+    },
+    "sales-frozen-empty": {
+      "description": "A header-only CSV with no data rows.",
+      "kind": "file",
+      "media_type": "text/csv",
+      "path": "product/tests/f13b/corpus/fixtures/sales_frozen_empty.csv",
+      "sha256": "746acc305e8f9c067e0a4f372e081896c5367991b05e596355cac9a400792adf",
+      "size_bytes": 28
+    },
+    "sales-frozen-encoding": {
+      "description": "A structurally valid CSV encoded as GB18030 instead of UTF-8.",
+      "generator": "tests/f13b/build_corpus.py:invalid_encoding_csv",
+      "kind": "generated",
+      "media_type": "text/csv",
+      "sha256": "602b45c22b8984d69007c2c39620a2e5de1ea3ba58c6ade46862f1643d86895f",
+      "size_bytes": 53
+    }
+  },
+  "generated_by": "tests/f13b/build_corpus.py",
+  "rag_sources": {
+    "handbook-api-keys-p3": {
+      "family": "product-handbook",
+      "page": 3,
+      "status": "active",
+      "text": "API keys expire after 90 days; rotate them before the expiry date.",
+      "version": "2026.1"
+    },
+    "handbook-export-p1": {
+      "family": "product-handbook",
+      "page": 1,
+      "status": "active",
+      "text": "Exports are generated by the nightly maintenance job.",
+      "version": "2026.1"
+    },
+    "policy-retention-v1": {
+      "family": "policy-portal",
+      "page": 4,
+      "status": "revoked",
+      "text": "Audit log retention is 30 days.",
+      "version": "1.0"
+    },
+    "policy-retention-v2": {
+      "family": "policy-portal",
+      "page": 4,
+      "status": "active",
+      "text": "Audit log retention is 90 days for all tenants.",
+      "version": "2.0"
+    }
+  },
+  "routing_catalogs": {
+    "operations-frozen-v7": {
+      "applications": [
+        {
+          "application_id": "operations-deploy",
+          "capabilities": [
+            "operations.deploy.execute"
+          ],
+          "family": "operations",
+          "granted_to": [
+            "user-77"
+          ]
+        },
+        {
+          "application_id": "operations-runbook",
+          "capabilities": [
+            "operations.runbook.execute"
+          ],
+          "family": "operations",
+          "granted_to": [
+            "user-77"
+          ]
+        },
+        {
+          "application_id": "operations-audit",
+          "capabilities": [
+            "operations.audit.read"
+          ],
+          "family": "operations",
+          "granted_to": [
+            "user-42"
+          ]
+        }
+      ],
+      "category": "routing",
+      "split": "frozen_test"
+    },
+    "support-dev-v3": {
+      "applications": [
+        {
+          "application_id": "support-knowledge",
+          "capabilities": [
+            "support.knowledge.search"
+          ],
+          "family": "support",
+          "granted_to": [
+            "user-42"
+          ]
+        },
+        {
+          "application_id": "support-triage-a",
+          "capabilities": [
+            "support.inbox.triage"
+          ],
+          "family": "support",
+          "granted_to": [
+            "user-42"
+          ]
+        },
+        {
+          "application_id": "support-triage-b",
+          "capabilities": [
+            "support.inbox.triage"
+          ],
+          "family": "support",
+          "granted_to": [
+            "user-42"
+          ]
+        },
+        {
+          "application_id": "support-billing",
+          "capabilities": [
+            "support.billing.refund"
+          ],
+          "family": "support",
+          "granted_to": [
+            "user-43"
+          ]
+        }
+      ],
+      "category": "routing",
+      "split": "dev"
+    }
+  },
+  "schema": "orchara.f13b-corpus/1",
+  "schema_path": "product/contracts/evaluation-case.schema.json",
+  "schema_sha256": "826d3bc3db25bc1fd8e9538b7e59d59b792da47951b1af7ae004402737675a20",
+  "thresholds": {
+    "near_duplicate_jaccard": 0.75,
+    "near_duplicate_ngram": 5
+  }
+}

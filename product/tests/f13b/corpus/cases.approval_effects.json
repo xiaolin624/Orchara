@@ -1,0 +1,294 @@
+{
+  "cases": [
+    {
+      "assertions": [
+        {
+          "expected": "succeeded",
+          "kind": "run_state"
+        },
+        {
+          "expected": "approved",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "capability": "test.send",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-dev-duplicate-approval",
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "input": {
+        "decisions": [
+          {
+            "actor": "user-42",
+            "decision": "approve"
+          },
+          {
+            "actor": "user-42",
+            "decision": "approve"
+          }
+        ],
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-approval-dev-human-approval",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": "rejected",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "expected": "parameter_hash_mismatch",
+          "kind": "json_equals",
+          "pointer": "/approval/reason"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-dev-parameter-change",
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "input": {
+        "decision": "approve",
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        },
+        "submitted_parameters": {
+          "amount": "12.00"
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-approval-dev-human-approval",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": "rejected",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "expected": "approver_not_responsible",
+          "kind": "json_equals",
+          "pointer": "/approval/reason"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-dev-wrong-approver",
+      "category": "approval_effects",
+      "family_id": "approval-dev-human-approval",
+      "fixture_id": "approval-dev-ledger-v1",
+      "input": {
+        "approver": "user-99",
+        "decision": "approve",
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        },
+        "responsible_human": "user-42"
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "dev",
+      "target": {
+        "id": "snapshot-approval-dev-human-approval",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "needs_reconciliation",
+          "kind": "run_state"
+        },
+        {
+          "expected": "unknown",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "capability": "test.send",
+          "expected": 1,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-frozen-lost-receipt",
+      "category": "approval_effects",
+      "family_id": "approval-frozen-lost-receipt",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "input": {
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        },
+        "receipt_lost": true,
+        "write_succeeded": true
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-approval-frozen-lost-receipt",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "cancelled",
+          "kind": "run_state"
+        },
+        {
+          "expected": "cancelled",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-frozen-cancel",
+      "category": "approval_effects",
+      "family_id": "approval-frozen-cancel",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "input": {
+        "decision": "cancel",
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-approval-frozen-cancel",
+        "kind": "debug_snapshot"
+      }
+    },
+    {
+      "assertions": [
+        {
+          "expected": "failed",
+          "kind": "run_state"
+        },
+        {
+          "expected": "expired",
+          "kind": "json_equals",
+          "pointer": "/approval/status"
+        },
+        {
+          "capability": "test.send",
+          "expected": 0,
+          "kind": "effect_count",
+          "source": "stub_ledger"
+        }
+      ],
+      "case_id": "approval-frozen-expired",
+      "category": "approval_effects",
+      "family_id": "approval-frozen-expiry",
+      "fixture_id": "approval-frozen-ledger-v1",
+      "input": {
+        "decision": "approve",
+        "expired": true,
+        "proposal": {
+          "capability": "test.send",
+          "operation": "send_invoice",
+          "parameters": {
+            "amount": "10.00"
+          }
+        }
+      },
+      "provenance": {
+        "license_review": "not_applicable",
+        "origin": "self_created",
+        "reference": "tests/f13b/corpus/cases.approval_effects.json"
+      },
+      "schema_version": "1.0",
+      "split": "frozen_test",
+      "target": {
+        "id": "snapshot-approval-frozen-expiry",
+        "kind": "debug_snapshot"
+      }
+    }
+  ]
+}
