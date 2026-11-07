@@ -25,9 +25,11 @@
    `submit` **HTTP 202 submitted**、review 创建、`author_cases.satisfied=true`。质量分只是信息，
    不是门禁。
 4. **适配器**：`heuristic-local/1`（本票自建确定性本地代理分，**不是 judge**）outbound=0、
-   vendor_tokens=0、cost=$0；DeepEval/Ragas/Promptfoo 在隔离 venv/npm 前缀里真实安装并做了
-   最小真实调用，因**无获批 judge 端点/凭据**而 `blocked`（原始错误 tail 在矩阵里），
-   没有伪造任何 judge 运行。获批 judge 运行 = `not_run`（缺端点+凭据）。
+   vendor_tokens=0、cost=$0。DeepEval 4.3.3 真实安装、确定性 `ExactMatch` 本地可跑（0 出站），
+   语义指标因无获批 judge 端点/凭据 `blocked`；Ragas 0.4.3 真实安装但导入因 langchain-community
+   不兼容失败 `blocked`；Promptfoo 0.125.1 真实安装、离线确定性 eval 通过，但默认 telemetry/update
+   产生 6 条真实出站（`api.promptfoo.dev` 等）→ 无 opt-out 时按数据外发策略淘汰（语义 role 仍
+   `blocked`）。获批 judge 运行 = `not_run`（缺端点+凭据），**没有任何 judge 分数/费用被编造**。
 5. **边界**：反向对照的五条 case run 是 T068 既有的“真实 evaluation 行 + seeded 终态”评审
    fixture（本票未改其性质，报告单独标注）；本票的 hard checker 证据与质量覆盖证据都不是它。
 
@@ -95,7 +97,7 @@ python -m pytest tests/f13b/test_t103_quality_gate.py::test_the_real_recorded_re
 | 项 | 值 |
 |---|---|
 | 分支 / worktree | `t/t103-quality-vs-hard` / `E:\Orchara-wt\t103` |
-| 基线 | `integration/f13b` @ `30642be`；收尾 merge 进来的集成分支 tip = T102 合并提交 `ffe4022` |
+| 基线 | `integration/f13b` @ `30642be`；收尾 merge 进来的集成分支 tip = `5c7c506`（T102 冻结语料 + T101 续作 product fix），merge commit `7a2e2d2` |
 | Go / Python / Node | go1.27.3（windows/amd64）/ Python 3.12.2 / Node v24.13.0（npm 11.13.0） |
 | 数据库 / 沙箱 | PostgreSQL 16.4 `127.0.0.1:55432` / WSL2 Ubuntu-24.04 + runsc release-20241118.0 |
 | 模型画像 | `ORCHARA_PROFILE=dev-stub`（无真实厂商端点/凭据） |
@@ -197,15 +199,17 @@ hard checker 的证据来源。
 
 ## 9. 门禁命令与原始 tail
 
-完整原始输出在 `E:\Orchara\.scratch\f13b\T103\`：`go-gates.log`、`gate-f13b.log`、
-`gate-f13a.log`、`gate-f13a-baseline-3tests.log`、`adapter-probe.log`。
+完整原始输出在 `E:\Orchara\.scratch\f13b\T103\`：`go-gates.log`、`postmerge-go-gates.log`、
+`gate-f13b.log`、`gate-t103-file.log`、`gate-f13a.log`、`gate-f13a-baseline-3tests.log`、
+`postmerge-gate-f13b.log`、`postmerge-gate-t103-file.log`、`postmerge-gate-f13a.log`、
+`adapter-probe.log`、`adapter-matrix.json`。
 
 | 命令（cwd=`product`） | 退出码 | 原始 tail |
 |---|---|---|
-| `python -m pytest tests/f13b/test_t103_quality_gate.py -q` | 0 | `4 passed in 51.10s`（不含 `ORCHARA_T103_EVIDENCE_DIR`，以保留 §4/§5 对应的已提交 sealed 证据字节） |
-| `python -m pytest tests/f13b -q`（导出证据的那次） | 0 | `4 passed in 42.76s`（`ORCHARA_T103_EVIDENCE_DIR=E:\Orchara\.scratch\f13b\T103`） |
-| `python -m pytest tests/f13a -q` | 1 | `3 failed, 48 passed in 602.30s (0:10:02)` — **基线既有红，非本票引入**，见下 |
-| `go build ./...` / `go vet ./...` / `go test ./...` | 0 / 0 / 0 | 全部包 `ok`；`no test files` 只出现在 `cmd/*` 与 `probes/*/go_baseline` |
+| `python -m pytest tests/f13b/test_t103_quality_gate.py -q`（merge 后） | 0 | `4 passed in 49.07s`（不含 `ORCHARA_T103_EVIDENCE_DIR`，以保留 §4/§5 对应的已提交 sealed 证据字节） |
+| `python -m pytest tests/f13b -q`（merge 后，含 T102 corpus 36 条） | 0 | `40 passed in 62.95s (0:01:02)` |
+| `python -m pytest tests/f13a -q`（merge 前/后） | 1 | merge 后 `3 failed, 48 passed in 499.31s (0:08:19)`；merge 前 `3 failed, 48 passed in 602.30s` — **基线既有红，非本票引入**，见下 |
+| `go build ./...` / `go vet ./...` / `go test ./...`（merge 后） | 0 / 0 / 0 | 全部包 `ok`；`no test files` 只出现在 `cmd/*` 与 `probes/*/go_baseline` |
 | `gofmt -l internal cmd tools` | 0 | 无输出（0 行） |
 | `python tools/sync_spec.py --check` | 0 | `no drift: spec copy and contract snapshot match the manifest` |
 
@@ -215,7 +219,8 @@ hard checker 的证据来源。
 FAILED tests/f13a/test_rv1_effect_evidence.py::test_effect_count_reads_confirmed_effects_from_the_real_ledger
 FAILED tests/f13a/test_t052_runner.py::test_a_real_run_is_traced_and_never_claimed_successful
 FAILED tests/f13a/test_t062_runner.py::test_a_passed_report_is_accepted_over_a_real_completed_run
-3 failed, 48 passed in 602.30s
+3 failed, 48 passed in 602.30s     # merge 前
+3 failed, 48 passed in 499.31s     # merge 后（integration tip 5c7c506）
 ```
 
 - 根因一致：这三个用例仍断言 `start->end` 最小链执行会以 `tool_unsupported_graph` **失败**；
