@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>会话与请求 · Orchara</title>
     <link rel="stylesheet" href="/assets/canvas.css" />
+    <link rel="stylesheet" href="/assets/mobile.css" />
   </head>
-  <body>
+  <body class="page-chat">
     <header class="topbar">
       <strong>Orchara</strong>
-      <nav>
+      <nav aria-label="主导航">
         <a href="/apps">应用</a>
         <a href="/chat">会话</a>
         <a href="/runs">运行</a>
@@ -21,6 +22,10 @@
     <main class="page">
       <section class="panel" id="conversation-panel">
         <h1>会话</h1>
+        <p class="hint" data-mobile-scope="no-full-canvas-editing">
+          手机/小屏支持：新建会话、上传需求与附件、提交、查看状态、答复澄清、打开审批和运行结果。
+          完整画布编辑（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
+        </p>
         <p class="hint">
           每个会话只有一个逻辑执行槽：最早的未完成请求占槽，后续普通请求按顺序排队。
           固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。

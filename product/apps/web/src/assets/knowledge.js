@@ -464,6 +464,9 @@ function describeRetrieval(payload) {
     items: items,
     empty: items.length === 0,
     emptyText: items.length === 0 ? '没有检索到可读片段（不是错误）' : '',
+    emptyNextText: items.length === 0
+      ? '下一步：换一个关键词，或先确认资料已经“可检索”；空结果不会显示加载中，也不代表资料已删除。'
+      : '',
     embeddingModelRevision: String(retrieval.embedding_model_revision || ''),
     activeIndexRevision: String(index.embedding_model_revision || ''),
     activeIndexes: Number(index.active_indexes || 0),
@@ -475,6 +478,47 @@ function describeRetrieval(payload) {
         : ''),
     topK: Number(retrieval.top_k || 0),
     aclEpoch: Number(retrieval.acl_epoch || 0),
+  };
+}
+
+/*
+ * F12/T098 (AC2): opening a citation re-reads it. A 404/403 means the source is
+ * revoked, deleted or no longer readable — the page must clear the body it showed
+ * earlier and must never fall back to the retrieval/answer's cached citation text.
+ * `clearBody` is the contract the page wiring follows; `text` carries the stable
+ * code and the next step.
+ */
+function citationOpenSuccess(chunk) {
+  const opened = describeChunk(chunk);
+  return {
+    available: opened.citationOk,
+    clearBody: false,
+    code: '',
+    status: 200,
+    text: opened.citationOk
+      ? '引用当前可读（已按当前授权与文档版本重新校验）'
+      : '引用不一致：不展示为该片段的来源',
+    chunk: opened,
+  };
+}
+
+function citationOpenFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  let reason;
+  if (status === 404) {
+    reason = '引用不可用：来源已被撤销或删除（resource_not_found）。';
+  } else if (status === 403) {
+    reason = '引用不可用：当前授权已不能读取这个来源。';
+  } else {
+    reason = '引用不可用：' + describeFailure(error);
+  }
+  return {
+    available: false,
+    clearBody: true,
+    code: code,
+    status: status,
+    text: reason + ' 页面不会回退此前读到的正文；下一步：重新检索，或重新上传/授权资料。',
   };
 }
 

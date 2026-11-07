@@ -28,9 +28,10 @@
     button:disabled { cursor: not-allowed; opacity: .55; }
     [hidden] { display: none !important; }
   </style>
+  <link rel="stylesheet" href="/assets/mobile.css" />
 </head>
-<body>
-  <nav>
+<body class="page-approvals">
+  <nav aria-label="主导航">
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
     <a href="/runs">运行</a>
@@ -40,6 +41,10 @@
   </nav>
 
   <h1>运行审批（F06/T050）</h1>
+  <p class="sub" data-mobile-scope="no-full-canvas-editing">
+    小屏支持查看待我审批、核对服务端封存的真实参数并明确批准或拒绝。
+    完整画布编辑（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
+  </p>
   <p class="sub">
     审批只针对本 Run 的某一个受控操作。页面显示的是<strong>服务端封存的真实提案</strong>
     （原始目标、方法/路径、规范化参数与哈希、数据去向、来源版本、过期时间），不是 worker 自报的文案。
@@ -75,6 +80,7 @@
       <dt>来源版本（快照 / manifest / 策略）</dt><dd id="detail-sources"></dd>
       <dt>提案封装</dt><dd id="detail-proposal-sha"></dd>
     </dl>
+    <p id="approval-expiry-note" class="hint" role="note" hidden></p>
     <div class="decision-buttons">
       <button id="approve-button" type="button" disabled>批准这次操作</button>
       <button id="reject-button" type="button" disabled>拒绝这次操作</button>

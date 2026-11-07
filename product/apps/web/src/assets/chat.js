@@ -97,6 +97,97 @@ function applyRequestFailure(document, request) {
   return failure;
 }
 
+/*
+ * F12/T098: a refused write from this page is a stable code, not a generic
+ * "失败了". The two important ones on this surface:
+ *
+ *   - 409 idempotency_conflict: the Idempotency-Key was reused with a different
+ *     body. The server kept the first write; the page must not silently reuse the
+ *     key again (that would replay the old body) — the user has to refresh or
+ *     resubmit as a new task.
+ *   - 409 interaction_closed: the interaction expired or was already answered; the
+ *     old reply cannot revive the request.
+ *
+ * `reuseKey` is the explicit retry decision: true only when retrying with the
+ * same key is safe (a network failure never reached the server).
+ */
+function describeSubmitFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '提交失败');
+  if (status === 409 && code === 'idempotency_conflict') {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      reuseKey: false,
+      text: '这次提交与同一个幂等键的已有请求内容不同（409 idempotency_conflict）：'
+        + '服务端保留了第一次提交的内容，没有执行这次请求。页面不会用旧键覆盖；'
+        + '请刷新会话核对之前的请求，或把这次当作新任务重新提交（新的幂等键）。',
+    };
+  }
+  if (status === 409 && (code === 'interaction_closed' || code === 'interaction_expired')) {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      reuseKey: false,
+      text: '这次确认已经结束或已过期（409 ' + code + '）：旧答复不会复活任务。'
+        + '请重新提交需求；页面不会自动重试。',
+    };
+  }
+  if (status === 0) {
+    return {
+      code: code || 'network_error',
+      status: 0,
+      retryable: true,
+      reuseKey: true,
+      text: '网络中断，请求没有确认到达服务端；页面保留已填写内容。'
+        + '再次提交会复用同一幂等键，不会产生第二条请求。',
+    };
+  }
+  return {
+    code: code,
+    status: status,
+    retryable: code === 'route_model_unavailable' || code === 'version_unavailable',
+    reuseKey: true,
+    text: '提交失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；页面保留已填写内容，再次提交会复用同一幂等键（不会重复执行）。',
+  };
+}
+
+/** The reply-path counterpart of describeSubmitFailure. */
+function describeReplyFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '答复失败');
+  if (status === 409 && (code === 'interaction_closed' || code === 'interaction_expired')) {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      text: '这次确认已经结束或过期（409 ' + code + '）：'
+        + '该确认已过期或已结束；请重新提交需求，旧答复不会复活任务。页面不会自动重试。',
+    };
+  }
+  if (status === 409 && code === 'idempotency_conflict') {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      text: '这次答复与同一个幂等键的已有答复内容不同（409 idempotency_conflict）：'
+        + '服务端保留了第一次答复。请刷新会话核对，或重新提交需求；页面不会用旧键覆盖。',
+    };
+  }
+  return {
+    code: code,
+    status: status,
+    retryable: true,
+    text: '答复失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；再次点击会复用同一幂等键（不会重复提交）。',
+  };
+}
+
 function conversationPath(conversationID) {
   return '/api/v1/conversations/' + encodeURIComponent(String(conversationID || ''));
 }
@@ -1280,8 +1371,14 @@ function initChat() {
         window.location.assign('/login');
         return;
       }
-      // Keep pendingAttempt: a network failure is retried with the same key.
-      setStatus(submitStatus, '提交失败 [' + error.code + '] ' + error.message, 'bad');
+      // Keep pendingAttempt only when the retry is safe: a network failure never
+      // reached the server, but a 409 idempotency_conflict means the key now
+      // belongs to another body and must not be replayed silently.
+      const failure = describeSubmitFailure(error);
+      if (!failure.reuseKey) {
+        pendingAttempt = null;
+      }
+      setStatus(submitStatus, failure.text, 'bad');
     }
   });
 
@@ -1338,11 +1435,11 @@ function initChat() {
         window.location.assign('/login');
         return;
       }
-      // Keep currentInteractionAttempt: a retry reuses the same Idempotency-Key.
-      const note = error.code === 'interaction_closed'
-        ? '该确认已过期或已结束；请重新提交需求，旧答复不会复活任务。'
-        : '答复失败 [' + error.code + '] ' + error.message;
-      setStatus(interactionStatus, note, 'bad');
+      // Keep currentInteractionAttempt: a safe retry reuses the same
+      // Idempotency-Key, while a closed interaction is explained instead of
+      // being retried behind the user's back.
+      const failure = describeReplyFailure(error);
+      setStatus(interactionStatus, failure.text, 'bad');
       poll(0);
     }
   });

@@ -53,16 +53,24 @@ function shortId(value) {
 function describeCandidate(candidate) {
   const entry = candidate || {};
   const state = String(entry.state || '');
+  const applicationID = String(entry.application_id || '');
   return {
     id: String(entry.id || ''),
     idShort: shortId(entry.id),
     text: String(entry.text || ''),
-    applicationText: String(entry.application_id || ''),
+    applicationText: applicationID,
     state,
     stateText: candidateStateText(state),
     isPending: state === 'pending',
     expiresAt: String(entry.expires_at || ''),
-    sourceText: '来源：Run 内提出的记忆候选（服务端封存；确认前不可召回）',
+    sourceText: '来源：Run 内自动抽取的记忆候选（交互上下文由服务端封存；确认前不可召回）',
+    // The contract MemoryCandidate schema has no source_run_id and
+    // additionalProperties:false, so the page says the interaction is sealed
+    // instead of inventing an id the server never sent.
+    interactionText: '交互（Run）：服务端封存，确认前不会进入任何应用的上下文；契约不含 source_run_id，页面不编造具体 Run id。',
+    saveScopeText: '保存范围：仅当前使用者 + 应用 ' + (applicationID || '（未知应用）')
+      + '；换到另一个应用不会带走，管理员也看不到。',
+    defaultDecision: 'none',
   };
 }
 
@@ -318,6 +326,44 @@ function decisionResultText(result) {
   return '未知状态：' + String(entry.state || '');
 }
 
+/*
+ * F12/T098: a refused candidate decision is a state, not a generic error.
+ *
+ * A candidate can expire while the page is open (the server enforces the
+ * deadline), and a repeated decision can come back as a conflict. The page must
+ * say that nothing was saved and that the old candidate cannot be revived; it
+ * never retries the decision behind the user's back.
+ */
+function decisionFailurePlan(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '决定提交失败');
+  const table = {
+    memory_candidate_expired:
+      '候选已过期（memory_candidate_expired）：没有保存任何记忆，这条候选也不能复活。'
+      + '下一步：重新运行产生新的候选；页面不会自动重试。',
+    memory_candidate_rejected:
+      '候选此前已被拒绝（memory_candidate_rejected）：不会再生成记忆；'
+      + '如果需要保存，请重新产生新候选。',
+    memory_candidate_confirmed:
+      '候选此前已被确认（memory_candidate_confirmed）：记忆已经存在，不会写第二条。'
+      + '请刷新候选/记忆列表查看。',
+    idempotency_conflict:
+      '这次决定与同一个幂等键的旧内容不同（idempotency_conflict）：服务端保留了第一次决定。'
+      + '请刷新列表核对，本页不会用旧键覆盖。',
+    resource_not_found:
+      '候选不存在或不属于你（resource_not_found）：不会显示他人的候选，也不会自动重试。',
+  };
+  return {
+    code: code,
+    status: status,
+    expired: code === 'memory_candidate_expired',
+    refresh: Boolean(code),
+    text: table[code] || ('决定提交失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；页面没有保存任何记忆，也不会自动重试。'),
+  };
+}
+
 /** A contract error rendered with its own code, so a refusal is not generic. */
 function errorText(error) {
   const detail = error || {};
@@ -393,15 +439,31 @@ async function decideCandidate(candidate, decision) {
   if (!window.confirm(decisionConfirmationText(decision))) {
     return null;
   }
-  const token = await csrf();
-  const result = await api(decisionPath(candidate.id), {
-    method: 'POST',
-    csrf: token,
-    headers: { 'Idempotency-Key': newDecisionKey() },
-    body: decisionPayload(decision),
-  });
-  setStatus('decision-status', decisionResultText(result), 'ok');
-  return result;
+  try {
+    const token = await csrf();
+    const result = await api(decisionPath(candidate.id), {
+      method: 'POST',
+      csrf: token,
+      headers: { 'Idempotency-Key': newDecisionKey() },
+      body: decisionPayload(decision),
+    });
+    setStatus('decision-status', decisionResultText(result), 'ok');
+    return result;
+  } catch (error) {
+    const plan = decisionFailurePlan(error);
+    setStatus('decision-status', plan.text, 'bad');
+    if (plan.refresh) {
+      try {
+        // Re-read the real candidate state (a 409 expired row is persisted by
+        // the server); the refusal text is kept on screen afterwards.
+        await loadCandidates();
+        setStatus('decision-status', plan.text, 'bad');
+      } catch (reloadError) {
+        // The refusal is already displayed; a failed re-read is not a decision.
+      }
+    }
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +610,12 @@ function renderDeletion(job) {
 
 function renderCandidate(item, candidate) {
   const view = describeCandidate(candidate);
+  // F12/T098: the candidate is never pre-decided. The card carries no checked
+  // control and no batch "select all"; the user confirms/rejects one candidate.
+  item.dataset.selection = view.defaultDecision;
   addFieldRow(item, '来源', view.sourceText);
+  addFieldRow(item, '交互（Run）', view.interactionText);
+  addFieldRow(item, '保存范围', view.saveScopeText);
   addFieldRow(item, '应用范围', view.applicationText);
   addFieldRow(item, '状态', view.stateText);
   addFieldRow(item, '过期时间', view.expiresAt);

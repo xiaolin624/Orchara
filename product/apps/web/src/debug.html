@@ -63,6 +63,10 @@
   </nav>
 
   <h1>私有调试（F02A 快照）</h1>
+  <p class="sub" data-mobile-scope="no-full-canvas-editing">
+    小屏边界：本页的节点调试表与画布不承诺在手机上可用。手机支持的是对话、审批与查看结果
+    （/chat、/approvals、/runs）；需要调试节点时请使用桌面浏览器。
+  </p>
   <p class="sub">
     提交 <code>POST /api/v1/applications/{id}/debug-runs</code> 会把<strong>指定的草稿 revision</strong>
     冻结成仅自己可见的执行快照，并创建一个 <code>kind=debug</code> 的 queued Run。调试不创建公共版本、
