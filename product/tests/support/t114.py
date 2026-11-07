@@ -513,6 +513,11 @@ SELECT
       SELECT 1 FROM platform.run_attempts a
        WHERE a.run_id = r.id AND a.exited_at IS NULL AND a.revoked_at IS NULL
     )) AS queued_with_live_attempt,
+  (SELECT count(*) FROM platform.runs r
+    WHERE r.state = 'cancelling' AND EXISTS (
+      SELECT 1 FROM platform.run_attempts a
+       WHERE a.run_id = r.id AND a.exited_at IS NULL AND a.revoked_at IS NULL
+    )) AS cancelling_with_live_attempt,
   (SELECT used FROM platform.quota_counters
     WHERE scope = 'global' AND dimension = 'execution_slots') AS execution_slots_used,
   (SELECT capacity FROM platform.quota_counters
@@ -569,6 +574,14 @@ class TrialSettings:
     sample_interval: float = 1.0
 
 
+class ProbeCapacityError(AssertionError):
+    """The AC5 probe Run could not be claimed inside its bounded retry window.
+
+    This is deliberately a hard failure (the boundary assertion must see the real
+    reason), never a silent ``not_run``.
+    """
+
+
 class CapacityTrial:
     """One sustained trial: submitters keep the queue full, real supervisors keep
     the 20 top-level slots executing, and the sampler records both."""
@@ -603,6 +616,7 @@ class CapacityTrial:
         self.cancel: dict = {"batches": [], "late_result": None, "summary": {}}
         self.children: dict = {"parents": [], "summary": {}}
         self.boundary: dict = {}
+        self.drain: dict = {}
         self.child_parent_submits: list[dict] = []
         self._live_procs: dict[int, subprocess.Popen] = {}
         self._proc_lock = threading.Lock()
@@ -645,7 +659,7 @@ class CapacityTrial:
             # Drain the queue with the executors still running so the recovery /
             # ownership probes claim their own Run instead of a leftover load
             # Run. The drain is outside the measured window.
-            self._drain_until_idle(timeout=30)
+            self.drain = self._drain_until_idle(timeout=30)
             self.drained_at = time.time()
             self._stop.set()
             self._join_threads(timeout=90)
@@ -1132,28 +1146,71 @@ class CapacityTrial:
             }
 
     # -- boundary scenarios (AC5) -------------------------------------------
-    def _claim_own_run(self, run_id: str, *, worker_id: str, unit: str) -> dict | None:
-        """Claim until the given Run is handed back (requeue foreign claims).
+    def _claim_own_run(
+        self,
+        run_id: str,
+        *,
+        worker_id: str,
+        unit: str,
+        timeout: float = 45.0,
+        poll_interval: float = 0.5,
+    ) -> dict:
+        """Claim until the given Run is handed back, retrying a transient 204/409.
 
-        After the load drain a waiting parent can be resumed by the F07 terminal
-        hook, so the probe Run is not guaranteed to be the first claimable job.
-        A claimed-but-never-started attempt is returned to the queue through the
-        documented exit evidence, exactly like a supervisor that lost its race.
+        After the load drain a waiting parent can still be resumed by the F07
+        terminal hook, and an in-flight execution can still hold a slot for a
+        moment, so a single 204 is not evidence that the probe Run is
+        unclaimable. The retry window is bounded; on exhaustion the probe raises
+        :class:`ProbeCapacityError` with the authoritative capacity rows instead
+        of silently degrading the AC5 boundary probe to ``not_run``.
         """
         client = t029.execution_client(self.stack, "supervisor")
-        for _ in range(10):
+        started = time.time()
+        deadline = started + timeout
+        attempts = 0
+        requeued = 0
+        statuses: list[int] = []
+        last_status: int | None = None
+        last_body = ""
+        while True:
+            attempts += 1
             response = client.claim_job(worker_id=worker_id, execution_unit_id=unit)
-            if response.status != 200:
-                return None
-            lease = response.json
-            if lease["run_id"] == run_id:
-                return lease
-            client.confirm_exit(
-                lease["attempt_token"],
-                execution_unit_id=unit,
-                evidence=t029.exit_evidence(lease, started=False),
-            )
-        return None
+            last_status = response.status
+            statuses.append(response.status)
+            if response.status == 200:
+                lease = response.json
+                if lease["run_id"] == run_id:
+                    lease["_claim_attempts"] = attempts
+                    lease["_claim_requeued_foreign"] = requeued
+                    lease["_claim_waited_seconds"] = round(time.time() - started, 3)
+                    lease["_claim_statuses"] = sorted(set(statuses))
+                    return lease
+                # A foreign Run was handed back: return it to the queue through
+                # the documented "never started" exit evidence.
+                requeued += 1
+                client.confirm_exit(
+                    lease["attempt_token"],
+                    execution_unit_id=unit,
+                    evidence=t029.exit_evidence(lease, started=False),
+                )
+            else:
+                last_body = response.text[:200]
+            if time.time() >= deadline:
+                break
+            time.sleep(poll_interval)
+        snapshot = runtime_snapshot(self.dbname)
+        raise ProbeCapacityError(
+            f"the AC5 probe Run {run_id} could not be claimed within {timeout}s: "
+            f"attempts={attempts}, last_status={last_status}, "
+            f"statuses={sorted(set(statuses))}, "
+            f"execution_slots used={snapshot['execution_slots_used']}/"
+            f"{snapshot['execution_slots_capacity']}, "
+            f"top_queued={snapshot['top_queued']}, "
+            f"child_queued={snapshot['child_queued']}, "
+            f"live_attempts={snapshot['live_attempts']}, "
+            f"cancelling_with_live_attempt={snapshot['cancelling_with_live_attempt']}, "
+            f"last_body={last_body!r}"
+        )
 
     def _lease_expiry_scenario(self) -> dict:
         """Claim -> force lease expiry -> run the real T038 lease sweep.
@@ -1175,7 +1232,6 @@ class CapacityTrial:
             lease = self._claim_own_run(
                 run_id, worker_id="t114-expiry", unit="t114-expiry-unit"
             )
-            assert lease is not None, "no free execution slot for the lease-expiry probe"
             t029.force_lease_expiry(self.dbname, lease["attempt_token"])
             completed = subprocess.run(
                 [str(self.stack.binaries["admin"]), "runs", "sweep-leases", "--grace", "1s"],
@@ -1198,12 +1254,18 @@ class CapacityTrial:
             return {
                 "run_id": run_id,
                 "claim_status": 200,
+                "claim_attempts": lease.get("_claim_attempts"),
+                "claim_requeued_foreign": lease.get("_claim_requeued_foreign"),
+                "claim_waited_seconds": lease.get("_claim_waited_seconds"),
+                "claim_statuses": lease.get("_claim_statuses"),
                 "sweep_returncode": completed.returncode,
                 "sweep_report": swept,
                 "state_after_sweep": row["state"],
                 "recovered": row["state"] == "recovery_pending",
                 "slot_policy": "documented T038: the parked Run keeps its slot allocated",
             }
+        except ProbeCapacityError:
+            raise
         except Exception as exc:  # noqa: BLE001 - reported, not hidden
             return {"status": "not_run", "error": f"{type(exc).__name__}: {exc}"}
 
@@ -1252,7 +1314,6 @@ class CapacityTrial:
             run_id = response.json["id"]
             unit = "t114-cancel-unit"
             lease = self._claim_own_run(run_id, worker_id="t114-cancel", unit=unit)
-            assert lease is not None, "no free execution slot for the cancel probe"
             cancel = self.owner.client.post(
                 f"/api/v1/runs/{run_id}/cancel", csrf=self.owner.csrf
             )
@@ -1275,6 +1336,11 @@ class CapacityTrial:
             after = t029.run_state_row(self.dbname, run_id)
             return {
                 "run_id": run_id,
+                "claim_status": 200,
+                "claim_attempts": lease.get("_claim_attempts"),
+                "claim_requeued_foreign": lease.get("_claim_requeued_foreign"),
+                "claim_waited_seconds": lease.get("_claim_waited_seconds"),
+                "claim_statuses": lease.get("_claim_statuses"),
                 "cancel_status": cancel.status,
                 "state_after_cancel": state_after_cancel,
                 "intent_recorded": intent_header is not None,
@@ -1288,27 +1354,69 @@ class CapacityTrial:
                 "cancelled": row["state"] == "cancelled" and after["state"] == "cancelled",
                 "late_result_refused": late.status == 409,
             }
+        except ProbeCapacityError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return {"status": "not_run", "error": f"{type(exc).__name__}: {exc}"}
 
     # -- teardown -----------------------------------------------------------
-    def _drain_until_idle(self, *, timeout: float) -> None:
+    def _drain_until_idle(self, *, timeout: float) -> dict:
         """Let the real executors finish the queued load before the probes.
 
-        The queue is what matters: once no queued Run is left, the probe's own
-        Run is the only claimable job. A Run stuck in ``cancelling`` (see the
-        recorded cancel finding) keeps its attempt and slot but is not queued.
+        Two phases under one deadline: no queued Run may be left (top-level or
+        child), and no load execution may still hold an execution slot. The slot
+        target is the number of documented stuck ``cancelling`` attempts (the
+        cancel-race finding): 0 when the race did not happen, otherwise only
+        those known stuck slots may remain. The actual waits, target and final
+        counter are recorded in the evidence as ``trial["drain"]``.
         """
-        deadline = time.time() + timeout
+        started = time.time()
+        deadline = started + timeout
+        queue_drained_at: float | None = None
+        slot_drained_at: float | None = None
+        target = 0
+        snapshot: dict | None = None
         while time.time() < deadline:
             try:
                 snapshot = runtime_snapshot(self.dbname)
             except AssertionError:  # pragma: no cover - teardown race
-                return
-            if snapshot["top_queued"] == 0 and snapshot["child_queued"] == 0:
-                time.sleep(2.0)
-                return
+                return {"status": "not_run", "error": "the trial database became unreadable"}
+            target = int(snapshot["cancelling_with_live_attempt"])
+            if (
+                queue_drained_at is None
+                and snapshot["top_queued"] == 0
+                and snapshot["child_queued"] == 0
+            ):
+                queue_drained_at = time.time()
+            if queue_drained_at is not None and snapshot["execution_slots_used"] <= target:
+                slot_drained_at = time.time()
+                break
             time.sleep(0.2)
+        used = int(snapshot["execution_slots_used"]) if snapshot else None
+        return {
+            "timeout_s": timeout,
+            "queue_drained_seconds": (
+                round(queue_drained_at - started, 3) if queue_drained_at else None
+            ),
+            "slot_drained_seconds": (
+                round(slot_drained_at - started, 3) if slot_drained_at else None
+            ),
+            "total_seconds": round((slot_drained_at or time.time()) - started, 3),
+            "execution_slots_used_at_end": used,
+            "slot_target": target,
+            "slot_target_note": (
+                "0 = all execution slots free; a non-zero target means only the "
+                "documented stuck cancelling Run attempt(s) still hold a slot"
+            ),
+            "queue_drained": queue_drained_at is not None,
+            "slot_drained": slot_drained_at is not None,
+            "final": {
+                "top_queued": snapshot["top_queued"] if snapshot else None,
+                "child_queued": snapshot["child_queued"] if snapshot else None,
+                "live_attempts": snapshot["live_attempts"] if snapshot else None,
+                "cancelling_with_live_attempt": target,
+            },
+        }
 
     def _join_threads(self, *, timeout: float) -> None:
         deadline = time.time() + timeout
@@ -1387,6 +1495,7 @@ class CapacityTrial:
                 ),
             },
             "counts": counts,
+            "drain": self.drain,
             "queue_and_execution": stats,
             "attempts": attempt_stats,
             "concurrency": concurrency,
