@@ -2,6 +2,7 @@
 
 - 任务：F13B / GitHub Issue #112（票 `T111`），分支 `t/t111-linux-isolation`
   （worktree `E:\Orchara-wt\t111`，基线 `integration/f13b` @ `f6e0394`）
+- 结束前 merge `integration/f13b` @ `5a210c0` → merge commit `abfd01a`（PROGRESS 冲突按“保留双方小节”解决：T108/T109 + T111）；合并后树复跑见 §4。
 - 状态：**`passed`**（10 条攻击用例 + 1 条端到端正控制，全部在真实
   WSL2 Ubuntu-24.04 + gVisor `runsc` 中通过产品路径执行；无 mock、无跳过）
 - 验收宿主（ADR 0002）：**WSL2 Ubuntu-24.04**，Linux `6.6.87.2-microsoft-standard-WSL2`，
@@ -137,6 +138,20 @@ $ go vet ./...
 (no output)                                        [exit 0]
 $ go test ./...
 39 ok / 0 FAIL / 12 no test files                  [exit 0]
+$ gofmt -l internal cmd tools
+(no output)                                        [exit 0]
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest   [exit 0]
+
+# 合并后树（merge commit abfd01a，含 T108/T109；证据 JSON 在该树重新生成，commit=abfd01a）
+$ F13B_WRITE_EVIDENCE=1 python -m pytest tests/f13b/test_t111_linux_isolation.py -q
+10 passed in 113.56s (0:01:53)                     [exit 0]
+$ python -m pytest tests/f05/test_t033_sandbox_run.py tests/f05/test_t037_build_isolation.py -q
+10 passed in 138.34s (0:02:18)                     [exit 0]
+$ python -m pytest tests/f13b -q
+204 passed in 446.46s (0:07:26)                    [exit 0]
+$ go build ./... ; go vet ./... ; go test ./...
+exit 0 (39 ok / 0 FAIL / 12 no test files)         [exit 0]
 $ gofmt -l internal cmd tools
 (no output)                                        [exit 0]
 $ python tools/sync_spec.py --check

@@ -4,8 +4,8 @@
   "title": "re-run build and script isolation attacks on the formal Linux sandbox host",
   "status": "passed",
   "branch": "t/t111-linux-isolation",
-  "commit": "f6e0394ae5f18ec2a0081370bc452e315351f139",
-  "generated_at": "2026-11-07T12:55:05.623034Z",
+  "commit": "abfd01a6ec90fd977fcae839f00f83d9a1fa7dbf",
+  "generated_at": "2026-11-07T13:10:09.168035Z",
   "environment": {
     "profile": "dev-stub",
     "note": "Every record below was executed inside WSL2 Ubuntu-24.04 with gVisor runsc. Windows-local process results are not used as runsc acceptance anywhere in this report (ADR 0002).",
@@ -22,7 +22,7 @@
     "rootfs_builder": "orchara.sandbox-rootfs/v1",
     "rootfs_kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
     "rootfs_runsc": "runsc version release-20241118.0",
-    "captured_at": "2026-11-07T12:53:13.219552Z"
+    "captured_at": "2026-11-07T13:08:34.332496Z"
   },
   "cases": [
     {
@@ -31,7 +31,7 @@
       "attack": "read /etc/passwd|shadow|hostname, /mnt host paths and another Run's workspace; write the read-only rootfs/tool/inputs; dump the sandbox environment and /proc/1/environ; mount/unshare/setuid/capset; try to configure uid0/privileged/no_new_privs=off through the deployment env",
       "verdict": "passed",
       "blocked_at": "runtime (gVisor/runsc) refuses uid0/mount-namespace/capset/no_new_privs escalation inside the fixed bundle; unprivileged user namespaces are permitted by the runtime but stay sandbox-local (no host path reached)",
-      "recorded_at": "2026-11-07T12:53:16.193503Z",
+      "recorded_at": "2026-11-07T13:08:37.236065Z",
       "inputs": {
         "program": "oracle is cmd/sandboxprobe --mode isolation",
         "hostile_env_names": [
@@ -45,17 +45,17 @@
           "ORCHARA_T111_ENV_SECRET"
         ],
         "hostile_env_value_sha256": {
-          "ORCHARA_T111_ENV_SECRET": "a4243ddb251e1b63a71e760f17cac329a29105fda6f4429314eb36f7148e5b2c",
-          "ORCHARA_DB_DSN": "b828cf70e1d6bcc5df9b687630b2fb1c72245140dacb8fd38844aea6429ec17a",
-          "ORCHARA_SIGNING_KEY": "2442aff7720d1088cc180833444c072ebaa8043892a53dfb50b7f54fdd4c4854",
-          "ORCHARA_CONNECTOR_SECRET": "7374202d48813f7c2a48961408fbd8b7e3437b97d3e71fb4e5a142f820b1dfd4",
+          "ORCHARA_T111_ENV_SECRET": "8c1d89f7e0dff4f57fd66248f4f3d2d136edf9688dfe7175c128389138c8ed8c",
+          "ORCHARA_DB_DSN": "6347079dc3ace7e46e391889cd3ba69f5d5d222fc1001a1db79e779ce68eb1f6",
+          "ORCHARA_SIGNING_KEY": "769bfc99d122a72547af532975407e6a2b96176eb9e23b99d509df308b05f5df",
+          "ORCHARA_CONNECTOR_SECRET": "9bfe9d619a42613b98a0326f10cbf4414514b6a810c2f7a43365aa6717b58926",
           "ORCHARA_SANDBOX_UID": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
           "ORCHARA_SANDBOX_PRIVILEGED": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
           "ORCHARA_SANDBOX_CAPABILITIES": "b5c7aed7cd2a308523e7d2847b7815909e864b2fd9c4ea88b00d35adb2ecdfd7",
           "ORCHARA_SANDBOX_NO_NEW_PRIVS": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
         },
         "other_run_decoy": "/var/tmp/orchara-sandbox/other-run/secret.txt",
-        "workspace_root": "D:\\caches\\pytest\\pytest-of-19677\\pytest-290\\test_run_stage_denies_host_fil0\\host-staging"
+        "workspace_root": "D:\\caches\\pytest\\pytest-of-19677\\pytest-298\\test_run_stage_denies_host_fil0\\host-staging"
       },
       "expected": {
         "identity": "uid/gid 65534, empty capabilities, NoNewPrivs=1",
@@ -555,7 +555,7 @@
         },
         "cleanup_report": {
           "sandbox_list_matches": 0,
-          "pid": 532,
+          "pid": 522,
           "pid_alive": false,
           "ps_matches": 0,
           "workspace_removed": true
@@ -618,7 +618,7 @@
       "attack": "connect to the guest loopback port, public IPs and the metadata address from the sandbox",
       "verdict": "passed",
       "blocked_at": "network namespace + --network=none (runsc), proven against a live guest listener",
-      "recorded_at": "2026-11-07T12:53:17.921711Z",
+      "recorded_at": "2026-11-07T13:08:38.918866Z",
       "inputs": {
         "guest_listener": "127.0.0.1:18080 on the WSL guest, outside the sandbox namespace",
         "sandbox_targets": [
@@ -677,7 +677,7 @@
         },
         "cleanup_report": {
           "sandbox_list_matches": 0,
-          "pid": 702,
+          "pid": 689,
           "pid_alive": false,
           "ps_matches": 0,
           "workspace_removed": true
@@ -738,7 +738,7 @@
       "attack": "configure a sandbox with an over-limit memory/quota/pids/timeout profile",
       "verdict": "passed",
       "blocked_at": "product configuration policy (sandbox.OptionsFromEnv) before runsc is invoked",
-      "recorded_at": "2026-11-07T12:53:18.413757Z",
+      "recorded_at": "2026-11-07T13:08:39.376834Z",
       "inputs": {
         "attempts": {
           "memory": {
@@ -818,7 +818,7 @@
       "attack": "sleep past the sandbox wall-clock limit",
       "verdict": "passed",
       "blocked_at": "driver timeout + executor kill + cleanup proof (runsc delete/pid/workspace)",
-      "recorded_at": "2026-11-07T12:53:21.447134Z",
+      "recorded_at": "2026-11-07T13:08:42.442581Z",
       "inputs": {
         "mode": "slow",
         "sleep_seconds": 60,
@@ -828,10 +828,10 @@
       "observed": {
         "outcome": "timeout",
         "timed_out": true,
-        "elapsed_seconds": 2.597,
+        "elapsed_seconds": 2.671,
         "cleanup_report": {
           "sandbox_list_matches": 0,
-          "pid": 908,
+          "pid": 894,
           "pid_alive": false,
           "ps_matches": 0,
           "workspace_removed": true
@@ -892,35 +892,35 @@
       "attack": "untrusted setup.py reads /etc/passwd|shadow|hostname, a real repo file via /mnt, the object-directory decoy, a DSN decoy, an mTLS private key, another Run's workspace and PID 1 environ; writes /etc/passwd, the object dir, the other Run workspace and the read-only /inputs|/tool mounts; dumps its environment and the mount table",
       "verdict": "passed",
       "blocked_at": "runtime (gVisor/runsc) uid 65534 + empty capabilities + NoNewPrivs + ro mounts",
-      "recorded_at": "2026-11-07T12:53:36.228373Z",
+      "recorded_at": "2026-11-07T13:08:56.866578Z",
       "inputs": {
         "submission": "real POST /api/v1/tools with an application/zip tool_source",
         "build": "real maintenance tool_build job -> deploy/sandbox/build_tool.py -> runsc",
-        "secret_marker_sha256": "f89940e037a05500b5884364638e55a53d89aee25f096572470931ec8b1afe8c",
-        "db_name_marker_sha256": "12cd81ca500dc77fb1f5a27089064d2513d920ecaaa8af1976f56238bdcd4d34",
+        "secret_marker_sha256": "ff8322a7391632310e2e95e6daaacb912310d1c28b01e7caf712e5e1c2c78298",
+        "db_name_marker_sha256": "0237f727a4e83f1e16bc093e108929a855f15a56961995d13e1e78fc227002f8",
         "read_paths": [
           "/etc/passwd",
           "/etc/shadow",
           "/etc/hostname",
           "/mnt/c/Windows/System32/drivers/etc/hosts",
           "/mnt/e/Orchara-wt/t111/product/PROGRESS.md",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/t111-decoy.dsn",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/t111-decoy.dsn",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem",
           "/var/tmp/orchara-sandbox/other-run/secret.txt",
           "/var/tmp/orchara-sandbox/foreign/secret.txt"
         ],
         "write_paths": [
           "/etc/passwd",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt",
           "/var/tmp/orchara-sandbox/other-run/evil.txt",
           "/inputs/source.zip",
           "/tool/build_tool.py"
         ],
         "guest_controls": {
           "/mnt/e/Orchara-wt/t111/product/PROGRESS.md": "READABLE",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": "READABLE",
-          "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/t111-decoy.dsn": "READABLE",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": "READABLE",
+          "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/t111-decoy.dsn": "READABLE",
           "/var/tmp/orchara-sandbox/other-run/secret.txt": "READABLE"
         }
       },
@@ -1041,17 +1041,17 @@
               "error": "FileNotFoundError",
               "ok": false
             },
-            "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem": {
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/certs/clients/client-worker-key.pem": {
               "errno": 2,
               "error": "FileNotFoundError",
               "ok": false
             },
-            "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": {
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/objects/t111-decoy-object.txt": {
               "errno": 2,
               "error": "FileNotFoundError",
               "ok": false
             },
-            "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/t111-decoy.dsn": {
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/t111-decoy.dsn": {
               "errno": 2,
               "error": "FileNotFoundError",
               "ok": false
@@ -1103,7 +1103,7 @@
               "error": "PermissionError",
               "ok": false
             },
-            "/mnt/d/caches/pytest/pytest-of-19677/pytest-290/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt": {
+            "/mnt/d/caches/pytest/pytest-of-19677/pytest-298/test_build_stage_hostile_setup0/objects/t111-written-by-hook.txt": {
               "errno": 2,
               "error": "FileNotFoundError",
               "ok": false
@@ -1121,7 +1121,7 @@
           }
         },
         "build_state": "ready",
-        "build_bundle_digest": "sha256:b75c161bdeab101ba244ca224bfaae8395c3c990c7488f05703a70831c5066a0",
+        "build_bundle_digest": "sha256:5705cb354fdc2575935b8bdf60708a83eecba013b3f12b67bd919c7263ace515",
         "cleanup_report": null,
         "guest_cleanup": {
           "runsc_list": [],
@@ -1180,7 +1180,7 @@
       "attack": "fork as many children as possible from the untrusted setup.py hook (200 attempts)",
       "verdict": "passed",
       "blocked_at": "OCI pids cgroup limit enforced by runsc: the container is stopped at the limit (no in-app EAGAIN observed); the 12-child control and the 128-pid scaling control prove the boundary follows the configured limit",
-      "recorded_at": "2026-11-07T12:54:05.077422Z",
+      "recorded_at": "2026-11-07T13:09:19.781907Z",
       "inputs": {
         "control_children": 12,
         "control_pids_limit": 64,
@@ -1302,7 +1302,7 @@
       "attack": "allocate up to 512 MiB in a child process of the untrusted setup.py hook",
       "verdict": "passed",
       "blocked_at": "OCI memory limit enforced by runsc inside the sandbox: the allocation child is stopped before the requested size; the 1 GiB control completes",
-      "recorded_at": "2026-11-07T12:54:25.386867Z",
+      "recorded_at": "2026-11-07T13:09:37.572531Z",
       "inputs": {
         "control_memory_limit_mb": 1024,
         "attack_memory_limit_mb": 192,
@@ -1332,7 +1332,7 @@
           },
           "child": null,
           "progress_mib": 152,
-          "digest": "sha256:21b798cecaec617f57fcabfe38b4c943672b2b16ef199f355dff103e2e5f0cab"
+          "digest": "sha256:7d06b919fa971ed48a0f2b1e1606ba5b5ad65ea7703eaa25af3234276bacc277"
         },
         "guest_cleanup_control": {
           "runsc_list": [],
@@ -1410,7 +1410,7 @@
       "attack": "write 64 MiB to /workspace from the untrusted setup.py hook",
       "verdict": "passed",
       "blocked_at": "tmpfs size quota + RLIMIT_FSIZE inside the sandbox (host project quota is F15B deployment scope: see not_run)",
-      "recorded_at": "2026-11-07T12:54:39.151213Z",
+      "recorded_at": "2026-11-07T13:09:50.465345Z",
       "inputs": {
         "workspace_quota_mb": 8,
         "requested_mib": 64
@@ -1425,13 +1425,13 @@
         },
         "guest_filesystem_before": {
           "path": "/",
-          "used_bytes": 4165369856,
-          "available_bytes": 1021943451648
+          "used_bytes": 4165058560,
+          "available_bytes": 1021943762944
         },
         "guest_filesystem_after": {
           "path": "/",
-          "used_bytes": 4165369856,
-          "available_bytes": 1021943451648
+          "used_bytes": 4165058560,
+          "available_bytes": 1021943762944
         },
         "guest_volume_growth_bytes": 0,
         "build_state": "ready",
@@ -1491,7 +1491,7 @@
       "attack": "sleep 60s in the untrusted setup.py hook while the build budget is 2s",
       "verdict": "passed",
       "blocked_at": "sandbox executor timeout + kill + cleanup proof (runsc delete/pid/workspace)",
-      "recorded_at": "2026-11-07T12:54:53.423078Z",
+      "recorded_at": "2026-11-07T13:10:01.231864Z",
       "inputs": {
         "tool_build_timeout": "2s",
         "hook_sleep_seconds": 60
@@ -1500,7 +1500,7 @@
       "observed": {
         "build_state": "failed",
         "build_error_code": "build_timeout",
-        "elapsed_seconds": 6.212,
+        "elapsed_seconds": 6.125,
         "guest_cleanup": {
           "runsc_list": [],
           "runsc_list_raw": [
@@ -1557,32 +1557,32 @@
       "attack": "none (positive end-to-end control): upload CSV, debug run, real supervisor exec",
       "verdict": "passed",
       "blocked_at": null,
-      "recorded_at": "2026-11-07T12:55:03.473252Z",
+      "recorded_at": "2026-11-07T13:10:08.744038Z",
       "inputs": {
-        "run_id": "89201ba0-5c9b-4f64-9180-7d2924e1544a",
+        "run_id": "92a6ced7-ae48-4b58-bb1c-f42d11910bd0",
         "csv_sha256": "f226b1fef2d09026714dfbc29a01f1439d1353ba0bfb4a98fd3531db1fc612da"
       },
       "expected": "the sandboxed preset tool succeeds end to end and the unit is fully reclaimed",
       "observed": {
         "exec_report": {
           "status": "executed",
-          "run_id": "89201ba0-5c9b-4f64-9180-7d2924e1544a",
-          "job_id": "6ae23853-8770-4bd1-9a0a-9b9a5bbe2399",
-          "execution_unit_id": "exec-AI-69248-11091d3f",
+          "run_id": "92a6ced7-ae48-4b58-bb1c-f42d11910bd0",
+          "job_id": "b44ac04b-7774-44be-b5c1-26385a46a8d4",
+          "execution_unit_id": "exec-AI-64092-0c401f37",
           "outcome": "succeeded",
           "run_state": "succeeded",
-          "heartbeats": 13,
+          "heartbeats": 11,
           "sandbox": {
-            "sandbox_id": "exec-ai-69248-11091d3f",
+            "sandbox_id": "exec-ai-64092-0c401f37",
             "rootfs_digest": "sha256:03c3f647d1d6e68173bfa9df84b87e5d6162d351bfdd55e4c3b208c0b5412ff5",
             "started": true,
             "exit_code": 0,
             "timed_out": false,
             "cancelled": false,
-            "duration_ms": 378,
+            "duration_ms": 360,
             "cleanup": {
               "sandbox_list_matches": 0,
-              "pid": 2550,
+              "pid": 2526,
               "pid_alive": false,
               "ps_matches": 0,
               "workspace_removed": true
@@ -1590,28 +1590,28 @@
           },
           "artifacts": [
             {
-              "id": "464d6ce9-c3d1-4466-b13b-71807afcb238",
+              "id": "fa4a1fa7-49e7-4582-bdca-8e3d966adb9e",
               "purpose": "final_output",
               "relation": "output",
               "state": "ready",
               "size_bytes": 110
             },
             {
-              "id": "7949eec7-e682-43b6-84aa-38413c9af4d7",
+              "id": "78c430c9-4579-4e95-b7aa-3bbe2bb6d9ef",
               "purpose": "node_output",
               "relation": "artifact",
               "state": "ready",
               "size_bytes": 40
             },
             {
-              "id": "d2428990-d389-41f2-9be2-f9a697682043",
+              "id": "3f21c4c5-30cf-4e82-9c4d-f0b1b54bd4a1",
               "purpose": "log",
               "relation": "log",
               "state": "ready",
               "size_bytes": 18
             }
           ],
-          "duration_ms": 1349
+          "duration_ms": 1161
         },
         "run_state": "succeeded",
         "guest_cleanup": {

@@ -2721,3 +2721,8 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   exit 0（39 ok / 0 FAIL）；`gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
 - `not_run`：宿主级 filesystem project quota（WSL2 无该能力）、完整 ICMP/UDP/DNS/代理矩阵、
   WSL2 外独立生产宿主、真实供应商模型/connector。
+
+- 合并后（merge `integration/f13b` @ `5a210c0` → merge commit `abfd01a`，PROGRESS 冲突保留双方
+  小节：T108/T109 + T111）复跑：T111 **10 passed in 113.56s**、T033/T037 **10 passed in
+  138.34s**、`pytest tests/f13b -q` **204 passed in 446.46s**；Go `build/vet/test` 全 0、
+  gofmt 空、`sync_spec --check` → `no drift`；证据 JSON 在 `abfd01a` 树重新生成（commit=abfd01a）。
