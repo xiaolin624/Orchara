@@ -63,6 +63,10 @@
   </nav>
 
   <h1>私有调试（F02A 快照）</h1>
+  <p class="sub" data-mobile-scope="no-full-canvas-editing">
+    小屏边界：本页的节点调试表与画布不承诺在手机上可用。手机支持的是对话、审批与查看结果
+    （/chat、/approvals、/runs）；需要调试节点时请使用桌面浏览器。
+  </p>
   <p class="sub">
     提交 <code>POST /api/v1/applications/{id}/debug-runs</code> 会把<strong>指定的草稿 revision</strong>
     冻结成仅自己可见的执行快照，并创建一个 <code>kind=debug</code> 的 queued Run。调试不创建公共版本、
@@ -89,7 +93,12 @@
     <p id="debug-status" class="status" role="status" aria-live="polite">正在加载当前草稿 revision…</p>
   </section>
 
-  <form id="debug-form" method="post">
+  <p class="hint" id="debug-role-hint">
+    创建私有调试 Run 需要 <code>creator</code> 角色；没有该角色时服务端返回
+    <code>403 creator_role_required</code>，本页不会显示提交表单（只读查看草稿 revision）。
+  </p>
+
+  <form id="debug-form" method="post" data-requires-role="creator" hidden>
     <section class="card">
       <h2>测试输入</h2>
       <label for="debug-revision">要冻结的草稿 revision（draft_revision）</label>
@@ -147,7 +156,7 @@
           <th>错误码</th>
         </tr>
       </thead>
-      <tbody id="run-node-rows"></tbody>
+      <tbody id="run-node-rows" data-auth-content></tbody>
     </table>
     <p id="runview-legend" class="hint">
       <span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
@@ -186,6 +195,8 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
+  <script src="/assets/runstream.js"></script>
   <script src="/assets/runview.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>

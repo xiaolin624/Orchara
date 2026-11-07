@@ -33,9 +33,10 @@
     pre#citation-text { white-space: pre-wrap; font-size: .86rem; background: rgba(128,128,128,.08); padding: .6rem; border-radius: .4rem; }
     [hidden] { display: none !important; }
   </style>
+  <link rel="stylesheet" href="/assets/mobile.css" />
 </head>
-<body>
-  <nav>
+<body class="page-knowledge">
+  <nav aria-label="主导航">
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
     <a href="/attachments">附件</a>
@@ -69,7 +70,7 @@
       <p id="kb-status" class="status" role="status" aria-live="polite"></p>
     </form>
     <h3>我的知识库</h3>
-    <ul id="kb-list" class="bases" aria-live="polite"></ul>
+    <ul id="kb-list" class="bases" data-auth-content aria-live="polite"></ul>
     <label for="kb-select">当前知识库</label>
     <select id="kb-select"></select>
   </section>
@@ -184,6 +185,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/knowledge.js"></script>
   <script>
     (() => {
@@ -220,8 +222,20 @@
       }
 
       async function loadBases(preferredId) {
-        const payload = await api(knowledgeBasesPath());
-        const items = Array.isArray(payload && payload.items) ? payload.items : [];
+        // The list contract is items + next_cursor; the page used to read only
+        // the first page, so a knowledge-base list past the default limit was
+        // silently truncated. Follow the cursor before rendering.
+        let items = [];
+        let cursor = null;
+        for (let page = 0; page < 100; page += 1) {
+          const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+          const payload = await api(knowledgeBasesPath() + query);
+          items = items.concat(Array.isArray(payload && payload.items) ? payload.items : []);
+          cursor = (payload && payload.next_cursor) || null;
+          if (!cursor) {
+            break;
+          }
+        }
         const list = el('kb-list');
         const select = el('kb-select');
         clear(list);
@@ -513,6 +527,10 @@
           empty.className = 'hint';
           empty.textContent = view.emptyText;
           el('results').appendChild(empty);
+          const next = document.createElement('p');
+          next.className = 'hint';
+          next.textContent = view.emptyNextText;
+          el('results').appendChild(next);
           return view;
         }
         view.items.forEach((item) => {
@@ -535,18 +553,21 @@
             const panel = el('citation-panel');
             const citationStatus = el('citation-status');
             panel.hidden = false;
-            setStatus(citationStatus, '读取引用…', 'pending');
+            setStatus(citationStatus, '读取引用并重新校验当前可读性…', 'pending');
             try {
-              const chunk = await api(knowledgeCitationPath(item.chunkId));
-              const opened = describeChunk(chunk);
-              el('citation-meta').textContent = opened.citationText;
-              el('citation-text').textContent = opened.text;
-              setStatus(citationStatus, opened.citationOk ? '引用当前可读' : '引用不一致',
-                opened.citationOk ? 'ok' : 'bad');
+              const opened = citationOpenSuccess(await api(knowledgeCitationPath(item.chunkId)));
+              el('citation-meta').textContent = opened.chunk.citationText;
+              el('citation-text').textContent = opened.chunk.text;
+              panel.dataset.citationAvailable = opened.available ? 'true' : 'false';
+              setStatus(citationStatus, opened.text, opened.available ? 'ok' : 'bad');
             } catch (error) {
-              el('citation-meta').textContent = '';
+              // F12/T098/AC2: a revoked or deleted source is unavailable, never
+              // the body the page read a moment ago.
+              const failure = citationOpenFailure(error);
+              panel.dataset.citationAvailable = 'false';
+              el('citation-meta').textContent = '引用不可用';
               el('citation-text').textContent = '';
-              setStatus(citationStatus, '引用不可用 ' + describeFailure(error), 'bad');
+              setStatus(citationStatus, failure.text, 'bad');
             }
           });
           article.appendChild(open);
@@ -575,8 +596,9 @@
             csrf: csrfToken,
           });
           const view = renderResults(payload);
-          setStatus(status, view.empty ? '没有可读片段（空结果不是错误）'
-            : '返回 ' + view.items.length + ' 个片段', 'ok');
+          setStatus(status, view.empty
+            ? '没有可读片段（空结果不是错误）。' + view.emptyNextText
+            : '返回 ' + view.items.length + ' 个片段', view.empty ? 'pending' : 'ok');
         } catch (error) {
           setStatus(status, '检索失败 ' + describeFailure(error), 'bad');
         }
@@ -601,18 +623,19 @@
         el('answer-citation-text').textContent = '';
         setStatus(el('answer-citation-status'), '读取引用并重新校验…', 'pending');
         api(knowledgeCitationPath(citation.chunkId)).then((chunk) => {
-          const opened = describeChunk(chunk);
-          el('answer-citation-meta').textContent = opened.citationText;
-          el('answer-citation-text').textContent = opened.text;
-          setStatus(el('answer-citation-status'),
-            opened.citationOk ? '引用当前可读' : '引用不一致：不展示为该片段的来源',
-            opened.citationOk ? 'ok' : 'bad');
+          const opened = citationOpenSuccess(chunk);
+          el('answer-citation-meta').textContent = opened.chunk.citationText;
+          el('answer-citation-text').textContent = opened.chunk.text;
+          panel.dataset.citationAvailable = opened.available ? 'true' : 'false';
+          setStatus(el('answer-citation-status'), opened.text, opened.available ? 'ok' : 'bad');
         }).catch((error) => {
           // Never fall back to the answer's cached citation text: a revoked or
           // deleted source is unavailable, not a stale body.
+          const failure = citationOpenFailure(error);
+          panel.dataset.citationAvailable = 'false';
+          el('answer-citation-meta').textContent = '引用不可用';
           el('answer-citation-text').textContent = '';
-          setStatus(el('answer-citation-status'),
-            '引用不可用 ' + describeFailure(error), 'bad');
+          setStatus(el('answer-citation-status'), failure.text, 'bad');
         });
       }
 

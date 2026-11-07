@@ -53,7 +53,7 @@
     未知或他人审核一律 404，页面不会枚举 id。
   </p>
 
-  <section class="card" id="reviews-list-card">
+  <section class="card" id="reviews-list-card" data-auth-content>
     <h2>审核队列</h2>
     <button id="reviews-refresh" type="button">刷新</button>
     <p id="reviews-status" class="status" role="status" aria-live="polite"></p>
@@ -64,7 +64,7 @@
     <p id="reviews-more" hidden><button id="reviews-next" type="button">下一页</button></p>
   </section>
 
-  <section class="card" id="review-detail-card" hidden aria-live="polite">
+  <section class="card" id="review-detail-card" data-auth-content hidden aria-live="polite">
     <h2>冻结快照</h2>
     <dl class="facts">
       <dt>审核 id</dt><dd id="review-id"></dd>
@@ -119,6 +119,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/reviews.js"></script>
 </body>
 </html>

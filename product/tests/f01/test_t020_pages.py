@@ -12,6 +12,7 @@ import pytest
 
 from conftest import (
     api_server,
+    assert_no_token_in_url_or_storage,
     fresh_database,
     go_binaries,
 )
@@ -22,13 +23,6 @@ def pages_server(fresh_database, api_server):
     # Pages do not read the database, but the API refuses to start without one.
     dsn, _dbname = fresh_database
     return api_server(dsn)
-
-
-def assert_no_token_in_url_or_storage(body: str, page: str) -> None:
-    for forbidden in ("localStorage", "sessionStorage", "location.search", "URLSearchParams"):
-        assert forbidden not in body, f"{page} uses {forbidden}"
-    assert "?token=" not in body, f"{page} puts a token in a URL"
-    assert "?csrf" not in body, f"{page} puts a CSRF token in a URL"
 
 
 def test_admin_page_has_the_service_account_form(pages_server) -> None:

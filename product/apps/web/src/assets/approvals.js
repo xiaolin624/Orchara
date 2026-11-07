@@ -43,6 +43,97 @@ function approvalStateText(state) {
   }
 }
 
+/*
+ * F12/T098: the two expiration mechanisms are not interchangeable.
+ *
+ * A capability approval (operation_id present) has no background sweeper: the
+ * decision path is the only place that observes the deadline, so the row keeps
+ * saying `pending` until someone decides (409 approval_expired). A node approval
+ * (operation_id IS NULL) is swept by the API process (default 30s): the row moves
+ * to `expired` on its own and a parked Run fails with approval_expired. A page
+ * that collapses the two would tell the user the opposite of what happens.
+ */
+const APPROVAL_EXPIRY_TEXT = Object.freeze({
+  capability:
+    '过期语义（能力审批 capability）：服务端没有后台过期扫描；只要没人操作，审批会一直显示“待审批”。'
+    + '只有你点击批准或拒绝时，服务端才用数据库时钟判定过期并返回 409 approval_expired。'
+    + '过期后这条审批不能复活，本页不会偷偷重试；需要重新提交产生这次操作的任务。',
+  node:
+    '过期语义（节点审批 node）：服务端后台 sweeper 会按封存窗口（默认 30 秒）自动过期；'
+    + '到期后审批变为“已过期”，等待中的 Run 以 approval_expired 失败，不需要你再操作。'
+    + '过期后不能复活，需要重新提交任务。',
+  expired:
+    '这条审批已过期：决定没有保存，也不能复活。下一步：重新提交产生这次操作/任务；本页不提供“恢复旧审批”。',
+  invalidated:
+    '这条审批已失效（Run 已取消或进入终态）：没有决定窗口，也不会复活；需要时请重新提交任务。',
+});
+
+/** Which expiration mechanism this approval follows, from the sealed proposal. */
+function approvalExpiryKind(proposalKind) {
+  return String(proposalKind || '') === 'node_approval' ? 'node' : 'capability';
+}
+
+/**
+ * The explanation the detail panel shows for one approval.
+ *
+ * `state` wins over `kind`: an expired/invalidated row is already a fact, and the
+ * page must not describe a decision window that no longer exists.
+ */
+function approvalExpiryNote(approval, proposalKind) {
+  const state = String((approval && approval.state) || '');
+  const kind = approvalExpiryKind(proposalKind);
+  if (state === 'expired') {
+    return { visible: true, kind: kind, state: state, tone: 'bad', text: APPROVAL_EXPIRY_TEXT.expired };
+  }
+  if (state === 'invalidated') {
+    return { visible: true, kind: kind, state: state, tone: 'bad', text: APPROVAL_EXPIRY_TEXT.invalidated };
+  }
+  if (state === 'pending') {
+    return { visible: true, kind: kind, state: state, tone: 'pending', text: APPROVAL_EXPIRY_TEXT[kind] };
+  }
+  return { visible: false, kind: kind, state: state, tone: '', text: '' };
+}
+
+/**
+ * A failed decision is not retried behind the user's back. Each stable code gets
+ * its own next step; `reload` means the server state must be re-read before the
+ * page shows anything again.
+ */
+function describeDecisionFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '决定提交失败');
+  const table = {
+    approval_expired:
+      '审批已过期（approval_expired）：决定没有保存。'
+      + '下一步：重新提交产生这次操作的任务；本页不提供复活，也不会自动重试。',
+    approval_not_pending:
+      '审批已不可决定（approval_not_pending）：它已被决定、取消或过期。'
+      + '请以服务端当前状态为准；本页不会自动复活。',
+    approval_params_mismatch:
+      '提案已变化（approval_params_mismatch）：页面上的参数哈希不是服务端当前的。'
+      + '请重新打开详情核对真实目标与参数后再决定，不要照旧点确认。',
+    decision_conflict:
+      '已有并发的决定（decision_conflict）：请刷新详情，以服务端保存的那一次为准，本页不覆盖它。',
+    approval_not_found:
+      '审批不存在或不属于你（approval_not_found）：不会显示他人的提案，也不会自动重试。',
+    approver_mismatch:
+      '你不是这条审批的指定审批人（approver_mismatch）：需要由指定的人类审批人决定，本页不会绕过。',
+    permission_revoked:
+      '当前权限已被撤销（permission_revoked）：你的决定没有保存；请让仍获授权的人处理或重新提交任务。',
+    policy_revoked:
+      '连接器策略已被撤销（policy_revoked）：这次操作不能再继续，页面不会自动重试。',
+  };
+  return {
+    code: code,
+    status: status,
+    expired: code === 'approval_expired' || code === 'approval_not_pending',
+    reload: Boolean(code),
+    text: table[code] || ('决定提交失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；请刷新详情，本页不会自动重试。'),
+  };
+}
+
 /** The list/detail projection of one contract Approval. */
 function describeApproval(approval) {
   const value = approval || {};
@@ -263,6 +354,15 @@ async function loadApprovalDetail(approvalID) {
     }
     const proposal = describeProposal(JSON.parse(text));
     displayedApproval.proposalKind = proposal.kind;
+    const expiry = approvalExpiryNote(approval, proposal.kind);
+    const expiryNote = document.getElementById('approval-expiry-note');
+    if (expiryNote) {
+      expiryNote.hidden = !expiry.visible;
+      expiryNote.textContent = expiry.text;
+      expiryNote.className = 'hint' + (expiry.tone === 'bad' ? ' status bad' : '');
+      expiryNote.dataset.expiryKind = expiry.kind;
+      expiryNote.dataset.expiryState = expiry.state;
+    }
     document.getElementById('detail-target').textContent =
       proposal.targetText + (proposal.queryText ? '?' + proposal.queryText : '');
     document.getElementById('detail-params').textContent = proposal.paramsText;
@@ -312,10 +412,26 @@ async function decideApproval(decision) {
     document.getElementById('reject-button').disabled = true;
     await loadApprovalsPage(null);
   } catch (error) {
-    const code = error && error.code ? '[' + error.code + '] ' : '';
-    status.textContent = code + (error && error.message ? error.message : '决定提交失败');
+    const plan = describeDecisionFailure(error);
+    const code = plan.code ? '[' + plan.code + '] ' : '';
+    status.textContent = plan.text;
     status.className = 'status bad';
-    button.disabled = false;
+    document.getElementById('approve-button').disabled = true;
+    document.getElementById('reject-button').disabled = true;
+    if (plan.reload && displayedApproval) {
+      // Re-read the server state so the page stops describing the decision
+      // window the server just closed; the failure copy stays on screen.
+      try {
+        await loadApprovalDetail(displayedApproval.id);
+        status.textContent = code + plan.text;
+        status.className = 'status bad';
+        document.getElementById('approve-button').disabled = true;
+        document.getElementById('reject-button').disabled = true;
+      } catch (reloadError) {
+        // The refusal is already displayed; a failed re-read is not a second
+        // decision and must not re-enable the buttons.
+      }
+    }
   }
 }
 

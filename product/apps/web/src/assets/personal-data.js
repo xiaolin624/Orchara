@@ -114,6 +114,98 @@ function remainingScopesText(scopes) {
   return items.map(scopeText).join('、');
 }
 
+// ---------------------------------------------------------------------------
+// F12/T098: knowledge-document ingestion state and failure are part of the
+// personal-data journey ("资料显示摄取状态/错误"). The labels mirror the
+// contract KnowledgeDocument.state enum; the failure codes mirror the ingestion
+// job's stable codes (the knowledge page owns the detailed failure position).
+// ---------------------------------------------------------------------------
+var DOCUMENT_STATE_TEXT = {
+  uploaded: '已上传（等待扫描）',
+  scanning: '扫描中（ready 之前不可检索）',
+  indexing: '索引构建中（尚未可检索）',
+  ready: '可检索（索引已激活）',
+  failed: '摄取失败（不可检索）',
+  deleting: '删除中（已停止访问）',
+  deleted: '已删除（不可访问）'
+};
+
+var DOCUMENT_FAILURE_TEXT = {
+  ingest_empty_content: '解析结果为空：没有非空白正文',
+  ingest_invalid_encoding: '正文编码无效',
+  ingest_unsupported_media_type: '不支持的文件类型',
+  ingest_source_unavailable: '来源附件不可用',
+  ingest_source_changed: '来源在摄取期间发生变化',
+  ingest_too_many_chunks: '片段数量超过上限',
+  ingest_chunk_artifact_timeout: '片段封存超时',
+  ingest_incomplete: '索引不完整',
+  ingest_citation_invalid: '引用校验不一致',
+  ingest_cancelled: '摄取被取消',
+  embedding_provider_not_configured: '未配置 embedding provider'
+};
+
+function documentStateText(state) {
+  return DOCUMENT_STATE_TEXT[String(state || '')] || '未知文档状态';
+}
+
+function documentFailureText(code) {
+  var key = String(code || '');
+  if (!key) {
+    return '';
+  }
+  return DOCUMENT_FAILURE_TEXT[key] || key;
+}
+
+/**
+ * One contract KnowledgeDocument projected for the personal-data list.
+ *
+ * The document list does not carry the failure code; for a failed document the
+ * page fetches the real diagnostics entry once and reports the stable code and
+ * its meaning. The page never turns an unknown state into "ready".
+ */
+function documentReadout(document) {
+  var value = document || {};
+  var state = String(value.state || '');
+  var errorCode = String(value.error_code || '');
+  var readout = {
+    id: String(value.id || ''),
+    state: state,
+    stateText: documentStateText(state),
+    errorCode: errorCode,
+    errorText: documentFailureText(errorCode),
+    canDelete: state !== 'deleting' && state !== 'deleted',
+    needsDiagnostics: state === 'failed'
+  };
+  if (state === 'uploaded' || state === 'scanning') {
+    readout.note = '后台正在扫描真实字节：ready 之前不能作为检索资料。';
+    readout.nextStep = '稍后刷新本页，或到知识库页查看摄取进度。';
+  } else if (state === 'indexing') {
+    // ADR 0018: a rebuild keeps the previous active index readable until the new
+    // one is activated, so "search is empty" is only true for a first-time index.
+    readout.note = '索引正在构建：若该资料此前已就绪，旧的活动索引在切换前仍是检索来源；首次索引在完成前没有可检索内容（没有旧索引可回退）。';
+    readout.nextStep = '稍后刷新本页；失败时会显示失败码与下一步。';
+  } else if (state === 'ready') {
+    readout.note = '可检索：引用会按当前授权与文档版本重新校验。';
+    readout.nextStep = '';
+  } else if (state === 'failed') {
+    // ADR 0018: a failed rebuild leaves the previous active index in place, so the
+    // document can still be retrievable through it. Claiming otherwise here would
+    // be a false statement about what search returns.
+    readout.note = '摄取失败：新索引未激活。若该资料此前已有已就绪索引，旧的仍在检索来源中（失败不会清空它）；首次索引失败且从未就绪的资料没有可检索内容。';
+    readout.nextStep = '查看失败码后到知识库页重试摄取。';
+  } else if (state === 'deleting') {
+    readout.note = '删除中：读取、检索、引用与缓存命中已经停止。';
+    readout.nextStep = '等待删除任务完成；物理副本与备份按清理任务/保留策略处理。';
+  } else if (state === 'deleted') {
+    readout.note = '已删除：立即不可访问，引用与检索不再返回正文。';
+    readout.nextStep = '物理副本与备份按删除任务/保留策略清理，本页不声称字节已删除。';
+  } else {
+    readout.note = '未知文档状态：页面不猜测。';
+    readout.nextStep = '刷新或到知识库页核对服务端状态。';
+  }
+  return readout;
+}
+
 /** Project one contract DeletionJob for display. */
 function describeDeletionJob(job) {
   if (!job || typeof job.id !== 'string' || typeof job.state !== 'string') {
@@ -128,6 +220,12 @@ function describeDeletionJob(job) {
     remaining: scopes,
     remainingText: remainingScopesText(scopes),
     isOpen: job.state === 'pending' || job.state === 'running',
+    // Two different promises, stated separately: this one is already true when
+    // the 202 arrives, the other is asynchronous and must not be claimed early.
+    accessStoppedText: '立即停止访问：删除响应前服务端已写 tombstone 并提升 snapshot/revision，'
+      + '读取、检索、引用、缓存命中与恢复读取从此拒绝；不依赖后台清理是否完成。',
+    cleanupPolicyText: '异步物理清理/备份期限：对象、索引、检索缓存、checkpoint、沙箱临时文件、'
+      + '第三方历史与备份删除账本由后台清理任务与备份保留策略处理；完成前内容仍保持不可读。',
     progressText: '删除任务 ' + job.id + '：' + stateText
       + '；剩余清理范围：' + remainingScopesText(scopes) + '。'
   };
@@ -266,10 +364,18 @@ function diagnosticGrantCreateRequest(input) {
   var purposes = diagnosticPurposes(input && input.purposes);
   var expiresAt = diagnosticExpiryISO(input && input.expiresAt);
   var objects = Array.isArray(input && input.objects) ? input.objects : [];
-  var headers = {};
-  if (objects.length > 0) {
-    headers['X-Diagnostic-Object-Scope'] = diagnosticObjectScopeHeader(objects);
+  if (objects.length === 0) {
+    // UX.md:35 / DATA-POLICY.md:7: the run owner names the disclosed objects.
+    // The server derives *every* current object of the run when the scope header
+    // is absent (internal/diagnostics/grants.go), so an empty selection would
+    // silently widen the grant to the whole run. Refuse instead of submitting.
+    throw new Error(
+      '请至少勾选一个诊断对象：不勾选时服务端会按兼容规则把该运行的全部对象纳入授权。'
+    );
   }
+  var headers = {
+    'X-Diagnostic-Object-Scope': diagnosticObjectScopeHeader(objects)
+  };
   return {
     path: DIAGNOSTIC_GRANTS_PATH,
     method: 'POST',
@@ -364,10 +470,10 @@ function renderDeletion(job) {
   panel.textContent = '';
   var view = describeDeletionJob(job);
   addFieldRow(panel, '删除任务', view.id);
-  addFieldRow(panel, '状态', view.stateText);
+  addFieldRow(panel, '立即停止访问', view.accessStoppedText);
+  addFieldRow(panel, '异步清理与备份期限', view.cleanupPolicyText);
+  addFieldRow(panel, '任务状态', view.stateText);
   addFieldRow(panel, '剩余清理范围', view.remainingText);
-  addFieldRow(panel, '说明',
-    '删除已在响应前生效：旧内容不再被读取。物理副本由后续清理任务处理。');
 }
 
 var deletionPollTimer = null;
@@ -433,30 +539,56 @@ function renderItemList(listId, emptyId, items, renderItem) {
   var list = document.getElementById(listId);
   var empty = document.getElementById(emptyId);
   if (!list) {
-    return;
+    return [];
   }
   list.textContent = '';
   if (!items.length) {
     if (empty) {
       empty.hidden = false;
     }
-    return;
+    return [];
   }
   if (empty) {
     empty.hidden = true;
   }
+  var entries = [];
   items.forEach(function (item) {
     var entry = document.createElement('li');
     renderItem(item, entry);
     list.appendChild(entry);
+    entries.push(entry);
   });
+  return entries;
+}
+
+// The list contract is items + next_cursor (API.md "pagination"). The page used
+// to read only the first page of each list, which silently hid memories,
+// knowledge bases and documents beyond the server's default limit. This page is
+// the "everything I may delete" inventory, so completeness is the point: follow
+// the opaque cursor until the server says there is no next page.
+async function collectAllPages(path) {
+  var items = [];
+  var cursor = null;
+  for (var page = 0; page < 100; page += 1) {
+    var query = '';
+    if (cursor) {
+      query = (path.indexOf('?') === -1 ? '?' : '&') + 'cursor=' + encodeURIComponent(cursor);
+    }
+    var payload = await api(path + query);
+    items = items.concat(payload.items || []);
+    cursor = payload.next_cursor || null;
+    if (!cursor) {
+      break;
+    }
+  }
+  return items;
 }
 
 async function loadMemories() {
   setStatus('memories-status', '正在加载记忆…', '');
   try {
-    var payload = await api('/api/v1/memories');
-    renderItemList('memories-list', 'memories-empty', payload.items || [], function (memory, entry) {
+    var memories = await collectAllPages('/api/v1/memories');
+    renderItemList('memories-list', 'memories-empty', memories, function (memory, entry) {
       addFieldRow(entry, '记忆 id', memory.id);
       addFieldRow(entry, '应用范围', memory.application_id);
       addFieldRow(entry, '版本', String(memory.revision));
@@ -469,7 +601,7 @@ async function loadMemories() {
       });
       entry.appendChild(button);
     });
-    setStatus('memories-status', '已加载 ' + String((payload.items || []).length) + ' 条记忆。', 'ok');
+    setStatus('memories-status', '已加载 ' + String(memories.length) + ' 条记忆。', 'ok');
   } catch (error) {
     setStatus('memories-status', error.message || String(error), 'bad');
   }
@@ -478,30 +610,64 @@ async function loadMemories() {
 async function loadDocuments() {
   setStatus('documents-status', '正在加载知识文档…', '');
   try {
-    var bases = await api('/api/v1/knowledge-bases');
+    var baseItems = await collectAllPages('/api/v1/knowledge-bases');
     var documents = [];
-    var baseItems = bases.items || [];
     for (var index = 0; index < baseItems.length; index += 1) {
       var base = baseItems[index];
-      var payload = await api('/api/v1/knowledge-bases/'
+      var baseDocuments = await collectAllPages('/api/v1/knowledge-bases/'
         + encodeURIComponent(base.id) + '/documents');
-      (payload.items || []).forEach(function (document) {
+      baseDocuments.forEach(function (document) {
         document.knowledge_base_name = base.name;
         documents.push(document);
       });
     }
-    renderItemList('documents-list', 'documents-empty', documents, function (document, entry) {
-      addFieldRow(entry, '文档 id', document.id);
-      addFieldRow(entry, '知识库', document.knowledge_base_name || document.knowledge_base_id);
-      addFieldRow(entry, '状态', document.state);
-      addFieldRow(entry, '版本', String(document.revision));
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = '删除这个文档';
-      button.addEventListener('click', function () {
-        deleteItem('knowledge_document', document.id, loadDocuments);
-      });
-      entry.appendChild(button);
+    // The ingestion failure code is not on the document projection; for the
+    // failed documents only, read the real diagnostics once so the list can show
+    // the stable code instead of a bare state. A failed diagnostics read never
+    // turns the document into anything else.
+    for (var failedIndex = 0; failedIndex < documents.length; failedIndex += 1) {
+      var candidate = documents[failedIndex];
+      if (String(candidate.state || '') !== 'failed') {
+        continue;
+      }
+      try {
+        var diagnostics = await api('/api/v1/knowledge-documents/'
+          + encodeURIComponent(candidate.id) + '/diagnostics');
+        candidate.error_code = diagnostics && diagnostics.error_code
+          ? String(diagnostics.error_code)
+          : '';
+      } catch (diagnosticsError) {
+        candidate.error_code = '';
+        candidate.diagnostics_error = diagnosticsError && diagnosticsError.code
+          ? String(diagnosticsError.code)
+          : 'diagnostics_unavailable';
+      }
+    }
+    renderItemList('documents-list', 'documents-empty', documents, function (documentItem, entry) {
+      var view = documentReadout(documentItem);
+      entry.dataset.documentState = view.state;
+      addFieldRow(entry, '文档 id', documentItem.id);
+      addFieldRow(entry, '知识库', documentItem.knowledge_base_name || documentItem.knowledge_base_id);
+      addFieldRow(entry, '状态', view.stateText);
+      addFieldRow(entry, '说明', view.note);
+      if (view.nextStep) {
+        addFieldRow(entry, '下一步', view.nextStep);
+      }
+      addFieldRow(entry, '版本', String(documentItem.revision));
+      if (view.errorCode) {
+        addFieldRow(entry, '失败码', view.errorCode + '（' + view.errorText + '）');
+      } else if (documentItem.diagnostics_error) {
+        addFieldRow(entry, '失败码', '诊断不可用：' + documentItem.diagnostics_error);
+      }
+      if (view.canDelete) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = '删除这个文档';
+        button.addEventListener('click', function () {
+          deleteItem('knowledge_document', documentItem.id, loadDocuments);
+        });
+        entry.appendChild(button);
+      }
     });
     setStatus('documents-status', '已加载 ' + String(documents.length) + ' 个文档。', 'ok');
   } catch (error) {
@@ -543,8 +709,15 @@ function renderGrantObjects(items) {
     var row = document.createElement('li');
     var box = document.createElement('input');
     box.type = 'checkbox';
-    box.value = entry;
-    box.checked = true;
+    // The checkbox carries the artifact UUID the request builder expects; the
+    // visible label keeps the `artifact:<uuid>` scope entry. Passing the already
+    // prefixed entry here made diagnosticObjectEntry() reject the user's own
+    // selection ("artifact id 必须是 UUID"), so no non-empty grant could be sent.
+    box.value = String(item.id || '');
+    // F12/T098 / UX.md:35: diagnostic scopes are chosen explicitly. The page
+    // never pre-selects the whole run's objects; the user ticks what they mean
+    // to disclose.
+    box.checked = false;
     var label = document.createElement('label');
     label.textContent = ' ' + entry + '（' + String(item.state || '未知状态') + '）';
     row.appendChild(box);
@@ -568,7 +741,8 @@ async function loadGrantObjects() {
     if (items.length === 0) {
       setStatus('grant-objects-status', '这个运行没有可授权的制品。', '');
     } else {
-      setStatus('grant-objects-status', '已列出 ' + String(items.length) + ' 个对象，可取消勾选。', 'ok');
+      setStatus('grant-objects-status',
+        '已列出 ' + String(items.length) + ' 个对象，默认不勾选；请逐个选择要授权的范围。', 'ok');
     }
   } catch (error) {
     setStatus('grant-objects-status', error.message || String(error), 'bad');

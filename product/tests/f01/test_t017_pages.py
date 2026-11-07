@@ -12,6 +12,7 @@ import pytest
 
 from conftest import (
     api_server,
+    assert_no_token_in_url_or_storage,
     fresh_database,
     go_binaries,
 )
@@ -22,13 +23,6 @@ def pages_server(fresh_database, api_server):
     # The pages do not read the database, but the API refuses to start without one.
     dsn, _dbname = fresh_database
     return api_server(dsn)
-
-
-def assert_no_token_in_url_or_storage(body: str, page: str) -> None:
-    for forbidden in ("localStorage", "sessionStorage", "location.search", "URLSearchParams"):
-        assert forbidden not in body, f"{page} uses {forbidden}"
-    assert "?token=" not in body, f"{page} puts a token in a URL"
-    assert "?csrf" not in body, f"{page} puts a CSRF token in a URL"
 
 
 def test_login_page_is_served_and_posts_the_contract_path(pages_server) -> None:
@@ -48,9 +42,15 @@ def test_login_page_is_served_and_posts_the_contract_path(pages_server) -> None:
         'id="login-status"',
         'role="status"',
         'href="/activate"',
-        "window.location.assign('/admin')",
+        # Landing is role-aware since T095 (an admin goes to /admin, everyone
+        # else to the read-only directory); the old literal only pinned the
+        # admin case and broke when the non-admin branch was added.
+        "window.location.assign(",
     ):
         assert marker in body, f"login.html is missing {marker!r}"
+
+    # Whatever the role split, an administrator must still land on /admin.
+    assert "'/admin'" in body and "'/apps'" in body
 
     # The two failures the page exists to explain are visible text, not a
     # console message.

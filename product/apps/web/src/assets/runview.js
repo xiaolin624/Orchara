@@ -801,7 +801,21 @@ function formatRunError(run) {
       terminal: false,
       severity: 'pending',
       hint: '',
-      text: '已收到取消意图（cancelling），等待执行单元退出并提交终态。',
+      text: '已收到取消意图（cancelling），等待执行单元退出并提交终态；这不表示撤回已经发生的外部写入。',
+    };
+  }
+  if (state === 'running' && String(value.phase || '') === 'finalizing') {
+    // F12/T096: finalizing is phase-only (state stays running). The result is a
+    // proposal until the supervisor's exit evidence arrives: not success, not
+    // failure, and the page keeps polling.
+    return {
+      code: code,
+      state: state,
+      terminal: false,
+      severity: 'pending',
+      hint: '',
+      text: '结果提议已保存，正在收尾（phase=finalizing）：仍在等待 supervisor 退出证据；' +
+        '终态提交前这不是成功，也不是失败。',
     };
   }
   if (state === 'running' || state === 'queued' || state === 'waiting_approval' ||
@@ -1287,8 +1301,12 @@ async function runViewCancel() {
     const run = await runViewRequestCancel(view.runID);
     view.run = run && typeof run === 'object' ? run : view.run;
     renderRunView(view);
+    // F12/T096: the same no-rollback rule as the runs page; a 202 is intent only.
     runViewCancelStatus(
-      '已接受取消意图（state=' + String((view.run && view.run.state) || '') + '）；页面会刷新到终态。',
+      typeof runStreamCancelAcceptedText === 'function'
+        ? runStreamCancelAcceptedText(view.run)
+        : '已接受取消意图（state=' + String((view.run && view.run.state) || '') +
+          '）；页面会刷新到终态。',
       'ok',
     );
     return run;

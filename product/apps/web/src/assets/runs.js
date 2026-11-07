@@ -129,7 +129,14 @@ async function loadChildRunsPanel(runId) {
       list.appendChild(item);
     }
     status.className = 'status ok';
-    status.textContent = children.length + ' 个独立子运行。';
+    // F12/T096: N/M completion and the hard rule that a parent never reads as
+    // success while a child is non-terminal (or a child ended failed/cancelled).
+    const summary = typeof runStreamChildSummary === 'function'
+      ? runStreamChildSummary(children, displayedRun || {})
+      : null;
+    status.textContent = summary
+      ? summary.line + (summary.parentLine ? ' ' + summary.parentLine : '')
+      : children.length + ' 个独立子运行。';
   } catch (error) {
     status.className = 'status bad';
     status.textContent =
@@ -1347,8 +1354,16 @@ function describeRunEvent(event) {
  * this stream: the replay window is gone, so the page must switch to the Run
  * snapshot (details.snapshot_url) instead of pretending the history is complete.
  * 401/404 stop too; everything else is retryable with the same Last-Event-ID.
+ *
+ * F12/T096: when ``runstream.js`` (loaded before this file) is present, the
+ * richer classifier is used and ``kind`` becomes the page's decision input
+ * (``cursor_expired`` -> fetch the snapshot; the timeline is never resumed from
+ * the expired cursor).
  */
 function streamFailure(status, payload) {
+  if (typeof runStreamFailure === 'function') {
+    return runStreamFailure(status, payload);
+  }
   const error = (payload && payload.error) || {};
   const code = error.code || ('http_' + status);
   if (status === 410) {
@@ -1356,17 +1371,29 @@ function streamFailure(status, payload) {
     const snapshot = details.snapshot_url ? String(details.snapshot_url) : '/api/v1/runs';
     return {
       retry: false,
+      kind: 'cursor_expired',
+      snapshotURL: snapshot,
+      snapshotPath: snapshot,
       text: '事件保留窗口已过期（410 ' + code + '）；不能静默续传，请改用 Run 快照：' + snapshot,
     };
   }
   if (status === 401) {
-    return { retry: false, text: '登录已过期（401）；重新登录后可按 Last-Event-ID 重连事件流。' };
+    return {
+      retry: false,
+      kind: 'auth',
+      text: '登录已过期（401）；重新登录后可按 Last-Event-ID 重连事件流。',
+    };
   }
   if (status === 404) {
-    return { retry: false, text: '该 Run 不存在或不属于你（404）；事件流已停止。' };
+    return {
+      retry: false,
+      kind: 'gone',
+      text: '该 Run 不存在或不属于你（404）；事件流已停止。',
+    };
   }
   return {
     retry: true,
+    kind: 'transient',
     text: '事件流暂时不可用 [' + code + '] ' + (error.message || '网络或服务端错误') +
       '；将按 Last-Event-ID 重连。',
   };
@@ -1393,7 +1420,7 @@ async function streamRunTimeline(runId, callbacks) {
 
   for (;;) {
     if (isCancelled()) {
-      return;
+      return { kind: 'cancelled' };
     }
     let response;
     try {
@@ -1423,7 +1450,9 @@ async function streamRunTimeline(runId, callbacks) {
       const failure = streamFailure(response.status, payload);
       onStatus(failure.text, failure.retry ? 'pending' : 'bad');
       if (!failure.retry) {
-        return;
+        // F12/T096: the caller receives the failure so a 410 can really fetch
+        // the snapshot and rebuild; the expired cursor is never resumed.
+        return { kind: failure.kind || 'failed', failure: failure };
       }
       await waitMilliseconds(1000);
       continue;
@@ -1438,7 +1467,7 @@ async function streamRunTimeline(runId, callbacks) {
         if (typeof reader.cancel === 'function') {
           await reader.cancel();
         }
-        return;
+        return { kind: 'cancelled' };
       }
       const chunk = await reader.read();
       if (chunk.done) {
@@ -1462,7 +1491,7 @@ async function streamRunTimeline(runId, callbacks) {
         const terminal = timelineTerminalState(events);
         if (terminal !== '') {
           onStatus('已回放到已提交终态 ' + terminal + '；事件流关闭。', 'ok');
-          return;
+          return { kind: 'terminal', terminal: terminal };
         }
       }
     }
@@ -1527,7 +1556,13 @@ function showRunDetail(run, facts) {
     summary.state === 'running' && facts.leaseDeadline
       ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
       : '（没有可显示的租约事实）';
-  document.getElementById('detail-note').textContent = describeRunState(merged, facts);
+  // F12/T096: the shared truth mapping is the page's one sentence about
+  // (state, phase), plus the honest next actions. The legacy per-state text is
+  // kept as the fallback for a page that loads runs.js without runstream.js.
+  const truth = typeof runStreamTruth === 'function' ? runStreamTruth(merged, facts) : null;
+  document.getElementById('detail-note').textContent = truth
+    ? truth.detail + (truth.actions.length ? ' 可操作：' + truth.actions.join('；') : '')
+    : describeRunState(merged, facts);
   const active = describeActiveClock(merged, facts);
   document.getElementById('detail-active').textContent = active.line + ' ' + active.oneClockNote;
   document.getElementById('detail-deadline').textContent = active.reasonLine;
@@ -1576,10 +1611,14 @@ function renderSandboxPanel(run, facts) {
   document.getElementById('sandbox-cancel-note').textContent = content.cancelNote;
 }
 
-function renderArtifactItem(artifact) {
+function renderArtifactItem(artifact, readout) {
   const item = document.createElement('li');
   const label = document.createElement('span');
-  label.textContent = artifactDisplayName(artifact);
+  // F12/T096: "ready" is not "final". The readout (from runstream.js) marks an
+  // artifact from a non-terminal Run as unfinished and only the Run's
+  // output_artifact_id as the final product.
+  const suffix = readout && readout.label ? ' · ' + readout.label : '';
+  label.textContent = artifactDisplayName(artifact) + suffix;
   const download = document.createElement('button');
   download.type = 'button';
   download.textContent = '下载';
@@ -1625,9 +1664,19 @@ async function loadRunArtifacts(runId) {
   try {
     const body = await api(runArtifactsPath(runId));
     const summary = describeArtifactList(body);
-    sandboxArtifactsStatus(summary.text, summary.count ? 'ok' : '');
-    for (const item of body.items || []) {
-      renderArtifactItem(item);
+    const readout = typeof runStreamArtifactReadout === 'function'
+      ? runStreamArtifactReadout(body, displayedRun || {})
+      : null;
+    if (readout) {
+      sandboxArtifactsStatus(summary.text + ' ' + readout.summaryText, summary.count ? 'ok' : '');
+    } else {
+      sandboxArtifactsStatus(summary.text, summary.count ? 'ok' : '');
+    }
+    for (let index = 0; index < (body.items || []).length; index += 1) {
+      renderArtifactItem(
+        body.items[index],
+        readout && readout.items ? readout.items[index] : null,
+      );
     }
   } catch (error) {
     if (error.status === 401) {
@@ -1900,12 +1949,14 @@ async function requestCancel(runId) {
     const token = await csrf();
     const run = await api(cancelRunPath(runId), { method: 'POST', csrf: token });
     displayedRun = mergeRunSnapshot(displayedRun, run);
-    cancelDetailStatus(
-      run.state === 'cancelled'
+    // F12/T096: a 202 only records intent. The text must never imply that an
+    // already-sent external write was rolled back (cancelling/needs_reconciliation).
+    const acceptedText = typeof runStreamCancelAcceptedText === 'function'
+      ? runStreamCancelAcceptedText(run)
+      : (run.state === 'cancelled'
         ? '已停止（cancelled）：任务已进入终态。'
-        : '已接受取消意图（' + run.state + '）：等待执行单元退出，页面会轮询到终态。',
-      'ok',
-    );
+        : '已接受取消意图（' + run.state + '）：等待执行单元退出，页面会轮询到终态。');
+    cancelDetailStatus(acceptedText, 'ok');
     await loadRunDetail(runId);
   } catch (error) {
     if (error.status === 401) {
@@ -1928,6 +1979,102 @@ async function requestCancel(runId) {
 // the generation so the old fetch loop stops instead of appending frames to the
 // wrong list; the list itself is deduped by seq.
 let runTimelineGeneration = 0;
+
+/**
+ * F12/T096: the 410 branch really rebuilds from the Run snapshot.
+ *
+ * A cursor older than the retention window is gone: API.md §4 requires reading
+ * the current Run snapshot, and silently resuming from "now" (or replaying from
+ * 0, which would 410 again) would fake a complete history. The page fetches the
+ * documented `details.snapshot_url`, renders that Run, records the correction in
+ * the timeline, and returns the rebuilt snapshot. It never restarts the stream
+ * from the expired cursor.
+ */
+/** True when this page carries the runs-page Run detail anchors. */
+function pageHasRunDetailAnchors() {
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function') {
+    return false;
+  }
+  return Boolean(document.getElementById('detail-id'));
+}
+
+async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list, options) {
+  const settings = options && typeof options === 'object' ? options : {};
+  // The page that started the timeline owns the rendering: /runs has the detail
+  // anchors, /debug has the node-state panel. Falling back to showRunDetail on a
+  // page without those anchors used to throw after the snapshot had been read,
+  // which is why the debug page could never recover from a 410.
+  const isStale = typeof settings.isCancelled === 'function' ? settings.isCancelled : null;
+  const renderSnapshot = typeof settings.renderSnapshot === 'function'
+    ? settings.renderSnapshot
+    : (pageHasRunDetailAnchors() ? showRunDetail : null);
+  const snapshotPath = typeof runStreamSnapshotPath === 'function'
+    ? runStreamSnapshotPath(failure, runId)
+    : String((failure && (failure.snapshotPath || failure.snapshotURL)) || '');
+  if (snapshotPath === '') {
+    setStatus(
+      '事件保留窗口已过期（410），但没有可安全使用的 Run 快照路径；' +
+        '页面停止时间线，不静默续传，也不伪造历史。',
+      'bad',
+    );
+    return null;
+  }
+  if (renderSnapshot === null) {
+    setStatus(
+      '事件保留窗口已过期（410）：本页没有 Run 快照渲染函数，' +
+        '因此不重建、不静默续传，也不伪造历史。',
+      'bad',
+    );
+    return null;
+  }
+  setStatus(
+    '事件保留窗口已过期（410 event_cursor_expired）；正在按快照 ' + snapshotPath +
+      ' 重建视图（不会从旧游标续传）…',
+    'pending',
+  );
+  let result;
+  try {
+    result = await apiFull(snapshotPath);
+  } catch (error) {
+    setStatus(
+      '410 快照读取失败 [' + (error && error.code ? error.code : 'error') + '] ' +
+        (error && error.message ? error.message : '未知错误') +
+        '；页面停止时间线，不静默续传。',
+      'bad',
+    );
+    return null;
+  }
+  // The snapshot may have been in flight while the user selected another Run.
+  // A late answer must not overwrite the newer selection or append to its list.
+  if (isStale && isStale()) {
+    return null;
+  }
+  const facts = runRuntimeFacts(result.headers);
+  const correction = typeof runStreamSnapshotCorrection === 'function'
+    ? runStreamSnapshotCorrection(failure, runId, result)
+    : null;
+  const shown = renderSnapshot(result.payload, facts);
+  if (list && typeof document !== 'undefined' && document.createElement) {
+    const item = document.createElement('li');
+    item.textContent = correction
+      ? correction.timelineNotice
+      : '（事件历史已超出保留窗口；本页按当前 Run 快照重建，未回放旧帧。）';
+    list.appendChild(item);
+    if (list.dataset) {
+      list.dataset.snapshotRebuilt = 'true';
+    }
+  }
+  const state = shown && shown.state ? shown.state : '';
+  const phase = shown && shown.phase ? shown.phase : 'unknown';
+  setStatus(
+    (correction
+      ? correction.statusText
+      : '已按 410 快照重建视图：state=' + state + '，phase=' + phase + '；旧游标已丢弃，不静默续传。') +
+      '（GET ' + snapshotPath + '）',
+    'ok',
+  );
+  return shown;
+}
 
 function beginRunTimeline(runId, elements) {
   const generation = ++runTimelineGeneration;
@@ -1971,6 +2118,24 @@ function beginRunTimeline(runId, elements) {
       item.textContent = describeRunEvent(event);
       list.appendChild(item);
     },
+  }).then((outcome) => {
+    // F12/T096: a 410 is terminal for this stream, but the page must not stop at
+    // "please use the snapshot": it fetches that snapshot and rebuilds the view.
+    if (outcome && outcome.kind === 'cursor_expired') {
+      return rebuildRunTimelineFromSnapshot(
+        runId,
+        outcome.failure,
+        setStatus,
+        list,
+        {
+          // The calling page decides how a rebuilt snapshot is rendered, and the
+          // generation tells us whether the user has already moved on.
+          renderSnapshot: elements && elements.renderSnapshot,
+          isCancelled: isCancelled,
+        },
+      );
+    }
+    return outcome;
   }).catch((error) => {
     setStatus('事件流读取失败：' + (error && error.message ? error.message : '未知错误'), 'bad');
   });
@@ -2002,9 +2167,17 @@ async function pollRunDetail(runId, polls) {
   // A committed terminal state is never re-polled even if a stale snapshot says
   // otherwise: the page stops on the merged (monotonic) state.
   if (merged && shouldPollRun(merged)) {
+    // F12/T096: a ready artifact can appear mid-run and a waiting parent's child
+    // set changes; both panels refresh while the Run is non-terminal instead of
+    // freezing on the state seen when the detail was first opened.
+    await loadRunArtifacts(runId);
+    if (merged.state === 'waiting_children' || merged.state === 'waiting_approval') {
+      await loadChildRunsPanel(runId);
+    }
     return pollRunDetail(runId, polls + 1);
   }
   await loadRunArtifacts(runId);
+  await loadChildRunsPanel(runId);
   await loadCapabilityLedger(runId);
   await loadNodeResults(runId);
   runsStatus('Run ' + runId + ' 已进入终态 ' + (merged && merged.state ? merged.state : '') + '。', 'ok');

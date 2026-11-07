@@ -26,9 +26,10 @@
     input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; }
     [hidden] { display: none !important; }
   </style>
+  <link rel="stylesheet" href="/assets/mobile.css" />
 </head>
-<body>
-  <nav>
+<body class="page-personal-data">
+  <nav aria-label="主导航">
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
     <a href="/runs">运行</a>
@@ -53,15 +54,19 @@
     <h2>我的记忆</h2>
     <p class="hint">删除后该记忆立即从读取、列表与模型召回中消失。</p>
     <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
-    <ul id="memories-list"></ul>
+    <ul id="memories-list" data-auth-content></ul>
     <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。</p>
   </section>
 
   <section class="card">
     <h2>我的知识文档</h2>
-    <p class="hint">删除文档后，检索、引用、问答与已缓存的结果都不再返回其正文。</p>
+    <p class="hint">
+      删除文档后，检索、引用、问答与已缓存的结果都不再返回其正文。每条文档显示真实摄取状态：
+      已上传/扫描中/索引构建中/可检索/摄取失败/删除中/已删除；失败时显示服务端返回的稳定失败码，
+      不会把失败或删除中的文档显示为“可检索”。
+    </p>
     <p id="documents-status" class="status" role="status" aria-live="polite">正在加载知识文档…</p>
-    <ul id="documents-list"></ul>
+    <ul id="documents-list" data-auth-content></ul>
     <p id="documents-empty" class="hint" hidden>还没有知识文档。</p>
   </section>
 
@@ -89,6 +94,9 @@
     <input id="grant-run-id" type="text" autocomplete="off" spellcheck="false"
            placeholder="00000000-0000-4000-8000-000000000000" />
     <p><button id="grant-load-objects" type="button">列出这个运行的可授权对象</button></p>
+    <p class="hint">
+      对象列表默认不勾选：每个对象都要你明确选择才会进入授权范围，不会批量全选。
+    </p>
     <p id="grant-objects-status" class="status" role="status" aria-live="polite"></p>
     <ul id="grant-objects-list"></ul>
 
@@ -108,15 +116,16 @@
 
     <h2>我的诊断授权</h2>
     <p class="hint">授权对象、用途与到期时间按服务端记录展示；撤销后状态立即变为“已撤销”。</p>
-    <ul id="grants-list"></ul>
+    <ul id="grants-list" data-auth-content></ul>
     <p id="grants-empty" class="hint" hidden>还没有诊断授权。</p>
   </section>
 
   <section class="card" id="deletion-card" hidden>
     <h2>最近一次删除</h2>
     <p class="hint">
-      删除任务状态：待处理 / 执行中 / 已完成 / 失败。只要还有 remaining scopes，
-      内容就保持不可读；失败的清理可以被后续重试，绝不会让内容重新可见。
+      删除任务状态：待处理 / 执行中 / 已完成 / 失败。<strong>立即停止访问</strong>在 202 响应前已经生效；
+      <strong>异步物理清理与备份期限</strong>由后台清理任务与备份保留策略处理。只要还有 remaining scopes，
+      内容就保持不可读；失败的清理可以被后续重试，绝不会让内容重新可见。本页显示服务端返回的真实任务状态。
     </p>
     <div id="deletion-status" class="rows"></div>
     <p id="deletion-refresh-status" class="status" role="status" aria-live="polite"></p>
@@ -126,6 +135,7 @@
   <p id="action-status" class="status" role="status" aria-live="polite"></p>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/personal-data.js"></script>
 </body>
 </html>

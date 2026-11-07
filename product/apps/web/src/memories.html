@@ -28,9 +28,10 @@
     button { padding: .4rem .9rem; font: inherit; cursor: pointer; }
     [hidden] { display: none !important; }
   </style>
+  <link rel="stylesheet" href="/assets/mobile.css" />
 </head>
-<body>
-  <nav>
+<body class="page-memories">
+  <nav aria-label="主导航">
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
     <a href="/runs">运行</a>
@@ -53,11 +54,13 @@
   <section class="card">
     <h2>待我确认的候选</h2>
     <p class="hint">
-      每条候选显示来源、应用范围、过期时间与候选内容；确认/拒绝按钮只对“待确认”的候选出现，
-      服务端在决定时会再次校验过期时间与所有者。候选状态：待确认 / 已确认 / 已拒绝 / 已过期。
+      每条候选显示来源、交互（Run）封存范围、保存范围（哪个应用）、过期时间与候选内容；
+      确认/拒绝按钮只对“待确认”的候选出现。页面没有“全选”，默认不勾选任何候选，
+      必须逐条明确决定；服务端在决定时会再次校验过期时间与所有者。
+      候选状态：待确认 / 已确认 / 已拒绝 / 已过期。
     </p>
     <p id="candidates-status" class="status" role="status" aria-live="polite">正在加载候选…</p>
-    <ul id="candidates-list"></ul>
+    <ul id="candidates-list" data-auth-content></ul>
     <p id="candidates-empty" class="hint" hidden>当前没有候选。只有确认后的候选才会出现在下面的“当前记忆”里。</p>
     <button id="candidates-next" type="button" hidden>下一页候选</button>
     <p id="decision-status" class="status" role="status" aria-live="polite"></p>
@@ -74,7 +77,7 @@
       页面没有任何“跳过校验”的入口。
     </p>
     <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
-    <ul id="memories-list"></ul>
+    <ul id="memories-list" data-auth-content></ul>
     <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。确认一条候选，或在一个应用里明确“记住”。</p>
     <button id="memories-next" type="button" hidden>下一页记忆</button>
     <p id="memory-action-status" class="status" role="status" aria-live="polite"></p>
@@ -91,6 +94,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/memories.js"></script>
 </body>
 </html>

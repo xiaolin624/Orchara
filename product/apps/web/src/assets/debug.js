@@ -248,6 +248,9 @@ async function fetchDraftRevision(applicationId) {
 
 const DEBUG_POLL_INTERVAL_MS = 1500;
 const DEBUG_MAX_POLLS = 40;
+// F12/T096: the 60s fast-poll budget is a cadence, not a reason to declare a
+// long-running Run "stopped updating". After it, observation continues slowly.
+const DEBUG_SLOW_POLL_INTERVAL_MS = 10000;
 
 function debugStatus(message, kind) {
   const element = document.getElementById('debug-status');
@@ -336,13 +339,18 @@ function initDebug() {
       );
       if (shouldPollRun(polled.run, polls, DEBUG_MAX_POLLS)) {
         pollTimer = setTimeout(() => poll(runId), DEBUG_POLL_INTERVAL_MS);
+      } else if (!runIsTerminal(polled.run.state)) {
+        // F12/T096: waiting/finalizing/cancelling runs outlive the 60s budget.
+        // Keep observing (slowly) instead of freezing the page on a stale state.
+        debugStatus(
+          '已快速轮询 ' + polls + ' 次；Run 仍为 ' + polled.run.state +
+            '，改为每 10 秒继续观察（不会把运行显示成停止）。',
+          'pending',
+        );
+        pollTimer = setTimeout(() => poll(runId), DEBUG_SLOW_POLL_INTERVAL_MS);
       } else {
         stopPolling();
-        if (runIsTerminal(polled.run.state)) {
-          debugStatus('Run 已进入终态 ' + polled.run.state + '。', 'ok');
-        } else {
-          debugStatus('已停止轮询（' + polls + ' 次）；Run 仍为 ' + polled.run.state + '。', 'pending');
-        }
+        debugStatus('Run 已进入终态 ' + polled.run.state + '。', 'ok');
       }
     } catch (error) {
       stopPolling();
@@ -400,6 +408,27 @@ function initDebug() {
           listID: 'run-timeline',
           statusID: 'run-timeline-status',
           previewID: 'run-preview',
+          // F12/T096 review fix: this page has no /runs detail anchors, so it must
+          // supply its own 410 snapshot renderer. Rebuilding the node view from
+          // the snapshot is the debug page's equivalent of "回快照".
+          renderSnapshot: function (run) {
+            if (typeof beginRunView === 'function') {
+              beginRunView({
+                runID: run && run.id ? run.id : summary.id,
+                applicationID: applicationId,
+                // The revision this submission froze (set before beginRunTimeline).
+                // `draftRevision` is not a binding on this page: naming it threw a
+                // ReferenceError the moment the 410 renderer really ran.
+                draftRevision: frozenRevision,
+                run: run,
+              });
+            }
+            debugStatus(
+              '事件保留窗口已过期（410）：已按当前 Run 快照重建节点视图，未回放旧帧。',
+              'ok',
+            );
+            return run;
+          },
           onEvent: function (events, event) {
             if (typeof runViewOnEvent === 'function') {
               runViewOnEvent(events, event);

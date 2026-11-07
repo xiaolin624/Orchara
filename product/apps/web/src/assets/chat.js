@@ -97,6 +97,97 @@ function applyRequestFailure(document, request) {
   return failure;
 }
 
+/*
+ * F12/T098: a refused write from this page is a stable code, not a generic
+ * "失败了". The two important ones on this surface:
+ *
+ *   - 409 idempotency_conflict: the Idempotency-Key was reused with a different
+ *     body. The server kept the first write; the page must not silently reuse the
+ *     key again (that would replay the old body) — the user has to refresh or
+ *     resubmit as a new task.
+ *   - 409 interaction_closed: the interaction expired or was already answered; the
+ *     old reply cannot revive the request.
+ *
+ * `reuseKey` is the explicit retry decision: true only when retrying with the
+ * same key is safe (a network failure never reached the server).
+ */
+function describeSubmitFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '提交失败');
+  if (status === 409 && code === 'idempotency_conflict') {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      reuseKey: false,
+      text: '这次提交与同一个幂等键的已有请求内容不同（409 idempotency_conflict）：'
+        + '服务端保留了第一次提交的内容，没有执行这次请求。页面不会用旧键覆盖；'
+        + '请刷新会话核对之前的请求，或把这次当作新任务重新提交（新的幂等键）。',
+    };
+  }
+  if (status === 409 && (code === 'interaction_closed' || code === 'interaction_expired')) {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      reuseKey: false,
+      text: '这次确认已经结束或已过期（409 ' + code + '）：旧答复不会复活任务。'
+        + '请重新提交需求；页面不会自动重试。',
+    };
+  }
+  if (status === 0) {
+    return {
+      code: code || 'network_error',
+      status: 0,
+      retryable: true,
+      reuseKey: true,
+      text: '网络中断，请求没有确认到达服务端；页面保留已填写内容。'
+        + '再次提交会复用同一幂等键，不会产生第二条请求。',
+    };
+  }
+  return {
+    code: code,
+    status: status,
+    retryable: code === 'route_model_unavailable' || code === 'version_unavailable',
+    reuseKey: true,
+    text: '提交失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；页面保留已填写内容，再次提交会复用同一幂等键（不会重复执行）。',
+  };
+}
+
+/** The reply-path counterpart of describeSubmitFailure. */
+function describeReplyFailure(error) {
+  const status = Number((error && error.status) || 0);
+  const code = String((error && error.code) || '');
+  const message = String((error && error.message) || '答复失败');
+  if (status === 409 && (code === 'interaction_closed' || code === 'interaction_expired')) {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      text: '这次确认已经结束或过期（409 ' + code + '）：'
+        + '该确认已过期或已结束；请重新提交需求，旧答复不会复活任务。页面不会自动重试。',
+    };
+  }
+  if (status === 409 && code === 'idempotency_conflict') {
+    return {
+      code: code,
+      status: status,
+      retryable: false,
+      text: '这次答复与同一个幂等键的已有答复内容不同（409 idempotency_conflict）：'
+        + '服务端保留了第一次答复。请刷新会话核对，或重新提交需求；页面不会用旧键覆盖。',
+    };
+  }
+  return {
+    code: code,
+    status: status,
+    retryable: true,
+    text: '答复失败 [' + (code || ('HTTP ' + status)) + '] ' + message
+      + '；再次点击会复用同一幂等键（不会重复提交）。',
+  };
+}
+
 function conversationPath(conversationID) {
   return '/api/v1/conversations/' + encodeURIComponent(String(conversationID || ''));
 }
@@ -343,6 +434,25 @@ function describeHandling(request, run, version) {
     return { text: '尚无处理应用', handled: false, versionNo: 0 };
   }
   const versionNo = version && Number.isInteger(version.version_no) ? version.version_no : 0;
+  // F12/T096: the shared truth module adds finalizing (phase-only), cancelling,
+  // waiting_children/approval, recovery_pending and needs_reconciliation. When it
+  // is not loaded (older isolated page harness), the three-outcome fallback below
+  // keeps the previous behaviour.
+  if (typeof runStreamHandlingText === 'function') {
+    if (!run || typeof run.state !== 'string' || run.state === '') {
+      return {
+        text: (versionNo > 0 ? 'v' + versionNo : '处理版本') +
+          ' 处理状态未知（尚未读到 Run 快照）',
+        handled: true,
+        versionNo: versionNo,
+      };
+    }
+    return {
+      text: runStreamHandlingText(run, versionNo),
+      handled: true,
+      versionNo: versionNo,
+    };
+  }
   const prefix = versionNo > 0 ? 'v' + versionNo : '处理版本';
   const state = (run && run.state) || '';
   if (state === 'succeeded') {
@@ -355,6 +465,21 @@ function describeHandling(request, run, version) {
     return { text: prefix + ' 已取消', handled: true, versionNo: versionNo };
   }
   return { text: prefix + ' 正在处理', handled: true, versionNo: versionNo };
+}
+
+/**
+ * F12/T096: poll the dialogue while the *Run* can still move.
+ *
+ * `shouldPollRequest` only sees the Request, and a dispatched Request stays
+ * `dispatched` forever — so before this rule the conversation page stopped
+ * observing the Run exactly when finalizing/cancelling/child-waiting began. The
+ * request-only projection is kept unchanged for older callers/tests.
+ */
+function shouldPollHandling(requestState, runState, attempts, maxAttempts) {
+  if (typeof runStreamShouldPoll === 'function') {
+    return runStreamShouldPoll(requestState, runState, attempts, maxAttempts);
+  }
+  return shouldPollRequest(requestState, attempts, maxAttempts);
 }
 
 // ---------------------------------------------------------------------------
@@ -830,7 +955,14 @@ function initChat() {
     try {
       const csrfToken = await csrf();
       await api(requestCancelPath(requestID), { method: 'POST', csrf: csrfToken });
-      setStatus(submitStatus, '已接受取消意图，正在刷新状态…', 'pending');
+      // F12/T096: cancel stops controlled execution; it never rolls back an
+      // external write that already happened. The Run state is rendered by the
+      // handling line once the poll reads it.
+      setStatus(
+        submitStatus,
+        '已接受取消意图：取消只停止受控执行，不会撤回已经发生的外部写入；正在刷新状态…',
+        'pending',
+      );
       await loadMessages();
       await refreshQueue();
       if (requestID === currentRequestID) {
@@ -908,7 +1040,13 @@ function initChat() {
       run || null,
       facts && facts.versionNo ? { version_no: facts.versionNo } : null,
     );
-    document.getElementById('chat-handling').textContent = handling.text;
+    const handlingLine = document.getElementById('chat-handling');
+    handlingLine.textContent = handling.text;
+    // F12/T096: keep the observed Run state/phase on the line so a page test (and
+    // a reader) can tell finalizing/cancelling from a committed outcome without
+    // parsing prose.
+    handlingLine.dataset.runState = run && run.state ? String(run.state) : '';
+    handlingLine.dataset.runPhase = run && run.phase ? String(run.phase) : '';
     const runLink = document.getElementById('chat-run-link');
     runLink.replaceChildren();
     if (request.run_id) {
@@ -958,10 +1096,14 @@ function initChat() {
       const result = await fetchRequest(currentRequestID);
       renderRequest(result.request, result.facts, result.run);
       await refreshQueue();
-      if (!shouldPollRequest(result.request.state, attempts, 100)) {
+      const runState = result.run && typeof result.run.state === 'string' ? result.run.state : '';
+      if (!shouldPollHandling(result.request.state, runState, attempts, 100)) {
         stopPolling();
         if (requestIsTerminal(result.request.state)) {
           setStatus(submitStatus, '请求已' + describeRequestState(result.request.state), 'ok');
+        } else if (typeof runStreamIsTerminal === 'function' && runStreamIsTerminal(runState)) {
+          // F12/T096: the dispatched Request is not "done"; the Run outcome is.
+          setStatus(submitStatus, 'Run 已进入终态 ' + runState + '。', 'ok');
         }
         return;
       }
@@ -1229,8 +1371,14 @@ function initChat() {
         window.location.assign('/login');
         return;
       }
-      // Keep pendingAttempt: a network failure is retried with the same key.
-      setStatus(submitStatus, '提交失败 [' + error.code + '] ' + error.message, 'bad');
+      // Keep pendingAttempt only when the retry is safe: a network failure never
+      // reached the server, but a 409 idempotency_conflict means the key now
+      // belongs to another body and must not be replayed silently.
+      const failure = describeSubmitFailure(error);
+      if (!failure.reuseKey) {
+        pendingAttempt = null;
+      }
+      setStatus(submitStatus, failure.text, 'bad');
     }
   });
 
@@ -1287,11 +1435,11 @@ function initChat() {
         window.location.assign('/login');
         return;
       }
-      // Keep currentInteractionAttempt: a retry reuses the same Idempotency-Key.
-      const note = error.code === 'interaction_closed'
-        ? '该确认已过期或已结束；请重新提交需求，旧答复不会复活任务。'
-        : '答复失败 [' + error.code + '] ' + error.message;
-      setStatus(interactionStatus, note, 'bad');
+      // Keep currentInteractionAttempt: a safe retry reuses the same
+      // Idempotency-Key, while a closed interaction is explained instead of
+      // being retried behind the user's back.
+      const failure = describeReplyFailure(error);
+      setStatus(interactionStatus, failure.text, 'bad');
       poll(0);
     }
   });

@@ -26,9 +26,10 @@
     button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     [hidden] { display: none !important; }
   </style>
+  <link rel="stylesheet" href="/assets/mobile.css" />
 </head>
-<body>
-  <nav>
+<body class="page-runs">
+  <nav aria-label="主导航">
     <a href="/">状态</a>
     <a href="/apps">应用目录</a>
     <a href="/attachments">附件</a>
@@ -39,6 +40,10 @@
   </nav>
 
   <h1>运行（F03 领取、租约与终态）</h1>
+  <p class="sub" data-mobile-scope="no-full-canvas-editing">
+    小屏支持：查看自己的 Run、读取真实状态/阶段、辨认最终产物、取消运行并打开审批。
+    完整画布编辑与节点表调试（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
+  </p>
   <p class="sub">
     列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
     同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
@@ -95,12 +100,12 @@
   <section class="card">
     <h2>我的 Run</h2>
     <p id="runs-status" class="status" role="status" aria-live="polite">正在加载运行…</p>
-    <ul id="runs-list"></ul>
+    <ul id="runs-list" data-auth-content></ul>
     <p id="runs-empty" class="hint" hidden>当前没有属于你的 Run。调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
     <button id="runs-next" type="button" hidden>下一页</button>
   </section>
 
-  <section id="run-detail" class="card" hidden aria-live="polite">
+  <section id="run-detail" class="card" data-auth-content hidden aria-live="polite">
     <h2>Run 详情</h2>
     <dl class="run">
       <dt>id</dt><dd id="detail-id"></dd>
@@ -194,21 +199,23 @@
         role="status"
         aria-live="polite"
       >正在加载预算…</p>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">能力</th>
-            <th scope="col">版本</th>
-            <th scope="col">状态</th>
-            <th scope="col">物理尝试</th>
-            <th scope="col">目标</th>
-            <th scope="col">结构化输出</th>
-            <th scope="col">工具调用</th>
-            <th scope="col">来源</th>
-          </tr>
-        </thead>
-        <tbody id="capability-rows"></tbody>
-      </table>
+      <div class="table-scroll" role="region" aria-label="受控调用账本（可横向滚动）" tabindex="0">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">能力</th>
+              <th scope="col">版本</th>
+              <th scope="col">状态</th>
+              <th scope="col">物理尝试</th>
+              <th scope="col">目标</th>
+              <th scope="col">结构化输出</th>
+              <th scope="col">工具调用</th>
+              <th scope="col">来源</th>
+            </tr>
+          </thead>
+          <tbody id="capability-rows"></tbody>
+        </table>
+      </div>
       <p class="hint">
         只显示账本投影（状态、尝试次数、工具调用 id/名称、结构化输出键与 stub 标记），
         不显示参数、工具参数或回执正文；隐藏重试与工具越权不会出现在这里，因为服务端会拒绝它们。
@@ -242,7 +249,26 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
+  <script src="/assets/runstream.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
+  <script>
+    /*
+     * chat.js links "/runs?run=<id>" here. The runs page used to ignore the query
+     * string and only render the list, so "查看运行" did not open the run it
+     * named. Open the existing detail loader with a validated id; the list still
+     * loads beside it.
+     */
+    (function () {
+      const runID = new URLSearchParams(window.location.search).get('run');
+      if (!runID || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runID)) {
+        return;
+      }
+      if (typeof loadRunDetail === 'function') {
+        loadRunDetail(runID);
+      }
+    })();
+  </script>
 </body>
 </html>

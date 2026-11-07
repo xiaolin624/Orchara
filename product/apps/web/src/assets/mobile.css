@@ -1,0 +1,405 @@
+/*
+ * F12/T098 (GitHub #99): the shared phone layout for the journeys this ticket
+ * supports.
+ *
+ * The scope is deliberate. A phone must be able to start and answer a
+ * conversation, approve a real proposal, and read a run result; it is not a
+ * promise that the canvas editor or the debug node table becomes usable on a
+ * phone (UX.md:13, ticket body). The four journeys therefore load this file:
+ *
+ *   /chat            conversation, attachment upload, queue, interaction
+ *   /approvals       the proposal facts and the explicit approve/reject buttons
+ *   /runs            run list/detail, the eight-column ledger and the panels
+ *   /personal-data   memories, knowledge documents, deletion jobs, diagnostics
+ *
+ * plus /memories and /knowledge, which carry the candidate and ingestion state
+ * the personal-data journey links to.
+ *
+ * What this file is: layout only, driven by two media queries (720px and 480px).
+ * What it is not: it never re-implements the role logic of nav.js, the run
+ * state/phase `state` mapping of runstream.js, or any page behaviour. It also
+ * does not touch canvas.css/canvas.js: the editor keeps its desktop layout.
+ *
+ * The touch target is 44x44 CSS px (WCAG 2.5.5) on everything a phone must tap:
+ * navigation links, buttons, and the wide-table scroll region stays focusable.
+ *
+ * Honest boundary: no browser is available in this build, so the committed
+ * rules below are asserted statically and the DOM structure is executed under
+ * Node; the real reflow is `not_run` (see reports/f12/T098-*.md).
+ */
+
+/* ------------------------------------------------------------------------- */
+/* 1. /chat baseline. chat.html loads canvas.css, which is the editor canvas
+   stylesheet: .topbar/.page/.panel/.row/.hint/.status were never defined for
+   the conversation page. These rules give the page the hierarchy the ticket
+   needs without changing any other page. Scoped to body.page-chat.          */
+/* ------------------------------------------------------------------------- */
+body.page-chat {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+}
+
+.page-chat .topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+}
+
+.page-chat .topbar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+}
+
+.page-chat .topbar nav a,
+.page-chat .page a {
+  overflow-wrap: anywhere;
+}
+
+.page-chat .topbar nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.page-chat .page {
+  display: grid;
+  gap: 1rem;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page-chat .panel {
+  min-width: 0;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 0.6rem;
+  padding: 1rem 1.1rem;
+}
+
+.page-chat h1 {
+  font-size: 1.3rem;
+  margin: 0 0 0.25rem;
+}
+
+.page-chat h2 {
+  font-size: 1rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.page-chat h3 {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.page-chat .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.page-chat label {
+  display: block;
+  margin: 0.7rem 0 0.25rem;
+  font-size: 0.88rem;
+}
+
+.page-chat label.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.page-chat input[type="text"],
+.page-chat input[type="file"],
+.page-chat textarea,
+.page-chat select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.55rem;
+  font: inherit;
+  font-size: 1rem;
+}
+
+.page-chat textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.page-chat button {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-chat button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.page-chat fieldset {
+  min-width: 0;
+  margin: 0.9rem 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 0.5rem;
+}
+
+.page-chat legend {
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.page-chat .status {
+  min-height: 1.4rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.page-chat .status.ok {
+  color: #15803d;
+}
+
+.page-chat .status.bad {
+  color: #b91c1c;
+}
+
+.page-chat .status.pending {
+  color: #a16207;
+}
+
+.page-chat .hint {
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
+
+.page-chat ul,
+.page-chat ol {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.page-chat li {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
+.page-chat pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.page-chat code {
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------------- */
+/* 2. Wide tables: scroll inside their card, never widen the page. The runs
+   ledger is eight columns; the same wrapper serves any other wide table a
+   phone journey shows. The region is keyboard-focusable (tabindex on the
+   element) so scrolling does not require a touch gesture.                   */
+/* ------------------------------------------------------------------------- */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 0.4rem;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.table-scroll table {
+  min-width: 42rem;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 0.35rem 0.55rem;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.table-scroll th {
+  position: sticky;
+  top: 0;
+  background: Canvas;
+}
+
+/* ------------------------------------------------------------------------- */
+/* 3. Phone layout shared by every page that links this file.                */
+/* ------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  /* The page-local styles use 2rem padding and a fixed max-width; a phone must
+     use the width it has. The !important is scoped to this breakpoint. */
+  body {
+    padding: 0.9rem !important;
+    max-width: none !important;
+  }
+
+  body > nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 0.9rem;
+    margin: 0 0 0.9rem;
+  }
+
+  body > nav a,
+  .page-chat .topbar nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 0.15rem;
+  }
+
+  h1 {
+    font-size: 1.15rem;
+  }
+
+  h2 {
+    font-size: 1rem;
+  }
+
+  h3 {
+    font-size: 0.95rem;
+  }
+
+  .card,
+  .panel {
+    padding: 0.8rem 0.85rem;
+  }
+
+  p,
+  li,
+  dd,
+  dt {
+    overflow-wrap: anywhere;
+  }
+
+  /* The two-column definition grids (proposal facts, run facts, memory rows)
+     become one column: on a 360px screen a `max-content` label column leaves
+     no readable width for a UUID or a canonical parameter document. */
+  dl.proposal,
+  dl.run,
+  dl.facts,
+  .row {
+    display: block;
+  }
+
+  dl.proposal dt,
+  dl.run dt,
+  dl.facts dt,
+  .row .label {
+    display: block;
+    margin-top: 0.55rem;
+  }
+
+  dl.proposal dt:first-child,
+  dl.run dt:first-child,
+  dl.facts dt:first-child,
+  .row .label:first-child {
+    margin-top: 0;
+  }
+
+  dl.proposal dd,
+  dl.run dd,
+  dl.facts dd,
+  .row .value {
+    display: block;
+    margin: 0;
+    word-break: break-word;
+  }
+
+  ul,
+  ol {
+    padding-left: 0.9rem;
+  }
+
+  button {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="file"],
+  input[type="datetime-local"],
+  textarea,
+  select {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  textarea {
+    min-height: 5.5rem;
+  }
+
+  .decision-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .decision-buttons button {
+    width: 100%;
+  }
+
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  table {
+    font-size: 0.85rem;
+  }
+
+  .page-chat .page {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding: 0.7rem !important;
+  }
+
+  .card,
+  .panel {
+    padding: 0.65rem 0.7rem;
+  }
+
+  .page-chat .page {
+    gap: 0.7rem;
+    padding: 0.7rem;
+  }
+
+  .page-chat .topbar {
+    padding: 0.6rem 0.7rem;
+  }
+
+  .table-scroll table {
+    min-width: 34rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
+}

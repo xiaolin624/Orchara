@@ -81,18 +81,19 @@
   <section class="card" id="review-card" hidden>
     <h2>管理员审核队列</h2>
     <p id="review-status" class="status" role="status" aria-live="polite"></p>
-    <ul id="review-list"></ul>
+    <ul id="review-list" data-auth-content></ul>
   </section>
 
   <section class="card">
     <h2>可见工具</h2>
     <p id="tools-status" class="status" role="status" aria-live="polite">正在加载工具…</p>
-    <ul id="tools-list"></ul>
+    <ul id="tools-list" data-auth-content></ul>
     <p id="tools-empty" class="hint" hidden>当前没有可见的工具：你既不是所有者，也没有已批准共享的工具。</p>
     <button id="tools-next" type="button" hidden>下一页</button>
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/tools.js"></script>
   <script>
     const submitForm = document.getElementById('submit-form');

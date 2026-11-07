@@ -86,7 +86,8 @@
     <h2>模型版本</h2>
     <p class="hint">管理员看到全部版本；其他已登录身份只看到 passed 且未撤销的版本。登记本身不依赖任何已有应用报告。</p>
     <p id="models-status" class="status" role="status" aria-live="polite"></p>
-    <ul id="models-list"></ul>
+    <ul id="models-list" data-auth-content></ul>
+    <button id="models-next" type="button" hidden>下一页</button>
   </section>
 
   <section class="card" id="report-card" hidden>
@@ -96,6 +97,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/models.js"></script>
   <script>
     const registerCard = document.getElementById('register-card');
@@ -109,6 +111,7 @@
     const endpointSelect = document.getElementById('model-endpoint');
     const credentialSelect = document.getElementById('model-credential');
     const destinationInput = document.getElementById('model-destination');
+    const modelsNext = document.getElementById('models-next');
 
     let identityState = null;
     let nextCursor = null;
@@ -284,12 +287,31 @@
         for (const item of page.items || []) {
           modelsList.appendChild(renderModel(item));
         }
+        // The list contract has items + next_cursor; the page used to compute
+        // the cursor and only mention "还有下一页" without offering the control,
+        // which made the truncation invisible.
         nextCursor = page.next_cursor || null;
-        setStatus(modelsStatus, '共显示 ' + (page.items || []).length + ' 个版本' + (nextCursor ? '（还有下一页）' : ''), 'ok');
+        modelsNext.hidden = !nextCursor;
+        const shown = modelsList.children.length;
+        setStatus(
+          modelsStatus,
+          '共显示 ' + shown + ' 个版本' + (nextCursor ? '（还有下一页）' : ''),
+          'ok',
+        );
       } catch (error) {
+        if (handleAuthFailure(error)) {
+          setStatus(modelsStatus, '身份已失效，请重新登录。', 'bad');
+          return;
+        }
         setStatus(modelsStatus, '读取失败 ' + describeFailure(error), 'bad');
       }
     }
+
+    modelsNext.addEventListener('click', () => {
+      if (nextCursor) {
+        loadPage(nextCursor, false);
+      }
+    });
 
     registerForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -333,8 +355,8 @@
         }
         await loadPage(null, true);
       } catch (error) {
-        if (error.status === 401) {
-          window.location.assign('/login');
+        if (handleAuthFailure(error)) {
+          setStatus(modelsStatus, '身份已失效，请重新登录。', 'bad');
           return;
         }
         setStatus(modelsStatus, '初始化失败 ' + describeFailure(error), 'bad');

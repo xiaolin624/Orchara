@@ -90,7 +90,7 @@
 
     <div id="invite-result" hidden>
       <p class="warn">一次性激活令牌（只显示一次，离开本页后无法再次获取）：</p>
-      <textarea id="activation-token" readonly rows="3" aria-label="一次性激活令牌"></textarea>
+      <textarea id="activation-token" data-auth-content readonly rows="3" aria-label="一次性激活令牌"></textarea>
       <p class="hint">
         请手动把令牌转交用户；用户打开 <a href="/activate">/activate</a> 设置密码。
         平台不发送邮件，也不会把令牌写进 URL。
@@ -210,7 +210,7 @@
 
     <div id="api-key-result" hidden>
       <p class="warn">API key 明文只显示一次（离开本页后无法再次获取）：</p>
-      <textarea id="api-key-secret" readonly rows="3" aria-label="一次性 API key"></textarea>
+      <textarea id="api-key-secret" data-auth-content readonly rows="3" aria-label="一次性 API key"></textarea>
       <p class="hint">key id 为 <code id="api-key-id">—</code>；撤销时填入下面的表单。</p>
     </div>
 
@@ -251,6 +251,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script>
     const authStatus = document.getElementById('auth-status');
     const identityPrincipal = document.getElementById('identity-principal');
@@ -300,13 +301,21 @@
       const isAdmin = roles.indexOf('admin') !== -1;
       invitePanel.hidden = !isAdmin;
       // The admin endpoints refuse non-admins anyway; hiding the forms is only
-      // feedback, never the authorization.
+      // feedback, never the authorization. Saying *why* the page looks empty is
+      // the part that was missing: a plain user used to see a blank admin page
+      // that still claimed to be signed in.
       grantsPanel.hidden = !isAdmin;
       rolesPanel.hidden = !isAdmin;
       serviceAccountsPanel.hidden = !isAdmin;
       apiKeysPanel.hidden = !isAdmin;
       principalsPanel.hidden = !isAdmin;
-      setStatus(authStatus, '已登录，身份来自 /api/v1/auth/me。', 'ok');
+      setStatus(
+        authStatus,
+        isAdmin
+          ? '已登录，身份来自 /api/v1/auth/me。'
+          : '当前身份不是管理员：管理与授权面板已隐藏；服务端会独立拒绝这些操作（403 forbidden）。',
+        isAdmin ? 'ok' : 'bad',
+      );
     }
 
     // On load: restore the identity after a refresh. A 401 goes to the login

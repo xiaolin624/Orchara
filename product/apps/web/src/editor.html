@@ -52,6 +52,10 @@
   </nav>
 
   <h1>应用编辑器（F04A 线性四节点画布）</h1>
+  <p class="sub" data-mobile-scope="no-full-canvas-editing">
+    小屏边界：本页的完整画布编辑不承诺在手机上可用。手机支持的是对话、审批与查看结果
+    （/chat、/approvals、/runs）；需要编辑画布时请使用桌面浏览器。
+  </p>
   <p class="sub">
     画布主编辑器只允许 <code>start → python → agent → end</code> 的单条线性链；布局保存在独立的
     <code>layout</code> 字段，不进入执行 definition，也不改变发布哈希。草稿来自
@@ -122,7 +126,12 @@
     <div id="callapp-errors"></div>
   </section>
 
-  <form id="draft-form" method="post">
+  <p class="hint" id="editor-role-hint">
+    保存与校验需要 <code>creator</code> 角色，且只有该应用的所有者能写入（read 授权不是写授权）；
+    不满足时服务端返回 <code>403</code>，所以没有该角色时下面的编辑表单不显示（画布仍可查看）。
+  </p>
+
+  <form id="draft-form" method="post" data-requires-role="creator" hidden>
     <section class="card">
       <h2>用途卡（capability card）</h2>
       <p class="hint">
@@ -174,6 +183,7 @@
   </section>
 
   <script src="/assets/app.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/canvas.js"></script>
   <script src="/assets/editor.js"></script>
 </body>
