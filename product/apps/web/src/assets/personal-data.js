@@ -182,7 +182,7 @@ function documentReadout(document) {
   } else if (state === 'indexing') {
     // ADR 0018: a rebuild keeps the previous active index readable until the new
     // one is activated, so "search is empty" is only true for a first-time index.
-    readout.note = '索引正在构建：若该资料此前已就绪，旧的活动索引在切换前仍是检索来源；首次索引完成前检索为空。';
+    readout.note = '索引正在构建：若该资料此前已就绪，旧的活动索引在切换前仍是检索来源；首次索引在完成前没有可检索内容（没有旧索引可回退）。';
     readout.nextStep = '稍后刷新本页；失败时会显示失败码与下一步。';
   } else if (state === 'ready') {
     readout.note = '可检索：引用会按当前授权与文档版本重新校验。';
@@ -191,7 +191,7 @@ function documentReadout(document) {
     // ADR 0018: a failed rebuild leaves the previous active index in place, so the
     // document can still be retrievable through it. Claiming otherwise here would
     // be a false statement about what search returns.
-    readout.note = '摄取失败：新索引未激活。若该资料此前已有已就绪索引，旧的仍在检索来源中（失败不会清空它）；从未就绪的资料检索为空。';
+    readout.note = '摄取失败：新索引未激活。若该资料此前已有已就绪索引，旧的仍在检索来源中（失败不会清空它）；首次索引失败且从未就绪的资料没有可检索内容。';
     readout.nextStep = '查看失败码后到知识库页重试摄取。';
   } else if (state === 'deleting') {
     readout.note = '删除中：读取、检索、引用与缓存命中已经停止。';
@@ -709,7 +709,11 @@ function renderGrantObjects(items) {
     var row = document.createElement('li');
     var box = document.createElement('input');
     box.type = 'checkbox';
-    box.value = entry;
+    // The checkbox carries the artifact UUID the request builder expects; the
+    // visible label keeps the `artifact:<uuid>` scope entry. Passing the already
+    // prefixed entry here made diagnosticObjectEntry() reject the user's own
+    // selection ("artifact id 必须是 UUID"), so no non-empty grant could be sent.
+    box.value = String(item.id || '');
     // F12/T098 / UX.md:35: diagnostic scopes are chosen explicitly. The page
     // never pre-selects the whole run's objects; the user ticks what they mean
     // to disclose.

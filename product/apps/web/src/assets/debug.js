@@ -416,7 +416,10 @@ function initDebug() {
               beginRunView({
                 runID: run && run.id ? run.id : summary.id,
                 applicationID: applicationId,
-                draftRevision: draftRevision,
+                // The revision this submission froze (set before beginRunTimeline).
+                // `draftRevision` is not a binding on this page: naming it threw a
+                // ReferenceError the moment the 410 renderer really ran.
+                draftRevision: frozenRevision,
                 run: run,
               });
             }

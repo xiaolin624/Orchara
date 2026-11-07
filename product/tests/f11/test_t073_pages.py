@@ -162,13 +162,18 @@ assert.strictEqual(request.body.grantee_id, UUID_B);
 assert.strictEqual(JSON.stringify(request.body.purposes),
   JSON.stringify(['troubleshooting']));
 
-// An absent object selection is an absent header (the server then derives the
-// run's current snapshot once); it is never sent as a blank value.
-const derived = context.diagnosticGrantCreateRequest({
+// F12 review 2 (UX.md:35 / DATA-POLICY.md:7): an empty selection is refused,
+// never submitted as "no header". The server derives *every* object of the run
+// when X-Diagnostic-Object-Scope is absent (internal/diagnostics/grants.go:8-10),
+// so "leave everything unticked" would silently widen the consent to the run.
+assert.throws(() => context.diagnosticGrantCreateRequest({
   runID: UUID, granteeID: UUID_B, purposes: 'troubleshooting',
   expiresAt: '2099-01-01T00:00', objects: [],
-});
-assert.strictEqual(JSON.stringify(derived.headers), JSON.stringify({}));
+}), /至少勾选一个诊断对象/);
+assert.throws(() => context.diagnosticGrantCreateRequest({
+  runID: UUID, granteeID: UUID_B, purposes: 'troubleshooting',
+  expiresAt: '2099-01-01T00:00',
+}));
 assert.throws(() => context.diagnosticGrantCreateRequest({
   runID: 'bad', granteeID: UUID_B, purposes: 'troubleshooting', expiresAt: '2099-01-01T00:00',
 }));
@@ -230,6 +235,8 @@ assert.strictEqual(context.diagnosticReadRefusalText('unknown'), '诊断读取�
         cwd=str(st.PRODUCT_ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
