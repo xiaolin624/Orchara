@@ -3035,3 +3035,37 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   harness/fixture 收紧与 S6 的失败路径测试是 brief 要求的新增/收紧）。
 - **原始日志**：`E:\Orchara\.scratch\f13b\review-fixes\`；摘要
   `E:\Orchara\.scratch\f13b\B2-REVIEW-FIXES-REPORT.md`。
+
+## 批次 B2 完成记录：T122/T113/T114（GitHub #135/#114/#115，2026-11-08）
+
+- 基线：`main` @ `a3e5045`（已含 F13B T101–T111）；集成分支 **`integration/t113-t114-t122`** @ `ba09072`（已推送）。
+- 范围：**#135/T122、#114/T113、#115/T114 三个 issue 全部关闭**；同批修复 2 个产品缺陷与两轴复核 finding。
+- 产品修复 1（T114 验收发现）：`CANCEL-RACE-SLOT-LEAK`——refused-proposal 路径未确认 attempt exit，
+  执行中取消可停在 `cancelling` 并泄漏执行槽。`internal/presetexec` 统一 `endRefusedProposal`：
+  token live 时仍 `ConfirmExit`，由既有 finalizer（cancel > proposal）提交真实终态；stale token 安全返回。
+  红→绿 e2e `e5b01a5c…` → `6f79e93b…`/`8d95d2af…`；Go 矩阵覆盖 4 路径 × 3 拒绝类。
+- 产品修复 2（T113 发现）：检索缓存命中只比对 DB sha256，封存对象缺失/被替换时仍可能返回 memoized 正文；
+  `internal/knowledge/cache_store.go` 命中时重读每个封存 body 并校验文本+sha256；确定性失败丢弃、
+  瞬态不可用保留行（`cache_unavailable`）。ADR 0015 dated amendment。
+- T122：OpenAI-compatible adapter（stdlib、无 SDK、无隐藏重试、8 MiB/1 MiB 上限、`caller_cancelled`、
+  `internal/providercodes` 单一词表、ADR 0035 + ADR 0007 amendments）；19 Go 协议测试 + 13 真实栈 e2e
+  （本地 fake provider）。真实厂商 e2e `blocked`。
+- T113：受控 on/off（固定 8 文档/24 chunk、24 spec、48 请求/模式）：重复命中 24/24 vs 0/48，
+  P50/P95/P99 on 35.2/50.0/58.4 ms vs off 44.2/54.0/54.8 ms，费用 0 USD（本地 hash，real `blocked`）；
+  删除后陈旧/越权命中 0；AC3 撤权 `partial`（产品无 per-resource grant）。
+- T114：100 用户/1000 应用/20 顶层活跃画像，500ms 替身三次 15 分钟：吞吐 10.43/9.58/10.05 runs/s、
+  `execution_slots.used` 峰值 20、queued-with-live-attempt 0、0 failed；取消意图 vs 停止时间分报；
+  AC5 probe 加固（有界 slot drain + claim 重试，失败硬失败）。
+- 两轴复核（Standards + Spec）：H1–H3、S1–S7、T113-1..-7 已在 `ba09072` 修复，逐条见
+  `reports/f13b/B2-REVIEW-FIXES.md`；残留 `not_run` 在该报告 §7 列明（S3 routing 真实栈 e2e、
+  S6 deadline 真实栈分支、T113-7、§1.3 smells、T114 49 分钟未重跑、真实厂商）。
+- **最终门禁（HEAD `ba09072`）**：`pytest tests/f12` **447 passed in 368.60s**；
+  `tests/f10` **88 passed in 600.54s**；`tests/f06` **186 passed in 1210.65s**；
+  `tests/f13b` **242 passed, 1 skipped in 722.90s**；`go build/vet/test` 0/0/0；`gofmt -l` 空；
+  `sync_spec --check` no drift；原始 tail：`E:\Orchara\.scratch\f13b\b2\final-gate.log`。
+- **未改** `docs/spec/**`、`contracts/**`、迁移；三票 issue 已按 tracker 关闭并附证据。
+- **诚实边界**：真实厂商模型/凭据/配额、容量机器/多主机/LB、GPU、浏览器 DOM 仍未取得 → 对应能力
+  `blocked`/`not_run`；历史容量证据 `T114-capacity.json` 是缺陷修复前的 red 测量，不得当作修复后测量。
+- **已知残留**（记录在案、非本批阻塞）：T122 取消路径的 pre-attempt guard 无独立 Go 测试（行为由真实栈
+  abort e2e 覆盖，属纵深防御）；`tests/f03` 的 3 条失败在 `ae1af91` 基线即存在（`runs_request_id_fkey`
+  与 `location.search`），非本批引入，未修。
