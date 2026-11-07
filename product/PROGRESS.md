@@ -2740,3 +2740,57 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   小节：T108/T109 + T111）复跑：T111 **10 passed in 113.56s**、T033/T037 **10 passed in
   138.34s**、`pytest tests/f13b -q` **204 passed in 446.46s**；Go `build/vet/test` 全 0、
   gofmt 空、`sync_spec --check` → `no drift`；证据 JSON 在 `abfd01a` 树重新生成（commit=abfd01a）。
+
+
+## 批次完成记录：F13B #102–#112 / T101–T111（2026-11-07）
+
+- 基线：`integration/f12` @ `30642be` → 集成分支 `integration/f13b`（已推送）。
+- 范围：**T101 收尾（#102）+ F13B T102–T111（#103–#112），11 个 issue 全部关闭**。
+- 未开始：F13B T112–T115（#113–#116）、F15B #117–#122、F14 #91/#93/#95/#98/#100 —— 全部 blocked，
+  已在 #113/#116/#117/#91 写明确缺失条件，保持 open。
+- 契约/规格：未改 `contracts/**`、`docs/spec/**`；无新增迁移；`sync_spec --check` no drift。
+- **产品缺陷修复 2 个**（均由验收旅程发现，有红→绿证据）：
+  1. T101 P1：published Run 的 sealed manifest artifact 属主相等规则使任何非发布者的已发布 Run 无法调用
+     任何 capability（503 `manifest_unavailable`）。修复只对 `run.Kind=="published"` 放宽属主相等，
+     保留 artifact ready、snapshot/run digest 相等、字节 sha256==`runs.manifest_sha256` 与 dispatch 时 ACL。
+  2. T110：sales CSV 导出的裸 CR 会破坏行结构（`_csv_text_field` 只处理 `= + - @`）。修复：CR 替换为空格；
+     TAB/LF 保留数据语义；新增 T030 回归与 T110 真实导出字节断言。
+
+### 票状态（最终）
+
+| 票 | Issue | 状态 | 关键交付/证据 |
+|---|---|---|---|
+| T101 | #102 | **passed** | J6 服务 key + grant + 真实发布版本 + 负责人审批 + 恰好 1 次外写（49 断言）；AC2 在平台/授权边界满足；J6b 图分发缺口 blocked；P1 manifest 修复 + Go 回归；f12 447 |
+| T102 | #103 | **passed** | 七类 46 案例（25 dev/21 frozen，20 families，178 断言）；跨 split family/template 0/20，最大 Jaccard 0.4018 < 0.75；20 条负向拒绝；产品 `ParseDataset` 装载证明 |
+| T103 | #104 | **passed** | 同一真实录制结果 hard=failed；quality=1.0 的报告被真实 submit **422 `evaluation_not_passed`**；quality=0.0 的 passed 报告 202；heuristic 适配器出站 0/费用 0；DeepEval/Ragas/Promptfoo blocked，Promptfoo 因 6 次真实外发 eliminated；获批 judge not_run |
+| T104 | #105 | **passed** | τ²-bench @ `da0835f6…`（MIT）3 个 airline 改编任务/23 断言；20 个拒绝码 + 24 条负向；stub 判定 23/23；官方 suite not_run |
+| T105 | #106 | **passed** | AgentDojo @ `089ed468…`（MIT）3 个 workspace 任务/25 断言；`security=True→attack_success=true`、utility 与 attack_success 分列；真实检索注入 0 operation/0 外写/无 canary；真实模型服从注入 blocked；官方 suite not_run |
+| T106 | #107 | **passed** | FAULT-01 真实杀 worker 进程（DB session 1→0）+ 同 operation id + 1 resume + 0/1 外写；FAULT-02 换参 409/0 写；FAULT-03 丢回执 unknown→reconcile，物理写仍 1；53 断言 |
+| T107 | #108 | **passed** | FAULT-04 v1 钉住旧 manifest/删除后 `artifact_unavailable` 不回退 v2；FAULT-05 活旧进程 suspend + 租约过期 recovery_pending、无第二执行；FAULT-06 cancel 后 11 种迟到投递不复活；FAULT-10 并发相反决定恰 1 条 |
+| T108 | #109 | **passed** | FAULT-07 同父并发 2 child（独立 Run/thread、无串扰）；FAULT-08 20 父/2 子槽全推进、queued attempt=0、P50/P95；FAULT-13 嵌套 join 各 1 次、必需失败显式 `budget_exhausted` |
+| T109 | #110 | **passed（裁决）** | FAULT-09 删除后 cache hit=false/stale hit=0/无正文；FAULT-11 3 次重试 + fallback 不拼接；FAULT-12 PG 丢唤醒/maintenance 重启/SSE 回放 passed，**Redis 传输变体 blocked**（无 adapter，未冒充）；FAULT-14 撤权后 `child_not_visible` |
+| T110 | #111 | **passed（裁决）** | 36 条攻击（identity 16/ssrf 5/doc 7/xss 2/csv 4/pi 2）；35 blocked + 1 opt-in 对照；XSS 执行 0；CSV 公式 7 种被拒；**CSV CR 缺陷发现并修复**；真实浏览器/真实模型 not_run |
+| T111 | #112 | **passed** | 真实 WSL2 Linux `6.6.87.2` + runsc `release-20241118.0` + rootfs `03c3f647…`；10 条攻击（宿主文件/凭据/挂载/出站/userns/fork/内存/磁盘/时间/恶意 setup.py）全部阻断并有 `runsc list`/进程/目录清理证据 |
+
+### 门禁（集成分支最终树）
+
+| 套件 | 结果 |
+|---|---|
+| `pytest tests/f13b tests/f12 -q` | **666 passed in 690.10s**（f13b 219 + f12 447） |
+| `pytest tests/f01 -q`（单跑） | **165 passed in 757.61s (0:12:37)** |
+| `go build ./...` / `go vet ./...` / `go test ./...` | exit 0 / 0 / 0（39 ok，0 FAIL，12 no test files） |
+| `gofmt -l internal cmd tools` | 空 |
+| `python tools/sync_spec.py --check` | `no drift` |
+
+### 诚实边界（本批不掩盖）
+
+- **`tests/f13a` 在基线就有 3 failed**（`test_rv1_effect_evidence`、`test_t052_runner`、`test_t062_runner`）：
+  它们仍断言最小 `start->end` 链以 `tool_unsupported_graph` 失败，而基线实际成功并封印 `{}`。
+  在独立 worktree 检出 `30642be` 复现同样 3 failed，**不是本批引入**，未在本批修。
+- **无真实厂商模型/凭据/GPU**：dev-stub 只用于平台/故障/容量替身；F14 与 T112/T113/T114 的真实模型
+  质量/延迟/费用全部 blocked/not_run。
+- **无 Redis**：FAULT-12 只有 Nop/InProcess notifier；Redis 重启变体 blocked，PG 结果未冒充 Redis。
+- **无真实浏览器**：XSS/页面结论是 Node 执行已提交真实字节 + shim；不是 Playwright/DOM。
+- **无新 Linux 部署环境/三名未参与开发者**：F15B 与 T115 未开始，已写明解除条件。
+- 两个产品修复（T101 manifest 属主、T110 CSV CR）是本批唯一的非测试产品改动；其余票未改产品语义。
+
