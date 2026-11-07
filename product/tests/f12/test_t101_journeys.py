@@ -31,6 +31,7 @@ from journeys import (  # noqa: E402
     j101_memory,
     j101_requests,
     j101_service_accounts,
+    j101_service_key_write,
 )
 
 
@@ -106,3 +107,31 @@ def test_request_journeys(t101_stack) -> None:
         result = j101_requests.run_request_to_result(t101_stack, record)
         record.note("result", result)
         record.mark_passed()
+
+
+def test_service_key_write_journeys(t101_stack) -> None:
+    """J6 closes the AC2 gap; J6b records the graph-dispatch gap as ``blocked``.
+
+    J6 is the ticket's missing journey: a service key (API-key scope), holding a
+    resource grant, submits a *genuinely published* version; the Run belongs to
+    the service principal; the write-risk operation's approval resolves to the
+    service account's responsible human; that human approves; the loopback
+    endpoint receives exactly one physical write. J6b runs the same published
+    version through the real supervisor graph executor and records that the graph
+    itself emits no connector operation (a product gap, not a test workaround).
+    """
+    with t101.journey(
+        t101.J6_SERVICE_WRITE,
+        "服务 key + grant 提交已发布版本 -> 负责人批准写操作 -> 恰好一次真实外部写；缺 scope/ACL/人类批准均被拒",
+    ) as record:
+        result = j101_service_key_write.run(t101_stack, record)
+        record.note("result", result["result"])
+        record.mark_passed()
+    with t101.journey(
+        t101.J6B_GRAPH_DISPATCH,
+        "图分发缺口：同一已发布版本真实执行成功但图本身不产生任何 connector operation（blocked）",
+    ) as record:
+        result = j101_service_key_write.run_graph_dispatch_gap(
+            t101_stack, record, result
+        )
+        record.note("result", result)

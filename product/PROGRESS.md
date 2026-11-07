@@ -2472,6 +2472,35 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 覆盖（未改）。F1 页面路径只证明请求形状与“没有请求”，真实服务端解析由 F11/T073 既有真实栈用例覆盖。
 跨 epic 既有红（f03/f02a/f00b）未触碰、未修。
 
+## F13B T101 收尾（GitHub #102，2026-11-07）
+
+- 分支 `t/t101-three-in-one`，worktree `E:\Orchara-wt\t101b`；基线 `integration/f13b` @ `30642be`；
+  完成前 merge 了推进后的 `integration/f13b` @ `ffe4022`（T102），合并提交 `3921c81`；
+  `PROGRESS.md` 尾部双追加冲突按保留双方小节解决。
+- 交付：新增 `J6-service-key-write-approval`（49 断言）与 `J6b-graph-dispatch-write-gap`（7 断言，`blocked`）。
+  AC2 从 `partial` 改判为**满足（平台/授权边界）**：服务 key 的 `application:read`+`write` scope + application
+  read grant + 服务账号负责人的人类 operation 审批，作用在**同一个真实回环外部写**上（回环端点自己的
+  请求日志恰好 1 次物理写、1 条 succeeded attempt、真实 receipt）；同一请求去掉任一条件均被拒：
+  无 grant 404、只有 read scope 403 `insufficient_scope`、service key 自己批准 404、admin 403
+  `approver_mismatch`、错 hash 409。版本由**真实五类评测 → submit → admin review decision** 发布。
+- 发现并修复 **P1 产品缺陷**：`internal/capabilities/service.go` 的 `loadAuthorizedRun` 要求 sealed
+  manifest artifact 属主 == Run owner，导致任何非发布者提交的 published Run 调用任何 capability 都被
+  503 `manifest_unavailable`；修复只对 `run.Kind == "published"` 放宽属主相等，保留 artifact ready、
+  snapshot digest 相等、字节 sha256 == `runs.manifest_sha256`；Go 回归测试
+  `internal/capabilities/manifest_owner_test.go`（published 允许 / 三类摘要拒绝 / debug 仍拒）。
+- 未解：**J6b `blocked`**（已发布图本身发不出 connector operation：图执行器无 connector 节点、agent
+  tool call 恒为 `kind=tool`）；J1b 保持 `blocked`（F08↔F04B 输入缺口）。
+- 门禁（真实 tail）：`pytest tests/f12/test_t101_journeys.py -q` → **6 passed in 90.82s**；
+  证据重跑（`T101_WRITE_EVIDENCE=1`）→ **6 passed in 87.93s**，普通运行不改写 JSON；
+  `pytest tests/f12 -q` → **447 passed in 262.76s**；`go build=0`、`go vet=0`、`go test=0`；
+  `gofmt -l internal cmd tools` 空；`sync_spec --check` → `no drift`。
+- 合并树最终复跑（`3921c81`，含 T102）：targeted 证据 **6 passed in 137.57s**、
+  `pytest tests/f12 -q` **447 passed in 489.77s**、`go build/vet/test` = 0、gofmt 空、sync `no drift`
+  （共享宿主同期有其它真实栈任务，耗时高于首跑，结果全绿）。
+- 边界：dev-stub 模型、回环 connector stub（非真实供应商）、WSL2+runsc 真实执行；真实模型/真实第三方
+  供应商 `not_run`；写操作由文档化 worker capability 协议发出（J6b 记图分发缺口）；证据重生成后
+  `Select-String` 复查无明文凭据。
+
 ## F13B T102：冻结七类内部案例并证明没有切分泄漏（2026-11-07）
 
 - 分支 `t/t102-frozen-cases`（worktree `E:\Orchara-wt\t102`，基线 `integration/f13b` @ `30642be`）。
