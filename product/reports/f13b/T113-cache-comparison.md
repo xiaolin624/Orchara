@@ -9,6 +9,9 @@
   API 进程；无 mock、无跳过）。
 - 证据：`reports/f13b/T113-cache-comparison.json`（可重放，逐次延迟/命中/行数/矩阵）、
   `tests/f13b/test_t113_cache_comparison.py`（5 条证据测试）、`tests/support/t113.py`。
+  记录的证据跑 = 2026-11-08 03:51（本地）在最终代码/测试树 `1e93656` 上**独占**执行
+  （`evidence-final2.log`，5 passed in 77.04s）；此前 23:57 与 03:38 的完整证据跑也全 passed，
+  绝对延迟随宿主负载变化，§4 如实并列三次数字。
 - 本票发现并修复 **1 个产品缺陷**（红→绿见 §0）：命中复检只比对 `artifacts.sha256` 列，
   没有读封存对象；对象缺失/被替换时缓存命中仍返回记忆正文，而权威路径会跳过该 chunk。
   修复：命中时重读每条封存正文并核对正文与 sha256（`internal/knowledge/cache_store.go`）。
@@ -43,7 +46,7 @@
      又因锁文件名筛选（无前缀 `owner.txt` vs `*.owner.txt`）在本票脚本里漏检，一次 `tests/f13b`
      与 T114 的独占门禁并发启动——两次运行均**不作为证据**（原始日志保留为
      `gate-f10.log`/`gate-f13b-aborted-overlap.log`）。最终 f10/f13b/证据在 realstack 目录无其它
-     owner 时独占重跑（`gate-f10-solo.log`/`gate-f13b-solo.log`/`evidence-final.log`）。
+     owner 时独占重跑（`gate-f10-solo.log`/`gate-f13b-solo.log`/`evidence-final2.log`）。
 
 ## 1. 交付内容
 
@@ -61,7 +64,7 @@
 | # | 验收标准 | 结果 | 证据 |
 |---|---|---|---|
 | AC1 | 固定输入/版本/模型/资源比较缓存开 vs 关 | **proven** | 固定 8 文档（24 chunk，逐文档 sha256 记录）、固定 24 spec（8 查询 × top_k 3/8/20，固定顺序）、`local-hash-v1`、固定 TTL 900s、同一 DB/对象目录的 cache-on 与 cache-off 两个真实 API 进程；每模式 48 次测量（24 冷 + 24 重复），冷/热成对取样（`comparison.measurements` 96 行） |
-| AC2 | 报告命中/P50–P95/费用 | **proven** | 命中率：on 冷 0/24、on 重复 24/24（100%）、on 整体 50%、off 0/48；重复阶段 on p50/p95/p99 = **7.311/32.393/37.807 ms** vs off **11.642/32.220/35.632 ms**（成对中位比 0.6119，on 更快 17/24）；按 top_k 3/8/20：p50 比 0.403/0.598/**1.756**；费用 = **0 USD**（本地 hash embedding、无模型调用；真实模型费用 `blocked`），权威检索执行次数 24 vs 48（off 侧翻倍） |
+| AC2 | 报告命中/P50–P95/费用 | **proven** | 命中率：on 冷 0/24、on 重复 24/24（100%）、on 整体 50%、off 0/48；记录跑（03:51，独占）：重复阶段 on p50/p95/p99 = **30.650/44.625/55.470 ms** vs off **44.561/55.218/55.344 ms**（成对中位比 0.6534，on 更快 20/24）；按 top_k 3/8/20：p50 比 0.487/0.767/0.728；费用 = **0 USD**（本地 hash embedding、无模型调用；真实模型费用 `blocked`），权威检索执行次数 24 vs 48（off 侧翻倍） |
 | AC3 | 删除/撤权后过期或越权命中为零 | **proven** | 删除：真实 `DELETE /knowledge-documents/{id}` 后 `hit=false`、旧键不再命中、引用 404 无正文、答案无被删内容、投毒活行 `item_unreadable` 丢弃、reindex/replay/re-ingest 都不复活；并发删除风暴 5 条 post-commit 请求 **0 hit/0 items/0 marker**；撤权：跨 principal 404/无引用正文、投毒 Bob 行丢弃、管理员禁用 Alice 后 401 且 Alice 行 hit 3→3、Bob 仍命中自己的行 |
 | AC4 | 不缓存无稳定来源或跨用户个性化答案 | **proven** | 新增来源 1→2→3 文档时 `source_revision_digest` 变化、旧键不命中且 `hit_count` 不动；空结果/部分结果不存储（行数 0）；超出 256 KiB 的 50-chunk 条目实测 267,960 B → `stored=false`、无行；回答每请求重新生成（`wrong-answer` 故障服务器在检索命中的同时给出新生成哨兵），答案文本不进入缓存，跨用户答案互不含对方 marker |
 | AC5 | 正式端到端入口；失败/授权/重试恢复有断言，不以单层 mock 代替 | **proven** | 全部走真实 REST 用户路径（检索/引用/回答/删除/管理员 PATCH）；`/knowledge` 页面脚本以 Node 执行已提交字节，页面构造的检索 body 与测量请求一致；未知开关值真实进程启动 exit≠0；缓存表不可用时第二真实进程 `cache_unavailable` 降级为权威答案且引用仍可读；恢复后幸存条目再次命中、缺失 spec 重新存储后命中；删除进行中的并发查询有 start-time 断言 |
@@ -88,25 +91,28 @@
 
 | 阶段（24 次/格） | cache on | cache off | 说明 |
 |---|---|---|---|
-| 冷（miss，on 侧写缓存） | p50 16.470 / p95 39.843 / p99 41.154 ms | p50 27.819 / p95 33.603 / p99 36.059 ms | 冷阶段两侧都是权威检索；on 多一次写缓存 |
-| 重复（on 侧命中） | p50 **7.311** / p95 32.393 / p99 37.807 ms | p50 11.642 / p95 32.220 / p99 35.632 ms | on 命中率 **24/24**，off 0/24 |
-| 成对重复（24 对） | — | — | 中位比 **0.6119**、P50 比 0.628、on 更快 **17/24** |
+| 冷（miss，on 侧写缓存） | p50 46.697 / p95 69.350 / p99 69.693 ms | p50 44.489 / p95 55.413 / p99 56.324 ms | 冷阶段两侧都是权威检索；on 多一次写缓存 |
+| 重复（on 侧命中） | p50 **30.650** / p95 44.625 / p99 55.470 ms | p50 44.561 / p95 55.218 / p99 55.344 ms | on 命中率 **24/24**，off 0/24 |
+| 成对重复（24 对） | — | — | 中位比 **0.6534**、P50 比 0.6878、on 更快 **20/24** |
 
 按 top_k 分解（重复阶段，各 8 次）：
 
 | top_k | on p50 / p95 (ms) | off p50 / p95 (ms) | p50 比 |
 |---|---|---|---|
-| 3 | 5.139 / 26.833 | 12.749 / 35.632 | **0.403** |
-| 8 | 6.630 / 32.393 | 11.083 / 25.684 | **0.598** |
-| 20 | 20.992 / 37.807 | 11.952 / 32.220 | **1.756** |
+| 3 | 24.148 / 35.788 | 49.621 / 55.344 | **0.487** |
+| 8 | 34.185 / 44.625 | 44.561 / 54.977 | **0.767** |
+| 20 | 30.603 / 55.470 | 42.028 / 51.125 | **0.728** |
 
 读数（不夸大）：
 
-- 小/中 top_k（3、8）命中比权威 miss 快约 1.7–2.5×；top_k=20 在本 24-chunk 语料上没有收益，
-  甚至更慢：T113 的必做正确性修复让命中也要重读 20 条封存正文并核对 sha256，而这与 miss 路径
-  读取候选正文的成本同量级；命中还要多付一次大行 `items` jsonb 读取/反序列化。
-- 本机同时跑其它套件，P95 波动明显；配对视图（每一次 on/off 相邻取样）比跨相位 P50 更稳，
-  报告同时给出两者。数字只代表本机该固定输入，不外推到容量/真实模型。
+- 记录跑（03:51，独占）命中比权威 miss 快：重复阶段 p50 0.69×、成对中位比 0.65×、20/24 次更快；
+  小/中/大 top_k 的 p50 比分别 0.487/0.767/0.728。
+- 绝对延迟随宿主负载显著变化，三次完整证据跑的同口径“重复阶段 p50 on/off”分别为：
+  23:57 = **7.311/11.642 ms**（0.63）；03:38 = **32.963/43.932 ms**（0.75）；03:51 =
+  **30.650/44.561 ms**（0.69）。方向一致（命中更快），绝对值差约 4×，故报告同时给出成对视图；
+  不把某一轮的低数字当作稳定性能承诺。top_k=20 的收益不稳定（三次 by-top_k p50 比约
+  1.76× 更慢 / 1.01× 持平 / 0.73× 更快），因为正确性修复后命中也要重读 20 条封存正文并核对
+  sha256，这与 miss 路径读取候选正文的成本同量级。
 - 正确性：24/24 spec 在 on 冷、on 命中、off 三种答案上 `items`/`next_cursor`/`acl_epoch`/
   `index`/embedding revision 逐字段相同（精确 JSON 相等断言）。
 - 缓存行：25 行（24 spec + warmup），每行 `hit_count=1`（warmup 0）；cache-off 进程写入 0 行。
@@ -169,8 +175,35 @@ Node v24.13.0、PostgreSQL 16.4（`127.0.0.1:55432`，`python tools/pg_dev.py st
 WINDOW 期间的一次 `tests/f10` 尝试被编排中断，未用作证据。报告不含任何凭据。
 
 ```text
-<!-- GATES -->
+$ python -m pytest tests/f13b/test_t113_cache_comparison.py -q
+5 passed in 74.03s
+
+$ F13B_WRITE_EVIDENCE=1 python -m pytest tests/f13b/test_t113_cache_comparison.py -q -s
+5 passed in 77.04s
+
+$ python -m pytest tests/f10 -q
+88 passed in 776.40s (0:12:56)
+
+$ python -m pytest tests/f13b -q            # exclusive, no other realstack owner; includes T111 WSL/runsc
+238 passed in 593.75s (0:09:53)
+
+$ python -m pytest tests/f13b -q --ignore=tests/f13b/test_t111_linux_isolation.py
+228 passed in 610.28s (0:10:10)    # two-up correctness slot while T114's short probe ran
+
+$ go build ./... ; go vet ./... ; go test ./...
+(exit 0 / 0 / 0; build/vet no output; go test all ok / no test files)
+
+$ gofmt -l internal cmd tools
+(empty)
+
+$ python tools/sync_spec.py --check
+no drift: spec copy and contract snapshot match the manifest
 ```
+
+说明：完整 `tests/f13b`（含 T111 WSL/runsc）在 03:38–03:48 的**独占**窗口（锁目录只有本票
+`t113.owner.txt`、无 WINDOW）跑完 238 passed；T113 证据跑 03:49–03:51 也独占。228 passed 的
+非 WSL 子集是在等独占窗口期间按 ENV-B2 §2.1 两路正确性套件规则（T114 短探针 + 本票）
+补跑的，不替代完整套件。更早的两次被中断/并发尝试见 §0。
 
 ## 10. 真实栈、输入与版本
 
@@ -202,8 +235,9 @@ WINDOW 期间的一次 `tests/f10` 尝试被编排中断，未用作证据。报
 ## 12. 偏差与边界（均已记录）
 
 1. **命中路径成本上升**：为保证“命中的答案与权威路径一致”，命中现在重读每个返回 chunk 的
-   封存正文并核对 sha256。固定 24-chunk 语料上 top_k=20 的命中收益被抵消；小/中 top_k 仍有
-   1.7–2.5× 收益。这是正确性优先的取舍，已由 §4 实测记录，而不是把成本藏起来。
+   封存正文并核对 sha256。三次证据跑的整体 p50 比 0.63–0.75（命中仍更快），但 top_k=20 的收益
+   不稳定（by-top_k p50 比约 1.76× 更慢 / 1.01× 持平 / 0.73× 更快）；这是正确性优先的取舍，
+   已由 §4 三次数字与 §4 注记录，而不是把成本藏起来。
 2. **两个真实进程**：部署开关只在启动时读取（fail closed），off 模式必须另起真实进程；
    这是部署差异不是 mock，采用成对取样降低宿主噪声影响。
 3. **无 per-KB grant 入口**：本切片 owner-only；AC3 的“撤权”以真实内容 tombstone、管理员禁用
