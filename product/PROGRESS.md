@@ -2847,3 +2847,37 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   provider 冒充；`provider=stub` 行为不变。T044 时代"真实 provider 流式必 adapter_unavailable"
   的断言被本票语义取代（测试改名并保留 fail-closed 断言，报告 §9 记录）。
 - 未改 `docs/spec/**`、`contracts/**`、迁移；未新增管理页面/契约端点。
+
+## F13B T114 容量：100 用户 / 1000 应用 / 20 顶层替身执行（2026-11-08）
+
+- 分支 `t/t114-capacity-20-top`（GitHub #115）；短门禁 `pytest tests/f13b/test_t114_capacity.py -q`
+  **1 passed in 169.61s**；完整测量 `F13B_CAPACITY_FULL=1 F13B_WRITE_EVIDENCE=1 ...`
+  **1 passed in 2922.75s**（三轮 15 分钟，各一个全新数据库）。
+- 画像：100 用户 / 1000 应用经公开 REST 播种（101 principals = 100 用户 + admin，1000 applications；
+  user/app id sha256 记录在证据里；997 trivial + 3 workload apps）。容量旋钮走既定
+  `platform.quota_counters`：`global/execution_slots` 8 → **20**（权威 used 峰值 = 20），独立
+  `global/child_slots` 2 → **8**；未改迁移/契约/规格。
+- 替身服务时间：`ORCHARA_CAPACITY_STUB_SERVICE_DELAY=500ms`，仅 `capacity-stub` profile + stub provider
+  生效（其他 profile 启动即拒绝）；实测 stub call p50 0.516–0.517s / p95 0.566–0.575s，是替身时间，
+  不是厂商延迟。
+- 三轮：top-level executed **9384 / 8618 / 9044**（成功 9382 / 8614 / 9038；0 业务失败；4/轮为排队取消），
+  吞吐 **10.43 / 9.58 / 10.05** runs/s，queue p50 **5.93 / 6.11 / 5.88s**，exec p50 **1.78 / 1.87 / 1.82s**、
+  p95 **2.13 / 2.53 / 2.24s**；steady 槽位利用率 **0.948 / 0.951 / 0.949**（sampled running p50 19 / p95 20 /
+  max 20），queued-with-live-attempt 全样本 **0**。区间扫描峰值 21 与权威 used=20 的差异在报告 §4 记录
+  （claim 事务 started_at 与上一 attempt exited_at 的亚秒重叠，不是二次分配）。
+- 子槽独立：每轮 7 个 call_app parent → 7 个 child 全部在 20 槽饱和时由 `child_slots` claim 并成功
+  （child queue p50 0.14–0.18s，parent wait p50 0.76–0.80s，重叠 7/7）。
+- 取消（AC4）：公开 API 202；queued 取消 intent==stop（0s）；**执行中取消命中真实产品竞态**——2/4/6 个
+  Run 停在 `cancelling`、attempt 未退出、finished_at 缺失（slot 泄漏），记录为缺陷（F03/T036 + F04B），
+  T114 不修。确定性 claim→cancel→exit→late-result 探针证明 T036 语义：intent→stop 27–39ms，
+  迟到 result 409 `run_terminal` 且终态不复活。饱和窗口内的取消批次放在第 855s，其尾部不计入 steady 数字。
+- 边界：租约过期经真实 `cmd/admin runs sweep-leases --grace 1s` 进入 `recovery_pending`（每轮 1 个）；
+  非 owner 读/取消 404；满容量提交 202 排队不丢任务；`runs.error_code` 全空、operation attempt 无失败。
+- 资源：API 单进程 CPU p50 96–100%（单核）、RSS p95 约 79MiB；finalizer RSS p50 21–47MiB；24 个
+  supervisor 进程 RSS p95 373–609MiB；PG conns p95 29–30、PG active p95 6；DB 162–176MiB；
+  磁盘余量 ≥ 24.98GiB。费用：stub ledger 真实 token（in 508k–553k / out 60k–66k）但 charge 0
+  （stub candidate 无价格版本）；真实模型费用 blocked。
+- 证据：`reports/f13b/T114-capacity.json`、`reports/f13b/T114-capacity.md`；短/全两次运行分开报告。
+- 门禁：短 profile **1 passed in 169.61s**；完整测量 **1 passed in 2922.75s**；`pytest tests/f13b -q`（独占，含 T111 WSL/runsc）**235 passed, 1 skipped in 705.22s**；`go build/vet/test ./...` 0/0/0；`gofmt -l internal cmd tools` 空；`python tools/sync_spec.py --check` no drift。`pytest tests/f03 -q` **3 failed, 200 passed**：3 条是基线既有失败（`test_t029_invariants`/`test_t035_migration` 的 runs 播种与 F05/F07 request/conversation 外键冲突，`test_t032_pages` 对旧 runs.html 的过时断言），单跑同样失败（73.46s），与本票改动路径无关；已报告未静默修改（ENV-B2 §5）。
+- 边界：真实厂商模型、真实容量机器/多机/负载均衡、GPU/网络吞吐 `blocked`/`not_run`；未改
+  `docs/spec/**`、`contracts/**`、迁移。

@@ -105,6 +105,9 @@ func run(logger *log.Logger) error {
 	// credential.
 	providers := modelproxy.NewProviders(cfg.Profile, cfg.ModelEndpoint, cfg.SecretDir, config.FromEnv()).
 		WithCatalog(modelCatalog)
+	// F13B/T114: the capacity-stub stand-in service time (module docs: it is
+	// deployment configuration and only the capacity-stub profile may carry it).
+	providers.SetStubServiceDelay(cfg.CapacityStubServiceDelay)
 
 	reporter := health.New(map[string]health.Check{"database": dbCheck}, 2*time.Second).
 		WithVersion(env("ORCHARA_VERSION", "0.0.1-skeleton")).

@@ -682,3 +682,44 @@ func TestStubProfilesRefuseAHalfConfiguredDestination(t *testing.T) {
 		t.Fatalf("an endpoint with a query must be refused, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// F13B/T114: the capacity-stub stand-in service time
+// ---------------------------------------------------------------------------
+
+func TestCapacityStubServiceDelayIsOnlyAcceptedForTheCapacityStubProfile(t *testing.T) {
+	env := validStubEnv()
+	env[EnvProfile] = string(ProfileCapacityStub)
+	env[EnvCapacityStubServiceDelay] = "500ms"
+	cfg, err := Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("capacity-stub must accept the stand-in service time: %v", err)
+	}
+	if cfg.CapacityStubServiceDelay != 500*time.Millisecond {
+		t.Fatalf("CapacityStubServiceDelay = %s", cfg.CapacityStubServiceDelay)
+	}
+
+	// The same deployment knob is a startup error in any other profile: the
+	// stand-in time must never silently reach dev-stub or a real model.
+	env[EnvProfile] = string(ProfileDevStub)
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("dev-stub must reject the capacity stand-in knob")
+	} else if !strings.Contains(err.Error(), EnvCapacityStubServiceDelay) {
+		t.Fatalf("the error must name the variable: %v", err)
+	}
+
+	delete(env, EnvCapacityStubServiceDelay)
+	cfg, err = Load(lookupFrom(env))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.CapacityStubServiceDelay != 0 {
+		t.Fatalf("unset must mean zero, got %s", cfg.CapacityStubServiceDelay)
+	}
+
+	env[EnvCapacityStubServiceDelay] = "1h"
+	env[EnvProfile] = string(ProfileCapacityStub)
+	if _, err := Load(lookupFrom(env)); err == nil {
+		t.Fatal("an absurd stand-in service time must be rejected")
+	}
+}
