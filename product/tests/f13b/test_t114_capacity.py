@@ -16,6 +16,11 @@ Two run modes share one harness (``tests/support/t114.py``):
 The 500ms service time is the **capacity-stub deployment knob**
 (``ORCHARA_CAPACITY_STUB_SERVICE_DELAY``): stand-in time for a stub model call,
 not vendor latency. Stub and real boundaries are reported separately.
+
+The current seeder creates drafts, not the 1000 published applications required
+by EVALUATION §5. Short mode is a narrower harness regression. Full mode now
+refuses overall acceptance without independently counted published applications;
+the original committed evidence is explicitly partial and remains historical.
 """
 
 from __future__ import annotations
@@ -40,6 +45,36 @@ from evidence_redaction import find_violations  # noqa: E402
 def _close(stack) -> None:
     stack.server.stop()
     st.drop_database(stack.dbname)
+
+
+def test_draft_only_profile_cannot_be_reported_as_full_acceptance() -> None:
+    trials = [{"label": f"trial-{index}", "operations": {}} for index in range(1, 4)]
+    document = t114.build_document(
+        trials=trials, mode="full",
+        profile={"user_principal_count": 100, "application_count": 1000,
+                 "db_truth": {"applications": 1000, "application_drafts": 1000}},
+        quota={}, version={}, commands=[],
+    )
+    assert document["status"] == "partial"
+    assert document["scope_assessment"]["published_application_profile"] == "not_run"
+    with pytest.raises(AssertionError, match="published"):
+        t114.assert_published_profile(document["profile"])
+
+
+def test_each_capacity_trial_must_verify_the_published_profile() -> None:
+    profile = {"db_truth": {"published_applications": t114.APPLICATIONS}}
+    trials = [
+        {"label": f"trial-{index}", "operations": {},
+         "profile_db_truth": {"published_applications": t114.APPLICATIONS}}
+        for index in range(1, 4)
+    ]
+    for observed, expected in [(None, "partial"), (999, "partial"), (1000, "passed")]:
+        trials[-1]["profile_db_truth"]["published_applications"] = observed
+        document = t114.build_document(
+            trials=trials, mode="full", profile=profile,
+            quota={}, version={}, commands=[],
+        )
+        assert document["status"] == expected
 
 
 def test_capacity_harness_short_profile(tmp_path: Path, go_binaries, api_server) -> None:
@@ -102,6 +137,12 @@ def test_committed_capacity_evidence_is_clean() -> None:
     assert document["issue"] == 115
     assert document["trial_count"] == 3
     assert document["full_measurement"] is True
+    # The original trials measured a draft-only profile. Preserve their raw
+    # samples, but never turn that historical run into published-profile proof.
+    assert document["status"] == "partial"
+    assert document["scope_assessment"]["published_application_profile"] == "not_run"
+    with pytest.raises(AssertionError, match="published"):
+        t114.assert_document(document)
     assert document["service_time"]["stand_in"] is True
     assert document["service_time"]["vendor_latency"] is False
     assert document["capacity_knob"]["top_level_slots"] == t114.TOP_LEVEL_SLOTS

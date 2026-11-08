@@ -435,6 +435,28 @@ def test_401_is_not_retried_and_never_echoes_the_credential(t122_stack) -> None:
     assert_no_secret(t122_stack, response.text, json.dumps(ledger), t122_stack.server.logs())
 
 
+@pytest.mark.parametrize("payload,code", [
+    ({"type": "permission_error", "status": 403}, "provider_permission_denied"),
+    ({"type": "invalid_request_error", "code": "invalid_json_schema"}, "provider_request_rejected"),
+])
+def test_terminal_sse_error_is_not_retried(t122_stack, payload, code) -> None:
+    _, run, lease = claimed_run(t122_stack)
+    t122_stack.provider.respond_stream([{"error": payload}])
+    operation_id = t041.new_uuid()
+    response = t044.stream(
+        t041.worker_client(t122_stack.stack), lease,
+        operation_id=operation_id, params=t041.model_params(),
+    )
+    frames = t044.parse_sse(response.text)
+    assert len(t122_stack.provider.requests()) == 1
+    assert t044.finals(frames) == []
+    assert frames[-1]["error"]["code"] == code, frames
+    assert not frames[-1].get("retryable"), frames
+    attempts = t041.attempt_rows(t122_stack.dbname, operation_id)
+    assert len(attempts) == 1 and attempts[0]["error_code"] == code, attempts
+    assert t044.receipt_artifact_count(t122_stack.dbname, run["id"]) == 0
+
+
 # ---------------------------------------------------------------------------
 # AC5: malformed and oversized protocol answers are terminal, not retried
 # ---------------------------------------------------------------------------
@@ -648,7 +670,7 @@ def test_missing_endpoint_is_provider_not_configured_without_a_ledger_row(
 def test_admin_registered_real_model_validates_through_the_provider(t122_stack) -> None:
     harness = t122_stack
     admin = f00b.admin_session(harness.stack)
-    harness.provider.respond_once(content='{"ok":true}', usage=(4, 2))
+    harness.provider.respond_compatibility()
     model = t039.register_or_fail(
         admin,
         provider=t122.PROVIDER,
@@ -670,12 +692,18 @@ def test_admin_registered_real_model_validates_through_the_provider(t122_stack) 
     assert job_reports[0]["result"] == "succeeded", job_reports
 
     calls = t024.model_calls(harness.dbname, job_reports[0]["job_id"])
-    assert len(calls) == 1, calls
-    assert calls[0]["state"] == "succeeded"
-    assert calls[0]["tokens_in"] == 4 and calls[0]["tokens_out"] == 2
+    assert len(calls) == 4, calls
+    assert all(call["state"] == "succeeded" for call in calls)
+    # Cancellation interrupts usage; only the other three calls observed it.
+    metered = [call for call in calls if call["tokens_in"] is not None]
+    unmetered = [call for call in calls if call["tokens_in"] is None]
+    assert [(call["tokens_in"], call["tokens_out"]) for call in metered] == [(4, 2)] * 3
+    assert len(unmetered) == 1 and unmetered[0]["tokens_out"] is None, calls
+    assert unmetered[0]["charged_amount"] is None
+    assert Decimal(unmetered[0]["reserved_amount"]) > 0
 
     requests = harness.provider.requests()
-    assert len(requests) == 1, requests
+    assert len(requests) == 4, requests
     assert requests[0]["body"]["model"] == t122.MODEL_ID
     assert requests[0]["body"]["response_format"] == {"type": "json_object"}
     assert requests[0]["headers"]["authorization"] == "Bearer " + harness.secret
@@ -688,6 +716,33 @@ def test_admin_registered_real_model_validates_through_the_provider(t122_stack) 
     assert document["compatible"] is True, document
     assert document["stub"] is False, document
     assert document["check"] == {
-        "name": "structured_output", "passed": True, "reason": "",
+        "name": "model_compatibility", "passed": True, "reason": "",
     }, document["check"]
+    assert [probe["check"]["name"] for probe in document["probes"]] == [
+        "structured_output", "tool_call", "streaming", "cancellation",
+    ]
+    assert len({probe["call_id"] for probe in document["probes"]}) == 4
+    assert all(probe["check"]["passed"] for probe in document["probes"])
     assert_no_secret(harness, json.dumps(document), harness.server.logs())
+
+
+@pytest.mark.parametrize("missing_feature", ["tool_call", "streaming"])
+def test_json_only_provider_cannot_pass_model_compatibility(t122_stack, missing_feature) -> None:
+    harness = t122_stack
+    admin = f00b.admin_session(harness.stack)
+    harness.provider.respond_compatibility(missing_feature=missing_feature)
+    model = t039.register_or_fail(
+        admin, provider=t122.PROVIDER, model_id=t122.MODEL_ID,
+        endpoint_ref=t122.ENDPOINT_ID, secret_ref=t122.CREDENTIAL_ID,
+        data_destination=t122.DESTINATION, config=t039.config(),
+    )
+    accepted = t039.validate(admin, model["id"], key="negative-" + secrets.token_hex(8))
+    assert accepted.status == 202, accepted.text
+    t039.run_validation(harness.stack)
+    got = t039.get_model(admin, model["id"])
+    assert got.status == 200, got.text
+    assert got.json["validation_state"] == "failed", got.json
+    if missing_feature == "tool_call":
+        document = t039.report_document(harness.stack, got.json["evaluation_report_id"])
+        assert document["compatible"] is False, document
+        assert document["probes"][1]["check"]["passed"] is False, document

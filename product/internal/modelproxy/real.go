@@ -71,6 +71,12 @@ func (p *realProvider) Available(candidate *Candidate) error {
 }
 
 func (p *realProvider) Call(ctx context.Context, request CallRequest) (ProviderResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if check := compatibilityCheck(request); check == "streaming" || check == "cancellation" {
+		return p.compatibilityStream(ctx, request)
+	}
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
 	}

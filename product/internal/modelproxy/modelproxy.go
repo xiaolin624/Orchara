@@ -550,12 +550,19 @@ func (s *Service) finishSucceeded(
 	); err != nil {
 		return fmt.Errorf("linking the model result artifact: %w", err)
 	}
+	var tokensIn, tokensOut, charge any = response.TokensIn, response.TokensOut, formatUnits(response.ChargedUnits)
+	if observed, explicit := response.Data["usage_observed"].(bool); explicit && !observed {
+		// A completed cancellation probe certifies transport behavior, not a
+		// completed/free generation. Preserve the reservation and leave usage
+		// and charge NULL until supplier-side consumption is known.
+		tokensIn, tokensOut, charge = nil, nil, nil
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE platform.platform_model_calls
 		   SET state = 'succeeded', result_artifact_id = $2::uuid,
 		       tokens_in = $3, tokens_out = $4, charged_amount = $5::numeric
 		 WHERE id = $1::uuid AND state = 'dispatching'`,
-		callID, artifactID, response.TokensIn, response.TokensOut, formatUnits(response.ChargedUnits),
+		callID, artifactID, tokensIn, tokensOut, charge,
 	)
 	if err != nil {
 		return fmt.Errorf("closing the model call ledger row: %w", err)

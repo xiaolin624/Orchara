@@ -261,6 +261,27 @@ class FakeProvider:
     def respond_once(self, **kwargs) -> None:
         self.responder = lambda _record, _handler: self.completion(**kwargs)
 
+    def respond_compatibility(self, *, missing_feature: str | None = None) -> None:
+        """Answer the actual structured/tool/stream/cancel compatibility probes."""
+        def responder(record, handler):
+            body = record["body"]
+            if body.get("stream"):
+                if missing_feature == "streaming":
+                    return self.completion(content='{"ok":true}', usage=(4, 2))
+                return self.stream_responder([
+                    stream_frame(content='{"ok":true}'),
+                    stream_frame(finish_reason="stop"),
+                    stream_frame(usage=(4, 2)),
+                ])(record, handler)
+            calls = None
+            if body.get("tools") and missing_feature != "tool_call":
+                calls = [{
+                    "id": "probe-call", "type": "function",
+                    "function": {"name": "orchara_probe", "arguments": '{"value":"ok"}'},
+                }]
+            return self.completion(content='{"ok":true}', tool_calls=calls, usage=(4, 2))
+        self.responder = responder
+
     def respond_status(self, status: int, body: str = "") -> None:
         payload = body or json.dumps({"error": {"message": "provider refused"}})
         self.responder = lambda _record, _handler: (

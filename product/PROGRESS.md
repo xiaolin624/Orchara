@@ -3069,3 +3069,21 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
 - **已知残留**（记录在案、非本批阻塞）：T122 取消路径的 pre-attempt guard 无独立 Go 测试（行为由真实栈
   abort e2e 覆盖，属纵深防御）；`tests/f03` 的 3 条失败在 `ae1af91` 基线即存在（`runs_request_id_fkey`
   与 `location.search`），非本批引入，未修。
+
+## B2 后续审查修复（2026-11-08；基于 2c70e55，本记录随修复一同提交）
+
+- SSE 实际执行单行 1 MiB / 累计 8 MiB 上限；流内权限/Schema 错误不再进入物理重试。
+- 真实模型兼容验证增为结构化/工具/流式/取消四项独立探针，逐项记录真实调用与封存结果。
+  服务端 completion guard 重读并校验四项绑定，单项 JSON 响应不再获得总体 passed。
+  stub 的旧单项模拟验证保留；真实供应商验收仍 blocked。
+- **更正上文 T114 完成结论**：历史测量只证明 1000 应用/草稿，未证明规格要求的 1000
+  已发布应用。T114 总体应为 **partial**，发布画像为 **not_run**；旧三轮原始样本保留。
+  证据检查新增实际发布版本计数，缺失的 profile 不得再被判为完整通过。
+- 修正 capacity-stub 的文档：显式真实 endpoint/credential/catalog 门禁通过时允许真实
+  candidate；原测量未配置真实供应商，profile 本身不是强制模拟隔离。
+- 最终验证：Go build/vet/全量测试通过、gofmt 空、spec sync no drift；
+  完整 F06 **190 passed in 909.84s**。
+  取消探针的未知 tokens/费用以 NULL 留账并保留预留后，最终重跑 T122 + 容量短测/证据 +
+  取消回归 → **22 passed, 1 skipped in 251.91s**；skip 仅为未启用的 15 分钟 × 3 实验。
+  容量纯证据新增反证 **3 passed**；原始测量字段逐项比对不变。
+- 详细修复、命令与边界：`reports/f13b/B2-FOLLOWUP-FIXES.md`。

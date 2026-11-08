@@ -316,9 +316,11 @@ def _invite_users(stack, admin, count: int) -> list:
 def seed_profile(stack, *, users: int = USERS, applications: int = APPLICATIONS) -> ProfileSeed:
     """Seed the 100-user/1000-application profile through the public endpoints.
 
-    The workload applications (one capacity model graph, one call_app parent, one
-    published child version) are three of the 1000, all created by the same
-    endpoints; 997 further start->end applications are created by the 100 users.
+    The workload applications (one capacity model graph, one call_app parent,
+    and the application of a sealed child fixture) are three of the 1000.
+    Applications/drafts use public endpoints; the child version uses T078's
+    fixture that skips publication approval. The other 997 applications are
+    drafts, too. This is not the required 1000-published-application profile.
     """
     started = time.perf_counter()
     admin = f00b.admin_session(stack)
@@ -436,10 +438,21 @@ def profile_db_truth(dbname: str) -> dict:
     )
     applications = int(st.sql(dbname, "SELECT count(*) FROM platform.applications"))
     drafts = int(st.sql(dbname, "SELECT count(*) FROM platform.application_drafts"))
+    published = int(st.sql(dbname, """
+        SELECT count(DISTINCT app.id)
+          FROM platform.applications AS app
+          JOIN platform.application_versions AS v ON v.id = app.active_version_id
+          JOIN platform.publication_reviews AS r ON r.id = v.review_id
+          JOIN platform.artifacts AS a ON a.id = v.manifest_artifact_id
+         WHERE r.state = 'approved' AND v.revoked_at IS NULL
+           AND a.state = 'ready' AND a.deleted_at IS NULL
+           AND a.sha256 = v.manifest_sha256
+    """))
     return {
         "user_principals": users,
         "applications": applications,
         "application_drafts": drafts,
+        "published_applications": published,
         "note": "user_principals includes the bootstrap admin (100 invited users + admin)",
     }
 
@@ -2348,7 +2361,27 @@ def build_document(
         ],
         "notes": notes or {},
     }
-    if len(trials) != 3:
+    observed_published = profile.get("db_truth", {}).get("published_applications")
+    per_trial_published = {
+        trial["label"]: trial.get("profile_db_truth", {}).get("published_applications")
+        for trial in trials
+    }
+    published_verified = (
+        observed_published == APPLICATIONS and len(trials) == 3
+        and all(count == APPLICATIONS for count in per_trial_published.values())
+    )
+    document["scope_assessment"] = {
+        "published_application_profile": "passed" if published_verified else "not_run",
+        "required_published_applications": APPLICATIONS,
+        "observed_published_applications": observed_published,
+        "published_applications_per_trial": per_trial_published,
+        "measured_workload": "debugDraft on one fixed draft; application/draft count is not publication evidence",
+    }
+    if not published_verified:
+        document["not_run"].append(
+            "1000 published applications: current seeding creates drafts; publication profile remains unverified"
+        )
+    if len(trials) != 3 or not published_verified:
         document["status"] = "partial"
     return redact_value(document)
 
@@ -2437,6 +2470,9 @@ def run_full_measurement(
             quota = configure_quota(stack.dbname)
             if profile is None:
                 profile = seed.as_evidence()
+            # Refuse the known draft-only fixture before spending 15 minutes
+            # measuring a profile that cannot satisfy the publication gate.
+            assert_published_profile(seed.as_evidence())
             result = run_trial(
                 stack, seed, quota, label=label, seconds=FULL_TRIAL_SECONDS, progress=progress
             )
@@ -2469,6 +2505,7 @@ def run_full_measurement(
                     "label": label,
                     "trial_index": index,
                     "assertions_ok": False,
+                    "operations": {},
                     "error": f"{type(exc).__name__}: {exc}",
                 }
             )
@@ -2499,6 +2536,7 @@ def run_full_measurement(
 
 def assert_document(document: dict) -> None:
     """The full measurement's acceptance gate over the collected evidence."""
+    assert_published_profile(document["profile"])
     assert document["status"] == "passed", document.get("notes", {}).get("failures")
     assert document["full_measurement"] is True
     assert document["trial_count"] == 3, document["trial_count"]
@@ -2507,6 +2545,14 @@ def assert_document(document: dict) -> None:
     assert document["profile"]["user_principal_count"] == USERS, document["profile"]
     assert document["profile"]["application_count"] == APPLICATIONS, document["profile"]
     for trial in document["trials"]:
+        assert_published_profile({"db_truth": trial.get("profile_db_truth", {})})
         assert trial.get("assertions_ok") is True, trial.get("assertion_failure") or trial.get("error")
         assert trial["label"] in {"trial-1", "trial-2", "trial-3"}
         assert trial["seconds"] >= FULL_TRIAL_SECONDS * 0.98, trial["seconds"]
+
+
+def assert_published_profile(profile: dict) -> None:
+    published = profile.get("db_truth", {}).get("published_applications")
+    assert published == APPLICATIONS, (
+        f"published application profile not verified: observed={published!r}, required={APPLICATIONS}"
+    )

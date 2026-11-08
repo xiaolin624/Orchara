@@ -2,7 +2,15 @@
   "ticket": "T114",
   "issue": 115,
   "title": "Sustained execution of 20 top-level stand-in tasks at a 100 user / 1000 application profile, and the capacity it measures",
-  "status": "passed",
+  "status": "partial",
+  "scope_assessment": {
+    "published_application_profile": "not_run",
+    "required_published_applications": 1000,
+    "observed_published_applications": null,
+    "measured_workload": "historical debugDraft workload; 1000 application/draft rows do not prove 1000 published applications",
+    "correction_date": "2026-11-08",
+    "raw_measurements": "unchanged; collected at 5ffaff76d49a896a8239c651b947366068d5a37c"
+  },
   "generated_at": "2026-11-08T01:24:33+0800",
   "mode": "full",
   "full_measurement": true,

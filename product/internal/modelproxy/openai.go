@@ -406,6 +406,13 @@ func buildChatRequest(request CallRequest, registered providerConfig, stream boo
 	} else if fixture {
 		payload["response_format"] = map[string]any{"type": "json_object"}
 	}
+	if compatibilityCheck(request) == "tool_call" {
+		delete(payload, "response_format")
+		payload["tools"] = compatibilityTool()
+		payload["tool_choice"] = map[string]any{
+			"type": "function", "function": map[string]any{"name": "orchara_probe"},
+		}
+	}
 	if maxTokens := chatMaxTokens(request.Params, registered); maxTokens > 0 {
 		payload["max_tokens"] = maxTokens
 	}
@@ -466,6 +473,18 @@ func chatMessages(request CallRequest) ([]map[string]any, error) {
 // routing and compatibility shapes are the two documented control-model calls;
 // anything else gets the generic structured-answer instruction.
 func fixtureMessages(request CallRequest) []map[string]any {
+	switch compatibilityCheck(request) {
+	case "tool_call":
+		return []map[string]any{
+			{"role": "system", "content": "Call orchara_probe exactly once with arguments {\"value\":\"ok\"}."},
+			{"role": "user", "content": string(request.Fixture)},
+		}
+	case "streaming", "cancellation":
+		return []map[string]any{
+			{"role": "system", "content": "Answer with the JSON object {\"ok\":true}."},
+			{"role": "user", "content": string(request.Fixture)},
+		}
+	}
 	task, _ := request.Params["task"].(string)
 	switch task {
 	case "route":
@@ -614,14 +633,14 @@ func responseFrom(
 		(isResponseSchemaRequested(request) || isFixtureCall(request)) {
 		data["structured"] = structured
 	}
-	if isFixtureCall(request) {
-		applyFixtureMode(request, text, data)
-	}
 	if usage != nil {
 		data["usage"] = map[string]any{
 			"input_tokens":  usage.InputTokens,
 			"output_tokens": usage.OutputTokens,
 		}
+	}
+	if isFixtureCall(request) {
+		applyFixtureMode(request, text, data)
 	}
 	output, err := canonicalJSON(data)
 	if err != nil {
@@ -711,12 +730,24 @@ func applyFixtureMode(request CallRequest, text string, data map[string]any) {
 		}
 		return
 	}
-	check := map[string]any{
-		"name":   fixtureCheckName(request.Fixture),
-		"passed": false,
-		"reason": "structured_output",
+	name := compatibilityCheck(request)
+	if name == "" {
+		name = fixtureCheckName(request.Fixture)
 	}
-	if _, ok := parseJSONObject(text); ok {
+	check := map[string]any{
+		"name":   name,
+		"passed": false,
+		"reason": name,
+	}
+	passed := false
+	switch name {
+	case "structured_output":
+		object, ok := parseJSONObject(text)
+		passed = ok && object["ok"] == true && data["usage"] != nil
+	case "tool_call":
+		passed = compatibilityToolPassed(data)
+	}
+	if passed {
 		check["passed"] = true
 		check["reason"] = ""
 	}
@@ -934,7 +965,7 @@ func (p *realProvider) readStream(
 			return ProviderResponse{}, fmt.Errorf("%w: the stream frame is not JSON", ErrResponseInvalid)
 		}
 		if len(chunk.Error) > 0 && strings.TrimSpace(string(chunk.Error)) != "null" {
-			return ProviderResponse{}, &TransientError{Reason: "the model provider stream sent an error frame"}
+			return ProviderResponse{}, classifyStreamError(chunk.Error)
 		}
 		if chunk.Usage != nil {
 			if parsed := parseChatUsage(chunk.Usage); parsed != nil {
@@ -1022,22 +1053,60 @@ func completeStreamCalls(calls map[int]*streamCall, order []int) []any {
 // readSSELine reads one line and enforces both the per-line and the total body
 // limits. A line without a trailing newline before EOF is still returned once.
 func readSSELine(reader *bufio.Reader, total *int64) (string, error) {
-	line, err := reader.ReadString('\n')
-	*total += int64(len(line))
-	if *total > maxProviderResponseBytes {
-		return "", ErrResponseTooLarge
+	var line strings.Builder
+	for {
+		fragment, err := reader.ReadSlice('\n')
+		*total += int64(len(fragment))
+		if line.Len()+len(fragment) > maxSSELineBytes || *total > maxProviderResponseBytes {
+			return "", ErrResponseTooLarge
+		}
+		line.Write(fragment)
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case err == nil:
+			return strings.TrimRight(line.String(), "\r\n"), nil
+		case errors.Is(err, io.EOF) && line.Len() > 0:
+			return strings.TrimRight(line.String(), "\r\n"), nil
+		default:
+			return "", err
+		}
+	}
+}
+
+// Error payloads are classified without retaining provider text. A 200 SSE
+// envelope does not make its permission/schema refusal retryable.
+func classifyStreamError(raw json.RawMessage) error {
+	var detail struct {
+		Type       string `json:"type"`
+		Code       string `json:"code"`
+		Status     int    `json:"status"`
+		StatusCode int    `json:"status_code"`
+	}
+	if json.Unmarshal(raw, &detail) != nil {
+		return ErrResponseInvalid
+	}
+	kind, code := strings.ToLower(detail.Type), strings.ToLower(detail.Code)
+	switch {
+	case strings.Contains(kind, "permission"), strings.Contains(kind, "authentication"),
+		strings.Contains(code, "permission"), strings.Contains(code, "api_key"),
+		code == "unauthorized", code == "forbidden":
+		return &ProviderStatusError{StatusCode: http.StatusForbidden}
+	case code == "model_not_found":
+		return &ProviderStatusError{StatusCode: http.StatusNotFound}
+	}
+	status := detail.Status
+	if status == 0 {
+		status = detail.StatusCode
+	}
+	if status >= 300 {
+		return classifyStatus(status)
 	}
 	switch {
-	case err == nil:
-		return strings.TrimRight(line, "\r\n"), nil
-	case errors.Is(err, io.EOF):
-		if line != "" {
-			return strings.TrimRight(line, "\r\n"), nil
-		}
-		return "", io.EOF
-	case errors.Is(err, bufio.ErrBufferFull):
-		return "", ErrResponseTooLarge
+	case kind == "invalid_request_error", strings.Contains(kind, "schema"),
+		strings.Contains(code, "schema"), code == "invalid_request", code == "invalid_value":
+		return &ProviderStatusError{StatusCode: http.StatusBadRequest}
 	default:
-		return "", err
+		return &TransientError{Reason: "the model provider stream sent an error frame"}
 	}
 }

@@ -1,7 +1,11 @@
 # T114 — 20 top-level stand-in executions at the 100 user / 1000 application profile
 
 - **Ticket:** GitHub #115 (T114, epic F13B). Branch `t/t114-capacity-20-top`.
-- **Status:** **passed** (measurement), with one recorded product defect outside this ticket's
+- **Status:** **partial** (published-application capacity profile **not_run**). The historical
+  measurement covers 100 users, 1000 application/draft rows and one debugDraft workload,
+  not the **1000 published applications** required by `EVALUATION.md` §5.
+  Raw trial samples remain unchanged; the original test result below is historical,
+  not full acceptance. There was also one recorded product defect outside this ticket's
   scope (cancel race, §4; fixed by the follow-up `t/cancel-exit-fix`, see §4 “Status update”).
   The committed evidence comes from one full run of
   `F13B_CAPACITY_FULL=1 F13B_WRITE_EVIDENCE=1 python -m pytest
@@ -374,10 +378,11 @@ provenance split and the reason the full measurement was not re-run.
 
 | item | state | why |
 |---|---|---|
-| real vendor model latency, quality, cost | **blocked** | no vendor credential/endpoint on this host; only the deterministic stub provider exists. The 500 ms is stand-in time. |
+| real vendor model latency, quality, cost | **blocked** | no vendor credential/endpoint was configured for this measurement; its Runs used the deterministic stub provider. The 500 ms is stand-in time. |
 | real capacity machine / multi-host / load balancer | **not_run** | this is the 12-logical-CPU development machine with one API process and one PostgreSQL instance. |
 | GPU and host network utilisation | **not_run** | no GPU; loopback network throughput is not measured by this harness. |
-| a real-model candidate under `capacity-stub` | **blocked** | the profile refuses a real candidate by design (fail closed); no real model call can be claimed here. |
+| a real-model candidate under `capacity-stub` | **not_run** | this measurement configured no real endpoint/credential. The profile permits non-stub candidates when the explicit deployment endpoint, credential and catalog gates pass; it is not a forced simulation boundary. |
+| 1000 published applications | **not_run** | seeding only created application/draft rows and a sealed child fixture; published/active version counts were not collected in these trials. Overall T114 remains partial. |
 
 ## 6. Commands and reproducibility
 

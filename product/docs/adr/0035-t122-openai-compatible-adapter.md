@@ -86,3 +86,25 @@ worker、真实 PostgreSQL 账本、真实封存字节、loopback fake provider�
 - 代价：新增协议即新增一版 adapter；provider 错误词表成为跨 seam 的共享词汇
   （`internal/providercodes`），新增错误码必须同时更新映射与漂移测试。
 - 不做：不引入第二家厂商协议、不新增 provider SDK、不改 spec/contracts/迁移。
+
+## 修订（2026-11-08，后续两轴审查修复）
+
+- D1 的兼容验证请求补充服务端固定的 `tool_choice`，强制调用仅用于探针的
+  `orchara_probe({"value":"ok"})`；业务请求参数不因此开放任意工具策略。
+- 真实模型不能仅凭一次 JSON 对象响应获得总体通过。验证任务依次执行结构化输出、工具调用、
+  流式输出、传输取消四个探针，每项各有独立 logical key、物理请求、账本行与封存结果。
+  结构化探针要求固定的 `{"ok":true}` 和有效 usage；工具探针核对函数名、id、参数及 usage；
+  流式探针必须实际观察到 delta、完整结束及 usage；取消探针在实际 delta 到达后取消请求。
+  目的地和凭据继续在每次请求前按 D2 校验。
+- model_validate 报告的总体 check 为 `model_compatibility`，新增 `probes` 明细。
+  completion guard 从模型登记行判定真实 provider，要求四个不同调用/结果，并重读逐项封存
+  结果核对判定、provider、owner、candidate 和 job 归属；缺项、重复、伪造或不一致不得通过。
+  stub 仍保留原来的单项、明确标注的模拟验证，不冒充真实协议验收。
+- 取消探针证明 Go 传输停止，**不证明供应商停止执行或停止计费**。中断时未观察到的 usage
+  标为未知（`usage_observed=false`）；账本 tokens/charged_amount 留 NULL，保留预留金额，
+  不以零值声称供应商零消费。
+- D3 的单行 1 MiB 上限通过分段读取累计字节实际执行；总响应仍限 8 MiB。
+  SSE 内明确的权限/Schema/请求拒绝使用不可重试稳定码；429/5xx 和无明确拒绝语义的
+  中断保持 transient，均不返回半成品。
+- 旧的真实模型单项验证报告不构成上述总体能力证据；曾依赖该路径的部署需重新登记候选并
+  运行完整验证。本次没有真实供应商凭据，仍只报告本地 fake HTTP provider 的协议验收。

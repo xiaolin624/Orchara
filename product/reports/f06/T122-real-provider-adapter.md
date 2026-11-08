@@ -1,5 +1,10 @@
 # T122 — 真实厂商模型 adapter（OpenAI-compatible chat completions）
 
+> 2026-11-08 后续审查修订：旧证据中的单项结构化验证不是完整模型兼容通过依据。
+> 当前验证使用四个独立探针并由服务端重读封存结果；新增错误分类/大小限制与验证记录见
+> [B2-FOLLOWUP-FIXES.md](../f13b/B2-FOLLOWUP-FIXES.md) 和 ADR 0035 末尾修订。
+> 下文保留历史运行的原始数字，不能当作本次修复后的测试次数。
+
 - **票**：GitHub #135（T122，epic F06）；分支 `t/t122-real-provider-adapter`
 - **状态**：`partial`
   - 协议 adapter、Go 协议测试、配置接线、产品路径 e2e（fake provider）**已执行**；

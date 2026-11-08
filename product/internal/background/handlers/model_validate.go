@@ -82,6 +82,23 @@ func ModelValidate(ctx context.Context, work background.HandlerWork) background.
 	}
 
 	report := compatibilityReport(job, call, fixtureSHA)
+	if stub, _ := call.Data["stub"].(bool); !stub {
+		calls := []background.ModelCallResult{call}
+		for _, check := range background.RealModelCompatibilityChecks()[1:] {
+			probe, err := work.Scope.ModelCall(ctx, job.ID, work.AttemptToken, background.ModelCallRequest{
+				LogicalKey:            "compatibility:" + fixtureSHA + ":" + check,
+				ModelProfileVersionID: job.TargetID,
+				Params: map[string]any{
+					"task": "model_compatibility", "fixture_sha256": fixtureSHA, "check": check,
+				},
+			})
+			if err != nil {
+				return outcomeFor(err)
+			}
+			calls = append(calls, probe)
+		}
+		report = realCompatibilityReport(job, calls, fixtureSHA)
+	}
 	reportBytes, err := canonicalJSON(report)
 	if err != nil {
 		// The report is built from server-controlled values; a canonicalisation
@@ -180,6 +197,30 @@ func compatibilityReport(
 	if call.ResultArtifactID != nil {
 		report["model_result_artifact_id"] = *call.ResultArtifactID
 	}
+	return report
+}
+
+func realCompatibilityReport(job *background.Job, calls []background.ModelCallResult, fixtureSHA string) map[string]any {
+	report := compatibilityReport(job, calls[0], fixtureSHA)
+	probes := make([]background.ModelCompatibilityProbe, 0, len(calls))
+	passed := true
+	for _, call := range calls {
+		raw, _ := json.Marshal(call.Data["check"])
+		var check background.ModelCompatibilityCheck
+		if json.Unmarshal(raw, &check) != nil || !check.Passed {
+			passed = false
+		}
+		probes = append(probes, background.ModelCompatibilityProbe{
+			CallID: call.CallID, ResultArtifactID: derefArtifact(call.ResultArtifactID), Check: check,
+		})
+	}
+	reason := ""
+	if !passed {
+		reason = "required_check_failed"
+	}
+	report["check"] = background.ModelCompatibilityCheck{Name: "model_compatibility", Passed: passed, Reason: reason}
+	report["compatible"] = passed
+	report["probes"] = probes
 	return report
 }
 
