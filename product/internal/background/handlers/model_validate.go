@@ -24,6 +24,7 @@ import (
 	"orchara/platform/internal/background"
 	"orchara/platform/internal/jcs"
 	"orchara/platform/internal/objectstore"
+	"orchara/platform/internal/providercodes"
 )
 
 // reportReadyTimeout bounds how long a handler waits for its own report artifact
@@ -81,6 +82,23 @@ func ModelValidate(ctx context.Context, work background.HandlerWork) background.
 	}
 
 	report := compatibilityReport(job, call, fixtureSHA)
+	if stub, _ := call.Data["stub"].(bool); !stub {
+		calls := []background.ModelCallResult{call}
+		for _, check := range background.RealModelCompatibilityChecks()[1:] {
+			probe, err := work.Scope.ModelCall(ctx, job.ID, work.AttemptToken, background.ModelCallRequest{
+				LogicalKey:            "compatibility:" + fixtureSHA + ":" + check,
+				ModelProfileVersionID: job.TargetID,
+				Params: map[string]any{
+					"task": "model_compatibility", "fixture_sha256": fixtureSHA, "check": check,
+				},
+			})
+			if err != nil {
+				return outcomeFor(err)
+			}
+			calls = append(calls, probe)
+		}
+		report = realCompatibilityReport(job, calls, fixtureSHA)
+	}
 	reportBytes, err := canonicalJSON(report)
 	if err != nil {
 		// The report is built from server-controlled values; a canonicalisation
@@ -182,6 +200,30 @@ func compatibilityReport(
 	return report
 }
 
+func realCompatibilityReport(job *background.Job, calls []background.ModelCallResult, fixtureSHA string) map[string]any {
+	report := compatibilityReport(job, calls[0], fixtureSHA)
+	probes := make([]background.ModelCompatibilityProbe, 0, len(calls))
+	passed := true
+	for _, call := range calls {
+		raw, _ := json.Marshal(call.Data["check"])
+		var check background.ModelCompatibilityCheck
+		if json.Unmarshal(raw, &check) != nil || !check.Passed {
+			passed = false
+		}
+		probes = append(probes, background.ModelCompatibilityProbe{
+			CallID: call.CallID, ResultArtifactID: derefArtifact(call.ResultArtifactID), Check: check,
+		})
+	}
+	reason := ""
+	if !passed {
+		reason = "required_check_failed"
+	}
+	report["check"] = background.ModelCompatibilityCheck{Name: "model_compatibility", Passed: passed, Reason: reason}
+	report["compatible"] = passed
+	report["probes"] = probes
+	return report
+}
+
 func derefArtifact(value *string) string {
 	if value == nil {
 		return ""
@@ -214,11 +256,23 @@ func canonicalJSON(value any) ([]byte, error) {
 func outcomeFor(err error) background.Outcome {
 	var coded interface{ ErrorCode() string }
 	if errors.As(err, &coded) {
-		switch coded.ErrorCode() {
-		case "provider_not_configured":
+		code := coded.ErrorCode()
+		switch code {
+		case providercodes.NotConfigured:
 			return background.Failed(background.CodeProviderNotConfigured)
-		case "provider_adapter_unavailable":
+		case providercodes.DispatchAdapterUnavailable:
 			return background.Failed(background.CodeProviderAdapterUnavailable)
+		case providercodes.Transient:
+			// F06/T122: 429/5xx/timeout is an infrastructure failure the fixed
+			// retry table may retry; it is never a compatibility verdict.
+			return background.Failed(background.CodeTransientInternal)
+		case providercodes.DestinationNotApproved, providercodes.CallInvalid,
+			providercodes.PermissionDenied, providercodes.ModelNotFound,
+			providercodes.RequestRejected, providercodes.Redirected,
+			providercodes.ResponseInvalid, providercodes.ResponseTooLarge:
+			// F06/T122: a terminal provider refusal or malformed answer. Retrying
+			// the same request cannot change it, so it is a business failure.
+			return background.Failed(background.CodeModelCallRefused)
 		case "candidate_mismatch", "candidate_unavailable", "model_not_allowed",
 			"model_call_conflict", "fixture_missing", "fixture_not_synthetic":
 			return background.Failed(background.CodeModelCallRefused)

@@ -27,29 +27,43 @@ import (
 	"orchara/platform/internal/uuid"
 )
 
-// ModelCompatibilityCheck is the one verdict the T039 synthetic case reports.
-// It is exported so the report schema has a single definition.
+// ModelCompatibilityCheck is one probe or aggregate verdict. Stub reports
+// retain their T039 synthetic check; real reports require the probe set below.
 type ModelCompatibilityCheck struct {
 	Name   string `json:"name"`
 	Passed bool   `json:"passed"`
 	Reason string `json:"reason"`
 }
 
+// RealModelCompatibilityChecks are mandatory for the sole supported real
+// protocol. Stub validation retains its explicitly labelled synthetic check.
+func RealModelCompatibilityChecks() []string {
+	return []string{"structured_output", "tool_call", "streaming", "cancellation"}
+}
+
+// ModelCompatibilityProbe binds one verdict to the server's immutable call result.
+type ModelCompatibilityProbe struct {
+	CallID           string                  `json:"call_id"`
+	ResultArtifactID string                  `json:"result_artifact_id"`
+	Check            ModelCompatibilityCheck `json:"check"`
+}
+
 // ModelCompatibilityReport is the exact report document the model_validate
 // handler registers (internal/background/handlers/model_validate.go). Unknown
 // fields are refused: the handler and this guard must share one schema.
 type ModelCompatibilityReport struct {
-	ReportVersion         int                     `json:"report_version"`
-	Kind                  string                  `json:"kind"`
-	ModelProfileVersionID string                  `json:"model_profile_version_id"`
-	CallID                string                  `json:"call_id"`
-	FixtureArtifactID     string                  `json:"fixture_artifact_id"`
-	FixtureSHA256         string                  `json:"fixture_sha256"`
-	Check                 ModelCompatibilityCheck `json:"check"`
-	Compatible            bool                    `json:"compatible"`
-	Provider              string                  `json:"provider"`
-	Stub                  bool                    `json:"stub"`
-	ModelResultArtifactID *string                 `json:"model_result_artifact_id,omitempty"`
+	ReportVersion         int                       `json:"report_version"`
+	Kind                  string                    `json:"kind"`
+	ModelProfileVersionID string                    `json:"model_profile_version_id"`
+	CallID                string                    `json:"call_id"`
+	FixtureArtifactID     string                    `json:"fixture_artifact_id"`
+	FixtureSHA256         string                    `json:"fixture_sha256"`
+	Check                 ModelCompatibilityCheck   `json:"check"`
+	Compatible            bool                      `json:"compatible"`
+	Provider              string                    `json:"provider"`
+	Stub                  bool                      `json:"stub"`
+	ModelResultArtifactID *string                   `json:"model_result_artifact_id,omitempty"`
+	Probes                []ModelCompatibilityProbe `json:"probes,omitempty"`
 }
 
 // decodeModelCompatibilityReport strictly decodes one report document.
@@ -108,14 +122,15 @@ func (c *Controller) guardModelValidateSuccess(
 	var (
 		modelManifest string
 		modelState    string
+		modelProvider string
 		modelRevoked  sql.NullTime
 	)
 	err := tx.QueryRowContext(ctx, `
-		SELECT manifest_sha256, validation_state, revoked_at
+		SELECT manifest_sha256, validation_state, revoked_at, provider
 		  FROM platform.model_profile_versions
 		 WHERE id = $1::uuid
 		 FOR UPDATE`, job.TargetID,
-	).Scan(&modelManifest, &modelState, &modelRevoked)
+	).Scan(&modelManifest, &modelState, &modelRevoked, &modelProvider)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CodeEvaluationMissing, nil
 	}
@@ -258,6 +273,14 @@ func (c *Controller) guardModelValidateSuccess(
 	}
 	if callModel != job.TargetID || !callJob.Valid || callJob.String != job.ID || callState != "succeeded" {
 		return CodeReportBindingMismatch, nil
+	}
+	if modelProvider != "stub" {
+		if report.Stub || report.Provider != modelProvider {
+			return CodeReportBindingMismatch, nil
+		}
+		if code, err := c.verifyRealModelProbes(ctx, tx, job, report); code != "" || err != nil {
+			return code, err
+		}
 	}
 
 	status := "failed"

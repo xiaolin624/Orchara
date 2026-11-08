@@ -14,8 +14,11 @@ package knowledge
 //     eviction is an optimization, never a permission guarantee.
 //   - every hit re-checks each returned chunk's document in SQL (not deleted, the
 //     chunk belongs to the document's active ready index version, body artifact
-//     ready/not deleted/same owner) and the body artifact's content hash. Any
-//     disagreement discards the entry and the request proceeds as a miss.
+//     ready/not deleted/same owner) and re-reads the sealed body artifact: its
+//     bytes must equal the stored text and its sha256 must equal the stored body
+//     hash. Any disagreement, or an object that has become unreadable (which the
+//     authoritative path would skip), discards the entry and the request proceeds
+//     as a miss. The memoized text is never returned without the bytes behind it.
 //   - the row is looked up by (cache_key, principal_id, knowledge_base_id), so a
 //     stored body can never be served to a different principal.
 //   - `expires_at` is a TTL, not an authorization: a hit inside the TTL still runs
@@ -247,4 +250,19 @@ func (item retrievalCacheItem) chunkView() ChunkView {
 		Text:             item.Text,
 		Score:            item.Score,
 	}
+}
+
+// matchesSealedBody proves this memoized item is still exactly the sealed body:
+// the bytes and their sha256 both have to equal what the entry stored. The
+// database rows alone cannot prove this (the object is the authoritative byte
+// store). It lives on the item it inspects rather than taking the item as a
+// free-function argument (F13B/T113 review fix T113-4, Feature Envy).
+func (item retrievalCacheItem) matchesSealedBody(sealedText string) (bool, string) {
+	if sealedText != item.Text {
+		return false, CacheDiscardItemMismatch
+	}
+	if cacheBodySHA256(sealedText) != item.BodySHA256 {
+		return false, CacheDiscardItemMismatch
+	}
+	return true, ""
 }

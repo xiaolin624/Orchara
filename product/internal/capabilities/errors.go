@@ -26,19 +26,27 @@
 //     operation is only `succeeded` once a ready artifact owned by the run (or
 //     the server-sealed reported data) exists.
 //   - The stub provider is labeled stub everywhere: the projection carries
-//     stub=true and the ledger read surfaces it. No real vendor adapter is
-//     compiled in this batch; real providers fail closed with
-//     provider_not_configured/adapter_unavailable and are never retried.
+//     stub=true and the ledger read surfaces it. F06/T122 compiles the real
+//     OpenAI-compatible chat-completions adapter; a real provider that is
+//     unconfigured, names an unapproved destination or speaks another protocol
+//     fails closed (provider_not_configured / provider_destination_not_approved /
+//     adapter_unavailable) before any ledger row exists.
 package capabilities
 
 import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"orchara/platform/internal/providercodes"
 )
 
 // Stable error codes. They are the vocabulary the HTTP layer maps to contract
 // statuses and the owner-facing ledger shows (never a provider payload).
+//
+// The provider codes are aliases of internal/providercodes, the single source
+// shared with the job-scoped internal endpoint and the background retry table
+// (F06/T122; B2 review fix H3).
 const (
 	CodeRunNotFound             = "run_not_found"
 	CodeRunNotRunning           = "run_not_running"
@@ -55,12 +63,25 @@ const (
 	CodeToolUnavailable         = "tool_not_available"
 	CodeResultArtifactInvalid   = "result_artifact_invalid"
 	CodeManifestUnavailable     = "manifest_unavailable"
-	CodeProviderNotConfigured   = "provider_not_configured"
-	CodeAdapterUnavailable      = "adapter_unavailable"
-	CodeProviderTransient       = "provider_transient"
-	CodeProviderResponseInvalid = "provider_response_invalid"
-	CodeParamsInvalid           = "validation_failed"
-	CodeInternal                = "internal_error"
+	CodeProviderNotConfigured   = providercodes.NotConfigured
+	CodeAdapterUnavailable      = providercodes.AdapterUnavailable
+	CodeProviderTransient       = providercodes.Transient
+	CodeProviderResponseInvalid = providercodes.ResponseInvalid
+	// F06/T122 provider protocol vocabulary: the destination is not one the
+	// deployer registered, or the provider answer exceeded the adapter's 8 MiB
+	// protocol limit (the existing provider_response_invalid covers malformed
+	// chat-completions and provider status refusals below).
+	CodeProviderDestinationNotApproved = providercodes.DestinationNotApproved
+	CodeProviderResponseTooLarge       = providercodes.ResponseTooLarge
+	// CodeCallerCancelled is the stable ledger code for a capability call whose
+	// caller went away (client disconnect or request deadline). It is a
+	// cancellation, never a provider claim: the attempt is closed and its
+	// reservation released, but the failure is not classified as a provider
+	// error and never retried or failed over (B2 review fix H2). It is the
+	// non-stream analogue of CodeStreamCancelled.
+	CodeCallerCancelled = "caller_cancelled"
+	CodeParamsInvalid   = "validation_failed"
+	CodeInternal        = "internal_error"
 	// F06/T046 budget vocabulary.
 	CodeBudgetExhausted        = "budget_exhausted"
 	CodeBudgetCurrencyMismatch = "budget_currency_mismatch"

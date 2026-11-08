@@ -2,40 +2,48 @@ package modelproxy
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/modelregistry"
 )
 
 // realProvider is the fail-closed real-model path.
 //
 // It resolves the candidate's credential through `secret_ref` inside Go (env: or
-// file: inside the deployer-controlled secret directory), and it never accepts
-// an endpoint or a credential from a request. This batch compiles no vendor
-// protocol adapter (F06 owns precise provider adapters, and inventing a wire
-// format here would be untested protocol work that the ticket explicitly
-// excludes), so a configured endpoint still answers with a stable
-// `provider_adapter_unavailable` 503 — never a fabricated success and never a
-// ledger row that claims a real model answered.
+// file: inside the deployer-controlled secret directory, or a deployer catalog
+// credential whose entry names an environment variable), and it never accepts
+// an endpoint or a credential from a request. The wire protocol is the single
+// OpenAI-compatible chat-completions adapter in openai.go; an unregistered
+// destination, a protocol this build does not speak, or an unresolvable
+// credential answers with a stable typed error before anything is dispatched or
+// billed.
+//
+// F13B/T122 (B2 review fix S2): the deployment-level credential
+// (`ORCHARA_MODEL_SECRET_REF` -> Config.ModelSecret) is a real fallback. The
+// candidate row's `secret_ref` is tried first, so an explicitly registered
+// credential always wins; a row whose reference cannot be resolved falls back to
+// the deployment credential for the same deployment endpoint. When neither
+// resolves the provider is `provider_not_configured` (fail closed).
 type realProvider struct {
-	endpoint  string
-	secretDir string
-	lookup    config.Lookup
+	endpoint     string
+	deploySecret string
+	secretDir    string
+	lookup       config.Lookup
+	catalog      *modelregistry.Catalog
 }
 
 // Name is a label, not a URL and not a credential.
 func (p *realProvider) Name() string { return "real" }
 
 // Available answers the honest question before anything is billed: is a real
-// endpoint deployed, can the candidate's credential be resolved inside Go, and
-// is there a protocol adapter for it in this build?
-//
-// The third answer is "no" in this batch (F06 owns the vendor adapters), so a
-// real candidate is refused here and never produces a ledger row. When F06 lands
-// the adapter, only this method and Call change.
+// endpoint deployed, does the candidate name an approved destination, does the
+// registration declare the chat-completions protocol, and can the candidate's
+// credential be resolved inside Go?
 func (p *realProvider) Available(candidate *Candidate) error {
 	if candidate == nil {
 		return ErrCandidateUnavailable
@@ -43,20 +51,74 @@ func (p *realProvider) Available(candidate *Candidate) error {
 	if strings.TrimSpace(p.endpoint) == "" {
 		return ErrNotConfigured
 	}
-	if _, err := resolveSecret(candidate.SecretRef, p.secretDir, p.lookup); err != nil {
-		return ErrNotConfigured
+	if _, err := chatEndpoint(p.endpoint); err != nil {
+		return err
 	}
-	return ErrAdapterUnavailable
+	if err := p.checkDestination(candidate.EndpointRef); err != nil {
+		return err
+	}
+	registered, err := parseProviderConfig(candidate.Config)
+	if err != nil {
+		return err
+	}
+	if !registered.supportsChatCompletions() {
+		return ErrAdapterUnavailable
+	}
+	if _, err := p.resolveCredential(candidate.SecretRef); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (p *realProvider) Call(_ context.Context, request CallRequest) (ProviderResponse, error) {
+func (p *realProvider) Call(ctx context.Context, request CallRequest) (ProviderResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if check := compatibilityCheck(request); check == "streaming" || check == "cancellation" {
+		return p.compatibilityStream(ctx, request)
+	}
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
 	}
 	if err := p.Available(request.Candidate); err != nil {
 		return ProviderResponse{}, err
 	}
-	return ProviderResponse{}, fmt.Errorf("%w: provider %q", ErrAdapterUnavailable, request.Candidate.Provider)
+	registered, err := parseProviderConfig(request.Candidate.Config)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	secret, err := p.resolveCredential(request.Candidate.SecretRef)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	endpoint, err := chatEndpoint(p.endpoint)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	body, err := buildChatRequest(request, registered, false)
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	response, cancel, err := p.send(ctx, endpoint, secret, body, registered.timeout(), "application/json")
+	if err != nil {
+		return ProviderResponse{}, err
+	}
+	defer cancel()
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// The body is never part of an error or a log line: it is drained only
+		// so the connection can be reused.
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		return ProviderResponse{}, classifyStatus(response.StatusCode)
+	}
+	content, err := readLimitedBody(response.Body)
+	if err != nil {
+		if errors.Is(err, ErrResponseTooLarge) {
+			return ProviderResponse{}, err
+		}
+		return ProviderResponse{}, &TransientError{Reason: "the model provider response ended before it could be read"}
+	}
+	return p.decodeChatCompletion(content, request, registered)
 }
 
 // parseReference validates the reference shape without contacting anything.

@@ -4,7 +4,9 @@
 - 日期：2026-11-04
 - 相关：F10 / T067（GitHub #68，规划 ID F10.05）；分支 `t/t067-retrieval-cache`；
   报告 `product/reports/f10/T067-retrieval-cache.md`；
-  迁移 `product/db/migrations/0037_knowledge_retrieval_cache.sql`。
+  迁移 `product/db/migrations/0037_knowledge_retrieval_cache.sql`；
+  后续复核：F13B/T113（GitHub #114，`product/reports/f13b/T113-cache-comparison.md`，
+  命中复检补强为“重读封存正文 + sha256”，并记录其延迟成本）。
 - 前置：T055（`reports/f10/T055-knowledge-ingest.md`、ADR 0010、迁移 `0034_knowledge.sql`、
   `internal/knowledge` 的 SQL 先过滤后排序检索）与 T064（`reports/f10/T064-grounded-citations.md`、
   ADR 0012、`Answer`/`GetChunk` 返回前复检）。
@@ -80,6 +82,11 @@ T055 交付了"SQL 先做 ACL/当前版本过滤，再对有界候选集排序"�
    `currentReadableChunkSQL` **唯一定义**，检索（`rankRetrieval`）与引用打开（`GetChunk`）
    复用同一片段——此前三处各抄一份，T061 激活切换时须同时改三份，权限条件有漂移风险。
    缓存这一处只多传 owner 参数位（`$3`）与自己的候选集条件。
+   **F13B/T113（2026-11-08）补强**：上述数据库行复核之后，命中还要重读每条返回 chunk 的
+   封存正文，要求正文与 sha256 都仍等于缓存行记录的值；对象缺失/不可读按 miss 处理
+   （`item_unreadable`）。原因：只比对 `artifacts.sha256` 列时，封存对象缺失/被替换的
+   条目仍会被当作命中，而权威 miss 路径会跳过该候选——缓存命中必须与权威答案一致，
+   不能把“对象暂时不可读”掩盖成命中。
 7. 只有全部通过才返回缓存正文，并 `hit_count+1`/`last_hit_at=now()`。
 
 因此：**异步驱逐只是优化**。删除/撤权先在权威表生效，旧键不再被查找；即使旧行还在
@@ -157,3 +164,24 @@ T055 交付了"SQL 先做 ACL/当前版本过滤，再对有界候选集排序"�
   一次逐 chunk 复检 SQL；缓存写失败按 miss 处理（不会破坏正确性，但没有收益）。
 - 未改 `contracts/**`/`docs/spec/**`，`sync_spec --check` no drift；迁移只新增 0037，
   0001–0036 未改；`orchara_worker`/PUBLIC 对 `platform` 仍零权限。
+
+## 修订（2026-11-08，F13B/T113；B2 复核修复 T113-3）
+
+**日期化勘误：保留上文 2026-11-07 原文，只修正已过时的成本描述。**
+
+上文“代价”写“命中要付一次源版本摘要查询 + 一次组件读取 + 一次逐 chunk 复检 SQL”。
+T113 的命中补强（见 D2 的 F13B/T113 段）之后，这个描述已不完整：
+
+- 命中还会**重读每条返回 chunk 的封存 body** 并核对正文与 `body_sha256`。读失败再分两类
+  （B2 复核修复 T113-2）：
+  - 确定性不可用（对象缺失 `ErrNotExist`、键非法 `ErrInvalidKey`、超过单对象上限
+    `ErrTooLarge`）→ 本次 miss 并**丢弃该行**，reason 用既有 `item_unreadable`；
+  - 瞬态读取失败（I/O、对象存储暂不可用、读取被中断）→ 本次 miss 但**保留行**，reason 用
+    既有 `cache_unavailable`，之后可恢复命中。
+- 因此命中的真实成本是：一次源版本摘要查询 + 一次组件读取 + 一次逐 chunk 复检 SQL +
+  **每条 chunk 一次封存对象读取与 sha256 计算**；成本随 top_k 线性增长。对照实验的实测
+  数字与其局限性见 `reports/f13b/T113-cache-comparison.md` §4（绝对延迟随宿主负载波动，
+  不作为性能承诺）。
+- 安全词表不扩：仍是五类 reason；缓存仍是可重建优化，绝不授权，也绝不在读失败时把记忆
+  正文当作命中返回。
+

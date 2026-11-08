@@ -5,11 +5,14 @@ package knowledge
 // database; the real-stack suite proves the hit/miss/validation behaviour.
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"orchara/platform/internal/config"
+	"orchara/platform/internal/objectstore"
 )
 
 func cacheLookup(values map[string]string) config.Lookup {
@@ -145,5 +148,72 @@ func TestShouldStoreRetrievalCacheRefusesEmptyPartialOrOversizedEntries(t *testi
 func TestRetrievalCacheTTLIsBoundedAndPositive(t *testing.T) {
 	if RetrievalCacheDefaultTTL < time.Minute || RetrievalCacheDefaultTTL > 24*time.Hour {
 		t.Fatalf("RetrievalCacheDefaultTTL = %s is outside the documented bound", RetrievalCacheDefaultTTL)
+	}
+}
+
+func TestCachedBodyVerificationRejectsChangedSealedBytes(t *testing.T) {
+	// F13B/T113: a hit may only serve the bytes that are still sealed under the
+	// chunk's body artifact. The database sha comparison alone is not enough: a
+	// temporarily unreadable or replaced object would otherwise be served from the
+	// memoized text while the authoritative path skips it.
+	text := "华北地区十月的销售额是 1234.50 元"
+	item := retrievalCacheItem{
+		ChunkID:    "chunk-1",
+		Text:       text,
+		BodySHA256: cacheBodySHA256(text),
+	}
+	if ok, reason := item.matchesSealedBody(text); !ok {
+		t.Fatalf("identical sealed bytes must match (reason %q)", reason)
+	}
+	if ok, reason := item.matchesSealedBody(text + "篡改"); ok || reason != CacheDiscardItemMismatch {
+		t.Fatalf("changed bytes must be a mismatch (ok=%v reason=%q)", ok, reason)
+	}
+	changedSHA := item
+	changedSHA.BodySHA256 = strings.Repeat("0", 64)
+	if ok, reason := changedSHA.matchesSealedBody(text); ok || reason != CacheDiscardItemMismatch {
+		t.Fatalf("a body whose sha no longer matches must be a mismatch (ok=%v reason=%q)", ok, reason)
+	}
+}
+
+// TestTransientSealedBodyReadFailureKeepsTheCacheRow is F13B/T113 review fix
+// T113-2. A hit re-reads every sealed body; an I/O or availability blip must be
+// a miss for this request only (the cache is a rebuildable optimization), while
+// a deterministic refusal (missing object, invalid key, oversized object) still
+// discards the entry with the existing safe vocabulary.
+func TestTransientSealedBodyReadFailureKeepsTheCacheRow(t *testing.T) {
+	cases := []struct {
+		name        string
+		readErr     error
+		wantReason  string
+		wantDiscard bool
+	}{
+		{"missing object", objectstore.ErrNotExist, CacheDiscardItemUnreadable, true},
+		{"wrapped missing object", fmt.Errorf("opening the object: %w", objectstore.ErrNotExist), CacheDiscardItemUnreadable, true},
+		{"invalid key", objectstore.ErrInvalidKey, CacheDiscardItemUnreadable, true},
+		{"oversized object", objectstore.ErrTooLarge, CacheDiscardItemUnreadable, true},
+		{"io error", errors.New("the device is temporarily unavailable"), CacheDiscardUnavailable, false},
+		{"wrapped io error", fmt.Errorf("opening the object: %w", errors.New("sharing violation")), CacheDiscardUnavailable, false},
+	}
+	safe := map[string]bool{
+		CacheDiscardExpired:           true,
+		CacheDiscardComponentsChanged: true,
+		CacheDiscardItemUnreadable:    true,
+		CacheDiscardItemMismatch:      true,
+		CacheDiscardUnavailable:       true,
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			reason := cacheHitReadFailureReason(testCase.readErr)
+			if reason != testCase.wantReason {
+				t.Fatalf("reason = %q, want %q", reason, testCase.wantReason)
+			}
+			if discard := cacheDiscardDecision(reason); discard != testCase.wantDiscard {
+				t.Fatalf("discard = %v, want %v (the row must survive only a transient failure)",
+					discard, testCase.wantDiscard)
+			}
+			if !safe[reason] {
+				t.Fatalf("reason %q is outside the ADR 0015 D6 safe vocabulary", reason)
+			}
+		})
 	}
 }

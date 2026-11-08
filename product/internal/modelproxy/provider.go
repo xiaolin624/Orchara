@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"orchara/platform/internal/config"
 	"orchara/platform/internal/jcs"
@@ -107,6 +108,37 @@ func NewProviders(
 	}
 }
 
+// SetStubServiceDelay installs the F13B/T114 capacity-stub stand-in service
+// time. It is deliberately a no-op unless this provider set is the capacity-stub
+// deployment: dev-stub keeps its existing (immediate) timing, and a real-model
+// deployment can never delay a real provider with a stand-in knob.
+//
+// The delay is applied inside the stub provider, before it derives its answer;
+// it is stand-in service time, not vendor latency.
+func (p *Providers) SetStubServiceDelay(delay time.Duration) {
+	if p == nil || p.stub == nil || delay <= 0 {
+		return
+	}
+	if p.profile != config.ProfileCapacityStub {
+		return
+	}
+	p.stub.serviceDelay = delay
+}
+
+// WithDeploySecret installs the deployment-level credential reference
+// (`ORCHARA_MODEL_SECRET_REF`) as the fallback for the deployment endpoint
+// (F13B/T122; B2 review fix S2). The candidate row's `secret_ref` keeps
+// priority; the deployment credential is tried only when the row reference
+// cannot be resolved. An empty reference leaves the provider with row
+// credentials only.
+func (p *Providers) WithDeploySecret(reference string) *Providers {
+	if p == nil || p.real == nil {
+		return nil
+	}
+	p.real.deploySecret = strings.TrimSpace(reference)
+	return p
+}
+
 // For returns the provider a candidate is allowed to use.
 func (p *Providers) For(candidate *Candidate) (Provider, error) {
 	if candidate == nil {
@@ -132,7 +164,14 @@ func (p *Providers) For(candidate *Candidate) (Provider, error) {
 // compatibility verdict is driven by an explicit case marker in the fixture. It
 // always labels itself `provider: "stub"`, so a caller can never mistake the
 // answer for a real model's.
-type stubProvider struct{}
+//
+// serviceDelay is the F13B/T114 capacity-stub stand-in service time: a fixed
+// delay installed only by the capacity-stub deployment (SetStubServiceDelay).
+// A dev-stub deployment never sets it, so the existing deterministic timing is
+// unchanged there.
+type stubProvider struct {
+	serviceDelay time.Duration
+}
 
 func (s *stubProvider) Name() string { return "stub" }
 
@@ -145,9 +184,20 @@ func (s *stubProvider) Available(candidate *Candidate) error {
 	return nil
 }
 
-func (s *stubProvider) Call(_ context.Context, request CallRequest) (ProviderResponse, error) {
+func (s *stubProvider) Call(ctx context.Context, request CallRequest) (ProviderResponse, error) {
 	if request.Candidate == nil {
 		return ProviderResponse{}, ErrCandidateUnavailable
+	}
+	if s.serviceDelay > 0 {
+		// Capacity-stub stand-in service time. It observes cancellation so a
+		// cancelled run is not parked for the whole delay.
+		timer := time.NewTimer(s.serviceDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ProviderResponse{}, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	// F08/T079: a routing control call is a server-built prompt with
 	// `task: "route"`; it is answered deterministically from the prompt bytes.
