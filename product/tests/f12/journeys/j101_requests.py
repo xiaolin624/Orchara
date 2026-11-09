@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from support import execution_support as execution
 from support import f00b, f02a, t031, t033, t042, t049, t068
 from support import stack as st
 
@@ -165,7 +166,7 @@ def run_request_to_result(stack, record) -> dict:
         {"artifact": artifact, "sealed_prefix": sealed[:80]},
     )
 
-    completed, report = t042.run_linear_once(stack)
+    completed, report = execution.execute_once(stack)
     record.command("cmd/supervisor exec --once (real WSL2/runsc execution of the dispatched Run)")
     record.check(
         "the real supervisor executes the dispatched Run to success",
@@ -370,7 +371,7 @@ def run_natural_language(stack, record) -> dict:
         {"artifact": artifact, "sealed": sealed},
     )
 
-    completed, report = t042.run_linear_once(stack)
+    completed, report = execution.execute_once(stack)
     record.command("cmd/supervisor exec --once (the dispatched natural-language Run)")
     run_id = request["run_id"]
     run = _run_row(stack.dbname, run_id)

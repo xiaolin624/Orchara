@@ -1,0 +1,163 @@
+{
+  "state": "published_verified",
+  "parent_issue": 160,
+  "parent_url": "https://github.com/xiaolin624/Orchara/issues/160",
+  "repository": "xiaolin624/Orchara",
+  "relationship_mode": "body_text_links",
+  "readback": {
+    "all_new_bodies_exact": true,
+    "all_new_open_ready_for_agent": true,
+    "all_dependencies_resolved": true,
+    "existing_C1_unchanged": true,
+    "parent_labels": [
+      "ready-for-agent",
+      "wayfinder:map"
+    ]
+  },
+  "published": {
+    "C5.01": {
+      "issue": 142,
+      "url": "https://github.com/xiaolin624/Orchara/issues/142",
+      "title": "共享真实 Stack 并迁移票号类型别名的调用者",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C5.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n测试维护者可直接使用按能力命名的真实 Stack，原有 API、证书、数据库、对象目录与签名配置保持一致；首批调用者不再依赖多层票号类型链。\n\n## Acceptance criteria\n\n- [ ] 将真实字段持有者迁为规范 Stack，保留 client 行为与现有 fixture scope，不引入全局可变栈。\n- [ ] 扩展新入口并迁移 Stack 类型使用者；兼容别名仅保留到明确 contract 任务，不要求调用者同时学两套配置。\n- [ ] 检查证书/身份、对象目录、签名配置及隔离行为一致；敏感值不进报告。\n- [ ] 运行测试收集及代表真实栈创建/HTTP 使用场景，记录实际结果；导入成功不代替运行验收。\n\n## Blocked by\n\nNone (can start immediately).\n\n## Traceability\n\n原报告：C5；总规格 User Stories：57, 59, 60。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C5.02": {
+      "issue": 143,
+      "url": "https://github.com/xiaolin624/Orchara/issues/143",
+      "title": "通过共享能力执行一次真实 supervisor 尝试并回收资源",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C5.02 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n现有执行验收通过一个按能力命名的操作完成真实 finalizer 与 supervisor 的一次执行，正常、失败和超时路径都能观察结果并回收进程。\n\n## Acceptance criteria\n\n- [ ] 迁移现有环境组合、FinalizeWorker 生命周期、实际 supervisor 启动与报告解析，保持每次执行顺序和默认生命周期。\n- [ ] 迁移当前一次执行入口及它的直接纯转发调用者；专用取消/并发场景仍可使用显式生命周期能力。\n- [ ] 环境覆盖只作用于目标子进程，保持 supervisor/worker 身份区分，不把凭据写入日志。\n- [ ] 正常、异常、超时和启动失败均 terminate/必要时 kill 并 wait，记录实际清理证据。\n- [ ] 返回进程/报告不被自动解释为 Run 已终态；使用真实 DB/封存/SSE 验证代表运行，保持测试独立断言。\n\n## Blocked by\n\n- Blocked by: #142 — C5.01 共享真实 Stack 并迁移票号类型别名的调用者\n\n## Traceability\n\n原报告：C5；总规格 User Stories：58, 59, 60, 61, 62, 66。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C5.03": {
+      "issue": 144,
+      "url": "https://github.com/xiaolin624/Orchara/issues/144",
+      "title": "共享运行事实读取并迁移图验收调用者",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C5.03 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n图节点等既有验收直接读取共享的节点、封存产物和 SSE 事实，仍用各场景的独立期望判断结果。\n\n## Acceptance criteria\n\n- [ ] 提取真实复用的节点结果、封存正文、状态/SSE 和最终输出观察能力，并迁移相关图验收批次。\n- [ ] 保留票专用工作流、知识准备、审批场景、销售数据、SQL 和业务断言及原报告归属。\n- [ ] 不把数据准备与预期值合成同一成功生成器；区分 proposed result、supervisor exit 与 DB committed terminal。\n- [ ] 运行代表线性/图或等待恢复真实路径并比较迁移前后观察结果，记录失败或未运行限制。\n\n## Blocked by\n\n- Blocked by: #142 — C5.01 共享真实 Stack 并迁移票号类型别名的调用者\n\n## Traceability\n\n原报告：C5；总规格 User Stories：63, 64, 66。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C5.04": {
+      "issue": 145,
+      "url": "https://github.com/xiaolin624/Orchara/issues/145",
+      "title": "删除已迁移的测试别名与纯转发入口",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C5.04 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n仓库测试直接依赖能力入口，目标票号类型链和纯转发已彻底移除，测试仍能真实执行并清理。\n\n## Acceptance criteria\n\n- [ ] 全仓搜索证明目标 Stack 别名、一次执行转发及通用观察再次导出的调用者清零，再删除兼容入口。\n- [ ] 保留有业务作用的票模块，不整文件删除专用 fixture/断言。\n- [ ] 受影响测试可收集并运行，至少有真实执行与失败/超时清理证据；不以仅 collection 通过宣布完成。\n- [ ] 记录实际删除清单与剩余有理由的支持入口，禁止永久保留两套共享实现。\n\n## Blocked by\n\n- Blocked by: #142 — C5.01 共享真实 Stack 并迁移票号类型别名的调用者\n- Blocked by: #143 — C5.02 通过共享能力执行一次真实 supervisor 尝试并回收资源\n- Blocked by: #144 — C5.03 共享运行事实读取并迁移图验收调用者\n\n## Traceability\n\n原报告：C5；总规格 User Stories：65, 66。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C2.01": {
+      "issue": 146,
+      "url": "https://github.com/xiaolin624/Orchara/issues/146",
+      "title": "同步主调用与兼容 fallback 共用模型尝试生命周期",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C2.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n使用者通过现有同步 capability 调用完成主候选及兼容 fallback，共用门禁、预留、尝试开闭与结算规则，输出和账本一致。\n\n## Acceptance criteria\n\n- [ ] 保留外部调用与幂等/授权语义，复用既有预留及结算实现，增加私有统一尝试驱动而非另一套账本。\n- [ ] 调用前门禁失败不伪造 attempt；真实调用先原子预留，主三次、兼容备一次上限固定。\n- [ ] 分别判断 typed transient 重试与 availability fallback；权限/Schema/工具参数拒绝终止，实际候选费率和预算守卫保持。\n- [ ] 完整响应后的平台校验或封存失败仍按既有真实 usage 结算；缺 usage、业务取消与兼容探针记账区别保持。\n- [ ] 从现有入口观察真实 PG、实际请求数和封存结果，验证重放零派发、预算拒绝、拒绝不重试、同步主/备完整路径。\n\n## Blocked by\n\nNone (can start immediately).\n\n## Traceability\n\n原报告：C2；总规格 User Stories：14, 15, 16, 17, 18, 19, 23, 24, 25, 26, 27。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C2.02": {
+      "issue": 147,
+      "url": "https://github.com/xiaolin624/Orchara/issues/147",
+      "title": "流式主调用与 fallback 接入同一尝试驱动",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C2.02 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n流式使用者得到与同步一致的生命周期规则，每个真实尝试独立 generation，失败草稿和半条工具调用不会混入最终结果。\n\n## Acceptance criteria\n\n- [ ] 流式主候选和 fallback 使用已存在的同一驱动，保留 StreamProvider 与 generation 的实际内容差异。\n- [ ] 每尝试独立 generation，失败草稿丢弃、仅完整工具调用进入最终校验；不通过同步伪 SSE 实现。\n- [ ] retry/fallback 通知 emit 失败即停止后续派发；消费者停止和 ctx 取消不再重试/fallback。\n- [ ] 已封存成功后 final 帧投递失败不撤销成功；完整响应后校验/封存失败消费处理与实际候选一致。\n- [ ] 通过现有流式链路观察帧、实际请求、PG 账本和封存字节，保留既有授权/重放与半流回归。\n\n## Blocked by\n\n- Blocked by: #146 — C2.01 同步主调用与兼容 fallback 共用模型尝试生命周期\n\n## Traceability\n\n原报告：C2；总规格 User Stories：14, 18, 19, 22, 23, 24, 25, 26, 27, 28, 29。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C2.03": {
+      "issue": 148,
+      "url": "https://github.com/xiaolin624/Orchara/issues/148",
+      "title": "闭环四条模型路径的取消、清理失败与结算回归",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C2.03 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n调用者在派发前、调用中、退避或流式通知期间停止时，四条模型路径都停止新请求；清理失败不会伪装为账本已关闭。\n\n## Acceptance criteria\n\n- [ ] 先复现并记录同步/流式 adapter 路由、通知 emit、尝试前取消及清理错误差异，再依已接受规则修正。\n- [ ] 取消清理使用有界独立 context，数据库清理失败明确返回/关联错误，不继续派发或声称关闭已成功。\n- [ ] 覆盖同步/流式主/备的调用前、调用中、退避与通知取消，检查物理请求数、attempt/operation、预留与费用。\n- [ ] 删除被统一驱动取代的四套生命周期循环及无意义转发，保留流式独立内容处理。\n- [ ] 记录本地 fake HTTP、stub、真实 PG 与真实供应商的不同证据，缺真实供应商不伪称验收。\n\n## Blocked by\n\n- Blocked by: #147 — C2.02 流式主调用与 fallback 接入同一尝试驱动\n\n## Traceability\n\n原报告：C2；总规格 User Stories：20, 21, 22, 27, 29。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C3.01": {
+      "issue": 149,
+      "url": "https://github.com/xiaolin624/Orchara/issues/149",
+      "title": "普通知识检索统一读取并验证正文摘要与字节数",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C3.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n知识库使用者通过现有检索得到当前允许读取且正文完整的片段，坏片段被跳过，部分或空结果不被缓存。\n\n## Acceptance criteria\n\n- [ ] 复用既有权限谓词，集中有界 metadata SQL、对象打开/关闭和原始字节摘要/长度校验。\n- [ ] 从权威 artifact 取得摘要及 size_bytes，单次有界读取校验；同长度替换、截断、大小不符和非法 metadata 均不能作为有效正文返回。\n- [ ] 保持 owner/tombstone/活动索引/正文归属、候选上限与当前 embedding 筛选；不新加文档最新 revision/ready 限制。\n- [ ] 保留 SQL 整体错误与逐对象失败区别，跳过坏片段且不缓存部分/空结果，不泄露对象路径。\n- [ ] 通过真实检索、PG 和对象字节验证正常与损坏路径，记录新增校验成本。\n\n## Blocked by\n\nNone (can start immediately).\n\n## Traceability\n\n原报告：C3；总规格 User Stories：30, 31, 32, 33, 34, 38, 39。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C3.02": {
+      "issue": 150,
+      "url": "https://github.com/xiaolin624/Orchara/issues/150",
+      "title": "引用、回答和缓存复检接入同一已验证读取",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C3.02 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n打开引用、返回答案和使用缓存都经过同一正文完整性标准；缓存瞬态故障可恢复，损坏内容不会从 miss 路径重新返回。\n\n## Acceptance criteria\n\n- [ ] 引用和缓存复检共用已验证读取与 metadata 规则，当前 provenance、正文、摘要与大小均核对。\n- [ ] 引用正文不可读保持安全 404；回答返回前仍逐引用复检，不返回失效引用答案，不缓存最终答案。\n- [ ] 缓存确定性缺失/损坏使整条 miss 并丢弃；瞬态读/DB 故障只 miss 保留条目，恢复后可再次命中。\n- [ ] 缓存不能绕过 embedding 检查、owner 与版本；既有引用不要求当前 embedder 相同。\n- [ ] 迁完三路后移除裸正文读取入口及重复校验；以真实端点和对象字节验证 cache on/off 等价和公开错误。\n\n## Blocked by\n\n- Blocked by: #149 — C3.01 普通知识检索统一读取并验证正文摘要与字节数\n\n## Traceability\n\n原报告：C3；总规格 User Stories：30, 31, 32, 33, 34, 37, 40, 41, 42, 43, 44。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C3.03": {
+      "issue": 151,
+      "url": "https://github.com/xiaolin624/Orchara/issues/151",
+      "title": "验证重建、来源删除与损坏恢复的知识读取一致性",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C3.03 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n旧活动索引在合法重建期间可读，但删除来源、替换索引或正文损坏后，各读取路径都按当前事实处理。\n\n## Acceptance criteria\n\n- [ ] 真实验证源 A 活动→替换 B 重建中/失败→删除 A，记录结果；若复现泄漏则按既有即时删除规则修正，不以禁止旧索引读掩盖。\n- [ ] 验证重建失败旧活动索引保留、成功激活后旧引用失效、删除/撤权立即阻止片段。\n- [ ] 验证瞬态读取失败后缓存恢复、回答前引用再次失效，以及三路径篡改/截断/大小不符对照。\n- [ ] 运行相关完整知识回归及成对 cache on/off 对照，报告新增校验开销与未运行条件。\n\n## Blocked by\n\n- Blocked by: #150 — C3.02 引用、回答和缓存复检接入同一已验证读取\n\n## Traceability\n\n原报告：C3；总规格 User Stories：34, 35, 36, 41, 42, 44。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C4.01": {
+      "issue": 152,
+      "url": "https://github.com/xiaolin624/Orchara/issues/152",
+      "title": "Agent 节点通过显式上下文复用图与线性执行",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C4.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n图与线性工作流的 Agent 节点从明确允许的输入与封存事实执行，返回局部决定，由各自调度器处理全局结果。\n\n## Acceptance criteria\n\n- [ ] 建立受约束的节点执行输入和 typed outcome，覆盖成功、失败、取消、waiting 与 sandbox/退出证据。\n- [ ] Agent 绑定与 context 构建不依赖假 linearPlan；启动时 namespace 稳定，不把计划顺序当作完成事实。\n- [ ] 目标节点不自行提交 Run 终态、跳过兄弟或通过隐藏 ctx 判断图/线性模式；调度器接收决定。\n- [ ] 保留受控工具/子应用、schema、artifact 注册和封存复用语义，局部成功不能绕过登记失败。\n- [ ] 验证图/线性 Agent、optional 失败、waiting/取消兄弟排空、恢复与已封存输出复用。\n\n## Blocked by\n\nNone (can start immediately).\n\n## Traceability\n\n原报告：C4；总规格 User Stories：45, 46, 47, 50, 51, 52, 53, 54, 55。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C4.02": {
+      "issue": 153,
+      "url": "https://github.com/xiaolin624/Orchara/issues/153",
+      "title": "固定子应用调用接入共享节点执行约定",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C4.02 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n图与线性 call_app 都通过显式输入调用固定发布版本，返回局部等待或结果，独立逻辑调用不会误合并。\n\n## Acceptance criteria\n\n- [ ] 两种调度器使用同一 call_app 执行约定，不借用伪线性运行实例；显式绑定与固定子应用版本保持。\n- [ ] 保持 logical key 身份，同版本的顺序不同调用、并行子运行均各自独立。\n- [ ] waiting 返回 checkpoint/proposal 和执行证据，由调度器排空后唯一提交；取消和失败同样返回局部决定。\n- [ ] 通过真实调用与恢复路径验证结果、输入不越界、waiting、兄弟失败和子运行身份，不只做编译检查。\n\n## Blocked by\n\n- Blocked by: #152 — C4.01 Agent 节点通过显式上下文复用图与线性执行\n\n## Traceability\n\n原报告：C4；总规格 User Stories：45, 46, 48, 49, 50, 51, 52, 53, 55。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C4.03": {
+      "issue": 154,
+      "url": "https://github.com/xiaolin624/Orchara/issues/154",
+      "title": "删除假线性视图并闭环节点调度恢复回归",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C4.03 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\nAgent/call_app 的复用不再依赖图伪装线性结构，调度器仍准确处理跳过、等待、排空、恢复和唯一终态。\n\n## Acceptance criteria\n\n- [ ] 删除 graphLinearView 及目标图专用 available/skip/scopeIDs 覆盖和空 hook，目标节点移除隐式 graph capture 分流。\n- [ ] 保留其他节点仍用的 capture 与调度器内部记录，不借此重写十节点运行时或更改 Go 权威。\n- [ ] 真实验证每 attempt skipped、optional、每激活 join 一次、waiting/失败/取消排空、恢复封存输出与唯一最终提议。\n- [ ] 运行节点/图/线性及真实 call_app 相关回归，分别标记 Python 独立证明与 Go 实际执行证据。\n\n## Blocked by\n\n- Blocked by: #153 — C4.02 固定子应用调用接入共享节点执行约定\n\n## Traceability\n\n原报告：C4；总规格 User Stories：51, 52, 53, 54, 55, 56。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C6.01": {
+      "issue": 155,
+      "url": "https://github.com/xiaolin624/Orchara/issues/155",
+      "title": "页面显式加载共享状态依赖并处理资源失败",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C6.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\nchat、运行详情、debug 的共享状态脚本缺失或损坏时，用户看到明确提示，受影响功能暂停，仍可导航和重新加载。\n\n## Acceptance criteria\n\n- [ ] 扩展显式共享状态 interface 并暂留旧出口，建立完整依赖就绪检查；真实 HTML 顺序与全部受影响旧 harness 加载实际共享字节。\n- [ ] 真实资源 404、语法错误或未完整导出均显示“运行状态暂不可用”，不启用旧规则或原始快照替代状态。\n- [ ] 逐页列出并验证暂停的实时观察/相关按钮，保留导航、重载及独立页面功能，避免锁死整页。\n- [ ] 保留正常路径状态逻辑，新增依赖失败验收；浏览器实际故障与 Node 隔离结果分别记录。\n\n## Blocked by\n\nNone (can start immediately).\n\n## Traceability\n\n原报告：C6；总规格 User Stories：78, 79, 80, 81, 83。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C6.02": {
+      "issue": 156,
+      "url": "https://github.com/xiaolin624/Orchara/issues/156",
+      "title": "对话和节点视图采用统一运行状态投影",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C6.02 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n对话和节点视图使用共享状态解释，dispatched 后仍能看到运行变化，取消/收尾不再因页面旧分支显示成完成。\n\n## Acceptance criteria\n\n- [ ] 共享聚合 view 供常用调用，迁移 chat handling/poll/terminal 与 runview 的 Run terminal/cancel 规则。\n- [ ] finalizing 是 phase、取消只是意图、unknown 待核对；dispatched Request 继续观察 Run，保持轮询上限。\n- [ ] 迟到响应不能覆盖新选择；节点表/节点专用错误与 DOM adapter 保留，不迁入通用网络框架。\n- [ ] 删除该批业务 fallback，使用真实依赖运行正常状态、选择切换和取消回归，保持 Q7 故障提示。\n\n## Blocked by\n\n- Blocked by: #155 — C6.01 页面显式加载共享状态依赖并处理资源失败\n\n## Traceability\n\n原报告：C6；总规格 User Stories：67, 68, 69, 70, 71, 76, 77, 82。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C6.03": {
+      "issue": 157,
+      "url": "https://github.com/xiaolin624/Orchara/issues/157",
+      "title": "运行详情统一子运行、产物与 410 快照恢复解释",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C6.03 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n运行详情的状态、子任务、产物和事件恢复按共享事实解释，过期历史与安全快照路径清楚可见。\n\n## Acceptance criteria\n\n- [ ] 迁移 child summary、streamFailure、truth、artifact readiness、cancel accepted、snapshot path/correction 的共享规则。\n- [ ] 410 丢弃过期 cursor、明确 history loss，禁止从零伪造完整回放或直接跟随未验证 snapshot_url。\n- [ ] 保留安全同源 Run 路径、认证/不存在/瞬态分类、取消意图及迟到选择守卫。\n- [ ] 最终产物必须与已提交运行事实匹配，子运行等待/失败不能伪装父成功。\n- [ ] 移除本批页面业务 fallback，验证实际页面行为与共享字节 Node 逻辑；DOM/可选 renderer 检查保留。\n\n## Blocked by\n\n- Blocked by: #155 — C6.01 页面显式加载共享状态依赖并处理资源失败\n\n## Traceability\n\n原报告：C6；总规格 User Stories：67, 68, 69, 70, 72, 73, 74, 75, 76, 77, 82。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "C6.04": {
+      "issue": 158,
+      "url": "https://github.com/xiaolin624/Orchara/issues/158",
+      "title": "清理共享状态兼容出口并验收三页面正常与故障路径",
+      "body": "<!-- orchara-all-architecture:2026-11-08:C6.04 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n三类运行页面与测试仅使用同一状态规则，缺依赖时明确暂停，全部目标旧 fallback 和兼容导出已清理。\n\n## Acceptance criteria\n\n- [ ] 逐项核对全部目标 fallback 和旧全局兼容出口，迁移调用者清零后删除；不按 typeof 或 fallback 字符串盲删。\n- [ ] 节点状态专用渲染、model fallback 账本展示、输入检查和浏览器能力探测保持正确职责。\n- [ ] 真实浏览器验证正常加载及资源 404/语法错误，检查提示、相关操作暂停、导航/重载；记录所用浏览器与环境。\n- [ ] 运行受影响 F03/F08/F12 和其他实际引用的页面回归，保留脚本服务字节/顺序、安全快照和迟到响应证据。\n\n## Blocked by\n\n- Blocked by: #156 — C6.02 对话和节点视图采用统一运行状态投影\n- Blocked by: #157 — C6.03 运行详情统一子运行、产物与 410 快照恢复解释\n\n## Traceability\n\n原报告：C6；总规格 User Stories：78, 79, 80, 81, 82, 83。保留既有业务入口和已接受 ADR；实际结果写入本票证据，不以设计文案代替运行。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    },
+    "ALL.01": {
+      "issue": 159,
+      "url": "https://github.com/xiaolin624/Orchara/issues/159",
+      "title": "集成六项架构改进并闭环原报告覆盖与证据",
+      "body": "<!-- orchara-all-architecture:2026-11-08:ALL.01 -->\n\n## Parent\n\nPart of #160 — https://github.com/xiaolin624/Orchara/issues/160\n\n规格来源：#160（完整六项、89 条用户故事）。\n\n## What to build\n\n维护者能从整份原报告追踪六项设计、规格、任务、代码和验收，明确哪些本地完成、已经提交或远端集成。\n\n## Acceptance criteria\n\n- [ ] 六项及全部细化验收场景均映射到完成证据；C1 复用 #138–#141，不改写 #137 历史，不创建重复票。\n- [ ] 各项叶子验收满足后运行整合集成检查：受影响完整套件、Go 检查、规格同步门禁与产品集成回归；检查相互影响和残留兼容层。\n- [ ] 对照原报告和删除目标检查旧生命周期循环、裸读入口、假线性视图、目标票号转发及页面重复规则确已处理。\n- [ ] 逐票及总体记录代码/提交位置、环境、命令、原始结果；未运行、blocked、partial 与真实供应商/浏览器/平台条件明确区分。\n- [ ] 更新六项覆盖表和产品进度，代码未提交或未集成时如实保留该状态；未闭环项不得因父票关闭而消失。\n\n## Blocked by\n\n- Blocked by: #140 — 既有 C1 叶子验收票\n- Blocked by: #141 — 既有 C1 叶子验收票\n- Blocked by: #145 — C5.04 删除已迁移的测试别名与纯转发入口\n- Blocked by: #148 — C2.03 闭环四条模型路径的取消、清理失败与结算回归\n- Blocked by: #151 — C3.03 验证重建、来源删除与损坏恢复的知识读取一致性\n- Blocked by: #154 — C4.03 删除假线性视图并闭环节点调度恢复回归\n- Blocked by: #158 — C6.04 清理共享状态兼容出口并验收三页面正常与故障路径\n\n## Traceability\n\n原报告：ALL；总规格 User Stories：1, 13, 84, 85, 86, 87, 88, 89。本票覆盖全六项的最终集成，不能用单项通过替代。\n\n",
+      "state": "open",
+      "parent_issue": 160
+    }
+  }
+}

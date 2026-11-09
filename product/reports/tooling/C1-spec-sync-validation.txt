@@ -1,0 +1,16 @@
+C1 / issue #137 / base 6141328 / Windows local filesystem
+VERSION PROBE: Python 3.12.2; Windows 11; D:\Python\python.exe
+These are tooling checks, not provider/sandbox/product runtime acceptance.
+COMMAND: D:\Python\python.exe -X utf8 -m pytest product/tests/tooling -q -p no:cacheprovider
+................................................................         [100%]
+64 passed in 37.06s
+EXIT: 0
+
+COMMAND: D:\Python\python.exe -X utf8 product/tools/sync_spec.py
+copied 105 files; manifest E:\Orchara\product\docs\spec\SYNC-MANIFEST.json (105 spec + 10 contract digests)
+EXIT: 0
+
+COMMAND: D:\Python\python.exe -X utf8 product/tools/sync_spec.py --check
+no drift: current source, both copies and synchronized baseline agree
+EXIT: 0
+

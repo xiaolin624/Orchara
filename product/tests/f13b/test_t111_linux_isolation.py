@@ -28,6 +28,7 @@ import uuid
 
 import pytest
 
+from support import execution_support as execution
 from support import f00b, t033, t037, t111
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -1334,14 +1335,14 @@ def test_end_to_end_sandboxed_tool_run_still_succeeds_and_reclaims(
     staging = tmp_path / "host-staging"
     staging.mkdir()
     baseline = t111.cleanup_snapshot()
-    env = t033.supervisor_exec_env(
+    env = execution.supervisor_exec_env(
         stack,
-        digest=t033.rootfs_digest(),
+        digest=execution.rootfs_digest(),
         extra={"ORCHARA_SANDBOX_WORKSPACE_ROOT": str(staging)},
     )
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env)
-    report = t033.exec_report(completed)
+    with execution.FinalizeWorker(stack):
+        completed = execution.run_supervisor_exec(stack, env)
+    report = execution.exec_report(completed)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report

@@ -38,6 +38,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from support import execution_support as execution
 from support import f00b, t025, t027, t029, t033, t041, t086, t114
 from support import stack as st
 
@@ -63,7 +64,7 @@ def _supervisor_env(stack) -> dict[str, str]:
     WSL/runsc child, but it still starts real product processes and therefore
     belongs to the exclusive real-stack window (ENV-B2 §2).
     """
-    return t033.supervisor_exec_env(
+    return execution.supervisor_exec_env(
         stack,
         digest="sha256:" + "0" * 64,
         heartbeat="1s",

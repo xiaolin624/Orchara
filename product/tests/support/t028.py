@@ -20,11 +20,12 @@ import json
 import zipfile
 from pathlib import Path
 
+from support.runtime_stack import Stack
 from support import f00b, f02a, t024, t025
 from support import stack as st
 
 # Re-exports so a T028 test imports one module.
-T028Stack = t024.T024Stack
+T028Stack = Stack
 Session = f02a.Session
 admin_session = f00b.admin_session
 session_for = f00b.session_for

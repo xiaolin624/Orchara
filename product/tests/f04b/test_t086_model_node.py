@@ -23,6 +23,7 @@ from decimal import Decimal
 
 import pytest
 
+from support import execution_support as execution
 from support import t025, t027, t033, t042, t046, t083, t086
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -87,7 +88,7 @@ def test_json_model_node_publishes_a_validated_object_and_a_budget_ledger(
         validation.text
     )
 
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
@@ -163,7 +164,7 @@ def test_text_mode_wraps_the_provider_text_and_validates_it(t033_stack, sandbox)
         input_value={"task": "quarterly numbers"},
         name="t086 text model",
     )
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
 
@@ -216,7 +217,7 @@ def test_schema_failure_is_independent_located_and_never_retried(t033_stack, san
         validation.text
     )
 
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 1, (completed.stderr, report)
     assert_refused(report, "node_output_invalid")
     assert "#/summary" in report["error"], report
@@ -272,7 +273,7 @@ def test_prompt_uses_only_bound_inputs_and_rejects_expression_placeholders(
     assert validation.status == 200 and validation.json == {"valid": True, "errors": []}, (
         validation.text
     )
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
     params = t086.capability_params_document(t033_stack, run["id"])
@@ -299,7 +300,7 @@ def test_prompt_uses_only_bound_inputs_and_rejects_expression_placeholders(
     run2 = t042.submit_linear_run(
         owner, application_id, artifact_id=None, input_value={"task": "quarterly numbers"}
     )
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 1, (completed.stderr, report)
     assert_refused(report, "node_prompt_invalid")
     assert "/nodes/1/config/prompt_template" in report["error"], report
@@ -326,7 +327,7 @@ def test_a_revoked_profile_is_refused_before_any_call(t033_stack, sandbox) -> No
     )
     t086.revoke_profile(t033_stack.dbname, t086.GOLDEN_MODEL_ID)
 
-    completed, report = t086.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 1, (completed.stderr, report)
     assert_refused(report, "model_profile_unavailable")
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})

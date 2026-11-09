@@ -25,6 +25,7 @@ import uuid
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import f00b, t024, t029, t035, t041, t048, t050, t051, t028
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -33,7 +34,7 @@ T051_SECRET_VALUE = "t051-lost-receipt-secret-3d9b1f"
 
 
 @pytest.fixture
-def t051_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def t051_stack(tmp_path, fresh_database, go_binaries, api_server) -> Stack:
     dsn, dbname = fresh_database
     st.migrate_or_fail(go_binaries["admin"], dsn)
     st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
@@ -47,7 +48,7 @@ def t051_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024St
     env[t048.TEST_SECRET_ENV] = T051_SECRET_VALUE
     server = api_server(dsn, extra_env=env)
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

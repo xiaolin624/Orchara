@@ -44,6 +44,7 @@ from pathlib import Path
 
 import pytest
 
+from support import execution_support as execution
 from support import (
     t025,
     t027,
@@ -133,7 +134,7 @@ def test_fault_05_a_live_old_supervisor_is_never_replaced_while_its_lease_expire
 
     execution_unit = "t107-old-worker-" + t107.new_run_token()
     application_name = "t107-old-worker-db-" + t107.new_run_token()
-    env = t033.supervisor_exec_env(
+    env = execution.supervisor_exec_env(
         stack, heartbeat="1s", timeout="30s", result_wait="15s"
     )
     # The connection label is observation only: the product's own DSN stays the

@@ -21,11 +21,12 @@ import json
 import urllib.parse
 import uuid
 
+from support.runtime_stack import Stack
 from support import stack as st
 from support import t029, t031
 
 # Re-exports so a T032 test imports one module.
-T032Stack = t031.T031Stack
+T032Stack = Stack
 Session = t029.Session
 admin_session = t029.admin_session
 session_for = t029.session_for

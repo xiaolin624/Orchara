@@ -20,6 +20,7 @@ TESTS_ROOT = Path(__file__).resolve().parents[1]
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
+from support.runtime_stack import Stack
 from support import f00b, t024, t029  # noqa: E402
 from support import stack as st  # noqa: E402
 from support.certs import make_stack_certificates, unique_internal_addr  # noqa: E402
@@ -29,7 +30,7 @@ CAPACITY = 16
 
 
 @pytest.fixture
-def t069_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def t069_stack(tmp_path, fresh_database, go_binaries, api_server) -> Stack:
     dsn, dbname = fresh_database
     st.migrate_or_fail(go_binaries["admin"], dsn)
     st.bootstrap_or_fail(go_binaries["admin"], dsn, f00b.ADMIN_PASSWORD)
@@ -49,7 +50,7 @@ def t069_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024St
         extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
     )
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

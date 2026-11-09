@@ -1,0 +1,17 @@
+COMMAND: wsl.exe -e python3 -
+ENVIRONMENT: Python 3.12.3, Linux temporary directories, standard library only.
+INPUT SUMMARY: import current sync_spec; create isolated source/contracts;
+sync/check; mutate source and verify drift; sync/check; os._exit(73) after
+second move in a subprocess; assert incomplete_sync; sync to recover;
+hold the fcntl lock in the parent and verify another process reports busy.
+The temporary root was resolved and checked before automatic cleanup.
+
+RAW OUTPUT:
+PASS POSIX stdlib smoke: source drift, synchronization, subprocess exit recovery, fcntl process lock
+Python: 3.12.3
+Not the full pytest suite; WSL pytest is unavailable.
+EXIT: 0
+
+DEPENDENCY PROBE: wsl.exe -e python3 -c "import sys; print(sys.version.split()[0]); import pytest; print(pytest.__version__)"
+Python 3.12.3 was available; import pytest raised ModuleNotFoundError.
+No dependencies were installed. Linux pytest suite: not_run.

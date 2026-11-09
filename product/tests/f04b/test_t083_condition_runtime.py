@@ -17,6 +17,7 @@ import json
 
 import pytest
 
+from support import execution_support as execution
 from support import t025, t027, t033, t042, t083
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -66,7 +67,7 @@ def test_condition_true_runs_only_the_selected_branch_and_join_once(
         validation.text
     )
 
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
@@ -122,7 +123,7 @@ def test_condition_default_port_runs_the_no_branch(t033_stack, sandbox) -> None:
         input_value={"requires_approval": False},
         name="t083 condition default",
     )
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
     items = t083.node_results(owner.creator, run["id"], expected=6)
@@ -152,7 +153,7 @@ def test_parallel_fork_runs_both_branches_and_joins_once(t033_stack, sandbox) ->
         validation.text
     )
 
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
     items = t083.node_results(owner.creator, run["id"], expected=9)
@@ -182,7 +183,7 @@ def test_nested_conditions_converge_at_each_join(t033_stack, sandbox) -> None:
         validation.text
     )
 
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
     # deep data/files/log + three condition/join data artifacts.
@@ -227,7 +228,7 @@ def test_join_without_an_activated_required_source_fails_closed(t033_stack, sand
         validation.text
     )
 
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     # A deterministic node refusal is a committed failed result, not an executor
     # crash: the supervisor exits 0 because the attempt itself completed. The
     # authoritative fact is the run's failed state and its stable code.

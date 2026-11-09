@@ -3087,3 +3087,67 @@ Standards 轴 4 条硬性违规 + Spec 轴 5 条，全部处理：
   取消回归 → **22 passed, 1 skipped in 251.91s**；skip 仅为未启用的 15 分钟 × 3 实验。
   容量纯证据新增反证 **3 passed**；原始测量字段逐项比对不变。
 - 详细修复、命令与边界：`reports/f13b/B2-FOLLOWUP-FIXES.md`。
+
+## C1 规格同步与漂移检查（2026-11-08；#137）
+
+- 状态：本地工具实现与验收 `passed`；基于 `6141328`，改动位于当前工作区。属于 T001/F00 工具后续改进，不改变任务图或平台运行验收状态。
+- 用户已确认 Q1–Q6：默认检查当前来源、两份受管复制件及基线；来源无法核实则失败；有效源删除传播；关键 `contracts/` 整体缺失拒绝同步；失败保护完整副本并识别中断。
+- 按 codebase-design 完成三个独立 interface 设计比较，保留 `check()` / `sync()` 和既有 CLI，将内容清单、核验、双目录切换、回滚与恢复收进同一 module；文件系统使用真实临时目录测试，没有新增虚构 adapter。
+- 实现：`tools/sync_spec.py`；测试：`tests/tooling/test_sync_spec.py`；设计与确认：`docs/reviews/2026-11-08-{architecture-grilling,spec-sync-design}.md`。
+- 实测：`python -X utf8 -m pytest product/tests/tooling -q -p no:cacheprovider` → **64 passed in 37.06s**；实际同步 105 文件、10 契约后 `--check` exit 0。专项 52 项包括四个切换点真实进程退出、恢复中再次退出、部分清理重试、并发锁与 Windows junction。
+- 新检查发现根 `.gitignore` 相对旧基线的既有变化；通过正常同步更新规格复制件和 manifest。根生成源/业务规格/生成契约未改，运行契约内容无差异。
+- 原始命令/输出：`reports/tooling/C1-spec-sync-validation.txt`；结论与限制：`reports/tooling/C1-spec-sync.md`。全量产品 pytest、物理断电、远程文件系统未验收；工具测试不提升模型/沙箱/容量等外部实验状态。
+- WSL Python 3.12.3 标准库冒烟通过来源变化、同步、进程退出恢复与 fcntl 进程锁；WSL 缺少 pytest，其完整套件 `not_run`，未安装依赖。原始输出：`reports/tooling/C1-posix-smoke.txt`。
+- #137 已附本地证据并关闭；工作区代码与报告未提交、未推送，不声称远端已集成。主验证环境 Windows 11 / Python 3.12.2。
+- to-spec 后续：用户确认复用现有命令测试 seam 后，将七章节、42 条用户故事的完整规格发布为 #137 评论 https://github.com/xiaolin624/Orchara/issues/137#issuecomment-6719314337 ，回读核对一致；保留 ready-for-agent、原正文证据和关闭状态。本地副本：`docs/reviews/2026-11-08-spec-sync-spec.md`。本次只整理并发布规格，未重跑测试或改变实现验收状态。
+- to-tickets 后续：用户确认拆分后发布 #138（无阻塞）、#139（blocked by #138）、#140 与 #141（均 blocked by #139），四票均 open、ready-for-agent。父子和阻塞关系使用正文文本引用；父 #137 的正文、评论、状态、标签均未修改。发布记录：`docs/reviews/2026-11-08-spec-sync-tickets.md`。本轮只发布票，未执行或关闭新票，未重跑测试。
+- 六项审核范围核对：只有 C1 完成本地实现；#138–#141 都是 C1 的拆分，仍 open，尚未按拆票逐项闭环。C2–C6 只有审核建议，尚无本次重构的独立 Issue、详细实施规格或实现。代码仍未提交/推送，父 #137 的关闭仅代表先前本地工具验收口径。完整对照：`docs/reviews/2026-11-08-architecture-status.md`。
+
+## 全六项架构改进需求澄清（2026-11-08）
+
+- 状态：`in_progress`（全六项改进；需求澄清已确认），C2–C6 重构实现 `not_started`、本轮业务验收 `not_run`。用户已明确要求 HTML 原报告六项全部实施，覆盖此前只优先 C1 的安排；C1 已确认决策与本地证据继续有效。
+- 完整入口：`docs/reviews/2026-11-08-all-architecture-grilling.md`。按 grill-with-docs / grilling / domain-modeling 建立全范围设计树，记录每项代码事实、已有 ADR 约束、待复现风险、验收方向及后续设计→规格→拆票→实施的覆盖要求。
+- 原始 HTML / JSON 已按字节归档到 `docs/reviews/source/2026-11-08-architecture-review.{html,json}`，摘要见完整入口。静态报告不充当实时完成状态。
+- Q7/Q8 已确认：用户回答“两个都按推荐”。共享状态脚本加载失败时明确提示、暂停受影响功能并保留导航与重载；普通检索、引用打开、缓存命中统一校验正文摘要和字节数，保留既有错误处理策略。重算设计树后无新增行为问题，用户随后回复“确认”，已确认完整入口末节的共同理解汇总；全范围需求澄清完成，进入后续设计、规格与拆票。
+- 本轮仅核对源码、既有测试及 ADR、归档和更新需求文档；未修改 C2–C6 运行实现、未重跑业务测试、未改变远端 Issue。C2–C6 尚无独立实施 Issue/最终设计/详细规格，不因纳入计划提升为已交付。
+
+## 全六项设计、规格与拆票草案（2026-11-08）
+
+- 用户已最终回复“确认”，grill-with-docs 共同理解门禁满足；不重新访谈 Q1–Q8。按 codebase-design 的三案流程，用三个新上下文比较 C2–C6 的最小 interface、扩展能力、最常见调用者方案，主代理完成选型。
+- 设计：`docs/reviews/2026-11-08-all-architecture-design.md`。C1 沿用已有；C2 私有统一模型驱动；C3 owner 限定可读片段 module；C4 显式节点执行事实/结果；C5 能力组织与 expand–contract；C6 纯共享状态规则与明确依赖故障，不新增网络观察框架。
+- to-spec 草案：`docs/reviews/2026-11-08-all-architecture-spec.md`，七章节、89 条故事，待按 skill 核对现有最高测试 seam 后发布；不是已发布或已实施。
+- to-tickets 草案：`docs/reviews/2026-11-08-all-architecture-tickets.md`，18 张新增独立正文与验收条件，另复用 #138–#141，共 22 张工作切片。单票与依赖映射：`docs/reviews/all-architecture-tickets/`。待用户审核粒度/阻塞边后发布，不重复创建 C1 四票。
+- 本轮真实回读 GitHub #137–#141 正文及全部评论：#137 closed，#138–#141 open；没有写入、关闭或重开 Issue。全六项总规格/地图待建，不用 C1 父票代替全范围。
+- 当前仅工程设计与文档草拟完成；C2–C6 实现 `not_started`，业务验收 `not_run`。未提交、未推送、未部署，未改生成源/业务契约/迁移。后续按草案审核→发布→实际实现与验收推进，不能把文档或 ready-for-agent 当作通过。
+
+## 全六项规格与工作票发布（2026-11-08；#160）
+
+- 用户回复“同意”，批准既有测试 seam、22 个工作切片的粒度和阻塞关系；to-spec / to-tickets 的发布前门禁已满足，无需再确认相同范围。
+- 总规格与地图：#160（ready-for-agent、wayfinder:map），正文包含七章节、89 条故事与全部 22 个工作切片链接。18 张新票：C5 #142–#145、C2 #146–#148、C3 #149–#151、C4 #152–#154、C6 #155–#158、整体整合 #159；全部 open / ready-for-agent。
+- C1 复用 #138–#141，保留原父 #137 与原依赖。新票用 Part of #160 / Blocked by 实际编号；连接器缺少原生关系写入能力，正文链接为明确回退，不声称原生 sub-issue/dependency。
+- 发布顺序：按依赖创建工作票，再一次创建含全部真实链接的 #160，最后只补新工作票父链接。回读 19 张新票核对正文、状态、标签、全部依赖；历史 #137–#141 正文/状态/标签保持不变。未关闭或改写父票。
+- 发布记录及远端正文：`docs/reviews/all-architecture-tickets/{plan,publication}.json`、`published-spec.md`，主入口 `docs/reviews/2026-11-08-all-architecture-tickets.md`。此阶段没有新业务验收，未因发布提升为 passed；代码仍未提交/推送。
+- 下一步按无阻塞 frontier 推进，先处理 C1 逐票核对和 C5.01 #142 的真实 Stack 迁移，保持其他可独立工作票可执行。
+
+## C5.01 共享 Stack（#142）
+
+- 本票本地实现与验收完成，尚未提交/推送；C5 整体 `in_progress`，不是六项全部完成。
+- 规范 Stack 与真实 job capability client 迁入 `tests/support/runtime_stack.py`，27 个既有文件的调用者直接引用；四个票号类型仅保留直接别名，最终删除由 #145 承接。
+- 实测：迁移前 2 passed / 35.57s；迁移后真实 HTTP/mTLS/PG/对象链路 13 passed / 85.25s；全产品 2696 tests collected / 18.31s（非全量运行）。方法体/字段 AST 保持，diff 检查通过。
+- 报告与原始输出：`reports/architecture/C5.01-stack.md` 及同目录 baseline/validation/collection 文本。后续 #143/#144 可推进；#159 整体集成尚未完成。
+
+## C5.02 执行支撑迁移（#143；验收中）
+
+- `in_progress`：五个真实执行定义迁入 `tests/support/execution_support.py`，一次执行组合统一，30 个文件迁移调用；定义 AST 与旧实现相同，diff 检查通过。代码未提交/推送。
+- 首次实际验证为 6 skipped + 2 skipped，不能写 passed；全仓收集因开发 PG 55432 拒绝连接中断，退出 3。WSL/runsc 现场可用；既有独立 PG 数据目录正在中断后的恢复，启动等待超时后仍报告 starting up。未碰系统 5432 服务或删除数据。
+- 报告：`reports/architecture/C5.02-execution.md`。环境恢复后另存重跑结果；本票保持 open，C5 与六项整体仍未完成。
+
+- 后续恢复与验收：开发 PostgreSQL crash recovery 完成并接收连接；实际执行/取消/沙箱超时/崩溃回收 **8 passed / 86.32s**；finalizer 异常退出及启动失败 **2 passed / 17.62s**。原始失败/skip 保留，重跑输出另存 execution-retry/exception-cleanup 文本。恢复后全仓收集 2696 项通过，新增两项后的最终收集另存 final-collection。
+- #143 本票本地实现与验收现已完成；代码仍未提交/推送，C5 全项未完成。后续 #144 事实观察与 #145 兼容清理，以及 #159 最终整合继续跟踪；报告 `reports/architecture/C5.02-execution.md`。
+
+## 分支交接（2026-11-09）
+
+- 用户已明确由另一个模型/新会话继续开发；本会话仅提交和推送已有工作，不继续实现剩余票，不合并 main。
+- 交接分支：`refactor/architecture-c1-c5-handoff-20261109`，从当前 origin/main `1be9a920f49e763f7df9d0b8563d15d35514ad92` 建立，承载既有 C1、C5.01/#142、C5.02/#143 实现及完整文档/历史验收证据。
+- 已有实现与剩余范围：`docs/reviews/2026-11-09-development-scope.md`。C1 四张拆票仍待逐票核对，#144–#159 的后续工作按既有依赖推进；#142/#143 的关闭不代表 C5 或六项整体完成。
+- 本次交接仅核对差异、同步门禁和提交内容，未重新运行业务测试；已有运行结果及限制见各报告。main 由用户手动合并后才更新。

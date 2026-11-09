@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from support.runtime_stack import Stack
 from support import t024, t041
 from support import stack as st
 
@@ -46,7 +47,7 @@ MODEL_PROFILE_ID = t041.GOLDEN_MODEL_ID
 class T122Stack:
     """The T024 stack plus the loopback provider and its per-run secret."""
 
-    stack: t024.T024Stack
+    stack: Stack
     provider: "FakeProvider"
     secret: str
     deploy_secret: str

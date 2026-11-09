@@ -28,6 +28,7 @@ for entry in (TESTS_ROOT, PRODUCT_ROOT / "worker", PRODUCT_ROOT / "tools"):
     if str(entry) not in sys.path:
         sys.path.insert(0, str(entry))
 
+from support.runtime_stack import Stack
 from support import f00b, f02a, stack as st, t024, t029, t033  # noqa: E402
 from support.certs import make_stack_certificates, unique_internal_addr  # noqa: E402
 
@@ -61,7 +62,7 @@ def t095_stack(tmp_path_factory: pytest.TempPathFactory, go_binaries: dict[str, 
         extra_env=env,
         log_path=tmp_path / "api.log",
     )
-    stack = t033.T033Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

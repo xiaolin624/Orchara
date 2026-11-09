@@ -27,6 +27,7 @@ import time
 
 import pytest
 
+from support import execution_support as execution
 from support import t028
 from support import stack as st
 from support import t033
@@ -57,13 +58,13 @@ def queued_sales_run(stack, *, content: bytes = t033.SALES_CSV):
 
 def test_real_runsc_tool_debug_run_end_to_end(t033_stack) -> None:
     owner, run, _csv_artifact = queued_sales_run(t033_stack)
-    digest = t033.rootfs_digest()
-    env = t033.supervisor_exec_env(t033_stack, digest=digest)
+    digest = execution.rootfs_digest()
+    env = execution.supervisor_exec_env(t033_stack, digest=digest)
 
-    with t033.FinalizeWorker(t033_stack):
-        completed = t033.run_supervisor_exec(t033_stack, env)
+    with execution.FinalizeWorker(t033_stack):
+        completed = execution.run_supervisor_exec(t033_stack, env)
 
-    report = t033.exec_report(completed)
+    report = execution.exec_report(completed)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
@@ -165,10 +166,10 @@ def test_real_runsc_tool_debug_run_end_to_end(t033_stack) -> None:
 
 def test_tool_rejection_ends_the_run_failed_with_the_tool_code(t033_stack) -> None:
     owner, run, _csv = queued_sales_run(t033_stack, content=t033.BAD_CSV)
-    env = t033.supervisor_exec_env(t033_stack)
-    with t033.FinalizeWorker(t033_stack):
-        completed = t033.run_supervisor_exec(t033_stack, env)
-    report = t033.exec_report(completed)
+    env = execution.supervisor_exec_env(t033_stack)
+    with execution.FinalizeWorker(t033_stack):
+        completed = execution.run_supervisor_exec(t033_stack, env)
+    report = execution.exec_report(completed)
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == t033.REJECTION_CODE, report
@@ -222,12 +223,12 @@ def request_cancel_after_first_heartbeat(dbname: str) -> None:
 def test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan(t033_stack) -> None:
     owner, run, _csv = queued_sales_run(t033_stack)
     request_cancel_after_first_heartbeat(t033_stack.dbname)
-    env = t033.supervisor_exec_env(
+    env = execution.supervisor_exec_env(
         t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s"
     )
-    with t033.FinalizeWorker(t033_stack):
-        completed = t033.run_supervisor_exec(t033_stack, env)
-    report = t033.exec_report(completed)
+    with execution.FinalizeWorker(t033_stack):
+        completed = execution.run_supervisor_exec(t033_stack, env)
+    report = execution.exec_report(completed)
     assert report["status"] == "executed", report
     assert report["outcome"] == "cancelled", (report, completed.stderr)
     assert report["sandbox"]["started"] is True, report
@@ -267,7 +268,7 @@ def test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan(t033_st
 def run_sandbox_probe(stack, *args: str, timeout: int = 300) -> dict:
     env = st.admin_env(stack.dsn)
     env.pop("ORCHARA_DB_DSN", None)
-    env.update(t033.supervisor_exec_env(stack))
+    env.update(execution.supervisor_exec_env(stack))
     completed = subprocess.run(
         [str(stack.binaries["sandboxprobe"]), *args],
         cwd=t033.PRODUCT_ROOT,

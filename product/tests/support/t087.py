@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import uuid
 
+from support import execution_support as execution
 from support import stack as st
 from support import t025, t027, t029, t033, t035, t041, t042, t048, t050, t083
 
@@ -254,7 +255,7 @@ def exec_once(stack):
     data artifacts (re-hashing them) instead of re-executing the node. This is the
     first real-stack scenario with a genuine wait, so the seam is exercised here.
     """
-    return t083.run_once(
+    return execution.execute_once(
         stack, env_extra={"ORCHARA_OBJECT_DIR": str(stack.object_dir)}
     )
 

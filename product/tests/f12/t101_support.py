@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import f00b, t024, t029, t033, t048
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -98,7 +99,7 @@ def build_stack(
         extra_env=env,
         log_path=tmp_path / f"t101-{label}-api.log",
     )
-    stack = t033.T033Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

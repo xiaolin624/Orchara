@@ -33,6 +33,7 @@ import secrets
 
 import pytest
 
+from support import execution_support as execution
 from support import f00b, f08, stack as st, t025, t027, t029, t033, t039, t042, t056, t068
 from t100_support import journey_log, sha256_hex
 
@@ -414,7 +415,7 @@ def _record_chat_input_gap(stack, journey, creator, version_id: str) -> None:
     assert input_row["sha256"] == sha256_hex(message.encode()), input_row
     assert f08.artifact_bytes(stack, request_row["input_artifact_id"]) == message.encode()
 
-    completed, report = t042.run_linear_once(stack)
+    completed, report = execution.execute_once(stack)
     run_id = request["run_id"]
     run_row = t029.run_state_row(stack.dbname, run_id)
     run_read = creator.client.get(f"/api/v1/runs/{run_id}")

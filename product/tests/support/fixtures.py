@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import stack as st
 from support import f00b, f02a, t024, t025, t026, t027, t028, t029, t030, t032, t033, t055
 from support.certs import ROLES, make_stack_certificates, unique_internal_addr
@@ -105,7 +106,7 @@ def t022_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> f00b.
 
 
 @pytest.fixture
-def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> Stack:
     """A migrated + bootstrapped database behind one API with signing+mTLS.
 
     Everything secret (the HMAC signing key, certificate material) is generated
@@ -124,7 +125,7 @@ def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.
         dsn, extra_env=t024.api_extra_env(object_dir, certificates, signing_key=signing_key)
     )
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -138,7 +139,7 @@ def t024_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.
 
 
 @pytest.fixture
-def f06_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def f06_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> Stack:
     """T039's stack: the T024 shape (objects, signed links, mTLS) plus the
     compiler inputs a draft validate needs, so the same server proves both the
     model registry and the existing dependency-readiness rule.
@@ -163,7 +164,7 @@ def f06_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t024.T
         ),
     )
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -393,7 +394,7 @@ def t027_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t027.
 
 
 @pytest.fixture
-def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.T029Stack:
+def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> Stack:
     """A T024-shaped stack plus the T025 compiler input, for claim/heartbeat/exit.
 
     F03 needs every real primitive at once: a migrated + bootstrapped database,
@@ -416,7 +417,7 @@ def t029_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t029.
         extra_env=t029.api_extra_env(object_dir, certificates, signing_key=signing_key),
     )
 
-    stack = t029.T029Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -436,7 +437,7 @@ def build_t033_stack(
     go_binaries,
     api_server,
     extra_env: dict[str, str] | None = None,
-) -> t033.T033Stack:
+) -> Stack:
     """Build T031's real stack; shared by the default and sweep-interval fixtures."""
     dsn, dbname = fresh_database
     st.migrate_or_fail(go_binaries["admin"], dsn)
@@ -452,7 +453,7 @@ def build_t033_stack(
         env.update(extra_env)
     server = api_server(dsn, extra_env=env)
 
-    stack = t033.T033Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -466,7 +467,7 @@ def build_t033_stack(
 
 
 @pytest.fixture
-def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.T033Stack:
+def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> Stack:
     """T031's real stack for the T033 tool-debug path.
 
     Everything the executor needs is real: the internal mTLS listener (claim,
@@ -491,7 +492,7 @@ def t033_stack(tmp_path: Path, fresh_database, go_binaries, api_server) -> t033.
 @pytest.fixture
 def t033_stack_fast_approval_sweep(
     tmp_path: Path, fresh_database, go_binaries, api_server
-) -> t033.T033Stack:
+) -> Stack:
     """The T031 stack with a test-sized F04B/T087 approval-deadline sweep.
 
     The default stack keeps the production 30s cadence so the decision-path

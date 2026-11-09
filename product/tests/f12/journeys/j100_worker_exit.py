@@ -30,6 +30,7 @@ import io
 import json
 import secrets
 
+from support import execution_support as execution
 from support import f00b, t025, t027, t029, t031, t033, t042
 from t100_support import sha256_hex
 
@@ -368,7 +369,7 @@ def _real_supervisor_execution(stack, journey) -> None:
     application_id = t042.application_for(owner, name="t100 real exec")
     csv_artifact = t042.ready_csv(stack, owner)
     run = t042.submit_linear_run(owner, application_id, artifact_id=csv_artifact)
-    completed, report = t042.run_linear_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report

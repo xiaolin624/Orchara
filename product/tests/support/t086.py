@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 
+from support import execution_support as execution
 from support import stack as st
 from support import t025, t027, t033, t042
 
@@ -107,8 +108,7 @@ def queue_model_run(stack, definition: dict, *, input_value: dict, name: str = "
     return owner, application_id, run
 
 
-def run_once(stack, *, env_extra: dict[str, str] | None = None):
-    return t042.run_linear_once(stack, env_extra=env_extra)
+run_once = execution.execute_once
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
+from support.runtime_stack import Stack
 from support import f00b, t024
 from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -22,7 +23,7 @@ from support.fixtures import (  # noqa: F401 - pytest fixtures
 )
 
 
-def claim_job(stack: t024.T024Stack, *, candidate: dict | None = None, fixture_content: bytes | None = None):
+def claim_job(stack: Stack, *, candidate: dict | None = None, fixture_content: bytes | None = None):
     owner = t024.owner_id(stack.dbname)
     candidate = candidate or t024.seed_candidate(stack.dbname, stack.object_dir, owner)
     fixture = t024.seed_fixture(stack.dbname, stack.object_dir, owner, content=fixture_content)

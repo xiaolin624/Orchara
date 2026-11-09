@@ -48,6 +48,7 @@ for _entry in (str(TOOLS_ROOT), str(TESTS_ROOT)):
         sys.path.insert(0, _entry)
 
 from evidence_redaction import find_violations, redact_value  # noqa: E402
+from support import execution_support as execution
 from support import stack as st  # noqa: E402
 from support import t029, t033, t078, t081  # noqa: E402
 
@@ -210,7 +211,7 @@ def execute_once_with_slot_peak(stack, *, timeout: float = 300.0) -> tuple[dict,
     real query). The peak is observation only; the durable attempt rows are the
     authoritative simultaneous-liveness proof (see :func:`child_attempt_overlap`).
     """
-    t033.rootfs_digest()  # pre-warm the cached sandbox digest before threading
+    execution.rootfs_digest()  # pre-warm the cached sandbox digest before threading
     box: dict = {}
     error: list[str] = []
 

@@ -23,6 +23,7 @@ for entry in (TESTS_ROOT, PRODUCT_ROOT / "worker", PRODUCT_ROOT / "tools"):
     if str(entry) not in sys.path:
         sys.path.insert(0, str(entry))
 
+from support.runtime_stack import Stack
 from support import f00b, stack as st, t024, t029, t033  # noqa: E402
 from support.certs import make_stack_certificates, unique_internal_addr  # noqa: E402
 from support.fixtures import *  # noqa: E402,F401,F403
@@ -65,7 +66,7 @@ def _fresh_stack(
         extra_env=env,
         log_path=tmp_path / "api.log",
     )
-    stack = t033.T033Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -90,7 +91,7 @@ def _fresh_stack(
 @pytest.fixture(scope="session")
 def f12_stack(
     tmp_path_factory: pytest.TempPathFactory, go_binaries: dict[str, Path]
-) -> t033.T033Stack:
+) -> Stack:
     with _fresh_stack(tmp_path_factory, go_binaries, "gate") as stack:
         yield stack
 
@@ -98,7 +99,7 @@ def f12_stack(
 @pytest.fixture(scope="session")
 def f12_cli_stack(
     tmp_path_factory: pytest.TempPathFactory, go_binaries: dict[str, Path]
-) -> t033.T033Stack:
+) -> Stack:
     """A second pristine stack for the CLI replay.
 
     The gate mutates the API it judges (it creates a real run and claims a live
@@ -109,7 +110,7 @@ def f12_cli_stack(
         yield stack
 
 
-def build_gate(stack: t033.T033Stack, *, contract: Path = CONTRACT) -> gate_module.Gate:
+def build_gate(stack: Stack, *, contract: Path = CONTRACT) -> gate_module.Gate:
     options = gate_module.GateOptions(
         base_url=stack.server.base_url,
         admin_login=f00b.ADMIN_LOGIN,
@@ -129,7 +130,7 @@ def build_gate(stack: t033.T033Stack, *, contract: Path = CONTRACT) -> gate_modu
 
 
 @pytest.fixture(scope="session")
-def f12_gate(f12_stack: t033.T033Stack) -> gate_module.Gate:
+def f12_gate(f12_stack: Stack) -> gate_module.Gate:
     """The gate, run once against the real stack; every test reads its report."""
     instance = build_gate(f12_stack)
     instance.run()

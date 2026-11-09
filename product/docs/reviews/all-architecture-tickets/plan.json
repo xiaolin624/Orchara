@@ -1,0 +1,536 @@
+{
+  "date": "2026-11-08",
+  "state": "published_verified",
+  "repository": "xiaolin624/Orchara",
+  "baseline": "6141328beaf12568a594095aef9dbc4a1ff2dc21",
+  "spec": "2026-11-08-all-architecture-spec.md",
+  "design": "2026-11-08-all-architecture-design.md",
+  "parent_issue": 160,
+  "planned_triage_label": "ready-for-agent",
+  "existing_tickets": [
+    {
+      "code": "C1.01",
+      "issue": 138,
+      "state": "open",
+      "blocked": [],
+      "stories": [
+        2,
+        3,
+        4,
+        5,
+        12
+      ]
+    },
+    {
+      "code": "C1.02",
+      "issue": 139,
+      "state": "open",
+      "blocked": [
+        "#138"
+      ],
+      "stories": [
+        6,
+        7,
+        8,
+        12
+      ]
+    },
+    {
+      "code": "C1.03",
+      "issue": 140,
+      "state": "open",
+      "blocked": [
+        "#139"
+      ],
+      "stories": [
+        9,
+        10
+      ]
+    },
+    {
+      "code": "C1.04",
+      "issue": 141,
+      "state": "open",
+      "blocked": [
+        "#139"
+      ],
+      "stories": [
+        11,
+        12
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "code": "C5.01",
+      "slug": "canonical-stack",
+      "title": "共享真实 Stack 并迁移票号类型别名的调用者",
+      "blocked": [],
+      "stories": [
+        57,
+        59,
+        60
+      ],
+      "delivery": "测试维护者可直接使用按能力命名的真实 Stack，原有 API、证书、数据库、对象目录与签名配置保持一致；首批调用者不再依赖多层票号类型链。",
+      "order": 1,
+      "file": "01-canonical-stack.md",
+      "issue": 142,
+      "url": "https://github.com/xiaolin624/Orchara/issues/142",
+      "state": "open",
+      "resolved_blocked": []
+    },
+    {
+      "code": "C5.02",
+      "slug": "execution-support",
+      "title": "通过共享能力执行一次真实 supervisor 尝试并回收资源",
+      "blocked": [
+        "C5.01"
+      ],
+      "stories": [
+        58,
+        59,
+        60,
+        61,
+        62,
+        66
+      ],
+      "delivery": "现有执行验收通过一个按能力命名的操作完成真实 finalizer 与 supervisor 的一次执行，正常、失败和超时路径都能观察结果并回收进程。",
+      "order": 2,
+      "file": "02-execution-support.md",
+      "issue": 143,
+      "url": "https://github.com/xiaolin624/Orchara/issues/143",
+      "state": "open",
+      "resolved_blocked": [
+        142
+      ]
+    },
+    {
+      "code": "C5.03",
+      "slug": "run-observations",
+      "title": "共享运行事实读取并迁移图验收调用者",
+      "blocked": [
+        "C5.01"
+      ],
+      "stories": [
+        63,
+        64,
+        66
+      ],
+      "delivery": "图节点等既有验收直接读取共享的节点、封存产物和 SSE 事实，仍用各场景的独立期望判断结果。",
+      "order": 3,
+      "file": "03-run-observations.md",
+      "issue": 144,
+      "url": "https://github.com/xiaolin624/Orchara/issues/144",
+      "state": "open",
+      "resolved_blocked": [
+        142
+      ]
+    },
+    {
+      "code": "C5.04",
+      "slug": "support-contract",
+      "title": "删除已迁移的测试别名与纯转发入口",
+      "blocked": [
+        "C5.01",
+        "C5.02",
+        "C5.03"
+      ],
+      "stories": [
+        65,
+        66
+      ],
+      "delivery": "仓库测试直接依赖能力入口，目标票号类型链和纯转发已彻底移除，测试仍能真实执行并清理。",
+      "order": 4,
+      "file": "04-support-contract.md",
+      "issue": 145,
+      "url": "https://github.com/xiaolin624/Orchara/issues/145",
+      "state": "open",
+      "resolved_blocked": [
+        142,
+        143,
+        144
+      ]
+    },
+    {
+      "code": "C2.01",
+      "slug": "model-complete",
+      "title": "同步主调用与兼容 fallback 共用模型尝试生命周期",
+      "blocked": [],
+      "stories": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "delivery": "使用者通过现有同步 capability 调用完成主候选及兼容 fallback，共用门禁、预留、尝试开闭与结算规则，输出和账本一致。",
+      "order": 5,
+      "file": "05-model-complete.md",
+      "issue": 146,
+      "url": "https://github.com/xiaolin624/Orchara/issues/146",
+      "state": "open",
+      "resolved_blocked": []
+    },
+    {
+      "code": "C2.02",
+      "slug": "model-stream",
+      "title": "流式主调用与 fallback 接入同一尝试驱动",
+      "blocked": [
+        "C2.01"
+      ],
+      "stories": [
+        14,
+        18,
+        19,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29
+      ],
+      "delivery": "流式使用者得到与同步一致的生命周期规则，每个真实尝试独立 generation，失败草稿和半条工具调用不会混入最终结果。",
+      "order": 6,
+      "file": "06-model-stream.md",
+      "issue": 147,
+      "url": "https://github.com/xiaolin624/Orchara/issues/147",
+      "state": "open",
+      "resolved_blocked": [
+        146
+      ]
+    },
+    {
+      "code": "C2.03",
+      "slug": "model-cancellation-contract",
+      "title": "闭环四条模型路径的取消、清理失败与结算回归",
+      "blocked": [
+        "C2.02"
+      ],
+      "stories": [
+        20,
+        21,
+        22,
+        27,
+        29
+      ],
+      "delivery": "调用者在派发前、调用中、退避或流式通知期间停止时，四条模型路径都停止新请求；清理失败不会伪装为账本已关闭。",
+      "order": 7,
+      "file": "07-model-cancellation-contract.md",
+      "issue": 148,
+      "url": "https://github.com/xiaolin624/Orchara/issues/148",
+      "state": "open",
+      "resolved_blocked": [
+        147
+      ]
+    },
+    {
+      "code": "C3.01",
+      "slug": "verified-retrieval",
+      "title": "普通知识检索统一读取并验证正文摘要与字节数",
+      "blocked": [],
+      "stories": [
+        30,
+        31,
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "delivery": "知识库使用者通过现有检索得到当前允许读取且正文完整的片段，坏片段被跳过，部分或空结果不被缓存。",
+      "order": 8,
+      "file": "08-verified-retrieval.md",
+      "issue": 149,
+      "url": "https://github.com/xiaolin624/Orchara/issues/149",
+      "state": "open",
+      "resolved_blocked": []
+    },
+    {
+      "code": "C3.02",
+      "slug": "verified-citations-cache",
+      "title": "引用、回答和缓存复检接入同一已验证读取",
+      "blocked": [
+        "C3.01"
+      ],
+      "stories": [
+        30,
+        31,
+        32,
+        33,
+        34,
+        37,
+        40,
+        41,
+        42,
+        43,
+        44
+      ],
+      "delivery": "打开引用、返回答案和使用缓存都经过同一正文完整性标准；缓存瞬态故障可恢复，损坏内容不会从 miss 路径重新返回。",
+      "order": 9,
+      "file": "09-verified-citations-cache.md",
+      "issue": 150,
+      "url": "https://github.com/xiaolin624/Orchara/issues/150",
+      "state": "open",
+      "resolved_blocked": [
+        149
+      ]
+    },
+    {
+      "code": "C3.03",
+      "slug": "knowledge-rebuild-deletion",
+      "title": "验证重建、来源删除与损坏恢复的知识读取一致性",
+      "blocked": [
+        "C3.02"
+      ],
+      "stories": [
+        34,
+        35,
+        36,
+        41,
+        42,
+        44
+      ],
+      "delivery": "旧活动索引在合法重建期间可读，但删除来源、替换索引或正文损坏后，各读取路径都按当前事实处理。",
+      "order": 10,
+      "file": "10-knowledge-rebuild-deletion.md",
+      "issue": 151,
+      "url": "https://github.com/xiaolin624/Orchara/issues/151",
+      "state": "open",
+      "resolved_blocked": [
+        150
+      ]
+    },
+    {
+      "code": "C4.01",
+      "slug": "explicit-agent-execution",
+      "title": "Agent 节点通过显式上下文复用图与线性执行",
+      "blocked": [],
+      "stories": [
+        45,
+        46,
+        47,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "delivery": "图与线性工作流的 Agent 节点从明确允许的输入与封存事实执行，返回局部决定，由各自调度器处理全局结果。",
+      "order": 11,
+      "file": "11-explicit-agent-execution.md",
+      "issue": 152,
+      "url": "https://github.com/xiaolin624/Orchara/issues/152",
+      "state": "open",
+      "resolved_blocked": []
+    },
+    {
+      "code": "C4.02",
+      "slug": "explicit-callapp-execution",
+      "title": "固定子应用调用接入共享节点执行约定",
+      "blocked": [
+        "C4.01"
+      ],
+      "stories": [
+        45,
+        46,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        55
+      ],
+      "delivery": "图与线性 call_app 都通过显式输入调用固定发布版本，返回局部等待或结果，独立逻辑调用不会误合并。",
+      "order": 12,
+      "file": "12-explicit-callapp-execution.md",
+      "issue": 153,
+      "url": "https://github.com/xiaolin624/Orchara/issues/153",
+      "state": "open",
+      "resolved_blocked": [
+        152
+      ]
+    },
+    {
+      "code": "C4.03",
+      "slug": "node-view-contract",
+      "title": "删除假线性视图并闭环节点调度恢复回归",
+      "blocked": [
+        "C4.02"
+      ],
+      "stories": [
+        51,
+        52,
+        53,
+        54,
+        55,
+        56
+      ],
+      "delivery": "Agent/call_app 的复用不再依赖图伪装线性结构，调度器仍准确处理跳过、等待、排空、恢复和唯一终态。",
+      "order": 13,
+      "file": "13-node-view-contract.md",
+      "issue": 154,
+      "url": "https://github.com/xiaolin624/Orchara/issues/154",
+      "state": "open",
+      "resolved_blocked": [
+        153
+      ]
+    },
+    {
+      "code": "C6.01",
+      "slug": "page-dependency-guard",
+      "title": "页面显式加载共享状态依赖并处理资源失败",
+      "blocked": [],
+      "stories": [
+        78,
+        79,
+        80,
+        81,
+        83
+      ],
+      "delivery": "chat、运行详情、debug 的共享状态脚本缺失或损坏时，用户看到明确提示，受影响功能暂停，仍可导航和重新加载。",
+      "order": 14,
+      "file": "14-page-dependency-guard.md",
+      "issue": 155,
+      "url": "https://github.com/xiaolin624/Orchara/issues/155",
+      "state": "open",
+      "resolved_blocked": []
+    },
+    {
+      "code": "C6.02",
+      "slug": "chat-runview-state",
+      "title": "对话和节点视图采用统一运行状态投影",
+      "blocked": [
+        "C6.01"
+      ],
+      "stories": [
+        67,
+        68,
+        69,
+        70,
+        71,
+        76,
+        77,
+        82
+      ],
+      "delivery": "对话和节点视图使用共享状态解释，dispatched 后仍能看到运行变化，取消/收尾不再因页面旧分支显示成完成。",
+      "order": 15,
+      "file": "15-chat-runview-state.md",
+      "issue": 156,
+      "url": "https://github.com/xiaolin624/Orchara/issues/156",
+      "state": "open",
+      "resolved_blocked": [
+        155
+      ]
+    },
+    {
+      "code": "C6.03",
+      "slug": "runs-state-recovery",
+      "title": "运行详情统一子运行、产物与 410 快照恢复解释",
+      "blocked": [
+        "C6.01"
+      ],
+      "stories": [
+        67,
+        68,
+        69,
+        70,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        82
+      ],
+      "delivery": "运行详情的状态、子任务、产物和事件恢复按共享事实解释，过期历史与安全快照路径清楚可见。",
+      "order": 16,
+      "file": "16-runs-state-recovery.md",
+      "issue": 157,
+      "url": "https://github.com/xiaolin624/Orchara/issues/157",
+      "state": "open",
+      "resolved_blocked": [
+        155
+      ]
+    },
+    {
+      "code": "C6.04",
+      "slug": "page-state-contract",
+      "title": "清理共享状态兼容出口并验收三页面正常与故障路径",
+      "blocked": [
+        "C6.02",
+        "C6.03"
+      ],
+      "stories": [
+        78,
+        79,
+        80,
+        81,
+        82,
+        83
+      ],
+      "delivery": "三类运行页面与测试仅使用同一状态规则，缺依赖时明确暂停，全部目标旧 fallback 和兼容导出已清理。",
+      "order": 17,
+      "file": "17-page-state-contract.md",
+      "issue": 158,
+      "url": "https://github.com/xiaolin624/Orchara/issues/158",
+      "state": "open",
+      "resolved_blocked": [
+        156,
+        157
+      ]
+    },
+    {
+      "code": "ALL.01",
+      "slug": "six-item-integration",
+      "title": "集成六项架构改进并闭环原报告覆盖与证据",
+      "blocked": [
+        "#140",
+        "#141",
+        "C5.04",
+        "C2.03",
+        "C3.03",
+        "C4.03",
+        "C6.04"
+      ],
+      "stories": [
+        1,
+        13,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89
+      ],
+      "delivery": "维护者能从整份原报告追踪六项设计、规格、任务、代码和验收，明确哪些本地完成、已经提交或远端集成。",
+      "order": 18,
+      "file": "18-six-item-integration.md",
+      "issue": 159,
+      "url": "https://github.com/xiaolin624/Orchara/issues/159",
+      "state": "open",
+      "resolved_blocked": [
+        140,
+        141,
+        145,
+        148,
+        151,
+        154,
+        158
+      ]
+    }
+  ],
+  "parent_url": "https://github.com/xiaolin624/Orchara/issues/160",
+  "approved_reply": "同意",
+  "relationship_mode": "body_text_links"
+}
+
