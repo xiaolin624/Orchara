@@ -24,6 +24,7 @@ import uuid
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import f00b, t024, t025, t029, t041, t044, t048
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -32,7 +33,7 @@ T048_SECRET_VALUE = "t048-db-secret-value-9f3c2a"
 
 
 @pytest.fixture
-def t048_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def t048_stack(tmp_path, fresh_database, go_binaries, api_server) -> Stack:
     """The F06 stack plus the connector test credential in the API environment.
 
     The secret is an ``env:`` deployer reference, so it never appears in a request
@@ -51,7 +52,7 @@ def t048_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024St
     env[t048.TEST_SECRET_ENV] = T048_SECRET_VALUE
     server = api_server(dsn, extra_env=env)
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

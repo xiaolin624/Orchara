@@ -25,6 +25,7 @@ import re
 import zipfile
 from decimal import Decimal
 
+from support import execution_support as execution
 from support import stack as st
 from support import f00b, f02a, t027, t033, t039, t042
 
@@ -136,12 +137,12 @@ def submit_sales_run(
 
 
 def run_once(stack, *, env_extra: dict[str, str] | None = None):
-    env = t033.supervisor_exec_env(stack)
+    env = execution.supervisor_exec_env(stack)
     if env_extra:
         env.update(env_extra)
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env)
-    return completed, t033.exec_report(completed)
+    with execution.FinalizeWorker(stack):
+        completed = execution.run_supervisor_exec(stack, env)
+    return completed, execution.exec_report(completed)
 
 
 def wait_node_results(session, run_id: str, *, expected: int = 7) -> dict:

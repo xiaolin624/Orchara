@@ -51,6 +51,7 @@ from pathlib import Path
 import pytest
 
 from f13b import fault_support as fs
+from support.runtime_stack import Stack
 from support import f00b, t024, t029, t035, t041, t048, t050, t051
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -70,7 +71,7 @@ FAULT_01_UNIT_B = "t106-fault01-unit-b"
 # stack + connector fixtures
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def t106_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024Stack:
+def t106_stack(tmp_path, fresh_database, go_binaries, api_server) -> Stack:
     """The T051-shaped real stack (objects, signed links, mTLS, approvals)."""
     dsn, dbname = fresh_database
     st.migrate_or_fail(go_binaries["admin"], dsn)
@@ -85,7 +86,7 @@ def t106_stack(tmp_path, fresh_database, go_binaries, api_server) -> t024.T024St
     env[t048.TEST_SECRET_ENV] = T106_SECRET_VALUE
     server = api_server(dsn, extra_env=env)
 
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

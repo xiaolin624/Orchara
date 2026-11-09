@@ -25,6 +25,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from support.runtime_stack import Stack
 from support import f00b, t024
 from support import stack as st
 
@@ -36,7 +37,7 @@ USER_PASSWORD = f00b.USER_PASSWORD
 
 # T026Stack is the T024 stack: the evaluation work needs the same real database,
 # binaries, object store, signing key and internal mTLS certificates.
-T026Stack = t024.T024Stack
+T026Stack = Stack
 
 
 def new_uuid() -> str:

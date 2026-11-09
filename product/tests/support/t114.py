@@ -49,6 +49,7 @@ for _entry in (str(TOOLS_ROOT), str(TESTS_ROOT)):
 import psutil  # noqa: E402
 
 from evidence_redaction import find_violations, redact_value  # noqa: E402
+from support import execution_support as execution
 from support import f00b, stack as st, t024, t025, t026, t027, t029, t033, t078  # noqa: E402
 
 EVIDENCE_JSON = PRODUCT_ROOT / "reports" / "f13b" / "T114-capacity.json"
@@ -649,9 +650,9 @@ class CapacityTrial:
     # -- lifecycle ----------------------------------------------------------
     def run(self) -> dict:
         settings = self.settings
-        self._supervisor_env = t033.supervisor_exec_env(
+        self._supervisor_env = execution.supervisor_exec_env(
             self.stack,
-            digest=t033.rootfs_digest(),
+            digest=execution.rootfs_digest(),
             heartbeat=settings.heartbeat,
             result_wait="60s",
             poll=settings.poll,

@@ -1,0 +1,330 @@
+{
+  "repo": "E:\\Orchara",
+  "commit": "6141328beaf12568a594095aef9dbc4a1ff2dc21",
+  "candidates": [
+    {
+      "id": "spec",
+      "title": "收拢规格复制与漂移判定",
+      "strength": "Strong",
+      "category": "local-substitutable",
+      "proof": "已在临时目录复现",
+      "files": [
+        [
+          "product/tools/sync_spec.py",
+          183,
+          "check() 比较 manifest 与副本；214 行起只检查源目录新增路径"
+        ],
+        [
+          "product/tests/tooling/test_sync_spec.py",
+          75,
+          "覆盖副本修改、增加与删除，缺少已有源文件的内容变更"
+        ],
+        [
+          "product/docs/adr/0001-product-workspace-inside-spec-repo.md",
+          16,
+          "规格与产品同仓，复制与漂移门禁是既定决策"
+        ]
+      ],
+      "problem": "interface 隐含“修改源文件后必须先同步”的顺序约定；已有源文件的内容变更或删除，不进入当前 source 检查分支。",
+      "solution": "深化规格复制与漂移判定 module，在同一 implementation 内处理当前源目录、同步基线与产品副本的关系，保留已有生成流程。",
+      "evidence": "隔离复现：同步后把 README 和 contracts/openapi.json 从版本 1 改成版本 2，check(source,dest) 仍返回 []；随后新增 new.md，得到 upstream_new。",
+      "deletion": "Deletion test：让 module 吸收调用者必须记住的同步顺序，增加 depth；不能只增加一个转发函数。真正的比较规则不可删除，否则复杂度回流每个调用者。",
+      "seam": "seam 位于规格树的复制与比较；真实目录与临时目录使用相同 filesystem adapter，不增设虚构的存储抽象。",
+      "wins": [
+        "locality：漂移规则集中",
+        "leverage：复制与检查共享规则",
+        "interface 检查源内容变化"
+      ],
+      "tests": "保留 CRLF 与副本篡改测试；通过现有 interface 加入源文档、源契约的修改与删除、源新增、干净同步的临时目录矩阵。",
+      "adr": "与产品 ADR 0001 相容，无需迁移规格布局。漏检修复可先独立交付，结构收拢随后进行。",
+      "before": [
+        "生成源 → 根规格",
+        "复制 → 产品副本 + manifest",
+        "检查：manifest ↔ 产品副本",
+        "源目录：只发现新增路径"
+      ],
+      "after": [
+        "规格复制 / 漂移判定 module",
+        "当前源内容 · 同步基线 · 产品副本",
+        "复制与检查共享内容判定",
+        "源变化、旧副本、篡改分别可见"
+      ]
+    },
+    {
+      "id": "model",
+      "title": "集中模型调用的尝试生命周期",
+      "strength": "Strong",
+      "category": "mock",
+      "proof": "代码与近期修复交叉核对",
+      "files": [
+        [
+          "product/internal/capabilities/service.go",
+          1041,
+          "dispatchModel 与 1151 行 dispatchFallback"
+        ],
+        [
+          "product/internal/capabilities/stream.go",
+          303,
+          "dispatchStream 与 464 行 dispatchStreamFallback"
+        ],
+        [
+          "product/internal/capabilities/service.go",
+          2234,
+          "取消收尾使用独立清理上下文"
+        ],
+        [
+          "product/docs/adr/0035-t122-openai-compatible-adapter.md",
+          53,
+          "单次物理请求、有界重试、取消与 fallback 约束"
+        ]
+      ],
+      "problem": "四条 implementation 重复组织候选、预留、attempt、失败关闭和 fallback；修正同一取消或计费规则需要横跨多条路径。",
+      "solution": "将共享尝试生命周期深化到同一 module；同步响应与流式 generation 保留各自内容处理，共享约束由内部 implementation 承担。",
+      "evidence": "同步主路径在调用前、失败后和 backoff 期间处理取消；流式主路径另有 consumerStopped、清理和 generation 规则。已共用 beginModelAttempt / finishModelSuccess，但编排仍重复。",
+      "deletion": "Deletion test：删除重复编排应减少分支；共享预留、关闭规则不可删除，否则规则回流四处。目标是提高 depth，不是再加一层转调。",
+      "seam": "现有 Provider / StreamProvider seam 已有 stub 与真实协议 adapter；复用该变化点。leverage 来自一次修正覆盖同步、流式与 fallback。",
+      "wins": [
+        "locality：取消与结算同处",
+        "leverage：四路径共享约束",
+        "interface 测完整 attempt"
+      ],
+      "tests": "保留真实账本与本地 fake provider 验收；通过调用 interface 对照取消时点、拒绝不重试、预留释放、封存失败与 generation 隔离。",
+      "adr": "遵守 ADR 0035。job-scoped platform_model_calls 与 run-scoped operations 归属不同，不应顺手合并账本。",
+      "before": [
+        "同步 primary：预留 → 调用 → 关闭",
+        "同步 fallback：预留 → 调用 → 关闭",
+        "流式 primary：预留 → stream → 关闭",
+        "流式 fallback：预留 → stream → 关闭"
+      ],
+      "after": [
+        "模型调用 module",
+        "共享：预留 / attempt / 失败关闭",
+        "独立：完整响应 / generation",
+        "统一约束覆盖 primary 与 fallback"
+      ]
+    },
+    {
+      "id": "knowledge",
+      "title": "深化组织知识库的可读片段",
+      "strength": "Worth exploring",
+      "category": "local-substitutable",
+      "proof": "静态差异；未复现完整攻击链",
+      "files": [
+        [
+          "product/internal/knowledge/readable_chunk.go",
+          30,
+          "三条读取路径已共用权限 SQL"
+        ],
+        [
+          "product/internal/knowledge/service.go",
+          1235,
+          "rankRetrieval；1340 行 GetChunk；1392 行 readChunkText"
+        ],
+        [
+          "product/internal/knowledge/cache_store.go",
+          245,
+          "命中时逐项复检当前行与封存正文"
+        ],
+        [
+          "product/internal/knowledge/cache.go",
+          263,
+          "matchesSealedBody 额外核对文本与 SHA-256"
+        ]
+      ],
+      "problem": "已有 shallow seam 只集中权限 SQL；可读性、封存字节完整性与读失败分类仍由调用者组合，普通读取与缓存命中的校验深度不同。",
+      "solution": "在组织知识库 module 内收拢片段读取与验证，使策略差异成为显式决定；先核实完整性要求，再统一 implementation。",
+      "evidence": "缓存命中核对正文与 body_sha256；rankRetrieval 虽查询了哈希，读正文时未执行该比较，GetChunk 也只调用受大小限制的 readChunkText。权限条件已经统一。",
+      "deletion": "Deletion test：readChunkText 几乎只包 Open / ReadAll；深化它可吸收三条路径的验证知识、提高 depth。不能为减少代码而删除命中复检。",
+      "seam": "seam 仍位于授权后的片段读取；本地 objectstore adapter 与真实 PG 已可测试。不把组织知识库规则泛化到整个对象存储。",
+      "wins": [
+        "locality：可读性规则集中",
+        "leverage：三入口共用验证",
+        "interface 测实际返回正文"
+      ],
+      "tests": "通过 Query / GetChunk / Answer 对照缓存开关：正文损坏、对象缺失、瞬态故障、撤权与索引替换；保留四类 RAG 失败分类。",
+      "adr": "保持 ADR 0015 的命中正文复检、瞬态失败保留缓存行，以及 ADR 0018 的活动索引约束。静态差异不直接等于越权或泄漏。",
+      "before": [
+        "共享权限 SQL",
+        "普通检索 → 受限读取",
+        "引用读取 → 受限读取",
+        "缓存命中 → 读取 + 文本 / hash 复检"
+      ],
+      "after": [
+        "组织知识库可读片段 module",
+        "权限 · 活动索引 · 正文验证",
+        "显式区分不可读与瞬态故障",
+        "检索 / 引用 / 缓存共用"
+      ]
+    },
+    {
+      "id": "nodes",
+      "title": "让节点复用脱离假线性视图",
+      "strength": "Worth exploring",
+      "category": "ports & adapters",
+      "proof": "调用链与现有回归测试",
+      "files": [
+        [
+          "product/internal/presetexec/graphrun.go",
+          1057,
+          "图 Agent 节点构造 linearView；1080 行子应用同样处理"
+        ],
+        [
+          "product/internal/presetexec/graphrun.go",
+          1096,
+          "graphLinearView 伪造 linearPlan 并注入空 skip"
+        ],
+        [
+          "product/internal/presetexec/linear.go",
+          41,
+          "linearRun 同时承载线性运行与图节点 adapter"
+        ],
+        [
+          "product/internal/presetexec/agent.go",
+          302,
+          "命名空间 fallback 与 349 行上下文范围依赖"
+        ]
+      ],
+      "problem": "共享执行 interface 要求图调度器理解线性 plan、available、scopeIDs 与 skip 的隐含组合，调度知识泄漏到节点复用。",
+      "solution": "深化共享节点执行 module，使线性与图调度器复用行为时各自提供调度事实，保留共享逻辑和调度器的单一所有权。",
+      "evidence": "graphLinearView 设置只含 start / node 的 order，复制图的 available / scopeIDs，并安装 skip: func() {}；节点实现同时兼容 nil fallback 和图覆盖值。",
+      "deletion": "Deletion test：可消除的是“必须伪装成线性运行”的 interface 知识；共享 implementation 不可删除，否则两个调度器重复工具与委派行为。",
+      "seam": "线性与图两种调度 adapter 已真实存在，支持现有节点执行 seam。depth 应隐藏绑定、上下文与等待规则，不另建执行引擎。",
+      "wins": [
+        "locality：节点上下文同处",
+        "leverage：两调度器共享行为",
+        "interface 不携带假 plan"
+      ],
+      "tests": "保留并发 drain、skipped 与唯一结果提交测试；通过节点 seam 对照输入命名空间、上下文范围、等待和失败，保留真实 mTLS 执行验收。",
+      "adr": "遵守产品 ADR 0034 的 Go runtime 与共享节点执行决定，保留独立 Python LangGraph 证明。迁移风险较高，先限于 Agent / call_app。",
+      "before": [
+        "图调度器",
+        "构造 fake linearPlan",
+        "覆盖 available / scopeIDs / skip",
+        "共享 Agent / call_app 实现"
+      ],
+      "after": [
+        "线性调度器     图调度器",
+        "共享节点执行 module",
+        "输入绑定 · 上下文 · 等待事实",
+        "各调度器独立持有调度状态"
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "按共享能力组织验收测试支撑",
+      "strength": "Strong",
+      "category": "local-substitutable",
+      "proof": "真实 import 与转发链",
+      "files": [
+        [
+          "product/tests/support/t033.py",
+          26,
+          "Stack 类型沿 T033 → T031 → T029 → T024 转出口"
+        ],
+        [
+          "product/tests/support/t042.py",
+          126,
+          "真实 supervisor 执行与 finalize 生命周期"
+        ],
+        [
+          "product/tests/support/t083.py",
+          243,
+          "run_once 转发到 t042.run_linear_once"
+        ],
+        [
+          "product/tests/support/t086.py",
+          110,
+          "模型运行再次转发；t091.py:336 起批量转出口"
+        ]
+      ],
+      "problem": "历史票号成为共享 interface；定位一次执行、资源清理或 Stack 类型需穿过多层 module，测试组合依赖开发时间线。",
+      "solution": "把共享的栈启动、执行一次 attempt、结果观察收拢到能力 module；票号文件保留验收场景和断言，沿调用链逐步迁移。",
+      "evidence": "T033Stack → T031Stack → T029Stack → T024Stack；t083.run_once 与 t086.run_once 都转调 t042。现有 stack.py、fixtures.py 是收拢起点。",
+      "deletion": "Deletion test：删除转出口和 run_once 转发不会增加 implementation 复杂度；保留并深化管理进程、finalize 与退出证据的真实 module。",
+      "seam": "seam 保留在真实栈生命周期；PG / HTTP / mTLS / supervisor adapter 继续真实执行。depth 藏住资源建立和清理，不用 mock 替代验收事实。",
+      "wins": [
+        "locality：进程生命周期同处",
+        "leverage：跨票共享能力",
+        "interface 按任务能力定位"
+      ],
+      "tests": "保留验收断言并渐进改入口；验证异常清理、环境覆盖与失败退出证据。无需为文件改名新增镜像测试，也无需一次搬完 support。",
+      "adr": "与 ADR 0006 的真实执行证据要求相容。票号保留追溯用途，不再承担共享能力所有权。",
+      "before": [
+        "T033 → T031 → T029 → T024",
+        "T083.run_once → T042",
+        "T086.run_once → T042",
+        "T091 → 历史票号转出口"
+      ],
+      "after": [
+        "验收场景：T033 / T083 / T086 / T091",
+        "共享测试能力 module",
+        "栈启动 · 执行 · 观察 · 清理",
+        "历史票号保留场景语义"
+      ]
+    },
+    {
+      "id": "web",
+      "title": "删除运行页面的第二套状态解释",
+      "strength": "Worth exploring",
+      "category": "in-process",
+      "proof": "代码与页面加载约束",
+      "files": [
+        [
+          "product/apps/web/src/assets/chat.js",
+          438,
+          "为旧隔离 harness 保留三态 fallback；479 行轮询 fallback"
+        ],
+        [
+          "product/apps/web/src/assets/runs.js",
+          1363,
+          "重复 streamFailure；2011 行 snapshot fallback"
+        ],
+        [
+          "product/apps/web/src/assets/runstream.js",
+          1,
+          "已集中运行状态、410 恢复与安全快照规则"
+        ],
+        [
+          "product/tests/f12/test_t096_stack.py",
+          122,
+          "真实页面检查共享脚本先于页面脚本加载"
+        ]
+      ],
+      "problem": "interface 隐含全局脚本顺序；共享 module 缺失时执行旧状态逻辑，使 harness 的加载方式决定待测语义。",
+      "solution": "深化运行状态与事件恢复 module 的唯一职责；页面显式依赖它，旧 harness 使用真实依赖后删除重复 fallback。",
+      "evidence": "chat.js 注明 fallback 为 older isolated page harness 保留；shouldPollHandling 缺少共享函数时退回只看 Request。三个真实页面均已装载 runstream.js。",
+      "deletion": "Deletion test：删除旧 fallback 后分支直接消失，不应把它们移到别处；runstream module 不可删，否则规则重新散落页面。",
+      "seam": "seam 是运行事实到展示决定的转换；DOM 渲染留在页面 adapter。纯内存规则无需 transport adapter，depth 来自集中状态与恢复约定。",
+      "wins": [
+        "locality：运行事实单点解释",
+        "leverage：三页面共享规则",
+        "interface 测真实依赖"
+      ],
+      "tests": "保留 410 快照恢复、dispatched 后持续观察、迟到快照不覆盖新选择的测试。统一 harness 依赖，不因 marker 测试保留第二套业务规则。",
+      "adr": "保留静态资产部署，无需框架迁移。本轮 10 项 T096 页面逻辑测试通过，浏览器 DOM 全栈验收未重跑。",
+      "before": [
+        "runstream：完整状态 / 410 恢复",
+        "chat：旧三态与 Request 轮询",
+        "runs：另一个 streamFailure",
+        "typeof + 全局 script 顺序"
+      ],
+      "after": [
+        "运行状态与恢复 module",
+        "state / phase / 410 / polling",
+        "页面 adapter：chat / runs / debug",
+        "harness 使用同一依赖"
+      ]
+    }
+  ],
+  "observations": {
+    "go_test": "exit 0, cached packages",
+    "tooling_canvas": "31 passed in 12.01s",
+    "t096_pages": "10 passed in 0.95s",
+    "sync_spec": "exit 0 no drift",
+    "source_drift_reproduction": {
+      "clean": [],
+      "modified_existing_upstream_docs_and_contract": [],
+      "new_upstream_file": "upstream_new"
+    }
+  }
+}

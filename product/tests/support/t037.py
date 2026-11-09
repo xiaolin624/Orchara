@@ -21,10 +21,12 @@ import time
 import zipfile
 from pathlib import Path
 
+from support import execution_support as execution
+from support.runtime_stack import Stack
 from support import f00b, t027, t028, t033
 from support import stack as st
 
-T037Stack = t033.T033Stack
+T037Stack = Stack
 Session = t033.Session
 admin_session = t033.admin_session
 session_for = t033.session_for
@@ -34,7 +36,7 @@ sql_utf8 = t033.sql_utf8
 artifact_row = t033.artifact_row
 artifact_content = t033.artifact_content
 sandbox_available = t033.sandbox_available
-rootfs_digest = t033.rootfs_digest
+rootfs_digest = execution.rootfs_digest
 put_link = t033.put_link
 
 PRODUCT_ROOT = st.PRODUCT_ROOT

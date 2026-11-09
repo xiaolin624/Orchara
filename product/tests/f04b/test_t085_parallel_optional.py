@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from support import execution_support as execution
 from support import t025, t027, t033, t042, t083, t085
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -71,7 +72,7 @@ def test_parallel_branches_run_and_join_once(t033_stack, sandbox) -> None:
         validation.text
     )
 
-    completed, report = t085.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert_executed(completed, report)
     assert_succeeded(report)
     state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
@@ -112,7 +113,7 @@ def test_optional_pure_compute_failure_becomes_join_error_data(t033_stack, sandb
         validation.text
     )
 
-    completed, report = t085.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert_executed(completed, report)
     # The explicit pure-compute failure of the optional branch is error data, so
     # the attempt still succeeds.
@@ -159,7 +160,7 @@ def test_required_failure_cancels_the_other_branch_and_never_joins(t033_stack, s
         validation.text
     )
 
-    completed, report = t085.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     # A deterministic failed result is committed, so the supervisor itself exits 0.
     assert_executed(completed, report)
     assert report["status"] == "executed", report
@@ -207,7 +208,7 @@ def test_optional_never_swallows_an_agent_capability_failure(t033_stack, sandbox
     # not downgrade it.
     t085.revoke_golden_model(t033_stack.dbname)
 
-    completed, report = t085.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert_executed(completed, report)
     assert report["error_code"] == "model_profile_unavailable", report
 
@@ -278,7 +279,7 @@ def test_nested_parallel_region_inside_a_condition_branch(t033_stack, sandbox) -
         validation.text
     )
 
-    completed, report = t085.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert_executed(completed, report)
     assert_succeeded(report)
 

@@ -48,6 +48,7 @@ import json
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import (
     f00b,
     t024,
@@ -75,7 +76,7 @@ GATE_COMMAND = "python -m pytest tests/f13b/test_t108_delegation_faults.py -q"
 
 
 @pytest.fixture
-def t108_stack(tmp_path, fresh_database, go_binaries, api_server) -> t029.T029Stack:
+def t108_stack(tmp_path, fresh_database, go_binaries, api_server) -> Stack:
     """The T029 real stack with the T068/T084/T101 execution-lease margin.
 
     ``ORCHARA_EXECUTION_LEASE_TTL=300s`` is the documented test-only margin: the
@@ -95,7 +96,7 @@ def t108_stack(tmp_path, fresh_database, go_binaries, api_server) -> t029.T029St
     env = t029.api_extra_env(object_dir, certificates, signing_key=signing_key)
     env["ORCHARA_EXECUTION_LEASE_TTL"] = "300s"
     server = api_server(dsn, extra_env=env)
-    stack = t029.T029Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

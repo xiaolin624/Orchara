@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from support import execution_support as execution
 from support import stack as st
 
 NODE = shutil.which("node")
@@ -615,7 +616,7 @@ def test_the_real_linear_run_view_shows_committed_states_and_the_data_artifact(
     run = t042.submit_linear_run(
         owner, application_id, artifact_id=csv_id, input_value={"source": "t083"},
     )
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
@@ -683,7 +684,7 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
         input_value={"requires_approval": True},
         name="t083 run view",
     )
-    completed, report = t083.run_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report

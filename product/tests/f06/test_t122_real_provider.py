@@ -24,6 +24,7 @@ from decimal import Decimal
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import f00b, t024, t025, t039, t041, t044, t122
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -69,7 +70,7 @@ def _build_stack(
                 # variable is not set: the deployment credential is unusable.
                 env["ORCHARA_MODEL_SECRET_REF"] = "env:" + t122.UNSET_DEPLOY_SECRET_ENV
         server = api_server(dsn, extra_env=env)
-        stack = t024.T024Stack(
+        stack = Stack(
             server=server,
             dsn=dsn,
             dbname=dbname,

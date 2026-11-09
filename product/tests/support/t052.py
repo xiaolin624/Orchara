@@ -25,6 +25,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from support import execution_support as execution
 from support import f00b, t026, t027, t028, t029, t033
 from support import stack as st
 
@@ -372,9 +373,9 @@ def wait_for_evaluation(
 # ---------------------------------------------------------------------------
 # the supervisor executor (reused from T033: the same real binary and env)
 # ---------------------------------------------------------------------------
-supervisor_exec_env = t033.supervisor_exec_env
-run_supervisor_exec = t033.run_supervisor_exec
-exec_report = t033.exec_report
+supervisor_exec_env = execution.supervisor_exec_env
+run_supervisor_exec = execution.run_supervisor_exec
+exec_report = execution.exec_report
 sandbox_available = t033.sandbox_available
 wait_run_state = t033.wait_run_state
 

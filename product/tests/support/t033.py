@@ -20,10 +20,12 @@ import subprocess
 import time
 from pathlib import Path
 
+from support import execution_support as execution
+from support.runtime_stack import Stack
 from support import f00b, stack as st, t024, t027, t028, t029, t031
 
 # Re-exports so a T033 test imports one module.
-T033Stack = t031.T031Stack
+T033Stack = Stack
 Session = t031.Session
 admin_session = t031.admin_session
 session_for = t031.session_for
@@ -80,12 +82,10 @@ EXPECTED_SUMMARY_CSV = "region,total\n东区,200.00\n西区,50.00\n".encode("utf
 BAD_CSV = b"order_id,date,region,amount\no-1,2026-01-02,east,-1.00\n"
 REJECTION_CODE = "negative_amount"
 
-SANDBOX_DISTRO = "Ubuntu-24.04"
-SANDBOX_ROOTFS = "/opt/orchara-sandbox/python-rootfs"
-SANDBOX_STATE_ROOT = "/var/tmp/orchara-sandbox"
-_FINALIZE_JOB = "artifact_finalize"
+SANDBOX_DISTRO = execution.SANDBOX_DISTRO
+SANDBOX_ROOTFS = execution.SANDBOX_ROOTFS
+SANDBOX_STATE_ROOT = execution.SANDBOX_STATE_ROOT
 
-_digest_cache: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ class RunArtifactClient(f00b.InternalClient):
         return self.post(f"/internal/v1/runs/{run_id}/artifacts", body, **kwargs)
 
 
-def artifact_client(stack: T033Stack, role: str = "worker") -> RunArtifactClient:
+def artifact_client(stack: Stack, role: str = "worker") -> RunArtifactClient:
     return RunArtifactClient(
         stack.certificates.internal_url,
         stack.certificates.ca.cert,
@@ -124,7 +124,7 @@ def artifact_client(stack: T033Stack, role: str = "worker") -> RunArtifactClient
 # real upload + finalize of the sales CSV through T028
 # ---------------------------------------------------------------------------
 def upload_artifact(
-    stack: T033Stack,
+    stack: Stack,
     session: Session,
     content: bytes,
     *,
@@ -149,7 +149,7 @@ def upload_artifact(
 
 
 def debug_run_with_input(
-    stack: T033Stack,
+    stack: Stack,
     owner,
     artifact_id: str,
     *,
@@ -171,7 +171,7 @@ def debug_run_with_input(
 
 
 def claimed_with_sales_csv(
-    stack: T033Stack,
+    stack: Stack,
     *,
     content: bytes = SALES_CSV,
     execution_unit_id: str = "t033-e2e",
@@ -186,7 +186,7 @@ def claimed_with_sales_csv(
 
 
 def claim_run_for_owner(
-    stack: T033Stack,
+    stack: Stack,
     owner,
     *,
     execution_unit_id: str = "t033-unit",
@@ -208,7 +208,7 @@ def claim_run_for_owner(
 
 
 def upload_run_artifact(
-    stack: T033Stack,
+    stack: Stack,
     client: RunArtifactClient,
     lease: dict,
     *,
@@ -274,142 +274,22 @@ def wait_scoped_status(
 # ---------------------------------------------------------------------------
 # maintenance finalize worker (concurrent with the supervisor)
 # ---------------------------------------------------------------------------
-class FinalizeWorker:
-    """A real `cmd/maintenance run --kinds artifact_finalize` process."""
-
-    def __init__(self, stack: T033Stack) -> None:
-        self.stack = stack
-        self.process: subprocess.Popen[str] | None = None
-        self.output = ""
-
-    def __enter__(self) -> "FinalizeWorker":
-        env = f00b.maintenance_env(
-            self.stack, heartbeat_interval="50ms", extra={"ORCHARA_BACKGROUND_RETRY_BACKOFF": "50ms"}
-        )
-        self.process = subprocess.Popen(
-            [
-                str(self.stack.binaries["maintenance"]),
-                "run",
-                "--kinds",
-                _FINALIZE_JOB,
-                "--system-io-slots",
-                "1",
-                "--poll-interval",
-                "50ms",
-            ],
-            cwd=PRODUCT_ROOT,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            stdin=subprocess.DEVNULL,
-        )
-        return self
-
-    def __exit__(self, *_exc) -> None:
-        if self.process is None:
-            return
-        self.process.terminate()
-        try:
-            stdout, _stderr = self.process.communicate(timeout=30)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            stdout, _stderr = self.process.communicate(timeout=10)
-        self.output = stdout or ""
+FinalizeWorker = execution.FinalizeWorker
 
 
 # ---------------------------------------------------------------------------
 # cmd/supervisor exec --once
 # ---------------------------------------------------------------------------
-def rootfs_digest() -> str:
-    """The digest recorded by deploy/sandbox/build_python_rootfs.sh (guest read)."""
-    global _digest_cache
-    if _digest_cache is None:
-        completed = subprocess.run(
-            ["wsl", "-d", SANDBOX_DISTRO, "-u", "root", "-e", "bash", "-lc",
-             f"cat {SANDBOX_ROOTFS}.digest"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-            stdin=subprocess.DEVNULL,
-        )
-        if completed.returncode != 0 or not completed.stdout.strip().startswith("sha256:"):
-            raise RuntimeError(
-                "the sandbox rootfs digest is unavailable; build it with "
-                f"deploy/sandbox/build_python_rootfs.sh: {completed.stderr.strip()}"
-            )
-        _digest_cache = completed.stdout.strip()
-    return _digest_cache
+rootfs_digest = execution.rootfs_digest
 
 
-def supervisor_exec_env(
-    stack: T033Stack,
-    *,
-    digest: str | None = None,
-    timeout: str = "60s",
-    heartbeat: str = "100ms",
-    result_wait: str = "60s",
-    poll: str = "50ms",
-    extra: dict[str, str] | None = None,
-) -> dict[str, str]:
-    certificates = stack.certificates
-    supervisor = certificates.client("supervisor")
-    worker = certificates.client("worker")
-    env = st.admin_env(stack.dsn)
-    env.pop("ORCHARA_DB_DSN", None)
-    env.update(
-        {
-            "ORCHARA_INTERNAL_URL": certificates.internal_url,
-            "ORCHARA_INTERNAL_CA": str(certificates.ca.cert),
-            "ORCHARA_SUPERVISOR_CLIENT_CERT": str(supervisor.cert),
-            "ORCHARA_SUPERVISOR_CLIENT_KEY": str(supervisor.key),
-            "ORCHARA_WORKER_CLIENT_CERT": str(worker.cert),
-            "ORCHARA_WORKER_CLIENT_KEY": str(worker.key),
-            "ORCHARA_SUPERVISOR_DSN": stack.dsn,
-            "ORCHARA_BACKGROUND_HEARTBEAT_INTERVAL": heartbeat,
-            "ORCHARA_EXEC_RESULT_WAIT": result_wait,
-            "ORCHARA_EXEC_POLL_INTERVAL": poll,
-            "ORCHARA_PRODUCT_ROOT": str(PRODUCT_ROOT),
-            "ORCHARA_WSL_DISTRO": SANDBOX_DISTRO,
-            "ORCHARA_SANDBOX_PYTHON_ROOTFS": SANDBOX_ROOTFS,
-            "ORCHARA_SANDBOX_ROOTFS_DIGEST": digest if digest is not None else rootfs_digest(),
-            "ORCHARA_SANDBOX_STATE_ROOT": SANDBOX_STATE_ROOT,
-            "ORCHARA_SANDBOX_TIMEOUT": timeout,
-        }
-    )
-    if extra:
-        env.update(extra)
-    return env
+supervisor_exec_env = execution.supervisor_exec_env
 
 
-def run_supervisor_exec(
-    stack: T033Stack,
-    env: dict[str, str],
-    *args: str,
-    timeout: int = 300,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(stack.binaries["supervisor"]), "exec", "--once", *args],
-        cwd=PRODUCT_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        stdin=subprocess.DEVNULL,
-    )
+run_supervisor_exec = execution.run_supervisor_exec
 
 
-def exec_report(completed: subprocess.CompletedProcess[str]) -> dict:
-    """The last JSON object stdout carried; the executor prints exactly one."""
-    lines = [line for line in (completed.stdout or "").splitlines() if line.strip()]
-    assert lines, f"exec printed nothing; stderr={completed.stderr}"
-    report = json.loads(lines[-1])
-    assert isinstance(report, dict), report
-    return report
+exec_report = execution.exec_report
 
 
 # ---------------------------------------------------------------------------

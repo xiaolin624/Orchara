@@ -19,6 +19,7 @@ import json
 
 import pytest
 
+from support import execution_support as execution
 from support import f00b, t025, t027, t033, t042, t055, t064, t083, t087, t088
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -92,7 +93,7 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
         validation.text
     )
 
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
     state = t033.wait_run_state(stack.dbname, run["id"], {"succeeded"})
@@ -200,7 +201,7 @@ def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t033_s
         input_value={"question": QUERY},
         name="t088 no results",
     )
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
 
@@ -242,7 +243,7 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t033_stack) -
         input_value={"question": QUERY},
         name="t088 acl mixed",
     )
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
     items = t083.node_results(owner.creator, run["id"], expected=1)
@@ -263,7 +264,7 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t033_stack) -
         input_value={"question": QUERY},
         name="t088 acl foreign only",
     )
-    completed2, report2 = t088.run_once(stack)
+    completed2, report2 = execution.execute_once(stack)
     assert completed2.returncode == 0, (completed2.stderr, report2)
     assert_run_succeeded(report2)
     items2 = t083.node_results(owner2.creator, run2["id"], expected=1)
@@ -393,7 +394,7 @@ def test_revoked_knowledge_returns_nothing_and_the_old_citation_is_unavailable(
         input_value={"question": QUERY},
         name="t088 revoked",
     )
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
     items = t083.node_results(owner.creator, run["id"], expected=1)
@@ -423,7 +424,7 @@ def test_two_parallel_retrieve_nodes_keep_their_own_documents(t033_stack) -> Non
         input_value={"left": "华北地区十月的销售额", "right": "退款申请处理时限"},
         name="t088 parallel",
     )
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
 
@@ -495,7 +496,7 @@ def test_a_resumed_run_rechecks_document_readability_instead_of_reusing_the_exce
         validation.text
     )
 
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "waiting_approval", report
     approval = t087.approval_for_node(stack.dbname, run["id"], "approve")
@@ -510,7 +511,7 @@ def test_a_resumed_run_rechecks_document_readability_instead_of_reusing_the_exce
     )
     assert decided.status == 200, decided.text
 
-    completed, report = t088.run_once(stack)
+    completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
     final = t088.final_output_document(alice, stack.dbname, run["id"])

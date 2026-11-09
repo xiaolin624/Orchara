@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import time
 
+from support import execution_support as execution
 from support import stack as st
 from support import t027, t033
 
@@ -123,14 +124,7 @@ def ready_csv(stack, owner, *, content: bytes = t033.SALES_CSV) -> str:
     return t033.upload_artifact(stack, owner.creator, content)
 
 
-def run_linear_once(stack, *, env_extra: dict[str, str] | None = None):
-    """Run one claimed attempt with the real finalize worker and supervisor binary."""
-    env = t033.supervisor_exec_env(stack)
-    if env_extra:
-        env.update(env_extra)
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env)
-    return completed, t033.exec_report(completed)
+run_linear_once = execution.execute_once
 
 
 # ---------------------------------------------------------------------------

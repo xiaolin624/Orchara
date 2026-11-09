@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import time
 
+from support import execution_support as execution
 from support import f00b, t025, t027, t029, t033, t035, t068, t075
 from support import stack as st
 
@@ -386,12 +387,12 @@ def execute_once(stack, **env_kwargs) -> tuple[dict, object]:
     A start -> end or call_app chain uses no sandbox, so the sandbox variables are
     still supplied (the process validates its configuration) but never used.
     """
-    env = t033.supervisor_exec_env(stack, **env_kwargs)
+    env = execution.supervisor_exec_env(stack, **env_kwargs)
     # The uploads the executor registers must be activated by the real
     # artifact_finalize pool, exactly like the T033 tests.
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env, timeout=120)
-    report = t033.exec_report(completed)
+    with execution.FinalizeWorker(stack):
+        completed = execution.run_supervisor_exec(stack, env, timeout=120)
+    report = execution.exec_report(completed)
     return report, completed
 
 

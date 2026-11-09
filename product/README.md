@@ -73,7 +73,7 @@ ORCHARA_PG_PASSWORD=<你自己设的本地口令>
 代码、测试、报告里都不含口令。
 
 ```powershell
-# 规格复现与漂移检查（同时校验 docs/spec 与 contracts，按 LF 归一化）
+# 规格复现与漂移检查（当前来源、两份复制件与基线均须一致，按 LF 归一化）
 python tools/sync_spec.py
 python tools/sync_spec.py --check
 

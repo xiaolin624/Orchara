@@ -54,6 +54,7 @@ from pathlib import Path
 
 import pytest
 
+from support.runtime_stack import Stack
 from support import (
     f00b,
     f02a,
@@ -166,7 +167,7 @@ def t110_stack(tmp_path_factory: pytest.TempPathFactory, go_binaries: dict[str, 
         extra_env=env,
         log_path=tmp_path / "api.log",
     )
-    stack = t024.T024Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,

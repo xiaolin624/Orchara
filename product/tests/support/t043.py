@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+from support import execution_support as execution
 from support import stack as st
 from support import t025, t027, t033
 
@@ -134,12 +135,12 @@ def ready_csv(stack, owner, *, content: bytes = t033.SALES_CSV) -> str:
 
 
 def run_agent_once(stack, *, env_extra: dict[str, str] | None = None):
-    env = t033.supervisor_exec_env(stack)
+    env = execution.supervisor_exec_env(stack)
     if env_extra:
         env.update(env_extra)
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env)
-    return completed, t033.exec_report(completed)
+    with execution.FinalizeWorker(stack):
+        completed = execution.run_supervisor_exec(stack, env)
+    return completed, execution.exec_report(completed)
 
 
 def queue_agent_run(stack, *, definition: dict | None = None, input_value: dict | None = None):

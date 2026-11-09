@@ -18,6 +18,7 @@ import json
 
 import pytest
 
+from support import execution_support as execution
 from support import stack as st
 from support import t027, t031, t033, t042
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -53,7 +54,7 @@ def queue_linear_run(stack, *, definition: dict | None = None, input_value: dict
 
 def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     owner, run, _csv_id = queue_linear_run(t033_stack)
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
@@ -182,7 +183,7 @@ def test_node_output_schema_violation_fails_without_registering_data(t033_stack)
     owner, run, _csv = queue_linear_run(
         t033_stack, definition=t042.linear_definition(python_output_schema=bad_schema)
     )
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "node_output_invalid", report
@@ -216,7 +217,7 @@ def test_invalid_run_input_and_unresolved_binding_are_refused_before_the_sandbox
 ) -> None:
     # 1. The sealed run input does not match definition.input_schema.
     owner, run, _csv = queue_linear_run(t033_stack, input_value={"source": 5})
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "refused", report
     assert report["error_code"] == "node_input_invalid", report
     assert report.get("sandbox") is None, "no sandbox may start for an invalid input"
@@ -231,7 +232,7 @@ def test_invalid_run_input_and_unresolved_binding_are_refused_before_the_sandbox
     )
     csv2 = t042.ready_csv(t033_stack, owner)
     run2 = t042.submit_linear_run(owner, app2, artifact_id=csv2)
-    completed2, report2 = t042.run_linear_once(t033_stack)
+    completed2, report2 = execution.execute_once(t033_stack)
     assert report2["outcome"] == "refused", report2
     assert report2["error_code"] == "node_input_invalid", report2
     assert report2.get("sandbox") is None or report2["sandbox"]["started"] is False, report2
@@ -288,10 +289,10 @@ def test_node_results_report_refuses_stale_and_foreign_rows(t033_stack) -> None:
 def test_cancel_stops_the_chain_without_a_success_or_node_result(t033_stack) -> None:
     t042.request_cancel_after_first_heartbeat(t033_stack.dbname)
     owner, run, _csv = queue_linear_run(t033_stack)
-    env = t033.supervisor_exec_env(t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s")
-    with t033.FinalizeWorker(t033_stack):
-        completed = t033.run_supervisor_exec(t033_stack, env)
-    report = t033.exec_report(completed)
+    env = execution.supervisor_exec_env(t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s")
+    with execution.FinalizeWorker(t033_stack):
+        completed = execution.run_supervisor_exec(t033_stack, env)
+    report = execution.exec_report(completed)
     assert report["outcome"] == "cancelled", (report, completed.stderr)
     # A cancel that lands before the unit starts has no reliable "cancelled"
     # sandbox fact; when the unit did start, the driver must report it killed.
@@ -335,7 +336,7 @@ def test_legacy_golden_agent_graph_still_runs_the_single_python_flow(t033_stack)
     owner = t033.golden_owner(t033_stack)
     csv_id = t042.ready_csv(t033_stack, owner)
     run = t033.debug_run_with_input(t033_stack, owner, csv_id)
-    completed, report = t042.run_linear_once(t033_stack)
+    completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
     output_id = t033.output_artifact_id(t033_stack.dbname, run["id"])

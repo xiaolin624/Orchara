@@ -42,6 +42,7 @@ for entry in (TESTS_ROOT, PRODUCT_ROOT / "worker", PRODUCT_ROOT / "tools"):
     if str(entry) not in sys.path:
         sys.path.insert(0, str(entry))
 
+from support.runtime_stack import Stack
 from support import f00b, stack as st, t024, t029, t033  # noqa: E402
 from support.certs import make_stack_certificates, unique_internal_addr  # noqa: E402
 from evidence_redaction import redact_value  # noqa: E402
@@ -59,7 +60,7 @@ SANDBOX_ROOTFS = t033.SANDBOX_ROOTFS
 @pytest.fixture(scope="module")
 def t100_stack(
     tmp_path_factory: pytest.TempPathFactory, go_binaries: dict[str, Path]
-) -> t033.T033Stack:
+) -> Stack:
     """A migrated + bootstrapped database behind one real compiled API process.
 
     The build is identical in shape to ``tests/support/fixtures.py:t033_stack``
@@ -96,7 +97,7 @@ def t100_stack(
         extra_env=env,
         log_path=tmp_path / "api.log",
     )
-    stack = t033.T033Stack(
+    stack = Stack(
         server=server,
         dsn=dsn,
         dbname=dbname,
@@ -153,7 +154,7 @@ def sandbox_profile() -> dict:
     }
 
 
-def environment_facts(stack: t033.T033Stack) -> dict:
+def environment_facts(stack: Stack) -> dict:
     """The environment profile every journey evidence record is stamped with."""
     migrations = st.migration_chain(stack.dbname)
     head = migrations[max(migrations)] if migrations else ""
@@ -372,7 +373,7 @@ def sha256_hex(value: bytes | str) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def sealed_bytes(stack: t033.T033Stack, artifact_id: str) -> bytes:
+def sealed_bytes(stack: Stack, artifact_id: str) -> bytes:
     """Read one artifact's exact bytes from the object directory (not via HTTP)."""
     row = t029.artifact_row(stack.dbname, artifact_id)
     content = (stack.object_dir / row["object_key"]).read_bytes()

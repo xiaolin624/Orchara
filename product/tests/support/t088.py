@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from support import execution_support as execution
 from support import f00b, t027, t033, t042, t055
 
 # The documented non-contract node output (reports/f04b/T088-retrieve-node.md).
@@ -250,8 +251,7 @@ def submit_run(stack, creator, definition: dict, *, input_value: dict, name: str
     return owner, application_id, run
 
 
-def run_once(stack):
-    return t042.run_linear_once(stack)
+run_once = execution.execute_once
 
 
 def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:

@@ -1,0 +1,50 @@
+{
+  "kind": "document_and_publication_consistency_only",
+  "parent_issue": 160,
+  "new_github_issues": 19,
+  "new_work_tickets": 18,
+  "reused_C1_tickets": 4,
+  "original_candidates": 6,
+  "user_stories": 89,
+  "mapped_stories": 89,
+  "dependency_graph": "acyclic_and_resolved",
+  "local_links": "all_exist",
+  "local_remote_ticket_bodies": "exact",
+  "remote_readback": {
+    "all_new_bodies_exact": true,
+    "all_new_open_ready_for_agent": true,
+    "all_dependencies_resolved": true,
+    "existing_C1_unchanged": true,
+    "parent_labels": [
+      "ready-for-agent",
+      "wayfinder:map"
+    ]
+  },
+  "business_acceptance_implied": false,
+  "files": {
+    "all-architecture-tickets\\01-canonical-stack.md": "7584a2189be3868ad7bc5a12ba5356596b34e267f37555c901ed724cc1f86b36",
+    "all-architecture-tickets\\02-execution-support.md": "1649a20084c9b486692a72d8455319ce8a3b5a93fc0a7063bde63b0c7c2d8471",
+    "all-architecture-tickets\\03-run-observations.md": "5a4218a329f477c8603c27d87e9ea93fc104f674ba668e639931503afb78f3ee",
+    "all-architecture-tickets\\04-support-contract.md": "bf4e288e2b530aee678d459dcab0d59c54153ef364159cd576ea490e105060b6",
+    "all-architecture-tickets\\05-model-complete.md": "0d3e751f1a05205e3a07852384706eea9f15a699419179ddde8e9531299acb40",
+    "all-architecture-tickets\\06-model-stream.md": "76f6076e92565117d5dfe27f12efec582d0147e2136c1c0fabc956a3ab03b777",
+    "all-architecture-tickets\\07-model-cancellation-contract.md": "050769f54af4a1d738b88a544e8bdf6a70069d6e6541edb3435d3f8c4769d49f",
+    "all-architecture-tickets\\08-verified-retrieval.md": "28b30ea6535ab82edc17a01ebcd4fa857184067478f3c28c1d3d4dfdec55e68b",
+    "all-architecture-tickets\\09-verified-citations-cache.md": "d41e5b77d7db86d00face4beb81dd8c0c31ceb91655df17ca7a700c6f73b0100",
+    "all-architecture-tickets\\10-knowledge-rebuild-deletion.md": "034c20676ffd34b09efb2f3e2f75153f2cf505a8e59545386624e92b3097211b",
+    "all-architecture-tickets\\11-explicit-agent-execution.md": "28b7f037115cb975b48a9909015b986144977e5e82e3900789cf23e027deb5b1",
+    "all-architecture-tickets\\12-explicit-callapp-execution.md": "66d02bbeb1bda30f0c0045891025628ca346fb192e340bd26d1bc4b93557278e",
+    "all-architecture-tickets\\13-node-view-contract.md": "5e86f182d1fe64597cb7e4f06613ec91af81d10df367041690109983c9c028ed",
+    "all-architecture-tickets\\14-page-dependency-guard.md": "77a6eb4dee382aabe72c96bd0a5a3a4dd006f276c14fc6214abdbfc464afe843",
+    "all-architecture-tickets\\15-chat-runview-state.md": "be0b149fb2425f8b8dfca773c04fac1bdbe39b213cb2551ec2fad1eec6d2300f",
+    "all-architecture-tickets\\16-runs-state-recovery.md": "82ec1d740341cd6b87bb4921a0ac93dbcdfe8375147f8fbd3e04f75bc587a2c3",
+    "all-architecture-tickets\\17-page-state-contract.md": "8d0c945edf8763c81e1bbb9a16b4fe098444eb4aa42d75354e3c013dd74acaac",
+    "all-architecture-tickets\\18-six-item-integration.md": "c722df37f8f6fb978be75db38937f569d5c4e69bceb515317cb6f3baa3e10274",
+    "2026-11-08-all-architecture-design.md": "1a91c6a056db6e5d3aaba924a16135d1111518ea6b5a3359a95ca85d620a65be",
+    "2026-11-08-all-architecture-grilling.md": "9f136b1081191eed3538f29360ed19996898261da03a53f9b341858ad2f39ca6",
+    "2026-11-08-all-architecture-spec.md": "920d0ce4ac37b66c7d3248dca6d5473cba5c90802096f983bbc23814a8476c62",
+    "2026-11-08-all-architecture-tickets.md": "90f0e3bf0fcc79de5d169052e7c2e631e92bf3d65c9c2e24765fb6e81b59286c",
+    "2026-11-08-architecture-status.md": "444c88ccf407a57106f2ce6d1dcc8590116ef632f663cfdfef5c7dad9136ff15",
+    "all-architecture-tickets\\published-spec.md": "5aba8fda8eb3d835eec6db037833b25e672512b134e9cfac138533ba63e79bf8"
+  }
+}

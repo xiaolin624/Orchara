@@ -25,6 +25,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from support.runtime_stack import JobCapabilityClient, Stack
 from support import f00b
 from support import stack as st
 from support.certs import StackCertificates
@@ -43,30 +44,8 @@ USER_PASSWORD = f00b.USER_PASSWORD
 # ---------------------------------------------------------------------------
 # stack
 # ---------------------------------------------------------------------------
-@dataclass
-class T024Stack:
-    """The T022 fields plus the signing key, so f00b helpers work unchanged."""
-
-    server: st.ApiServer
-    dsn: str
-    dbname: str
-    object_dir: Path
-    certificates: StackCertificates
-    binaries: dict[str, Path]
-    signing_key: str
-
-    def client(self) -> st.HttpClient:
-        return st.HttpClient(self.server.base_url)
-
-    def internal_client(
-        self, role: str = "maintenance", certificates: StackCertificates | None = None
-    ) -> "T024InternalClient":
-        certificates = certificates or self.certificates
-        return T024InternalClient(
-            certificates.internal_url,
-            certificates.ca.cert,
-            certificates.client(role),
-        )
+# Compatibility names for the expand phase; removed after caller migration.
+T024Stack = Stack
 
 
 def new_signing_key() -> str:
@@ -76,7 +55,7 @@ def new_signing_key() -> str:
 
 def start_second_api(
     api_server_factory,
-    stack: "T024Stack",
+    stack: "Stack",
     directory: Path,
     *,
     signing_key: str | None,
@@ -130,71 +109,7 @@ def api_extra_env(
 # ---------------------------------------------------------------------------
 # internal client with the five T024 operations
 # ---------------------------------------------------------------------------
-class T024InternalClient(f00b.InternalClient):
-    """The T022 mTLS client plus the job-scoped artifact/model endpoints."""
-
-    def upload(
-        self,
-        job_id: str,
-        attempt_token: str,
-        *,
-        media_type: str = "application/json",
-        size_bytes: int = 64,
-        purpose: str = "report",
-        **kwargs,
-    ):
-        return self.post(
-            f"/internal/v1/background/jobs/{job_id}/artifact-uploads",
-            {
-                "attempt_token": attempt_token,
-                "media_type": media_type,
-                "size_bytes": size_bytes,
-                "purpose": purpose,
-            },
-            **kwargs,
-        )
-
-    def complete(self, job_id: str, artifact_id: str, attempt_token: str, sha256: str, **kwargs):
-        return self.post(
-            f"/internal/v1/background/jobs/{job_id}/artifacts/{artifact_id}/complete",
-            {"attempt_token": attempt_token, "sha256": sha256},
-            **kwargs,
-        )
-
-    def download(self, job_id: str, attempt_token: str, artifact_id: str, **kwargs):
-        return self.post(
-            f"/internal/v1/background/jobs/{job_id}/artifact-downloads",
-            {"attempt_token": attempt_token, "artifact_id": artifact_id},
-            **kwargs,
-        )
-
-    def artifact_status(self, job_id: str, attempt_token: str, artifact_id: str, **kwargs):
-        return self.post(
-            f"/internal/v1/background/jobs/{job_id}/artifact-status",
-            {"attempt_token": attempt_token, "artifact_id": artifact_id},
-            **kwargs,
-        )
-
-    def model_call(
-        self,
-        job_id: str,
-        attempt_token: str,
-        *,
-        logical_key: str,
-        model_profile_version_id: str,
-        params: dict | None = None,
-        **kwargs,
-    ):
-        return self.post(
-            f"/internal/v1/background/jobs/{job_id}/model-calls",
-            {
-                "attempt_token": attempt_token,
-                "logical_key": logical_key,
-                "model_profile_version_id": model_profile_version_id,
-                "params": params if params is not None else {"task": "model_compatibility"},
-            },
-            **kwargs,
-        )
+T024InternalClient = JobCapabilityClient
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +310,7 @@ class ModelValidateJob:
 
 
 def prepare_model_validate_job(
-    stack: T024Stack,
+    stack: Stack,
     *,
     case: str = "ok",
     fixture_content: bytes | None = None,
@@ -422,7 +337,7 @@ def prepare_model_validate_job(
 
 
 def claim_model_validate(
-    stack: T024Stack,
+    stack: Stack,
     job_id: str,
     candidate: dict,
     fixture: f00b.SeededArtifact,
@@ -437,7 +352,7 @@ def claim_model_validate(
     return ModelValidateJob(job_id=job_id, candidate=candidate, fixture=fixture, owner_id=owner, lease=lease)
 
 
-def enqueue_and_claim_kind(stack: T024Stack, kind: str, **enqueue_kwargs) -> dict:
+def enqueue_and_claim_kind(stack: Stack, kind: str, **enqueue_kwargs) -> dict:
     payload = f00b.enqueue_ok(stack, kind=kind, **enqueue_kwargs)
     response = stack.internal_client().claim(kinds=[kind])
     assert response.status == 200, response.text
@@ -450,7 +365,7 @@ def enqueue_and_claim_kind(stack: T024Stack, kind: str, **enqueue_kwargs) -> dic
 # maintenance: two real processes for the two pools
 # ---------------------------------------------------------------------------
 def run_model_validate_once(
-    stack: T024Stack,
+    stack: Stack,
     *,
     extra_env: dict[str, str] | None = None,
     finalizer_timeout: float = 90.0,

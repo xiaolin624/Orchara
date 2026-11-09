@@ -37,6 +37,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from support import execution_support as execution
 from support import f00b, f02a, f08, t033, t069, t077, t079
 from support import stack as st
 from f08.routing import corpus
@@ -496,10 +497,10 @@ def make_request_input(*, message: str) -> dict:
 
 
 def supervisor_report(stack, *, heartbeat: str = "100ms") -> dict:
-    env = t033.supervisor_exec_env(stack, heartbeat=heartbeat)
-    with t033.FinalizeWorker(stack):
-        completed = t033.run_supervisor_exec(stack, env)
-    return t033.exec_report(completed)
+    env = execution.supervisor_exec_env(stack, heartbeat=heartbeat)
+    with execution.FinalizeWorker(stack):
+        completed = execution.run_supervisor_exec(stack, env)
+    return execution.exec_report(completed)
 
 
 __all__ = [

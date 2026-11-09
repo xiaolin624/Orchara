@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from support import execution_support as execution
 from support import f00b, f02a, f08, t027, t029, t033, t035, t041, t042, t048, t050, t068
 from support import stack as st
 
@@ -927,7 +928,7 @@ def run_graph_dispatch_gap(stack, record, state: dict) -> dict:
         )
         request = f08.request_of(submitted)
         run_id = request["run_id"]
-        completed, report = t042.run_linear_once(stack)
+        completed, report = execution.execute_once(stack)
         record.command(
             "cmd/supervisor exec --once (real graph execution of the published Run, WSL2/runsc)"
         )

@@ -26,11 +26,12 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from support.runtime_stack import Stack
 from support import f00b, f02a, t024, t025, t027
 from support import stack as st
 
 # Re-exports so a T029 test imports one module.
-T029Stack = t024.T024Stack
+T029Stack = Stack
 Session = f02a.Session
 admin_session = f00b.admin_session
 session_for = f00b.session_for
@@ -149,7 +150,7 @@ class ExecutionInternalClient(f00b.InternalClient):
         return self.post(f"/internal/v1/runs/{run_id}/result", body, **kwargs)
 
 
-def execution_client(stack: T029Stack, role: str = "supervisor") -> ExecutionInternalClient:
+def execution_client(stack: Stack, role: str = "supervisor") -> ExecutionInternalClient:
     return ExecutionInternalClient(
         stack.certificates.internal_url,
         stack.certificates.ca.cert,
@@ -167,7 +168,7 @@ class Owner:
     application_id: str
 
 
-def golden_owner(stack: T029Stack, *, login: str | None = None) -> Owner:
+def golden_owner(stack: Stack, *, login: str | None = None) -> Owner:
     """An admin session plus a creator who owns a real golden draft."""
     admin = admin_session(stack)
     creator = invite_and_activate(
@@ -180,7 +181,7 @@ def golden_owner(stack: T029Stack, *, login: str | None = None) -> Owner:
     return Owner(admin=admin, creator=creator, application_id=application_id)
 
 
-def minimal_owner(stack: T029Stack, *, login: str | None = None) -> Owner:
+def minimal_owner(stack: Stack, *, login: str | None = None) -> Owner:
     """A second owner with a minimal (start->end) draft.
 
     The fixed golden application id can exist only once per database, so a test
@@ -201,7 +202,7 @@ def minimal_owner(stack: T029Stack, *, login: str | None = None) -> Owner:
 
 
 def queued_run(
-    stack: T029Stack,
+    stack: Stack,
     owner: Owner,
     *,
     input_value: dict | None = None,
@@ -226,7 +227,7 @@ def queued_run(
 
 
 def claim_lease(
-    stack: T029Stack,
+    stack: Stack,
     owner: Owner,
     *,
     role: str = "supervisor",

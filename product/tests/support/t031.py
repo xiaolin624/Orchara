@@ -19,11 +19,12 @@ import hashlib
 import json
 import uuid
 
+from support.runtime_stack import Stack
 from support import stack as st
 from support import t025, t027, t029
 
 # Re-exports so a T031 test imports one module.
-T031Stack = t029.T029Stack
+T031Stack = Stack
 Session = t029.Session
 admin_session = t029.admin_session
 session_for = t029.session_for
@@ -117,7 +118,7 @@ def get_run(session: Session, run_id: str):
 # seeded output artifacts (registration endpoint is T033; the link is seeded)
 # ---------------------------------------------------------------------------
 def seed_output_artifact(
-    stack: T031Stack,
+    stack: Stack,
     owner_id: str,
     *,
     content: bytes | None = None,
@@ -238,7 +239,7 @@ def run_artifact_count(dbname: str, run_id: str) -> int:
 
 
 def claimed_with_output(
-    stack: T031Stack, *, execution_unit_id: str = "unit-t031"
+    stack: Stack, *, execution_unit_id: str = "unit-t031"
 ) -> tuple[t029.Owner, dict, str]:
     """One claimed run plus a ready, owned, linked output artifact."""
     owner = t029.golden_owner(stack)
@@ -253,7 +254,7 @@ def count(dbname: str, table: str, where: str = "TRUE") -> int:
 
 
 def seed_child_run(
-    stack: T031Stack,
+    stack: Stack,
     *,
     parent_run_id: str,
     owner_id: str,

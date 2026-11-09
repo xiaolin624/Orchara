@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import json
 
+from support.runtime_stack import Stack
 from support import stack as st
 from support import t031, t032
 
 # Re-exports so a T034 test imports one module.
-T034Stack = t031.T031Stack
+T034Stack = Stack
 Session = t031.Session
 admin_session = t031.admin_session
 session_for = t031.session_for
