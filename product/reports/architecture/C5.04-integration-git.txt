@@ -1,0 +1,69 @@
+merge commit: 3eec0c22552614dac3bd79fc779a2898c1e7f226
+parents: 3eec0c22552614dac3bd79fc779a2898c1e7f226 5a598d46085565027212536eacc2bd568e0dbdba 31bae5a6638a425b37efc2e80447436e8e7e4317
+merge-base before merge: 5a598d46085565027212536eacc2bd568e0dbdba (integration tip, ancestor of ticket head)
+ticket tip: 31bae5a6638a425b37efc2e80447436e8e7e4317
+
+git diff --stat 5a598d4..31bae5a:
+ .../reports/architecture/C5.04-callers-broad.txt   |    2 +
+ .../reports/architecture/C5.04-cancel-rerun.txt    |    2 +
+ .../architecture/C5.04-cleanup-isolated.txt        |    2 +
+ product/reports/architecture/C5.04-collection.txt  | 2769 +++++++++++++++++++
+ .../reports/architecture/C5.04-contract-check.py   |  211 ++
+ .../architecture/C5.04-execution-cleanup.txt       |   25 +
+ .../architecture/C5.04-final-collection.txt        | 2831 ++++++++++++++++++++
+ .../reports/architecture/C5.04-final-contract.txt  |    3 +
+ product/reports/architecture/C5.04-final-gates.txt |   21 +
+ .../architecture/C5.04-final-observation.txt       |    2 +
+ product/reports/architecture/C5.04-gates.txt       |    9 +
+ product/reports/architecture/C5.04-green.txt       |    3 +
+ .../architecture/C5.04-merge-cleanup-isolated.txt  |    2 +
+ .../architecture/C5.04-merge-collection.txt        | 2831 ++++++++++++++++++++
+ .../architecture/C5.04-merge-validation.txt        |   25 +
+ product/reports/architecture/C5.04-migrated.txt    |   58 +
+ .../architecture/C5.04-observations-migrated.txt   |    2 +
+ product/reports/architecture/C5.04-red.txt         |  177 ++
+ .../reports/architecture/C5.04-support-contract.md |  103 +
+ product/tests/f04b/test_t087_approval_node.py      |   79 +-
+ product/tests/f04b/test_t089_callapp.py            |   49 +-
+ product/tests/f05/test_t033_sandbox_run.py         |   13 +-
+ product/tests/f06/test_t043_agent_node.py          |   27 +-
+ product/tests/f06/test_t047_context.py             |    9 +-
+ product/tests/f06/test_t049_template.py            |    7 +-
+ product/tests/f08/test_t084_routing_eval.py        |   11 +-
+ product/tests/f09/test_t063_recall.py              |    5 +-
+ product/tests/f12/journeys/j100_publication.py     |    3 +-
+ product/tests/f12/journeys/j100_worker_exit.py     |   11 +-
+ product/tests/f12/journeys/j101_requests.py        |   13 +-
+ .../tests/f12/journeys/j101_service_key_write.py   |    7 +-
+ product/tests/f13b/test_t111_linux_isolation.py    |    3 +-
+ product/tests/support/t024.py                      |    7 -
+ product/tests/support/t029.py                      |    1 -
+ product/tests/support/t031.py                      |    1 -
+ product/tests/support/t033.py                      |   30 -
+ product/tests/support/t037.py                      |   20 +-
+ product/tests/support/t042.py                      |   14 -
+ product/tests/support/t049.py                      |    9 +-
+ product/tests/support/t052.py                      |    1 -
+ product/tests/support/t063.py                      |    3 +-
+ product/tests/support/t078.py                      |    5 +-
+ product/tests/support/t081.py                      |    5 +-
+ product/tests/support/t083.py                      |   15 -
+ product/tests/support/t085.py                      |   10 -
+ product/tests/support/t086.py                      |    4 -
+ product/tests/support/t087.py                      |   13 -
+ product/tests/support/t088.py                      |   10 -
+ product/tests/support/t089.py                      |   21 +-
+ product/tests/support/t091.py                      |   13 -
+ product/tests/support/t108.py                      |    9 +-
+ 51 files changed, 9233 insertions(+), 273 deletions(-)
+
+conflicted paths after merge (should be none):
+
+worktree status after merge (should be empty):
+?? product/reports/architecture/C5.04-integration-collection.txt
+?? product/reports/architecture/C5.04-integration-contract-check.txt
+?? product/reports/architecture/C5.04-integration-observation.txt
+?? product/reports/architecture/C5.04-integration-sync-check.txt
+?? product/reports/architecture/C5.04-integration-t089.txt
+
+merged tree vs ticket branch for product/tests + product/reports (should be empty):

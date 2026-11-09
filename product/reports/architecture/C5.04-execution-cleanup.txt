@@ -1,0 +1,25 @@
+................F..                                                      [100%]
+================================== FAILURES ===================================
+____ test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan _____
+
+t033_stack = Stack(server=<support.stack.ApiServer object at 0x0000027A1B75B3E0>, dsn='postgresql://orchara_owner:<REDACTED>@...chara-sandboxprobe.exe')}, signing_key='<REDACTED>')
+
+    def test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan(t033_stack) -> None:
+        owner, run, _csv = queued_sales_run(t033_stack)
+        request_cancel_after_first_heartbeat(t033_stack.dbname)
+        env = execution.supervisor_exec_env(
+            t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s"
+        )
+        with execution.FinalizeWorker(t033_stack):
+            completed = execution.run_supervisor_exec(t033_stack, env)
+        report = execution.exec_report(completed)
+        assert report["status"] == "executed", report
+        assert report["outcome"] == "cancelled", (report, completed.stderr)
+>       assert report["sandbox"]["started"] is True, report
+E       AssertionError: {'duration_ms': 8014, 'error_code': 'cancel_requested', 'execution_unit_id': 'exec-AI-56060-add295bd', 'heartbeats': 2, ...}
+E       assert False is True
+
+tests\f05\test_t033_sandbox_run.py:235: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f05/test_t033_sandbox_run.py::test_cancel_requested_mid_run_kills_the_sandbox_and_leaves_no_orphan
+1 failed, 18 passed in 404.73s (0:06:44)

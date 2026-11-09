@@ -1,0 +1,6 @@
+# C2.01 merge verification - spec drift gate (integration tip 107afaf)
+# workdir E:\Orchara-wt\integration\product
+# command: D:\Python\python.exe -X utf8 tools\sync_spec.py --check
+
+no drift: current source, both copies and synchronized baseline agree
+SYNC_EXIT=0

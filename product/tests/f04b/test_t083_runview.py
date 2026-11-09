@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from support import execution_support as execution
+from support import run_observations as observations
 from support import stack as st
 
 NODE = shutil.which("node")
@@ -38,6 +39,8 @@ ASSETS = WEB_DIR / "assets"
 DEBUG_HTML = WEB_DIR / "debug.html"
 DEBUG_JS = ASSETS / "debug.js"
 RUNVIEW_JS = ASSETS / "runview.js"
+RUNSTREAM_JS = ASSETS / "runstream.js"
+RUNSTATE_GUARD_JS = ASSETS / "runstate-guard.js"
 MODULE_TEST = Path(__file__).resolve().parent / "runview.test.mjs"
 GRAPH_RUNTIME = PRODUCT / "internal" / "presetexec" / "graphplan.go"
 INLINE_SCRIPT = re.compile(
@@ -343,6 +346,16 @@ async function runNextTimer() {
 
 async function main() {
   vm.createContext(context);
+  // C6.01 (#155): the real shared run-state bytes load before runview.js.
+  vm.runInContext(
+    fs.readFileSync(path.join(assetsDir, 'runstream.js'), 'utf8'), context,
+    { filename: 'runstream.js' },
+  );
+  // C6.04 (#158): the guard is part of the real page load order.
+  vm.runInContext(
+    fs.readFileSync(path.join(assetsDir, 'runstate-guard.js'), 'utf8'), context,
+    { filename: 'runstate-guard.js' },
+  );
   vm.runInContext(
     fs.readFileSync(path.join(assetsDir, 'runview.js'), 'utf8'), context,
     { filename: 'runview.js' },
@@ -523,6 +536,8 @@ const vm = require('vm');
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const context = { console: console };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(__RUNSTREAM__, 'utf8'), context, { filename: 'runstream.js' });
+vm.runInContext(fs.readFileSync(__GUARD__, 'utf8'), context, { filename: 'runstate-guard.js' });
 vm.runInContext(fs.readFileSync(__RUNVIEW__, 'utf8'), context, { filename: 'runview.js' });
 const states = context.aggregateNodeStates(input.events);
 const model = context.buildRunViewModel(
@@ -555,7 +570,11 @@ process.stdout.write(JSON.stringify({
 def _run_runview_harness(
     node: str, tmp_path: Path, payload: dict,
 ) -> dict:
-    harness = RUNTIME_HARNESS.replace("__RUNVIEW__", json.dumps(str(RUNVIEW_JS)))
+    harness = RUNTIME_HARNESS.replace(
+        "__RUNVIEW__", json.dumps(str(RUNVIEW_JS))
+    ).replace("__RUNSTREAM__", json.dumps(str(RUNSTREAM_JS))).replace(
+        "__GUARD__", json.dumps(str(RUNSTATE_GUARD_JS))
+    )
     script = tmp_path / "runview-runtime-harness.js"
     script.write_text(harness, encoding="utf-8")
     payload_file = tmp_path / "runview-runtime-input.json"
@@ -573,13 +592,13 @@ def _owner_reads(t033_stack, owner, run_id: str) -> tuple[dict, dict, dict]:
 
     detail = t027.get_run(owner.creator, run_id)
     assert detail.status == 200, detail.text
-    results = t042.node_results(owner.creator, run_id)
+    results = observations.node_results_response(owner.creator, run_id)
     assert results.status == 200, results.text
     contents: dict[str, object] = {}
     for item in results.json["items"]:
         if item["kind"] != "data":
             continue
-        content = t042.content_of(owner.creator, item["artifact_id"])
+        content = observations.artifact_content(owner.creator, item["artifact_id"])
         assert content.status == 200, content.text
         try:
             contents[item["artifact_id"]] = json.loads(content.raw)
@@ -587,7 +606,7 @@ def _owner_reads(t033_stack, owner, run_id: str) -> tuple[dict, dict, dict]:
             contents[item["artifact_id"]] = content.raw.decode("utf-8", "replace")
     events = [
         {"seq": row["seq"], "type": "node.status", "payload": row["payload"]}
-        for row in t042.node_events(t033_stack.dbname, run_id)
+        for row in observations.node_events(t033_stack.dbname, run_id)
     ]
     return detail.json, results.json, {"contents": contents, "events": events}
 
@@ -621,7 +640,7 @@ def test_the_real_linear_run_view_shows_committed_states_and_the_data_artifact(
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
     assert report["run_state"] == "succeeded", report
-    t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
 
     run_body, node_results, extra = _owner_reads(t033_stack, owner, run["id"])
     data_rows = {item["node_id"]: item for item in node_results["items"] if item["kind"] == "data"}
@@ -690,12 +709,12 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert report["outcome"] == "succeeded", report
     assert report.get("error_code", "") == "", report
     assert report["run_state"] == "succeeded", report
-    t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
 
-    items = t083.node_results(owner.creator, run["id"], expected=6)
+    items = observations.node_result_items(owner.creator, run["id"], expected=6)
     assert {item["node_id"] for item in items} == {"left", "choose", "join"}, items
-    condition = t083.node_data_document(owner.creator, items, "choose")
-    join_document = t083.node_data_document(owner.creator, items, "join")
+    condition = observations.node_data_document(owner.creator, items, "choose")
+    join_document = observations.node_data_document(owner.creator, items, "join")
     assert condition == {"port": "yes", "matched_case": 0}, condition
     assert join_document["results"]["left"]["status"] == "succeeded", join_document
     assert join_document["results"]["right"]["status"] == "skipped", join_document
@@ -704,7 +723,7 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     assert detail.status == 200, detail.text
     run_body = detail.json
     assert run_body["state"] == "succeeded", run_body
-    # `t083.node_results` returns the owner-read item list; the page's
+    # `observations.node_result_items` returns the owner-read item list; the page's
     # `node-results` body is `{items, next_cursor, generated_at}`, so the list is
     # wrapped only where the harness expects the body projection.
     node_results = items
@@ -739,7 +758,7 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
     ]
     assert len(joins) == 1, events
 
-    # `t083.node_results` returns the owner-read list of items (not the body).
+    # `observations.node_result_items` returns the owner-read list of items.
     data_rows = {item["node_id"]: item for item in node_results if item["kind"] == "data"}
     assert "choose" in data_rows and "join" in data_rows, node_results
     contents = {
@@ -753,7 +772,8 @@ def test_the_real_run_view_selects_the_port_and_skips_the_unselected_branch(
             "definition": definition,
             "events": events,
             # The run-view module consumes the owner-read *body* projection
-            # (`{items:[...]}`), while `t083.node_results` returns the items list.
+            # (`{items:[...]}`), while `observations.node_result_items` returns
+            # the items list.
             "nodeResults": {"items": node_results},
             "contents": contents,
             "run": run_body,

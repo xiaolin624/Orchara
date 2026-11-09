@@ -1,0 +1,31 @@
+C6.01 (#155) — baseline reproduction of the one f03 page-test red
+==================================================================
+Purpose: prove that tests/f03/test_t032_pages.py::test_the_runs_page_is_served_with_timeline_markers
+is a PRE-EXISTING red on the ticket baseline, not caused by this ticket's diff.
+
+Baseline commit: e27c6fb "chore: hand off architecture specs and completed C1 C5 refactors"
+                 (integration/architecture-c1-c6 tip when this ticket started)
+Detached worktree: E:\Orchara-wt\c601-baseline  (removed after the run)
+Command (from E:\Orchara-wt\c601-baseline\product):
+  & E:\Orchara-notes\test.ps1 tests/f03/test_t032_pages.py::test_the_runs_page_is_served_with_timeline_markers -q -p no:cacheprovider
+
+Captured raw tail (background job output):
+  HEAD is now at e27c6fb chore: hand off architecture specs and completed C1 C5 refactors
+  E                 }...
+  E
+  E         ...Full output truncated (7 lines hidden), use '-vv' to show
+  E
+  tests\f03\test_t032_pages.py:68: AssertionError
+  =========================== short test summary info ===========================
+  FAILED tests/f03/test_t032_pages.py::test_the_runs_page_is_served_with_timeline_markers
+  1 failed in 63.18s (0:01:03)
+
+Cause: the T032 test asserts `"location.search" not in body` for /runs, but
+runs.html has contained `new URLSearchParams(window.location.search)` since commit
+e8107fe (F12/T095 "render role-truthful navigation and session-failure state").
+The assertion predates that page behaviour. This ticket's diff does not touch the
+inline query-string block and does not change the assertion.
+
+Post-merge rerun on the ticket branch (final merge `41f6cb7` @ integration `0db1b2a`)
+shows the same single failure and the same reason: 1 failed, 29 passed in 455.45s
+(raw: reports/architecture/C6.01-f03-pages-final.txt).

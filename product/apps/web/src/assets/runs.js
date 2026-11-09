@@ -31,6 +31,15 @@ function runDetailPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || ''));
 }
 
+/**
+ * C6.04 (#158): `OrcharaRunStateGuard.ready` is the only dependency fact this
+ * page consults. The page HTML loads assets/runstream.js and the guard before
+ * this file, so the page adapters consume the declared `OrcharaRunState`
+ * namespace directly instead of keeping a second copy of the rules or a
+ * page-local dependency helper. A missing dependency pauses the affected
+ * observation with an explicit message; it never enables a page-local fallback.
+ */
+
 /** The owner-only child Run list path for one parent Run (F07/T078). */
 function runChildrenPath(runId) {
   return '/api/v1/runs/' + encodeURIComponent(String(runId || '')) + '/children';
@@ -50,15 +59,22 @@ function describeChildRun(child) {
   const outputArtifactID =
     value.output_artifact_id == null ? '' : String(value.output_artifact_id);
   const state = String(value.state || '');
+  // The child's state label and terminal flag are the shared Run projection,
+  // never a second child-only state vocabulary.
+  const truth = OrcharaRunState.view({ state: state }, {});
   return {
     id: String(value.id || ''),
     state,
-    stateText: describeRunState(state),
+    stateText: truth.label,
+    terminal: truth.terminal,
     kind: String(value.kind || ''),
     versionID:
       value.application_version_id == null ? '' : String(value.application_version_id),
     parentRunID: value.parent_run_id == null ? '' : String(value.parent_run_id),
     outputArtifactID,
+    // The shared child summary reads the contract field name to decide whether a
+    // succeeded child actually carries a result artifact.
+    output_artifact_id: outputArtifactID,
     errorCode: value.error_code == null ? '' : String(value.error_code),
     hasStructuredResult: outputArtifactID !== '' && state === 'succeeded',
   };
@@ -102,10 +118,14 @@ async function loadChildRunsPanel(runId) {
   if (!status || !list) {
     return;
   }
+  const generation = runSelectionGeneration;
   status.className = 'status pending';
   status.textContent = '正在加载子运行…';
   try {
     const children = await loadChildRuns(runId);
+    if (runSelectionStale(generation)) {
+      return;
+    }
     list.replaceChildren();
     if (children.length === 0) {
       status.className = 'status';
@@ -129,14 +149,15 @@ async function loadChildRunsPanel(runId) {
       list.appendChild(item);
     }
     status.className = 'status ok';
-    // F12/T096: N/M completion and the hard rule that a parent never reads as
-    // success while a child is non-terminal (or a child ended failed/cancelled).
-    const summary = typeof runStreamChildSummary === 'function'
-      ? runStreamChildSummary(children, displayedRun || {})
-      : null;
-    status.textContent = summary
-      ? summary.line + (summary.parentLine ? ' ' + summary.parentLine : '')
-      : children.length + ' 个独立子运行。';
+    // C6.03 (#157): N/M completion and the hard rule that a parent never reads
+    // as success while a child is non-terminal (or a child ended failed/cancelled)
+    // come from the shared aggregate child summary, not a page-local count.
+    const summary = OrcharaRunState.childSummary(children, displayedRun || {});
+    let line = summary.line + (summary.parentLine ? ' ' + summary.parentLine : '');
+    if (summary.parentState === 'succeeded' && !summary.parentMayShowSuccess) {
+      line += ' 父 Run 快照是 succeeded，但子运行未全部成功；本页不把该父 Run 显示为成功结论。';
+    }
+    status.textContent = line;
   } catch (error) {
     status.className = 'status bad';
     status.textContent =
@@ -808,7 +829,7 @@ function describeWaitingResume(run, facts) {
 function describeSandboxPanel(run, facts) {
   const summary = runSummary(run);
   const runtime = facts || {};
-  const terminal = isRunTerminal(summary.state);
+  const terminal = OrcharaRunState.isTerminal(summary.state);
   const cancelAt = String(runtime.cancelRequestedAt || '').trim();
   const unit = String(runtime.executionUnit || '').trim();
   const attemptStarted = String(runtime.startedAt || '').trim();
@@ -918,14 +939,13 @@ function canCancelRun(run) {
   if (!run || typeof run.state !== 'string' || run.state === '') {
     return false;
   }
-  return !isRunTerminal(run.state);
+  // C6.03 (#157): the shared view owns canCancel/label; the page only draws it.
+  return OrcharaRunState.view(run, {}).canCancel;
 }
 
 /** The button label: cancelling is idempotent, so a second request is allowed. */
 function cancelButtonLabel(run) {
-  return String((run && run.state) || '') === 'cancelling'
-    ? '再次请求取消（幂等）'
-    : '取消 Run';
+  return OrcharaRunState.view(run || {}, {}).cancelLabel;
 }
 
 /**
@@ -1028,7 +1048,7 @@ function describeRunRecovery(run, facts) {
   const noTakeover = '平台不会自动换 token、不会自动重排，也不会创建第二个执行者：' +
     'claim 只选 queued Run，recovery_pending 必须先由受审计证据转回 queued。';
 
-  if (isRunTerminal(summary.state)) {
+  if (OrcharaRunState.isTerminal(summary.state)) {
     // A terminal Run never flips: recovery evidence is history here, not a way
     // back into execution.
     return {
@@ -1077,90 +1097,67 @@ function mergeRunSnapshot(previous, next) {
   if (!next || typeof next !== 'object' || typeof next.state !== 'string') {
     return previous || next;
   }
-  if (previous && typeof previous.state === 'string' && isRunTerminal(previous.state)) {
+  if (
+    previous &&
+    typeof previous.state === 'string' &&
+    OrcharaRunState.isTerminal(previous.state)
+  ) {
     return previous;
   }
   return next;
 }
 
 /**
- * One honest sentence about a run. Terminal states say so; a queued run says it
- * has not been claimed; a running run quotes the lease when the server supplied
- * it and otherwise says the lease facts are unavailable instead of inventing
- * progress.
- *
- * T031 adds the finalizing stage: a worker result is only a proposal, so while
- * phase=finalizing the page says the platform is waiting for supervisor exit
- * evidence and that this is not a success yet. T036 adds cancelling: the intent
- * exists but the Run is not stopped until the finalizer commits it.
+ * C6.03 (#157): the detail's one sentence about (state, phase) plus the honest
+ * next actions. This is the shared aggregate view (``OrcharaRunState.view``);
+ * the page only appends the action list to its DOM row.
  */
-function describeRunState(run, facts) {
+function runDetailNote(run, facts) {
+  const truth = OrcharaRunState.view(run || {}, facts || {});
+  return truth.detail + (truth.actions.length ? ' 可操作：' + truth.actions.join('；') : '');
+}
+
+/**
+ * The detail-lease row: the real lease headers, never a fabricated progress
+ * estimate. The shared truth deliberately does not invent lease facts, so this
+ * page-specific row keeps showing the server-provided started_at/deadline.
+ */
+function runLeaseText(run, facts) {
   const summary = runSummary(run);
   const runtime = facts || {};
-  if (isRunTerminal(summary.state)) {
-    return '已进入终态 ' + summary.state + '（终态由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
+  const lease = String(runtime.leaseDeadline || '').trim();
+  if (summary.state !== 'running' || lease === '') {
+    return '（没有可显示的租约事实）';
   }
-  if (summary.state === 'cancelling') {
-    return '正在停止（cancelling）：取消意图已记录，平台已拒绝新的结果/登记/上传/审批调用，' +
-      '等待执行单元退出后由 finalizer 提交 cancelled（或存在未知外部写时转 needs_reconciliation）。';
-  }
-  if (summary.state === 'queued') {
-    return '尚未被领取（queued）；领取、心跳与退出证据属于 F03 内部 supervisor 协议。';
-  }
-  if (summary.state === 'recovery_pending') {
-    const reason = String(runtime.recoveryReason || '').trim();
-    const since = String(runtime.recoverySince || '').trim();
-    return '挂起在 recovery_pending' +
-      (reason !== '' ? '（原因 ' + reason + (since !== '' ? '，挂起于 ' + since : '') + '）' : '') +
-      '：旧执行单元未证明退出前不会重新执行，也不会自动换 token 接管；' +
-      '只有运维提交受审计证据后才会重新排队。';
-  }
-  if (summary.state === 'needs_reconciliation') {
-    return 'Run 等待人工核对（needs_reconciliation）：存在未明的外部副作用，平台不把它显示为成功或失败。';
-  }
-  if (summary.state === 'waiting_approval' || summary.state === 'waiting_children') {
-    const awaited = summary.state === 'waiting_approval' ? '审批决定' : '子任务结果';
-    return '等待' + awaited + '（' + summary.state + '，phase=waiting）：worker 已在固定 checkpoint 停止；' +
-      'supervisor 确认旧执行单元退出后释放执行槽，决定/子结果与退出证据齐全前不会创建恢复任务。';
-  }
-  if (summary.state === 'running' && summary.phase === 'finalizing') {
-    return '结果提议已保存，正在 finalizing：仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；终态提交前这不是成功。';
-  }
-  if (summary.state === 'running') {
-    const lease = (runtime.leaseDeadline || '').trim();
-    if (!lease) {
-      return '正在执行（state=running，phase=' + (summary.phase || 'unknown') +
-        '）。服务器没有返回租约事实，本页不伪造进度。';
-    }
-    const started = (runtime.startedAt || '').trim();
-    return '已领取' + (started ? '（attempt started_at ' + started + '）' : '') +
-      '，当前租约至 ' + lease + '（由数据库时钟判定并随心跳续租）。';
-  }
-  return '状态 ' + summary.state + '（phase=' + (summary.phase || 'unknown') + '）。';
+  const started = String(runtime.startedAt || '').trim();
+  return '已领取' + (started ? '（attempt started_at ' + started + '）' : '') +
+    '，当前租约至 ' + lease + '（由数据库时钟判定并随心跳续租）。';
 }
 
 /** The three execution stages the page observes, never reordered. */
 function runLifecycle(run) {
-  const summary = runSummary(run);
-  if (summary.state === 'waiting_approval' || summary.state === 'waiting_children') {
+  // C6.03 (#157): the shared aggregate view owns the (state, phase) -> stage
+  // decision. The page only maps that stage onto its fixed stage strip.
+  const stage = OrcharaRunState.view(run || {}, {}).stage;
+  if (stage === 'waiting') {
     // Waiting is a real stage between executing and the eventual terminal state;
     // a resume returns the Run to executing/queued.
     return { stages: ['executing', 'waiting', 'terminal'], current: 'waiting' };
   }
-  if (summary.state === 'cancelling') {
+  if (stage === 'cancelling') {
     // The cancel intent is its own stopping stage: still non-terminal.
     return { stages: ['executing', 'cancelling', 'terminal'], current: 'cancelling' };
   }
-  if (summary.state === 'recovery_pending') {
+  if (stage === 'recovery_pending') {
     // Parked awaiting audited evidence: not executing, not terminal. A successful
     // recovery returns the Run to queued (a new attempt), never to "success".
     return { stages: ['executing', 'recovery_pending', 'terminal'], current: 'recovery_pending' };
   }
   let current = 'executing';
-  if (summary.phase === 'finalizing') {
+  if (stage === 'finalizing') {
     current = 'finalizing';
   }
-  if (isRunTerminal(summary.state)) {
+  if (stage === 'terminal') {
     current = 'terminal';
   }
   return { stages: ['executing', 'finalizing', 'terminal'], current: current };
@@ -1172,21 +1169,11 @@ function lifecycleText(run) {
   return lifecycle.stages.join(' → ') + '（当前：' + lifecycle.current + '）';
 }
 
-function isRunTerminal(state) {
-  return state === 'succeeded' || state === 'failed' || state === 'cancelled';
-}
-
-/**
- * Poll the owner-only detail until the Run is terminal. A finalizing run is
- * still non-terminal: the page keeps asking GET /runs/{id} rather than guessing
- * the outcome, so success can never be rendered before the committed state.
+/*
+ * C6.05 (review-2): this page keeps no Run terminal dictionary and no page-local
+ * polling rule. Every terminal decision is the shared `OrcharaRunState.isTerminal`;
+ * the detail loop below polls a non-terminal Run directly through that projection.
  */
-function shouldPollRun(run) {
-  if (!run || typeof run.state !== 'string') {
-    return false;
-  }
-  return !isRunTerminal(run.state);
-}
 
 // ---------------------------------------------------------------------------
 // T032: durable event timeline + SSE client (pure helpers)
@@ -1314,7 +1301,7 @@ function timelineTerminalState(events) {
       last = String(event.payload.state || '');
     }
   }
-  return isRunTerminal(last) ? last : '';
+  return OrcharaRunState.isTerminal(last) ? last : '';
 }
 
 /**
@@ -1335,7 +1322,7 @@ function describeRunEvent(event) {
     if (state === 'running') {
       return prefix + '已提交状态 running（phase 以 Run 快照为准；finalizing 尚未成功）' + suffix;
     }
-    if (isRunTerminal(state)) {
+    if (OrcharaRunState.isTerminal(state)) {
       return prefix + '已提交终态 ' + state + suffix;
     }
     return prefix + '已提交状态 ' + state + suffix;
@@ -1350,53 +1337,13 @@ function describeRunEvent(event) {
 }
 
 /**
- * Turn a failed stream response into one honest status. 410 is terminal for
- * this stream: the replay window is gone, so the page must switch to the Run
- * snapshot (details.snapshot_url) instead of pretending the history is complete.
- * 401/404 stop too; everything else is retryable with the same Last-Event-ID.
- *
- * F12/T096: when ``runstream.js`` (loaded before this file) is present, the
- * richer classifier is used and ``kind`` becomes the page's decision input
- * (``cursor_expired`` -> fetch the snapshot; the timeline is never resumed from
- * the expired cursor).
+ * Classify a failed event-stream response. C6.03 (#157): this page has no
+ * classifier of its own; the shared ``OrcharaRunState.failure`` owns the
+ * cursor_expired/auth/gone/transient decision (410 never retries, a 410's
+ * snapshot path is validated as a same-origin Run path).
  */
 function streamFailure(status, payload) {
-  if (typeof runStreamFailure === 'function') {
-    return runStreamFailure(status, payload);
-  }
-  const error = (payload && payload.error) || {};
-  const code = error.code || ('http_' + status);
-  if (status === 410) {
-    const details = error.details || {};
-    const snapshot = details.snapshot_url ? String(details.snapshot_url) : '/api/v1/runs';
-    return {
-      retry: false,
-      kind: 'cursor_expired',
-      snapshotURL: snapshot,
-      snapshotPath: snapshot,
-      text: '事件保留窗口已过期（410 ' + code + '）；不能静默续传，请改用 Run 快照：' + snapshot,
-    };
-  }
-  if (status === 401) {
-    return {
-      retry: false,
-      kind: 'auth',
-      text: '登录已过期（401）；重新登录后可按 Last-Event-ID 重连事件流。',
-    };
-  }
-  if (status === 404) {
-    return {
-      retry: false,
-      kind: 'gone',
-      text: '该 Run 不存在或不属于你（404）；事件流已停止。',
-    };
-  }
-  return {
-    retry: true,
-    kind: 'transient',
-    text: '事件流暂时不可用 [' + code + '] ' + (error.message || '网络或服务端错误') +
-      '；将按 Last-Event-ID 重连。',
-  };
+  return OrcharaRunState.failure(status, payload);
 }
 
 function waitMilliseconds(milliseconds) {
@@ -1536,6 +1483,15 @@ function renderRunItem(run) {
 // replaced by a late/stale non-terminal message (mergeRunSnapshot).
 let displayedRun = null;
 let displayedRunID = '';
+// C6.03 (#157): one selection generation per detail load. A response that was
+// in flight when the user selected another Run is ignored instead of
+// overwriting the new selection or starting its panels/timeline.
+let runSelectionGeneration = 0;
+
+/** True when `generation` is no longer the selected Run generation. */
+function runSelectionStale(generation) {
+  return generation !== runSelectionGeneration;
+}
 
 function showRunDetail(run, facts) {
   const merged = mergeRunSnapshot(displayedRun, run);
@@ -1552,17 +1508,10 @@ function showRunDetail(run, facts) {
   document.getElementById('detail-snapshot').textContent = summary.executionSnapshotID;
   document.getElementById('detail-lifecycle').textContent = lifecycleText(merged);
   document.getElementById('detail-manifest').textContent = facts.manifestSHA256 || '（响应头未提供）';
-  document.getElementById('detail-lease').textContent =
-    summary.state === 'running' && facts.leaseDeadline
-      ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
-      : '（没有可显示的租约事实）';
-  // F12/T096: the shared truth mapping is the page's one sentence about
-  // (state, phase), plus the honest next actions. The legacy per-state text is
-  // kept as the fallback for a page that loads runs.js without runstream.js.
-  const truth = typeof runStreamTruth === 'function' ? runStreamTruth(merged, facts) : null;
-  document.getElementById('detail-note').textContent = truth
-    ? truth.detail + (truth.actions.length ? ' 可操作：' + truth.actions.join('；') : '')
-    : describeRunState(merged, facts);
+  document.getElementById('detail-lease').textContent = runLeaseText(merged, facts);
+  // C6.03 (#157): the shared aggregate view is the page's one sentence about
+  // (state, phase), plus its honest next actions. The page-local copy is gone.
+  document.getElementById('detail-note').textContent = runDetailNote(merged, facts);
   const active = describeActiveClock(merged, facts);
   document.getElementById('detail-active').textContent = active.line + ' ' + active.oneClockNote;
   document.getElementById('detail-deadline').textContent = active.reasonLine;
@@ -1614,11 +1563,10 @@ function renderSandboxPanel(run, facts) {
 function renderArtifactItem(artifact, readout) {
   const item = document.createElement('li');
   const label = document.createElement('span');
-  // F12/T096: "ready" is not "final". The readout (from runstream.js) marks an
-  // artifact from a non-terminal Run as unfinished and only the Run's
-  // output_artifact_id as the final product.
-  const suffix = readout && readout.label ? ' · ' + readout.label : '';
-  label.textContent = artifactDisplayName(artifact) + suffix;
+  // C6.03 (#157): "ready" is not "final". The shared readout marks an artifact
+  // from a non-terminal Run as unfinished and only the Run's output_artifact_id
+  // as the final product; the page only renders that label.
+  label.textContent = artifactDisplayName(artifact) + ' · ' + readout.label;
   const download = document.createElement('button');
   download.type = 'button';
   download.textContent = '下载';
@@ -1659,24 +1607,22 @@ async function loadRunArtifacts(runId) {
   if (!list) {
     return;
   }
+  const generation = runSelectionGeneration;
   list.replaceChildren();
   sandboxArtifactsStatus('正在加载可下载产物…', 'pending');
   try {
     const body = await api(runArtifactsPath(runId));
-    const summary = describeArtifactList(body);
-    const readout = typeof runStreamArtifactReadout === 'function'
-      ? runStreamArtifactReadout(body, displayedRun || {})
-      : null;
-    if (readout) {
-      sandboxArtifactsStatus(summary.text + ' ' + readout.summaryText, summary.count ? 'ok' : '');
-    } else {
-      sandboxArtifactsStatus(summary.text, summary.count ? 'ok' : '');
+    if (runSelectionStale(generation)) {
+      return;
     }
+    const summary = describeArtifactList(body);
+    // C6.03 (#157): readiness/final-output decisions come from the shared
+    // aggregate rule. A ready artifact is only final when the committed Run is
+    // succeeded and names it as output_artifact_id.
+    const readout = OrcharaRunState.artifactReadout(body, displayedRun || {});
+    sandboxArtifactsStatus(summary.text + ' ' + readout.summaryText, summary.count ? 'ok' : '');
     for (let index = 0; index < (body.items || []).length; index += 1) {
-      renderArtifactItem(
-        body.items[index],
-        readout && readout.items ? readout.items[index] : null,
-      );
+      renderArtifactItem(body.items[index], readout.items[index]);
     }
   } catch (error) {
     if (error.status === 401) {
@@ -1888,10 +1834,14 @@ async function loadCapabilityLedger(runId) {
   if (!rows) {
     return;
   }
+  const generation = runSelectionGeneration;
   rows.replaceChildren();
   capabilityStatus('正在加载受控调用账本…', 'pending');
   try {
     const body = await api(runCapabilitiesPath(runId));
+    if (runSelectionStale(generation)) {
+      return;
+    }
     lastCapabilityLedger = body && typeof body === 'object' ? body : null;
     lastCapabilityRunID = String(runId || '');
     const ledger = describeCapabilityLedger(body);
@@ -1940,6 +1890,10 @@ function cancelDetailStatus(message, kind) {  const element = document.getElemen
  * guessing the outcome. The 202 itself is never rendered as "stopped".
  */
 async function requestCancel(runId) {
+  if (!OrcharaRunStateGuard.ready) {
+    cancelDetailStatus('运行状态暂不可用：已暂停取消 Run；请刷新页面重试。', 'bad');
+    return;
+  }
   const button = document.getElementById('detail-cancel-button');
   cancelDetailStatus('正在提交取消请求…', 'pending');
   if (button) {
@@ -1949,13 +1903,9 @@ async function requestCancel(runId) {
     const token = await csrf();
     const run = await api(cancelRunPath(runId), { method: 'POST', csrf: token });
     displayedRun = mergeRunSnapshot(displayedRun, run);
-    // F12/T096: a 202 only records intent. The text must never imply that an
-    // already-sent external write was rolled back (cancelling/needs_reconciliation).
-    const acceptedText = typeof runStreamCancelAcceptedText === 'function'
-      ? runStreamCancelAcceptedText(run)
-      : (run.state === 'cancelled'
-        ? '已停止（cancelled）：任务已进入终态。'
-        : '已接受取消意图（' + run.state + '）：等待执行单元退出，页面会轮询到终态。');
+    // C6.03 (#157): a 202 only records intent; the shared cancel-accepted text
+    // must never imply that an already-sent external write was rolled back.
+    const acceptedText = OrcharaRunState.cancelAcceptedText(run);
     cancelDetailStatus(acceptedText, 'ok');
     await loadRunDetail(runId);
   } catch (error) {
@@ -1985,10 +1935,11 @@ let runTimelineGeneration = 0;
  *
  * A cursor older than the retention window is gone: API.md §4 requires reading
  * the current Run snapshot, and silently resuming from "now" (or replaying from
- * 0, which would 410 again) would fake a complete history. The page fetches the
- * documented `details.snapshot_url`, renders that Run, records the correction in
- * the timeline, and returns the rebuilt snapshot. It never restarts the stream
- * from the expired cursor.
+ * 0, which would 410 again) would fake a complete history. C6.03 (#157) makes
+ * the shared rule the only source of that path: a server-provided URL is only
+ * followed when it is a same-origin Run path, otherwise the page's own run id is
+ * used. The page fetches that path, renders the snapshot, records the explicit
+ * history-loss correction, and never restarts the stream from the expired cursor.
  */
 /** True when this page carries the runs-page Run detail anchors. */
 function pageHasRunDetailAnchors() {
@@ -1999,6 +1950,10 @@ function pageHasRunDetailAnchors() {
 }
 
 async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list, options) {
+  if (!OrcharaRunStateGuard.ready) {
+    setStatus('运行状态暂不可用：已暂停 410 快照重建与事件流观察；请刷新页面重试。', 'bad');
+    return null;
+  }
   const settings = options && typeof options === 'object' ? options : {};
   // The page that started the timeline owns the rendering: /runs has the detail
   // anchors, /debug has the node-state panel. Falling back to showRunDetail on a
@@ -2008,9 +1963,8 @@ async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list, o
   const renderSnapshot = typeof settings.renderSnapshot === 'function'
     ? settings.renderSnapshot
     : (pageHasRunDetailAnchors() ? showRunDetail : null);
-  const snapshotPath = typeof runStreamSnapshotPath === 'function'
-    ? runStreamSnapshotPath(failure, runId)
-    : String((failure && (failure.snapshotPath || failure.snapshotURL)) || '');
+  // C6.03 (#157): only the shared safe same-origin Run path is ever fetched.
+  const snapshotPath = OrcharaRunState.snapshotPath(failure, runId);
   if (snapshotPath === '') {
     setStatus(
       '事件保留窗口已过期（410），但没有可安全使用的 Run 快照路径；' +
@@ -2050,33 +2004,40 @@ async function rebuildRunTimelineFromSnapshot(runId, failure, setStatus, list, o
     return null;
   }
   const facts = runRuntimeFacts(result.headers);
-  const correction = typeof runStreamSnapshotCorrection === 'function'
-    ? runStreamSnapshotCorrection(failure, runId, result)
-    : null;
+  const correction = OrcharaRunState.snapshotCorrection(failure, runId, result);
+  if (!correction.applied) {
+    // A 410 snapshot that is not the contract Run can never stand in for the
+    // lost history.
+    setStatus(correction.statusText, 'bad');
+    return null;
+  }
   const shown = renderSnapshot(result.payload, facts);
   if (list && typeof document !== 'undefined' && document.createElement) {
     const item = document.createElement('li');
-    item.textContent = correction
-      ? correction.timelineNotice
-      : '（事件历史已超出保留窗口；本页按当前 Run 快照重建，未回放旧帧。）';
+    item.textContent = correction.timelineNotice;
     list.appendChild(item);
     if (list.dataset) {
       list.dataset.snapshotRebuilt = 'true';
     }
   }
-  const state = shown && shown.state ? shown.state : '';
-  const phase = shown && shown.phase ? shown.phase : 'unknown';
-  setStatus(
-    (correction
-      ? correction.statusText
-      : '已按 410 快照重建视图：state=' + state + '，phase=' + phase + '；旧游标已丢弃，不静默续传。') +
-      '（GET ' + snapshotPath + '）',
-    'ok',
-  );
+  setStatus(correction.statusText + '（GET ' + snapshotPath + '）', 'ok');
   return shown;
 }
 
 function beginRunTimeline(runId, elements) {
+  if (!OrcharaRunStateGuard.ready) {
+    // C6.01: the durable SSE observation is paused. A page that calls this
+    // directly (the debug page) gets the same explicit status, not a silent
+    // fallback to a page-local rule.
+    if (typeof document !== 'undefined' && document.getElementById && elements && elements.statusID) {
+      const blocked = document.getElementById(elements.statusID);
+      if (blocked) {
+        blocked.textContent = '运行状态暂不可用：已暂停事件流观察；导航和重新加载仍可使用。';
+        blocked.className = 'status bad';
+      }
+    }
+    return;
+  }
   const generation = ++runTimelineGeneration;
   const list = elements && elements.listID ? document.getElementById(elements.listID) : null;
   const status = elements && elements.statusID ? document.getElementById(elements.statusID) : null;
@@ -2148,25 +2109,35 @@ const RUN_POLL_INTERVAL_MS = 2000;
 const RUN_POLL_MAX = 60;
 
 async function pollRunDetail(runId, polls) {
+  if (!OrcharaRunStateGuard.ready) {
+    return;
+  }
+  // C6.03 (#157): a poll loop belongs to the selection that started it. A new
+  // detail selection invalidates this loop instead of letting it write later.
+  const generation = runSelectionGeneration;
   if (polls >= RUN_POLL_MAX) {
     runsStatus('已停止轮询（' + polls + ' 次）；Run 仍未进入终态。', 'pending');
     return;
   }
   await new Promise((resolve) => setTimeout(resolve, RUN_POLL_INTERVAL_MS));
-  if (displayedRunID !== runId) {
+  if (runSelectionStale(generation) || displayedRunID !== runId) {
     // The user selected another Run while this loop was sleeping: the stale poll
     // must not overwrite the new selection.
     return;
   }
   const result = await apiFull(runDetailPath(runId));
-  if (displayedRunID !== runId) {
+  if (runSelectionStale(generation) || displayedRunID !== runId) {
     return;
   }
   const facts = runRuntimeFacts(result.headers);
   const merged = showRunDetail(result.payload, facts);
   // A committed terminal state is never re-polled even if a stale snapshot says
   // otherwise: the page stops on the merged (monotonic) state.
-  if (merged && shouldPollRun(merged)) {
+  if (
+    merged &&
+    typeof merged.state === 'string' &&
+    !OrcharaRunState.isTerminal(merged.state)
+  ) {
     // F12/T096: a ready artifact can appear mid-run and a waiting parent's child
     // set changes; both panels refresh while the Run is non-terminal instead of
     // freezing on the state seen when the detail was first opened.
@@ -2184,9 +2155,22 @@ async function pollRunDetail(runId, polls) {
 }
 
 async function loadRunDetail(runId) {
+  if (!OrcharaRunStateGuard.ready) {
+    // C6.01: no detail snapshot is fetched or rendered (a raw snapshot is not
+    // substitute state), and no timeline/poll/child/artifact observation starts.
+    runsStatus(
+      '运行状态暂不可用：已暂停运行详情、事件流、轮询与取消；导航和重新加载仍可使用。',
+      'bad',
+    );
+    return;
+  }
+  const generation = ++runSelectionGeneration;
   runsStatus('正在加载 Run ' + runId + ' 的详情…', 'pending');
   try {
     await requireLogin();
+    if (runSelectionStale(generation)) {
+      return;
+    }
     if (displayedRunID !== runId) {
       // A different Run starts a fresh monotonic snapshot; the old terminal state
       // must not mask the newly selected Run.
@@ -2197,6 +2181,11 @@ async function loadRunDetail(runId) {
       lastCapabilityLedger = null;
     }
     const result = await apiFull(runDetailPath(runId));
+    if (runSelectionStale(generation) || displayedRunID !== runId) {
+      // A late response from the previous selection: never render it or start
+      // its child/artifact/timeline observation.
+      return;
+    }
     const facts = runRuntimeFacts(result.headers);
     const merged = showRunDetail(result.payload, facts);
     loadRunArtifacts(runId);
@@ -2213,7 +2202,11 @@ async function loadRunDetail(runId) {
     if (typeof beginModelPreview === 'function') {
       beginModelPreview(runId, { panelID: 'detail-preview' });
     }
-    if (merged && shouldPollRun(merged)) {
+    if (
+      merged &&
+      typeof merged.state === 'string' &&
+      !OrcharaRunState.isTerminal(merged.state)
+    ) {
       runsStatus('已加载 Run ' + runId + '，仍在执行；页面会轮询到终态（不会提前显示成功）。', 'pending');
       await pollRunDetail(runId, 0);
     } else {
@@ -3034,9 +3027,10 @@ function renderNodeResults(body) {
 }
 
 async function loadNodeResults(runId) {
+  const generation = runSelectionGeneration;
   try {
     const body = await api(runNodeResultsPath(runId));
-    if (displayedRunID !== runId) {
+    if (runSelectionStale(generation) || displayedRunID !== runId) {
       return;
     }
     renderNodeResults(body);

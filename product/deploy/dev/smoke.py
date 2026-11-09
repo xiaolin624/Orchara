@@ -383,7 +383,8 @@ def internal_claim_no_work(internal: InternalAccess, *, execution_unit_id: str) 
 # ---------------------------------------------------------------------------
 # page data and the Node execution of the real page assets
 # ---------------------------------------------------------------------------
-PAGE_ASSETS = ("assets/app.js", "assets/attachments.js", "assets/runs.js", "assets/models.js")
+PAGE_ASSETS = ("assets/app.js", "assets/runstream.js", "assets/runstate-guard.js",
+               "assets/attachments.js", "assets/runs.js", "assets/models.js")
 
 NODE_HARNESS = r"""
 'use strict';
@@ -402,7 +403,9 @@ const context = {
   window: { location: { assign: () => {} } },
 };
 vm.createContext(context);
-for (const asset of ['assets/app.js', 'assets/attachments.js', 'assets/runs.js', 'assets/models.js']) {
+// C6.01 (#155): runstream.js is part of the runs page's real load order;
+// C6.04 (#158): the guard follows it, before the page scripts.
+for (const asset of ['assets/app.js', 'assets/runstream.js', 'assets/runstate-guard.js', 'assets/attachments.js', 'assets/runs.js', 'assets/models.js']) {
   vm.runInContext(fs.readFileSync(DATA.webDir + '/' + asset, 'utf8'), context, { filename: asset });
 }
 

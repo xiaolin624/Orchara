@@ -31,7 +31,6 @@ from support import f00b, f02a, t024, t025, t027
 from support import stack as st
 
 # Re-exports so a T029 test imports one module.
-T029Stack = Stack
 Session = f02a.Session
 admin_session = f00b.admin_session
 session_for = f00b.session_for

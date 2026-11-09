@@ -1,0 +1,9 @@
+C4.03 post-merge gates (merge commit 1b20f5e, integration 1eb0281)
+go build ./... exit=0 (no output)
+go vet ./... exit=0 (no output)
+go test ./internal/presetexec -v exit=0: 142 top-level PASS / 0 FAIL (207 RUN)
+go test ./... exit=0: 39 packages ok / 0 FAIL / 13 no test files
+gofmt -l internal cmd exit=0 (empty output)
+sync_spec --check exit=0 (no drift)
+pytest tests/f04b/test_c4_03_scheduler_regressions.py exit=0: 2 passed in 69.54s
+pytest tests/f04b/test_t089_callapp.py exit=0: 7 passed in 92.86s

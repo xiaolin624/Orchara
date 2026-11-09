@@ -11,11 +11,8 @@ run task_input artifact and each selected branch really runs the tool.
 
 from __future__ import annotations
 
-import json
-
-from support import execution_support as execution
 from support import stack as st
-from support import t027, t032, t033, t042
+from support import t027, t033, t042
 
 PRESET_TOOL_ID = t042.PRESET_TOOL_ID
 
@@ -241,65 +238,9 @@ def queue_graph_run(
     return owner, application_id, run
 
 
-run_once = execution.execute_once
-
-
 # ---------------------------------------------------------------------------
 # owner reads and database assertions
 # ---------------------------------------------------------------------------
-def node_results(session, run_id: str, *, expected: int) -> list[dict]:
-    body = t042.wait_node_results(session, run_id, expected=expected)
-    return body["items"]
-
-
-def node_data_rows(items: list[dict], node_id: str) -> list[dict]:
-    return [item for item in items if item["node_id"] == node_id and item["kind"] == "data"]
-
-
-def node_data_document(session, items: list[dict], node_id: str) -> dict:
-    rows = node_data_rows(items, node_id)
-    assert len(rows) == 1, (node_id, rows)
-    content = t033.artifact_content(session, rows[0]["artifact_id"])
-    assert content.status == 200, content.text
-    return json.loads(content.raw)
-
-
-def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    """The durable node.status sequence, from the run_events projection."""
-    states: dict[str, list[str]] = {}
-    for event in t042.node_events(dbname, run_id):
-        payload = event["payload"]
-        states.setdefault(payload["node_id"], []).append(payload["state"])
-    return states
-
-
-def sse_node_states(stack, session, run_id: str) -> dict[str, list[str]]:
-    """The same sequence as the owner-only SSE replay sees it."""
-    stream = t032.open_sse(stack, session, run_id)
-    try:
-        frames = t032.read_status_frames(stream, max_frames=200)
-    finally:
-        stream.close()
-    assert frames, "the SSE replay carried no frames"
-    states: dict[str, list[str]] = {}
-    for frame in frames:
-        envelope = t032.frame_envelope(frame)
-        if envelope["type"] != "node.status":
-            continue
-        payload = envelope["payload"]
-        assert set(payload) == {"node_id", "state", "attempt_no"}, payload
-        states.setdefault(payload["node_id"], []).append(payload["state"])
-    return states
-
-
-def final_output_document(session, dbname: str, run_id: str) -> dict:
-    artifact_id = t033.output_artifact_id(dbname, run_id)
-    assert artifact_id, "the run sealed no final output"
-    content = t033.artifact_content(session, artifact_id)
-    assert content.status == 200, content.text
-    return json.loads(content.raw)
-
-
 def count_jobs_for_application(dbname: str, application_id: str) -> int:
     return int(
         st.sql(

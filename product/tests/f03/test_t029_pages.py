@@ -101,7 +101,8 @@ def test_runs_js_is_the_served_asset(t029_stack) -> None:
         "function listRunsPath(",
         "function runSummary(",
         "function runRuntimeFacts(",
-        "function describeRunState(",
+        "function runDetailNote(",
+        "function runLeaseText(",
         "X-Run-Attempt-Started-At",
         "X-Run-Lease-Deadline",
         "X-Manifest-SHA256",
@@ -156,12 +157,22 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): the real shared run-state bytes, loaded before the page
+// script exactly like the served page, so the harness exercises the real
+// dependency instead of the page-local fallback.
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const runsSource = fs.readFileSync(webDir + '/assets/runs.js', 'utf8');
 
 function load() {
   const context = { console };
   vm.createContext(context);
   vm.runInContext(appSource, context, { filename: 'app.js' });
+  vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+  vm.runInContext(
+    fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+    context,
+    { filename: 'runstate-guard.js' },
+  );
   vm.runInContext(runsSource, context, { filename: 'runs.js' });
   return context;
 }
@@ -202,17 +213,24 @@ assert.strictEqual(emptyFacts.manifestSHA256, '');
 assert.strictEqual(emptyFacts.startedAt, '');
 assert.strictEqual(emptyFacts.leaseDeadline, '');
 
-// One honest sentence per state: no percentage, no fake progress.
-assert.ok(context.describeRunState({ state: 'queued' }, {}).includes('尚未被领取'));
-const runningWithLease = context.describeRunState(
+// One honest sentence per state: no percentage, no fake progress. C6.03 (#157)
+// makes the shared aggregate view the only truth; the lease headers get their
+// own page row instead of being re-explained by the page.
+assert.ok(context.runDetailNote({ state: 'queued' }, {}).includes('尚未被领取'));
+const runningWithLease = context.runLeaseText(
   { state: 'running', phase: 'executing' },
   { startedAt: '2026-11-03T00:00:00Z', leaseDeadline: '2026-11-03T00:00:30Z' },
 );
 assert.ok(runningWithLease.includes('已领取'), runningWithLease);
 assert.ok(runningWithLease.includes('2026-11-03T00:00:30Z'), runningWithLease);
-const runningWithoutLease = context.describeRunState({ state: 'running', phase: 'executing' }, {});
-assert.ok(runningWithoutLease.includes('不伪造'), runningWithoutLease);
-assert.ok(context.describeRunState({ state: 'succeeded' }, {}).includes('终态'));
+const runningWithoutLease = context.runLeaseText(
+  { state: 'running', phase: 'executing' }, {},
+);
+assert.ok(runningWithoutLease.includes('没有可显示的租约事实'), runningWithoutLease);
+assert.ok(
+  context.runDetailNote({ state: 'running', phase: 'executing' }, {}).includes('不伪造'),
+);
+assert.ok(context.runDetailNote({ state: 'succeeded' }, {}).includes('已成功'));
 for (const text of [runningWithLease, runningWithoutLease]) {
   assert.ok(!/%|进度条|预计/.test(text), text);
 }

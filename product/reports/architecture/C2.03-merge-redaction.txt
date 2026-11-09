@@ -1,0 +1,30 @@
+redaction evidence for commit e564d57 (ephemeral fake-provider secrets and truncated DSN)
+integration tip checked: fe2f2aa7ed3e07ac3c8e43bbc3250d3f9ef5b6e9
+naive_assignment_matches: 4 (secret=/deploy_secret=/dsn= regex, duplicate substring counted)
+refined_distinct_values: 3 (generated secret + truncated postgresql DSN patterns)
+removed_values_still_present_in_C2.03-red-sealing.txt: 0
+long_prefix_matches_in_C2.03-red-sealing.txt: 0
+C2.03-red-sealing.txt 't122-secret-' occurrences: 0
+C2.03-red-sealing.txt 'postgresql://' occurrences: 0
+scan C2.03-collection.txt: t122-secret-=0 postgresql://=0
+scan C2.03-focused-pytest.txt: t122-secret-=0 postgresql://=0
+scan C2.03-go-build.txt: t122-secret-=0 postgresql://=0
+scan C2.03-go-capabilities.txt: t122-secret-=0 postgresql://=0
+scan C2.03-go-test.txt: t122-secret-=0 postgresql://=0
+scan C2.03-go-vet.txt: t122-secret-=0 postgresql://=0
+scan C2.03-gofmt.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-c202-pytest.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-focused-pytest.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-git.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-go-build.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-go-test.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-go-vet.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-gofmt.txt: t122-secret-=0 postgresql://=0
+scan C2.03-merge-sync-spec.txt: t122-secret-=0 postgresql://=0
+scan C2.03-post-merge-focused.txt: t122-secret-=0 postgresql://=0
+scan C2.03-post-merge-pytest.txt: t122-secret-=0 postgresql://=0
+scan C2.03-red-sealing.txt: t122-secret-=0 postgresql://=0
+scan C2.03-regression-pytest.txt: t122-secret-=0 postgresql://=0
+scan C2.03-sync-spec.txt: t122-secret-=0 postgresql://=0
+total_secret_patterns_in_C2.03_evidence: 0
+verdict: PASS (final tree contains the redacted copy; no test-only secret or DSN value recorded)

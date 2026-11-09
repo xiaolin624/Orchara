@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 
+from support import run_observations as observations
 from support import stack as st
 from support import t027, t029, t033, t041, t043, t054
 
@@ -146,7 +147,7 @@ def trace_document(session, stack, run_id: str) -> dict:
         if item["kind"] == "file" and item["label"] == "context-trace"
     ]
     assert len(trace_rows) == 1, items
-    content = t033.artifact_content(session, trace_rows[0]["artifact_id"])
+    content = observations.artifact_content(session, trace_rows[0]["artifact_id"])
     assert content.status == 200, content.text
     document = json.loads(content.raw)
     assert document["version"] == 1, document

@@ -1,0 +1,60 @@
+== C4.03 deletion proof (branch t/c4.03-remove-linear-view) ==
+commit-base: f64b1730501fca2f029028c6bb8f4e278b4a0b11
+
+== 1. deleted symbols: git grep across tracked Go files ==
+graphLinearView -> 0 matches
+linearRun\.available -> 0 matches
+linearRun\.skip -> 0 matches
+linearRun\.scopeIDs -> 0 matches
+view\.start -> 0 matches
+
+== 2. agent/call_app capture or hidden-context references ==
+agent.go+callapp.go -> 0 matches
+
+== 3. remaining (preserved) capture users ==
+product/internal/presetexec/approval.go:187:	captureGraphWaiting(ctx, Proposal{
+product/internal/presetexec/graphrun.go:174:func captureGraphFailure(
+product/internal/presetexec/graphrun.go:196:func captureGraphCancellation(
+product/internal/presetexec/graphrun.go:211:func captureGraphWaiting(
+product/internal/presetexec/linear.go:389:		if captureGraphCancellation(ctx, outcome, evidence) {
+product/internal/presetexec/modelnode.go:429:	if captureGraphWaiting(ctx, proposal, "waiting_approval", view.last,
+product/internal/presetexec/modelnode.go:464:	if captureGraphCancellation(ctx, view.last, evidence) {
+product/internal/presetexec/presetexec.go:793:	if captured, ok := captureGraphFailure(
+product/internal/presetexec/presetexec.go:828:	if captured, ok := captureGraphFailure(
+product/internal/presetexec/presetexec.go:860:	if captured, ok := captureGraphFailure(
+
+== 4. linearRun struct after deletion ==
+type linearRun struct {
+	plan    *linearPlan
+	inputs  []InputArtifact
+	start   map[string]any
+	python  map[string]any
+	agent   map[string]any
+	callApp map[string]any
+	outcome sandbox.Outcome
+	report  *SandboxReport
+}
+
+// nodeHost is the scheduler-specific observable surface of one node failure:
+
+== 5. diffstat ==
+ product/internal/presetexec/graphrun.go        | 44 ++++----------------------
+ product/internal/presetexec/linear.go          | 15 ++-------
+ product/internal/presetexec/nodeexec.go        |  1 -
+ product/internal/presetexec/nodeexec_test.go   |  2 +-
+ product/internal/presetexec/presetexec_test.go | 18 +++++++----
+ 5 files changed, 22 insertions(+), 58 deletions(-)
+
+== 6. scopeIDs: linearRun had no scopeIDs field at base f64b173 (C4.01 already deleted it); the only remaining scope_ids is the sealed nodeExecution snapshot ==
+base linear.go:187: scopeIDs := make([]string, 0, len(run.plan.order))
+base linear.go:189: scopeIDs = append(scopeIDs, planned.ID)
+base linear.go:194: scopeNodeIDs: scopeIDs, sandbox: run.outcome, report: run.report,
+product/internal/presetexec/agentcontext.go:37:	ids := make([]string, 0, len(exec.scopeNodeIDs)+1)
+product/internal/presetexec/agentcontext.go:38:	seen := make(map[string]bool, len(exec.scopeNodeIDs)+1)
+product/internal/presetexec/agentcontext.go:39:	for _, id := range exec.scopeNodeIDs {
+product/internal/presetexec/graphrun.go:1072:		scopeNodeIDs: append([]string(nil), plan.order...),
+product/internal/presetexec/linear.go:178:	scopeIDs := make([]string, 0, len(run.plan.order))
+product/internal/presetexec/linear.go:180:		scopeIDs = append(scopeIDs, planned.ID)
+product/internal/presetexec/linear.go:185:		scopeNodeIDs: scopeIDs, sandbox: run.outcome, report: run.report,
+product/internal/presetexec/nodeexec.go:40:	// scopeNodeIDs is the sealed node-id authorization scope of this attempt,
+product/internal/presetexec/nodeexec.go:43:	scopeNodeIDs []string

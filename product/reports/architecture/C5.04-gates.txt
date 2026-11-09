@@ -1,0 +1,9 @@
+C5.04 gates (run at HEAD on branch t/c5.04-support-contract, worktree E:\Orchara-wt\C5.04)
+
+1) cd product; D:\Python\python.exe -X utf8 tools\sync_spec.py --check
+   no drift: current source, both copies and synchronized baseline agree
+   exit=0
+
+2) git -c core.whitespace=cr-at-eol diff --check
+   (no output)
+   exit=0

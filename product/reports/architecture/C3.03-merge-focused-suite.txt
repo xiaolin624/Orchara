@@ -1,0 +1,3 @@
+......C303-COST {"candidates": 3, "runs": 7, "with_join_ms_median": 0.648, "without_join_ms_median": 0.506, "delta_ms_median": 0.142, "with_join_plan_node": "Aggregate", "without_join_plan_node": "Aggregate", "guard": "both medians < 30000 ms (coarse functional ceiling; no ms assertion)"}
+..
+8 passed in 122.25s (0:02:02)

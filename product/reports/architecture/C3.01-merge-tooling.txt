@@ -1,0 +1,7 @@
+﻿$ python -X utf8 -m pytest tests/tooling -q -p no:cacheprovider
+........................................................................ [ 64%]
+........................................                                 [100%]
+112 passed in 203.73s (0:03:23)
+
+$ python -X utf8 tools/sync_spec.py --check
+no drift: current source, both copies and synchronized baseline agree

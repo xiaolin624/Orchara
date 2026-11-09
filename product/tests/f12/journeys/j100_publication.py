@@ -33,6 +33,7 @@ import secrets
 
 import pytest
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import f00b, f08, stack as st, t025, t027, t029, t033, t039, t042, t056, t068
 from t100_support import journey_log, sha256_hex
@@ -419,7 +420,7 @@ def _record_chat_input_gap(stack, journey, creator, version_id: str) -> None:
     run_id = request["run_id"]
     run_row = t029.run_state_row(stack.dbname, run_id)
     run_read = creator.client.get(f"/api/v1/runs/{run_id}")
-    node_results = t042.node_results(creator, run_id)
+    node_results = observations.node_results_response(creator, run_id)
     node_items = node_results.json["items"] if node_results.status == 200 else None
     observed = {
         "exit_code": completed.returncode,

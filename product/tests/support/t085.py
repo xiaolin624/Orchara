@@ -14,7 +14,6 @@ capability/authorization failure the optional branch must never absorb.
 
 from __future__ import annotations
 
-from support import execution_support as execution
 from support import stack as st
 from support import t025, t027, t042, t083
 
@@ -225,12 +224,6 @@ def parallel_in_condition_definition() -> dict:
 # submission and reads (reuse the T083 real-stack path)
 # ---------------------------------------------------------------------------
 queue_graph_run = t083.queue_graph_run
-run_once = execution.execute_once
-node_results = t083.node_results
-node_data_rows = t083.node_data_rows
-node_data_document = t083.node_data_document
-node_states = t083.node_states
-final_output_document = t083.final_output_document
 
 
 def revoke_golden_model(dbname: str) -> None:

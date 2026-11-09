@@ -24,7 +24,6 @@ from support import stack as st
 from support import t025, t027, t029
 
 # Re-exports so a T031 test imports one module.
-T031Stack = Stack
 Session = t029.Session
 admin_session = t029.admin_session
 session_for = t029.session_for

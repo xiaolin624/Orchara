@@ -1,0 +1,27 @@
+C4.03 precise zero-call-site greps (tracked product Go files)
+HEAD: f64b1730501fca2f029028c6bb8f4e278b4a0b11
+
+graphLinearView -> 0 matches
+linearRun field read run.available -> 0 matches
+linearRun field read run.skip -> 0 matches
+graphNodeView.start read view.start -> 0 matches
+fake-view override available:view.available -> 0 matches; empty nodeHost.skip in graph python dispatch -> 1 match (preserved: the scheduler owns skip propagation)
+agent.go+callapp.go capture/graphAttempt/linearRun/context.Value -> 0 matches
+
+linearRun literal sites (the only construction is the linear scheduler):
+product/internal/presetexec/linear.go:94:	run := &linearRun{plan: plan, inputs: linked}
+
+Remaining capture users (preserved; python/model/approval + scheduler records):
+product/internal/presetexec/approval.go:187:	captureGraphWaiting(ctx, Proposal{
+product/internal/presetexec/graphrun.go:174:func captureGraphFailure(
+product/internal/presetexec/graphrun.go:196:func captureGraphCancellation(
+product/internal/presetexec/graphrun.go:211:func captureGraphWaiting(
+product/internal/presetexec/linear.go:389:		if captureGraphCancellation(ctx, outcome, evidence) {
+product/internal/presetexec/modelnode.go:429:	if captureGraphWaiting(ctx, proposal, "waiting_approval", view.last,
+product/internal/presetexec/modelnode.go:464:	if captureGraphCancellation(ctx, view.last, evidence) {
+product/internal/presetexec/presetexec.go:793:	if captured, ok := captureGraphFailure(
+product/internal/presetexec/presetexec.go:828:	if captured, ok := captureGraphFailure(
+product/internal/presetexec/presetexec.go:860:	if captured, ok := captureGraphFailure(
+
+Note: linearRun.scopeIDs did not exist at base f64b173 (C4.01 deleted it);
+the only scope_ids left is the sealed nodeExecution.scopeNodeIDs snapshot.

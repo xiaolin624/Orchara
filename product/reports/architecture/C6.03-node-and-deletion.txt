@@ -1,0 +1,21 @@
+﻿== node --check (committed bytes)
+node_check apps\web\src\assets\runstream.js exit=0
+node_check apps\web\src\assets\runs.js exit=0
+== deleted page-local fallbacks (runs.js)
+grep 'typeof runStream' matches=0
+grep 'function describeRunState\(' matches=0
+grep 'runStreamArtifactReadout' matches=0
+grep 'runStreamCancelAcceptedText' matches=0
+grep 'runStreamSnapshotPath' matches=0
+grep 'runStreamSnapshotCorrection' matches=0
+grep 'runStreamChildSummary' matches=0
+grep 'runStreamTruth' matches=0
+grep 'runStreamFailure' matches=0
+== shared interface calls present
+grep 'runsRunStateInterface\(\)\.view' matches=5
+grep 'runsRunStateInterface\(\)\.failure' matches=1
+grep 'runsRunStateInterface\(\)\.childSummary' matches=1
+grep 'runsRunStateInterface\(\)\.artifactReadout' matches=1
+grep 'runsRunStateInterface\(\)\.cancelAcceptedText' matches=1
+grep 'runsRunStateInterface\(\)\.snapshotPath' matches=1
+grep 'runsRunStateInterface\(\)\.snapshotCorrection' matches=1

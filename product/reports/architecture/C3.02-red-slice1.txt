@@ -1,0 +1,46 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____ test_c302_same_length_replacement_blocks_open_answer_and_cache_hit ______
+
+t055_stack = Stack(server=<support.stack.ApiServer object at 0x0000019C0A3CF830>, dsn='postgresql://<redacted>')}, signing_key='<redacted>')
+
+    def test_c302_same_length_replacement_blocks_open_answer_and_cache_hit(
+        t055_stack,
+    ) -> None:
+        stack = t055_stack
+        owner, base_id, _artifacts, documents = setup_kb(stack)
+        target = t055.chunk_rows(stack.dbname, documents[0])[0]
+        artifact = chunk_artifact(stack, target["id"])
+        original = sealed_path(stack, artifact).read_bytes()
+        tampered = b"Z" * len(original)
+        assert len(tampered) == len(original) and tampered != original
+    
+        warm = t067.warm_cache(owner, base_id, QUERY, top_k=20)
+        assert warm.json["retrieval"]["cache"]["stored"] is True, warm.json["retrieval"]["cache"]
+        assert target["id"] in item_ids(warm.json), warm.json["items"]
+    
+        replace_sealed_bytes(stack, artifact, tampered)
+        try:
+            # (1) Citation open: the citation path used to return the replaced bytes as
+            # if they were the sealed body. It must be the safe 404 instead.
+            opened = t055.get_citation(owner, target["id"])
+>           assert_safe_not_found(opened, artifact)
+
+tests\f10\test_c302_verified_reads.py:185: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <support.stack.Response object at 0x0000019C0A4EBEC0>
+artifact = {'created_at': '2026-11-09 14:47:46.795647+08', 'deleted_at': None, 'expected_sha256': '7739aed89e5b1cc4d4c1ab8d39636c3317fcdb5f86116ea164501015ac9457a5', 'id': '03f74199-33ed-44bd-9a6f-112279a75a56', ...}
+
+    def assert_safe_not_found(response, artifact: dict) -> None:
+        """A citation body that cannot be verified is the existing indistinguishable 404."""
+>       assert response.status == 404, response.text
+E       AssertionError: {"chunk_id":"70fa30de-8b97-4e93-8801-798bd5f7d5e9","document_id":"4827e8aa-fb14-4db0-b348-3d9449c2a0f3","document_revision":1,"document_state":"ready","chunk_no":0,"text":"ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ","span":{"start_char":0,"end_char":93,"start_line":1,"end_line":7},"citation":{"span":{"end_char":93,"end_line":7,"start_char":0,"start_line":1},"chunk_no":0,"document_id":"4827e8aa-fb14-4db0-b348-3d9449c2a0f3","offset_unit":"rune","source_sha256":"373653c453ae1b1d2d06bc5c0ce432193b1a56627d2f19201e2fb5e40b81b61d","parser_version":"orchara-text-parser/1","chunker_version":"orchara-paragraph-overlap-chunker/1","document_revision":1,"source_media_type":"text/plain","source_artifact_id":"319ff93b-1946-4b88-b6f4-ddeebc673bc2","text_normalization":"none","embedding_model_revision":"local-hash-v1"}}
+E         
+E       assert 200 == 404
+E        +  where 200 = <support.stack.Response object at 0x0000019C0A4EBEC0>.status
+
+tests\f10\test_c302_verified_reads.py:132: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f10/test_c302_verified_reads.py::test_c302_same_length_replacement_blocks_open_answer_and_cache_hit
+1 failed in 53.96s

@@ -1,0 +1,11 @@
+﻿C3.02 Go build/vet/format gate (Go 1.27.3)
+Worktree: E:\Orchara-wt\C3.02\product
+$ go build ./...
+
+exit=0
+$ go vet ./...
+
+exit=0
+$ gofmt -l internal cmd tools
+
+exit=0  (empty output above = all formatted)

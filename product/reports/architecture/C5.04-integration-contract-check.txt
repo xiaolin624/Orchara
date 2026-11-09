@@ -1,0 +1,4 @@
+phase=all
+callers=0
+definitions=0
+contract-exit=0

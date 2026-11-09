@@ -1,0 +1,3 @@
+ok  	orchara/platform/internal/capabilities	2.579s
+ok  	orchara/platform/internal/modelproxy	3.269s
+GOTEST_EXIT=0

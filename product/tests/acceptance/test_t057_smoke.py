@@ -196,6 +196,8 @@ def test_the_real_page_assets_execute_under_node(smoke_evidence: dict) -> None:
     assert "f15a page logic ok" in page["stdout"], page
     assert page["assets"] == [
         "assets/app.js",
+        "assets/runstream.js",
+        "assets/runstate-guard.js",
         "assets/attachments.js",
         "assets/runs.js",
         "assets/models.js",

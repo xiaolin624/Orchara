@@ -43,12 +43,28 @@ const vm = require('vm');
 const webDir = __WEB_DIR__;
 const calls = __CALLS__;
 const out = {};
+// C6.01 (#155): a page script that consumes the shared run-state rules must be
+// probed with the real shared bytes loaded first (same load order as the page).
+const RUNSTATE_PAGES = ['chat.js', 'runs.js', 'debug.js', 'runview.js'];
 for (const call of calls) {
   const context = {
     console: console,
     document: { addEventListener() {}, getElementById() { return null; } },
   };
   vm.createContext(context);
+  if (RUNSTATE_PAGES.indexOf(call.asset) >= 0) {
+    vm.runInContext(
+      fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'),
+      context,
+      { filename: 'runstream.js' },
+    );
+    // C6.04 (#158): the guard is part of the real page load order.
+    vm.runInContext(
+      fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+      context,
+      { filename: 'runstate-guard.js' },
+    );
+  }
   vm.runInContext(
     fs.readFileSync(webDir + '/assets/' + call.asset, 'utf8'),
     context,

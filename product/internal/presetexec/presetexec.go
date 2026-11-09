@@ -850,16 +850,27 @@ func (r *runner) failRun(
 }
 
 // failAfterStart handles a platform-side refusal after a successful sandbox (for
-// example a registration conflict): it fails the run with a real exit.
+// example a registration conflict): it fails the run with a real exit. The graph
+// capture path is kept for the node implementations this ticket does not migrate;
+// a scheduler that already holds the typed local outcome commits through
+// commitFailedAfterStart instead.
 func (r *runner) failAfterStart(
 	ctx context.Context, code, message string, sandboxOutcome sandbox.Outcome, evidence map[string]any,
 ) executionOutcome {
-	sandboxReport := sandboxReportOf(sandboxOutcome)
 	if captured, ok := captureGraphFailure(
 		ctx, code, message, sandboxOutcome, nil, evidence, false, true,
 	); ok {
 		return captured
 	}
+	return r.commitFailedAfterStart(ctx, code, message, sandboxOutcome, evidence)
+}
+
+// commitFailedAfterStart submits the failed result and confirms the attempt exit.
+// It is the scheduler-owned half with no hidden context lookup.
+func (r *runner) commitFailedAfterStart(
+	ctx context.Context, code, message string, sandboxOutcome sandbox.Outcome, evidence map[string]any,
+) executionOutcome {
+	sandboxReport := sandboxReportOf(sandboxOutcome)
 	if err := r.deps.Client.SubmitResult(ctx, r.lease.RunID, r.lease.AttemptToken, Proposal{
 		EventID: uuid.NewString(), SuggestedState: "failed", ErrorCode: code,
 	}); err != nil {

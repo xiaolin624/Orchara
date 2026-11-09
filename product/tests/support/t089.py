@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 
+from support import run_observations as observations
 from support import t027, t029, t033, t075, t078
 from support import stack as st
 
@@ -384,27 +385,9 @@ def children(stack, session, parent_run_id: str) -> list[dict]:
 def child_output(stack, session, child_run_id: str) -> dict:
     row = t078.run_row(stack.dbname, child_run_id)
     assert row["output_artifact_id"], row
-    content = t033.artifact_content(session, row["output_artifact_id"])
+    content = observations.artifact_content(session, row["output_artifact_id"])
     assert content.status == 200, content.text
     return json.loads(content.raw)
-
-
-def node_results(session, run_id: str, *, expected: int) -> list[dict]:
-    from support import t042
-
-    return t042.wait_node_results(session, run_id, expected=expected)["items"]
-
-
-def node_data_document(session, items: list[dict], node_id: str) -> dict:
-    from support import t083
-
-    return t083.node_data_document(session, items, node_id)
-
-
-def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    from support import t083
-
-    return t083.node_states(dbname, run_id)
 
 
 __all__ = [name for name in dir() if not name.startswith("_")]

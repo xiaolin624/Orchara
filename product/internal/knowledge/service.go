@@ -1232,86 +1232,40 @@ type rankedRetrieval struct {
 // rankRetrieval runs the T055 SQL-filter-first retrieval and ranks the surviving
 // candidates in this process. It is the only path that reads chunk bodies for a
 // query; a cache hit returns the same shape without touching the candidate set.
+//
+// C3.01: the candidate SQL, the artifact integrity metadata and the bounded
+// sealed-body verification live in the owner-bound reader (reader.go). A
+// candidate whose body does not reproduce the authoritative sha256/size_bytes is
+// skipped and the result is counted partial, so it is never memoized.
 func (s *Service) rankRetrieval(
 	ctx context.Context, baseID, ownerID string, queryVector []float64,
 	modelRevision string, topK int,
 ) (rankedRetrieval, error) {
-	rows, err := s.DB.QueryContext(ctx, `
-		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.citation, kc.embedding, a.object_key,
-		       kc.body_artifact_id::text, coalesce(a.sha256, '')`+
-		// The shared "current readable chunk" predicate (readable_chunk.go): owner
-		// ACL, tombstones, active index version and body-artifact readiness.
-		currentReadableChunkSQL(2)+`
-		   AND kb.id = $1::uuid
-		   AND iv.embedding_model_revision = $3
-		   AND kc.embedding IS NOT NULL
-		   AND kc.embedding_model_revision = $3
-		   AND kc.embedding_dimension = iv.embedding_dimension
-		 ORDER BY kc.document_id, kc.chunk_no
-		 LIMIT $4`,
-		baseID, ownerID, modelRevision, MaxCandidates,
-	)
+	readable, skipped, err := s.reader(ownerID).Candidates(ctx, baseID, modelRevision)
 	if err != nil {
-		return rankedRetrieval{}, fmt.Errorf("reading the retrieval candidates: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	type candidate struct {
-		view           ChunkView
-		embedding      []float64
-		objectKey      string
-		bodyArtifactID string
-		bodySHA256     string
-	}
-	var candidates []candidate
-	for rows.Next() {
-		var (
-			view           ChunkView
-			citation       []byte
-			vectorText     sql.NullString
-			objectKey      string
-			bodyArtifactID string
-			bodySHA256     string
-		)
-		if err := rows.Scan(
-			&view.ChunkID, &view.DocumentID, &view.DocumentRevision, &view.ChunkNo,
-			&citation, &vectorText, &objectKey, &bodyArtifactID, &bodySHA256,
-		); err != nil {
-			return rankedRetrieval{}, fmt.Errorf("reading a retrieval candidate: %w", err)
-		}
-		view.Citation = json.RawMessage(citation)
-		view.Span = spanFromCitation(citation)
-		candidates = append(candidates, candidate{
-			view: view, embedding: parseFloatArray(vectorText.String), objectKey: objectKey,
-			bodyArtifactID: bodyArtifactID, bodySHA256: bodySHA256,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return rankedRetrieval{}, fmt.Errorf("reading the retrieval candidates: %w", err)
+		return rankedRetrieval{}, err
 	}
 
 	type scored struct {
-		candidate candidate
-		score     float64
+		view  ChunkView
+		chunk readableChunk
 	}
-	ranked := make([]scored, 0, len(candidates))
-	skipped := 0
-	for _, item := range candidates {
-		text, err := s.readChunkText(item.objectKey)
-		if err != nil {
-			// A chunk whose sealed body is unreadable is not retrievable: skipping
-			// it is honest, and it never leaks bytes or a path. It also marks the
-			// result partial, so it will not be memoized.
-			skipped++
-			continue
+	ranked := make([]scored, 0, len(readable))
+	for _, chunk := range readable {
+		view := ChunkView{
+			ChunkID:          chunk.ChunkID,
+			DocumentID:       chunk.DocumentID,
+			DocumentRevision: chunk.DocumentRevision,
+			ChunkNo:          chunk.ChunkNo,
+			Span:             spanFromCitation(chunk.Citation),
+			Citation:         chunk.Citation,
+			Text:             chunk.Text,
+			Score:            embedding.Cosine(queryVector, chunk.Embedding),
 		}
-		item.view.Text = text
-		item.view.Score = embedding.Cosine(queryVector, item.embedding)
-		ranked = append(ranked, scored{candidate: item, score: item.view.Score})
+		ranked = append(ranked, scored{view: view, chunk: chunk})
 	}
 	sort.SliceStable(ranked, func(left, right int) bool {
-		return chunkLess(ranked[left].candidate.view, ranked[right].candidate.view)
+		return chunkLess(ranked[left].view, ranked[right].view)
 	})
 	if len(ranked) > topK {
 		ranked = ranked[:topK]
@@ -1322,10 +1276,10 @@ func (s *Service) rankRetrieval(
 		skipped:    skipped,
 	}
 	for _, item := range ranked {
-		item.candidate.view.DocumentState = StateReady
-		result.items = append(result.items, item.candidate.view)
+		item.view.DocumentState = StateReady
+		result.items = append(result.items, item.view)
 		result.cacheItems = append(result.cacheItems, cacheItemOf(
-			item.candidate.view, item.candidate.bodyArtifactID, item.candidate.bodySHA256,
+			item.view, item.chunk.BodyArtifactID, item.chunk.BodySHA256,
 		))
 	}
 	return result, nil
@@ -1333,45 +1287,43 @@ func (s *Service) rankRetrieval(
 
 // GetChunk opens one citation the owner is currently allowed to read.
 //
-// The ACL, document tombstone, ready/active revision and body-artifact
-// readiness are re-checked in SQL before a byte is opened. A revoked, deleted,
-// failed, superseded-revision or foreign chunk is ErrNotFound (404) with no body
-// and no reason that would reveal which of those it is.
+// C3.02: the open goes through the owner-bound readable-chunk reader
+// (reader.go), so it applies exactly the permission predicate, authoritative
+// artifact metadata and one-pass digest/size verification that ordinary
+// retrieval uses. The ACL, document tombstone, ready/active revision and
+// body-artifact readiness are checked in SQL before a byte is opened, and a
+// sealed body that is missing, carries unusable integrity metadata or does not
+// reproduce the authoritative sha256/size_bytes is the same indistinguishable
+// ErrNotFound (404) as a revoked, deleted, failed, superseded-revision or foreign
+// chunk: no body and no reason that would reveal which of those it is.
+//
+// The current embedding model is deliberately not part of this operation: a
+// citation already handed out stays openable while the deployment rebuilds an
+// index under another revision (a new retrieval still has to match the model).
 func (s *Service) GetChunk(ctx context.Context, ownerID, chunkID string) (ChunkView, error) {
 	if !uuid.Valid(strings.TrimSpace(chunkID)) {
 		return ChunkView{}, ErrNotFound
 	}
-	var (
-		view      ChunkView
-		citation  []byte
-		objectKey string
-	)
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.citation, a.object_key`+
-		// The shared "current readable chunk" predicate (readable_chunk.go): a
-		// revoked, deleted, failed, superseded-revision or foreign chunk is absent
-		// from the result set, hence ErrNotFound below.
-		currentReadableChunkSQL(2)+`
-		   AND kc.id = $1::uuid`,
-		chunkID, ownerID,
-	).Scan(&view.ChunkID, &view.DocumentID, &view.DocumentRevision, &view.ChunkNo,
-		&citation, &objectKey)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ChunkView{}, ErrNotFound
-	}
+	chunk, err := s.reader(ownerID).Open(ctx, chunkID)
 	if err != nil {
-		return ChunkView{}, fmt.Errorf("reading the chunk: %w", err)
+		// Every body refusal, including a missing/foreign/revoked row and an
+		// unverifiable sealed body, is the citation surface's one 404. A failed
+		// metadata query is not: it is a server error, not a denial.
+		if errors.Is(err, ErrNotFound) {
+			return ChunkView{}, ErrNotFound
+		}
+		return ChunkView{}, err
 	}
-	view.Citation = json.RawMessage(citation)
-	view.Span = spanFromCitation(citation)
-	text, err := s.readChunkText(objectKey)
-	if err != nil {
-		return ChunkView{}, ErrNotFound
-	}
-	view.Text = text
-	view.DocumentState = StateReady
-	return view, nil
+	return ChunkView{
+		ChunkID:          chunk.ChunkID,
+		DocumentID:       chunk.DocumentID,
+		DocumentRevision: chunk.DocumentRevision,
+		DocumentState:    StateReady,
+		ChunkNo:          chunk.ChunkNo,
+		Span:             spanFromCitation(chunk.Citation),
+		Citation:         chunk.Citation,
+		Text:             chunk.Text,
+	}, nil
 }
 
 // spanFromCitation re-projects the stored citation's span onto the answer. The
@@ -1385,27 +1337,6 @@ func spanFromCitation(citation []byte) Span {
 		return Span{}
 	}
 	return stored.Span
-}
-
-// readChunkText reads one prepared sealed chunk body. It never returns more than
-// the single-object ceiling and never an object key.
-func (s *Service) readChunkText(objectKey string) (string, error) {
-	if s.Objects == nil {
-		return "", ErrObjectStoreUnavailable
-	}
-	reader, _, err := s.Objects.Open(objectKey)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = reader.Close() }()
-	content, err := io.ReadAll(io.LimitReader(reader, objectstore.MaxObjectBytes+1))
-	if err != nil {
-		return "", err
-	}
-	if int64(len(content)) > objectstore.MaxObjectBytes {
-		return "", objectstore.ErrTooLarge
-	}
-	return string(content), nil
 }
 
 // ---------------------------------------------------------------------------

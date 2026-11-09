@@ -1,0 +1,9 @@
+﻿# C3.03 integration-tip focused suite
+commit=1eb0281b98a6aa705a0a12e2fd3b0b5aad0a9299
+$ & E:\Orchara-notes\test.ps1 tests\f10\test_c303_knowledge_consistency.py -q -p no:cacheprovider
+
+........                                                                 [100%]
+8 passed in 143.42s (0:02:23)
+
+exit=0
+

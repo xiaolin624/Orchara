@@ -1,0 +1,62 @@
+# C2.02 merge git evidence
+
+## merge commit
+7ae1d408f55bbd44b2f687714225b73ada516879
+merge(C2.02): share the attempt driver with the streaming call and fallback
+parents:
+7ae1d408f55bbd44b2f687714225b73ada516879 56ceb9b6be98790ecdc68deaf0983a245b0a133f 855d18fd80b8a77eb724be4fb2afae4c593205a7
+
+## merge-base
+56ceb9b6be98790ecdc68deaf0983a245b0a133f
+
+## integration side since original branch base 3eec0c2..56ceb9b
+M	product/PROGRESS.md
+A	product/reports/architecture/C5.04-integration-collection.txt
+A	product/reports/architecture/C5.04-integration-contract-check.txt
+A	product/reports/architecture/C5.04-integration-git.txt
+A	product/reports/architecture/C5.04-integration-observation.txt
+A	product/reports/architecture/C5.04-integration-sync-check.txt
+A	product/reports/architecture/C5.04-integration-t089.txt
+A	product/reports/architecture/C5.04-merge.md
+
+## integration side code/tests/docs/contracts since 3eec0c2 (expected empty)
+(empty)
+
+## merged tree vs first parent 56ceb9b..HEAD
+M	product/internal/api/stream.go
+M	product/internal/capabilities/attempt.go
+M	product/internal/capabilities/attempt_test.go
+M	product/internal/capabilities/service.go
+M	product/internal/capabilities/stream.go
+M	product/internal/capabilities/stream_test.go
+A	product/reports/architecture/C2.02-collection.txt
+A	product/reports/architecture/C2.02-focused-pytest.txt
+A	product/reports/architecture/C2.02-go-capabilities.txt
+A	product/reports/architecture/C2.02-go-test.txt
+A	product/reports/architecture/C2.02-gofmt.txt
+A	product/reports/architecture/C2.02-model-stream.md
+A	product/reports/architecture/C2.02-post-merge-go-all.txt
+A	product/reports/architecture/C2.02-post-merge-go.txt
+A	product/reports/architecture/C2.02-post-merge-pytest.txt
+A	product/reports/architecture/C2.02-post-merge-sync-spec.txt
+A	product/reports/architecture/C2.02-post-merge2-go.txt
+A	product/reports/architecture/C2.02-post-merge2-pytest.txt
+A	product/reports/architecture/C2.02-post-merge2-sync-spec.txt
+A	product/reports/architecture/C2.02-red-pytest.txt
+A	product/reports/architecture/C2.02-regression-pytest.txt
+A	product/reports/architecture/C2.02-sync-spec.txt
+A	product/tests/f06/test_c202_model_stream.py
+
+## merged code/tests vs branch tip 855d18f (expected empty)
+(empty)
+
+## branch refresh ec44d27..855d18f
+M	product/PROGRESS.md
+A	product/reports/architecture/C5.04-integration-collection.txt
+A	product/reports/architecture/C5.04-integration-contract-check.txt
+A	product/reports/architecture/C5.04-integration-git.txt
+A	product/reports/architecture/C5.04-integration-observation.txt
+A	product/reports/architecture/C5.04-integration-sync-check.txt
+A	product/reports/architecture/C5.04-integration-t089.txt
+A	product/reports/architecture/C5.04-merge.md
+

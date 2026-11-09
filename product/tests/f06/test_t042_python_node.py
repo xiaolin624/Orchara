@@ -19,6 +19,7 @@ import json
 import pytest
 
 from support import execution_support as execution
+from support import run_observations as observations
 from support import stack as st
 from support import t027, t031, t033, t042
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -64,13 +65,13 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     assert sandbox["started"] is True and sandbox["exit_code"] == 0, sandbox
     assert sandbox["cleanup"]["sandbox_list_matches"] == 0, sandbox
 
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
-    output_id = t033.output_artifact_id(t033_stack.dbname, run["id"])
+    output_id = observations.output_artifact_id(t033_stack.dbname, run["id"])
     assert output_id, state
 
     # --- the owner read: data, files and log are separately mapped -------------
-    response = t042.node_results(owner.creator, run["id"])
+    response = observations.node_results_response(owner.creator, run["id"])
     assert response.status == 200, response.text
     body = response.json
     assert set(body) >= {"items", "next_cursor", "generated_at"}, body
@@ -93,7 +94,7 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     assert {row["label"] for row in file_rows} == {"summary.json", "summary.csv"}, file_rows
 
     # Data is the canonical validated output.json.data, not raw output.json.
-    data_content = t042.content_of(owner.creator, data_rows[0]["artifact_id"])
+    data_content = observations.artifact_content(owner.creator, data_rows[0]["artifact_id"])
     assert data_content.status == 200, data_content.text
     data_document = json.loads(data_content.raw)
     assert data_document == EXPECTED_SUMMARY, data_document
@@ -102,15 +103,15 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
 
     # Each admitted file round-trips its real bytes.
     rows_by_label = {row["label"]: row for row in file_rows}
-    summary_json = t042.content_of(owner.creator, rows_by_label["summary.json"]["artifact_id"])
+    summary_json = observations.artifact_content(owner.creator, rows_by_label["summary.json"]["artifact_id"])
     assert summary_json.status == 200, summary_json.text
     assert json.loads(summary_json.raw) == EXPECTED_SUMMARY, summary_json.raw
-    summary_csv = t042.content_of(owner.creator, rows_by_label["summary.csv"]["artifact_id"])
+    summary_csv = observations.artifact_content(owner.creator, rows_by_label["summary.csv"]["artifact_id"])
     assert summary_csv.status == 200, summary_csv.text
     assert summary_csv.raw == t033.EXPECTED_SUMMARY_CSV, summary_csv.raw
 
     # The log is separate, capped and never listed as run data.
-    log_content = t042.content_of(owner.creator, log_rows[0]["artifact_id"])
+    log_content = observations.artifact_content(owner.creator, log_rows[0]["artifact_id"])
     assert log_content.status == 200, log_content.text
     assert b"stdout:" in log_content.raw and b"stderr:" in log_content.raw, log_content.raw
     assert len(log_content.raw) <= 64 * 1024, len(log_content.raw)
@@ -122,7 +123,7 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     assert {row["artifact_id"] for row in file_rows} <= set(listed_ids)
     assert output_id in listed_ids
     for artifact_id in listed_ids:
-        payload = t042.content_of(owner.creator, artifact_id)
+        payload = observations.artifact_content(owner.creator, artifact_id)
         assert payload.status == 200, payload.text
         if payload.raw[:1] == b"{":
             document = json.loads(payload.raw)
@@ -131,13 +132,13 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
             )
 
     # The end node sealed the mapped final output.
-    final_content = t042.content_of(owner.creator, output_id)
+    final_content = observations.artifact_content(owner.creator, output_id)
     assert final_content.status == 200, final_content.text
     final_document = json.loads(final_content.raw)
     assert final_document == {"report": "sales summary", "summary": EXPECTED_SUMMARY}, final_document
 
     # Provenance rows: purpose/state and the exact kind mapping.
-    rows = t042.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     assert len(rows) == 4, rows
     by_kind = {}
     for row in rows:
@@ -148,7 +149,7 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     assert {row["purpose"] for row in by_kind["log"]} == {"log"}
 
     # node.status events: one per transition, metadata only.
-    events = t042.node_events(t033_stack.dbname, run["id"])
+    events = observations.node_events(t033_stack.dbname, run["id"])
     assert len(events) == 9, events
     observed = {}
     for event in events:
@@ -163,9 +164,9 @@ def test_linear_run_exposes_data_files_and_logs(t033_stack) -> None:
     }, observed
 
     # The owner-only rule holds for every other principal.
-    assert t042.node_results(t033.minimal_owner(t033_stack).creator, run["id"]).status == 404
-    assert t042.node_results(owner.admin, run["id"]).status == 404
-    assert t042.node_results(owner.creator, "not-a-run").status == 404
+    assert observations.node_results_response(t033.minimal_owner(t033_stack).creator, run["id"]).status == 404
+    assert observations.node_results_response(owner.admin, run["id"]).status == 404
+    assert observations.node_results_response(owner.creator, "not-a-run").status == 404
 
     orphan = t033.no_orphan_evidence()
     assert orphan["runsc_list"] == [], orphan
@@ -187,12 +188,12 @@ def test_node_output_schema_violation_fails_without_registering_data(t033_stack)
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "node_output_invalid", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "node_output_invalid", state
     assert state["output_artifact_id"] is None, state
 
     # No node result row, no node_output artifact of the tool, no success.
-    assert t042.node_result_rows(t033_stack.dbname, run["id"]) == []
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
     node_outputs = st.sql_rows(
         t033_stack.dbname,
         "SELECT a.id::text AS id, a.purpose FROM platform.artifacts AS a "
@@ -201,7 +202,7 @@ def test_node_output_schema_violation_fails_without_registering_data(t033_stack)
     )
     for artifact in node_outputs:
         assert artifact["purpose"] not in {"final_output"}, artifact
-    events = t042.node_events(t033_stack.dbname, run["id"])
+    events = observations.node_events(t033_stack.dbname, run["id"])
     observed = {}
     for event in events:
         observed.setdefault(event["payload"]["node_id"], []).append(event["payload"]["state"])
@@ -221,7 +222,7 @@ def test_invalid_run_input_and_unresolved_binding_are_refused_before_the_sandbox
     assert report["outcome"] == "refused", report
     assert report["error_code"] == "node_input_invalid", report
     assert report.get("sandbox") is None, "no sandbox may start for an invalid input"
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "node_input_invalid", state
 
     # 2. A python binding that names an ancestor pointer the compiler cannot
@@ -236,7 +237,7 @@ def test_invalid_run_input_and_unresolved_binding_are_refused_before_the_sandbox
     assert report2["outcome"] == "refused", report2
     assert report2["error_code"] == "node_input_invalid", report2
     assert report2.get("sandbox") is None or report2["sandbox"]["started"] is False, report2
-    state2 = t033.wait_run_state(t033_stack.dbname, run2["id"], {"failed"})
+    state2 = observations.wait_run_state(t033_stack.dbname, run2["id"], {"failed"})
     assert state2["error_code"] == "node_input_invalid", state2
 
 
@@ -299,7 +300,7 @@ def test_cancel_stops_the_chain_without_a_success_or_node_result(t033_stack) -> 
     sandbox = report.get("sandbox")
     if sandbox and sandbox.get("started"):
         assert sandbox["cancelled"] is True, report
-    state = t033.wait_run_state(
+    state = observations.wait_run_state(
         t033_stack.dbname,
         run["id"],
         {"cancelled", "recovery_pending", "failed", "needs_reconciliation"},
@@ -313,8 +314,8 @@ def test_cancel_stops_the_chain_without_a_success_or_node_result(t033_stack) -> 
     assert state["error_code"] is None, state
     assert state["finished_at"] is not None, state
     assert state["output_artifact_id"] is None, "a cancelled run must not publish a result"
-    assert t042.node_result_rows(t033_stack.dbname, run["id"]) == []
-    events = t042.node_events(t033_stack.dbname, run["id"])
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
+    events = observations.node_events(t033_stack.dbname, run["id"])
     observed = {}
     for event in events:
         observed.setdefault(event["payload"]["node_id"], []).append(event["payload"]["state"])
@@ -339,9 +340,9 @@ def test_legacy_golden_agent_graph_still_runs_the_single_python_flow(t033_stack)
     completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
-    output_id = t033.output_artifact_id(t033_stack.dbname, run["id"])
+    output_id = observations.output_artifact_id(t033_stack.dbname, run["id"])
     assert output_id, report
-    content = t033.artifact_content(owner.creator, output_id)
+    content = observations.artifact_content(owner.creator, output_id)
     assert content.status == 200 and content.raw == t033.EXPECTED_SUMMARY_JSON, content.raw
     csv = t033.artifact_by_purpose(t033_stack.dbname, run["id"], "node_output")
     assert csv is not None and csv["media_type"] == "text/csv", csv
@@ -349,5 +350,5 @@ def test_legacy_golden_agent_graph_still_runs_the_single_python_flow(t033_stack)
     assert log is not None, "the legacy log upload is missing"
     listed = t033.list_run_artifacts(owner.creator, run["id"])
     assert {item["id"] for item in listed.json["items"]} == {output_id, csv["id"]}
-    assert t042.node_result_rows(t033_stack.dbname, run["id"]) == []
-    assert t042.node_events(t033_stack.dbname, run["id"]) == []
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
+    assert observations.node_events(t033_stack.dbname, run["id"]) == []

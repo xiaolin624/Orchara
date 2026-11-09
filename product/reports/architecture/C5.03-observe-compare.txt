@@ -1,0 +1,17 @@
+﻿=== C5.03 pre/post migration observed-facts comparison 2026-11-09T14:25:39.6456307+08:00 ===
+before: e27c6fb worktree, legacy t083/t033/t042 helpers
+after:  t/c5.03 branch, support/run_observations.py
+before keys: choose, committed_run_state, final_output, final_output_sha256, items, join, node_event_payloads, node_result_rows, node_states, sse_node_states, supervisor_report
+after  keys: choose, committed_run_state, final_output, final_output_sha256, items, join, node_event_payloads, node_result_rows, node_states, sse_node_states, supervisor_report
+deep-equal (excluding mode): True
+same item count: 6 6
+same node_result_rows: True
+same node_states: True
+same sse_node_states: True
+same node_event_payloads: True
+same final_output: True
+same final_output_sha256: True 83522ec0c7220486a636bad2a957eac007bdd8dc61a0c301c358ea0af728f703
+committed run state: {'error_code': None, 'output_artifact_present': True, 'phase': 'idle', 'state': 'succeeded'}
+supervisor report: {'outcome': 'succeeded', 'run_state': 'succeeded', 'status': 'executed'}
+
+EXIT=0

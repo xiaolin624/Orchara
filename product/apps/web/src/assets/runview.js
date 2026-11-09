@@ -61,8 +61,6 @@ const RUNVIEW_TYPE_TEXT = {
   retrieve: '检索',
 };
 
-const RUNVIEW_TERMINAL_STATES = { succeeded: true, failed: true, cancelled: true };
-
 // F04B/T091: an approval node's first attempt parks at the Run's
 // `waiting_approval` state without a node-level terminal state, so the table
 // names the wait explicitly instead of showing a bare "运行中".
@@ -91,6 +89,14 @@ const RUNVIEW_ERROR_HINT = {
   sandbox_failed: '沙箱执行失败（设施问题）；可重试并查看运行报告。',
   budget_exceeded: '预算已用尽。',
 };
+
+/**
+ * C6.04 (#158): `OrcharaRunStateGuard.ready` is the only dependency fact this
+ * module consults. The node view's realtime tick and its Run reads are paused
+ * when the shared dependency is unavailable; the debug page's draft revision
+ * read, navigation and reload stay usable. There is no page-local helper and no
+ * legacy export to fall back to.
+ */
 
 /**
  * Fold committed `node.status` events into `{node_id: {state, attempt_no}}`.
@@ -551,7 +557,8 @@ function buildRunViewModel(definition, nodeStates, nodeResults, artifactContents
   const runValue = run && typeof run === 'object' ? run : {};
   const runState = String(runValue.state || '');
   const runErrorCode = String(runValue.error_code || '');
-  const runTerminal = RUNVIEW_TERMINAL_STATES[runState] === true;
+  // C6.02 (#156): the Run terminal rule is the shared one, not a page copy.
+  const runTerminal = OrcharaRunState.isTerminal(runState);
 
   const orderedIDs = runViewOrderedNodeIDs(nodes, source.edges);
   const definitionByID = {};
@@ -725,12 +732,14 @@ function runViewEventsPath(runId) {
  *
  * "Accepted" (202 cancel) is never "stopped"; a non-terminal state is never
  * success. `hint` is only present for a code the runtime brief documents.
+ *
+ * C6.02 (#156): the state/terminal/phase classification is the shared
+ * `OrcharaRunState.view`; this page keeps only its own copy and the
+ * node-specific error-code hints.
  */
 function formatRunError(run) {
   const value = run && typeof run === 'object' ? run : null;
-  const state = value && typeof value.state === 'string' ? value.state : '';
   const code = value && typeof value.error_code === 'string' ? value.error_code : '';
-  const terminal = RUNVIEW_TERMINAL_STATES[state] === true;
   if (!value) {
     return {
       code: '',
@@ -741,21 +750,23 @@ function formatRunError(run) {
       text: '（尚未收到 Run 快照；页面不会在没有服务端事实时显示成功或失败。）',
     };
   }
-  if (state === 'succeeded') {
+  const truth = OrcharaRunState.view(value, {});
+  const state = truth.state;
+  if (truth.isSuccess) {
     return {
       code: code,
       state: state,
-      terminal: true,
+      terminal: truth.terminal,
       severity: 'ok',
       hint: '',
       text: '运行成功（succeeded）；节点状态以已提交的 node.status 事件为准。',
     };
   }
-  if (state === 'failed') {
+  if (truth.isFailure) {
     return {
       code: code,
       state: state,
-      terminal: true,
+      terminal: truth.terminal,
       severity: 'bad',
       hint: code === '' ? '' : RUNVIEW_ERROR_HINT[code] || '',
       text:
@@ -768,7 +779,7 @@ function formatRunError(run) {
     return {
       code: code,
       state: state,
-      terminal: true,
+      terminal: truth.terminal,
       severity: '',
       hint: '',
       text: '运行已取消（cancelled）：平台已确认受控执行单元停止；这不表示撤回已经发送的外部写入。',
@@ -778,7 +789,7 @@ function formatRunError(run) {
     return {
       code: code,
       state: state,
-      terminal: false,
+      terminal: truth.terminal,
       severity: 'pending',
       hint: '',
       text: 'Run 挂起在 recovery_pending（已确认退出但没有结果）；恢复证据齐全前不会重新执行。',
@@ -788,7 +799,7 @@ function formatRunError(run) {
     return {
       code: code,
       state: state,
-      terminal: false,
+      terminal: truth.terminal,
       severity: 'pending',
       hint: '',
       text: 'Run 等待人工核对（needs_reconciliation）；不显示为成功或失败。',
@@ -798,20 +809,20 @@ function formatRunError(run) {
     return {
       code: code,
       state: state,
-      terminal: false,
+      terminal: truth.terminal,
       severity: 'pending',
       hint: '',
       text: '已收到取消意图（cancelling），等待执行单元退出并提交终态；这不表示撤回已经发生的外部写入。',
     };
   }
-  if (state === 'running' && String(value.phase || '') === 'finalizing') {
+  if (truth.stage === 'finalizing') {
     // F12/T096: finalizing is phase-only (state stays running). The result is a
     // proposal until the supervisor's exit evidence arrives: not success, not
-    // failure, and the page keeps polling.
+    // failure, and the page keeps polling. The shared view owns that distinction.
     return {
       code: code,
       state: state,
-      terminal: false,
+      terminal: truth.terminal,
       severity: 'pending',
       hint: '',
       text: '结果提议已保存，正在收尾（phase=finalizing）：仍在等待 supervisor 退出证据；' +
@@ -823,7 +834,7 @@ function formatRunError(run) {
     return {
       code: code,
       state: state,
-      terminal: false,
+      terminal: truth.terminal,
       severity: 'pending',
       hint: '',
       text: 'Run 仍在进行（state=' + state + '）；页面会继续从服务端事实刷新。',
@@ -832,26 +843,21 @@ function formatRunError(run) {
   return {
     code: code,
     state: state,
-    terminal: false,
+    terminal: truth.terminal,
     severity: '',
     hint: '',
     text: '（Run 快照没有可识别的 state；页面不推断状态。）',
   };
 }
 
-/** A Run can be cancelled until its terminal state is committed. */
+/** A Run can be cancelled until its terminal state is committed (shared rule). */
 function runViewCanCancel(run) {
-  if (!run || typeof run.state !== 'string' || run.state === '') {
-    return false;
-  }
-  return RUNVIEW_TERMINAL_STATES[run.state] !== true;
+  return OrcharaRunState.view(run, {}).canCancel;
 }
 
 /** Cancelling is idempotent, so a second request is allowed and labelled. */
 function runViewCancelLabel(run) {
-  return String((run && run.state) || '') === 'cancelling'
-    ? '再次请求取消（幂等）'
-    : '取消 Run';
+  return OrcharaRunState.view(run, {}).cancelLabel;
 }
 
 /** Record one cancel intent. A 202 only records intent; it is never "stopped". */
@@ -1211,6 +1217,17 @@ async function runViewTick(view) {
  * page wires as the timeline's onEvent callback.
  */
 function beginRunView(options) {
+  if (!OrcharaRunStateGuard.ready) {
+    // C6.01: the node view's 700ms tick reads Run state and node results; with
+    // the shared dependency unavailable it must not start, and the panel says
+    // so instead of rendering raw snapshots as state.
+    const panel = runViewElement('runview-panel');
+    if (panel) {
+      panel.hidden = false;
+    }
+    runViewStatus('运行状态暂不可用：已暂停节点状态观察；导航和重新加载仍可使用。', 'bad');
+    return null;
+  }
   const opts = options && typeof options === 'object' ? options : {};
   const runID = String(opts.runID || '');
   if (runID === '') {
@@ -1288,6 +1305,10 @@ function runViewOnEvent(events, event) {
 
 /** Record one cancel intent for the active Run and refresh the panel honestly. */
 async function runViewCancel() {
+  if (!OrcharaRunStateGuard.ready) {
+    runViewCancelStatus('运行状态暂不可用：已暂停取消 Run；请刷新页面重试。', 'bad');
+    return null;
+  }
   const view = activeRunView;
   if (!view) {
     return null;
@@ -1299,16 +1320,17 @@ async function runViewCancel() {
   runViewCancelStatus('正在请求取消（202 只表示意图，终态由 finalizer 提交）…', 'pending');
   try {
     const run = await runViewRequestCancel(view.runID);
+    if (activeRunView !== view) {
+      // C6.02: a newer Run was selected while the 202 was in flight. Its panel
+      // owns the status line; this late answer is not rendered into it.
+      return null;
+    }
     view.run = run && typeof run === 'object' ? run : view.run;
     renderRunView(view);
     // F12/T096: the same no-rollback rule as the runs page; a 202 is intent only.
-    runViewCancelStatus(
-      typeof runStreamCancelAcceptedText === 'function'
-        ? runStreamCancelAcceptedText(view.run)
-        : '已接受取消意图（state=' + String((view.run && view.run.state) || '') +
-          '）；页面会刷新到终态。',
-      'ok',
-    );
+    // C6.02: the receipt is the shared sentence, keyed on the Run the server
+    // returned (cancelling = intent, cancelled = stopped).
+    runViewCancelStatus(OrcharaRunState.cancelAcceptedText(view.run), 'ok');
     return run;
   } catch (error) {
     if (error && error.status === 401) {

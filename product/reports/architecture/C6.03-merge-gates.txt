@@ -1,0 +1,7 @@
+﻿== after merge integration @ dd71081
+go_build_exit=0
+go_vet_exit=0
+ok  	orchara/platform/internal/api	2.449s
+go_test_api_exit=0
+no drift: current source, both copies and synchronized baseline agree
+sync_exit=0

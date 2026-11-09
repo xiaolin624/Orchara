@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 
+from support import run_observations as observations
 from support import t025, t027, t029, t033, t075, t078, t081, t089
 from support import stack as st
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -159,7 +160,7 @@ def test_single_child_waits_then_resumes_with_the_original_structured_result(t03
     assert second["status"] == "executed", second
     assert second["run_id"] == child_id, second
     assert second["outcome"] == "succeeded", second
-    child_row = t033.wait_run_state(t033_stack.dbname, child_id, {"succeeded"})
+    child_row = observations.wait_run_state(t033_stack.dbname, child_id, {"succeeded"})
     assert child_row["output_artifact_id"], child_row
     child_output = t089.child_output(t033_stack, creator, child_id)
     assert child_output == {"echo": "alpha"}, child_output
@@ -187,29 +188,29 @@ def test_single_child_waits_then_resumes_with_the_original_structured_result(t03
     assert third["status"] == "executed", third
     assert third["run_id"] == parent_id, third
     assert third["outcome"] == "succeeded", third
-    parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
+    parent_row = observations.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
     assert parent_row["output_artifact_id"], parent_row
-    envelope = t089.node_data_document(
+    envelope = observations.node_data_document(
         creator,
-        t089.node_results(creator, parent_id, expected=3),
+        observations.node_result_items(creator, parent_id, expected=3),
         "join",
     )
     assert envelope == JOIN_ENVELOPE, envelope
-    output_content = t033.artifact_content(creator, parent_row["output_artifact_id"])
+    output_content = observations.artifact_content(creator, parent_row["output_artifact_id"])
     assert json.loads(output_content.raw) == JOIN_ENVELOPE, output_content.raw
     assert t078.child_count(t033_stack.dbname, parent_id) == 1
     assert len(t078.run_children_rows(t033_stack.dbname, parent_id)) == 1
 
     # 5. The node output is the child's structured result plus platform facts; no
     # framework thread/namespace/messages object is exposed as a public field.
-    items = t089.node_results(creator, parent_id, expected=3)
+    items = observations.node_result_items(creator, parent_id, expected=3)
     child_rows = [
         item for item in items
         if item["node_id"] == "child" and item["kind"] == "data"
     ]
     assert len(child_rows) == 1, items
     assert child_rows[0]["label"] == "child-run:" + child_id, child_rows[0]
-    child_doc = t089.node_data_document(creator, items, "child")
+    child_doc = observations.node_data_document(creator, items, "child")
     assert child_doc == {"echo": "alpha"}, child_doc
     for forbidden in ("thread", "checkpoint_thread_id", "namespace", "messages", "subgraph"):
         assert forbidden not in child_doc, (forbidden, child_doc)
@@ -222,7 +223,7 @@ def test_single_child_waits_then_resumes_with_the_original_structured_result(t03
     # 6. The durable node.status sequence keeps the resumption observable. T085's
     # final skip publication emits no skips during the waiting hand-over, so the
     # unselected branch is skipped exactly once, in the resumed attempt.
-    states = t089.node_states(t033_stack.dbname, parent_id)
+    states = observations.node_states(t033_stack.dbname, parent_id)
     assert states["child"] == ["pending", "running", "pending", "running", "succeeded"], states
     assert states["direct"] == ["skipped"], states
     assert states["choose"] == ["pending", "running", "succeeded", "succeeded"], states
@@ -263,7 +264,7 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     assert reports[-1]["outcome"] == "succeeded", reports
     if diagnostics and any("refused" in entry or "not recorded" in entry for entry in diagnostics):
         print("SUPERVISOR_STDERR", json.dumps(diagnostics))
-    parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
+    parent_row = observations.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
     child_ids = t078.child_run_ids(t033_stack.dbname, parent_id)
     assert len(child_ids) == 2, (child_ids, reports)
     assert parent_row["output_artifact_id"]
@@ -292,12 +293,12 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     assert outputs[child_ids[0]] != outputs[child_ids[1]], outputs
 
     # 4. The join envelope carries both sources independently and the end maps it.
-    items = t089.node_results(creator, parent_id, expected=3)
-    results = t089.node_data_document(creator, items, "join")["results"]
+    items = observations.node_result_items(creator, parent_id, expected=3)
+    results = observations.node_data_document(creator, items, "join")["results"]
     assert set(results) == {"a", "b"}, results
     assert results["a"] == {"status": "succeeded", "value": {"echo": "alpha"}}, results["a"]
     assert results["b"] == {"status": "succeeded", "value": {"echo": "beta"}}, results["b"]
-    final = json.loads(t033.artifact_content(creator, parent_row["output_artifact_id"]).raw)
+    final = json.loads(observations.artifact_content(creator, parent_row["output_artifact_id"]).raw)
     assert final == {"results": results}, final
 
     # 5. Each call_app node reports its own child result; no cross-talk and no
@@ -309,7 +310,7 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     assert set(by_node) == {"a", "b"}, by_node
     assert all(len(entries) == 1 for entries in by_node.values()), by_node
     docs = {
-        node_id: t089.node_data_document(creator, items, node_id)
+        node_id: observations.node_data_document(creator, items, node_id)
         for node_id in ("a", "b")
     }
     assert docs["a"] == {"echo": "alpha"}, docs
@@ -319,7 +320,7 @@ def test_parallel_call_apps_create_two_independent_children_and_join_both(t033_s
     }
     assert set(labels.values()) == {"child-run:" + run_id for run_id in child_ids}, labels
 
-    states = t089.node_states(t033_stack.dbname, parent_id)
+    states = observations.node_states(t033_stack.dbname, parent_id)
     print("PARALLEL_NODE_STATES", json.dumps(states, sort_keys=True))
     for node_id in ("a", "b"):
         # T085's concurrent scheduler cancels the sibling branch once one branch
@@ -362,7 +363,7 @@ def test_two_sequential_calls_to_the_same_child_are_not_deduped(t033_stack) -> N
     t089.wait_resume(t033_stack, parent_id, child_run_id=second_child)
     fifth, _ = t089.execute_once(t033_stack)
     assert fifth["run_id"] == parent_id and fifth["outcome"] == "succeeded", fifth
-    t033.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
+    observations.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
 
     receipts = t078.run_children_rows(t033_stack.dbname, parent_id)
     assert len(receipts) == 2, receipts
@@ -381,8 +382,8 @@ def test_two_sequential_calls_to_the_same_child_are_not_deduped(t033_stack) -> N
         second_child: {"echo": "second"},
     }, outputs
 
-    items = t089.node_results(creator, parent_id, expected=4)
-    results = t089.node_data_document(creator, items, "join")["results"]
+    items = observations.node_result_items(creator, parent_id, expected=4)
+    results = observations.node_data_document(creator, items, "join")["results"]
     assert results["second"] == {"status": "succeeded", "value": {"echo": "second"}}, results
     assert results["direct"] == {"status": "skipped"}, results
     labels = sorted(
@@ -408,7 +409,7 @@ def test_a_required_child_failure_fails_the_parent_with_the_childs_code(t033_sta
     # child fails with its documented stable code.
     child_lease = t081.claim_child(t033_stack, expected_child_id=child_id)
     t089.fail_child_with_bad_output(t033_stack, child_id, child_lease)
-    child_row = t033.wait_run_state(t033_stack.dbname, child_id, {"failed"})
+    child_row = observations.wait_run_state(t033_stack.dbname, child_id, {"failed"})
     assert child_row["error_code"] == "child_output_schema_invalid", child_row
 
     decision = t089.wait_decision(t033_stack, parent_id)
@@ -424,13 +425,13 @@ def test_a_required_child_failure_fails_the_parent_with_the_childs_code(t033_sta
     assert resumed["run_id"] == parent_id, resumed
     assert resumed["outcome"] == "failed", resumed
     assert resumed["error_code"] == "child_output_schema_invalid", resumed
-    parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"failed"})
+    parent_row = observations.wait_run_state(t033_stack.dbname, parent_id, {"failed"})
     assert parent_row["error_code"] == "child_output_schema_invalid", parent_row
     assert parent_row["output_artifact_id"] is None, parent_row
     assert t078.child_count(t033_stack.dbname, parent_id) == 1
     assert len(t078.run_children_rows(t033_stack.dbname, parent_id)) == 1
 
-    states = t089.node_states(t033_stack.dbname, parent_id)
+    states = observations.node_states(t033_stack.dbname, parent_id)
     assert states["child"][-1] == "failed", states
     # T085's final skip publication emits no skips during the waiting hand-over;
     # the failed resumed attempt skips the not-yet-reachable tail exactly once.
@@ -495,7 +496,7 @@ def test_the_waiting_handover_releases_and_reoccupies_the_execution_slot(t033_st
         evidence=t029.exit_evidence(child_lease),
     )
     assert exited.status == 200, exited.text
-    t033.wait_run_state(t033_stack.dbname, child_id, {"succeeded"})
+    observations.wait_run_state(t033_stack.dbname, child_id, {"succeeded"})
     assert t081.execution_counter(t033_stack.dbname)["used"] == 0
     assert t081.child_counter(t033_stack.dbname)["used"] == 0
     assert all(
@@ -515,7 +516,7 @@ def test_the_waiting_handover_releases_and_reoccupies_the_execution_slot(t033_st
     # the resumed attempt adopts the original child result and finishes.
     final, _ = t089.execute_once(t033_stack)
     assert final["run_id"] == parent_id and final["outcome"] == "succeeded", final
-    parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
+    parent_row = observations.wait_run_state(t033_stack.dbname, parent_id, {"succeeded"})
     assert parent_row["output_artifact_id"]
     assert t081.execution_counter(t033_stack.dbname)["used"] == 0
     assert t081.child_counter(t033_stack.dbname)["used"] == 0
@@ -605,12 +606,12 @@ def test_the_executor_refuses_a_binding_it_cannot_resolve_at_run_time(t033_stack
     # The executor keeps its located pointer (<node>.<input field>) in the
     # operator report; the owner API exposes only the stable code.
     assert "child.source" in report.get("error", ""), report
-    parent_row = t033.wait_run_state(t033_stack.dbname, parent_id, {"failed"})
+    parent_row = observations.wait_run_state(t033_stack.dbname, parent_id, {"failed"})
     assert parent_row["error_code"] == "node_input_invalid", parent_row
     assert t078.child_count(t033_stack.dbname, parent_id) == 0
     assert len(t078.run_children_rows(t033_stack.dbname, parent_id)) == 0
 
-    states = t089.node_states(t033_stack.dbname, parent_id)
+    states = observations.node_states(t033_stack.dbname, parent_id)
     assert states["child"] == ["pending", "running", "failed"], states
     assert states["join"] == ["skipped"], states
     assert states["end"] == ["skipped"], states

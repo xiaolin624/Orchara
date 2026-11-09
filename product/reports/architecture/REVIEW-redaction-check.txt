@@ -1,0 +1,3 @@
+files=19
+credential-pattern-matches=0
+no DSN/password/signing-key patterns in REVIEW-*.txt (excluding the generic <REDACTED> placeholders)

@@ -1,0 +1,7 @@
+﻿tests\f04b\test_c4_02_callapp_context.py exit=0
+tests\f04b\test_t089_callapp.py exit=0
+tests\f07\test_t078_child_runs.py exit=0
+tests\f04b\test_t091_ten_node_workflow.py exit=0
+tests\f07\test_t080_parent_budget.py exit=0
+tests\f04b\test_t083_langgraph_regions.py exit=0
+tests\f04b\test_t085_parallel_optional.py exit=0 (6 passed in 97.83s)

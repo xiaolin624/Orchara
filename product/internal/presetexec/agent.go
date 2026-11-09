@@ -291,43 +291,42 @@ type agentToolCall struct {
 	Arguments map[string]any
 }
 
-// runAgentNode executes the agent segment and returns its validated output.
-// done=true means the returned outcome is terminal and the chain stops.
-func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]any, executionOutcome, bool) {
-	node := run.plan.agent
-	config := run.plan.agentConfig
+// runAgentNode executes the agent segment against one explicit node execution and
+// returns its typed local outcome. It never submits the Run result, never skips
+// siblings and never reads the owning scheduler from a hidden context value: the
+// scheduler that constructed the execution maps the outcome to its global
+// behavior.
+func (r *runner) runAgentNode(ctx context.Context, exec *nodeExecution) nodeOutcome {
+	node := exec.node
+	config := exec.agentConfig
+	if config == nil {
+		// The linear plan and the graph dispatcher both prove the config before a
+		// node can run; this stays a defensive refusal, never a reachable path.
+		return r.agentFailed(ctx, exec, CodeAgentConfigInvalid,
+			"the agent node execution carries no validated config")
+	}
 	r.emitNode(ctx, node.ID, "pending")
 	r.emitNode(ctx, node.ID, "running")
 
-	available := run.available
-	if available == nil {
-		available = map[string]any{
-			"input":           run.start,
-			run.plan.start.ID: run.start,
-		}
-		if run.plan.python != nil {
-			available[run.plan.python.ID] = run.python
-		}
-	}
-	bindings, err := resolveNodeBindings(node, available)
+	bindings, err := resolveNodeBindings(node, exec.namespace)
 	if err != nil {
-		return nil, r.failAgent(ctx, run, CodeNodeInputInvalid, err.Error()), true
+		return r.agentFailed(ctx, exec, CodeNodeInputInvalid, err.Error())
 	}
 
 	if r.deps.Facts == nil {
-		return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-			"the executor has no capability facts source for the agent node"), true
+		return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
+			"the executor has no capability facts source for the agent node")
 	}
 	modelFact, err := r.deps.Facts.ModelProfile(ctx, config.ModelProfileVersion)
 	if err != nil || modelFact.ValidationState != "passed" || modelFact.Revoked {
-		return nil, r.failAgent(ctx, run, capabilities.CodeModelUnavailable,
-			"the agent model_profile_version is not a passed, unrevoked profile"), true
+		return r.agentFailed(ctx, exec, capabilities.CodeModelUnavailable,
+			"the agent model_profile_version is not a passed, unrevoked profile")
 	}
 	if len(config.ToolVersions) > 0 {
 		facts, factErr := r.deps.Facts.ToolFacts(ctx, r.lease.RunID, config.ToolVersions)
 		if factErr != nil {
-			return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-				"the agent tool facts could not be read: "+factErr.Error()), true
+			return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
+				"the agent tool facts could not be read: "+factErr.Error())
 		}
 		byID := make(map[string]ToolFact, len(facts))
 		for _, fact := range facts {
@@ -336,8 +335,8 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 		for _, version := range config.ToolVersions {
 			fact, present := byID[version]
 			if !present || fact.State != "ready" || !fact.Callable {
-				return nil, r.failAgent(ctx, run, capabilities.CodeToolUnavailable,
-					"the agent tool version "+version+" is not ready and callable for this run"), true
+				return r.agentFailed(ctx, exec, capabilities.CodeToolUnavailable,
+					"the agent tool version "+version+" is not ready and callable for this run")
 			}
 		}
 	}
@@ -345,8 +344,8 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	// F06/T047: the message list is rebuilt by the authorized-context builder
 	// before every model turn. The executor passes only this run's resolved
 	// bindings; the builder owns the token budget and the protected facts.
-	authorizedInputs := resolvedAgentInputs(run.plan, node, bindings)
-	contextScope := agentContextScope(run.plan, node, run.scopeIDs)
+	authorizedInputs := resolvedAgentInputs(exec, bindings)
+	contextScope := agentContextScope(exec)
 	// F09/T063: personal memory is scoped by this run's trusted owner and
 	// application. The identity read is the same read-only database identity the
 	// input/facts readers use; a failure degrades recall to unavailable in the
@@ -394,13 +393,11 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 
 	fileResults := make([]NodeResult, 0, 4)
 	var final map[string]any
-	turns := 0
 	seenCallIDs := make(map[string]bool, 4)
 	for turn := 1; turn <= config.MaxTurns; turn++ {
-		if stopped, outcome, done := r.agentStopped(ctx, run, node, turns); done {
-			return nil, outcome, stopped
+		if outcome, done := r.agentStopped(ctx, exec); done {
+			return outcome
 		}
-		turns = turn
 		built, buildErr := agentcontext.Build(ctx, agentcontext.Request{
 			Scope:   contextScope,
 			System:  config.Instructions + "\n\n" + agentPlatformConstraints,
@@ -413,8 +410,8 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			Memory: memorySource,
 		})
 		if buildErr != nil {
-			return nil, r.failAgent(ctx, run, contextFailureCode(buildErr),
-				"the authorized agent context could not be built: "+buildErr.Error()), true
+			return r.agentFailed(ctx, exec, contextFailureCode(buildErr),
+				"the authorized agent context could not be built: "+buildErr.Error())
 		}
 		messages = built.Messages
 		contextTraces = append(contextTraces, built.Trace)
@@ -454,10 +451,10 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			})
 		if invokeErr != nil {
 			if code, cancelled := agentCapabilityError(invokeErr); cancelled {
-				return nil, r.agentCancelled(ctx, run, node), true
+				return r.agentCancelled(ctx, exec)
 			} else {
-				return nil, r.failAgent(ctx, run, code,
-					"the agent model call was refused by the platform"), true
+				return r.agentFailed(ctx, exec, code,
+					"the agent model call was refused by the platform")
 			}
 		}
 		switch result.State {
@@ -467,19 +464,21 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			if rawCode, ok := result.Data["error_code"].(string); ok && safePlatformCode(rawCode) {
 				code = rawCode
 			}
-			return nil, r.failAgent(ctx, run, code,
-				"the replayed agent model operation is recorded as failed"), true
+			return r.agentFailed(ctx, exec, code,
+				"the replayed agent model operation is recorded as failed")
 		case "awaiting_approval":
-			// F06/T050: a write-risk capability parks the Run. The executor stops
-			// the loop, proposes the stable waiting result and exits; the human
+			// F06/T050: a write-risk capability parks the Run. The node returns the
+			// stable waiting decision; the owning scheduler submits the checkpoint
+			// and certifies the exit after the other branches stopped. The human
 			// decision and the single resume job belong to the platform.
-			return nil, r.waitAgent(ctx, run, operationID), true
+			return r.agentWaiting(ctx, exec, approvalProposal(operationID),
+				"waiting_approval", CodeAgentCapabilityFailed)
 		case "unknown":
-			return nil, r.failAgent(ctx, run, CodeAgentUnknown,
-				"the agent model call has an unknown provider outcome and must be reconciled"), true
+			return r.agentFailed(ctx, exec, CodeAgentUnknown,
+				"the agent model call has an unknown provider outcome and must be reconciled")
 		default:
-			return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-				"the agent model call returned an unsupported platform state"), true
+			return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
+				"the agent model call returned an unsupported platform state")
 		}
 
 		text, structured, calls, dataErr := readAgentModelData(result.Data)
@@ -488,7 +487,7 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			if result.Data == nil {
 				code = CodeAgentCapabilityFailed
 			}
-			return nil, r.failAgent(ctx, run, code, dataErr.Error()), true
+			return r.agentFailed(ctx, exec, code, dataErr.Error())
 		}
 		if len(calls) == 0 {
 			if structured != nil {
@@ -499,39 +498,38 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 			break
 		}
 		if len(calls) > maxAgentToolCallsPerTurn {
-			return nil, r.failAgent(ctx, run, CodeAgentToolCallInvalid,
-				"the model returned more tool calls than this turn allows"), true
+			return r.agentFailed(ctx, exec, CodeAgentToolCallInvalid,
+				"the model returned more tool calls than this turn allows")
 		}
 		for _, call := range calls {
 			if seenCallIDs[call.ID] {
-				return nil, r.failAgent(ctx, run, CodeAgentToolCallInvalid,
-					"the model repeated tool-call id "+call.ID), true
+				return r.agentFailed(ctx, exec, CodeAgentToolCallInvalid,
+					"the model repeated tool-call id "+call.ID)
 			}
 			seenCallIDs[call.ID] = true
 			subapp, isSubapp := config.subappTool(call.Name)
 			isPresetTool := call.Name == PresetToolName && len(config.ToolVersions) > 0
 			if !isSubapp && !isPresetTool {
-				return nil, r.failAgent(ctx, run, CodeToolUnsupportedTool,
-					"the model called tool "+call.Name+", which this agent node did not declare"), true
+				return r.agentFailed(ctx, exec, CodeToolUnsupportedTool,
+					"the model called tool "+call.Name+", which this agent node did not declare")
 			}
-			if stopped, outcome, done := r.agentStopped(ctx, run, node, turns); done {
-				return nil, outcome, stopped
+			if outcome, done := r.agentStopped(ctx, exec); done {
+				return outcome
 			}
 			var (
-				message     string
-				results     []NodeResult
-				callErr     error
-				failOutcome *executionOutcome
+				message string
+				results []NodeResult
+				failure *nodeOutcome
 			)
 			if isSubapp {
-				message, results, callErr, failOutcome = r.executeAgentSubapp(
-					ctx, run, node, subapp, call,
+				message, results, failure = r.executeAgentSubapp(
+					ctx, exec, node, subapp, call,
 				)
 			} else {
-				message, results, callErr, failOutcome = r.executeAgentTool(ctx, run, node, call)
+				message, results, failure = r.executeAgentTool(ctx, exec, node, call)
 			}
-			if callErr != nil {
-				return nil, *failOutcome, true
+			if failure != nil {
+				return *failure
 			}
 			fileResults = append(fileResults, results...)
 			history = append(history, agentcontext.HistoryMessage{
@@ -539,29 +537,29 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 				Source: agentcontext.Source{Kind: "tool", NodeID: node.ID},
 			})
 			if len(history)+2 >= 250 {
-				return nil, r.failAgent(ctx, run, CodeAgentTurnLimit,
-					"the agent conversation reached the platform message cap"), true
+				return r.agentFailed(ctx, exec, CodeAgentTurnLimit,
+					"the agent conversation reached the platform message cap")
 			}
 		}
 	}
 	if final == nil {
-		return nil, r.failAgent(ctx, run, CodeAgentTurnLimit,
+		return r.agentFailed(ctx, exec, CodeAgentTurnLimit,
 			fmt.Sprintf("the agent exhausted its %d-turn limit without a final output",
-				config.MaxTurns)), true
+				config.MaxTurns))
 	}
 	if err := validateSchema(node.OutputSchema, final, "#"); err != nil {
-		return nil, r.failAgent(ctx, run, CodeNodeOutputInvalid,
-			"agent node "+node.ID+" output does not match its output_schema: "+err.Error()), true
+		return r.agentFailed(ctx, exec, CodeNodeOutputInvalid,
+			"agent node "+node.ID+" output does not match its output_schema: "+err.Error())
 	}
 	canonical, err := canonicalJSONDocument(final)
 	if err != nil {
-		return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-			"the agent final output cannot be canonicalised"), true
+		return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
+			"the agent final output cannot be canonicalised")
 	}
 	dataID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
 	if err != nil {
-		return nil, r.failAgent(ctx, run, CodeSandboxFailed,
-			"registering the agent node data failed: "+err.Error()), true
+		return r.agentFailed(ctx, exec, CodeSandboxFailed,
+			"registering the agent node data failed: "+err.Error())
 	}
 	// F06/T047: the trace is one durable file row of the agent node. It carries
 	// source kinds/ids, truncation reasons, protected key paths and token counts;
@@ -570,14 +568,14 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 		Version: 1, NodeID: node.ID, Turns: contextTraces,
 	})
 	if traceEncodeErr != nil {
-		return nil, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-			"the agent context trace cannot be encoded"), true
+		return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
+			"the agent context trace cannot be encoded")
 	}
 	traceID, traceErr := r.uploadNodeArtifact(ctx, "node_output", "application/json",
 		traceBytes, "artifact")
 	if traceErr != nil {
-		return nil, r.failAgent(ctx, run, CodeSandboxFailed,
-			"registering the agent context trace failed: "+traceErr.Error()), true
+		return r.agentFailed(ctx, exec, CodeSandboxFailed,
+			"registering the agent context trace failed: "+traceErr.Error())
 	}
 	results := make([]NodeResult, 0, len(fileResults)+2)
 	results = append(results, NodeResult{NodeID: node.ID, Kind: "data", ArtifactID: dataID, Label: "data"})
@@ -588,117 +586,85 @@ func (r *runner) runAgentNode(ctx context.Context, run *linearRun) (map[string]a
 	if err := r.deps.Client.RecordNodeResults(
 		ctx, r.lease.RunID, r.lease.AttemptToken, results,
 	); err != nil {
-		return nil, r.failAgent(ctx, run, CodeSandboxFailed,
-			"recording the agent node results failed: "+err.Error()), true
+		return r.agentFailed(ctx, exec, CodeSandboxFailed,
+			"recording the agent node results failed: "+err.Error())
 	}
 	r.emitNode(ctx, node.ID, "succeeded")
-	return final, executionOutcome{}, false
+	return r.nodeSucceeded(exec, final)
 }
 
 // agentStopped checks cancellation before spending another model/tool call. It
 // uses the protocol heartbeat (the authoritative cancel signal), never a local
-// guess, and never submits success afterwards.
-func (r *runner) agentStopped(
-	ctx context.Context, run *linearRun, node *manifestNode, turns int,
-) (stopped bool, outcome executionOutcome, done bool) {
+// guess, and never returns success afterwards.
+func (r *runner) agentStopped(ctx context.Context, exec *nodeExecution,
+) (outcome nodeOutcome, done bool) {
 	if ctx.Err() != nil {
-		return true, r.agentCancelled(ctx, run, node), true
+		return r.agentCancelled(ctx, exec), true
 	}
 	if deadline, err := time.Parse(time.RFC3339, r.lease.LeaseDeadline); err == nil &&
 		!deadline.IsZero() && time.Now().After(deadline) {
-		return true, r.failAgent(ctx, run, CodeAgentDeadline,
+		return r.agentFailed(ctx, exec, CodeAgentDeadline,
 			"the attempt lease deadline passed before the next agent step"), true
 	}
 	heartbeat, err := r.deps.Client.Heartbeat(
 		ctx, r.lease.RunID, r.lease.AttemptToken, r.options.ExecutionUnitID,
 	)
 	if err != nil {
-		return true, r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+		return r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 			"the agent control heartbeat failed"), true
 	}
 	if heartbeat.CancelRequested {
-		return true, r.agentCancelled(ctx, run, node), true
+		return r.agentCancelled(ctx, exec), true
 	}
-	return false, executionOutcome{}, false
+	return nodeOutcome{}, false
 }
 
-// agentCancelled stops the chain without a success proposal.
-func (r *runner) agentCancelled(
-	ctx context.Context, run *linearRun, node *manifestNode,
-) executionOutcome {
-	if node != nil {
-		r.emitNode(ctx, node.ID, "failed")
+// agentCancelled publishes the node's own failed fact and returns the local
+// cancellation decision. The owning scheduler confirms the attempt exit after it
+// stopped the other branches; this function never commits the run.
+func (r *runner) agentCancelled(ctx context.Context, exec *nodeExecution) nodeOutcome {
+	if exec.node != nil {
+		r.emitNode(ctx, exec.node.ID, "failed")
 	}
-	r.skipAfter(ctx, run, nodeIDOf(node))
-	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
-	if captureGraphCancellation(ctx, run.outcome, evidence) {
-		// The graph scheduler confirms the exit only after the other branches
-		// stopped.
-		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
-			sandbox: run.report}
-	}
-	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
-		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
-			err: err.Error(), sandbox: run.report, failedStatus: true}
-	}
-	return executionOutcome{outcome: "cancelled", code: "cancel_requested",
-		runState: r.readRunState(ctx), sandbox: run.report}
+	return r.nodeCancelled(exec)
 }
 
-// failAgent marks the agent node failed, skips the rest of the chain and fails
-// the run with a stable platform code (never provider text).
-func (r *runner) failAgent(
-	ctx context.Context, run *linearRun, code, message string,
-) executionOutcome {
-	if run.plan.agent != nil {
-		r.emitNode(ctx, run.plan.agent.ID, "failed")
+// agentFailed publishes the node's own failed fact and returns the local failure
+// decision. The owning scheduler skips the remaining nodes and commits the run
+// result; the node has no such authority.
+func (r *runner) agentFailed(
+	ctx context.Context, exec *nodeExecution, code, message string,
+) nodeOutcome {
+	if exec.node != nil {
+		r.emitNode(ctx, exec.node.ID, "failed")
 	}
-	r.skipAfter(ctx, run, nodeIDOf(run.plan.agent))
-	return r.failAfterStart(ctx, code, message, run.outcome,
-		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+	return r.nodeFailed(exec, code, message)
 }
 
-// waitAgent parks the attempt for a human approval instead of failing the Run.
-//
-// The proposal is the F03/T035 waiting shape: suggested_state=waiting_approval,
-// the stable synthetic checkpoint `capability:<operation_id>` (the same logical
-// capability call the resumed attempt re-enters) and error_code=approval_required.
-// The executor then certifies its exit; only after that fact may the single
-// resume job exist. Nothing here reports success.
-func (r *runner) waitAgent(
-	ctx context.Context, run *linearRun, operationID string,
-) executionOutcome {
-	proposal := Proposal{
+// approvalProposal is the F03/T035 waiting shape for a capability checkpoint:
+// suggested_state=waiting_approval, the stable synthetic checkpoint
+// `capability:<operation_id>` (the same logical capability call the resumed
+// attempt re-enters) and error_code=approval_required.
+func approvalProposal(operationID string) Proposal {
+	return Proposal{
 		EventID:        uuid.NewString(),
 		SuggestedState: "waiting_approval",
 		CheckpointID:   "capability:" + operationID,
 		ErrorCode:      "approval_required",
 	}
-	if captureGraphWaiting(ctx, proposal, "waiting_approval", run.outcome,
-		r.exitEvidence(r.heartbeatCount(), run.outcome, nil), CodeAgentCapabilityFailed) {
-		// The graph scheduler submits the waiting result and confirms the exit
-		// only after the other branches stopped (the waiting hand-over).
-		return executionOutcome{outcome: "waiting_approval", code: "approval_required",
-			sandbox: sandboxReportOf(run.outcome)}
-	}
-	if err := r.deps.Client.SubmitResult(
-		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
-	); err != nil {
-		return r.failAgent(ctx, run, CodeAgentCapabilityFailed,
-			"the approval waiting result was refused: "+err.Error())
-	}
-	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
-	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
-		return executionOutcome{outcome: "error", code: CodeAgentCapabilityFailed,
-			err:     "the approval exit confirmation was refused: " + err.Error(),
-			sandbox: sandboxReportOf(run.outcome)}
-	}
-	return executionOutcome{
-		outcome:  "waiting_approval",
-		code:     "approval_required",
-		runState: r.readRunState(ctx),
-		sandbox:  sandboxReportOf(run.outcome),
-	}
+}
+
+// agentWaiting returns the local waiting decision for a capability checkpoint.
+// The owning scheduler submits the proposal and certifies the exit only after the
+// other branches stopped; the node never parks the run itself.
+func (r *runner) agentWaiting(
+	ctx context.Context, exec *nodeExecution, proposal Proposal,
+	outcomeName, fallbackCode string,
+) nodeOutcome {
+	outcome := r.nodeWaiting(exec, proposal, outcomeName, fallbackCode)
+	outcome.proposalRefusal = "the approval waiting result was refused: "
+	outcome.exitRefusal = "the approval exit confirmation was refused: "
+	return outcome
 }
 
 // readAgentModelData decodes the platform's validated model projection.
@@ -763,16 +729,17 @@ func printableKey(value string) bool {
 
 // executeAgentTool takes the grant, runs the fixed preset tool in the real
 // sandbox and reports the validated result. The returned message is the only
-// thing the model sees; raw stdout/stderr never leaves the executor.
+// thing the model sees; raw stdout/stderr never leaves the executor. A failure is
+// returned as a local node outcome; the owning scheduler commits the run.
 func (r *runner) executeAgentTool(
-	ctx context.Context, run *linearRun, node *manifestNode, call agentToolCall,
-) (string, []NodeResult, error, *executionOutcome) {
-	version := run.plan.agentConfig.ToolVersions[0]
+	ctx context.Context, exec *nodeExecution, node *manifestNode, call agentToolCall,
+) (string, []NodeResult, *nodeOutcome) {
+	version := exec.agentConfig.ToolVersions[0]
 	logicalKey := fmt.Sprintf("agent:%s:tool:%s", node.ID, call.ID)
 	if len(logicalKey) > 200 {
-		outcome := r.failAgent(ctx, run, CodeAgentToolCallInvalid,
+		outcome := r.agentFailed(ctx, exec, CodeAgentToolCallInvalid,
 			"the tool-call logical key exceeds the platform limit")
-		return "", nil, errors.New("tool logical key too long"), &outcome
+		return "", nil, &outcome
 	}
 	operationID := deterministicOperationID(r.lease.RunID, logicalKey)
 	grantResult, err := r.deps.Client.InvokeCapability(
@@ -787,11 +754,12 @@ func (r *runner) executeAgentTool(
 		})
 	if err != nil {
 		if code, cancelled := agentCapabilityError(err); cancelled {
-			outcome := r.agentCancelled(ctx, run, node)
-			return "", nil, err, &outcome
+			outcome := r.agentCancelled(ctx, exec)
+			return "", nil, &outcome
 		} else {
-			outcome := r.failAgent(ctx, run, code, "the agent tool call was refused by the platform")
-			return "", nil, err, &outcome
+			outcome := r.agentFailed(ctx, exec, code,
+				"the agent tool call was refused by the platform")
+			return "", nil, &outcome
 		}
 	}
 	switch grantResult.State {
@@ -803,50 +771,51 @@ func (r *runner) executeAgentTool(
 		// executed a second time.
 		value := grantResult.Data
 		if value == nil {
-			outcome := r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+			outcome := r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 				"the replayed tool operation carries no result data")
-			return "", nil, errors.New("tool replay without data"), &outcome
+			return "", nil, &outcome
 		}
 		message, err := canonicalJSONDocument(value)
 		if err != nil {
-			outcome := r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+			outcome := r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 				"the replayed tool result cannot be encoded")
-			return "", nil, err, &outcome
+			return "", nil, &outcome
 		}
-		return string(message), nil, nil, nil
+		return string(message), nil, nil
 	case "failed":
 		code := CodeAgentCapabilityFailed
 		if rawCode, ok := grantResult.Data["error_code"].(string); ok && safePlatformCode(rawCode) {
 			code = rawCode
 		}
-		outcome := r.failAgent(ctx, run, code,
+		outcome := r.agentFailed(ctx, exec, code,
 			"the replayed tool operation is recorded as failed")
-		return "", nil, errors.New("tool operation failed"), &outcome
+		return "", nil, &outcome
 	case "awaiting_approval":
-		outcome := r.waitAgent(ctx, run, operationID)
-		return "", nil, errors.New("tool awaiting approval"), &outcome
+		outcome := r.agentWaiting(ctx, exec, approvalProposal(operationID),
+			"waiting_approval", CodeAgentCapabilityFailed)
+		return "", nil, &outcome
 	case "unknown":
-		outcome := r.failAgent(ctx, run, CodeAgentUnknown,
+		outcome := r.agentFailed(ctx, exec, CodeAgentUnknown,
 			"the agent tool call has an unknown provider outcome and must be reconciled")
-		return "", nil, errors.New("tool unknown state"), &outcome
+		return "", nil, &outcome
 	default:
-		outcome := r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+		outcome := r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 			"the agent tool grant did not return a dispatching operation")
-		return "", nil, errors.New("tool grant not dispatching"), &outcome
+		return "", nil, &outcome
 	}
 	grant, _ := grantResult.Data["grant"].(map[string]any)
 	grantOperation, _ := grant["operation_id"].(string)
 	if !uuid.Valid(grantOperation) || grantOperation != operationID {
-		outcome := r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+		outcome := r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 			"the agent tool grant does not name the requested operation")
-		return "", nil, errors.New("grant mismatch"), &outcome
+		return "", nil, &outcome
 	}
 
-	results, dataArtifactID, message, failure := r.runAgentToolSandbox(ctx, run, node, call)
+	results, dataArtifactID, message, failure := r.runAgentToolSandbox(ctx, exec, node, call)
 	if failure != nil {
 		if failure.code == "cancel_requested" {
-			outcome := r.agentCancelled(ctx, run, node)
-			return "", nil, errors.New(failure.message), &outcome
+			outcome := r.agentCancelled(ctx, exec)
+			return "", nil, &outcome
 		}
 		// A tool failure marks the granted operation failed before the node is
 		// failed, so the ledger never shows a dispatching orphan.
@@ -860,8 +829,8 @@ func (r *runner) executeAgentTool(
 			r.logger.Printf("run_id=%s: reporting the failed tool operation failed: %v",
 				r.lease.RunID, reportErr)
 		}
-		outcome := r.failAgent(ctx, run, failure.code, failure.message)
-		return "", nil, errors.New(failure.message), &outcome
+		outcome := r.agentFailed(ctx, exec, failure.code, failure.message)
+		return "", nil, &outcome
 	}
 	if _, err := r.deps.Client.ReportCapabilityResult(
 		ctx, r.lease.RunID, r.lease.AttemptToken, capabilities.ResultReport{
@@ -870,11 +839,11 @@ func (r *runner) executeAgentTool(
 			State:            "succeeded",
 			ResultArtifactID: dataArtifactID,
 		}); err != nil {
-		outcome := r.failAgent(ctx, run, CodeAgentCapabilityFailed,
+		outcome := r.agentFailed(ctx, exec, CodeAgentCapabilityFailed,
 			"reporting the agent tool result failed")
-		return "", nil, err, &outcome
+		return "", nil, &outcome
 	}
-	return message, results, nil, nil
+	return message, results, nil
 }
 
 type agentToolFailure struct {
@@ -887,16 +856,16 @@ type agentToolFailure struct {
 // rows are only the tool's files/logs (the agent's own final output is its one
 // data row, written by runAgentNode).
 func (r *runner) runAgentToolSandbox(
-	ctx context.Context, run *linearRun, node *manifestNode, call agentToolCall,
+	ctx context.Context, exec *nodeExecution, node *manifestNode, call agentToolCall,
 ) ([]NodeResult, string, string, *agentToolFailure) {
 	var linked *InputArtifact
-	for index := range run.inputs {
-		if run.inputs[index].Purpose == "task_input" {
+	for index := range exec.inputs {
+		if exec.inputs[index].Purpose == "task_input" {
 			if linked != nil {
 				return nil, "", "", &agentToolFailure{CodeNodeInputInvalid,
 					"the run links more than one task_input artifact; the preset tool needs exactly one"}
 			}
-			linked = &run.inputs[index]
+			linked = &exec.inputs[index]
 		}
 	}
 	if linked == nil {
@@ -925,8 +894,8 @@ func (r *runner) runAgentToolSandbox(
 		InputJSON:       inputDocument,
 		ExecutionUnitID: unit,
 	}, r.heartbeatControl())
-	run.outcome = outcome
-	run.report = sandboxReportOf(outcome)
+	exec.sandbox = outcome
+	exec.report = sandboxReportOf(outcome)
 	switch {
 	case errors.Is(sandboxErr, sandbox.ErrCancelled):
 		return nil, "", "", &agentToolFailure{"cancel_requested", "the preset tool was cancelled"}

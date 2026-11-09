@@ -21,12 +21,12 @@ import time
 import zipfile
 from pathlib import Path
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support.runtime_stack import Stack
 from support import f00b, t027, t028, t033
 from support import stack as st
 
-T037Stack = Stack
 Session = t033.Session
 admin_session = t033.admin_session
 session_for = t033.session_for
@@ -34,9 +34,7 @@ invite_and_activate = t033.invite_and_activate
 new_uuid = t033.new_uuid
 sql_utf8 = t033.sql_utf8
 artifact_row = t033.artifact_row
-artifact_content = t033.artifact_content
 sandbox_available = t033.sandbox_available
-rootfs_digest = execution.rootfs_digest
 put_link = t033.put_link
 
 PRODUCT_ROOT = st.PRODUCT_ROOT
@@ -84,7 +82,7 @@ def setup_py_source(body: str) -> bytes:
     return source_zip({"setup.py": body.encode("utf-8"), "tool/main.py": b"VALUE = 2\n"})
 
 
-def upload_source_on(stack: T037Stack, session: Session, content: bytes) -> str:
+def upload_source_on(stack: Stack, session: Session, content: bytes) -> str:
     """Upload and finalize one real tool_source zip through T028."""
     ticket_response = t028.create_upload(
         session, media_type="application/zip", size_bytes=len(content), purpose="tool_source"
@@ -185,14 +183,14 @@ def revoke(
 # ---------------------------------------------------------------------------
 # build process (real maintenance + real runsc)
 # ---------------------------------------------------------------------------
-def build_env(stack: T037Stack, *, timeout: str = "5m") -> dict[str, str]:
+def build_env(stack: Stack, *, timeout: str = "5m") -> dict[str, str]:
     env = f00b.maintenance_env(stack, heartbeat_interval="500ms", retry_backoff="100ms")
     env.update(
         {
             "ORCHARA_PRODUCT_ROOT": str(PRODUCT_ROOT),
             "ORCHARA_WSL_DISTRO": SANDBOX_DISTRO,
             "ORCHARA_SANDBOX_PYTHON_ROOTFS": SANDBOX_ROOTFS,
-            "ORCHARA_SANDBOX_ROOTFS_DIGEST": rootfs_digest(),
+            "ORCHARA_SANDBOX_ROOTFS_DIGEST": execution.rootfs_digest(),
             "ORCHARA_SANDBOX_STATE_ROOT": SANDBOX_STATE_ROOT,
             "ORCHARA_SANDBOX_TIMEOUT": timeout,
             "ORCHARA_MAINTENANCE_TOOL_BUILD_TIMEOUT": "5m",
@@ -217,7 +215,7 @@ def build_args() -> list[str]:
 
 
 def run_build_once(
-    stack: T037Stack, *, env: dict[str, str] | None = None, timeout: int = 600
+    stack: Stack, *, env: dict[str, str] | None = None, timeout: int = 600
 ) -> tuple[subprocess.CompletedProcess[str], list[dict]]:
     completed = subprocess.run(
         [str(stack.binaries["maintenance"]), *build_args()],
@@ -234,7 +232,7 @@ def run_build_once(
 
 
 def start_build(
-    stack: T037Stack, *, env: dict[str, str] | None = None
+    stack: Stack, *, env: dict[str, str] | None = None
 ) -> subprocess.Popen[str]:
     return subprocess.Popen(
         [str(stack.binaries["maintenance"]), *build_args()],
@@ -257,7 +255,7 @@ def finish_build(process: subprocess.Popen[str], *, timeout: int = 600) -> list[
 
 
 def submit_and_build(
-    stack: T037Stack,
+    stack: Stack,
     session: Session,
     source: bytes,
     *,
@@ -353,7 +351,7 @@ def wait_tool_state(
 
 
 def wait_build_finished(
-    stack: T037Stack, session: Session, tool_id: str, *, timeout: float = 300.0
+    stack: Stack, session: Session, tool_id: str, *, timeout: float = 300.0
 ) -> dict:
     row = wait_tool_state(stack.dbname, tool_id, {"ready", "failed"}, timeout=timeout)
     response = get_build(session, tool_id)
@@ -413,7 +411,7 @@ def bundle_digest(source: bytes, dependency_lock: dict, sbom: bytes) -> str:
 
 
 def download_artifact_bytes(session: Session, artifact_id: str) -> bytes:
-    response = artifact_content(session, artifact_id)
+    response = observations.artifact_content(session, artifact_id)
     assert response.status == 200, (response.status, response.text)
     return response.raw
 

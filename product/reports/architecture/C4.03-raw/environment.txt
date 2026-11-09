@@ -1,0 +1,11 @@
+C4.03 environment / baseline
+date: 2026-11-09T16:48:12.3130528+08:00
+worktree: E:\Orchara-wt\C4.03
+branch: t/c4.03-remove-linear-view
+HEAD at start: f64b1730501fca2f029028c6bb8f4e278b4a0b11 (integration tip when worktree created)
+go: go version go1.27.3 windows/amd64
+python: Python 3.12.2
+pytest: pytest 9.0.3
+node: v24.13.0
+postgres: isolated dev cluster 127.0.0.1:55432 (password not printed)
+wsl/runsc: runsc version release-20241118.0

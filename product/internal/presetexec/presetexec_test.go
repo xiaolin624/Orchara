@@ -80,6 +80,10 @@ type fakeClient struct {
 	// T085 fail-fast test uses it to prove the failure was committed only after
 	// the other branch stopped.
 	onSubmitResult func(Proposal)
+	// onConfirmExit is a test hook called when the attempt exit is confirmed. The
+	// C4.03 cancellation test uses it to prove the scheduler drained the started
+	// sibling before certifying the exit.
+	onConfirmExit func(evidence map[string]any)
 
 	// scripted capability seam (agent tests)
 	invokeCapability  func(capabilities.Input) (*capabilities.Result, error)
@@ -259,7 +263,6 @@ func (f *fakeClient) ConfirmExit(
 	_ context.Context, attemptID, executionUnitID string, evidence map[string]any,
 ) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	copied := make(map[string]any, len(evidence))
 	for key, value := range evidence {
 		copied[key] = value
@@ -267,16 +270,19 @@ func (f *fakeClient) ConfirmExit(
 	f.exits = append(f.exits, recordedExit{
 		AttemptID: attemptID, ExecutionUnitID: executionUnitID, Evidence: copied,
 	})
-	if f.exitErr != nil {
-		return f.exitErr
-	}
-	if f.runStateAfterExit != "" {
+	exitErr := f.exitErr
+	if exitErr == nil && f.runStateAfterExit != "" {
 		// The real finalizer commits the terminal state inside the exit
 		// transaction; the fake mirrors that so the executor's post-exit read sees
 		// the platform's decision.
 		f.runState = f.runStateAfterExit
 	}
-	return nil
+	hook := f.onConfirmExit
+	f.mu.Unlock()
+	if hook != nil {
+		hook(copied)
+	}
+	return exitErr
 }
 
 func (f *fakeClient) CreateUpload(

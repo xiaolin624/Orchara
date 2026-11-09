@@ -1,0 +1,4 @@
+﻿=== C5.03 merge verification: tests/f06/test_t042_python_node.py::test_linear_run_exposes_data_files_and_logs at integration tip 5fc4ae7 2026-11-09T15:04:10.9780590+08:00 ===
+.                                                                        [100%]
+1 passed in 45.71s
+EXIT=0

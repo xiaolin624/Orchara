@@ -18,9 +18,9 @@ package capabilities
 //     availability / rate_limited / adapter_unavailable. A permission,
 //     authorisation, syntax, schema-validation or tool-argument error never
 //     retries and never falls back.
-//   - At most one physical attempt is spent on a fallback, after the primary's
-//     bounded retries, so one operation never dispatches more than
-//     maxPhysicalAttempts+fallbackPhysicalAttempts times.
+//   - The fallback is structural: the unified driver calls dispatchFallback
+//     exactly once and it never loops, so one operation never dispatches more
+//     than maxPhysicalAttempts primary attempts plus its single fallback.
 //
 // A profile may declare two optional capability flags in its stored config
 // (`tools`, `structured_output`). They default to true for a chat-compatible
@@ -46,11 +46,6 @@ const (
 	FallbackReasonRateLimited        = "rate_limited"
 	FallbackReasonAdapterUnavailable = "adapter_unavailable"
 )
-
-// fallbackPhysicalAttempts bounds the fallback's own physical attempts. One
-// attempt is enough to answer "the compatible fallback worked or it did not"
-// without a second retry loop the worker cannot see.
-const fallbackPhysicalAttempts = 1
 
 // fallbackFact is the persisted fact that this operation switched profiles.
 type fallbackFact struct {

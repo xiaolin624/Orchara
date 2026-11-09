@@ -19,8 +19,9 @@ import re
 
 import pytest
 
+from support import run_observations as observations
 from support import stack as st
-from support import t025, t033, t041, t042, t043
+from support import t025, t033, t041, t043
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -47,7 +48,7 @@ def require_sandbox() -> None:
 
 
 def content_document(session, artifact_id: str) -> dict:
-    response = t033.artifact_content(session, artifact_id)
+    response = observations.artifact_content(session, artifact_id)
     assert response.status == 200, response.text
     return json.loads(response.raw)
 
@@ -71,13 +72,13 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     assert sandbox["started"] is True and sandbox["exit_code"] == 0, sandbox
     assert sandbox["cleanup"]["sandbox_list_matches"] == 0, sandbox
 
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
-    output_id = t033.output_artifact_id(t033_stack.dbname, run["id"])
+    output_id = observations.output_artifact_id(t033_stack.dbname, run["id"])
     assert output_id, state
 
     # --- owner read: stats rows + one agent data row + tool files/log ---------
-    body = t042.wait_node_results(owner.creator, run["id"], expected=9)
+    body = observations.wait_node_results(owner.creator, run["id"], expected=9)
     items = body["items"]
     assert len(items) == 9, items
     grouped = rows_by_node(items)
@@ -105,7 +106,7 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     assert set(analysis_files) == {"context-trace", "summary.json", "summary.csv"}, analysis_files
     summary_json = content_document(owner.creator, analysis_files["summary.json"]["artifact_id"])
     assert summary_json == EXPECTED_SUMMARY, summary_json
-    summary_csv = t033.artifact_content(owner.creator,
+    summary_csv = observations.artifact_content(owner.creator,
                                         analysis_files["summary.csv"]["artifact_id"])
     assert summary_csv.status == 200
     assert summary_csv.raw == t033.EXPECTED_SUMMARY_CSV, summary_csv.raw
@@ -113,7 +114,7 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     # The tool log is a capped log artifact, never run data.
     analysis_log = [row for row in grouped["analysis"] if row["kind"] == "log"]
     assert len(analysis_log) == 1 and analysis_log[0]["label"] == "tool-log-stub-call-1"
-    log_content = t033.artifact_content(owner.creator, analysis_log[0]["artifact_id"])
+    log_content = observations.artifact_content(owner.creator, analysis_log[0]["artifact_id"])
     assert log_content.status == 200 and b"stdout:" in log_content.raw, log_content.raw
 
     # Provenance: data/file are node_output; the agent's data is exactly one row.
@@ -193,7 +194,7 @@ def test_agent_chain_runs_the_preset_tool_and_validates_the_final_output(t033_st
     )
 
     # Only the owner may read the node results and the ledger.
-    assert t042.node_results(t033.minimal_owner(t033_stack).creator, run["id"]).status == 404
+    assert observations.node_results_response(t033.minimal_owner(t033_stack).creator, run["id"]).status == 404
     assert t041.ledger(t033.minimal_owner(t033_stack).creator, run["id"]).status == 404
 
     # Logs are not run data and the agent's one data row is listed.
@@ -249,7 +250,7 @@ def test_agent_final_output_schema_failure_is_located_and_never_succeeds(
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "node_output_invalid", report
     assert "analysis" in report.get("error", "") and "#/note" in report.get("error", ""), report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "node_output_invalid", state
     assert state["output_artifact_id"] is None, state
 
@@ -288,7 +289,7 @@ def test_agent_refuses_an_unavailable_tool_before_the_model_call(t033_stack) -> 
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "tool_not_available", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "tool_not_available", state
     assert t041.operation_rows(t033_stack.dbname, run["id"]) == []
     analysis_rows = [
@@ -318,7 +319,7 @@ def test_agent_revoked_model_is_a_platform_outcome(t033_stack) -> None:
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "model_profile_unavailable", report
     assert t041.operation_rows(t033_stack.dbname, run["id"]) == []
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "model_profile_unavailable", state
 
 
@@ -329,7 +330,7 @@ def test_agent_turn_limit_fails_without_a_final_output(t033_stack) -> None:
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "agent_turn_limit", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "agent_turn_limit", state
     assert state["output_artifact_id"] is None, state
 
@@ -358,7 +359,7 @@ def test_agent_cancel_mid_loop_stops_without_success(t033_stack) -> None:
         completed, report = t043.run_agent_once(t033_stack)
         assert report["outcome"] == "cancelled", (report, completed.stderr)
         assert report["error_code"] == "cancel_requested", report
-        state = t033.wait_run_state(
+        state = observations.wait_run_state(
             t033_stack.dbname, run["id"], {"cancelled", "cancelling", "running", "recovery_pending"}
         )
         assert state["output_artifact_id"] is None, "a cancelled run must not publish a result"

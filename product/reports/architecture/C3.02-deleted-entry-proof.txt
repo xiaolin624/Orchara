@@ -1,0 +1,59 @@
+﻿C3.02 deleted-entry proof
+=========================
+Branch: t/c3.02-verified-reads (worktree E:\Orchara-wt\C3.02)
+Baseline: integration/architecture-c1-c6 tip at ticket creation = 69003bb.
+Final: merge commit a1542cb (after merging integration tip 60dc1b0).
+
+Removed production entries (C3.02):
+  * Service.readChunkText                 (service.go: the raw body read)
+  * Service.validateCachedItems           (cache_store.go: duplicated hit verification)
+  * cacheHitReadFailureReason             (cache_store.go: duplicated read-error mapping)
+  * cacheDiscardDecision                  (cache_store.go: inlined into cachedRetrieval)
+  * retrievalCacheItem.matchesSealedBody  (cache.go: duplicated body comparison)
+  * cacheBodySHA256                       (cache_store.go: only used by matchesSealedBody)
+
+Kept public vocabulary (not deleted): CacheDiscard{Expired,ComponentsChanged,
+ItemUnreadable,ItemMismatch,Unavailable}, ErrNotFound, and the answer outcomes.
+
+1) Tracked-tree search (git grep; the new C3.02 test module is staged, so it is
+   included):
+
+$ git grep -n -E "readChunkText|validateCachedItems|cacheHitReadFailureReason|cacheDiscardDecision|matchesSealedBody|cacheBodySHA256" -- "*.go" "*.py"
+
+exit=1  (git grep exit 1 = no match)
+
+2) Whole working-tree search (includes any untracked file):
+(no matches)
+
+3) Baseline definitions that were deleted (69003bb):
+$ git show 69003bb:product/internal/knowledge/service.go | Select-String "readChunkText"
+
+	text, err := s.readChunkText(objectKey)
+// readChunkText reads one prepared sealed chunk body. It never returns more than
+func (s *Service) readChunkText(objectKey string) (string, error) {
+
+
+
+$ git show 69003bb:product/internal/knowledge/cache_store.go | Select-String "validateCachedItems|cacheHitReadFailureReason|cacheDiscardDecision|cacheBodySHA256"
+
+	ok, reason := s.validateCachedItems(ctx, key, items)
+		if !cacheDiscardDecision(reason) {
+// validateCachedItems re-checks every returned chunk against the authoritative
+func (s *Service) validateCachedItems(
+			return false, cacheHitReadFailureReason(err)
+// cacheHitReadFailureReason classifies a sealed-body read failure on the hit
+func cacheHitReadFailureReason(err error) string {
+// cacheDiscardDecision is the one place the hit path decides whether a failed
+func cacheDiscardDecision(reason string) bool {
+// cacheBodySHA256 is the content hash of one sealed chunk body.
+func cacheBodySHA256(text string) string {
+
+
+
+$ git show 69003bb:product/internal/knowledge/cache.go | Select-String "matchesSealedBody"
+
+// matchesSealedBody proves this memoized item is still exactly the sealed body:
+func (item retrievalCacheItem) matchesSealedBody(sealedText string) (bool, string) {
+
+
+

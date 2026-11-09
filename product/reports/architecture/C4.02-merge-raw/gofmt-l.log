@@ -1,0 +1,2 @@
+command: gofmt -l internal cmd
+result: no files listed (exit 0)

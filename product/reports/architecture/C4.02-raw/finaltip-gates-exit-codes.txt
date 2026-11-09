@@ -1,0 +1,8 @@
+﻿FINAL TIP TREE d5b6b4b (integration @ dd71081, C2.02 docs/PROGRESS only)
+go test ./internal/presetexec/ -count=1: exit=0 (ok orchara/platform/internal/presetexec)
+go test ./... -count=1: exit=0, 39 ok / 0 FAIL
+go build ./...: exit=0
+go vet ./...: exit=0
+python -X utf8 tools/sync_spec.py --check: exit=0 (no drift)
+tests/f04b/test_c4_02_callapp_context.py: exit=0, 2 passed in 57.91s
+NOTE: dd71081 is a docs/PROGRESS-only commit; the C2.02 code tree (67aa068) results still apply.

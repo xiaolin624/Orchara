@@ -34,6 +34,7 @@ from pathlib import Path
 
 import pytest
 
+from support import run_observations as observations
 from support import f00b, f08, t024, t025, t026, t033, t042, t049, t068, t079, t082
 from support import stack as st
 from support.certs import make_stack_certificates, unique_internal_addr
@@ -254,14 +255,14 @@ def _journey(stack, second, publisher_session, sales: runner.PublishedApp) -> di
     # The owner read exposes labels; the CSV is a real run artifact, not a fabricated
     # test file. The bytes are checked against the independent Decimal truth and the
     # known-good literal summary.
-    results = t042.wait_node_results(second.session, run_id, expected=4)
+    results = observations.wait_node_results(second.session, run_id, expected=4)
     by_label = {item["label"]: item for item in results["items"] if item["label"]}
     assert "summary.csv" in by_label, results["items"]
     csv_artifact = by_label["summary.csv"]["artifact_id"]
     artifact_fact = f08.artifact_row(stack.dbname, csv_artifact)
     assert artifact_fact["owner_id"] == second.principal_id, artifact_fact
     assert artifact_fact["media_type"] == "text/csv", artifact_fact
-    download = t033.artifact_content(second.session, csv_artifact)
+    download = observations.artifact_content(second.session, csv_artifact)
     assert download.status == 200, download.text
     # The artifact's recorded hash is the exact bytes the second user downloads.
     assert artifact_fact["sha256"] == st.sha256_hex(download.raw), artifact_fact
@@ -270,14 +271,14 @@ def _journey(stack, second, publisher_session, sales: runner.PublishedApp) -> di
 
     summary_json = by_label.get("summary.json")
     assert summary_json is not None, results["items"]
-    summary_read = t033.artifact_content(second.session, summary_json["artifact_id"])
+    summary_read = observations.artifact_content(second.session, summary_json["artifact_id"])
     assert summary_read.status == 200, summary_read.text
     summary = json.loads(summary_read.raw)
     t049.check_summary(summary)
 
-    output_id = t033.output_artifact_id(stack.dbname, run_id)
+    output_id = observations.output_artifact_id(stack.dbname, run_id)
     assert output_id, state
-    output_read = t033.artifact_content(second.session, output_id)
+    output_read = observations.artifact_content(second.session, output_id)
     assert output_read.status == 200, output_read.text
     output = json.loads(output_read.raw)
     t049.check_summary(output["summary"])

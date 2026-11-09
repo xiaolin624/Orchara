@@ -1,0 +1,27 @@
+# C6.04 merge gates at integration tip
+time: 2026-11-09T17:55:46.9868259+08:00
+head: 1e7aac95809f83978842a7f0f2217fbd875aa44a
+
+$ go build ./...
+
+exit=0
+
+$ go vet ./...
+
+exit=0
+
+$ go test ./internal/api
+ok  	orchara/platform/internal/api	(cached)
+exit=0
+
+$ python -X utf8 tools/sync_spec.py --check
+no drift: current source, both copies and synchronized baseline agree
+exit=0
+
+$ go test ./internal/api -count=1
+ok  	orchara/platform/internal/api	1.290s
+exit=0
+
+$ gofmt -l internal cmd tools
+
+(empty output = no formatting drift) exit=0

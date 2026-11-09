@@ -1,0 +1,15 @@
+﻿C3.02 post-merge Go gate (merge commit a1542cb; Go 1.27.3)
+Worktree: E:\Orchara-wt\C3.02\product
+$ go test ./internal/knowledge/ ./internal/api/
+ok  	orchara/platform/internal/knowledge	(cached)
+ok  	orchara/platform/internal/api	2.735s
+
+$ go build ./...
+
+exit=0
+$ go vet ./...
+
+exit=0
+$ gofmt -l internal cmd tools
+
+exit=0  (empty output above = all formatted)

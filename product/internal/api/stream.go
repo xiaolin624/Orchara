@@ -34,11 +34,16 @@ func (s *Server) handleInternalModelStream(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, http.StatusBadRequest, "invalid_json", "request body is not valid JSON")
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		s.internalError(w, r, errors.New("the response writer cannot stream SSE"))
 		return
 	}
+	// Report flush failures to the capability layer: a frame that could not be
+	// delivered is exactly the consumer stop the attempt driver must honor (no
+	// further retry/fallback dispatch and no success claimed on an undelivered
+	// answer). http.Flusher.Flush has no error, so the ResponseController is the
+	// documented way to observe the connection failure.
+	controller := http.NewResponseController(w)
 	runID := r.PathValue("run_id")
 	started := false
 	terminalWritten := false
@@ -47,7 +52,7 @@ func (s *Server) handleInternalModelStream(w http.ResponseWriter, r *http.Reques
 	writeFrame := func(frame capabilities.Frame) error {
 		if !started {
 			writeModelStreamHeaders(w)
-			flusher.Flush()
+			_ = controller.Flush()
 			started = true
 		}
 		lastOperationID, lastGenerationID = frame.OperationID, frame.GenerationID
@@ -61,7 +66,9 @@ func (s *Server) handleInternalModelStream(w http.ResponseWriter, r *http.Reques
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", frame.Type, payload); err != nil {
 			return err
 		}
-		flusher.Flush()
+		if err := controller.Flush(); err != nil {
+			return err
+		}
 		if terminalStreamFrame(frame) {
 			terminalWritten = true
 		}
@@ -106,7 +113,7 @@ func (s *Server) handleInternalModelStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", frame.Type, payload)
-	flusher.Flush()
+	_ = controller.Flush()
 }
 
 // writeModelStreamHeaders starts the SSE response. It is called lazily so a

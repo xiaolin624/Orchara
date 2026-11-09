@@ -1,0 +1,14 @@
+﻿POST-MERGE TREE 372cd0f (integration @ 7e7432c)
+go test ./internal/presetexec/ -count=1: exit=0, 137 top-level PASS / 0 FAIL
+go test ./... -count=1: exit=0, 39 ok / 13 no test files / 0 FAIL
+go vet ./...: exit=0
+gofmt -l internal cmd: exit=0 (empty output)
+go build ./...: exit=0
+python -X utf8 tools/sync_spec.py --check: exit=0 (no drift)
+tests/f04b/test_c4_02_callapp_context.py: exit=0, 2 passed in 47.15s
+tests/f04b/test_t089_callapp.py: exit=0, 7 passed in 110.06s
+tests/f07/test_t078_child_runs.py: exit=0, 8 passed in 126.11s
+tests/f04b/test_t091_ten_node_workflow.py: exit=0, 8 passed in 183.02s
+tests/f07/test_t080_parent_budget.py: exit=0, 7 passed in 134.32s
+tests/f04b/test_t085_parallel_optional.py: exit=0, 6 passed in 97.83s
+tests/f04b/test_t083_langgraph_regions.py: exit=0, 7 passed in 1.31s (Python semantic proof, not production execution)

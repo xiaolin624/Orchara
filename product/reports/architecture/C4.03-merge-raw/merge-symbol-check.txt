@@ -1,0 +1,73 @@
+C4.03 deleted-symbol confirmation at merged tip 9e37e60204534ce4523f4505742ad768329d8a2b
+
+== graphLinearView in production Go ==
+command: git grep -nE 'graphLinearView' -- 'internal/presetexec/*.go'
+result: 0 matches (exit 1)
+
+== linearRun graph-only fields (available/skip) ==
+command: git grep -nP 'run\.skip|run\.available(?!Snapshot)' -- internal/
+result: 0 matches (exit 1)
+linearRun struct (internal/presetexec/linear.go):
+//
+// C4.01/C4.02: the controlled nodes (agent and call_app) no longer read this
+// view. The scheduler builds an explicit nodeExecution from these facts, runs the
+// node and maps the returned local outcome to the attempt. The graph scheduler
+// does not borrow this structure for any node either: it builds the same
+// nodeExecution from its own scheduling facts.
+type linearRun struct {
+	plan    *linearPlan
+	inputs  []InputArtifact
+	start   map[string]any
+	python  map[string]any
+	agent   map[string]any
+	callApp map[string]any
+	outcome sandbox.Outcome
+	report  *SandboxReport
+}
+
+// nodeHost is the scheduler-specific observable surface of one node failure:
+
+== graphNodeView.start ==
+command: git grep -nE 'view\.start|start:\s+startOutput' -- internal/
+result: 0 matches (exit 1)
+
+== duplicate graphNodeAttempt.started ==
+command: git grep -nP 'attempt\.started\b' -- internal/
+result: 0 matches (exit 1)
+recordEvidence now reads the sandbox fact directly:
+internal/presetexec/graphrun.go:550:	if attempt.sandbox.SandboxStarted {
+internal/presetexec/graphrun.go:553:	if !attempt.sandbox.SandboxStarted && attempt.report == nil {
+graphNodeAttempt struct has no 'started' field:
+type graphNodeAttempt struct {
+	sandbox sandbox.Outcome
+	report  *SandboxReport
+
+	kind            string
+	code            string
+	message         string
+	sandboxErr      error
+	evidence        map[string]any
+	failureEvidence bool
+	startedForExit  bool
+	proposal        *Proposal
+	outcomeName     string
+	fallbackCode    string
+}
+
+
+== agent.go / callapp.go graph-capture references ==
+command: git grep -nE 'captureGraph|graphAttempt|linearRun|context.Value' -- internal/presetexec/agent.go internal/presetexec/callapp.go
+result: 0 matches (exit 1)
+
+== preserved capture paths (other nodes / scheduler-internal records) ==
+internal/presetexec/graphrun.go:174:func captureGraphFailure(
+internal/presetexec/graphrun.go:196:func captureGraphCancellation(
+internal/presetexec/graphrun.go:211:func captureGraphWaiting(
+call sites (definitions excluded):
+internal/presetexec/approval.go:187:	captureGraphWaiting(ctx, Proposal{
+internal/presetexec/linear.go:389:		if captureGraphCancellation(ctx, outcome, evidence) {
+internal/presetexec/modelnode.go:429:	if captureGraphWaiting(ctx, proposal, "waiting_approval", view.last,
+internal/presetexec/modelnode.go:464:	if captureGraphCancellation(ctx, view.last, evidence) {
+internal/presetexec/presetexec.go:793:	if captured, ok := captureGraphFailure(
+internal/presetexec/presetexec.go:828:	if captured, ok := captureGraphFailure(
+internal/presetexec/presetexec.go:860:	if captured, ok := captureGraphFailure(

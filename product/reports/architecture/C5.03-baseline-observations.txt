@@ -1,0 +1,5 @@
+﻿=== C5.03 pre-migration baseline (worktree at e27c6fb) 2026-11-09T14:10:54.9584114+08:00 ===
+...                                                                      [100%]
+3 passed in 157.55s (0:02:37)
+
+EXIT=0

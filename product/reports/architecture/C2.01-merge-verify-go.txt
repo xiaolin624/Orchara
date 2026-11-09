@@ -1,0 +1,16 @@
+# C2.01 merge verification - Go (integration tip 107afaf, workdir E:\Orchara-wt\integration\product)
+# GOCACHE=E:\orchara-toolchains\gocache GOMODCACHE=E:\orchara-toolchains\gomodcache
+
+=== go test ./internal/capabilities/... ./internal/modelproxy/... -count=1 ===
+ok  	orchara/platform/internal/capabilities	3.594s
+ok  	orchara/platform/internal/modelproxy	4.109s
+TEST_EXIT=0
+
+=== go build ./... ===
+BUILD_EXIT=0
+
+=== go vet ./... ===
+VET_EXIT=0
+
+# additional: gofmt -l internal/capabilities -> empty output, GOFMT_EXIT=0
+# go version: go1.27.3

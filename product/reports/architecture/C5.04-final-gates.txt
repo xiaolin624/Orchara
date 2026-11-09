@@ -1,0 +1,21 @@
+C5.04 final gates (post-merge HEAD on t/c5.04-support-contract)
+
+1) cd product; D:\Python\python.exe -X utf8 reports\architecture\C5.04-contract-check.py --phase all
+phase=all
+callers=0
+definitions=0
+exit=0
+
+2) cd product; D:\Python\python.exe -X utf8 tools\sync_spec.py --check
+no drift: current source, both copies and synchronized baseline agree
+exit=0
+
+3) git -c core.whitespace=cr-at-eol diff --check
+
+exit=0
+
+4) Branch-range note (final HEAD 724b39b then report commit)
+   This ticket's commit ranges (0a79686..5dec198, 5dec198..d020ff3, d020ff3..e16d523, 724b39b..304aa4d)
+   are exit 0 for: git -c core.whitespace=cr-at-eol diff --check.
+   The full 0a79686..HEAD range additionally contains upstream integration evidence text
+   (C1.03/C3.02/C6.01) with pre-existing trailing whitespace, untouched by this ticket.

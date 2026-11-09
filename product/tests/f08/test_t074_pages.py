@@ -96,6 +96,9 @@ const webDir = __WEB_DIR__;
 const context = { console, window: { location: { assign() {} }, open() {} } };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/app.js', 'utf8'), context);
+// C6.01 (#155): the real shared run-state bytes load before the page script.
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/attachments.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/chat.js', 'utf8'), context);
 
@@ -228,13 +231,18 @@ assert.strictEqual(JSON.stringify(context.submitRequestHeaders(attempt)), JSON.s
   'Idempotency-Key': attempt.key,
 }));
 
-// Polling stops at dispatched (state is stable) and at every terminal state.
-assert.strictEqual(context.shouldPollRequest('queued', 0, 10), true);
-assert.strictEqual(context.shouldPollRequest('routing', 0, 10), true);
-assert.strictEqual(context.shouldPollRequest('dispatched', 0, 10), false);
-assert.strictEqual(context.shouldPollRequest('cancelled', 0, 10), false);
-assert.strictEqual(context.shouldPollRequest('failed', 0, 10), false);
-assert.strictEqual(context.shouldPollRequest('queued', 10, 10), false);
+// C6.05 (review-2): chat.js has no Request-only polling rule. The shared
+// shouldPoll owns the decision: a dispatched request keeps observing the Run
+// (including before the first Run read), and stops only on a terminal Run.
+assert.strictEqual(typeof context.shouldPollRequest, 'undefined');
+assert.strictEqual(context.OrcharaRunState.shouldPoll('queued', '', 0, 10), true);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('routing', '', 0, 10), true);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('dispatched', '', 0, 10), true);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('dispatched', 'running', 0, 10), true);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('dispatched', 'succeeded', 0, 10), false);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('cancelled', 'running', 0, 10), false);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('failed', 'running', 0, 10), false);
+assert.strictEqual(context.OrcharaRunState.shouldPoll('queued', '', 10, 10), false);
 
 // The message projection labels each kind and only requests/results fetch a body.
 assert.strictEqual(

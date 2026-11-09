@@ -1,0 +1,14 @@
+C4.03 real-stack suites (all via E:\Orchara-notes\test.ps1 from product; separate databases per test)
+date: 2026-11-09T17:01:19.4202803+08:00
+tests/f04b/test_c4_03_scheduler_regressions.py -> 2 passed in 46.63s
+tests/f04b/test_t083_condition_runtime.py -> 7 passed in 101.41s
+tests/f04b/test_t083_langgraph_regions.py -> 7 passed in 1.18s  (Python LangGraph semantic proof, NOT production execution)
+tests/f04b/test_t085_parallel_optional.py -> 6 passed in 95.42s
+tests/f04b/test_t087_approval_node.py -> 12 passed in 129.57s
+tests/f04b/test_t089_callapp.py -> 7 passed in 96.12s
+tests/f04b/test_t091_ten_node_workflow.py -> 8 passed in 101.69s
+tests/f07/test_t078_child_runs.py -> 8 passed in 96.25s
+tests/f06/test_t042_python_node.py -> 6 passed in 88.57s
+tests/f06/test_t043_agent_node.py -> 6 passed in 123.73s
+real stack (excluding Python proof): 62 passed / 0 failed / 0 skipped
+Python semantic proof (separate): 7 passed

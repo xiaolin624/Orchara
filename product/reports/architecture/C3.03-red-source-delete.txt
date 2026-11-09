@@ -1,0 +1,111 @@
+F
+================================== FAILURES ===================================
+_ test_c303_deleting_the_old_source_while_the_replacement_builds_blocks_all_read_paths _
+
+t055_stack = Stack(server=<support.stack.ApiServer object at 0x00000190A46F3AA0>, dsn='postgresql://<redacted>')}, signing_key='<redacted>')
+api_server = <function api_server.<locals>._start at 0x00000190A464B560>
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-669/test_c303_deleting_the_old_sou0')
+
+    def test_c303_deleting_the_old_source_while_the_replacement_builds_blocks_all_read_paths(
+        t055_stack, api_server, tmp_path
+    ) -> None:
+        stack = t055_stack
+        owner, base_id, source_a, document_id = setup_ready_document(
+            stack, log_name="c303-old-source-building"
+        )
+        v1 = t061.active_index(stack.dbname, document_id)
+        assert v1 is not None and v1["state"] == "ready", v1
+        chunks_v1 = t061.chunk_rows_for_index(stack.dbname, v1["id"])
+        assert chunks_v1, chunks_v1
+        chunk_ids_v1 = [chunk["id"] for chunk in chunks_v1]
+        # Every active chunk names A as the source it was derived from.
+        assert {t055.citation_of(chunk)["source_artifact_id"] for chunk in chunks_v1} == {
+            source_a
+        }
+        assert v1["activated_at"] is not None
+        assert v1["document_revision"] == 1
+    
+        # Warm the revision-1 entry while A is the source. This row must never be
+        # served again after the source is replaced (the activation changes the key).
+        rev1 = t067.warm_cache(owner, base_id, QUERY, top_k=20)
+        rev1_row = t067.cache_row_with_prefix(
+            stack.dbname, rev1.json["retrieval"]["cache"]["key_prefix"]
+        )
+        assert item_ids(rev1.json) <= set(chunk_ids_v1)
+    
+        # Replace the source with B through the real reindex entry and keep the
+        # rebuild queued: the activation pointer still names v1. That is exactly the
+        # documented ADR 0018 state in which the old active index stays readable.
+        source_b = t055.prepare_source(stack, owner, REPLACEMENT_DOCUMENT)
+        accepted = t061.reindex(owner, document_id, source_artifact_id=source_b)
+        assert accepted.status == 202, accepted.text
+        index_v2 = t061.index_by_version(stack.dbname, document_id, 2)
+        assert index_v2["id"] == accepted.json["index_version_id"], index_v2
+        assert index_v2["state"] == "building", index_v2
+        row = t055.document_row(stack.dbname, document_id)
+        assert row["source_artifact_id"] == source_b, row
+        assert int(row["revision"]) == 2, row
+        assert int(row["active_revision"]) == 1, row
+        assert t061.active_index(stack.dbname, document_id)["id"] == v1["id"]
+        assert row["deleted_at"] is None
+    
+        # With both sources live the old active index is readable and cacheable.
+        warm = t067.warm_cache(owner, base_id, QUERY, top_k=20)
+        assert item_ids(warm.json) == set(chunk_ids_v1), warm.json["items"]
+        warm_key = cache_key_of(warm, stack.dbname)
+        for item in warm.json["items"]:
+            assert_item_is_the_sealed_body(stack, item)
+        opened = t055.get_citation(owner, chunk_ids_v1[0])
+        assert opened.status == 200, opened.text
+        assert opened.json["text"] == sealed_text(
+            stack, chunk_body_artifact(stack, chunk_ids_v1[0])
+        )
+        hit = t055.retrieval_query(owner, base_id, QUERY, top_k=20)
+        assert hit.json["retrieval"]["cache"]["hit"] is True, hit.json["retrieval"]["cache"]
+    
+        # Delete the old source A through the real deletion entry while the current
+        # source B is untouched and the rebuild is still queued.
+        revision_before_delete = int(t069.artifact_row(stack.dbname, source_a)["revision"])
+        job = t069.deletion_of(
+            t069.delete_resource(owner, t069.RESOURCE_ARTIFACT, source_a)
+        )
+        assert job["resource_id"] == source_a
+        artifact_a = t069.artifact_row(stack.dbname, source_a)
+        assert artifact_a["state"] == "deleted", artifact_a
+        assert artifact_a["deleted_at"] is not None, artifact_a
+        assert int(artifact_a["revision"]) == revision_before_delete + 1, artifact_a
+        stored_job = t069.deletion_job(stack.dbname, job["id"])
+        assert stored_job is not None and stored_job["state"] == "pending", stored_job
+        # The document is not tombstoned: its current source is B. The refusal must
+        # therefore come from the current-fact predicate, not from losing the row.
+        live_document = t055.document_row(stack.dbname, document_id)
+        assert live_document["deleted_at"] is None, live_document
+        # The sealed bytes and their authoritative metadata still exist: this is a
+        # read refusal, not a physical purge hiding the leak.
+        for chunk in chunks_v1:
+            body = t055.artifact_row(stack.dbname, chunk["body_artifact_id"])
+            assert body["state"] == "ready" and body["deleted_at"] is None, body
+            body_path = sealed_path(stack, body)
+            assert body_path.exists()
+            data = body_path.read_bytes()
+            assert t055.sha256_hex(data) == body["sha256"]
+            assert len(data) == int(body["size_bytes"])
+        assert sealed_path(stack, artifact_a).exists()
+    
+        # (1) Retrieval refuses every A-derived chunk immediately. The deletion did
+        # not move the document row, so the same key is derived; the hit re-check is
+        # what must refuse and discard the live entry (the lost-eviction adversary).
+        retrieval = t055.retrieval_query(owner, base_id, QUERY, top_k=20)
+        assert retrieval.status == 200, retrieval.text
+>       assert retrieval.json["items"] == [], retrieval.json["items"]
+E       AssertionError: [{'chunk_id': '78d69be3-3d45-416f-bdec-5a8d12169a78', 'chunk_no': 0, 'citation': {'chunk_no': 0, 'chunker_version': 'o...fb6-4a87-8d13-332e37865567', 'document_revision': 1, ...}, 'document_id': 'c18948f9-9fb6-4a87-8d13-332e37865567', ...}]
+E       assert [{'chunk_id':...865567', ...}] == []
+E         
+E         Left contains 3 more items, first extra item: {'chunk_id': '78d69be3-3d45-416f-bdec-5a8d12169a78', 'chunk_no': 0, 'citation': {'chunk_no': 0, 'chunker_version': 'or...9fb6-4a87-8d13-332e37865567', 'document_revision': 1, ...}, 'document_id': 'c18948f9-9fb6-4a87-8d13-332e37865567', ...}
+E         Use -v to get more diff
+
+tests\f10\test_c303_knowledge_consistency.py:282: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f10/test_c303_knowledge_consistency.py::test_c303_deleting_the_old_source_while_the_replacement_builds_blocks_all_read_paths
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 37.83s

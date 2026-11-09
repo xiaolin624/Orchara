@@ -30,6 +30,7 @@ import io
 import json
 import secrets
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import f00b, t025, t027, t029, t031, t033, t042
 from t100_support import sha256_hex
@@ -125,7 +126,7 @@ def _result_then_exit(stack, journey) -> None:
     allocations = t031.allocations_for_holder(db, "job:" + lease["job_id"])
     assert len(allocations) == 1 and allocations[0]["released_at"] is not None, allocations
     _assert_run_artifact_links(stack, lease["run_id"], artifact)
-    output_bytes = t033.artifact_content(owner.creator, artifact)
+    output_bytes = observations.artifact_content(owner.creator, artifact)
     assert output_bytes.status == 200, output_bytes.text
     assert sha256_hex(output_bytes.raw) == artifact_sha
     view = owner.creator.client.get(t029.run_path(lease["run_id"]))
@@ -377,9 +378,9 @@ def _real_supervisor_execution(stack, journey) -> None:
     assert report["sandbox"]["started"] is True and report["sandbox"]["exit_code"] == 0, report
     assert report["sandbox"]["cleanup"]["sandbox_list_matches"] == 0, report["sandbox"]["cleanup"]
 
-    state = t033.wait_run_state(stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
-    output_id = t033.output_artifact_id(stack.dbname, run["id"])
+    output_id = observations.output_artifact_id(stack.dbname, run["id"])
     assert output_id, state
     attempts = t029.attempts_for_run(stack.dbname, run["id"])
     assert len(attempts) == 1, attempts
@@ -388,10 +389,10 @@ def _real_supervisor_execution(stack, journey) -> None:
     assert job_row["state"] == "completed", job_row
     assert job_row["current_attempt_token"] is None, job_row
 
-    results = t042.wait_node_results(owner.creator, run["id"], expected=4)
+    results = observations.wait_node_results(owner.creator, run["id"], expected=4)
     data_rows = t042.artifacts_of_kind(results["items"], "data")
     assert len(data_rows) == 1, results["items"]
-    data = t042.content_of(owner.creator, data_rows[0]["artifact_id"])
+    data = observations.artifact_content(owner.creator, data_rows[0]["artifact_id"])
     assert data.status == 200, data.text
     product_summary = json.loads(data.raw)
 

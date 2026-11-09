@@ -27,6 +27,7 @@ import time
 
 import pytest
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import t028
 from support import stack as st
@@ -78,14 +79,14 @@ def test_real_runsc_tool_debug_run_end_to_end(t033_stack) -> None:
     assert sandbox["cleanup"]["sandbox_list_matches"] == 0, sandbox
     assert sandbox["cleanup"]["workspace_removed"] is True, sandbox
 
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
-    output_id = t033.output_artifact_id(t033_stack.dbname, run["id"])
+    output_id = observations.output_artifact_id(t033_stack.dbname, run["id"])
     assert output_id, state
 
     # The registered summary is the exact documented result, byte for byte, both
     # through the platform content proxy and through a signed download link.
-    content = t033.artifact_content(owner.creator, output_id)
+    content = observations.artifact_content(owner.creator, output_id)
     assert content.status == 200, content.text
     assert content.raw == t033.EXPECTED_SUMMARY_JSON, content.raw
     download = t033.artifact_download(owner.creator, output_id)
@@ -96,7 +97,7 @@ def test_real_runsc_tool_debug_run_end_to_end(t033_stack) -> None:
 
     csv = t033.artifact_by_purpose(t033_stack.dbname, run["id"], "node_output")
     assert csv is not None and csv["media_type"] == "text/csv", csv
-    csv_content = t033.artifact_content(owner.creator, csv["id"])
+    csv_content = observations.artifact_content(owner.creator, csv["id"])
     assert csv_content.status == 200, csv_content.text
     assert csv_content.raw == t033.EXPECTED_SUMMARY_CSV, csv_content.raw
 
@@ -173,13 +174,13 @@ def test_tool_rejection_ends_the_run_failed_with_the_tool_code(t033_stack) -> No
     assert report["status"] == "executed", report
     assert report["outcome"] == "failed", report
     assert report["error_code"] == t033.REJECTION_CODE, report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == t033.REJECTION_CODE, state
     assert state["output_artifact_id"] is None, state
 
     diagnostics = t033.artifact_by_purpose(t033_stack.dbname, run["id"], "node_output")
     assert diagnostics is not None, "a rejection must publish safe diagnostics"
-    payload = t033.artifact_content(owner.creator, diagnostics["id"])
+    payload = observations.artifact_content(owner.creator, diagnostics["id"])
     assert payload.status == 200, payload.text
     document = json.loads(payload.raw)
     assert document["error_code"] == t033.REJECTION_CODE

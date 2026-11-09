@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import json
 
+from support import run_observations as observations
 from support import stack as st
-from support import t033, t041, t043
+from support import t041, t043
 
 
 def agent_definition_with_request() -> dict:
@@ -37,7 +38,7 @@ def agent_definition_with_request() -> dict:
 
 
 def content_document(session, artifact_id: str) -> dict:
-    response = t033.artifact_content(session, artifact_id)
+    response = observations.artifact_content(session, artifact_id)
     assert response.status == 200, response.text
     return json.loads(response.raw)
 
@@ -73,7 +74,7 @@ def test_budgeted_context_truncates_verbose_text_and_keeps_protected_facts(
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
 
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # The trace is one durable file row of the agent node and is readable through
@@ -169,7 +170,7 @@ def test_protected_minimum_over_budget_is_a_stable_context_failure(
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "context_budget_exhausted", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "context_budget_exhausted", state
     assert state["output_artifact_id"] is None, state
     assert t041.operation_rows(t033_stack.dbname, run["id"]) == []

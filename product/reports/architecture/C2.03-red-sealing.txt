@@ -1,0 +1,78 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____ test_cancellation_during_sealing_closes_the_ledger_and_settles_usage _____
+
+c203_real_stack = T122Stack(<real stack; ephemeral per-test fake-provider secrets and DSN redacted>)
+
+    def test_cancellation_during_sealing_closes_the_ledger_and_settles_usage(
+        c203_real_stack,
+    ) -> None:
+        """A complete answer must not leave the attempt/operation ``dispatching``.
+    
+        The receipt insert is held behind a real PostgreSQL table lock, so the caller
+        disconnects exactly while ``finishModelSuccess`` is sealing the complete
+        answer. The physical call already happened and its usage is real consumption:
+        the cleanup must close both rows with a context that outlives the dead
+        request and settle the reported usage, not silently ignore the failed seal.
+        """
+        _, run, lease = real_run(c203_real_stack)
+        provider = c203_real_stack.provider
+        gate = gated_completion(provider, usage=(11, 7))
+        operation_id = t041.new_uuid()
+        connection = open_raw_post(
+            t041.worker_client(c203_real_stack.stack),
+            SYNC_PATH.format(run_id=run["id"]),
+            sync_body(lease, operation_id=operation_id, params=t041.model_params()),
+        )
+        holder = st.HeldLock(
+            c203_real_stack.dbname,
+            "LOCK TABLE platform.artifacts IN ACCESS EXCLUSIVE MODE",
+            name="c203-artifacts-seal-lock",
+        )
+        try:
+            wait_for_requests(provider)
+            holder.__enter__()
+            gate.set()
+            # The receipt insert is queued behind the table lock: sealing really is
+            # in progress when the caller disappears.
+            st.wait_for_lock_waiters(c203_real_stack.dbname, count=1)
+            abort(connection)
+            operation = wait_operation_stopped(
+                c203_real_stack.dbname, run["id"], operation_id, timeout=25.0
+            )
+        finally:
+            gate.set()
+            holder.release()
+    
+        assert operation is not None, "the sealing operation was never closed"
+>       assert operation["state"] == "failed", operation
+E       AssertionError: {'capability_kind': 'model', 'capability_version': '22222222-2222-4222-8222-222222222222', 'created_at': '2026-11-09 16:38:06.293752+08', 'dispatched_at': '2026-11-09 16:38:06.313234+08', ...}
+E       assert 'dispatching' == 'failed'
+E         
+E         - failed
+E         + dispatching
+
+tests\f06\test_c203_cancel_cleanup.py:499: AssertionError
+-------------------------- Captured stderr teardown ---------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 60947)
+Traceback (most recent call last):
+  File "D:\Python\Lib\socketserver.py", line 692, in process_request_thread
+    self.finish_request(request, client_address)
+  File "D:\Python\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "D:\Python\Lib\socketserver.py", line 761, in __init__
+    self.handle()
+  File "D:\Python\Lib\http\server.py", line 438, in handle
+    self.handle_one_request()
+  File "D:\Python\Lib\http\server.py", line 404, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Python\Lib\socket.py", line 707, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。
+----------------------------------------
+=========================== short test summary info ===========================
+FAILED tests/f06/test_c203_cancel_cleanup.py::test_cancellation_during_sealing_closes_the_ledger_and_settles_usage
+1 failed, 6 deselected in 54.44s

@@ -67,13 +67,17 @@ def test_the_runs_page_shows_the_execution_lifecycle_and_the_finalizing_rule(t02
     for marker in (
         "function runLifecycle(",
         "function lifecycleText(",
-        "function shouldPollRun(",
         "function pollRunDetail(",
         "finalizing",
         "退出证据",
         "不是成功",
     ):
         assert marker in asset.text, f"runs.js is missing {marker!r}"
+    # C6.05 (review-2): no page-local terminal dictionary or poll helper; the
+    # detail loop uses the shared OrcharaRunState projection.
+    assert "function isRunTerminal(" not in asset.text
+    assert "function shouldPollRun(" not in asset.text
+    assert asset.text.count("OrcharaRunState.isTerminal(") >= 7
 
 
 def test_the_debug_page_explains_finalizing_without_claiming_success(t029_stack) -> None:
@@ -118,6 +122,8 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): load the real shared run-state bytes before the page script.
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const runsSource = fs.readFileSync(webDir + '/assets/runs.js', 'utf8');
 const debugSource = fs.readFileSync(webDir + '/assets/debug.js', 'utf8');
 
@@ -125,6 +131,12 @@ function load(extra) {
   const context = { console };
   vm.createContext(context);
   vm.runInContext(appSource, context, { filename: 'app.js' });
+  vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+  vm.runInContext(
+    fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+    context,
+    { filename: 'runstate-guard.js' },
+  );
   vm.runInContext(extra, context, { filename: 'page.js' });
   return context;
 }
@@ -142,25 +154,26 @@ assert.ok(runs.lifecycleText({ state: 'running', phase: 'finalizing' }).includes
 assert.ok(runs.lifecycleText({ state: 'succeeded', phase: 'idle' }).includes('terminal'));
 
 // finalizing is explained as waiting for exit evidence, never as success.
-const finalizing = runs.describeRunState({ state: 'running', phase: 'finalizing' }, {});
+const finalizing = runs.runDetailNote({ state: 'running', phase: 'finalizing' }, {});
 assert.ok(finalizing.includes('等待'), finalizing);
 assert.ok(finalizing.includes('退出证据'), finalizing);
 assert.ok(finalizing.includes('不是成功'), finalizing);
 assert.ok(!finalizing.includes('已成功'), finalizing);
 assert.ok(!/%|进度条|预计/.test(finalizing), finalizing);
 
-assert.ok(runs.describeRunState({ state: 'succeeded' }, {}).includes('终态'));
-assert.ok(runs.describeRunState({ state: 'recovery_pending' }, {}).includes('recovery_pending'));
+assert.ok(runs.runDetailNote({ state: 'succeeded' }, {}).includes('已成功'));
+assert.ok(runs.runDetailNote({ state: 'recovery_pending' }, {}).includes('recovery_pending'));
 
-// Polling stops only on a committed terminal state.
-assert.strictEqual(runs.shouldPollRun({ state: 'running', phase: 'executing' }), true);
-assert.strictEqual(runs.shouldPollRun({ state: 'running', phase: 'finalizing' }), true);
-assert.strictEqual(runs.shouldPollRun({ state: 'recovery_pending' }), true);
-assert.strictEqual(runs.shouldPollRun({ state: 'needs_reconciliation' }), true);
-assert.strictEqual(runs.shouldPollRun({ state: 'succeeded' }), false);
-assert.strictEqual(runs.shouldPollRun({ state: 'failed' }), false);
-assert.strictEqual(runs.shouldPollRun({ state: 'cancelled' }), false);
-assert.strictEqual(runs.shouldPollRun(null), false);
+// Polling stops only on a committed terminal state (C6.05 review-2: the page
+// has no local dictionary or poll helper; it consumes the shared projection).
+assert.strictEqual(runs.OrcharaRunState.isTerminal('running'), false);
+assert.strictEqual(runs.OrcharaRunState.isTerminal('recovery_pending'), false);
+assert.strictEqual(runs.OrcharaRunState.isTerminal('needs_reconciliation'), false);
+assert.strictEqual(runs.OrcharaRunState.isTerminal('succeeded'), true);
+assert.strictEqual(runs.OrcharaRunState.isTerminal('failed'), true);
+assert.strictEqual(runs.OrcharaRunState.isTerminal('cancelled'), true);
+assert.strictEqual(typeof runs.shouldPollRun, 'undefined');
+assert.strictEqual(typeof runs.isRunTerminal, 'undefined');
 
 // The debug page uses the same honest vocabulary.
 const debug = load(debugSource);
@@ -169,8 +182,12 @@ assert.ok(debugFinalizing.includes('退出证据'), debugFinalizing);
 assert.ok(debugFinalizing.includes('不是成功'), debugFinalizing);
 assert.ok(!debugFinalizing.includes('已成功'), debugFinalizing);
 assert.ok(debug.describeRunStage({ state: 'succeeded' }).includes('终态'));
-assert.strictEqual(debug.shouldPollRun({ state: 'running', phase: 'finalizing' }, 0, 10), true);
-assert.strictEqual(debug.shouldPollRun({ state: 'succeeded' }, 0, 10), false);
+assert.strictEqual(typeof debug.runIsTerminal, 'undefined');
+assert.strictEqual(typeof debug.shouldPollRun, 'undefined');
+assert.strictEqual(
+  debug.OrcharaRunState.shouldPoll('dispatched', 'running', 0, 10), true);
+assert.strictEqual(
+  debug.OrcharaRunState.shouldPoll('dispatched', 'succeeded', 0, 10), false);
 
 process.stdout.write('lifecycle behaviour ok\n');
 """

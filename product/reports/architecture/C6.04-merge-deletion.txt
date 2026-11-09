@@ -1,0 +1,38 @@
+# C6.04 deletion confirmation at integration tip
+time: 2026-11-09T17:56:11.5185519+08:00
+head: 1e7aac95809f83978842a7f0f2217fbd875aa44a
+
+$ git grep -n --untracked -- runStream -- . ':(exclude)product/reports/**' ':(exclude)product/PROGRESS.md'
+
+no matches (exit=1)
+
+$ git grep -n --untracked -E 'RunStateDependencyUnavailable|runsRunStateInterface|typeof OrcharaRunState' -- product/apps product/deploy
+
+no matches (exit=1)
+
+# historical hits (allowed): files under reports/PROGRESS containing runStream
+product/PROGRESS.md
+product/reports/architecture/C6.01-merge.md
+product/reports/architecture/C6.01-page-dependency-guard.md
+product/reports/architecture/C6.02-merge.md
+product/reports/architecture/C6.02-runstate-view.md
+product/reports/architecture/C6.03-merge-node-deletion.txt
+product/reports/architecture/C6.03-merge.md
+product/reports/architecture/C6.03-node-and-deletion.txt
+product/reports/architecture/C6.03-runs-recovery.md
+product/reports/architecture/C6.04-page-contract.md
+product/reports/f12/REVIEW-FIXES.md
+product/reports/f12/T096-disconnect-and-run-state.md
+files=12
+
+$ git diff --stat t/c6.04-page-contract HEAD   # merged tree vs ticket tip
+
+empty diff (exit=0)
+
+# node --check on the six page assets
+node --check runstream.js exit=0 
+node --check runstate-guard.js exit=0 
+node --check chat.js exit=0 
+node --check runs.js exit=0 
+node --check debug.js exit=0 
+node --check runview.js exit=0 

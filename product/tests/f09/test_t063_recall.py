@@ -15,8 +15,9 @@ the memory store and the context are real.
 
 from __future__ import annotations
 
+from support import run_observations as observations
 from support import stack as st
-from support import t033, t041, t054, t058, t063
+from support import t041, t054, t058, t063
 
 
 def test_the_agent_recalls_only_this_users_this_applications_current_confirmed_memories(
@@ -99,7 +100,7 @@ def test_the_agent_recalls_only_this_users_this_applications_current_confirmed_m
     completed, report = t063.run_agent_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
-    state = t033.wait_run_state(stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     trace = t063.trace_document(run_owner.creator, stack, run["id"])

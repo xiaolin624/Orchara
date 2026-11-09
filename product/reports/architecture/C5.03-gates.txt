@@ -1,0 +1,6 @@
+﻿=== C5.03 gates at 2916cfe 2026-11-09T14:58:46.6895005+08:00 ===
+sync_spec --check exit=0
+no drift: current source, both copies and synchronized baseline agree
+
+git diff --check exit=0
+

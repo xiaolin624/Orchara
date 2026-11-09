@@ -1,0 +1,25 @@
+﻿C6.03 merge gates at integration tip (Go + spec sync)
+
+### go build ./...
+
+exit=0
+
+### go vet ./...
+
+exit=0
+
+### go test ./internal/api
+ok  	orchara/platform/internal/api	(cached)
+exit=0
+
+### go test ./internal/api -count=1
+ok  	orchara/platform/internal/api	1.300s
+exit=0
+
+### gofmt -l internal cmd tools
+(no output)
+exit=0
+
+### sync_spec --check
+no drift: current source, both copies and synchronized baseline agree
+exit=0

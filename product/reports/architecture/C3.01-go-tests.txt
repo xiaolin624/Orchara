@@ -1,0 +1,53 @@
+﻿$ go test ./internal/knowledge/ -v -run "TestReadVerifiedBody|TestCacheDiscardReason|TestValidSHA256"
+=== RUN   TestReadVerifiedBodyReturnsTextAfterOneBoundedRead
+--- PASS: TestReadVerifiedBodyReturnsTextAfterOneBoundedRead (0.00s)
+=== RUN   TestReadVerifiedBodyRefusesASameLengthReplacement
+--- PASS: TestReadVerifiedBodyRefusesASameLengthReplacement (0.00s)
+=== RUN   TestReadVerifiedBodyRefusesTruncation
+--- PASS: TestReadVerifiedBodyRefusesTruncation (0.00s)
+=== RUN   TestReadVerifiedBodyRefusesAWriteThatExceedsTheAuthoritativeSize
+--- PASS: TestReadVerifiedBodyRefusesAWriteThatExceedsTheAuthoritativeSize (0.00s)
+=== RUN   TestReadVerifiedBodyUsesTheAuthoritativeSizeNotOneFromTheStore
+--- PASS: TestReadVerifiedBodyUsesTheAuthoritativeSizeNotOneFromTheStore (0.00s)
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_nonhex
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_missing
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_zero
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_over_cap
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_missing
+=== RUN   TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_short
+--- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_nonhex (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_missing (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_zero (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/size_over_cap (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_missing (0.00s)
+    --- PASS: TestReadVerifiedBodyRefusesUnusableMetadataBeforeOpeningAnything/sha256_short (0.00s)
+=== RUN   TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath
+=== RUN   TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/transient_IO
+=== RUN   TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/missing_object
+=== RUN   TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/invalid_key
+=== RUN   TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/over_protocol_cap
+--- PASS: TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath (0.00s)
+    --- PASS: TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/transient_IO (0.00s)
+    --- PASS: TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/missing_object (0.00s)
+    --- PASS: TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/invalid_key (0.00s)
+    --- PASS: TestReadVerifiedBodyClassificationNeverLeaksTheObjectKeyOrAPath/over_protocol_cap (0.00s)
+=== RUN   TestCacheDiscardReasonReusesTheClosedVocabulary
+--- PASS: TestCacheDiscardReasonReusesTheClosedVocabulary (0.00s)
+=== RUN   TestValidSHA256Hex
+--- PASS: TestValidSHA256Hex (0.00s)
+PASS
+ok  	orchara/platform/internal/knowledge	2.422s
+
+$ go test ./internal/knowledge/ -run '^$' -bench BenchmarkReadVerifiedBody -benchmem
+goos: windows
+goarch: amd64
+pkg: orchara/platform/internal/knowledge
+cpu: 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz
+BenchmarkReadVerifiedBody-12    	    2439	    444927 ns/op	   6.47 MB/s	   11593 B/op	      21 allocs/op
+PASS
+ok  	orchara/platform/internal/knowledge	3.769s
+
+$ go test ./internal/knowledge/
+ok  	orchara/platform/internal/knowledge	(cached)

@@ -4,10 +4,15 @@ package presetexec
 //
 // These helpers are deliberately thin. The builder in internal/context owns the
 // budget, the truncation order and the protected-fact vocabulary; this file only
-// tells it which values the current run resolved, which nodes produced them, and
-// which model profile budget applies. No value is read from the database here:
-// `bindings` are the executor's already-resolved sealed inputs, and `plan` holds
-// the sealed node identities.
+// tells it which values the current node execution resolved, which sealed nodes
+// produced them, and which model profile budget applies. No value is read from
+// the database here: the execution's namespace is the scheduler's snapshot of the
+// already-published sealed upstream outputs, and the scope is the sealed node-id
+// snapshot taken when the execution started.
+//
+// C4.01: the agent no longer receives a synthetic linear plan. The binding source
+// kind is derived from the sealed definition's node type, and the authorization
+// scope is the explicit sealed scope of this attempt.
 
 import (
 	"errors"
@@ -28,25 +33,18 @@ const (
 // agentContextScope is the run-derived authorization scope: only the sealed
 // nodes of this one attempt, and no free-standing artifact ids. The agent never
 // receives another run's data because it cannot name one.
-func agentContextScope(plan *linearPlan, node *manifestNode, extraIDs []string) agentcontext.Scope {
-	ids := make([]string, 0, 3+len(extraIDs))
-	seen := map[string]bool{}
-	for _, candidate := range []*manifestNode{plan.start, plan.python, node} {
-		if candidate == nil || candidate.ID == "" || seen[candidate.ID] {
-			continue
-		}
-		seen[candidate.ID] = true
-		ids = append(ids, candidate.ID)
-	}
-	// A graph-owned agent node may read any already-succeeded sealed node of the
-	// same attempt; the graph scheduler passes those node ids here. The scope is
-	// still this run's sealed nodes only, never another run's data.
-	for _, id := range extraIDs {
+func agentContextScope(exec *nodeExecution) agentcontext.Scope {
+	ids := make([]string, 0, len(exec.scopeNodeIDs)+1)
+	seen := make(map[string]bool, len(exec.scopeNodeIDs)+1)
+	for _, id := range exec.scopeNodeIDs {
 		if id == "" || seen[id] {
 			continue
 		}
 		seen[id] = true
 		ids = append(ids, id)
+	}
+	if exec.node != nil && exec.node.ID != "" && !seen[exec.node.ID] {
+		ids = append(ids, exec.node.ID)
 	}
 	return agentcontext.Scope{
 		NodeIDs:     ids,
@@ -55,11 +53,13 @@ func agentContextScope(plan *linearPlan, node *manifestNode, extraIDs []string) 
 }
 
 // resolvedAgentInputs turns the sealed bindings into named, typed inputs. The
-// source kind is derived from the sealed ref itself, never from a caller guess:
-// `input#` and `node:<start>#` are start sources, `node:<python>#` is a python
-// source and a literal is a creator constant.
+// source kind is derived from the sealed ref and the sealed definition's node type,
+// never from a caller guess: `input#` and `node:<start>#` are start sources, a
+// `node:<python>#` ref is a python source and a literal is a creator constant. Any
+// other upstream node output is a controlled node output ("tool"); the builder
+// still authorizes it only because its node id is in the run scope.
 func resolvedAgentInputs(
-	plan *linearPlan, node *manifestNode, bindings map[string]any,
+	exec *nodeExecution, bindings map[string]any,
 ) []agentcontext.ResolvedInput {
 	labels := make([]string, 0, len(bindings))
 	for label := range bindings {
@@ -69,26 +69,21 @@ func resolvedAgentInputs(
 	inputs := make([]agentcontext.ResolvedInput, 0, len(labels))
 	for _, label := range labels {
 		source := agentcontext.Source{Kind: "literal", Label: label}
-		if binding, present := node.Inputs[label]; present && binding.Ref != "" {
+		if binding, present := exec.node.Inputs[label]; present && binding.Ref != "" {
 			base, _, _ := strings.Cut(binding.Ref, "#")
 			switch {
 			case base == "input":
 				source.Kind = "start"
-				if plan.start != nil {
-					source.NodeID = plan.start.ID
-				}
+				source.NodeID = exec.startNodeID
 			case strings.HasPrefix(base, "node:"):
 				origin := strings.TrimPrefix(base, "node:")
 				source.NodeID = origin
-				switch {
-				case plan.python != nil && origin == plan.python.ID:
-					source.Kind = "python"
-				case plan.start != nil && origin == plan.start.ID:
+				switch exec.sealedNodeType(origin) {
+				case "start":
 					source.Kind = "start"
+				case "python":
+					source.Kind = "python"
 				default:
-					// Any other upstream output is a controlled node output; the
-					// builder still authorizes it only because its node id is in
-					// the run scope.
 					source.Kind = "tool"
 				}
 			}

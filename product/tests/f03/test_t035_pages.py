@@ -143,6 +143,9 @@ const assert = require('assert');
 const webDir = __WEB_DIR__;
 const context = { console };
 vm.createContext(context);
+// C6.01 (#155): the real shared run-state bytes load before the page script.
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/runs.js', 'utf8'), context);
 
 function headers(map) {
@@ -226,16 +229,20 @@ assert.ok(lifecycle.stages.indexOf('waiting') >= 0, JSON.stringify(lifecycle));
 assert.ok(
   context.lifecycleText({ state: 'waiting_children', phase: 'waiting' }).indexOf('waiting') >= 0
 );
-const note = context.describeRunState(
+const note = context.runDetailNote(
   { id: 'r1', state: 'waiting_approval', phase: 'waiting' }, {},
 );
-assert.ok(note.indexOf('checkpoint') >= 0, note);
+assert.ok(note.indexOf('等待审批') >= 0, note);
 assert.ok(note.indexOf('恢复任务') >= 0, note);
 assert.ok(note.indexOf('已进入终态') < 0, note);
+// The fixed-checkpoint fact lives in the waiting panel's resume sentence.
+assert.ok(decisionOnly.resumeLine.indexOf('checkpoint') >= 0, decisionOnly.resumeLine);
 
-// A waiting Run is non-terminal for the poll loop: the page keeps asking.
-assert.strictEqual(context.shouldPollRun({ state: 'waiting_children' }), true);
-assert.strictEqual(context.shouldPollRun({ state: 'succeeded' }), false);
+// A waiting Run is non-terminal for the poll loop: the page keeps asking through
+// the shared terminal rule (C6.05 review-2: no page-local poll helper).
+assert.strictEqual(context.OrcharaRunState.isTerminal('waiting_children'), false);
+assert.strictEqual(context.OrcharaRunState.isTerminal('succeeded'), true);
+assert.strictEqual(typeof context.shouldPollRun, 'undefined');
 
 process.stdout.write('t035 waiting resume ok\n');
 """

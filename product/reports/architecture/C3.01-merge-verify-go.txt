@@ -1,0 +1,7 @@
+﻿== go build ./... ==
+build_exit=0
+== go vet ./... ==
+vet_exit=0
+== go test ./internal/knowledge ==
+ok  	orchara/platform/internal/knowledge	4.216s
+test_exit=0

@@ -8,21 +8,28 @@ package presetexec
 // spawnChild operation through the injected Client (real worker mTLS in
 // cmd/supervisor), then:
 //
-//   - child still running -> the parent proposes waiting_children with the stable
-//     checkpoint `child:<child_run_id>` and confirms its exit. The parent never
-//     polls and never holds a slot while a child runs; the resume and the
-//     child-terminal hook are F07/T081.
+//   - child still running -> the node returns the local waiting decision for the
+//     stable checkpoint `child:<child_run_id>`; the owning scheduler drains the
+//     started siblings, submits the one waiting proposal and confirms the exit.
+//     The parent never polls and never holds a slot while a child runs; the
+//     resume and the child-terminal hook are F07/T081.
 //   - child succeeded (a replayed spawn after resume, or a fast child) -> the
 //     executor reads the child's structured result through the non-contract
 //     result route, validates it against the node's output_schema, uploads it as
-//     the node's data artifact and continues the chain.
-//   - child failed/cancelled -> a required branch failure: the run fails with the
-//     child's stable platform code (or child_required_failed when it has none).
+//     the node's data artifact, reports the node result and continues the chain.
+//   - child failed/cancelled -> a required branch failure: the node returns the
+//     local failure decision with the child's stable platform code (or
+//     child_required_failed when it has none).
 //
-// The agent's `subapp_versions` allowed set uses the same path: the executor
-// declares one fixed tool per allowed child version (`call_app_1`, ...) and the
-// model's validated tool call is mapped to a spawnChild call with a per-call
-// invocation key. There is no other way for a model to create a Run.
+// C4.02: the node receives the same explicit nodeExecution as the agent node and
+// returns a typed nodeOutcome. It never submits the run terminal result, never
+// skips siblings and never reads a hidden scheduler record from the context: the
+// graph and linear schedulers map the decision and remain the only committers.
+//
+// The agent's `subapp_versions` allowed set uses the same delegation seam: the
+// executor declares one fixed tool per allowed child version (`call_app_1`, ...)
+// and the model's validated tool call is mapped to a spawnChild call with a
+// per-call invocation key. There is no other way for a model to create a Run.
 
 import (
 	"context"
@@ -78,38 +85,24 @@ func validateCallAppNode(node *manifestNode) (*callAppConfig, error) {
 	return &callAppConfig{VersionID: version}, nil
 }
 
-// availableBeforeCallApp is the output namespace the node's bindings resolve
-// against: the start input plus the admitted upstream nodes.
-func availableBeforeCallApp(run *linearRun) map[string]any {
-	if run.available != nil {
-		return run.available
-	}
-	available := map[string]any{
-		"input":           run.start,
-		run.plan.start.ID: run.start,
-	}
-	if run.plan.python != nil {
-		available[run.plan.python.ID] = run.python
-	}
-	if run.plan.agent != nil {
-		available[run.plan.agent.ID] = run.agent
-	}
-	return available
-}
-
-// runCallAppNode executes the delegation segment. done=true means the returned
-// outcome is terminal (failed/cancelled/waiting) and the chain stops.
-func (r *runner) runCallAppNode(
-	ctx context.Context, run *linearRun,
-) (map[string]any, executionOutcome, bool) {
-	node := run.plan.callApp
-	config := run.plan.callAppConfig
+// runCallAppNode executes the delegation node against the explicit node execution
+// the owning scheduler built: the sealed node, the fixed child version the
+// scheduler proved and the upstream-output namespace snapshot its bindings resolve
+// against. The returned decision is local; the scheduler owns the run terminal
+// result, the sibling drain and the skip facts.
+func (r *runner) runCallAppNode(ctx context.Context, exec *nodeExecution) nodeOutcome {
+	node := exec.node
 	r.emitNode(ctx, node.ID, "pending")
 	r.emitNode(ctx, node.ID, "running")
 
-	bindings, err := resolveNodeBindings(node, availableBeforeCallApp(run))
+	config := exec.callAppConfig
+	if config == nil {
+		return r.callAppFailed(ctx, exec, CodeToolUnsupportedGraph,
+			"the call_app node execution carries no sealed child application version")
+	}
+	bindings, err := resolveNodeBindings(node, exec.namespace)
 	if err != nil {
-		return nil, r.failDelegation(ctx, run, CodeNodeInputInvalid, err.Error()), true
+		return r.callAppFailed(ctx, exec, CodeNodeInputInvalid, err.Error())
 	}
 	// The mapped input is exactly the declared bindings. Nothing from the parent
 	// input/history is added here; the server re-checks the field set as well.
@@ -119,25 +112,28 @@ func (r *runner) runCallAppNode(
 		Input:                bindings,
 	})
 	if spawnErr != nil {
-		return nil, r.failDelegation(ctx, run, childFailureCode(spawnErr), childFailureMessage(spawnErr)), true
+		return r.callAppFailed(ctx, exec, childFailureCode(spawnErr), childFailureMessage(spawnErr))
 	}
 	if child == nil || child.ID == "" {
-		return nil, r.failDelegation(ctx, run, CodeChildSpawnFailed,
-			"the platform returned no child Run for the call_app node"), true
+		return r.callAppFailed(ctx, exec, CodeChildSpawnFailed,
+			"the platform returned no child Run for the call_app node")
 	}
-	output, outcome, done := r.adoptChildResult(ctx, run, node, child, true)
-	if done {
-		return nil, outcome, true
+	decision := r.classifyChildResult(ctx, node, child, true)
+	if decision.child != nil {
+		return r.callAppWaiting(exec, *decision.child)
 	}
-	canonical, err := canonicalJSONDocument(output)
+	if decision.code != "" {
+		return r.callAppFailed(ctx, exec, decision.code, decision.message)
+	}
+	canonical, err := canonicalJSONDocument(decision.output)
 	if err != nil {
-		return nil, r.failDelegation(ctx, run, CodeNodeOutputInvalid,
-			"the child result cannot be canonicalised"), true
+		return r.callAppFailed(ctx, exec, CodeNodeOutputInvalid,
+			"the child result cannot be canonicalised")
 	}
 	dataID, err := r.uploadNodeArtifact(ctx, "node_output", "application/json", canonical, "artifact")
 	if err != nil {
-		return nil, r.failDelegation(ctx, run, CodeChildResultFailed,
-			"registering the child result failed: "+err.Error()), true
+		return r.callAppFailed(ctx, exec, CodeChildResultFailed,
+			"registering the child result failed: "+err.Error())
 	}
 	results := []NodeResult{{
 		NodeID: node.ID, Kind: "data", ArtifactID: dataID, Label: "child-run:" + child.ID,
@@ -145,29 +141,54 @@ func (r *runner) runCallAppNode(
 	if err := r.deps.Client.RecordNodeResults(
 		ctx, r.lease.RunID, r.lease.AttemptToken, results,
 	); err != nil {
-		return nil, r.failDelegation(ctx, run, CodeChildResultFailed,
-			"recording the child result failed: "+err.Error()), true
+		return r.callAppFailed(ctx, exec, CodeChildResultFailed,
+			"recording the child result failed: "+err.Error())
 	}
 	r.emitNode(ctx, node.ID, "succeeded")
-	return output, executionOutcome{}, false
+	return r.nodeSucceeded(exec, decision.output)
 }
 
-// adoptChildResult handles one child Run fact: wait, read the structured result
-// and validate the node's output_schema, or fail a required branch.
-func (r *runner) adoptChildResult(
-	ctx context.Context, run *linearRun, node *manifestNode, child *ChildRun, required bool,
-) (map[string]any, executionOutcome, bool) {
+// callAppFailed publishes the node's own failed fact and returns the local
+// failure decision. The owning scheduler skips the remaining nodes and commits
+// the run result; the node has no such authority.
+func (r *runner) callAppFailed(
+	ctx context.Context, exec *nodeExecution, code, message string,
+) nodeOutcome {
+	if exec.node != nil {
+		r.emitNode(ctx, exec.node.ID, "failed")
+	}
+	return r.nodeFailed(exec, code, message)
+}
+
+// childDecision is the scheduler-neutral decision for one observed child Run. A
+// failure carries code/message, a still-running child names the Run to wait on,
+// and a succeeded child carries its validated structured result. Nothing is
+// committed here: the owning scheduler maps the decision to its own behavior.
+type childDecision struct {
+	output  map[string]any
+	code    string
+	message string
+	child   *ChildRun
+}
+
+// classifyChildResult turns one child Run fact into a local decision without
+// committing the parent result. call_app maps it to its typed node outcome; the
+// agent maps it to its own typed node outcome. node is nil for an agent sub-app
+// tool (the agent's output is its final answer, not the child schema).
+func (r *runner) classifyChildResult(
+	ctx context.Context, node *manifestNode, child *ChildRun, required bool,
+) childDecision {
 	switch child.State {
 	case "succeeded":
 		result, err := r.deps.Client.ChildResult(
 			ctx, r.lease.RunID, r.lease.AttemptToken, child.ID,
 		)
 		if err != nil {
-			return nil, r.failDelegation(ctx, run, childFailureCode(err), childFailureMessage(err)), true
+			return childDecision{code: childFailureCode(err), message: childFailureMessage(err)}
 		}
 		if result == nil || result.State != "succeeded" || result.Output == nil {
-			return nil, r.failDelegation(ctx, run, CodeChildResultFailed,
-				"the child Run reported success without a structured result"), true
+			return childDecision{code: CodeChildResultFailed,
+				message: "the child Run reported success without a structured result"}
 		}
 		// A call_app node declares an output_schema that is a refinement of the
 		// child's frozen output schema (T075); the result must satisfy the node's
@@ -175,82 +196,65 @@ func (r *runner) adoptChildResult(
 		// agent's output is its final answer), so node is nil there.
 		if node != nil {
 			if err := validateSchema(node.OutputSchema, result.Output, "#"); err != nil {
-				return nil, r.failDelegation(ctx, run, CodeNodeOutputInvalid,
-					"the child result does not match the node output_schema: "+err.Error()), true
+				return childDecision{code: CodeNodeOutputInvalid,
+					message: "the child result does not match the node output_schema: " + err.Error()}
 			}
 		}
-		return result.Output, executionOutcome{}, false
+		return childDecision{output: result.Output}
 	case "failed", "cancelled":
 		if !required {
 			// Optional branches are not produced by this build (the contract's
 			// spawnChild body has no `required` field and T080/T082 own branch
 			// semantics); the switch stays honest for the seam.
-			return nil, r.failDelegation(ctx, run, CodeChildRequiredFailed,
-				"an optional child branch failed"), true
+			return childDecision{code: CodeChildRequiredFailed,
+				message: "an optional child branch failed"}
 		}
 		code := CodeChildRequiredFailed
 		if safePlatformCode(child.ErrorCode) {
 			code = child.ErrorCode
 		}
-		return nil, r.failDelegation(ctx, run, code,
-			"the required child Run ended "+child.State), true
+		return childDecision{code: code,
+			message: "the required child Run ended " + child.State}
 	default:
-		return nil, r.waitForChild(ctx, run, node, child), true
+		return childDecision{child: child}
 	}
 }
 
-// waitForChild parks the parent at the stable `child:<id>` checkpoint and
-// certifies its exit. The single resume job and the child-terminal hook belong to
-// F07/T081; the waiting condition is the durable hand-over F03/T035 consumes.
-func (r *runner) waitForChild(
-	ctx context.Context, run *linearRun, node *manifestNode, child *ChildRun,
-) executionOutcome {
-	proposal := Proposal{
+// childWaitingProposal is the stable `child:<id>` checkpoint a delegation parks at.
+func childWaitingProposal(child *ChildRun) Proposal {
+	return Proposal{
 		EventID:        uuid.NewString(),
 		SuggestedState: "waiting_children",
 		CheckpointID:   "child:" + child.ID,
 		ErrorCode:      "children_pending",
 	}
-	if captureGraphWaiting(ctx, proposal, "waiting_children", run.outcome,
-		r.exitEvidence(r.heartbeatCount(), run.outcome, nil), CodeChildSpawnFailed) {
-		// The graph scheduler hands the run over only after the other branches
-		// stopped.
-		return executionOutcome{outcome: "waiting_children", code: "children_pending",
-			sandbox: sandboxReportOf(run.outcome)}
-	}
-	if err := r.deps.Client.SubmitResult(
-		ctx, r.lease.RunID, r.lease.AttemptToken, proposal,
-	); err != nil {
-		return r.failDelegation(ctx, run, CodeChildSpawnFailed,
-			"the waiting_children proposal was refused: "+err.Error())
-	}
-	evidence := r.exitEvidence(r.heartbeatCount(), run.outcome, nil)
-	if err := r.confirmExit(ctx, run.outcome.SandboxStarted, evidence); err != nil {
-		return executionOutcome{outcome: "error", code: CodeChildSpawnFailed,
-			err:     "the waiting exit confirmation was refused: " + err.Error(),
-			sandbox: sandboxReportOf(run.outcome)}
-	}
-	return executionOutcome{
-		outcome:  "waiting_children",
-		code:     "children_pending",
-		runState: r.readRunState(ctx),
-		sandbox:  sandboxReportOf(run.outcome),
-	}
+}
+
+// callAppWaiting returns the local waiting decision for a live child Run. The
+// owning scheduler drains the started siblings first, then submits the one
+// waiting proposal and certifies the exit; the node never parks the run itself.
+func (r *runner) callAppWaiting(exec *nodeExecution, child ChildRun) nodeOutcome {
+	outcome := r.nodeWaiting(exec, childWaitingProposal(&child),
+		"waiting_children", CodeChildSpawnFailed)
+	outcome.proposalRefusal = "the waiting_children proposal was refused: "
+	outcome.exitRefusal = "the waiting exit confirmation was refused: "
+	return outcome
 }
 
 // executeAgentSubapp runs one model-requested sub-application call. The tool name
 // is one the executor declared from the sealed allowed set; the arguments are the
 // child input object (validated by the capability server against the child's
-// frozen input schema) and are re-validated by spawnChild.
+// frozen input schema) and are re-validated by spawnChild. A failure or waiting
+// child returns a local node outcome: the owning scheduler commits it.
 func (r *runner) executeAgentSubapp(
-	ctx context.Context, run *linearRun, node *manifestNode,
+	ctx context.Context, exec *nodeExecution, node *manifestNode,
 	sub agentSubapp, call agentToolCall,
-) (string, []NodeResult, error, *executionOutcome) {
+) (string, []NodeResult, *nodeOutcome) {
 	logicalKey := fmt.Sprintf("agent:%s:subapp:%s", node.ID, call.ID)
 	if len(logicalKey) > 200 {
-		outcome := r.failDelegation(ctx, run, CodeAgentToolCallInvalid,
+		outcome := r.agentFailed(ctx, exec, CodeAgentToolCallInvalid,
 			"the sub-application tool logical key exceeds the platform limit")
-		return "", nil, fmt.Errorf("subapp logical key too long"), &outcome
+		return "", nil, &outcome
 	}
 	child, err := r.deps.Client.SpawnChild(ctx, r.lease.RunID, r.lease.AttemptToken, SpawnChildRequest{
 		LogicalKey:           logicalKey,
@@ -258,41 +262,31 @@ func (r *runner) executeAgentSubapp(
 		Input:                call.Arguments,
 	})
 	if err != nil {
-		outcome := r.failDelegation(ctx, run, childFailureCode(err), childFailureMessage(err))
-		return "", nil, err, &outcome
+		outcome := r.agentFailed(ctx, exec, childFailureCode(err), childFailureMessage(err))
+		return "", nil, &outcome
 	}
 	if child == nil || child.ID == "" {
-		outcome := r.failDelegation(ctx, run, CodeChildSpawnFailed,
+		outcome := r.agentFailed(ctx, exec, CodeChildSpawnFailed,
 			"the platform returned no child Run for the sub-application tool")
-		return "", nil, fmt.Errorf("no child run"), &outcome
+		return "", nil, &outcome
 	}
-	output, outcome, done := r.adoptChildResult(ctx, run, nil, child, true)
-	if done {
-		return "", nil, fmt.Errorf("the sub-application child did not produce a result"), &outcome
+	decision := r.classifyChildResult(ctx, nil, child, true)
+	if decision.child != nil {
+		outcome := r.agentWaiting(ctx, exec, childWaitingProposal(decision.child),
+			"waiting_children", CodeChildSpawnFailed)
+		return "", nil, &outcome
 	}
-	message, err := canonicalJSONDocument(output)
+	if decision.code != "" {
+		outcome := r.agentFailed(ctx, exec, decision.code, decision.message)
+		return "", nil, &outcome
+	}
+	message, err := canonicalJSONDocument(decision.output)
 	if err != nil {
-		outcome := r.failDelegation(ctx, run, CodeChildResultFailed,
+		outcome := r.agentFailed(ctx, exec, CodeChildResultFailed,
 			"the child result cannot be encoded")
-		return "", nil, err, &outcome
+		return "", nil, &outcome
 	}
-	return string(message), nil, nil, nil
-}
-
-// failDelegation marks the delegation node failed, skips the rest of the chain and
-// fails the run with a stable platform code.
-func (r *runner) failDelegation(
-	ctx context.Context, run *linearRun, code, message string,
-) executionOutcome {
-	if run.plan.callApp != nil {
-		r.emitNode(ctx, run.plan.callApp.ID, "failed")
-		r.skipAfter(ctx, run, run.plan.callApp.ID)
-	} else if run.plan.agent != nil {
-		r.emitNode(ctx, run.plan.agent.ID, "failed")
-		r.skipAfter(ctx, run, run.plan.agent.ID)
-	}
-	return r.failAfterStart(ctx, code, message, run.outcome,
-		r.exitEvidence(r.heartbeatCount(), run.outcome, nil))
+	return string(message), nil, nil
 }
 
 // childFailureCode maps an internal-API refusal to a stable run code. The server's

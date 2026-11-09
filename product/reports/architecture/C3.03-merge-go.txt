@@ -1,0 +1,14 @@
+$ go test ./internal/knowledge ./internal/api -count=1
+ok  	orchara/platform/internal/knowledge	4.326s
+ok  	orchara/platform/internal/api	3.358s
+exit=0
+
+$ go build ./...
+exit=0
+
+$ go vet ./...
+exit=0
+
+$ gofmt -l internal cmd tools
+(no output)
+exit=0

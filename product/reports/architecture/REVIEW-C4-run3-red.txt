@@ -1,0 +1,34 @@
+.F.                                                                      [100%]
+================================== FAILURES ===================================
+___ test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit ___
+
+t033_stack = Stack(server=<support.stack.ApiServer object at 0x000001FE2AAC21E0>, dsn='postgresql://<REDACTED>')}, signing_key='<REDACTED-SIGNING-KEY>')
+sandbox = None
+
+    def test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit(
+        t033_stack, sandbox
+    ) -> None:
+        owner, application_id, run = _queue_drain_run(t033_stack)
+        validation = t025.validate(owner.creator, application_id)
+        assert validation.status == 200 and validation.json == {"valid": True, "errors": []}, (
+            validation.text
+        )
+        env = execution.supervisor_exec_env(
+            t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s"
+        )
+        with execution.FinalizeWorker(t033_stack):
+            completed = _cancel_after_started_sandbox(t033_stack, env, run["id"])
+        report = execution.exec_report(completed)
+        evidence = _assert_cancelled_run_and_attempt(t033_stack, run, report, completed)
+        # The poll above only returned after both branches' runsc containers were
+        # really listed, so the attempt must certify a started sandbox; this is the
+        # fact the old first-heartbeat trigger could not guarantee on a cold boot.
+>       assert evidence["started"] is True, evidence
+E       AssertionError: {'db_writes_drained': True, 'execution_unit_id': 'exec-AI-79408-fed25a47', 'heartbeats': 41, 'identity_source': 'sealed_manifest', ...}
+E       assert False is True
+
+tests\f04b\test_c4_03_scheduler_regressions.py:468: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f04b/test_c4_03_scheduler_regressions.py::test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit
+1 failed, 2 passed in 41.36s
+硥瑩ㄽ਍

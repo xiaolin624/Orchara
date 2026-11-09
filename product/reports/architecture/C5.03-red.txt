@@ -1,0 +1,19 @@
+﻿=== C5.03 red at e27c6fb: shared observation module absent 2026-11-09T14:14:29.7220414+08:00 ===
+
+=================================== ERRORS ====================================
+___________ ERROR collecting tests/f04b/test_c5_run_observations.py ___________
+ImportError while importing test module 'E:\Orchara-wt\C5.03-baseline\product\tests\f04b\test_c5_run_observations.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+D:\Python\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\f04b\test_c5_run_observations.py:19: in <module>
+    from support import run_observations as observations
+E   ImportError: cannot import name 'run_observations' from 'support' (E:\Orchara-wt\C5.03-baseline\product\tests\support\__init__.py)
+=========================== short test summary info ===========================
+ERROR tests/f04b/test_c5_run_observations.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.14s
+
+EXIT=2

@@ -79,6 +79,9 @@ const webDir = __WEB_DIR__;
 const context = { console, window: { location: { assign() {} }, open() {} } };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/app.js', 'utf8'), context);
+// C6.01 (#155): the real shared run-state bytes load before the page script.
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/runs.js', 'utf8'), context);
 
 const nodeBody = {

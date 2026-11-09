@@ -1,0 +1,8 @@
+﻿# C3.03 integration-tip spec sync check
+commit=1eb0281b98a6aa705a0a12e2fd3b0b5aad0a9299
+$ D:\Python\python.exe -X utf8 tools\sync_spec.py --check
+
+no drift: current source, both copies and synchronized baseline agree
+
+exit=0
+

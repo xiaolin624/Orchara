@@ -18,7 +18,8 @@ import json
 import pytest
 
 from support import execution_support as execution
-from support import t025, t027, t033, t042, t083
+from support import run_observations as observations
+from support import t025, t027, t033, t083
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -70,29 +71,29 @@ def test_condition_true_runs_only_the_selected_branch_and_join_once(
     completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
-    items = t083.node_results(owner.creator, run["id"], expected=6)
+    items = observations.node_result_items(owner.creator, run["id"], expected=6)
     assert {item["node_id"] for item in items} == {"left", "choose", "join"}, items
     # The unselected branch has no result rows at all.
     assert [item for item in items if item["node_id"] == "right"] == []
-    assert len(t083.node_data_rows(items, "join")) == 1, "the join must run exactly once"
+    assert len(observations.node_data_rows(items, "join")) == 1, "the join must run exactly once"
 
-    condition = t083.node_data_document(owner.creator, items, "choose")
+    condition = observations.node_data_document(owner.creator, items, "choose")
     assert condition == {"port": "yes", "matched_case": 0}, condition
 
-    join = t083.node_data_document(owner.creator, items, "join")
+    join = observations.node_data_document(owner.creator, items, "join")
     results = join["results"]
     assert set(results) == {"left", "right"}, results
     assert results["left"]["status"] == "succeeded", results["left"]
     assert results["left"]["value"] == EXPECTED_SUMMARY, results["left"]
     assert results["right"] == {"status": "skipped"}, results["right"]
 
-    final = t083.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
     assert final == {"results": results}, final
 
-    states = t083.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states == {
         "start": ["pending", "running", "succeeded"],
         "choose": ["pending", "running", "succeeded"],
@@ -102,12 +103,12 @@ def test_condition_true_runs_only_the_selected_branch_and_join_once(
         "end": ["pending", "running", "succeeded"],
     }, states
     # The owner-only SSE replay projects the same durable node.status sequence.
-    assert t083.sse_node_states(t033_stack, owner.creator, run["id"]) == states
+    assert observations.sse_node_states(t033_stack, owner.creator, run["id"]) == states
 
     # Exactly one join firing: one succeeded event, and no retries.
     join_succeeded = [
         event
-        for event in t042.node_events(t033_stack.dbname, run["id"])
+        for event in observations.node_events(t033_stack.dbname, run["id"])
         if event["payload"]["node_id"] == "join" and event["payload"]["state"] == "succeeded"
     ]
     assert len(join_succeeded) == 1, join_succeeded
@@ -126,19 +127,19 @@ def test_condition_default_port_runs_the_no_branch(t033_stack, sandbox) -> None:
     completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
-    items = t083.node_results(owner.creator, run["id"], expected=6)
+    items = observations.node_result_items(owner.creator, run["id"], expected=6)
     assert {item["node_id"] for item in items} == {"right", "choose", "join"}, items
-    condition = t083.node_data_document(owner.creator, items, "choose")
+    condition = observations.node_data_document(owner.creator, items, "choose")
     assert condition == {"port": "no", "matched_case": "default"}, condition
-    results = t083.node_data_document(owner.creator, items, "join")["results"]
+    results = observations.node_data_document(owner.creator, items, "join")["results"]
     assert results["left"] == {"status": "skipped"}, results["left"]
     assert results["right"]["status"] == "succeeded", results["right"]
     assert results["right"]["value"] == EXPECTED_SUMMARY, results["right"]
 
-    states = t083.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["left"] == ["skipped"], states
     assert states["right"] == ["pending", "running", "succeeded"], states
-    assert len(t083.node_data_rows(items, "join")) == 1
+    assert len(observations.node_data_rows(items, "join")) == 1
 
 
 def test_parallel_fork_runs_both_branches_and_joins_once(t033_stack, sandbox) -> None:
@@ -156,16 +157,16 @@ def test_parallel_fork_runs_both_branches_and_joins_once(t033_stack, sandbox) ->
     completed, report = execution.execute_once(t033_stack)
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
-    items = t083.node_results(owner.creator, run["id"], expected=9)
+    items = observations.node_result_items(owner.creator, run["id"], expected=9)
     assert {item["node_id"] for item in items} == {"left", "right", "join"}, items
-    assert len(t083.node_data_rows(items, "join")) == 1, "one join firing for two branches"
-    results = t083.node_data_document(owner.creator, items, "join")["results"]
+    assert len(observations.node_data_rows(items, "join")) == 1, "one join firing for two branches"
+    results = observations.node_data_document(owner.creator, items, "join")["results"]
     assert set(results) == {"left", "right"}, results
     for source in ("left", "right"):
         assert results[source]["status"] == "succeeded", results[source]
         assert results[source]["value"] == EXPECTED_SUMMARY, results[source]
 
-    states = t083.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     for source in ("left", "right"):
         assert states[source] == ["pending", "running", "succeeded"], states
     assert states["join"] == ["pending", "running", "succeeded"], states
@@ -187,24 +188,24 @@ def test_nested_conditions_converge_at_each_join(t033_stack, sandbox) -> None:
     assert report["outcome"] == "succeeded", (completed.stderr, report)
 
     # deep data/files/log + three condition/join data artifacts.
-    items = t083.node_results(owner.creator, run["id"], expected=8)
+    items = observations.node_result_items(owner.creator, run["id"], expected=8)
     assert {item["node_id"] for item in items} == {"deep", "choose", "choose2", "join2", "join"}, (
         items
     )
-    assert len(t083.node_data_rows(items, "join2")) == 1, "the inner join runs once"
-    assert len(t083.node_data_rows(items, "join")) == 1, "the outer join runs once"
+    assert len(observations.node_data_rows(items, "join2")) == 1, "the inner join runs once"
+    assert len(observations.node_data_rows(items, "join")) == 1, "the outer join runs once"
 
-    inner = t083.node_data_document(owner.creator, items, "join2")
+    inner = observations.node_data_document(owner.creator, items, "join2")
     inner_results = inner["results"]
     assert inner_results["deep"]["status"] == "succeeded", inner_results
     assert inner_results["shallow"] == {"status": "skipped"}, inner_results
 
-    outer = t083.node_data_document(owner.creator, items, "join")["results"]
+    outer = observations.node_data_document(owner.creator, items, "join")["results"]
     assert outer["join2"]["status"] == "succeeded", outer
     assert outer["join2"]["value"] == inner, "the nested region converges before the parent"
     assert outer["direct"] == {"status": "skipped"}, outer
 
-    states = t083.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["deep"] == ["pending", "running", "succeeded"], states
     assert states["shallow"] == ["skipped"], states
     assert states["direct"] == ["skipped"], states
@@ -237,19 +238,19 @@ def test_join_without_an_activated_required_source_fails_closed(t033_stack, sand
     assert report["outcome"] == "failed", report
     assert report["error_code"] == "invalid_activation", report
 
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "invalid_activation", state
     assert state["output_artifact_id"] is None, state
 
-    states = t083.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["right"] == ["pending", "running", "succeeded"], states
     assert states["left"] == ["skipped"], states
     assert states["join"] == ["failed"], states
     assert states["end"] == ["skipped"], states
 
     # No join envelope and no sealed final output for a failed region.
-    assert t033.output_artifact_id(t033_stack.dbname, run["id"]) is None
-    rows = t042.node_result_rows(t033_stack.dbname, run["id"])
+    assert observations.output_artifact_id(t033_stack.dbname, run["id"]) is None
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     assert [row for row in rows if row["node_id"] == "join"] == [], rows
 
 

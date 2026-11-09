@@ -16,10 +16,12 @@ package knowledge
 //  1. every cited chunk id must belong to the chunk-id set of **this** retrieval,
 //     otherwise the answer is refused with `citation_not_found` (a fabricated or
 //     out-of-scope citation never reaches the caller);
-//  2. every cited chunk is re-read under the caller's current ACL and the
-//     document's current revision/activation before the answer is returned,
-//     otherwise it is refused with `citation_unreadable` (a revoked or superseded
-//     source never comes back inside an answer);
+//  2. every cited chunk is re-read through the same owner-bound verified read
+//     that ordinary retrieval and the citation endpoint use (reader.Open), under
+//     the caller's current ACL and the document's current revision/activation,
+//     before the answer is returned; otherwise it is refused with
+//     `citation_unreadable` (a revoked, superseded or byte-corrupted source never
+//     comes back inside an answer);
 //  3. the per-citation provenance (document id, revision, chunk id, rune span and
 //     line range, stored citation document) is projected from the server's own
 //     retrieval row, never from generator-supplied fields.
@@ -375,7 +377,15 @@ func validateAnswerDraft(draft AnswerDraft, retrieved []ChunkView) AnswerValidat
 //
 // It is retrieval -> untrusted generation -> citation validation -> read-time
 // re-check, all inside the request. The answer is only returned when every
-// citation came from this retrieval and is readable right now.
+// citation came from this retrieval and is readable right now. The re-check goes
+// through GetChunk, which since C3.02 opens the chunk through the owner-bound
+// reader and verifies the sealed bytes against the authoritative sha256/size, so
+// a citation whose body changed after generation is refused too.
+//
+// Only the retrieval is ever cached (ADR 0015 D3). Generation, citation-set
+// validation and the per-citation re-check run on every request, including a
+// request whose retrieval was a cache hit; there is no stored final answer that a
+// later request could return after its sources changed.
 func (s *Service) Answer(
 	ctx context.Context, ownerID, baseID, query string, topK int,
 ) (AnswerResult, error) {
@@ -416,8 +426,9 @@ func (s *Service) Answer(
 		return result, nil
 	}
 	// Read-time re-check: every cited chunk must still be readable under the
-	// caller's current ACL and the document's current revision/activation. The
-	// citation endpoint applies exactly those predicates, so an answer can never
+	// caller's current ACL and the document's current revision/activation, and its
+	// sealed bytes must still reproduce the authoritative sha256/size_bytes. The
+	// citation endpoint applies exactly that verified read, so an answer can never
 	// carry a source the caller could not open at the moment the answer returns.
 	for index := range validation.Citations {
 		citation := &validation.Citations[index]
