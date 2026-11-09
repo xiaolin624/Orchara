@@ -153,10 +153,20 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): the real shared run-state bytes, loaded before the page
+// script exactly like the served page, so the harness exercises the real
+// dependency instead of the page-local fallback.
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const runsSource = fs.readFileSync(webDir + '/assets/runs.js', 'utf8');
 const context = { console };
 vm.createContext(context);
 vm.runInContext(appSource, context, { filename: 'app.js' });
+vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' },
+);
 vm.runInContext(runsSource, context, { filename: 'runs.js' });
 
 function headers(map) {
@@ -239,7 +249,7 @@ assert.strictEqual(
 const lifecycle = context.runLifecycle({ state: 'recovery_pending', phase: 'idle' });
 assert.strictEqual(lifecycle.current, 'recovery_pending');
 assert.ok(lifecycle.stages.indexOf('recovery_pending') >= 0, JSON.stringify(lifecycle));
-const note = context.describeRunState(
+const note = context.runDetailNote(
   { id: 'r1', state: 'recovery_pending', phase: 'idle' },
   { recoveryReason: 'lease_expired' },
 );
@@ -247,8 +257,9 @@ assert.ok(note.indexOf('recovery_pending') >= 0, note);
 assert.ok(note.indexOf('lease_expired') >= 0, note);
 assert.ok(note.indexOf('不会自动换 token') >= 0, note);
 assert.ok(note.indexOf('已进入终态') < 0, note);
-assert.strictEqual(context.shouldPollRun({ state: 'recovery_pending' }), true);
-assert.strictEqual(context.shouldPollRun({ state: 'cancelled' }), false);
+assert.strictEqual(context.OrcharaRunState.isTerminal('recovery_pending'), false);
+assert.strictEqual(context.OrcharaRunState.isTerminal('cancelled'), true);
+assert.strictEqual(typeof context.shouldPollRun, 'undefined');
 
 process.stdout.write('t038 recovery page ok\n');
 """

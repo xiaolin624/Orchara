@@ -20,6 +20,10 @@
     </header>
 
     <main class="page">
+      <!-- C6.01 (#155): the shared run-state dependency failure banner. Hidden on
+           the normal path; assets/runstate-guard.js shows it and pauses the
+           controls marked data-runstate-paused. Navigation/reload stay usable. -->
+      <p id="runstate-status" class="status bad" role="alert" hidden></p>
       <section class="panel" id="conversation-panel">
         <h1>会话</h1>
         <p class="hint" data-mobile-scope="no-full-canvas-editing">
@@ -87,7 +91,7 @@
             <ul id="chat-attachment-lines"></ul>
           </fieldset>
 
-          <button type="submit" id="chat-submit">提交需求</button>
+          <button type="submit" id="chat-submit" data-runstate-paused="true">提交需求</button>
           <span id="chat-submit-status" class="status"></span>
         </form>
 
@@ -98,7 +102,7 @@
           <p>处理版本：<span id="chat-handling"></span></p>
           <p id="chat-run-link"></p>
           <p id="chat-queue-status"></p>
-          <button type="button" id="chat-cancel">取消该请求</button>
+          <button type="button" id="chat-cancel" data-runstate-paused="true">取消该请求</button>
         </section>
 
         <section id="interaction-panel" hidden>
@@ -113,7 +117,7 @@
           <p id="interaction-attachments-hint" class="hint">
             补充输入需要文件时，请先用上方“附件”上传；提交答复时会把已上传的附件一并带上。
           </p>
-          <button type="button" id="interaction-reply">提交答复</button>
+          <button type="button" id="interaction-reply" data-runstate-paused="true">提交答复</button>
           <span id="interaction-status" class="status"></span>
         </section>
 
@@ -132,6 +136,7 @@
     <script src="/assets/app.js"></script>
     <script src="/assets/nav.js"></script>
     <script src="/assets/runstream.js"></script>
+    <script src="/assets/runstate-guard.js"></script>
     <script src="/assets/attachments.js"></script>
     <script src="/assets/chat.js"></script>
     <script>

@@ -1,0 +1,13 @@
+﻿=== WINDOWS HOST ===
+OS: Microsoft Windows 11 家庭版 中文版 build 26200
+PowerShell: 5.1.26100.9711
+Python: 3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]
+pytest: pytest 9.0.3
+
+=== WSL ===
+Linux AI 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+Python 3.12.3
+=== WSL PYTEST PROBE ===
+Python 3.12.3 Traceback (most recent call last):   File "<string>", line 1, in <module> ModuleNotFoundError: No module named 'pytest'
+probe_exit=1
+Ubuntu release: PRETTY_NAME="Ubuntu 24.04.4 LTS"

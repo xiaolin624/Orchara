@@ -1,0 +1,3 @@
+.......C301-COST {"candidates": 7, "candidate_body_bytes": 14671, "returned_items": 7, "returned_verified_bytes": 14671, "elapsed_ms": 27.293, "guard": "elapsed_ms < 30000 (coarse functional ceiling; no millisecond assertion)"}
+.
+8 passed in 113.03s (0:01:53)

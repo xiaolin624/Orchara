@@ -221,17 +221,11 @@ function requestIsTerminal(state) {
   return TERMINAL_REQUEST_STATES.includes(state);
 }
 
-/** A request is polled only while its state can still move (queued -> dispatched). */
-function shouldPollRequest(state, attempts, maxAttempts) {
-  if (!state || TERMINAL_REQUEST_STATES.includes(state)) {
-    return false;
-  }
-  if (state === 'dispatched') {
-    // The handling version is already visible; the request state is stable.
-    return false;
-  }
-  return WAITING_STATES.includes(state) && attempts < Math.max(1, maxAttempts || 1);
-}
+/**
+ * A request is polled only while its state can still move (queued -> dispatched).
+ * C6.05 (review-2): this page keeps no Request-only polling rule; the shared
+ * `OrcharaRunState.shouldPoll` owns the request/run poll decision.
+ */
 
 /**
  * Ordered queue projection. Items are the conversation's requests oldest first
@@ -428,58 +422,60 @@ function describeHandoff(handoff) {
   };
 }
 
+/**
+ * C6.04 (#158): `OrcharaRunStateGuard.ready` is the only dependency fact this
+ * page consults. The guard performs the one complete readiness check (404, parse
+ * error or incomplete export) before this script runs; there is no page-local
+ * dependency helper and no second state interpretation to fall back to.
+ */
+
 /** The handling version sentence; never guesses a version that is not known. */
 function describeHandling(request, run, version) {
   if (!request || !request.run_id) {
     return { text: '尚无处理应用', handled: false, versionNo: 0 };
   }
   const versionNo = version && Number.isInteger(version.version_no) ? version.version_no : 0;
-  // F12/T096: the shared truth module adds finalizing (phase-only), cancelling,
-  // waiting_children/approval, recovery_pending and needs_reconciliation. When it
-  // is not loaded (older isolated page harness), the three-outcome fallback below
-  // keeps the previous behaviour.
-  if (typeof runStreamHandlingText === 'function') {
-    if (!run || typeof run.state !== 'string' || run.state === '') {
-      return {
-        text: (versionNo > 0 ? 'v' + versionNo : '处理版本') +
-          ' 处理状态未知（尚未读到 Run 快照）',
-        handled: true,
-        versionNo: versionNo,
-      };
-    }
+  if (!OrcharaRunStateGuard.ready) {
+    // No old three-outcome fallback and no raw Run snapshot as substitute state:
+    // the page says out loud that Run state cannot be interpreted right now.
+    return { text: '运行状态暂不可用', handled: true, versionNo: versionNo };
+  }
+  if (!run || typeof run.state !== 'string' || run.state === '') {
+    // Page copy for "the Run snapshot has not been read yet"; the shared view is
+    // only asked once there is a Run fact to interpret.
     return {
-      text: runStreamHandlingText(run, versionNo),
+      text: (versionNo > 0 ? 'v' + versionNo : '处理版本') +
+        ' 处理状态未知（尚未读到 Run 快照）',
       handled: true,
       versionNo: versionNo,
     };
   }
-  const prefix = versionNo > 0 ? 'v' + versionNo : '处理版本';
-  const state = (run && run.state) || '';
-  if (state === 'succeeded') {
-    return { text: prefix + ' 已处理', handled: true, versionNo: versionNo };
-  }
-  if (state === 'failed') {
-    return { text: prefix + ' 处理失败', handled: true, versionNo: versionNo };
-  }
-  if (state === 'cancelled') {
-    return { text: prefix + ' 已取消', handled: true, versionNo: versionNo };
-  }
-  return { text: prefix + ' 正在处理', handled: true, versionNo: versionNo };
+  // C6.02: finalizing (phase-only), cancelling, waiting_children/approval,
+  // recovery_pending and needs_reconciliation all come from the one shared view.
+  return {
+    text: OrcharaRunState.handlingText(run, versionNo),
+    handled: true,
+    versionNo: versionNo,
+  };
 }
 
 /**
  * F12/T096: poll the dialogue while the *Run* can still move.
  *
- * `shouldPollRequest` only sees the Request, and a dispatched Request stays
+ * The old Request-only rule only saw the Request, and a dispatched Request stays
  * `dispatched` forever — so before this rule the conversation page stopped
  * observing the Run exactly when finalizing/cancelling/child-waiting began. The
- * request-only projection is kept unchanged for older callers/tests.
+ * shared `OrcharaRunState.shouldPoll` now owns that decision; there is no second
+ * Request-only polling rule on this page.
  */
 function shouldPollHandling(requestState, runState, attempts, maxAttempts) {
-  if (typeof runStreamShouldPoll === 'function') {
-    return runStreamShouldPoll(requestState, runState, attempts, maxAttempts);
+  if (!OrcharaRunStateGuard.ready) {
+    // C6.01: the affected realtime observation is paused, not downgraded to the
+    // Request-only poll (that would be the old second set of state rules).
+    return false;
   }
-  return shouldPollRequest(requestState, attempts, maxAttempts);
+  // C6.02: the shared rule, including the existing poll cap (100 on this page).
+  return OrcharaRunState.shouldPoll(requestState, runState, attempts, maxAttempts);
 }
 
 // ---------------------------------------------------------------------------
@@ -749,6 +745,10 @@ function initChat() {
   let queueRequests = [];
   let attachmentIDs = [];
   let pollTimer = null;
+  // C6.02: one monotonic selection generation. A Request/Run read that resolves
+  // after the user selected another request must not overwrite the newer view
+  // (the same stale-answer guard the runs page uses for its selection).
+  let selectionGeneration = 0;
   let pendingAttempt = null;
   let currentInteraction = null;
   let currentInteractionAttempt = null;
@@ -909,7 +909,9 @@ function initChat() {
       item.appendChild(show);
       // Post-review fix (#80): a queued/awaiting request is visible and cancellable
       // from the queue itself, not only while it happens to be the selected one.
-      if (row.cancelable) {
+      // C6.01: the affected cancel action is paused when Run state is unavailable
+      // (a cancel is accepted as intent and needs the same state interpretation).
+      if (row.cancelable && OrcharaRunStateGuard.ready) {
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.textContent = '取消';
@@ -932,15 +934,24 @@ function initChat() {
     currentInteraction = null;
     currentInteractionAttempt = null;
     renderInteraction(null);
+    const generation = ++selectionGeneration;
     try {
       const result = await fetchRequest(requestID);
+      if (generation !== selectionGeneration) {
+        // The user selected another request while this read was in flight: the
+        // late answer belongs to the old selection and is dropped whole.
+        return;
+      }
       renderRequest(result.request, result.facts, result.run);
-      if (resume) {
+      if (resume && OrcharaRunStateGuard.ready) {
         poll(0);
       }
     } catch (error) {
       if (error.status === 401) {
         window.location.assign('/login');
+        return;
+      }
+      if (generation !== selectionGeneration) {
         return;
       }
       setStatus(submitStatus, '查询请求失败 [' + error.code + '] ' + error.message, 'bad');
@@ -950,6 +961,14 @@ function initChat() {
   /** The one cancel path for the selected request and for a queue row. */
   async function cancelRequest(requestID) {
     if (!requestID) {
+      return;
+    }
+    if (!OrcharaRunStateGuard.ready) {
+      setStatus(
+        submitStatus,
+        '运行状态暂不可用：已暂停取消请求与运行状态观察；请刷新页面重试。',
+        'bad',
+      );
       return;
     }
     try {
@@ -1077,7 +1096,13 @@ function initChat() {
 
   async function fetchRequest(requestID) {
     const result = await apiFull(requestPath(requestID));
-    const run = result.payload.run_id ? await fetchRun(result.payload.run_id) : null;
+    // C6.01: in dependency-failure mode the page must not read a Run snapshot
+    // and present its raw state; only the Request (its own state machine) is
+    // rendered, and the handling line says Run state is unavailable.
+    const run =
+      result.payload.run_id && OrcharaRunStateGuard.ready
+        ? await fetchRun(result.payload.run_id)
+        : null;
     return { request: result.payload, facts: requestFacts(result.headers), run: run };
   }
 
@@ -1092,16 +1117,32 @@ function initChat() {
     if (!currentRequestID) {
       return;
     }
+    if (!OrcharaRunStateGuard.ready) {
+      // C6.01: pause the realtime request/Run observation instead of polling
+      // with incomplete state rules.
+      stopPolling();
+      return;
+    }
+    const requestID = currentRequestID;
+    const generation = selectionGeneration;
     try {
-      const result = await fetchRequest(currentRequestID);
+      const result = await fetchRequest(requestID);
+      if (generation !== selectionGeneration) {
+        // A newer selection owns the panel and its own poll; this late read is
+        // not rendered and must not stop the newer poll.
+        return;
+      }
       renderRequest(result.request, result.facts, result.run);
       await refreshQueue();
+      if (generation !== selectionGeneration) {
+        return;
+      }
       const runState = result.run && typeof result.run.state === 'string' ? result.run.state : '';
       if (!shouldPollHandling(result.request.state, runState, attempts, 100)) {
         stopPolling();
         if (requestIsTerminal(result.request.state)) {
           setStatus(submitStatus, '请求已' + describeRequestState(result.request.state), 'ok');
-        } else if (typeof runStreamIsTerminal === 'function' && runStreamIsTerminal(runState)) {
+        } else if (OrcharaRunState.isTerminal(runState)) {
           // F12/T096: the dispatched Request is not "done"; the Run outcome is.
           setStatus(submitStatus, 'Run 已进入终态 ' + runState + '。', 'ok');
         }
@@ -1109,6 +1150,9 @@ function initChat() {
       }
       pollTimer = setTimeout(() => poll(attempts + 1), 800);
     } catch (error) {
+      if (generation !== selectionGeneration) {
+        return;
+      }
       stopPolling();
       setStatus(submitStatus, '查询请求失败 [' + error.code + '] ' + error.message, 'bad');
     }
@@ -1324,6 +1368,18 @@ function initChat() {
   document.getElementById('chat-message-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     stopPolling();
+    const generation = selectionGeneration;
+    if (!OrcharaRunStateGuard.ready) {
+      // C6.01: a new request dispatches a Run whose state this page cannot
+      // interpret, so the related operation is paused with an explicit message.
+      // Independent functions (conversation, attachments, handoff preview) stay.
+      setStatus(
+        submitStatus,
+        '运行状态暂不可用：已暂停提交需求与运行状态观察；请刷新页面重试。',
+        'bad',
+      );
+      return;
+    }
     let body;
     try {
       const handoffConfirmed = document.getElementById('chat-handoff-confirmed').checked;
@@ -1360,12 +1416,19 @@ function initChat() {
         headers: submitRequestHeaders(pendingAttempt),
       });
       const submittedRun = result.payload.run_id ? await fetchRun(result.payload.run_id) : null;
-      renderRequest(result.payload, requestFacts(result.headers), submittedRun);
+      // C6.02: a selection switch while the submit was in flight keeps the newer
+      // panel; the submitted request still exists in the refreshed queue.
+      const stale = generation !== selectionGeneration;
+      if (!stale) {
+        renderRequest(result.payload, requestFacts(result.headers), submittedRun);
+      }
       pendingAttempt = null;
       setStatus(submitStatus, '请求已进入会话队列。', 'ok');
       await loadMessages();
       await refreshQueue();
-      poll(0);
+      if (!stale && generation === selectionGeneration) {
+        poll(0);
+      }
     } catch (error) {
       if (error.status === 401) {
         window.location.assign('/login');
@@ -1389,6 +1452,14 @@ function initChat() {
   document.getElementById('interaction-reply').addEventListener('click', async () => {
     const interactionStatus = document.getElementById('interaction-status');
     if (!currentRequestID || !currentInteraction) {
+      return;
+    }
+    if (!OrcharaRunStateGuard.ready) {
+      setStatus(
+        interactionStatus,
+        '运行状态暂不可用：已暂停提交答复与运行状态观察；请刷新页面重试。',
+        'bad',
+      );
       return;
     }
     const mode = interactionMode(currentInteraction);
@@ -1415,24 +1486,36 @@ function initChat() {
         JSON.stringify(currentInteractionAttempt.body) !== JSON.stringify(body)) {
       currentInteractionAttempt = newInteractionAttempt(body);
     }
+    const requestID = currentRequestID;
+    const generation = selectionGeneration;
     try {
       const csrfToken = await csrf();
       setStatus(interactionStatus, '正在提交答复…', 'pending');
-      const result = await apiFull(requestReplyPath(currentRequestID), {
+      const result = await apiFull(requestReplyPath(requestID), {
         method: 'POST',
         body: currentInteractionAttempt.body,
         csrf: csrfToken,
         headers: interactionReplyHeaders(currentInteractionAttempt),
       });
       currentInteractionAttempt = null;
+      if (generation !== selectionGeneration || requestID !== currentRequestID) {
+        // A different request is selected now; the late reply must not render
+        // into (or poll for) the newer selection.
+        return;
+      }
       renderRequest(result.payload, requestFacts(result.headers), null);
       setStatus(interactionStatus, '答复已提交，正在继续选择应用。', 'ok');
       await loadMessages();
       await refreshQueue();
-      poll(0);
+      if (generation === selectionGeneration) {
+        poll(0);
+      }
     } catch (error) {
       if (error.status === 401) {
         window.location.assign('/login');
+        return;
+      }
+      if (generation !== selectionGeneration || requestID !== currentRequestID) {
         return;
       }
       // Keep currentInteractionAttempt: a safe retry reuses the same

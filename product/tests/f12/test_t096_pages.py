@@ -296,19 +296,22 @@ def test_chat_page_keeps_observing_the_run_after_dispatched(
     assert poll["queued_first"] is True, poll
     assert poll["queued_at_cap"] is False, poll
     assert poll["request_cancelled"] is False, poll
-    # The legacy request-only projection is unchanged for the older page tests.
-    assert report["legacy_should_poll_dispatched"] is False
+    # C6.05 (review-2): the page-local Request-only poll rule is deleted; the
+    # shared shouldPoll (already asserted above through shouldPollHandling) owns
+    # the dispatched observation.
+    assert report["has_should_poll_request"] is False
 
 
 def test_debug_page_long_runs_are_not_declared_stopped() -> None:
     """Source guard for the debug page's 60s budget (behaviour driver is F02A's).
 
     The debug page's poll loop is a closure inside ``initDebugPage``; F02A's
-    harness exercises its pure ``shouldPollRun``. T096 changes the loop's else
-    branch so a non-terminal Run keeps being observed at a 10s cadence instead of
-    freezing the page. This guard pins that the budget stayed a cadence: the slow
-    interval and its honest sentence exist, and the old "已停止轮询" dead end is
-    gone.
+    harness exercises the shared ``OrcharaRunState.shouldPoll`` rule the loop now
+    consumes (C6.05 review-2 removed the page-local poll helper). T096 changes the
+    loop's else branch so a non-terminal Run keeps being observed at a 10s cadence
+    instead of freezing the page. This guard pins that the budget stayed a cadence:
+    the slow interval and its honest sentence exist, and the old "已停止轮询" dead
+    end is gone.
     """
     source = (WEB / "assets" / "debug.js").read_text(encoding="utf-8")
     assert "DEBUG_SLOW_POLL_INTERVAL_MS = 10000" in source

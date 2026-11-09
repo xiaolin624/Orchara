@@ -119,12 +119,18 @@ def test_debug_js_is_the_served_asset(t027_stack) -> None:
         "function submitDebugRequest(",
         "function fetchRun(",
         "function fetchDraftRevision(",
-        "function shouldPollRun(",
+        "function describeRunStage(",
         "function runSummary(",
         "X-Manifest-SHA256",
         "Idempotency-Key",
     ):
         assert marker in body, f"debug.js is missing {marker!r}"
+    # C6.05 (review-2): the page-local Run terminal dictionary and poll helper are
+    # gone; the page uses the shared OrcharaRunState projections.
+    assert "function shouldPollRun(" not in body
+    assert "function runIsTerminal(" not in body
+    assert "OrcharaRunState.shouldPoll(" in body
+    assert "OrcharaRunState.isTerminal(" in body
 
 
 def test_the_editor_and_the_apps_page_link_into_the_debug_entry(t027_stack) -> None:
@@ -184,6 +190,9 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): the real shared run-state bytes, loaded before the debug page
+// script exactly like the served page (the page always loads runstream.js).
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const debugSource = fs.readFileSync(webDir + '/assets/debug.js', 'utf8');
 const { webcrypto } = require('crypto');
 
@@ -211,6 +220,12 @@ function load(route) {
   };
   vm.createContext(context);
   vm.runInContext(appSource, context, { filename: 'app.js' });
+  vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+  vm.runInContext(
+    fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+    context,
+    { filename: 'runstate-guard.js' },
+  );
   vm.runInContext(debugSource, context, { filename: 'debug.js' });
   return { context, calls };
 }
@@ -275,33 +290,42 @@ function load(route) {
     assert.throws(() => context.debugPayloadFromFields({ draftRevision: '1', inputText: '{}', artifactIDsText: six }), (error) => error.code === 'artifact_ids');
   }
 
-  // Run projection, terminal detection and the polling stop rule.
-  {
-    const { context } = load(async () => jsonResponse(200, {}));
-    const summary = context.runSummary({
-      id: 'r1',
-      state: 'queued',
-      kind: 'debug',
-      revision: 1,
-      execution_snapshot_id: 's1',
-    });
-    assert.strictEqual(JSON.stringify(summary), JSON.stringify({
-      id: 'r1',
-      state: 'queued',
-      kind: 'debug',
-      revision: '1',
-      executionSnapshotID: 's1',
-    }));
-    assert.strictEqual(context.runIsTerminal('queued'), false);
-    assert.strictEqual(context.runIsTerminal('running'), false);
-    assert.strictEqual(context.runIsTerminal('succeeded'), true);
-    assert.strictEqual(context.runIsTerminal('failed'), true);
-    assert.strictEqual(context.runIsTerminal('cancelled'), true);
-    assert.strictEqual(context.shouldPollRun({ state: 'queued' }, 0, 3), true);
-    assert.strictEqual(context.shouldPollRun({ state: 'queued' }, 3, 3), false);
-    assert.strictEqual(context.shouldPollRun({ state: 'succeeded' }, 0, 3), false);
-    assert.strictEqual(context.shouldPollRun(null, 0, 3), false);
-  }
+    // Run projection, shared terminal rule and shared poll rule (C6.05 review-2:
+    // debug.js no longer defines a page-local terminal dictionary or poll helper).
+    {
+      const { context } = load(async () => jsonResponse(200, {}));
+      const summary = context.runSummary({
+        id: 'r1',
+        state: 'queued',
+        kind: 'debug',
+        revision: 1,
+        execution_snapshot_id: 's1',
+      });
+      assert.strictEqual(JSON.stringify(summary), JSON.stringify({
+        id: 'r1',
+        state: 'queued',
+        kind: 'debug',
+        revision: '1',
+        executionSnapshotID: 's1',
+      }));
+      assert.strictEqual(typeof context.runIsTerminal, 'undefined');
+      assert.strictEqual(typeof context.shouldPollRun, 'undefined');
+      assert.strictEqual(context.OrcharaRunState.isTerminal('queued'), false);
+      assert.strictEqual(context.OrcharaRunState.isTerminal('running'), false);
+      assert.strictEqual(context.OrcharaRunState.isTerminal('succeeded'), true);
+      assert.strictEqual(context.OrcharaRunState.isTerminal('failed'), true);
+      assert.strictEqual(context.OrcharaRunState.isTerminal('cancelled'), true);
+      assert.strictEqual(
+        context.OrcharaRunState.shouldPoll('dispatched', 'queued', 0, 3), true);
+      assert.strictEqual(
+        context.OrcharaRunState.shouldPoll('dispatched', 'queued', 3, 3), false);
+      assert.strictEqual(
+        context.OrcharaRunState.shouldPoll('dispatched', 'succeeded', 0, 3), false);
+      // A dispatched observation without a Run read yet keeps observing instead
+      // of freezing on the old Request-only rule.
+      assert.strictEqual(
+        context.OrcharaRunState.shouldPoll('dispatched', '', 0, 3), true);
+    }
 
   // Submission: POST + CSRF + Idempotency-Key + the response-header hash.
   {

@@ -1,0 +1,4 @@
+﻿# & E:\Orchara-notes\test.ps1 tests\f06\test_t043_agent_node.py -q -p no:cacheprovider (cwd=product)
+......                                                                   [100%]
+6 passed in 119.26s (0:01:59)
+# exit=0

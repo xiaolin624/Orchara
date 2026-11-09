@@ -44,11 +44,11 @@ package presetexec
 // still fails the run.
 //
 // Node execution itself is the linear executor's node code: executeStartNode,
-// executePythonNode, executeEndNode and — through a synthetic linear view — the
-// agent and call_app segments. F04B/T086's model node owns its own one-call
-// generation in modelnode.go. The scheduler owns activation, concurrency, skip
-// propagation and the condition/join outputs, and it owns the run-result commit
-// for every terminal node decision (see graphNodeAttempt).
+// executePythonNode, executeEndNode and — through the explicit nodeExecution
+// contract — the agent and call_app segments. F04B/T086's model node owns its own
+// one-call generation in modelnode.go. The scheduler owns activation, concurrency,
+// skip propagation and the condition/join outputs, and it owns the run-result
+// commit for every terminal node decision (see graphNodeAttempt).
 //
 // Concurrency-safety: the scheduler goroutine is the single owner of graphRun
 // (state/outputs/taken are never mutated concurrently). Node goroutines receive
@@ -146,7 +146,6 @@ const (
 type graphNodeAttempt struct {
 	sandbox sandbox.Outcome
 	report  *SandboxReport
-	started bool
 
 	kind            string
 	code            string
@@ -230,7 +229,6 @@ func captureGraphWaiting(
 // graphNodeView is the immutable snapshot one node attempt runs against.
 type graphNodeView struct {
 	available map[string]any
-	start     map[string]any
 	branches  *graphJoinView
 	// last/report are the run's sandbox evidence so far (deterministically the
 	// highest plan index that started a sandbox), used by the end node's exit
@@ -509,9 +507,6 @@ func (s *graphScheduler) launch(node *graphNode) {
 		last:      s.last,
 		report:    s.report,
 	}
-	if start, ok := s.run.outputs[s.plan.startID]; ok {
-		view.start = start
-	}
 	s.active[id] = true
 	s.inFlight++
 	plan, run, work := s.plan, s.run, s.work
@@ -552,7 +547,7 @@ func (s *graphScheduler) recordEvidence(node *graphNode, attempt *graphNodeAttem
 	if attempt == nil {
 		return
 	}
-	if attempt.started {
+	if attempt.sandbox.SandboxStarted {
 		s.started = true
 	}
 	if !attempt.sandbox.SandboxStarted && attempt.report == nil {
@@ -945,7 +940,6 @@ func (r *runner) executeGraphNodeSegment(
 		})
 		attempt.sandbox = execution.sandbox
 		attempt.report = execution.report
-		attempt.started = execution.sandbox.SandboxStarted
 		if execution.terminal != nil {
 			return *execution.terminal, nil, true
 		}
@@ -1043,9 +1037,10 @@ func (r *runner) executeGraphJoin(
 	return r.publishNodeData(ctx, node, envelope, "results", "join envelope", "join envelope")
 }
 
-// executeGraphAgent runs one agent node through the shared controlled loop by
-// presenting it as the agent of a one-node linear view. The view shares the
-// graph's upstream outputs, its sealed-node scope and the deterministic evidence.
+// executeGraphAgent runs one agent node through the controlled loop by handing it
+// the explicit node execution built from this scheduler's facts. The node returns a
+// typed local outcome; the scheduler records it on the attempt and remains the only
+// writer of the run result.
 func (r *runner) executeGraphAgent(
 	ctx context.Context, plan *graphPlan, inputs []InputArtifact, node *graphNode,
 	view *graphNodeView, attempt *graphNodeAttempt,
@@ -1054,21 +1049,34 @@ func (r *runner) executeGraphAgent(
 	if err != nil {
 		return nil, r.failGraphNode(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
-	linearView := r.graphLinearView(plan, inputs, node.node, view)
-	linearView.plan.agent = node.node
-	linearView.plan.agentConfig = config
-	output, outcome, done := r.runAgentNode(ctx, linearView)
-	attempt.sandbox = linearView.outcome
-	attempt.report = linearView.report
-	attempt.started = linearView.outcome.SandboxStarted
-	if done {
-		return nil, outcome, true
+	exec := r.newGraphNodeExecution(plan, inputs, node.node, view)
+	exec.agentConfig = config
+	outcome := r.runAgentNode(ctx, exec)
+	terminal := applyGraphNodeOutcome(attempt, outcome)
+	if terminal == nil {
+		return outcome.output, executionOutcome{}, false
 	}
-	return output, executionOutcome{}, false
+	return nil, *terminal, true
 }
 
-// executeGraphCallApp runs one call_app node through the shared delegation code by
-// presenting it as the call_app of a one-node linear view.
+// newGraphNodeExecution snapshots the sealed facts one graph node may read: the
+// upstream namespace as it was when the node launched, the sealed node-id scope,
+// the start identity and the sandbox evidence observed so far. The namespace is
+// copied, so a later sibling output cannot change what this node resolves.
+func (r *runner) newGraphNodeExecution(
+	plan *graphPlan, inputs []InputArtifact, node *manifestNode, view *graphNodeView,
+) *nodeExecution {
+	return &nodeExecution{
+		node: node, definition: plan.definition, inputs: inputs,
+		namespace: copyNodeNamespace(view.available), startNodeID: plan.startID,
+		scopeNodeIDs: append([]string(nil), plan.order...),
+		sandbox:      view.last, report: view.report,
+	}
+}
+
+// executeGraphCallApp runs one call_app node through the explicit node execution
+// contract. The node returns a typed local outcome; the scheduler records it on
+// the attempt and remains the only writer of the run result.
 func (r *runner) executeGraphCallApp(
 	ctx context.Context, plan *graphPlan, inputs []InputArtifact, node *graphNode,
 	view *graphNodeView, attempt *graphNodeAttempt,
@@ -1077,42 +1085,14 @@ func (r *runner) executeGraphCallApp(
 	if err != nil {
 		return nil, r.failGraphNode(ctx, node, codeOfPlanError(err), err.Error()), true
 	}
-	linearView := r.graphLinearView(plan, inputs, node.node, view)
-	linearView.plan.callApp = node.node
-	linearView.plan.callAppConfig = config
-	output, outcome, done := r.runCallAppNode(ctx, linearView)
-	attempt.sandbox = linearView.outcome
-	attempt.report = linearView.report
-	attempt.started = linearView.outcome.SandboxStarted
-	if done {
-		return nil, outcome, true
+	exec := r.newGraphNodeExecution(plan, inputs, node.node, view)
+	exec.callAppConfig = config
+	outcome := r.runCallAppNode(ctx, exec)
+	terminal := applyGraphNodeOutcome(attempt, outcome)
+	if terminal == nil {
+		return outcome.output, executionOutcome{}, false
 	}
-	return output, executionOutcome{}, false
-}
-
-// graphLinearView is the one-node linear view the agent/call_app segment code
-// reads. It never rewrites the graph plan: it only carries the start node, the
-// upstream namespace, the sealed scope and the scheduler's skip hook.
-func (r *runner) graphLinearView(
-	plan *graphPlan, inputs []InputArtifact, node *manifestNode, view *graphNodeView,
-) *linearRun {
-	startNode := plan.nodes[plan.startID].node
-	return &linearRun{
-		plan: &linearPlan{
-			definition: plan.definition,
-			start:      startNode,
-			order:      []*manifestNode{startNode, node},
-		},
-		inputs:    inputs,
-		start:     view.start,
-		available: view.available,
-		scopeIDs:  append([]string(nil), plan.order...),
-		outcome:   view.last,
-		report:    view.report,
-		// The scheduler owns skip propagation: after a failure it emits the
-		// skipped facts for the nodes that never started.
-		skip: func() {},
-	}
+	return nil, *terminal, true
 }
 
 // failGraph marks one node failed and fails the run. A node running under the

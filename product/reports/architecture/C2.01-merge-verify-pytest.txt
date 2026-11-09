@@ -1,0 +1,7 @@
+# C2.01 merge verification - focused real-stack suite (integration tip 107afaf)
+# workdir E:\Orchara-wt\integration\product
+# command: & E:\Orchara-notes\test.ps1 tests\f06\test_c201_model_attempts.py -q -p no:cacheprovider
+
+....                                                                     [100%]
+4 passed in 102.10s (0:01:42)
+PYTEST_EXIT=0

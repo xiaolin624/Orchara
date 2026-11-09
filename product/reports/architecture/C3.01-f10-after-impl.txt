@@ -1,0 +1,23 @@
+........................................................................ [ 75%]
+........................                                                 [100%]
+============================== warnings summary ===============================
+tests/f10/test_t060_comparison.py::test_the_registered_parser_is_measured_against_a_real_second_candidate
+  D:\Python\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-837 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "D:\Python\Lib\threading.py", line 1073, in _bootstrap_inner
+      self.run()
+    File "D:\Python\Lib\threading.py", line 1010, in run
+      self._target(*self._args, **self._kwargs)
+    File "D:\Python\Lib\subprocess.py", line 1597, in _readerthread
+      buffer.append(fh.read())
+                    ^^^^^^^^^
+    File "<frozen codecs>", line 322, in decode
+  UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa1 in position 1218: invalid start byte
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+96 passed, 1 warning in 1163.40s (0:19:23)

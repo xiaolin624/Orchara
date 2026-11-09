@@ -1,0 +1,6 @@
+go build exit=0
+go vet exit=0
+go test presetexec exit=0
+go test all exit=0
+gofmt exit=0
+sync_spec exit=0

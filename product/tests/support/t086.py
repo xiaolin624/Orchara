@@ -15,9 +15,7 @@ deterministic failures are the graph path's documented "refused" shape.
 
 from __future__ import annotations
 
-import json
-
-from support import execution_support as execution
+from support import run_observations as observations
 from support import stack as st
 from support import t025, t027, t033, t042
 
@@ -108,9 +106,6 @@ def queue_model_run(stack, definition: dict, *, input_value: dict, name: str = "
     return owner, application_id, run
 
 
-run_once = execution.execute_once
-
-
 # ---------------------------------------------------------------------------
 # database reads
 # ---------------------------------------------------------------------------
@@ -144,7 +139,8 @@ def capability_params_document(stack, run_id: str) -> dict:
 
     It is read from the real object bytes the capability proxy sealed, so a test
     can prove exactly what left the executor (the prompt is user content, but it
-    is sealed capability params, not a public event or manifest field).
+    is sealed capability params, not a public event or manifest field). The SQL
+    stays ticket-specific; the sealed-object read is the shared observation.
     """
     rows = st.sql_rows(
         stack.dbname,
@@ -156,7 +152,7 @@ def capability_params_document(stack, run_id: str) -> dict:
         "ORDER BY a.object_key",
     )
     assert len(rows) == 1, rows
-    return json.loads((stack.object_dir / rows[0]["object_key"]).read_bytes())
+    return observations.sealed_object_document(stack, rows[0])
 
 
 def receipt_document(stack, run_id: str) -> dict:
@@ -169,7 +165,7 @@ def receipt_document(stack, run_id: str) -> dict:
         f"WHERE o.run_id = {st.quote_literal(run_id)}::uuid",
     )
     assert len(rows) == 1, rows
-    return json.loads((stack.object_dir / rows[0]["object_key"]).read_bytes())
+    return observations.sealed_object_document(stack, rows[0])
 
 
 def revoke_profile(dbname: str, profile_id: str) -> None:
@@ -179,10 +175,6 @@ def revoke_profile(dbname: str, profile_id: str) -> None:
         "UPDATE platform.model_profile_versions SET revoked_at = now() "
         f"WHERE id = {st.quote_literal(profile_id)}::uuid",
     )
-
-
-def node_data_rows(dbname: str, run_id: str) -> list[dict]:
-    return t042.node_result_rows(dbname, run_id)
 
 
 def count_runs_for_application(dbname: str, application_id: str) -> int:

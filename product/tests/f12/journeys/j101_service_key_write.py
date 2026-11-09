@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import f00b, f02a, f08, t027, t029, t033, t035, t041, t042, t048, t050, t068
 from support import stack as st
@@ -817,7 +818,7 @@ def run(stack, record) -> dict:
             owner_view.status == 200 and owner_view.json["state"] == "succeeded",
             owner_view.text,
         )
-        output = t033.artifact_content(writer, output_id)
+        output = observations.artifact_content(writer, output_id)
         record.check(
             "the Run output download equals the sealed receipt bytes",
             output.status == 200 and output.raw == receipt_bytes,
@@ -951,13 +952,13 @@ def run_graph_dispatch_gap(stack, record, state: dict) -> dict:
                 "owner_id": run_row["owner_id"],
             },
         )
-        node_results = t042.wait_node_results(writer, run_id, expected=4)
+        node_results = observations.wait_node_results(writer, run_id, expected=4)
         record.check(
             "the executed graph produced its real node outputs (python + end)",
             len(node_results["items"]) >= 4,
             [item["label"] or item["node_id"] for item in node_results["items"]],
         )
-        output_id = t033.output_artifact_id(stack.dbname, run_id)
+        output_id = observations.output_artifact_id(stack.dbname, run_id)
         record.check(
             "the graph Run has a real linked final output artifact",
             output_id is not None,

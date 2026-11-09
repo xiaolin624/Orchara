@@ -1,0 +1,18 @@
+C3.02 integration-tip Go gate (merge commit 6703f6a; Go 1.27.3 windows/amd64)
+Worktree: E:\Orchara-wt\integration\product
+GOCACHE=E:\orchara-toolchains\gocache GOMODCACHE=E:\orchara-toolchains\gomodcache
+
+$ go test ./internal/knowledge ./internal/api -count=1
+ok  	orchara/platform/internal/knowledge	4.283s
+ok  	orchara/platform/internal/api	3.194s
+
+exit=0
+$ go build ./...
+
+exit=0
+$ go vet ./...
+
+exit=0
+$ gofmt -l internal cmd tools
+
+exit=0  (empty output above = all formatted)

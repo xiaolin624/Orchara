@@ -1,0 +1,77 @@
+== C4 focused: c4_02+c4_03 ==
+...F                                                                     [100%]
+================================== FAILURES ===================================
+___ test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit ___
+
+t033_stack = Stack(server=<support.stack.ApiServer object at 0x000002558C1554F0>, dsn='postgresql://<REDACTED>')}, signing_key='<REDACTED-SIGNING-KEY>')
+sandbox = None
+
+    def test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit(
+        t033_stack, sandbox
+    ) -> None:
+        owner, application_id, run = t085.queue_graph_run(
+            t033_stack,
+            t085.parallel_definition(),
+            input_value={},
+            name="c4.03 cancel drain",
+        )
+        validation = t025.validate(owner.creator, application_id)
+        assert validation.status == 200 and validation.json == {"valid": True, "errors": []}, (
+            validation.text
+        )
+        # Test-owned SQL (T033/T042 precedent): the cancel intent is written on the
+        # attempt's first heartbeat, so the supervisor's next heartbeat while runsc is
+        # booting both branches observes it and kills the units.
+        t042.request_cancel_after_first_heartbeat(t033_stack.dbname)
+        env = execution.supervisor_exec_env(
+            t033_stack, heartbeat="50ms", timeout="60s", result_wait="30s"
+        )
+        with execution.FinalizeWorker(t033_stack):
+            completed = execution.run_supervisor_exec(t033_stack, env)
+        report = execution.exec_report(completed)
+        assert completed.returncode == 0, (completed.stderr, report)
+        assert report["outcome"] == "cancelled", (report, completed.stderr)
+        assert report["error_code"] == "cancel_requested", report
+        assert report.get("run_state") == "cancelled", report
+    
+        state = observations.wait_run_state(
+            t033_stack.dbname,
+            run["id"],
+            {"cancelled", "recovery_pending", "failed", "needs_reconciliation"},
+            timeout=30.0,
+        )
+        assert state["state"] == "cancelled", state
+        assert state["cancel_requested_at"] is not None, state
+        assert state["error_code"] is None, state
+        assert state["output_artifact_id"] is None, "a cancelled run must not publish a result"
+    
+        states = observations.node_states(t033_stack.dbname, run["id"])
+        # Both branches were launched. A branch that started its sandbox is either
+        # killed by the cancel (failed) or had already finished; nothing is silently
+        # dropped and the join/end never run for the cancelled region.
+        for node_id in ("left", "right"):
+            assert states[node_id][:2] == ["pending", "running"], (node_id, states)
+            assert states[node_id][-1] in {"failed", "succeeded"}, (node_id, states)
+        assert any(states[node_id][-1] == "failed" for node_id in ("left", "right")), states
+        assert states["join"] == ["skipped"], states
+        assert states["end"] == ["skipped"], states
+        rows = observations.node_result_rows(t033_stack.dbname, run["id"])
+        assert [row for row in rows if row["node_id"] == "join"] == [], rows
+    
+        # Exactly one attempt, one exit: the drained sibling was not committed as a
+        # second result. A cancellation proposes no result at all.
+        attempts = t029.attempts_for_run(t033_stack.dbname, run["id"])
+        assert len(attempts) == 1, attempts
+        attempt = t029.attempt_row(t033_stack.dbname, attempts[0]["token"])
+        assert attempt["exited_at"] is not None, attempt
+        assert attempt["reported_result"] is None, attempt
+        evidence = json.loads(attempt["exit_evidence"])
+>       assert evidence["started"] is True, evidence
+E       AssertionError: {'db_writes_drained': True, 'execution_unit_id': 'exec-AI-79324-3ab65635', 'heartbeats': 2, 'identity_source': 'sealed_manifest', ...}
+E       assert False is True
+
+tests\f04b\test_c4_03_scheduler_regressions.py:249: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f04b/test_c4_03_scheduler_regressions.py::test_graph_cancellation_drains_the_started_sibling_and_commits_one_exit
+1 failed, 3 passed in 72.67s (0:01:12)
+exit=1

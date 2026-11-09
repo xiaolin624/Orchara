@@ -1,0 +1,220 @@
+{
+  "ticket": "C6.01 (#155)",
+  "browser": "playwright channel=chrome headless, real cmd/api over loopback",
+  "cases": [
+    {
+      "page": "runs",
+      "fault": "404",
+      "expected_reason": "missing",
+      "url": "/runs?run=da06e565-d0a7-4126-9b69-9f44a22c6aa7",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "detail-cancel-button": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "runs",
+      "fault": "syntax_error",
+      "expected_reason": "missing",
+      "url": "/runs?run=da06e565-d0a7-4126-9b69-9f44a22c6aa7",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "detail-cancel-button": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "runs",
+      "fault": "incomplete_export",
+      "expected_reason": "incomplete",
+      "url": "/runs?run=da06e565-d0a7-4126-9b69-9f44a22c6aa7",
+      "banner_text": "运行状态暂不可用：共享状态脚本未完整导出（缺少 failure、correct、snapshotCorrection、snapshotPath、safeSnapshotPath、isTerminal、stateLabel、phaseLabel、cancelAcceptedText、handlingText、shouldPoll、childSummary、artifactReadout、states、phases）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "detail-cancel-button": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "chat",
+      "fault": "404",
+      "expected_reason": "missing",
+      "url": "/chat",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "chat-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "chat-cancel": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "interaction-reply": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "chat",
+      "fault": "syntax_error",
+      "expected_reason": "missing",
+      "url": "/chat",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "chat-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "chat-cancel": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "interaction-reply": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "chat",
+      "fault": "incomplete_export",
+      "expected_reason": "incomplete",
+      "url": "/chat",
+      "banner_text": "运行状态暂不可用：共享状态脚本未完整导出（缺少 failure、correct、snapshotCorrection、snapshotPath、safeSnapshotPath、isTerminal、stateLabel、phaseLabel、cancelAcceptedText、handlingText、shouldPoll、childSummary、artifactReadout、states、phases）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "chat-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "chat-cancel": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "interaction-reply": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "debug",
+      "fault": "404",
+      "expected_reason": "missing",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "debug-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "runview-cancel": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "debug",
+      "fault": "syntax_error",
+      "expected_reason": "missing",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "debug-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "runview-cancel": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "debug",
+      "fault": "incomplete_export",
+      "expected_reason": "incomplete",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "banner_text": "运行状态暂不可用：共享状态脚本未完整导出（缺少 failure、correct、snapshotCorrection、snapshotPath、safeSnapshotPath、isTerminal、stateLabel、phaseLabel、cancelAcceptedText、handlingText、shouldPoll、childSummary、artifactReadout、states、phases）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "paused_controls": {
+        "debug-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "runview-cancel": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [],
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps"
+    },
+    {
+      "page": "normal",
+      "url": "/runs?run=<id>",
+      "detail_state": "queued",
+      "detail_note": "尚未被领取（queued）：取消会立即生效（Run 直接 cancelled、job void），不会创建恢复任务。 可操作：取消 Run；刷新快照",
+      "page_errors": []
+    }
+  ]
+}

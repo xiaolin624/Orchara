@@ -1,0 +1,82 @@
+﻿=== C5.03 post-migration migrated callers 2026-11-09T14:16:49.5320652+08:00 ===
+.F.............................................                          [100%]
+================================== FAILURES ===================================
+_______ test_condition_true_runs_only_the_selected_branch_and_join_once _______
+
+t033_stack = Stack(server=<support.stack.ApiServer object at 0x000001CF53A8CD10>, dsn='postgresql://orchara_owner:<REDACTED>@...chara-sandboxprobe.exe')}, signing_key='<REDACTED>')
+sandbox = None
+
+    def test_condition_true_runs_only_the_selected_branch_and_join_once(
+        t033_stack, sandbox
+    ) -> None:
+        owner, application_id, run = t083.queue_graph_run(
+            t033_stack,
+            t083.branch_definition(),
+            input_value={"requires_approval": True},
+            name="t083 condition true",
+        )
+        # The same fixture the executor is about to run passes publish validation.
+        validation = t025.validate(owner.creator, application_id)
+        assert validation.status == 200 and validation.json == {"valid": True, "errors": []}, (
+            validation.text
+        )
+    
+        completed, report = execution.execute_once(t033_stack)
+        assert completed.returncode == 0, (completed.stderr, report)
+        assert_succeeded(report)
+        state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+        assert state["finished_at"] is not None, state
+    
+        items = observations.node_result_items(owner.creator, run["id"], expected=6)
+        assert {item["node_id"] for item in items} == {"left", "choose", "join"}, items
+        # The unselected branch has no result rows at all.
+        assert [item for item in items if item["node_id"] == "right"] == []
+        assert len(observations.node_data_rows(items, "join")) == 1, "the join must run exactly once"
+    
+        condition = observations.node_data_document(owner.creator, items, "choose")
+        assert condition == {"port": "yes", "matched_case": 0}, condition
+    
+        join = observations.node_data_document(owner.creator, items, "join")
+        results = join["results"]
+        assert set(results) == {"left", "right"}, results
+        assert results["left"]["status"] == "succeeded", results["left"]
+        assert results["left"]["value"] == EXPECTED_SUMMARY, results["left"]
+        assert results["right"] == {"status": "skipped"}, results["right"]
+    
+        final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+        assert final == {"results": results}, final
+    
+        states = observations.node_states(t033_stack.dbname, run["id"])
+        assert states == {
+            "start": ["pending", "running", "succeeded"],
+            "choose": ["pending", "running", "succeeded"],
+            "left": ["pending", "running", "succeeded"],
+            "right": ["skipped"],
+            "join": ["pending", "running", "succeeded"],
+            "end": ["pending", "running", "succeeded"],
+        }, states
+        # The owner-only SSE replay projects the same durable node.status sequence.
+        assert observations.sse_node_states(t033_stack, owner.creator, run["id"]) == states
+    
+        # Exactly one join firing: one succeeded event, and no retries.
+        join_succeeded = [
+            event
+            for event in observations.node_events(t033_stack.dbname, run["id"])
+            if event["payload"]["node_id"] == "join" and event["payload"]["state"] == "succeeded"
+        ]
+        assert len(join_succeeded) == 1, join_succeeded
+    
+        orphan = t033.no_orphan_evidence()
+>       assert orphan["runsc_list"] == [], orphan
+E       AssertionError: {'runsc_list': ['exec-ai-38500-e5ce148e-a956d5572   1270        running     /var/tmp/orchara-sandbox/exec-ai-38500-e5ce148e-a956d5572/bundle   2026-11-09T14:18:17.903133959+08:00   root'], 'state_root': ['t033-manual-1']}
+E       assert ['exec-ai-385...08:00   root'] == []
+E         
+E         Left contains one more item: 'exec-ai-38500-e5ce148e-a956d5572   1270        running     /var/tmp/orchara-sandbox/exec-ai-38500-e5ce148e-a956d5572/bundle   2026-11-09T14:18:17.903133959+08:00   root'
+E         Use -v to get more diff
+
+tests\f04b\test_t083_condition_runtime.py:117: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f04b/test_t083_condition_runtime.py::test_condition_true_runs_only_the_selected_branch_and_join_once
+1 failed, 46 passed in 963.75s (0:16:03)
+
+EXIT=1

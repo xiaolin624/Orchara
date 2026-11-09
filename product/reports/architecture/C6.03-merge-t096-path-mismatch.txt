@@ -1,0 +1,8 @@
+﻿C6.03 merge: the prompt-supplied path tests\f08\test_t096_pages.py does not exist in this repo; t096 page harness lives under tests\f12.
+
+### attempted: & E:\Orchara-notes\test.ps1 tests\f08\test_t096_pages.py -q -p no:cacheprovider
+
+no tests ran in 0.00s
+ERROR: file or directory not found: tests\f08\test_t096_pages.py
+System.Management.Automation.RemoteException
+exit=4

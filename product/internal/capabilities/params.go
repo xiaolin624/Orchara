@@ -16,9 +16,11 @@ import (
 // not mean "unbounded".
 const defaultMaxOutputTokens = 4096
 
-// maxPhysicalAttempts is the hard ceiling: the server retries a transient
-// provider failure at most twice, so one operation never has more than three
-// physical attempt rows. The worker adapter has no retry of its own.
+// maxPhysicalAttempts is the hard ceiling of the primary candidate: the server
+// retries a transient provider failure at most twice, so the primary never has
+// more than three physical attempt rows. The one compatible fallback (T045) adds
+// at most one more attempt (attempt_no maxPhysicalAttempts+1). The worker
+// adapter has no retry of its own.
 const maxPhysicalAttempts = 3
 
 // ModelProfile is the slice of platform.model_profile_versions a capability

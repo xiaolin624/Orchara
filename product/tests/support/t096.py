@@ -112,14 +112,14 @@ const out = {
 };
 
 for (const state of states) {
-  out.state_labels[state] = context.runStreamStateLabel(state) || null;
+  out.state_labels[state] = context.OrcharaRunState.stateLabel(state) || null;
 }
 for (const phase of phases) {
-  out.phase_labels[phase] = context.runStreamPhaseLabel(phase) || null;
+  out.phase_labels[phase] = context.OrcharaRunState.phaseLabel(phase) || null;
 }
 
 const truthOf = (run) => {
-  const truth = context.runStreamTruth(run, {});
+  const truth = context.OrcharaRunState.view(run, {});
   return {
     state: truth.state,
     phase: truth.phase,
@@ -152,11 +152,11 @@ out.truth.needs_reconciliation = truthOf({ state: 'needs_reconciliation', phase:
 // 410: the real contract envelope shape (details.snapshot_url is the documented
 // extension). The classifier must stop retrying and expose the snapshot path.
 const expiredBody = __EXPIRED_BODY__;
-out.failure.expired = context.runStreamFailure(410, expiredBody);
-out.failure.expired_path = context.runStreamSnapshotPath(
+out.failure.expired = context.OrcharaRunState.failure(410, expiredBody);
+out.failure.expired_path = context.OrcharaRunState.snapshotPath(
   out.failure.expired, 'fallback-run'
 );
-out.failure.foreign_url = context.runStreamFailure(410, {
+out.failure.foreign_url = context.OrcharaRunState.failure(410, {
   error: {
     code: 'event_cursor_expired',
     message: 'expired',
@@ -164,10 +164,10 @@ out.failure.foreign_url = context.runStreamFailure(410, {
     details: { snapshot_url: 'https://evil.example/api/v1/runs/abc' },
   },
 });
-out.failure.foreign_url_path = context.runStreamSnapshotPath(
+out.failure.foreign_url_path = context.OrcharaRunState.snapshotPath(
   out.failure.foreign_url, 'fallback-run'
 );
-out.failure.traversal = context.runStreamFailure(410, {
+out.failure.traversal = context.OrcharaRunState.failure(410, {
   error: {
     code: 'event_cursor_expired',
     message: 'expired',
@@ -175,16 +175,16 @@ out.failure.traversal = context.runStreamFailure(410, {
     details: { snapshot_url: '/api/v1/runs/../admin' },
   },
 });
-out.failure.traversal_path = context.runStreamSnapshotPath(
+out.failure.traversal_path = context.OrcharaRunState.snapshotPath(
   out.failure.traversal, 'fallback-run'
 );
-out.failure.unauthorized = context.runStreamFailure(401, {
+out.failure.unauthorized = context.OrcharaRunState.failure(401, {
   error: { code: 'unauthenticated', message: 'login' },
 });
-out.failure.gone = context.runStreamFailure(404, {
+out.failure.gone = context.OrcharaRunState.failure(404, {
   error: { code: 'resource_not_found', message: 'gone' },
 });
-out.failure.transient = context.runStreamFailure(500, {
+out.failure.transient = context.OrcharaRunState.failure(500, {
   error: { code: 'internal_error', message: 'boom' },
 });
 
@@ -192,7 +192,7 @@ out.failure.transient = context.runStreamFailure(500, {
 // expired cursor silently.
 (async () => {
   const snapshot = __SNAPSHOT__;
-  const correction = await context.runStreamCorrectFromSnapshot(
+  const correction = await context.OrcharaRunState.correct(
     out.failure.expired,
     {
       runID: 'fallback-run',
@@ -213,30 +213,30 @@ out.failure.transient = context.runStreamFailure(500, {
     ? { label: correction.truth.label, isSuccess: correction.truth.isSuccess }
     : null;
 
-  out.children.waiting = context.runStreamChildSummary(__CHILD_ITEMS__, {
+  out.children.waiting = context.OrcharaRunState.childSummary(__CHILD_ITEMS__, {
     id: 'parent-1', state: 'waiting_children', phase: 'waiting',
   });
-  out.children.all_done = context.runStreamChildSummary(
+  out.children.all_done = context.OrcharaRunState.childSummary(
     [
       { id: 'child-1', state: 'succeeded', output_artifact_id: 'a-child' },
       { id: 'child-2', state: 'failed', output_artifact_id: null },
     ],
     { id: 'parent-1', state: 'succeeded', phase: 'idle', output_artifact_id: 'a-parent' }
   );
-  out.children.parent_success_but_child_running = context.runStreamChildSummary(
+  out.children.parent_success_but_child_running = context.OrcharaRunState.childSummary(
     [{ id: 'child-1', state: 'running', output_artifact_id: null }],
     { id: 'parent-1', state: 'succeeded', phase: 'idle' }
   );
-  out.children.empty = context.runStreamChildSummary([], {
+  out.children.empty = context.OrcharaRunState.childSummary([], {
     id: 'parent-1', state: 'running', phase: 'executing',
   });
 
-  const unfinished = context.runStreamArtifactReadout(
+  const unfinished = context.OrcharaRunState.artifactReadout(
     { items: [{ id: 'a1', state: 'ready', media_type: 'application/json', size_bytes: 10 }] },
     { id: 'r1', state: 'running', phase: 'finalizing', output_artifact_id: null }
   );
   out.artifacts.unfinished = unfinished;
-  out.artifacts.final = context.runStreamArtifactReadout(
+  out.artifacts.final = context.OrcharaRunState.artifactReadout(
     {
       items: [
         { id: 'a1', state: 'ready', media_type: 'application/json', size_bytes: 10 },
@@ -245,62 +245,62 @@ out.failure.transient = context.runStreamFailure(500, {
     },
     { id: 'r1', state: 'succeeded', phase: 'idle', output_artifact_id: 'a1' }
   );
-  out.artifacts.not_ready = context.runStreamArtifactReadout(
+  out.artifacts.not_ready = context.OrcharaRunState.artifactReadout(
     { items: [{ id: 'a3', state: 'scanning', media_type: 'text/csv', size_bytes: 20 }] },
     { id: 'r1', state: 'succeeded', phase: 'idle', output_artifact_id: 'a3' }
   );
 
-  out.dialogue.finalizing = context.runStreamHandlingText(
+  out.dialogue.finalizing = context.OrcharaRunState.handlingText(
     { state: 'running', phase: 'finalizing' }, 3
   );
-  out.dialogue.cancelling = context.runStreamHandlingText(
+  out.dialogue.cancelling = context.OrcharaRunState.handlingText(
     { state: 'cancelling', phase: 'executing' }, 3
   );
-  out.dialogue.waiting_children = context.runStreamHandlingText(
+  out.dialogue.waiting_children = context.OrcharaRunState.handlingText(
     { state: 'waiting_children', phase: 'waiting' }, 3
   );
-  out.dialogue.needs_reconciliation = context.runStreamHandlingText(
+  out.dialogue.needs_reconciliation = context.OrcharaRunState.handlingText(
     { state: 'needs_reconciliation', phase: 'idle' }, 3
   );
-  out.dialogue.succeeded = context.runStreamHandlingText(
+  out.dialogue.succeeded = context.OrcharaRunState.handlingText(
     { state: 'succeeded', phase: 'idle' }, 3
   );
-  out.dialogue.cancelled = context.runStreamHandlingText(
+  out.dialogue.cancelled = context.OrcharaRunState.handlingText(
     { state: 'cancelled', phase: 'idle' }, 3
   );
-  out.dialogue.queued = context.runStreamHandlingText({ state: 'queued', phase: 'idle' }, 3);
-  out.dialogue.none = context.runStreamHandlingText(null, 0);
+  out.dialogue.queued = context.OrcharaRunState.handlingText({ state: 'queued', phase: 'idle' }, 3);
+  out.dialogue.none = context.OrcharaRunState.handlingText(null, 0);
 
-  out.cancel_accepted.cancelling = context.runStreamCancelAcceptedText({
+  out.cancel_accepted.cancelling = context.OrcharaRunState.cancelAcceptedText({
     state: 'cancelling', phase: 'executing',
   });
-  out.cancel_accepted.cancelled = context.runStreamCancelAcceptedText({
+  out.cancel_accepted.cancelled = context.OrcharaRunState.cancelAcceptedText({
     state: 'cancelled', phase: 'idle',
   });
-  out.cancel_accepted.needs_reconciliation = context.runStreamCancelAcceptedText({
+  out.cancel_accepted.needs_reconciliation = context.OrcharaRunState.cancelAcceptedText({
     state: 'needs_reconciliation', phase: 'idle',
   });
-  out.cancel_accepted.running = context.runStreamCancelAcceptedText({
+  out.cancel_accepted.running = context.OrcharaRunState.cancelAcceptedText({
     state: 'running', phase: 'executing',
   });
 
   out.poll = {
-    queued_first: context.runStreamShouldPoll('queued', '', 0, 100),
-    queued_at_cap: context.runStreamShouldPoll('queued', '', 100, 100),
-    dispatched_running: context.runStreamShouldPoll('dispatched', 'running', 0, 100),
-    dispatched_finalizing: context.runStreamShouldPoll(
+    queued_first: context.OrcharaRunState.shouldPoll('queued', '', 0, 100),
+    queued_at_cap: context.OrcharaRunState.shouldPoll('queued', '', 100, 100),
+    dispatched_running: context.OrcharaRunState.shouldPoll('dispatched', 'running', 0, 100),
+    dispatched_finalizing: context.OrcharaRunState.shouldPoll(
       'dispatched', 'running', 1, 100
     ),
-    dispatched_succeeded: context.runStreamShouldPoll(
+    dispatched_succeeded: context.OrcharaRunState.shouldPoll(
       'dispatched', 'succeeded', 2, 100
     ),
-    dispatched_failed: context.runStreamShouldPoll('dispatched', 'failed', 2, 100),
-    dispatched_cancelled: context.runStreamShouldPoll(
+    dispatched_failed: context.OrcharaRunState.shouldPoll('dispatched', 'failed', 2, 100),
+    dispatched_cancelled: context.OrcharaRunState.shouldPoll(
       'dispatched', 'cancelled', 2, 100
     ),
-    dispatched_without_run: context.runStreamShouldPoll('dispatched', '', 0, 100),
-    request_cancelled: context.runStreamShouldPoll('cancelled', 'running', 0, 100),
-    request_failed: context.runStreamShouldPoll('failed', 'running', 0, 100),
+    dispatched_without_run: context.OrcharaRunState.shouldPoll('dispatched', '', 0, 100),
+    request_cancelled: context.OrcharaRunState.shouldPoll('cancelled', 'running', 0, 100),
+    request_failed: context.OrcharaRunState.shouldPoll('failed', 'running', 0, 100),
   };
 
   process.stdout.write(JSON.stringify(out) + '\n');
@@ -428,6 +428,13 @@ vm.runInContext(
   context,
   { filename: 'runstream.js' }
 );
+// C6.04 (#158): the guard is part of the real page load order and the page
+// scripts consult its single readiness fact.
+vm.runInContext(
+  fs.readFileSync(path.join(webDir, 'assets', 'runstate-guard.js'), 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
+);
 vm.runInContext(
   fs.readFileSync(path.join(webDir, 'assets', 'runs.js'), 'utf8'),
   context,
@@ -502,6 +509,12 @@ vm.runInContext(
   context,
   { filename: 'runstream.js' }
 );
+// C6.04 (#158): the guard is part of the real page load order.
+vm.runInContext(
+  fs.readFileSync(path.join(webDir, 'assets', 'runstate-guard.js'), 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
+);
 vm.runInContext(
   fs.readFileSync(path.join(webDir, 'assets', 'chat.js'), 'utf8'),
   context,
@@ -539,7 +552,9 @@ const out = {
     queued_at_cap: context.shouldPollHandling('queued', '', 100, 100),
     request_cancelled: context.shouldPollHandling('cancelled', 'running', 0, 100),
   },
-  legacy_should_poll_dispatched: context.shouldPollRequest('dispatched', 0, 100),
+  // C6.05 (review-2): the old Request-only poll rule must not exist on the page;
+  // presence is probed, never called (a call would throw after the deletion).
+  has_should_poll_request: typeof context.shouldPollRequest === 'function',
 };
 
 process.stdout.write(JSON.stringify(out) + '\n');
@@ -564,7 +579,7 @@ const webDir = __WEB_DIR__;
 const run = __RUN__;
 const context = { console: console };
 vm.createContext(context);
-for (const name of ['runstream.js', 'runs.js', 'chat.js']) {
+for (const name of ['runstream.js', 'runstate-guard.js', 'runs.js', 'chat.js']) {
   vm.runInContext(
     fs.readFileSync(path.join(webDir, 'assets', name), 'utf8'),
     context,
@@ -572,7 +587,7 @@ for (const name of ['runstream.js', 'runs.js', 'chat.js']) {
   );
 }
 
-const truth = context.runStreamTruth(run, {});
+const truth = context.OrcharaRunState.view(run, {});
 const out = {
   truth: {
     label: truth.label,
@@ -583,12 +598,12 @@ const out = {
     actions: truth.actions,
     externalWritesNote: truth.externalWritesNote,
   },
-  runs_state_note: context.describeRunState(run, {}),
+  runs_state_note: context.runDetailNote(run, {}),
   runs_lifecycle: context.runLifecycle(run),
   runs_cancel_panel: context.describeRunCancel(run, {
     cancelRequestedAt: run.cancel_requested_at || '',
   }),
-  cancel_accepted: context.runStreamCancelAcceptedText(run),
+  cancel_accepted: context.OrcharaRunState.cancelAcceptedText(run),
   chat_handling: context.describeHandling(
     { run_id: run.id || 'run-1' }, run, { version_no: 3 }
   ),
@@ -620,6 +635,19 @@ const webDir = __WEB_DIR__;
 const frames = __FRAMES__;
 const context = { console: console };
 vm.createContext(context);
+// C6.01 (#155): the real shared run-state bytes load before runs.js.
+vm.runInContext(
+  fs.readFileSync(path.join(webDir, 'assets', 'runstream.js'), 'utf8'),
+  context,
+  { filename: 'runstream.js' }
+);
+// C6.04 (#158): the guard is part of the real page load order and the page
+// scripts consult its single readiness fact.
+vm.runInContext(
+  fs.readFileSync(path.join(webDir, 'assets', 'runstate-guard.js'), 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
+);
 vm.runInContext(
   fs.readFileSync(path.join(webDir, 'assets', 'runs.js'), 'utf8'),
   context,
@@ -676,7 +704,7 @@ vm.runInContext(
   { filename: 'runstream.js' }
 );
 
-const summary = context.runStreamChildSummary(__CHILDREN__, __PARENT__);
+const summary = context.OrcharaRunState.childSummary(__CHILDREN__, __PARENT__);
 process.stdout.write(JSON.stringify(summary) + '\n');
 """
 
@@ -708,7 +736,7 @@ vm.runInContext(
   { filename: 'runstream.js' }
 );
 
-const readout = context.runStreamArtifactReadout(__BODY__, __RUN__);
+const readout = context.OrcharaRunState.artifactReadout(__BODY__, __RUN__);
 process.stdout.write(JSON.stringify(readout) + '\n');
 """
 

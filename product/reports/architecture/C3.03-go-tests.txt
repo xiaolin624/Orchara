@@ -1,0 +1,4 @@
+$ go test ./internal/knowledge ./internal/api -count=1   # on pre-merge ticket tip 37a8701
+ok  	orchara/platform/internal/knowledge	2.437s
+ok  	orchara/platform/internal/api	1.649s
+exit=0

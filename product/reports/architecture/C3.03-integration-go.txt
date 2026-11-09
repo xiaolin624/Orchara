@@ -1,0 +1,14 @@
+﻿# C3.03 integration-tip Go verification
+commit=1eb0281b98a6aa705a0a12e2fd3b0b5aad0a9299
+go=go version go1.27.3 windows/amd64
+$ go test ./internal/knowledge ./internal/api -count=1
+ok  	orchara/platform/internal/knowledge	3.050s
+ok  	orchara/platform/internal/api	2.335s
+exit=0
+$ go build ./...
+exit=0
+$ go vet ./...
+exit=0
+$ gofmt -l internal cmd tools
+exit=0
+SUMMARY test=0 build=0 vet=0 gofmt=0

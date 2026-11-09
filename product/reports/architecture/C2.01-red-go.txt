@@ -1,0 +1,10 @@
+go.exe : # orchara/platform/internal/capabilities [orchara/platform/internal/capabilities.test]
+所在位置 行:1 字符: 259
++ ... omodcache'; & E:\orchara-toolchains\go\bin\go.exe test ./internal/cap ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (# orchara/platf...abilities.test]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+internal\capabilities\attempt_test.go:76:15: undefined: classifyModelFailure
+FAIL	orchara/platform/internal/capabilities [build failed]
+FAIL

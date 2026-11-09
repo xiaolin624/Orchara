@@ -181,7 +181,9 @@ def test_chat_js_explains_failures_and_keeps_the_queue_visible(node_binary: str,
               hostTick: () => new Promise((resolve) => setImmediate(resolve)),
             };
             vm.createContext(context);
-            for (const file of ['app.js', 'attachments.js', 'chat.js']) {
+            // C6.01 (#155): runstream.js is part of the page's real load order;
+            // C6.04 (#158): the guard follows it, before the page scripts.
+for (const file of ['app.js', 'runstream.js', 'runstate-guard.js', 'attachments.js', 'chat.js']) {
               vm.runInContext(fs.readFileSync(webDir + '/assets/' + file, 'utf8'), context);
             }
 

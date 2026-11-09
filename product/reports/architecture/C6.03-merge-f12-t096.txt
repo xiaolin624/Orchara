@@ -1,0 +1,6 @@
+﻿C6.03 merge: shared page harness (t096) at integration tip
+
+### & E:\Orchara-notes\test.ps1 tests\f12\test_t096_pages.py tests\f12\test_t096_review2.py -q -p no:cacheprovider
+.............                                                            [100%]
+13 passed in 2.09s
+exit=0

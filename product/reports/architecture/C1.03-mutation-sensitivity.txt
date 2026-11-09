@@ -1,0 +1,577 @@
+﻿# Mutation A: check() auto-recovers an interrupted transaction instead of reporting incomplete_sync. Expected: AC1/AC6 repair assertions fail.
+FFFF                                                                     [100%]
+================================== FAILURES ===================================
+___ test_child_exit_at_each_switch_position_is_an_incomplete_transaction[1] ___
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch0/product'))
+switch_position = 1
+
+    @pytest.mark.parametrize("switch_position", [1, 2, 3, 4])
+    def test_child_exit_at_each_switch_position_is_an_incomplete_transaction(workspace, switch_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+    
+        journal = journal_path(dest)
+        assert journal.is_file(), "a real switch interruption did not leave its pending record"
+        assert json.loads(journal.read_text(encoding="utf-8"))["schema"] == "orchara.spec-sync-tx/v1"
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        observed = tree_bytes(dest)
+        for attempt in range(2):
+            checked = run_cli(source, dest, check=True)
+            assert checked.returncode == 1, checked.stdout + checked.stderr
+            assert "drift or verification failure" in checked.stdout
+>           assert "incomplete_sync" in checked.stdout
+E           AssertionError: assert 'incomplete_sync' in 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n'
+E            +  where 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n' = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n', stderr='').stdout
+
+tests\tooling\test_sync_spec_c103_interruption.py:268: AssertionError
+___ test_child_exit_at_each_switch_position_is_an_incomplete_transaction[2] ___
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch1/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch1/product'))
+switch_position = 2
+
+    @pytest.mark.parametrize("switch_position", [1, 2, 3, 4])
+    def test_child_exit_at_each_switch_position_is_an_incomplete_transaction(workspace, switch_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+    
+        journal = journal_path(dest)
+        assert journal.is_file(), "a real switch interruption did not leave its pending record"
+        assert json.loads(journal.read_text(encoding="utf-8"))["schema"] == "orchara.spec-sync-tx/v1"
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        observed = tree_bytes(dest)
+        for attempt in range(2):
+            checked = run_cli(source, dest, check=True)
+            assert checked.returncode == 1, checked.stdout + checked.stderr
+            assert "drift or verification failure" in checked.stdout
+>           assert "incomplete_sync" in checked.stdout
+E           AssertionError: assert 'incomplete_sync' in 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n'
+E            +  where 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n' = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n', stderr='').stdout
+
+tests\tooling\test_sync_spec_c103_interruption.py:268: AssertionError
+___ test_child_exit_at_each_switch_position_is_an_incomplete_transaction[3] ___
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch2/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch2/product'))
+switch_position = 3
+
+    @pytest.mark.parametrize("switch_position", [1, 2, 3, 4])
+    def test_child_exit_at_each_switch_position_is_an_incomplete_transaction(workspace, switch_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+    
+        journal = journal_path(dest)
+        assert journal.is_file(), "a real switch interruption did not leave its pending record"
+        assert json.loads(journal.read_text(encoding="utf-8"))["schema"] == "orchara.spec-sync-tx/v1"
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        observed = tree_bytes(dest)
+        for attempt in range(2):
+            checked = run_cli(source, dest, check=True)
+            assert checked.returncode == 1, checked.stdout + checked.stderr
+            assert "drift or verification failure" in checked.stdout
+>           assert "incomplete_sync" in checked.stdout
+E           AssertionError: assert 'incomplete_sync' in 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n'
+E            +  where 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n' = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n', stderr='').stdout
+
+tests\tooling\test_sync_spec_c103_interruption.py:268: AssertionError
+___ test_child_exit_at_each_switch_position_is_an_incomplete_transaction[4] ___
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch3/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-520/test_child_exit_at_each_switch3/product'))
+switch_position = 4
+
+    @pytest.mark.parametrize("switch_position", [1, 2, 3, 4])
+    def test_child_exit_at_each_switch_position_is_an_incomplete_transaction(workspace, switch_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+    
+        journal = journal_path(dest)
+        assert journal.is_file(), "a real switch interruption did not leave its pending record"
+        assert json.loads(journal.read_text(encoding="utf-8"))["schema"] == "orchara.spec-sync-tx/v1"
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        observed = tree_bytes(dest)
+        for attempt in range(2):
+            checked = run_cli(source, dest, check=True)
+            assert checked.returncode == 1, checked.stdout + checked.stderr
+            assert "drift or verification failure" in checked.stdout
+>           assert "incomplete_sync" in checked.stdout
+E           AssertionError: assert 'incomplete_sync' in 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n'
+E            +  where 'drift or verification failure: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n' = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...: 1 finding(s)\n  source_modified      source/README.md (content differs from the synchronized baseline)\n', stderr='').stdout
+
+tests\tooling\test_sync_spec_c103_interruption.py:268: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_child_exit_at_each_switch_position_is_an_incomplete_transaction[1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_child_exit_at_each_switch_position_is_an_incomplete_transaction[2]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_child_exit_at_each_switch_position_is_an_incomplete_transaction[3]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_child_exit_at_each_switch_position_is_an_incomplete_transaction[4]
+4 failed, 24 deselected in 14.41s
+
+
+# Mutation B: _recover() removes the pending journal before doing the recovery moves. Expected: interrupted-recovery repeatability fails (record lost).
+FFFFFFFFFF                                                               [100%]
+================================== FAILURES ===================================
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[1-1] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay0/product'))
+switch_position = 1, recovery_position = 1
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay0/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay0/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay0/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[2-1] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay1/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay1/product'))
+switch_position = 2, recovery_position = 1
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay1/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay1/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay1/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[2-2] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay2/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay2/product'))
+switch_position = 2, recovery_position = 2
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay2/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay2/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay2/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-1] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay3/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay3/product'))
+switch_position = 3, recovery_position = 1
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay3/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay3/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay3/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-2] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay4/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay4/product'))
+switch_position = 3, recovery_position = 2
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay4/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay4/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay4/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-3] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay5/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay5/product'))
+switch_position = 3, recovery_position = 3
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay5/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay5/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay5/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-1] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay6/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay6/product'))
+switch_position = 4, recovery_position = 1
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay6/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay6/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay6/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-2] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay7/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay7/product'))
+switch_position = 4, recovery_position = 2
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay7/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay7/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay7/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-3] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay8/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay8/product'))
+switch_position = 4, recovery_position = 3
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay8/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay8/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay8/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+__ test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-4] __
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay9/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay9/product'))
+switch_position = 4, recovery_position = 4
+
+    @pytest.mark.parametrize(("switch_position", "recovery_position"), RECOVERY_INTERRUPTION_CASES)
+    def test_interrupted_recovery_stays_repeatable_without_losing_the_backup(
+            workspace, switch_position, recovery_position):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        old_contracts = tree_bytes(contract_copy(dest))
+        (source / "README.md").write_bytes(b"# next generation\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        assert_last_complete_old_generation(dest, old_spec, old_contracts)
+    
+        run_crashing_sync(source, dest, mode="move", count=recovery_position)
+>       assert journal_path(dest).is_file(), "the interrupted recovery dropped its record"
+E       AssertionError: the interrupted recovery dropped its record
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay9/product/.scratch/spec-sync/transaction.json').is_file
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay9/product/.scratch/spec-sync/transaction.json') = journal_path(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-522/test_interrupted_recovery_stay9/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:373: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[1-1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[2-1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[2-2]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-2]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[3-3]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-2]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-3]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_interrupted_recovery_stays_repeatable_without_losing_the_backup[4-4]
+10 failed, 18 deselected in 31.81s
+
+
+# Mutation C: _recover() stops validating the backup inventory against the recorded old generation. Expected: corrupt-backup fail-closed test fails.
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_corrupt_backup_is_preserved_and_fails_closed ______________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-523/test_corrupt_backup_is_preserv0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-523/test_corrupt_backup_is_preserv0/product'))
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-523/test_corrupt_backup_is_preserv0')
+
+    def test_corrupt_backup_is_preserved_and_fails_closed(workspace, tmp_path):
+        source, dest = workspace
+        old_contracts = tree_bytes(contract_copy(dest))
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        sentinel = outside / "keep.txt"
+        sentinel.write_bytes(b"keep\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=3)
+        backup = state_path(dest) / "old-contracts"
+        assert tree_bytes(backup) == old_contracts
+        (backup / "openapi.json").write_bytes(b'{"corrupted": true}\n')
+        corrupt = tree_bytes(backup)
+        journal = journal_path(dest)
+        journal_before = journal.read_bytes()
+    
+        checked = run_cli(source, dest, check=True)
+        assert checked.returncode == 1
+        assert "incomplete_sync" in checked.stdout
+    
+        failed = run_cli(source, dest, check=False)
+>       assert failed.returncode == 1, failed.stdout + failed.stderr
+E       AssertionError: copied 4 files; manifest D:\caches\pytest\pytest-of-19677\pytest-523\test_corrupt_backup_is_preserv0\product\docs\spec\SYNC-MANIFEST.json (4 spec + 2 contract digests)
+E         restored previous interrupted transaction before synchronizing
+E         
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...IFEST.json (4 spec + 2 contract digests)\nrestored previous interrupted transaction before synchronizing\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c103_interruption.py:520: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_corrupt_backup_is_preserved_and_fails_closed
+1 failed, 27 deselected in 5.17s
+
+
+# Mutation D: _recover() stops rejecting a target that changed outside the transaction. Expected: unexplained-external-change fail-closed test fails.
+F                                                                        [100%]
+================================== FAILURES ===================================
+____ test_unexplained_external_target_change_is_preserved_and_fails_closed ____
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-524/test_unexplained_external_targ0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-524/test_unexplained_external_targ0/product'))
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-524/test_unexplained_external_targ0')
+
+    def test_unexplained_external_target_change_is_preserved_and_fails_closed(workspace, tmp_path):
+        source, dest = workspace
+        old_spec = tree_bytes(spec_copy(dest))
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        sentinel = outside / "keep.txt"
+        sentinel.write_bytes(b"keep\n")
+    
+        run_crashing_sync(source, dest, mode="move", count=3)
+        assert tree_bytes(state_path(dest) / "old-spec") == old_spec
+        stray = spec_copy(dest) / "EXTERNAL.md"
+        stray.write_bytes(b"external edit while a transaction was pending\n")
+        journal = journal_path(dest)
+        journal_before = journal.read_bytes()
+    
+        checked = run_cli(source, dest, check=True)
+        assert checked.returncode == 1
+        assert "incomplete_sync" in checked.stdout
+    
+        failed = run_cli(source, dest, check=False)
+>       assert failed.returncode == 1, failed.stdout + failed.stderr
+E       AssertionError: copied 4 files; manifest D:\caches\pytest\pytest-of-19677\pytest-524\test_unexplained_external_targ0\product\docs\spec\SYNC-MANIFEST.json (4 spec + 2 contract digests)
+E         restored previous interrupted transaction before synchronizing
+E         
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.03\\product\\tools\\sync_spec.py', ...IFEST.json (4 spec + 2 contract digests)\nrestored previous interrupted transaction before synchronizing\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c103_interruption.py:558: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_unexplained_external_target_change_is_preserved_and_fails_closed
+1 failed, 27 deselected in 4.35s
+
+
+# Mutation E: _recover() stops moving an installed generation away when there is no old generation. Expected: first-sync prior-nonexistence test fails.
+FF                                                                       [100%]
+================================== FAILURES ===================================
+___ test_first_sync_recovery_restores_nonexistence_before_reinitializing[1] ___
+
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto0')
+switch_position = 1
+
+    @pytest.mark.parametrize("switch_position", [1, 2])
+    def test_first_sync_recovery_restores_nonexistence_before_reinitializing(tmp_path, switch_position):
+        source = build_source(tmp_path / "repo")
+        dest = tmp_path / "product"
+        seed_unmanaged(dest)
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        # Recover, then die while staging the re-initialisation.
+        run_crashing_sync(source, dest, mode="copy", count=1)
+    
+        assert not journal_path(dest).exists(), "the first-sync recovery had not committed"
+>       assert not spec_copy(dest).exists(), "the prior non-existence of the spec copy was not restored"
+E       AssertionError: the prior non-existence of the spec copy was not restored
+E       assert not True
+E        +  where True = exists()
+E        +    where exists = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto0/product/docs/spec').exists
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto0/product/docs/spec') = spec_copy(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto0/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:435: AssertionError
+___ test_first_sync_recovery_restores_nonexistence_before_reinitializing[2] ___
+
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto1')
+switch_position = 2
+
+    @pytest.mark.parametrize("switch_position", [1, 2])
+    def test_first_sync_recovery_restores_nonexistence_before_reinitializing(tmp_path, switch_position):
+        source = build_source(tmp_path / "repo")
+        dest = tmp_path / "product"
+        seed_unmanaged(dest)
+    
+        run_crashing_sync(source, dest, mode="move", count=switch_position)
+        # Recover, then die while staging the re-initialisation.
+        run_crashing_sync(source, dest, mode="copy", count=1)
+    
+        assert not journal_path(dest).exists(), "the first-sync recovery had not committed"
+>       assert not spec_copy(dest).exists(), "the prior non-existence of the spec copy was not restored"
+E       AssertionError: the prior non-existence of the spec copy was not restored
+E       assert not True
+E        +  where True = exists()
+E        +    where exists = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto1/product/docs/spec').exists
+E        +      where WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto1/product/docs/spec') = spec_copy(WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-527/test_first_sync_recovery_resto1/product'))
+
+tests\tooling\test_sync_spec_c103_interruption.py:435: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_first_sync_recovery_restores_nonexistence_before_reinitializing[1]
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_first_sync_recovery_restores_nonexistence_before_reinitializing[2]
+2 failed, 26 deselected in 5.10s
+
+
+# Mutation F: sync() validates the source only after it recovers the previous transaction. Expected: invalid-source no-mutation test fails.
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_invalid_source_does_not_start_recovery_or_cleanup ____________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-529/test_invalid_source_does_not_s0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-529/test_invalid_source_does_not_s0/product'))
+
+    def test_invalid_source_does_not_start_recovery_or_cleanup(workspace):
+        source, dest = workspace
+        run_crashing_sync(source, dest, mode="move", count=2)
+        journal = journal_path(dest)
+        journal_before = journal.read_bytes()
+        observed = tree_bytes(dest)
+    
+        (source / "contracts").rename(source / "contracts-withheld")
+        checked = run_cli(source, dest, check=True)
+        assert checked.returncode == 1
+        assert "source_incomplete" in checked.stdout
+        assert "incomplete_sync" not in checked.stdout
+        assert tree_bytes(dest) == observed, "checking an invalid source changed the pending state"
+    
+        failed = run_cli(source, dest, check=False)
+        assert failed.returncode == 1, failed.stdout + failed.stderr
+        assert "source_incomplete" in failed.stdout
+        assert "Traceback" not in failed.stderr
+>       assert tree_bytes(dest) == observed, "an invalid source started recovery or cleanup"
+E       AssertionError: an invalid source started recovery or cleanup
+E       assert {'.scratch/no...1.0"}\n', ...} == {'.scratch/no... }\n}\n', ...}
+E         
+E         Omitting 12 identical items, use -vv to show
+E         Differing items:
+E         {'docs/spec/SYNC-MANIFEST.json': b'{\n  "schema": "orchara.spec-sync/v2",\n  "generated_at": "2026-11-09T06:31:07+00:0...5a411150316b170669",\n    "schema.json": "eb217225d785a7a56210d52aec0c958b124561339aca20fd2f20b4a67267d671"\n  }\n}\n'} != {'docs/spec/SYNC-MANIFEST.json': b'{\n  "schema": "orchara.spec-sync/v2",\n  "generated_at": "2026-11-09T06:31:08+00:0...5a411150316b170669",\n    "schema.json": "eb217225d785a7a56210d52aec0c958b124561339aca20fd2f20b4a67267d671"\n  }\n}\n'}
+E         Left contains 5 more items:
+E         {'.sc...
+E         
+E         ...Full output truncated (147 lines hidden), use '-vv' to show
+
+tests\tooling\test_sync_spec_c103_interruption.py:601: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c103_interruption.py::test_invalid_source_does_not_start_recovery_or_cleanup
+1 failed, 27 deselected in 4.39s
+
+# All mutations were immediately reverted with git checkout; git diff -- product/tools/sync_spec.py was empty afterwards.

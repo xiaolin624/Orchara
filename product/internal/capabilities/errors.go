@@ -103,6 +103,10 @@ type Error struct {
 	Message string
 	Field   string
 	Details map[string]any
+	// cause is the underlying database/transport failure of a cleanup write. It
+	// is associated for errors.Is/As but never rendered: the safe code and
+	// message above are all a caller may see.
+	cause error
 }
 
 func (e *Error) Error() string {
@@ -111,6 +115,10 @@ func (e *Error) Error() string {
 	}
 	return e.Code + ": " + e.Message
 }
+
+// Unwrap exposes the associated cause (for example the database error behind a
+// failed ledger close) to errors.Is/As without putting it in the safe message.
+func (e *Error) Unwrap() error { return e.cause }
 
 // AsError extracts a *Error. It is a convenience for the HTTP mapping. A typed
 // nil *Error (a successful call converted to the error interface) is not an
@@ -125,6 +133,20 @@ func AsError(err error) (*Error, bool) {
 
 func capFailure(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
+}
+
+// cleanupFailure reports a ledger close that could not commit. The database
+// error is associated (Unwrap) but never exposed, so a caller can see that the
+// operation was *not* closed instead of mistaking a refused cleanup for a clean
+// cancellation or provider failure. The status/code are the safe generic ones:
+// the specific terminal code was exactly what could not be recorded.
+func cleanupFailure(cause error) *Error {
+	return &Error{
+		Status:  500,
+		Code:    CodeInternal,
+		Message: "the model operation ledger could not be closed",
+		cause:   cause,
+	}
 }
 
 func validationFailure(field, message string) *Error {

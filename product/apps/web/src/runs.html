@@ -40,6 +40,9 @@
   </nav>
 
   <h1>运行（F03 领取、租约与终态）</h1>
+  <!-- C6.01 (#155): shared run-state dependency banner; normal path leaves it
+       hidden. The run list stays readable; the detail observation is paused. -->
+  <p id="runstate-status" class="status bad" role="alert" hidden></p>
   <p class="sub" data-mobile-scope="no-full-canvas-editing">
     小屏支持：查看自己的 Run、读取真实状态/阶段、辨认最终产物、取消运行并打开审批。
     完整画布编辑与节点表调试（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
@@ -125,7 +128,7 @@
       <dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
       <dt>持久时间线</dt><dd id="detail-timeline-status" role="status" aria-live="polite">未连接</dd>
     </dl>
-    <button id="detail-cancel-button" type="button" hidden>取消 Run</button>
+    <button id="detail-cancel-button" type="button" data-runstate-paused="true" hidden>取消 Run</button>
     <p id="detail-cancel-status" class="status" role="status" aria-live="polite"></p>
     <ul id="detail-timeline" aria-live="polite"></ul>
 
@@ -251,6 +254,7 @@
   <script src="/assets/app.js"></script>
   <script src="/assets/nav.js"></script>
   <script src="/assets/runstream.js"></script>
+  <script src="/assets/runstate-guard.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>
   <script>

@@ -1,0 +1,4 @@
+﻿=== C5.03 merge verification: tests/f04b/test_c5_run_observations.py at integration tip 5fc4ae7 2026-11-09T15:03:15.8020002+08:00 ===
+.                                                                        [100%]
+1 passed in 46.29s
+EXIT=0

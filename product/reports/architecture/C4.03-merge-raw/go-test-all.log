@@ -1,0 +1,52 @@
+﻿?   	orchara/platform/cmd/admin	[no test files]
+?   	orchara/platform/cmd/api	[no test files]
+?   	orchara/platform/cmd/maintenance	[no test files]
+?   	orchara/platform/cmd/sandboxprobe	[no test files]
+?   	orchara/platform/cmd/supervisor	[no test files]
+?   	orchara/platform/cmd/worker	[no test files]
+?   	orchara/platform/db	[no test files]
+?   	orchara/platform/experiments/mem0/pgdriver	[no test files]
+ok  	orchara/platform/internal/api	2.107s
+ok  	orchara/platform/internal/approvals	2.787s
+ok  	orchara/platform/internal/artifacts	3.223s
+ok  	orchara/platform/internal/audit	2.188s
+ok  	orchara/platform/internal/background	3.043s
+ok  	orchara/platform/internal/background/handlers	2.477s
+ok  	orchara/platform/internal/budget	1.762s
+ok  	orchara/platform/internal/capabilities	2.881s
+ok  	orchara/platform/internal/catalog	2.013s
+?   	orchara/platform/internal/children	[no test files]
+ok  	orchara/platform/internal/compiler	1.881s
+ok  	orchara/platform/internal/config	1.688s
+ok  	orchara/platform/internal/connectors	2.143s
+ok  	orchara/platform/internal/context	1.983s
+ok  	orchara/platform/internal/db	1.544s
+ok  	orchara/platform/internal/deletion	1.522s
+ok  	orchara/platform/internal/diagnostics	1.182s
+ok  	orchara/platform/internal/embedding	1.043s
+ok  	orchara/platform/internal/evaluation	1.338s
+ok  	orchara/platform/internal/execution	1.552s
+ok  	orchara/platform/internal/health	2.274s
+ok  	orchara/platform/internal/identity	2.459s
+ok  	orchara/platform/internal/jcs	1.373s
+ok  	orchara/platform/internal/jsonschema	1.658s
+ok  	orchara/platform/internal/knowledge	4.916s
+ok  	orchara/platform/internal/memory	2.428s
+ok  	orchara/platform/internal/modelproxy	4.582s
+ok  	orchara/platform/internal/modelregistry	2.553s
+ok  	orchara/platform/internal/objectstore	2.327s
+ok  	orchara/platform/internal/policy	1.880s
+ok  	orchara/platform/internal/presetexec	6.857s
+?   	orchara/platform/internal/providercodes	[no test files]
+ok  	orchara/platform/internal/requests	2.700s
+ok  	orchara/platform/internal/routing	3.053s
+ok  	orchara/platform/internal/sandbox	4.590s
+ok  	orchara/platform/internal/supervisor	1.990s
+ok  	orchara/platform/internal/templates	2.384s
+?   	orchara/platform/internal/toolruns	[no test files]
+ok  	orchara/platform/internal/tools	4.744s
+ok  	orchara/platform/internal/toolversions	2.279s
+ok  	orchara/platform/internal/uuid	1.754s
+ok  	orchara/platform/internal/workflow	1.594s
+?   	orchara/platform/probes/f10_pdf_compare/go_baseline	[no test files]
+?   	orchara/platform/probes/f15a_objectstore/localfs_probe	[no test files]

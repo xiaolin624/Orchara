@@ -63,6 +63,9 @@
   </nav>
 
   <h1>私有调试（F02A 快照）</h1>
+  <!-- C6.01 (#155): shared run-state dependency banner; the draft read stays,
+       submission/poll/SSE/node view/cancel pause when the guard fails. -->
+  <p id="runstate-status" class="status bad" role="alert" hidden></p>
   <p class="sub" data-mobile-scope="no-full-canvas-editing">
     小屏边界：本页的节点调试表与画布不承诺在手机上可用。手机支持的是对话、审批与查看结果
     （/chat、/approvals、/runs）；需要调试节点时请使用桌面浏览器。
@@ -111,7 +114,7 @@
       <textarea id="debug-artifacts" name="artifact_ids" spellcheck="false"></textarea>
 
       <p class="hint">本次提交的 <code>Idempotency-Key</code>：<code id="debug-key">生成中</code>（只在本页内存中，不进入 URL 或浏览器存储）</p>
-      <button id="debug-submit" type="submit">创建私有调试 Run</button>
+      <button id="debug-submit" type="submit" data-runstate-paused="true">创建私有调试 Run</button>
     </section>
   </form>
 
@@ -176,7 +179,7 @@
       事件流断线会按 <code>Last-Event-ID</code> 续传；<strong>410</strong>（保留窗口过期）时
       本表只显示持久 node-results 能证明的事实，并标注「由节点结果推断」，不伪造历史事件。
     </p>
-    <button id="runview-cancel" type="button" disabled>取消 Run</button>
+    <button id="runview-cancel" type="button" disabled data-runstate-paused="true">取消 Run</button>
     <p id="runview-cancel-status" class="status" role="status" aria-live="polite"></p>
     <p class="hint"><a id="runview-runs-link" href="/runs">在运行列表查看这个 Run</a></p>
   </section>
@@ -197,6 +200,7 @@
   <script src="/assets/app.js"></script>
   <script src="/assets/nav.js"></script>
   <script src="/assets/runstream.js"></script>
+  <script src="/assets/runstate-guard.js"></script>
   <script src="/assets/runview.js"></script>
   <script src="/assets/stream-preview.js"></script>
   <script src="/assets/runs.js"></script>

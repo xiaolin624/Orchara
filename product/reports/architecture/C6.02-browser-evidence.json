@@ -1,0 +1,18 @@
+{
+  "ticket": "C6.02 (#156)",
+  "browser": "playwright channel=chrome headless, real cmd/api over loopback",
+  "cases": [
+    {
+      "page": "debug-runview",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "phase1_queued_error": "Run 仍在进行（state=queued）；页面会继续从服务端事实刷新。",
+      "phase1_cancel_receipt": "已停止（cancelled）：平台已确认受控执行单元停止；不表示撤回已经发生的外部写入。",
+      "phase1_terminal_error": "运行已取消（cancelled）：平台已确认受控执行单元停止；这不表示撤回已经发送的外部写入。",
+      "phase1_run_gets": 5,
+      "phase2_live_state": "Run state：running",
+      "phase2_cancel_receipt": "已接受取消意图（cancelling）：正在停止，等待受控执行单元退出；不会撤回已经发生的外部写入。",
+      "phase2_error": "已收到取消意图（cancelling），等待执行单元退出并提交终态；这不表示撤回已经发生的外部写入。",
+      "page_errors": []
+    }
+  ]
+}

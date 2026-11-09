@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from support import t025, t027, t033, t035, t042, t078, t083, t087, t088
+from support import t025, t027, t035, t042, t078, t083, t087, t088
 
 GOLDEN_MODEL_ID = t025.GOLDEN_MODEL_ID
 PRESET_TOOL_ID = t042.PRESET_TOOL_ID
@@ -332,28 +332,12 @@ def decide_node(owner, dbname: str, run_id: str, node_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # durable reads
 # ---------------------------------------------------------------------------
-node_results = t083.node_results
-node_data_rows = t083.node_data_rows
-node_data_document = t083.node_data_document
-node_states = t083.node_states
-sse_node_states = t083.sse_node_states
-final_output_document = t083.final_output_document
-
-
-def node_result_rows(dbname: str, run_id: str) -> list[dict]:
-    return t042.node_result_rows(dbname, run_id)
-
-
 def count_jobs_for_application(dbname: str, application_id: str) -> int:
     return t083.count_jobs_for_application(dbname, application_id)
 
 
 def count_runs_for_application(dbname: str, application_id: str) -> int:
     return t083.count_runs_for_application(dbname, application_id)
-
-
-def output_artifact_id(dbname: str, run_id: str) -> str | None:
-    return t033.output_artifact_id(dbname, run_id)
 
 
 def revoke_golden_model(dbname: str) -> None:

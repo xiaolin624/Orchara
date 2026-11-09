@@ -369,6 +369,9 @@ const context = {
 vm.createContext(context);
 context.setTimeout = (fn) => 1;
 context.clearTimeout = () => {};
+// C6.01 (#155): the real shared run-state bytes load before chat.js.
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/chat.js', 'utf8'), context);
 
 // --- 409 idempotency_conflict: same key + different body --------------------

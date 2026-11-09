@@ -34,10 +34,13 @@ import (
 	"orchara/platform/internal/uuid"
 )
 
-// linearRun is one linear attempt's state. The graph scheduler also uses it as a
-// view for one node (agent / call_app), which is why the optional scheduler hooks
-// exist: the node execution code stays shared, while failure/skip observable
-// semantics stay the scheduler's.
+// linearRun is one linear attempt's state.
+//
+// C4.01/C4.02: the controlled nodes (agent and call_app) no longer read this
+// view. The scheduler builds an explicit nodeExecution from these facts, runs the
+// node and maps the returned local outcome to the attempt. The graph scheduler
+// does not borrow this structure for any node either: it builds the same
+// nodeExecution from its own scheduling facts.
 type linearRun struct {
 	plan    *linearPlan
 	inputs  []InputArtifact
@@ -47,15 +50,6 @@ type linearRun struct {
 	callApp map[string]any
 	outcome sandbox.Outcome
 	report  *SandboxReport
-	// available overrides the upstream-output namespace for a graph-owned node.
-	// Nil means the linear chain's own start/python/agent map.
-	available map[string]any
-	// skip skips every unsettled node of the owning scheduler. Nil means the
-	// linear chain's own skipRemaining.
-	skip func()
-	// scopeIDs extends the agent context scope with the owning graph's other
-	// sealed nodes (the linear chain's start/python are always included).
-	scopeIDs []string
 }
 
 // nodeHost is the scheduler-specific observable surface of one node failure:
@@ -90,17 +84,6 @@ func (h nodeHost) skipRemaining() {
 	}
 }
 
-// skipAfter calls the scheduler's skip hook when one is installed and otherwise
-// keeps the linear chain's documented "skip everything after this node"
-// behaviour.
-func (r *runner) skipAfter(ctx context.Context, run *linearRun, after string) {
-	if run.skip != nil {
-		run.skip()
-		return
-	}
-	r.skipRemaining(ctx, run.plan, after)
-}
-
 // executeLinear runs the proven chain and returns the attempt outcome.
 func (r *runner) executeLinear(ctx context.Context, plan *linearPlan) executionOutcome {
 	linked, err := r.deps.Inputs.Inputs(ctx, r.lease.RunID)
@@ -127,21 +110,134 @@ func (r *runner) executeLinear(ctx context.Context, plan *linearPlan) executionO
 		}
 		run.python = pythonOutput
 	}
+	// The scheduler, not the node, maps the agent's local outcome to run behavior.
 	if plan.agent != nil {
-		agentOutput, agentOutcome, done := r.runAgentNode(ctx, run)
+		agentOutput, agentOutcome, done := r.runLinearAgentNode(ctx, run)
 		if done {
 			return agentOutcome
 		}
 		run.agent = agentOutput
 	}
 	if plan.callApp != nil {
-		childOutput, childOutcome, done := r.runCallAppNode(ctx, run)
+		childOutput, childOutcome, done := r.runLinearCallAppNode(ctx, run)
 		if done {
 			return childOutcome
 		}
 		run.callApp = childOutput
 	}
 	return r.runEndNode(ctx, run)
+}
+
+// runLinearAgentNode builds the explicit agent node execution from the chain's
+// authoritative facts, runs the node, and maps its local outcome to the linear
+// attempt. The node never skips the remaining chain and never commits the run;
+// this linear scheduler does both, once.
+func (r *runner) runLinearAgentNode(
+	ctx context.Context, run *linearRun,
+) (map[string]any, executionOutcome, bool) {
+	node := run.plan.agent
+	outcome := r.runAgentNode(ctx, r.newLinearNodeExecution(run, node))
+	run.outcome, run.report = outcome.sandbox, outcome.report
+	if outcome.kind == nodeOutcomeSucceeded {
+		return outcome.output, executionOutcome{}, false
+	}
+	return nil, r.commitLinearNodeOutcome(ctx, run.plan, node, outcome), true
+}
+
+// runLinearCallAppNode builds the explicit call_app node execution from the
+// chain's authoritative facts, runs the node, and maps its local outcome to the
+// linear attempt. The node never skips the remaining chain and never commits the
+// run; this linear scheduler does both, once.
+func (r *runner) runLinearCallAppNode(
+	ctx context.Context, run *linearRun,
+) (map[string]any, executionOutcome, bool) {
+	node := run.plan.callApp
+	outcome := r.runCallAppNode(ctx, r.newLinearNodeExecution(run, node))
+	run.outcome, run.report = outcome.sandbox, outcome.report
+	if outcome.kind == nodeOutcomeSucceeded {
+		return outcome.output, executionOutcome{}, false
+	}
+	return nil, r.commitLinearNodeOutcome(ctx, run.plan, node, outcome), true
+}
+
+// newLinearNodeExecution snapshots the chain's facts for one node: the resolved
+// upstream namespace, the sealed node-id scope, the validated node config the
+// scheduler already proved and the sandbox evidence observed so far. The
+// namespace copy is the node's stable binding view for its whole execution; later
+// scheduler mutations cannot change it.
+func (r *runner) newLinearNodeExecution(
+	run *linearRun, node *manifestNode,
+) *nodeExecution {
+	namespace := map[string]any{
+		"input":           run.start,
+		run.plan.start.ID: run.start,
+	}
+	if run.plan.python != nil {
+		namespace[run.plan.python.ID] = run.python
+	}
+	scopeIDs := make([]string, 0, len(run.plan.order))
+	for _, planned := range run.plan.order {
+		scopeIDs = append(scopeIDs, planned.ID)
+	}
+	return &nodeExecution{
+		node: node, definition: run.plan.definition, inputs: run.inputs,
+		namespace: namespace, startNodeID: run.plan.start.ID,
+		scopeNodeIDs: scopeIDs, sandbox: run.outcome, report: run.report,
+		agentConfig: run.plan.agentConfig, callAppConfig: run.plan.callAppConfig,
+	}
+}
+
+// commitLinearNodeOutcome maps one terminal local node outcome to the linear
+// attempt. This is the scheduler half of C4.01: it skips the remaining chain and
+// submits/certifies the run result here and only here.
+func (r *runner) commitLinearNodeOutcome(
+	ctx context.Context, plan *linearPlan, node *manifestNode, outcome nodeOutcome,
+) executionOutcome {
+	report := sandboxReportOf(outcome.sandbox)
+	switch outcome.kind {
+	case nodeOutcomeFailed:
+		r.skipRemaining(ctx, plan, node.ID)
+		return r.commitFailedAfterStart(ctx, outcome.code, outcome.message,
+			outcome.sandbox, outcome.evidence)
+
+	case nodeOutcomeCancelled:
+		r.skipRemaining(ctx, plan, node.ID)
+		if err := r.confirmExit(ctx, outcome.sandbox.SandboxStarted, outcome.evidence); err != nil {
+			return executionOutcome{outcome: "cancelled", code: "cancel_requested",
+				err: err.Error(), sandbox: report, failedStatus: true}
+		}
+		return executionOutcome{outcome: "cancelled", code: "cancel_requested",
+			runState: r.readRunState(ctx), sandbox: report}
+
+	case nodeOutcomeWaiting:
+		if outcome.proposal == nil {
+			r.skipRemaining(ctx, plan, node.ID)
+			return r.commitFailedAfterStart(ctx, CodeSandboxFailed,
+				"the node waited without a result proposal", outcome.sandbox, outcome.evidence)
+		}
+		if err := r.deps.Client.SubmitResult(
+			ctx, r.lease.RunID, r.lease.AttemptToken, *outcome.proposal,
+		); err != nil {
+			r.emitNode(ctx, node.ID, "failed")
+			r.skipRemaining(ctx, plan, node.ID)
+			code := outcome.fallbackCode
+			if code == "" {
+				code = CodeSandboxFailed
+			}
+			return r.commitFailedAfterStart(ctx, code, outcome.proposalRefusal+err.Error(),
+				outcome.sandbox, r.exitEvidence(r.heartbeatCount(), outcome.sandbox, nil))
+		}
+		if err := r.confirmExit(ctx, outcome.sandbox.SandboxStarted, outcome.evidence); err != nil {
+			return executionOutcome{outcome: "error", code: outcome.fallbackCode,
+				err: outcome.exitRefusal + err.Error(), sandbox: report}
+		}
+		return executionOutcome{outcome: outcome.outcomeName, code: outcome.code,
+			runState: r.readRunState(ctx), sandbox: report}
+
+	default:
+		return executionOutcome{outcome: "error", code: CodeSandboxFailed,
+			err: "the linear scheduler received no terminal node outcome", failedStatus: true}
+	}
 }
 
 // errRunInputUnavailable marks a transport-level failure to read the sealed run

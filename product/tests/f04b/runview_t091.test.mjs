@@ -20,11 +20,23 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PRODUCT = path.resolve(HERE, '..', '..');
 const RUNVIEW_SOURCE = path.join(PRODUCT, 'apps', 'web', 'src', 'assets', 'runview.js');
+const RUNSTREAM_SOURCE = path.join(PRODUCT, 'apps', 'web', 'src', 'assets', 'runstream.js');
+const RUNSTATE_GUARD_SOURCE = path.join(
+  PRODUCT, 'apps', 'web', 'src', 'assets', 'runstate-guard.js',
+);
 const TEN_NODE = path.join(HERE, 'fixtures', 'ten_node_definition.json');
 
 function loadRunView() {
   const context = { console };
   vm.createContext(context);
+  // C6.01 (#155): the real shared run-state bytes load before runview.js.
+  vm.runInContext(fs.readFileSync(RUNSTREAM_SOURCE, 'utf8'), context, {
+    filename: 'runstream.js',
+  });
+  // C6.04 (#158): the guard is part of the real page load order.
+  vm.runInContext(fs.readFileSync(RUNSTATE_GUARD_SOURCE, 'utf8'), context, {
+    filename: 'runstate-guard.js',
+  });
   vm.runInContext(fs.readFileSync(RUNVIEW_SOURCE, 'utf8'), context, { filename: 'runview.js' });
   return context;
 }

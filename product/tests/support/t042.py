@@ -16,10 +16,6 @@ expected summary from WORKFLOW-SPEC §6.
 
 from __future__ import annotations
 
-import json
-import time
-
-from support import execution_support as execution
 from support import stack as st
 from support import t027, t033
 
@@ -124,61 +120,11 @@ def ready_csv(stack, owner, *, content: bytes = t033.SALES_CSV) -> str:
     return t033.upload_artifact(stack, owner.creator, content)
 
 
-run_linear_once = execution.execute_once
-
-
 # ---------------------------------------------------------------------------
 # owner reads and database assertions
 # ---------------------------------------------------------------------------
-def node_results(session, run_id: str):
-    return session.client.get(f"/api/v1/runs/{run_id}/node-results")
-
-
-def node_result_rows(dbname: str, run_id: str) -> list[dict]:
-    return st.sql_rows(
-        dbname,
-        "SELECT o.node_id, o.kind, o.artifact_id::text AS artifact_id, o.label, "
-        "a.purpose, a.state, a.media_type, a.sha256 "
-        "FROM platform.run_node_outputs AS o "
-        "JOIN platform.artifacts AS a ON a.id = o.artifact_id "
-        f"WHERE o.run_id = {st.quote_literal(run_id)}::uuid "
-        "ORDER BY o.node_id, o.kind, o.label",
-    )
-
-
-def node_events(dbname: str, run_id: str) -> list[dict]:
-    rows = st.sql_rows(
-        dbname,
-        "SELECT seq, type, payload::text AS payload "
-        "FROM platform.run_events "
-        f"WHERE run_id = {st.quote_literal(run_id)}::uuid AND type = 'node.status' "
-        "ORDER BY seq",
-    )
-    for row in rows:
-        row["payload"] = json.loads(row["payload"])
-    return rows
-
-
-def wait_node_results(session, run_id: str, *, expected: int, timeout: float = 30.0) -> dict:
-    """Poll the owner read until the node result rows are visible (or timeout)."""
-    deadline = time.time() + timeout
-    last: dict = {}
-    while time.time() < deadline:
-        response = node_results(session, run_id)
-        if response.status == 200:
-            last = response.json
-            if len(last.get("items", [])) >= expected:
-                return last
-        time.sleep(0.05)
-    raise AssertionError(f"node results never reached {expected}: {last}")
-
-
 def artifacts_of_kind(items: list[dict], kind: str) -> list[dict]:
     return [item for item in items if item["kind"] == kind]
-
-
-def content_of(session, artifact_id: str):
-    return t033.artifact_content(session, artifact_id)
 
 
 def request_cancel_after_first_heartbeat(dbname: str) -> None:

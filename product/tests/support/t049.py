@@ -25,9 +25,10 @@ import re
 import zipfile
 from decimal import Decimal
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import stack as st
-from support import f00b, f02a, t027, t033, t039, t042
+from support import f00b, f02a, t027, t033, t039
 
 ADMIN_LOGIN = f02a.ADMIN_LOGIN
 SALES_TEMPLATE_ID = "sales"
@@ -146,7 +147,7 @@ def run_once(stack, *, env_extra: dict[str, str] | None = None):
 
 
 def wait_node_results(session, run_id: str, *, expected: int = 7) -> dict:
-    return t042.wait_node_results(session, run_id, expected=expected)
+    return observations.wait_node_results(session, run_id, expected=expected)
 
 
 def grouped(items: list[dict]) -> dict[str, list[dict]]:
@@ -161,13 +162,13 @@ def rows_of(grouped_rows: dict[str, list[dict]], node: str, kind: str) -> list[d
 
 
 def content_json(session, artifact_id: str) -> dict:
-    response = t033.artifact_content(session, artifact_id)
+    response = observations.artifact_content(session, artifact_id)
     assert response.status == 200, response.text
     return json.loads(response.raw)
 
 
 def content_bytes(session, artifact_id: str) -> bytes:
-    response = t033.artifact_content(session, artifact_id)
+    response = observations.artifact_content(session, artifact_id)
     assert response.status == 200, response.text
     return response.raw
 

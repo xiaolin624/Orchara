@@ -44,7 +44,8 @@ from decimal import Decimal
 
 import pytest
 
-from support import f02a, t025, t027, t032, t033, t035, t042, t083, t086, t087, t091
+from support import f02a, t025, t027, t032, t033, t035, t042, t086, t087, t091
+from support import run_observations as observations
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -346,7 +347,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     assert proposal["proposal"]["subject"] == "order-42", proposal
     assert t091.approval_for_node(t033_stack.dbname, run["id"], "approve2") is None
     # Nothing beyond the waiting approval published a node data output.
-    rows = t091.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     assert [row for row in rows if row["node_id"] in {"join1", "join2", "approve1"}] == []
 
     t091.decide_node(owner, t033_stack.dbname, run["id"], "approve1")
@@ -363,7 +364,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
 
     # The fork/py/agent/join2/join1 part of the graph ran exactly once before the
     # second wait: one data row per node, no duplicate join firing.
-    items = t042.node_results(owner.creator, run["id"])
+    items = observations.node_results_response(owner.creator, run["id"])
     assert items.status == 200, items.text
     rows = items.json["items"]
     for node_id in ("start", "choose", "approve1", "fork", "py", "agent", "join2", "join1"):
@@ -371,16 +372,16 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     for node_id in ("join2", "join1"):
         assert len(data_rows(rows, node_id)) == 1, (node_id, rows)
     assert data_rows(rows, "direct") == []
-    inner = t083.node_data_document(owner.creator, rows, "join2")["results"]
+    inner = observations.node_data_document(owner.creator, rows, "join2")["results"]
     assert inner["agent"]["status"] == "succeeded", inner
     assert re.fullmatch(r"[0-9a-f]{16}", inner["agent"]["value"]["text"]), inner
     assert inner["py"]["status"] == "succeeded", inner
     assert inner["py"]["value"]["total"] == "250.00", inner
-    outer = t083.node_data_document(owner.creator, rows, "join1")["results"]
+    outer = observations.node_data_document(owner.creator, rows, "join1")["results"]
     assert outer["join2"]["status"] == "succeeded", outer
     assert outer["join2"]["value"]["results"] == inner, outer
     assert outer["direct"] == {"status": "skipped"}, outer
-    condition = t083.node_data_document(owner.creator, rows, "choose")
+    condition = observations.node_data_document(owner.creator, rows, "choose")
     assert condition == {"port": "yes", "matched_case": 0}, condition
 
     t091.decide_node(owner, t033_stack.dbname, run["id"], "approve2")
@@ -390,7 +391,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     completed, report = t091.exec_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_report(report, "succeeded")
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # Exactly two approvals, two resumes, no replayed duplicate.
@@ -401,7 +402,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     assert len(t091.resume_jobs(t033_stack.dbname, run["id"])) == 2
 
     # Completed nodes were reused on resume: one data row each, joins once.
-    rows = t042.node_results(owner.creator, run["id"]).json["items"]
+    rows = observations.node_results_response(owner.creator, run["id"]).json["items"]
     assert len(data_rows(rows, "start")) <= 1, rows
     for node_id in ("choose", "approve1", "fork", "py", "agent", "join2",
                     "join1", "approve2", "summarise"):
@@ -409,7 +410,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
     for node_id in ("join1", "join2"):
         succeeded = [
             event
-            for event in t042.node_events(t033_stack.dbname, run["id"])
+            for event in observations.node_events(t033_stack.dbname, run["id"])
             if event["payload"]["node_id"] == node_id
             and event["payload"]["state"] == "succeeded"
         ]
@@ -422,7 +423,7 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
 
     # The final output reads the outer join envelope by source, the inner join
     # envelope, the second approval decision and the model output.
-    final = t091.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
     assert set(final) == {"join1", "join2", "second_approval", "summary"}, final
     assert final["join1"] == outer, final
     assert final["join2"] == {"results": inner}, final
@@ -447,20 +448,20 @@ def test_two_approvals_resume_the_same_run_through_the_nested_join(
 
     # Node state sequences: skipped branch stays skipped, both joins/end succeeded,
     # and the replay emits the same durable sequence over a fresh SSE connection.
-    states = t091.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["direct"] and set(states["direct"]) == {"skipped"}, states
     for node_id in ("join2", "join1", "approve2", "summarise", "end"):
         assert states[node_id][-1] == "succeeded", (node_id, states)
-    assert t091.sse_node_states(t033_stack, owner.creator, run["id"]) == states
+    assert observations.sse_node_states(t033_stack, owner.creator, run["id"]) == states
 
     # A fresh node-results read (what a reopened page does) rebuilds the same
     # table facts: condition port, both join envelopes, approval decisions.
-    store = t042.node_results(owner.creator, run["id"]).json["items"]
+    store = observations.node_results_response(owner.creator, run["id"]).json["items"]
     assert len(data_rows(store, "join1")) == 1
     assert len(data_rows(store, "join2")) == 1
-    assert t083.node_data_document(owner.creator, store, "choose")["port"] == "yes"
+    assert observations.node_data_document(owner.creator, store, "choose")["port"] == "yes"
     for node_id in ("approve1", "approve2"):
-        decision = t083.node_data_document(owner.creator, store, node_id)
+        decision = observations.node_data_document(owner.creator, store, node_id)
         assert decision["decision"] == "approved", decision
     assert t033.no_orphan_evidence()["runsc_list"] == []
 
@@ -489,18 +490,18 @@ def test_optional_failure_is_folded_into_the_join_envelope_and_the_run_succeeds(
 
     _completed, report = t091.exec_once(t033_stack)
     assert_report(report, "succeeded")
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
 
-    rows = t042.node_results(owner.creator, run["id"]).json["items"]
+    rows = observations.node_results_response(owner.creator, run["id"]).json["items"]
     # The failed optional branch published no output of its own ...
     assert data_rows(rows, "py") == []
     # ... but the join recorded the explicit pure-compute error as error data.
-    inner = t083.node_data_document(owner.creator, rows, "join2")["results"]
+    inner = observations.node_data_document(owner.creator, rows, "join2")["results"]
     assert inner["py"] == {"status": "failed", "error_code": "node_output_invalid"}, inner
     assert inner["agent"]["status"] == "succeeded", inner
     assert len(data_rows(rows, "join2")) == 1
     # Downstream sees the failed status as data, never as a successful value.
-    final = t091.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
     assert final["join2"]["results"]["py"]["status"] == "failed", final
     assert "value" not in final["join2"]["results"]["py"], final
     assert final["join2"]["results"]["agent"]["status"] == "succeeded", final
@@ -526,15 +527,15 @@ def test_required_failure_fails_fast_and_never_joins(t033_stack, sandbox) -> Non
     completed, report = t091.exec_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_report(report, "failed", error_code="node_output_invalid")
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "node_output_invalid", state
     assert state["output_artifact_id"] is None, state
 
-    states = t091.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["py"] == ["pending", "running", "failed"], states
     for node_id in ("join2", "join1", "approve2", "summarise", "end"):
         assert states[node_id] == ["skipped"], (node_id, states)
-    rows = t091.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     for node_id in ("join2", "join1", "approve2", "summarise", "end"):
         assert [row for row in rows if row["node_id"] == node_id] == [], (node_id, rows)
     # The second approval was never created and no second resume exists; the one
@@ -568,14 +569,14 @@ def test_an_optional_agent_capability_failure_is_never_downgraded(
     completed, report = t091.exec_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_report(report, "failed", error_code="model_profile_unavailable")
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "model_profile_unavailable", state
     assert state["output_artifact_id"] is None, state
-    states = t091.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["agent"] == ["pending", "running", "failed"], states
     for node_id in ("agent_out", "join2", "join1", "approve2", "summarise", "end"):
         assert states[node_id] == ["skipped"], (node_id, states)
-    rows = t091.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     assert [row for row in rows if row["node_id"] in {"join2", "join1", "approve2"}] == []
     assert t033.no_orphan_evidence()["runsc_list"] == []
 

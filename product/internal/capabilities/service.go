@@ -216,7 +216,7 @@ func (s *Service) Invoke(ctx context.Context, runID, role string, input Input) (
 	if spec.Kind == ConnectorKind {
 		return s.dispatchConnector(ctx, run, normalized, spec, prepared.operationID)
 	}
-	return s.dispatchModel(ctx, run, normalized, spec, digest, prepared.operationID)
+	return s.dispatchModel(ctx, run, normalized, spec, prepared.operationID)
 }
 
 func normalizeInput(runID string, input Input) (Input, *Error) {
@@ -1029,114 +1029,37 @@ func (s *Service) sealTx(
 	return artifactID, nil
 }
 
-// dispatchModel performs one operation's physical provider calls. The server is
-// the only retry authority: at most two retries for transient failures, never a
-// retry for a schema/permission/validation answer.
-//
-// F06/T045: after the primary's bounded retries are exhausted by an availability
-// fault, the first *compatible* declared fallback gets exactly one physical
-// attempt of its own. A permission/authorisation/syntax/schema/tool-argument
-// answer never reaches the fallback path. When no fallback is compatible the
-// primary's typed failure is returned unchanged.
+// dispatchModel drives the synchronous complete-response path through the shared
+// private attempt session (C2.01). Authorization, idempotency, the operation row,
+// the three-primary/one-fallback bound, actual-candidate pricing, the atomic
+// pre-dispatch reservation, cancellation, typed classification and settlement all
+// belong to that session/driver; this function only supplies the content handling
+// of a complete provider answer.
 func (s *Service) dispatchModel(
 	ctx context.Context,
 	run *runContext,
 	input Input,
 	spec *capabilitySpec,
-	digest, operationID string,
+	operationID string,
 ) (*Result, error) {
-	if s.Providers == nil {
-		return nil, capFailure(503, CodeProviderNotConfigured, "no model provider is configured")
-	}
-	candidate := &modelproxy.Candidate{
-		ID: spec.Profile.ID, Provider: spec.Profile.Provider, ModelID: spec.Profile.ModelID,
-		EndpointRef: spec.Profile.EndpointRef, SecretRef: spec.Profile.SecretRef,
-		Config:          spec.Profile.ConfigJSON,
-		ValidationState: spec.Profile.ValidationState,
-	}
-	provider, err := s.Providers.For(candidate)
-	if err != nil {
-		return nil, providerFailure(err)
-	}
-	// F06/T046: the conservative price-version reservation of this profile. It
-	// is reserved before every physical attempt and settled/released after it.
-	reservation, capErr := reservationFor(spec.Profile, run, input.Params)
-	if capErr != nil {
-		return nil, capErr
-	}
-	pricing, capErr := priceForProfile(spec.Profile, run.Currency)
-	if capErr != nil {
-		return nil, capErr
-	}
-	failureCode := CodeProviderTransient
-	failureReason := ""
-	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
-		// A caller cancellation that arrived before this attempt must not create
-		// a ledger failure for a call that never happened (H2).
-		if ctx.Err() != nil {
-			return nil, s.finishCallerCancelled(ctx, operationID, attempt)
-		}
-		if _, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation); capErr != nil {
-			return nil, capErr
-		}
-		response, callErr := provider.Call(ctx, modelproxy.CallRequest{
-			Candidate: candidate,
-			Params:    input.Params,
-			Attempt:   attempt,
-		})
-		if callErr == nil {
-			return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil, pricing)
-		}
-		code, cancelled := modelCallFailureCode(ctx, callErr)
-		if cancelled {
-			// The caller is gone: no retry, no fallback, no provider failure and
-			// no provider_error row. Close the real attempt with a clean-up
-			// context and answer the (likely already disconnected) caller.
-			return nil, s.finishCallerCancelled(ctx, operationID, attempt)
-		}
-		reason, fallbackEligible := fallbackReasonFor(callErr)
-		if !fallbackEligible {
-			// Permission, authorisation, syntax, schema-validation, tool
-			// argument and policy failures are terminal: no retry, no fallback.
-			if capErr := s.failAttemptAndOperation(ctx, operationID, attempt, code); capErr != nil {
-				return nil, capErr
-			}
-			return nil, capFailure(503, code, "the model provider call did not complete")
-		}
-		failureCode, failureReason = code, reason
-		if attempt < maxPhysicalAttempts {
-			if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
-				return nil, capErr
-			}
-			if err := sleepBackoff(ctx, attempt); err != nil {
-				// The caller vanished during the backoff: close the operation as a
-				// cancellation instead of reporting an interrupted provider retry.
-				return nil, s.finishCallerCancelled(ctx, operationID, attempt)
-			}
-			continue
-		}
-	}
-
-	// The primary's availability fault outlived its bounded retries. Release the
-	// last failed attempt's reservation before selecting a fallback: the
-	// fallback must fit the budget that is actually still free, not one still
-	// held by the attempt that just failed.
-	if capErr := s.resetAttemptForRetry(ctx, operationID, maxPhysicalAttempts, failureCode); capErr != nil {
-		return nil, capErr
-	}
-	selection := s.selectFallback(ctx, run, spec, input.Params, failureReason)
-	if selection != nil {
-		if selection.Reason == "" {
-			selection.Reason = FallbackReasonAvailability
-		}
-		return s.dispatchFallback(ctx, run, input, spec, operationID,
-			maxPhysicalAttempts+1, selection)
-	}
-	if capErr := s.failOperation(ctx, operationID, failureCode); capErr != nil {
-		return nil, capErr
-	}
-	return nil, capFailure(503, failureCode,
-		"the model provider exhausted its attempts")
+	session := newModelAttemptSession(s, run, input, spec, operationID, false)
+	return session.dispatch(ctx, modelContentHandler{
+		Call: func(ctx context.Context, attempt modelAttemptInfo) (modelproxy.ProviderResponse, error) {
+			return attempt.Provider.Call(ctx, modelproxy.CallRequest{
+				Candidate: attempt.Candidate,
+				Params:    input.Params,
+				Attempt:   attempt.Attempt,
+			})
+		},
+		Complete: func(
+			ctx context.Context,
+			attempt modelAttemptInfo,
+			response modelproxy.ProviderResponse,
+		) (*Result, error) {
+			return s.finishModelSuccess(ctx, run, input, spec, operationID,
+				attempt.Attempt, response, attempt.Fallback, attempt.Pricing)
+		},
+	})
 }
 
 // fallbackSelection is one compatible fallback chosen before dispatch.
@@ -1145,87 +1068,30 @@ type fallbackSelection struct {
 	Reason  string
 }
 
-// dispatchFallback spends the operation's single fallback attempt. A failed
-// fallback attempt is recorded like any other physical attempt; the returned
-// error names the fallback's own code, never a fabricated success.
-func (s *Service) dispatchFallback(
-	ctx context.Context,
-	run *runContext,
-	input Input,
-	spec *capabilitySpec,
-	operationID string,
-	attempt int,
-	selection *fallbackSelection,
-) (*Result, error) {
-	profile := selection.Profile
-	candidate := &modelproxy.Candidate{
-		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
-		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
-		Config:          profile.ConfigJSON,
-		ValidationState: profile.ValidationState,
-	}
-	provider, err := s.Providers.For(candidate)
-	if err != nil {
-		if capErr := s.failOperation(ctx, operationID, providerErrorCode(err)); capErr != nil {
-			return nil, capErr
-		}
-		return nil, providerFailure(err)
-	}
-	if err := provider.Available(candidate); err != nil {
-		if capErr := s.failOperation(ctx, operationID, providerErrorCode(err)); capErr != nil {
-			return nil, capErr
-		}
-		return nil, providerFailure(err)
-	}
-	reservation, capErr := reservationFor(profile, run, input.Params)
-	if capErr != nil {
-		_ = s.failOperation(ctx, operationID, capErr.Code)
-		return nil, capErr
-	}
-	pricing, capErr := priceForProfile(profile, run.Currency)
-	if capErr != nil {
-		_ = s.failOperation(ctx, operationID, capErr.Code)
-		return nil, capErr
-	}
-	if _, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation); capErr != nil {
-		return nil, capErr
-	}
-	response, callErr := provider.Call(ctx, modelproxy.CallRequest{
-		Candidate: candidate,
-		Params:    input.Params,
-		Attempt:   attempt,
-	})
-	if callErr == nil {
-		fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
-		return s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact, pricing)
-	}
-	code, cancelled := modelCallFailureCode(ctx, callErr)
-	if cancelled {
-		// The caller went away during the fallback attempt: close it as a
-		// cancellation, never as a provider failure (H2).
-		return nil, s.finishCallerCancelled(ctx, operationID, attempt)
-	}
-	if capErr := s.failAttemptAndOperation(ctx, operationID, attempt, code); capErr != nil {
-		return nil, capErr
-	}
-	return nil, capFailure(503, code,
-		"the fallback model provider call did not complete")
-}
-
 // selectFallback applies the T045 gates in order: the declared list of the
 // primary profile, manifest membership, passed/unrevoked, a dispatchable
 // provider, compatibility (kind/protocol/context/tools/schema) and the run
 // budget. The first profile that passes every gate is returned; anything that
 // fails one is skipped, never silently used.
+//
+// providerFor is the calling session's delivery seam (Providers.For for Invoke,
+// StreamingFor for Stream). Selection must use the same seam as dispatch:
+// otherwise a streaming session could select a candidate its streaming adapter
+// cannot serve, and the operation would be refused after the switch instead of
+// skipping that candidate. nil falls back to the synchronous provider set.
 func (s *Service) selectFallback(
 	ctx context.Context,
 	run *runContext,
 	spec *capabilitySpec,
 	params map[string]any,
 	reason string,
+	providerFor func(*modelproxy.Candidate) (modelproxy.Provider, error),
 ) *fallbackSelection {
 	if spec == nil || spec.Profile == nil || spec.Model == nil || s.Providers == nil || run.Manifest == nil {
 		return nil
+	}
+	if providerFor == nil {
+		providerFor = s.Providers.For
 	}
 	ids := fallbackProfileIDs(spec.Profile)
 	if len(ids) == 0 {
@@ -1249,7 +1115,7 @@ func (s *Service) selectFallback(
 			Config:          profile.ConfigJSON,
 			ValidationState: profile.ValidationState,
 		}
-		provider, err := s.Providers.For(candidate)
+		provider, err := providerFor(candidate)
 		if err != nil {
 			continue
 		}
@@ -1386,18 +1252,30 @@ func (s *Service) finishModelSuccess(
 	pricing *modelPrice,
 ) (*Result, error) {
 	projection, problems := validateProviderResponse(response.Data, spec.Model)
+	// failClosed is the single terminal refusal of a complete answer. The
+	// provider's tokens are real consumption, so the attempt must be settled and
+	// closed even though the platform refuses the answer. That cleanup runs on a
+	// bounded context detached from this request: a caller that disappeared while
+	// the answer was being validated/sealed must not leave the attempt or the
+	// operation `dispatching`, and its database failure is returned instead of the
+	// refusal so no caller can mistake an unclosed ledger for a clean close.
+	// Callers that hold an open transaction roll it back first.
+	failClosed := func(code string, cause *Error) (*Result, error) {
+		if cleanup := s.closeAfterProviderFailure(ctx, operationID, attempt, code, projection, pricing); cleanup != nil {
+			return nil, cleanup
+		}
+		return nil, cause
+	}
 	if len(problems) > 0 {
 		// F06/review2 P1-5: the provider answered and may have reported real
 		// usage. A projection failure is a platform-side refusal, not proof that
 		// the call was free: settle the actual usage instead of releasing it.
-		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
-			CodeProviderResponseInvalid, projection, pricing)
-		return nil, &Error{
+		return failClosed(CodeProviderResponseInvalid, &Error{
 			Status:  422,
 			Code:    CodeProviderResponseInvalid,
 			Message: "the provider response failed validation: " + problems[0].Message,
 			Field:   strings.TrimPrefix(problems[0].Field, "/"),
-		}
+		})
 	}
 	payload := map[string]any{
 		"text":                     projection.Text,
@@ -1423,13 +1301,13 @@ func (s *Service) finishModelSuccess(
 	content, err := json.Marshal(payload)
 	if err != nil {
 		// The provider answer exists; its usage must still be settled.
-		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
-			CodeProviderResponseInvalid, projection, pricing)
-		return nil, capFailure(500, CodeInternal, "the validated response could not be encoded")
+		return failClosed(CodeInternal, capFailure(500, CodeInternal,
+			"the validated response could not be encoded"))
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, capFailure(500, CodeInternal, "the result transaction could not start")
+		return failClosed(CodeInternal, capFailure(500, CodeInternal,
+			"the result transaction could not start"))
 	}
 	defer func() { _ = tx.Rollback() }()
 	receiptArtifactID, capErr := s.sealTx(ctx, tx, run, input.AttemptToken,
@@ -1438,9 +1316,7 @@ func (s *Service) finishModelSuccess(
 		_ = tx.Rollback()
 		// The provider answer exists; settling its usage must not depend on the
 		// receipt artifact being writable.
-		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
-			CodeInternal, projection, pricing)
-		return nil, capErr
+		return failClosed(CodeInternal, capErr)
 	}
 	// F06/T046: settle the actual usage against the price version. The charge
 	// and its paired release, the receipt and the attempt projection commit
@@ -1448,7 +1324,9 @@ func (s *Service) finishModelSuccess(
 	// A provider answer without a usage object keeps the conservative
 	// reservation (`usage_missing`) for maintenance reconciliation.
 	if pricing == nil {
-		return nil, capFailure(500, CodeInternal, "the settled price version is missing")
+		_ = tx.Rollback()
+		return failClosed(CodeInternal, capFailure(500, CodeInternal,
+			"the settled price version is missing"))
 	}
 	if projection.Usage == nil {
 		if _, err := tx.ExecContext(ctx, `
@@ -1460,12 +1338,16 @@ func (s *Service) finishModelSuccess(
 			 WHERE operation_id = $1::uuid AND attempt_no = $2 AND state = 'dispatching'`,
 			operationID, attempt, receiptArtifactID, pricing.version,
 		); err != nil {
-			return nil, capFailure(500, CodeInternal, "the attempt could not be closed")
+			_ = tx.Rollback()
+			return failClosed(CodeInternal, capFailure(500, CodeInternal,
+				"the attempt could not be closed"))
 		}
 	} else {
 		chargedAmount, err := budget.ActualCharge(pricing.price, projection.TokensIn, projection.TokensOut)
 		if err != nil {
-			return nil, capFailure(500, CodeInternal, "the actual usage cannot be priced")
+			_ = tx.Rollback()
+			return failClosed(CodeInternal, capFailure(500, CodeInternal,
+				"the actual usage cannot be priced"))
 		}
 		tokensIn, tokensOut := projection.TokensIn, projection.TokensOut
 		settled, err := s.Budget.SettleTx(ctx, tx, budget.Settlement{
@@ -1477,7 +1359,9 @@ func (s *Service) finishModelSuccess(
 			TokensOut:    &tokensOut,
 		})
 		if err != nil {
-			return nil, mapBudgetError(err)
+			_ = tx.Rollback()
+			mapped := mapBudgetError(err)
+			return failClosed(mapped.Code, mapped)
 		}
 		result, err := tx.ExecContext(ctx, `
 			UPDATE platform.operation_attempts
@@ -1490,10 +1374,14 @@ func (s *Service) finishModelSuccess(
 			settled.ChargedAmount, pricing.version,
 		)
 		if err != nil {
-			return nil, capFailure(500, CodeInternal, "the attempt could not be closed")
+			_ = tx.Rollback()
+			return failClosed(CodeInternal, capFailure(500, CodeInternal,
+				"the attempt could not be closed"))
 		}
 		if affected, _ := result.RowsAffected(); affected != 1 {
-			return nil, capFailure(500, CodeInternal, "the attempt was not dispatching")
+			_ = tx.Rollback()
+			return failClosed(CodeInternal, capFailure(500, CodeInternal,
+				"the attempt was not dispatching"))
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -1503,7 +1391,9 @@ func (s *Service) finishModelSuccess(
 		       last_error_code = NULL, updated_at = now()
 		 WHERE id = $1::uuid AND state = 'dispatching'`, operationID, receiptArtifactID,
 	); err != nil {
-		return nil, capFailure(500, CodeInternal, "the operation could not be succeeded")
+		_ = tx.Rollback()
+		return failClosed(CodeInternal, capFailure(500, CodeInternal,
+			"the operation could not be succeeded"))
 	}
 	if fallback != nil {
 		// The operation keeps the primary capability_version the worker named
@@ -1515,11 +1405,14 @@ func (s *Service) finishModelSuccess(
 			 WHERE id = $1::uuid AND state = 'succeeded'`,
 			operationID, fallback.ProfileVersionID, fallback.Reason,
 		); err != nil {
-			return nil, capFailure(500, CodeInternal, "the fallback fact could not be recorded")
+			_ = tx.Rollback()
+			return failClosed(CodeInternal, capFailure(500, CodeInternal,
+				"the fallback fact could not be recorded"))
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, capFailure(500, CodeInternal, "the result could not be committed")
+		return failClosed(CodeInternal, capFailure(500, CodeInternal,
+			"the result could not be committed"))
 	}
 	artifact := receiptArtifactID
 	return &Result{
@@ -1530,15 +1423,24 @@ func (s *Service) finishModelSuccess(
 	}, nil
 }
 
+// resetAttemptForRetry closes one failed primary attempt, releases its
+// reservation and re-authorizes the operation for the next attempt. The write is
+// a ledger decision, not provider work: it uses the bounded cleanup context so a
+// caller that vanishes between the physical failure and this close cannot leave
+// the attempt/operation dispatching. The driver re-checks the live context after
+// the write and stops instead of dispatching again.
 func (s *Service) resetAttemptForRetry(ctx context.Context, operationID string, attempt int, code string) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	ctx = cleanupCtx
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return capFailure(500, CodeInternal, "the retry transaction could not start")
+		return cleanupFailure(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if s.Budget != nil {
 		if _, err := s.Budget.ReleaseTx(ctx, tx, budget.AttemptKey(operationID, attempt)); err != nil {
-			return capFailure(500, CodeInternal, "the failed attempt reservation could not be released")
+			return cleanupFailure(err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -1548,17 +1450,17 @@ func (s *Service) resetAttemptForRetry(ctx context.Context, operationID string, 
 		                                THEN 'released' ELSE settlement_state END
 		 WHERE operation_id = $1::uuid AND state = 'dispatching'`, operationID, code,
 	); err != nil {
-		return capFailure(500, CodeInternal, "the failed attempt could not be recorded")
+		return cleanupFailure(err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE platform.operations
 		   SET state = 'authorized', last_error_code = $2, updated_at = now()
 		 WHERE id = $1::uuid AND state = 'dispatching'`, operationID, code,
 	); err != nil {
-		return capFailure(500, CodeInternal, "the operation could not be re-authorized")
+		return cleanupFailure(err)
 	}
 	if err := tx.Commit(); err != nil {
-		return capFailure(500, CodeInternal, "the retry decision could not be committed")
+		return cleanupFailure(err)
 	}
 	return nil
 }
@@ -1690,15 +1592,17 @@ func (s *Service) failAttemptAndOperation(ctx context.Context, operationID strin
 	return tx.Commit()
 }
 
-func (s *Service) failOperation(ctx context.Context, operationID, code string) *Error {
-	if _, err := s.DB.ExecContext(ctx, `
+// failOperation records the terminal operation state. It returns the raw write
+// error: callers decide whether it is a cleanup that must be reported as an
+// unclosed ledger (closeOperation) or a best-effort write that already has a
+// more specific outcome.
+func (s *Service) failOperation(ctx context.Context, operationID, code string) error {
+	_, err := s.DB.ExecContext(ctx, `
 		UPDATE platform.operations
 		   SET state = 'failed', last_error_code = $2, updated_at = now()
 		 WHERE id = $1::uuid`, operationID, code,
-	); err != nil {
-		return capFailure(500, CodeInternal, "the failed operation could not be recorded")
-	}
-	return nil
+	)
+	return err
 }
 
 // ReportResult is the non-contract capability-results endpoint: the worker's
@@ -2207,14 +2111,20 @@ func providerErrorCode(err error) string {
 // modelCallFailureCode classifies one failed physical model call before anything
 // is written. It returns (code, cancelled):
 //
-//   - cancelled is true for a caller cancellation or an already-done caller
-//     context. The caller-owned request is gone; the attempt still has to be
-//     closed (with a detached cleanup context), but the failure must not be
-//     retried, must not select a fallback and must never be recorded as a
-//     provider failure.
+//   - cancelled is true for a caller cancellation, an already-done caller
+//     context, or a stream whose consumer stopped. The caller-owned request is
+//     gone; the attempt still has to be closed (with a detached cleanup
+//     context), but the failure must not be retried, must not select a fallback
+//     and must never be recorded as a provider failure.
 //   - otherwise code is the provider ledger code, with a typed transient error
 //     reported as CodeProviderTransient exactly like the retry loop expects.
 func modelCallFailureCode(ctx context.Context, err error) (string, bool) {
+	if errors.Is(err, errStreamConsumerStopped) {
+		// The frame consumer stopped; the provider stream was asked to stop and
+		// returned the same reason. This is the streaming cancellation, not a
+		// provider claim.
+		return CodeStreamCancelled, true
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return CodeCallerCancelled, true
 	}
@@ -2227,17 +2137,129 @@ func modelCallFailureCode(ctx context.Context, err error) (string, bool) {
 	return providerErrorCode(err), false
 }
 
-// finishCallerCancelled closes the physical attempt of a caller-cancelled call
-// and releases its reservation with a context that outlives the dead request.
-// It mirrors the streaming path's cleanup (stream.go: a non-cancellable 5s
-// context) so the ledger row is never left `dispatching` and nothing is billed.
-func (s *Service) finishCallerCancelled(ctx context.Context, operationID string, attempt int) *Error {
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	if err := s.failAttemptAndOperation(cleanupCtx, operationID, attempt, CodeCallerCancelled); err != nil {
-		return capFailure(500, CodeInternal, "the cancelled capability attempt could not be closed")
+// cleanupContext bounds a ledger write that must survive the caller's cancelled
+// request. Cleanup is not provider work: it never dispatches, never retries and
+// never invents a charge. Detaching it from the dead request is what keeps a
+// cancelled/failed operation from being left `dispatching` just because the
+// client went away mid-write; the fixed bound keeps it from hanging forever.
+func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+}
+
+// cancelledFailure is the stable cancellation answer of one entry: the attempt
+// and operation close with code, the reservation is released and nothing is
+// billed. The message is safe and shared by every cleanup of the same kind.
+func cancelledFailure(code string) *Error {
+	message := "the capability call was cancelled by its caller"
+	if code == CodeStreamCancelled {
+		message = "the model stream stopped before it completed"
 	}
-	return capFailure(503, CodeCallerCancelled, "the capability call was cancelled by its caller")
+	return capFailure(503, code, message)
+}
+
+// closeOperation records a terminal operation failure with the bounded cleanup
+// context. A write that still cannot commit is returned as an unclosed-ledger
+// failure associated with the database error, never silently dropped.
+func (s *Service) closeOperation(ctx context.Context, operationID, code string) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	if err := s.failOperation(cleanupCtx, operationID, code); err != nil {
+		return cleanupFailure(err)
+	}
+	return nil
+}
+
+// closeIfAuthorized closes only an operation that is still `authorized`. It is
+// the honest disposal of a refusal/cancellation whose dispatch transaction
+// rolled back: a terminal row is never overwritten, so a raced replay or an
+// already-recorded failure cannot be relabelled.
+func (s *Service) closeIfAuthorized(ctx context.Context, operationID, code string) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	if _, err := s.DB.ExecContext(cleanupCtx, `
+		UPDATE platform.operations
+		   SET state = 'failed', last_error_code = $2, updated_at = now()
+		 WHERE id = $1::uuid AND state = 'authorized'`, operationID, code,
+	); err != nil {
+		return cleanupFailure(err)
+	}
+	return nil
+}
+
+// closeAttemptAndOperation is the driver's terminal failure close. The provider
+// call already failed, so the ledger write is cleanup and uses the bounded
+// detached context; its failure is returned so the caller cannot claim the
+// operation was closed.
+func (s *Service) closeAttemptAndOperation(
+	ctx context.Context, operationID string, attempt int, code string,
+) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	if err := s.failAttemptAndOperation(cleanupCtx, operationID, attempt, code); err != nil {
+		return cleanupFailure(err)
+	}
+	return nil
+}
+
+// attemptDispatching reports whether one physical attempt is still open. The
+// post-provider closes check it first so a close that already committed is never
+// settled twice.
+func (s *Service) attemptDispatching(ctx context.Context, operationID string, attempt int) (bool, error) {
+	var state string
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT state FROM platform.operation_attempts
+		 WHERE operation_id = $1::uuid AND attempt_no = $2`, operationID, attempt).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return state == "dispatching", nil
+}
+
+// closeAfterProviderFailure closes an attempt whose provider answer already
+// arrived but whose content was refused (validation, sealing, stream assembly or
+// settlement). The provider's tokens are real consumption, so the existing rule
+// applies: settle the parsed usage on the failed attempt, keep the reservation as
+// usage_missing when it parsed no usage, and fail the operation. The write uses
+// the bounded cleanup context because the caller may have vanished while sealing;
+// a still-dispatching attempt is closed, an already-closed one is left alone.
+func (s *Service) closeAfterProviderFailure(
+	ctx context.Context,
+	operationID string,
+	attempt int,
+	code string,
+	projection *providerProjection,
+	pricing *modelPrice,
+) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	dispatching, err := s.attemptDispatching(cleanupCtx, operationID, attempt)
+	if err != nil {
+		return cleanupFailure(err)
+	}
+	if !dispatching {
+		return nil
+	}
+	if err := s.failModelAttemptAfterProvider(cleanupCtx, operationID, attempt, code, projection, pricing); err != nil {
+		return cleanupFailure(err)
+	}
+	return nil
+}
+
+// finishCancelled closes the physical attempt of a cancelled/stopped call and
+// releases its reservation with a context that outlives the dead request. code
+// is the stable cancellation vocabulary of the entry: caller_cancelled for
+// Invoke and stream_cancelled for Stream (T044). The attempt is never left
+// `dispatching` and nothing is billed.
+func (s *Service) finishCancelled(ctx context.Context, operationID string, attempt int, code string) *Error {
+	cleanupCtx, cancel := cleanupContext(ctx)
+	defer cancel()
+	if err := s.failAttemptAndOperation(cleanupCtx, operationID, attempt, code); err != nil {
+		return cleanupFailure(err)
+	}
+	return cancelledFailure(code)
 }
 
 // sleepBackoff is the bounded retry pause. It is not a budget gate: the

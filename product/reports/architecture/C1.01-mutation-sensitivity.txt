@@ -1,0 +1,347 @@
+FFFFFFFFFFFFFFFFFF                                                       [100%]
+================================== FAILURES ===================================
+__________________ test_check_never_modifies_managed_copies ___________________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_check_never_modifies_mana0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_check_never_modifies_mana0/product'))
+
+    def test_check_never_modifies_managed_copies(workspace):
+        source, dest = workspace
+        before = managed_bytes(dest)
+        assert run_cli(source, dest).returncode == 0
+        assert managed_bytes(dest) == before, "a passing check changed managed copies"
+
+        (dest / "docs" / "spec" / "README.md").write_bytes(b"# tampered\n")
+        (dest / "contracts" / "extra.json").write_bytes(b"{}\n")
+        before = managed_bytes(dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:205: AssertionError
+___________ test_cli_reports_drift_with_nonzero_exit[source-added] ____________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no0/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no0/product'))
+mutate = <function mutate_source_added at 0x000002089554AAC0>
+expected = [('source_added', 'source/NEW.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+__________ test_cli_reports_drift_with_nonzero_exit[source-modified] __________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no1/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no1/product'))
+mutate = <function mutate_source_modified at 0x000002089554AB60>
+expected = [('source_modified', 'source/README.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+__________ test_cli_reports_drift_with_nonzero_exit[source-removed] ___________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no2/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no2/product'))
+mutate = <function mutate_source_removed at 0x000002089554AC00>
+expected = [('source_removed', 'source/docs/HANDOFF.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+__________ test_cli_reports_drift_with_nonzero_exit[spec-copy-added] __________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no3/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no3/product'))
+mutate = <function mutate_spec_copy_added at 0x000002089554ACA0>
+expected = [('added', 'stray.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+________ test_cli_reports_drift_with_nonzero_exit[spec-copy-modified] _________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no4/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no4/product'))
+mutate = <function mutate_spec_copy_modified at 0x000002089554AD40>
+expected = [('modified', 'README.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_________ test_cli_reports_drift_with_nonzero_exit[spec-copy-removed] _________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no5/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no5/product'))
+mutate = <function mutate_spec_copy_removed at 0x000002089554ADE0>
+expected = [('removed', 'docs/HANDOFF.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+________ test_cli_reports_drift_with_nonzero_exit[contract-copy-added] ________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no6/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no6/product'))
+mutate = <function mutate_contract_copy_added at 0x000002089554AE80>
+expected = [('added', 'contracts/extra.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+______ test_cli_reports_drift_with_nonzero_exit[contract-copy-modified] _______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no7/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no7/product'))
+mutate = <function mutate_contract_copy_modified at 0x000002089554AF20>
+expected = [('modified', 'contracts/openapi.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_______ test_cli_reports_drift_with_nonzero_exit[contract-copy-removed] _______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no8/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no8/product'))
+mutate = <function mutate_contract_copy_removed at 0x000002089554AFC0>
+expected = [('removed', 'contracts/openapi.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_____ test_cli_reports_drift_with_nonzero_exit[source-and-copy-together] ______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no9/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no9/product'))
+mutate = <function mutate_source_and_copy_together at 0x000002089554B060>
+expected = [('source_modified', 'source/README.md'), ('modified', 'README.md')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_________ test_cli_reports_drift_with_nonzero_exit[baseline-missing] __________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no10/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no10/product'))
+mutate = <function mutate_baseline_missing at 0x000002089554B100>
+expected = [('missing_manifest', 'SYNC-MANIFEST.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_________ test_cli_reports_drift_with_nonzero_exit[baseline-corrupt] __________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no11/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no11/product'))
+mutate = <function mutate_baseline_corrupt at 0x000002089554B1A0>
+expected = [('invalid_manifest', 'SYNC-MANIFEST.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+______ test_cli_reports_drift_with_nonzero_exit[baseline-contradictory] _______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no12/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no12/product'))
+mutate = <function mutate_baseline_contradictory at 0x000002089554B240>
+expected = [('invalid_manifest', 'SYNC-MANIFEST.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+__ test_cli_reports_drift_with_nonzero_exit[runtime-contract-baseline-name] ___
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no13/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no13/product'))
+mutate = <function mutate_runtime_contract_baseline_name at 0x000002089554B2E0>
+expected = [('added', 'contracts/SYNC-MANIFEST.json')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+__________ test_cli_reports_drift_with_nonzero_exit[source-missing] ___________
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no14/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no14/product'))
+mutate = <function mutate_source_missing at 0x000002089554B380>
+expected = [('source_unavailable', '')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+______ test_cli_reports_drift_with_nonzero_exit[source-not-a-directory] _______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no15/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no15/product'))
+mutate = <function mutate_source_not_a_directory at 0x000002089554B420>
+expected = [('source_unavailable', '')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+_____ test_cli_reports_drift_with_nonzero_exit[source-contracts-missing] ______
+
+workspace = (WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no16/repo'), WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-435/test_cli_reports_drift_with_no16/product'))
+mutate = <function mutate_source_contracts_missing at 0x000002089554B4C0>
+expected = [('source_incomplete', '')]
+
+    @pytest.mark.parametrize("mutate, expected", DRIFT_CASES)
+    def test_cli_reports_drift_with_nonzero_exit(workspace, mutate, expected):
+        source, dest = workspace
+        mutate(source, dest)
+        result = run_cli(source, dest)
+>       assert result.returncode == 1, result.stdout + result.stderr
+E       AssertionError: no drift: current source, both copies and synchronized baseline agree
+E
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['D:\\Python\\python.exe', '-X', 'utf8', 'E:\\Orchara-wt\\C1.01\\product\\tools\\sync_spec.py', ... '--check'], returncode=0, stdout='no drift: current source, both copies and synchronized baseline agree\n', stderr='').returncode
+
+tests\tooling\test_sync_spec_c101_verification.py:223: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_check_never_modifies_managed_copies
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-added]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-modified]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-removed]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[spec-copy-added]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[spec-copy-modified]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[spec-copy-removed]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[contract-copy-added]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[contract-copy-modified]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[contract-copy-removed]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-and-copy-together]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[baseline-missing]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[baseline-corrupt]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[baseline-contradictory]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[runtime-contract-baseline-name]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-missing]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-not-a-directory]
+FAILED tests/tooling/test_sync_spec_c101_verification.py::test_cli_reports_drift_with_nonzero_exit[source-contracts-missing]
+18 failed, 5 deselected in 17.47s

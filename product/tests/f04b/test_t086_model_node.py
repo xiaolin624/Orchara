@@ -24,7 +24,8 @@ from decimal import Decimal
 import pytest
 
 from support import execution_support as execution
-from support import t025, t027, t033, t042, t046, t083, t086
+from support import run_observations as observations
+from support import t025, t027, t033, t042, t046, t086
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -69,7 +70,7 @@ def assert_refused(report: dict, code: str) -> None:
 
 
 def analyse_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    return t083.node_states(dbname, run_id)
+    return observations.node_states(dbname, run_id)
 
 
 def test_json_model_node_publishes_a_validated_object_and_a_budget_ledger(
@@ -91,19 +92,19 @@ def test_json_model_node_publishes_a_validated_object_and_a_budget_ledger(
     completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # The node published exactly one data artifact: the validated object.
-    items = t083.node_results(owner.creator, run["id"], expected=1)
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
     rows = [item for item in items if item["node_id"] == "analyse"]
     assert len(rows) == 1 and rows[0]["kind"] == "data", rows
-    output = t083.node_data_document(owner.creator, items, "analyse")
+    output = observations.node_data_document(owner.creator, items, "analyse")
     assert set(output) == {"summary"}, output
     assert isinstance(output["summary"], str) and DIGEST_HEX.match(output["summary"]), output
 
     # The end node sealed the same object as the run's final output.
-    final = t083.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
     assert final == output, (final, output)
 
     states = analyse_states(t033_stack.dbname, run["id"])
@@ -113,7 +114,7 @@ def test_json_model_node_publishes_a_validated_object_and_a_budget_ledger(
         "end": NODE_STATES_SUCCEEDED,
     }, states
     # The owner-only SSE replay projects the same durable node.status sequence.
-    assert t083.sse_node_states(t033_stack, owner.creator, run["id"]) == states
+    assert observations.sse_node_states(t033_stack, owner.creator, run["id"]) == states
 
     # One controlled generation through the capability proxy: one operation, one
     # physical attempt, a deterministic logical key and the fixed profile version.
@@ -168,11 +169,11 @@ def test_text_mode_wraps_the_provider_text_and_validates_it(t033_stack, sandbox)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_succeeded(report)
 
-    items = t083.node_results(owner.creator, run["id"], expected=1)
-    output = t083.node_data_document(owner.creator, items, "analyse")
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
+    output = observations.node_data_document(owner.creator, items, "analyse")
     assert set(output) == {"text"}, output
     assert DIGEST_TEXT.match(output["text"]), output
-    final = t083.final_output_document(owner.creator, t033_stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, t033_stack.dbname, run["id"])
     assert final == output, (final, output)
 
     # Text mode requests no structured response: the schema is not sent and the
@@ -223,7 +224,7 @@ def test_schema_failure_is_independent_located_and_never_retried(t033_stack, san
     assert "#/summary" in report["error"], report
 
     # The run failed, sealed no final output and the downstream end was skipped.
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "node_output_invalid", state
     assert state["output_artifact_id"] is None, state
     states = analyse_states(t033_stack.dbname, run["id"])
@@ -231,9 +232,9 @@ def test_schema_failure_is_independent_located_and_never_retried(t033_stack, san
     assert states["end"] == ["skipped"], states
 
     # No success output artifact was published for the node or the run.
-    assert [row for row in t086.node_data_rows(t033_stack.dbname, run["id"])
+    assert [row for row in observations.node_result_rows(t033_stack.dbname, run["id"])
             if row["node_id"] == "analyse"] == []
-    assert t033.output_artifact_id(t033_stack.dbname, run["id"]) is None
+    assert observations.output_artifact_id(t033_stack.dbname, run["id"]) is None
 
     # The independent schema failure is not retried: exactly one capability
     # operation, one physical attempt, and that call itself succeeded.
@@ -304,14 +305,14 @@ def test_prompt_uses_only_bound_inputs_and_rejects_expression_placeholders(
     assert completed.returncode == 1, (completed.stderr, report)
     assert_refused(report, "node_prompt_invalid")
     assert "/nodes/1/config/prompt_template" in report["error"], report
-    state = t033.wait_run_state(t033_stack.dbname, run2["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run2["id"], {"failed"})
     assert state["error_code"] == "node_prompt_invalid", state
     states = analyse_states(t033_stack.dbname, run2["id"])
     assert states["analyse"] == ["pending", "running", "failed"], states
     assert states["end"] == ["skipped"], states
     # No operation row exists: an invalid prompt never reaches a provider.
     assert t086.operations(t033_stack.dbname, run2["id"]) == []
-    assert t086.node_data_rows(t033_stack.dbname, run2["id"]) == []
+    assert observations.node_result_rows(t033_stack.dbname, run2["id"]) == []
 
 
 def test_a_revoked_profile_is_refused_before_any_call(t033_stack, sandbox) -> None:
@@ -330,14 +331,14 @@ def test_a_revoked_profile_is_refused_before_any_call(t033_stack, sandbox) -> No
     completed, report = execution.execute_once(t033_stack)
     assert completed.returncode == 1, (completed.stderr, report)
     assert_refused(report, "model_profile_unavailable")
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"failed"})
     assert state["error_code"] == "model_profile_unavailable", state
     states = analyse_states(t033_stack.dbname, run["id"])
     assert states["analyse"] == ["pending", "running", "failed"], states
     assert states["end"] == ["skipped"], states
     # Unavailable profile: no operation, no provider call, no node artifact.
     assert t086.operations(t033_stack.dbname, run["id"]) == []
-    assert t086.node_data_rows(t033_stack.dbname, run["id"]) == []
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
 
     # 2. A new draft that names the revoked profile is refused at publish
     # validation and at debug submission: no Run/job is created at all.

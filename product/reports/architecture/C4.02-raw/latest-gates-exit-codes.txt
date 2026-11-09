@@ -1,0 +1,11 @@
+﻿FINAL MERGED TREE 67aa068 (integration @ 7ae1d40, C2.02 model attempt driver)
+go test ./internal/presetexec/ -count=1: exit=0, 137 top-level PASS / 0 FAIL
+go test ./... -count=1: exit=0, 39 ok / 13 no test files / 0 FAIL
+go vet ./...: exit=0
+gofmt -l internal cmd: exit=0 (empty output)
+go build ./...: exit=0
+python -X utf8 tools/sync_spec.py --check: exit=0 (no drift)
+tests/f04b/test_c4_02_callapp_context.py: exit=0, 2 passed in 74.58s
+tests/f04b/test_t091_ten_node_workflow.py: exit=0, 8 passed in 151.47s
+tests/f04b/test_t085_parallel_optional.py: exit=0, 6 passed in 108.75s
+C5.04-tree suites (unchanged by C2.02, results retained): t089 7, t078 8, t080 7 passed; t083 semantic 7 passed

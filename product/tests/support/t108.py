@@ -48,6 +48,7 @@ for _entry in (str(TOOLS_ROOT), str(TESTS_ROOT)):
         sys.path.insert(0, _entry)
 
 from evidence_redaction import find_violations, redact_value  # noqa: E402
+from support import run_observations as observations
 from support import execution_support as execution
 from support import stack as st  # noqa: E402
 from support import t029, t033, t078, t081  # noqa: E402
@@ -685,7 +686,7 @@ def node_status_events(dbname: str, run_id: str) -> list[dict]:
     # Imported lazily so the module keeps working if the F04B helper is absent.
     from support import t042
 
-    return t042.node_events(dbname, run_id)
+    return observations.node_events(dbname, run_id)
 
 
 def event_seq_facts(dbname: str, run_id: str) -> dict:
@@ -709,12 +710,12 @@ def join_firing(dbname: str, run_id: str, join_id: str) -> dict:
 
     rows = [
         row
-        for row in t042.node_result_rows(dbname, run_id)
+        for row in observations.node_result_rows(dbname, run_id)
         if row["node_id"] == join_id
     ]
     events = [
         event
-        for event in t042.node_events(dbname, run_id)
+        for event in observations.node_events(dbname, run_id)
         if event["payload"]["node_id"] == join_id and event["payload"]["state"] == "succeeded"
     ]
     return {
@@ -728,7 +729,7 @@ def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
     from support import t042
 
     states: dict[str, list[str]] = {}
-    for event in t042.node_events(dbname, run_id):
+    for event in observations.node_events(dbname, run_id):
         payload = event["payload"]
         states.setdefault(payload["node_id"], []).append(payload["state"])
     return states

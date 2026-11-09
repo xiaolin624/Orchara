@@ -309,6 +309,9 @@ function elementByID(id) {
 
 function loadPage() {
   vm.createContext(context);
+  // C6.01 (#155): the real shared run-state bytes load before chat.js.
+  vm.runInContext(fs.readFileSync(path.join(webDir, 'assets', 'runstream.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(webDir, 'assets', 'runstate-guard.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(webDir, 'assets', 'chat.js'), 'utf8'), context);
   elementByID('request-panel').hidden = true;
   elementByID('interaction-panel').hidden = true;

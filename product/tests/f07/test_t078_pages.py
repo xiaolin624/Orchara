@@ -106,10 +106,20 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): the real shared run-state bytes, loaded before the page
+// script exactly like the served page, so the harness exercises the real
+// dependency instead of the page-local fallback.
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const runsSource = fs.readFileSync(webDir + '/assets/runs.js', 'utf8');
 const context = { console };
 vm.createContext(context);
 vm.runInContext(appSource, context, { filename: 'app.js' });
+vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' },
+);
 vm.runInContext(runsSource, context, { filename: 'runs.js' });
 
 const PARENT = __PARENT__;

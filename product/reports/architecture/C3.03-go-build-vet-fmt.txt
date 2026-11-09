@@ -1,0 +1,9 @@
+$ go build ./...   # on pre-merge ticket tip 37a8701
+exit=0
+
+$ go vet ./...
+exit=0
+
+$ gofmt -l internal cmd tools
+(no output)
+exit=0

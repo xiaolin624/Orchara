@@ -1,0 +1,1 @@
+﻿C4.01 Go race detector: not_run - 'go test -race' requires cgo; this environment's Go toolchain has no cgo compiler enabled (error: go: -race requires cgo; enable cgo by setting CGO_ENABLED=1).

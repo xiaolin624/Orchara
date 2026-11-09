@@ -28,6 +28,7 @@ import uuid
 
 import pytest
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import f00b, t033, t037, t111
 from support.fixtures import (  # noqa: F401 - pytest fixtures
@@ -1352,7 +1353,7 @@ def test_end_to_end_sandboxed_tool_run_still_succeeds_and_reclaims(
     assert sandbox["cleanup"]["sandbox_list_matches"] == 0, sandbox
     assert sandbox["cleanup"]["pid_alive"] is False, sandbox
     assert sandbox["cleanup"]["workspace_removed"] is True, sandbox
-    assert t033.wait_run_state(stack.dbname, run["id"], {"succeeded"})["finished_at"] is not None
+    assert observations.wait_run_state(stack.dbname, run["id"], {"succeeded"})["finished_at"] is not None
     cleanup = t111.cleanup_snapshot(sandbox_id=sandbox["sandbox_id"])
     t111.assert_reclaimed(cleanup, baseline, sandbox_id=sandbox["sandbox_id"])
     assert t111.host_staging_entries(staging) == [], t111.host_staging_entries(staging)

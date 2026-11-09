@@ -20,7 +20,8 @@ import json
 import pytest
 
 from support import execution_support as execution
-from support import f00b, t025, t027, t033, t042, t055, t064, t083, t087, t088
+from support import run_observations as observations
+from support import f00b, t025, t027, t033, t042, t055, t064, t087, t088
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
     go_binaries,
@@ -96,15 +97,15 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
     completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
-    state = t033.wait_run_state(stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # Exactly one node result (the search data artifact; the end node seals the
     # final output artifact, which is not a node result row).
-    items = t083.node_results(owner.creator, run["id"], expected=1)
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
     assert [item["node_id"] for item in items] == ["search"], items
     assert items[0]["kind"] == "data" and items[0]["label"] == "results", items
-    output = t083.node_data_document(owner.creator, items, "search")
+    output = observations.node_data_document(owner.creator, items, "search")
 
     # The documented non-contract output shape, exactly.
     assert set(output) == {"items", "citations", "count"}, output
@@ -168,12 +169,12 @@ def test_retrieve_returns_real_citations_and_passes_them_downstream(t033_stack) 
     assert body["text"] == db_body
 
     # The downstream end node received the citations unchanged.
-    final = t088.final_output_document(owner.creator, stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, stack.dbname, run["id"])
     assert set(final) == {"citations", "count"}, final
     assert final["citations"] == output["citations"], final
     assert final["count"] == output["count"], final
 
-    states = t088.node_states(stack.dbname, run["id"])
+    states = observations.node_states(stack.dbname, run["id"])
     assert states == {
         "start": ["pending", "running", "succeeded"],
         "search": ["pending", "running", "succeeded"],
@@ -205,13 +206,13 @@ def test_retrieve_without_any_retrievable_chunk_succeeds_with_empty_items(t033_s
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
 
-    items = t083.node_results(owner.creator, run["id"], expected=1)
-    output = t083.node_data_document(owner.creator, items, "search")
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
+    output = observations.node_data_document(owner.creator, items, "search")
     assert output == {"items": [], "citations": [], "count": 0}, output
 
-    final = t088.final_output_document(owner.creator, stack.dbname, run["id"])
+    final = observations.final_output_document(owner.creator, stack.dbname, run["id"])
     assert final == {"citations": [], "count": 0}, final
-    states = t088.node_states(stack.dbname, run["id"])
+    states = observations.node_states(stack.dbname, run["id"])
     assert states["search"] == ["pending", "running", "succeeded"], states
 
 
@@ -246,8 +247,8 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t033_stack) -
     completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
-    items = t083.node_results(owner.creator, run["id"], expected=1)
-    output = t083.node_data_document(owner.creator, items, "search")
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
+    output = observations.node_data_document(owner.creator, items, "search")
     assert output["count"] >= 1, output
     assert {item["document_id"] for item in output["items"]} == {alice_document}, output
     serialized = json.dumps(output)
@@ -267,8 +268,8 @@ def test_a_foreign_knowledge_base_never_reaches_another_owners_run(t033_stack) -
     completed2, report2 = execution.execute_once(stack)
     assert completed2.returncode == 0, (completed2.stderr, report2)
     assert_run_succeeded(report2)
-    items2 = t083.node_results(owner2.creator, run2["id"], expected=1)
-    output2 = t083.node_data_document(owner2.creator, items2, "search")
+    items2 = observations.node_result_items(owner2.creator, run2["id"], expected=1)
+    output2 = observations.node_data_document(owner2.creator, items2, "search")
     assert output2 == {"items": [], "citations": [], "count": 0}, output2
     assert bob_document not in json.dumps(output2)
 
@@ -397,8 +398,8 @@ def test_revoked_knowledge_returns_nothing_and_the_old_citation_is_unavailable(
     completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
-    items = t083.node_results(owner.creator, run["id"], expected=1)
-    output = t083.node_data_document(owner.creator, items, "search")
+    items = observations.node_result_items(owner.creator, run["id"], expected=1)
+    output = observations.node_data_document(owner.creator, items, "search")
     assert output == {"items": [], "citations": [], "count": 0}, output
     assert old_chunk_id not in json.dumps(output)
 
@@ -428,9 +429,9 @@ def test_two_parallel_retrieve_nodes_keep_their_own_documents(t033_stack) -> Non
     assert completed.returncode == 0, (completed.stderr, report)
     assert_run_succeeded(report)
 
-    items = t083.node_results(owner.creator, run["id"], expected=3)
-    left = t083.node_data_document(owner.creator, items, "left_search")
-    right = t083.node_data_document(owner.creator, items, "right_search")
+    items = observations.node_result_items(owner.creator, run["id"], expected=3)
+    left = observations.node_data_document(owner.creator, items, "left_search")
+    right = observations.node_data_document(owner.creator, items, "right_search")
     assert {item["document_id"] for item in left["items"]} == {left_document}, left
     assert {item["document_id"] for item in right["items"]} == {right_document}, right
     assert {item["document_id"] for item in left["citations"]} == {left_document}, left
@@ -438,13 +439,13 @@ def test_two_parallel_retrieve_nodes_keep_their_own_documents(t033_stack) -> Non
     assert right_document not in json.dumps(left)
     assert left_document not in json.dumps(right)
 
-    joined = t083.node_data_document(owner.creator, items, "join")["results"]
+    joined = observations.node_data_document(owner.creator, items, "join")["results"]
     assert joined["left_search"]["status"] == "succeeded", joined
     assert joined["right_search"]["status"] == "succeeded", joined
     assert joined["left_search"]["value"] == left, joined
     assert joined["right_search"]["value"] == right, joined
 
-    states = t088.node_states(stack.dbname, run["id"])
+    states = observations.node_states(stack.dbname, run["id"])
     for node_id in ("left_search", "right_search", "join"):
         assert states[node_id] == ["pending", "running", "succeeded"], states
 
@@ -514,6 +515,6 @@ def test_a_resumed_run_rechecks_document_readability_instead_of_reusing_the_exce
     completed, report = execution.execute_once(stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
-    final = t088.final_output_document(alice, stack.dbname, run["id"])
+    final = observations.final_output_document(alice, stack.dbname, run["id"])
     assert final["count"] == 0, final
     assert document_id not in json.dumps(final), final

@@ -1,0 +1,3 @@
+﻿== gofmt -l internal cmd tools ==
+
+exit=0

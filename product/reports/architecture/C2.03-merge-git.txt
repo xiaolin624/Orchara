@@ -1,0 +1,98 @@
+== HEAD ==
+d9699d0e1379d9b651c7dd76fe71410176c55d43
+== log -8 ==
+d9699d0 merge(C2.03): pick up redacted evidence and final PROGRESS row (#148)
+fd7ff74 docs(c2.03): include the post-merge results in the PROGRESS row
+11ad073 docs(c2.03): record the final branch tip and no-op integration merges
+bd5925c merge(c2.03): sync with integration final-ticket merge record
+e564d57 docs(c2.03): redact ephemeral test-only secrets from the raw red evidence
+199abdb docs(c2.03): record the integration merge record and the final focused rerun
+ce428e7 merge(C2.03): sync final ticket report and UTF-8 evidence (#148)
+d4dc464 merge(c2.03): sync with integration tip (C2.03 merge record)
+== primary merge 06147f4 ==
+06147f4cc1142d81848f8eec07afb34a27c8d998
+parents: 8f099d2fd78416fff2bfe2ecbe001cc4bb9ced62 50639c74ebc18fb99a3c3bbef86236990f601c46
+subject: merge(C2.03): close cancellation, cleanup-failure and settlement gaps (#148)
+author date: 2026-11-09 17:25:38 +0800
+== follow-up docs merge ce428e7 ==
+ce428e73440ea60c2e9eda68d123e1c3527a65ba
+parents: 06147f4cc1142d81848f8eec07afb34a27c8d998 d4dc464a4dbcf72f4d2d723536420145e69f190e
+subject: merge(C2.03): sync final ticket report and UTF-8 evidence (#148)
+author date: 2026-11-09 17:28:57 +0800
+== final docs merge with redacted evidence: HEAD ==
+d9699d0e1379d9b651c7dd76fe71410176c55d43
+parents: ce428e73440ea60c2e9eda68d123e1c3527a65ba fd7ff74dd383fdba135e949bccae9ec45cec776f
+subject: merge(C2.03): pick up redacted evidence and final PROGRESS row (#148)
+author date: 2026-11-09 17:32:11 +0800
+== ticket tip at first merge: 50639c7 ==
+50639c74ebc18fb99a3c3bbef86236990f601c46 merge(c2.03): sync with integration docs tip
+== ticket tip at follow-up merge: d4dc464 ==
+d4dc464a4dbcf72f4d2d723536420145e69f190e merge(c2.03): sync with integration tip (C2.03 merge record)
+== ticket final tip merged third: fd7ff74 ==
+fd7ff74dd383fdba135e949bccae9ec45cec776f docs(c2.03): include the post-merge results in the PROGRESS row
+== redaction commit e564d57 ==
+e564d57dcbddd15628bc08d310ba938f78e4ea7a docs(c2.03): redact ephemeral test-only secrets from the raw red evidence
+== diff --stat 8f099d2..HEAD ==
+ product/internal/capabilities/attempt.go           | 103 +++-
+ .../internal/capabilities/attempt_cleanup_test.go  | 313 +++++++++++
+ product/internal/capabilities/errors.go            |  22 +
+ product/internal/capabilities/fallback.go          |  11 +-
+ product/internal/capabilities/service.go           | 233 ++++++--
+ product/internal/capabilities/stream.go            |  17 +-
+ .../reports/architecture/C2.03-cancel-cleanup.md   | 268 +++++++++
+ product/reports/architecture/C2.03-collection.txt  |  68 +++
+ .../reports/architecture/C2.03-focused-pytest.txt  |   2 +
+ product/reports/architecture/C2.03-go-build.txt    |   0
+ .../reports/architecture/C2.03-go-capabilities.txt |   2 +
+ product/reports/architecture/C2.03-go-test.txt     |  52 ++
+ product/reports/architecture/C2.03-go-vet.txt      |   0
+ product/reports/architecture/C2.03-gofmt.txt       |   0
+ .../architecture/C2.03-post-merge-focused.txt      |   2 +
+ .../architecture/C2.03-post-merge-pytest.txt       |   2 +
+ product/reports/architecture/C2.03-red-sealing.txt |  78 +++
+ .../architecture/C2.03-regression-pytest.txt       |   2 +
+ product/reports/architecture/C2.03-sync-spec.txt   |   1 +
+ product/tests/f06/test_c203_cancel_cleanup.py      | 604 +++++++++++++++++++++
+ 20 files changed, 1715 insertions(+), 65 deletions(-)
+== diff --name-status 8f099d2..HEAD ==
+M	product/internal/capabilities/attempt.go
+A	product/internal/capabilities/attempt_cleanup_test.go
+M	product/internal/capabilities/errors.go
+M	product/internal/capabilities/fallback.go
+M	product/internal/capabilities/service.go
+M	product/internal/capabilities/stream.go
+A	product/reports/architecture/C2.03-cancel-cleanup.md
+A	product/reports/architecture/C2.03-collection.txt
+A	product/reports/architecture/C2.03-focused-pytest.txt
+A	product/reports/architecture/C2.03-go-build.txt
+A	product/reports/architecture/C2.03-go-capabilities.txt
+A	product/reports/architecture/C2.03-go-test.txt
+A	product/reports/architecture/C2.03-go-vet.txt
+A	product/reports/architecture/C2.03-gofmt.txt
+A	product/reports/architecture/C2.03-post-merge-focused.txt
+A	product/reports/architecture/C2.03-post-merge-pytest.txt
+A	product/reports/architecture/C2.03-red-sealing.txt
+A	product/reports/architecture/C2.03-regression-pytest.txt
+A	product/reports/architecture/C2.03-sync-spec.txt
+A	product/tests/f06/test_c203_cancel_cleanup.py
+== code/test delta 06147f4..HEAD (expected empty) ==
+
+== conflict markers (expected empty) ==
+
+== removed symbols (expected empty) ==
+
+== scratch lookups for pre-redaction values in final C2.03 evidence (expected empty) ==
+
+
+== status at evidence capture (docs commit not yet made) ==
+ M product/PROGRESS.md
+?? product/reports/architecture/C2.03-merge-c202-pytest.txt
+?? product/reports/architecture/C2.03-merge-focused-pytest.txt
+?? product/reports/architecture/C2.03-merge-git.txt
+?? product/reports/architecture/C2.03-merge-go-build.txt
+?? product/reports/architecture/C2.03-merge-go-test.txt
+?? product/reports/architecture/C2.03-merge-go-vet.txt
+?? product/reports/architecture/C2.03-merge-gofmt.txt
+?? product/reports/architecture/C2.03-merge-redaction.txt
+?? product/reports/architecture/C2.03-merge-sync-spec.txt
+?? product/reports/architecture/C2.03-merge.md

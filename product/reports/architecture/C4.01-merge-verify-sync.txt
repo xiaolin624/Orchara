@@ -1,0 +1,3 @@
+﻿# D:\Python\python.exe -X utf8 tools\sync_spec.py --check (cwd=product)
+no drift: current source, both copies and synchronized baseline agree
+# exit=0

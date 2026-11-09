@@ -41,13 +41,6 @@ ADMIN_PASSWORD = f00b.ADMIN_PASSWORD
 USER_PASSWORD = f00b.USER_PASSWORD
 
 
-# ---------------------------------------------------------------------------
-# stack
-# ---------------------------------------------------------------------------
-# Compatibility names for the expand phase; removed after caller migration.
-T024Stack = Stack
-
-
 def new_signing_key() -> str:
     """A per-process HMAC key, generated at test time and never logged."""
     return "t024-signing-" + secrets.token_urlsafe(48)

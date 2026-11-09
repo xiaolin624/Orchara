@@ -27,6 +27,7 @@ import secrets
 
 import pytest
 
+from support import run_observations as observations
 from support import stack as st
 from support import t027, t033, t039, t041, t049
 from support.fixtures import f06_stack  # noqa: F401 - pytest fixture
@@ -262,7 +263,7 @@ def test_csv_and_xlsx_runs_produce_the_verified_report(f06_stack) -> None:
         assert set(explain) == {"report", "totals"}, explain
         assert explain["totals"] == summary, explain
 
-        output_id = t033.output_artifact_id(f06_stack.dbname, run["id"])
+        output_id = observations.output_artifact_id(f06_stack.dbname, run["id"])
         assert output_id, run
         final = t049.content_json(owner, output_id)
         assert set(final) == {"summary", "report", "totals"}, final
@@ -346,7 +347,7 @@ def test_csv_and_xlsx_runs_produce_the_verified_report(f06_stack) -> None:
         for row in t049.wait_node_results(owner, run_id, expected=6)["items"]
         if row["label"] == "summary.json"
     ][0]["artifact_id"]
-    assert t033.artifact_content(outsider, summary_artifact).status in (403, 404)
+    assert observations.artifact_content(outsider, summary_artifact).status in (403, 404)
     assert t033.artifact_download(outsider, summary_artifact).status in (403, 404)
 
 
@@ -386,7 +387,7 @@ def test_invalid_sales_inputs_are_rejected_by_the_preset_tool(f06_stack) -> None
         )
         labels = {row["label"] for row in files}
         assert "summary.json" not in labels and "summary.csv" not in labels, (name, labels)
-        assert t033.output_artifact_id(f06_stack.dbname, run["id"]) is None, (name, run)
+        assert observations.output_artifact_id(f06_stack.dbname, run["id"]) is None, (name, run)
 
 
 # ---------------------------------------------------------------------------

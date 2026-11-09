@@ -146,6 +146,9 @@ const assert = require('assert');
 const webDir = __WEB_DIR__;
 const context = { console };
 vm.createContext(context);
+// C6.01 (#155): the real shared run-state bytes load before the page script.
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(webDir + '/assets/runs.js', 'utf8'), context);
 
 function headers(map) {

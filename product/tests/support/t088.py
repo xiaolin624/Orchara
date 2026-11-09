@@ -10,11 +10,10 @@ ingestion (``support/t055``) and the real supervisor ``exec --once``.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
-from support import execution_support as execution
-from support import f00b, t027, t033, t042, t055
+from support import run_observations as observations
+from support import f00b, t027, t042, t055
 
 # The documented non-contract node output (reports/f04b/T088-retrieve-node.md).
 RETRIEVE_OUTPUT_SCHEMA = {
@@ -251,23 +250,6 @@ def submit_run(stack, creator, definition: dict, *, input_value: dict, name: str
     return owner, application_id, run
 
 
-run_once = execution.execute_once
-
-
-def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    from support import t083
-
-    return t083.node_states(dbname, run_id)
-
-
-def final_output_document(session, dbname: str, run_id: str) -> dict:
-    artifact_id = t033.output_artifact_id(dbname, run_id)
-    assert artifact_id, "the run sealed no final output"
-    content = t033.artifact_content(session, artifact_id)
-    assert content.status == 200, content.text
-    return json.loads(content.raw)
-
-
 # ---------------------------------------------------------------------------
 # the internal retrieval route (direct mTLS call for the ACL counters)
 # ---------------------------------------------------------------------------
@@ -304,7 +286,7 @@ def chunk_body_text(stack, document_id: str, revision: int, chunk_no: int) -> st
     match = [chunk for chunk in chunks if int(chunk["chunk_no"]) == chunk_no]
     assert len(match) == 1, (document_id, chunk_no, chunks)
     artifact = t055.artifact_row(stack.dbname, match[0]["body_artifact_id"])
-    return t055.object_text(stack.object_dir, artifact)
+    return observations.sealed_object_text(stack, artifact)
 
 
 def chunk_row(stack, document_id: str, revision: int, chunk_no: int) -> dict:

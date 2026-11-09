@@ -9,17 +9,12 @@ package knowledge
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-
-	"orchara/platform/internal/objectstore"
-	"orchara/platform/internal/uuid"
 )
 
 // CacheDiscardReason values are the safe, observable reasons a live entry was not
@@ -198,9 +193,9 @@ func (s *Service) cachedRetrieval(
 		info.DiscardReason = CacheDiscardItemMismatch
 		return nil, info, nil
 	}
-	ok, reason := s.validateCachedItems(ctx, key, items)
+	ok, reason := s.reader(key.PrincipalID).CheckCached(ctx, key.KnowledgeBaseID, items)
 	if !ok {
-		if !cacheDiscardDecision(reason) {
+		if reason == CacheDiscardUnavailable {
 			// A transient read failure of the sealed body (the validation query
 			// itself failed, the object store is unavailable, or an I/O error
 			// occurred) is this request's miss only: the cache is a rebuildable
@@ -231,138 +226,13 @@ func (s *Service) cachedRetrieval(
 	return chunks, info, nil
 }
 
-// validateCachedItems re-checks every returned chunk against the authoritative
-// rows and the sealed object bytes, using exactly the retrieval/citation
-// predicates: owner ACL, KB and document tombstones, ready + active revision,
-// chunk revision = current revision, body artifact ready/not-deleted/same owner.
-// The predicate itself is `currentReadableChunkSQL` (readable_chunk.go), the one
-// definition retrieval, citation open and this hit check share. The body
-// artifact's content hash and the chunk provenance must equal the stored values,
-// and (F13B/T113) the sealed object is re-read: its bytes must still be the
-// stored text with the stored sha256. A now-unreadable object is a miss because
-// the authoritative path would skip that candidate; serving the memoized text
-// would otherwise make a cache hit answer differently from a cache miss.
-func (s *Service) validateCachedItems(
-	ctx context.Context, key retrievalCacheKey, items []retrievalCacheItem,
-) (bool, string) {
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		if !uuid.Valid(item.ChunkID) {
-			return false, CacheDiscardItemMismatch
-		}
-		ids = append(ids, item.ChunkID)
-	}
-	rows, err := s.DB.QueryContext(ctx, `
-		SELECT kc.id::text, kc.document_id::text, kc.document_revision, kc.chunk_no,
-		       kc.body_artifact_id::text, coalesce(a.sha256, ''), a.object_key`+
-		// The same "current readable chunk" predicate retrieval and citation open
-		// use (readable_chunk.go), so a permission condition cannot drift between
-		// the cached answer and the authoritative one. The owner is $3 here.
-		currentReadableChunkSQL(3)+`
-		   AND kc.id = ANY(string_to_array($1::text, ',')::uuid[])
-		   AND kb.id = $2::uuid`,
-		strings.Join(ids, ","), key.KnowledgeBaseID, key.PrincipalID,
-	)
-	if err != nil {
-		return false, CacheDiscardUnavailable
-	}
-	defer func() { _ = rows.Close() }()
-
-	type currentChunk struct {
-		documentID     string
-		revision       int64
-		chunkNo        int
-		bodyArtifactID string
-		bodySHA256     string
-		objectKey      string
-	}
-	found := make(map[string]currentChunk, len(items))
-	for rows.Next() {
-		var (
-			chunkID string
-			current currentChunk
-		)
-		if err := rows.Scan(
-			&chunkID, &current.documentID, &current.revision, &current.chunkNo,
-			&current.bodyArtifactID, &current.bodySHA256, &current.objectKey,
-		); err != nil {
-			return false, CacheDiscardUnavailable
-		}
-		found[chunkID] = current
-	}
-	if err := rows.Err(); err != nil {
-		return false, CacheDiscardUnavailable
-	}
-	if len(found) != len(items) {
-		return false, CacheDiscardItemUnreadable
-	}
-	for _, item := range items {
-		current, ok := found[item.ChunkID]
-		if !ok {
-			return false, CacheDiscardItemUnreadable
-		}
-		if current.documentID != item.DocumentID ||
-			current.revision != item.DocumentRevision ||
-			current.chunkNo != item.ChunkNo ||
-			current.bodyArtifactID != item.BodyArtifactID ||
-			current.bodySHA256 != item.BodySHA256 {
-			return false, CacheDiscardItemMismatch
-		}
-		sealedText, err := s.readChunkText(current.objectKey)
-		if err != nil {
-			// Distinguish a deterministic unavailability/content mismatch (the
-			// object is gone, its key is not a platform key, or it exceeds the
-			// protocol ceiling: the memoized body can never be served) from a
-			// transient storage failure (the bytes may be readable again in a
-			// moment). Only the deterministic case may destroy the entry; a
-			// transient failure is this request's miss with the existing safe
-			// `cache_unavailable` reason (F13B/T113 review fix T113-2).
-			return false, cacheHitReadFailureReason(err)
-		}
-		if ok, reason := item.matchesSealedBody(sealedText); !ok {
-			return false, reason
-		}
-	}
-	return true, ""
-}
-
-// cacheHitReadFailureReason classifies a sealed-body read failure on the hit
-// path.
-//
-// The closed vocabulary is ADR 0015 D6's; no new reason word is introduced.
-// Deterministic failures mean the memoized body can never be served (the
-// authoritative path would skip the candidate too), so the entry is discarded:
-//
-//   - ErrNotExist: the sealed object is gone;
-//   - ErrInvalidKey: the stored key is not a platform object key;
-//   - ErrTooLarge: the object exceeds the single-object ceiling.
-//
-// Everything else (I/O error, an unavailable object store, a malformed read) is
-// a transient storage failure: this request misses with `cache_unavailable` and
-// the row survives for a later, recovered request.
-func cacheHitReadFailureReason(err error) string {
-	switch {
-	case errors.Is(err, objectstore.ErrNotExist),
-		errors.Is(err, objectstore.ErrInvalidKey),
-		errors.Is(err, objectstore.ErrTooLarge):
-		return CacheDiscardItemUnreadable
-	default:
-		return CacheDiscardUnavailable
-	}
-}
-
-// cacheDiscardDecision is the one place the hit path decides whether a failed
-// re-check destroys the stored entry: every reason except a transient
-// `cache_unavailable` is deterministic, so only that one keeps the row.
-func cacheDiscardDecision(reason string) bool {
-	return reason != CacheDiscardUnavailable
-}
-
-// cacheBodySHA256 is the content hash of one sealed chunk body.
-func cacheBodySHA256(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
+// The per-item hit re-check itself lives in reader.go (CheckCached): the same
+// owner/tombstone/active-index/body-owner predicate, the same authoritative
+// sha256/size_bytes and the same one-pass sealed-body verification the
+// authoritative retrieval and citation open use. Keeping it there is what makes
+// "cache hit == cache miss" a property of one implementation rather than of
+// three copies. The caller here keeps the key, the TTL, the stored components and
+// the decision to keep or delete the row (ADR 0015 D6).
 
 func (s *Service) discardCacheEntry(ctx context.Context, key retrievalCacheKey) {
 	_, _ = s.DB.ExecContext(ctx, `

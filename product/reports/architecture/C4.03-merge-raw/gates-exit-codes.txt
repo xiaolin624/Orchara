@@ -1,0 +1,15 @@
+C4.03 merge gate exit codes
+date: 2026-11-09 17:22:32 +08:00
+merged tip: 9e37e60204534ce4523f4505742ad768329d8a2b (parents 8c2d3cc1ae86e634c0f7b74cc96e2885c4ec2590 + 4a7248e498a59366cc9d50ee761ca0f21d506c25)
+go test ./internal/presetexec/ -count=1 -v : 0 (142 top-level PASS / 0 FAIL)
+go test ./internal/presetexec/ -count=1     : 0
+go test ./... -count=1                      : 0 (39 ok / 0 FAIL / 13 no test files)
+go build ./...                              : 0 (empty output)
+go vet ./...                                : 0 (empty output)
+gofmt -l internal cmd tools                : 0 (empty output)
+pytest tests/f04b/test_c4_03_scheduler_regressions.py (run 1, cold WSL): 1 (1 failed, 1 passed in 50.33s)
+pytest ...::test_graph_cancellation_drains... (rerun 1, cold WSL)     : 1 (1 failed in 39.05s)
+pytest tests/f04b/test_c4_03_scheduler_regressions.py (rerun 2, warm): 0 (2 passed in 56.39s)
+pytest tests/f04b/test_c4_03_scheduler_regressions.py (rerun 3, warm): 0 (2 passed in 53.92s)
+pytest tests/f04b/test_t091_ten_node_workflow.py                     : 0 (8 passed in 124.04s)
+python -X utf8 tools/sync_spec.py --check  : 0 (no drift)

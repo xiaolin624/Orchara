@@ -135,10 +135,20 @@ const assert = require('assert');
 
 const webDir = __WEB_DIR__;
 const appSource = fs.readFileSync(webDir + '/assets/app.js', 'utf8');
+// C6.01 (#155): the real shared run-state bytes, loaded before the page
+// script exactly like the served page, so the harness exercises the real
+// dependency instead of the page-local fallback.
+const runstreamSource = fs.readFileSync(webDir + '/assets/runstream.js', 'utf8');
 const runsSource = fs.readFileSync(webDir + '/assets/runs.js', 'utf8');
 const context = { console };
 vm.createContext(context);
 vm.runInContext(appSource, context, { filename: 'app.js' });
+vm.runInContext(runstreamSource, context, { filename: 'runstream.js' });
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' },
+);
 vm.runInContext(runsSource, context, { filename: 'runs.js' });
 
 function headers(map) {
@@ -223,11 +233,12 @@ assert.strictEqual(context.mergeRunSnapshot(null, running), running);
 const lifecycle = context.runLifecycle({ state: 'cancelling', phase: 'executing' });
 assert.strictEqual(lifecycle.current, 'cancelling');
 assert.ok(lifecycle.stages.indexOf('cancelling') >= 0, JSON.stringify(lifecycle));
-const note = context.describeRunState({ id: 'r1', state: 'cancelling', phase: 'executing' }, {});
+const note = context.runDetailNote({ id: 'r1', state: 'cancelling', phase: 'executing' }, {});
 assert.ok(note.indexOf('正在停止') >= 0, note);
 assert.ok(note.indexOf('已进入终态') < 0, note);
-assert.strictEqual(context.shouldPollRun({ state: 'cancelling' }), true);
-assert.strictEqual(context.shouldPollRun({ state: 'cancelled' }), false);
+assert.strictEqual(context.OrcharaRunState.isTerminal('cancelling'), false);
+assert.strictEqual(context.OrcharaRunState.isTerminal('cancelled'), true);
+assert.strictEqual(typeof context.shouldPollRun, 'undefined');
 
 process.stdout.write('t036 cancel page ok\n');
 """

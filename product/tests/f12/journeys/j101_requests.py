@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from support import run_observations as observations
 from support import execution_support as execution
 from support import f00b, f02a, t031, t033, t042, t049, t068
 from support import stack as st
@@ -186,7 +187,7 @@ def run_request_to_result(stack, record) -> dict:
     )
 
     # -- result: the owner reads it, and the bytes match an independent truth --
-    results = t042.wait_node_results(requester, run_id, expected=4)
+    results = observations.wait_node_results(requester, run_id, expected=4)
     resume = t031.get_run(requester, run_id)
     record.http("GET", f"/api/v1/runs/{run_id}", resume)
     record.check(
@@ -210,7 +211,7 @@ def run_request_to_result(stack, record) -> dict:
         sorted(by_label),
     )
     csv_artifact = by_label["summary.csv"]["artifact_id"]
-    download = t033.artifact_content(requester, csv_artifact)
+    download = observations.artifact_content(requester, csv_artifact)
     record.http("GET", f"/api/v1/artifacts/{csv_artifact}/content", download)
     record.check(
         "the CSV download is 200 and its bytes are the documented summary",
@@ -225,13 +226,13 @@ def run_request_to_result(stack, record) -> dict:
         artifact_fact["sha256"] == st.sha256_hex(download.raw),
         artifact_fact,
     )
-    output_id = t033.output_artifact_id(stack.dbname, run_id)
+    output_id = observations.output_artifact_id(stack.dbname, run_id)
     record.check(
         "the Run has a linked final output artifact",
         output_id is not None,
         {"output_artifact_id": output_id},
     )
-    output = json.loads(t033.artifact_content(requester, output_id).raw)
+    output = json.loads(observations.artifact_content(requester, output_id).raw)
     t049.check_summary(output["summary"])
 
     # -- cross-principal boundary ------------------------------------------
@@ -384,8 +385,8 @@ def run_natural_language(stack, record) -> dict:
     )
     record.check(
         "the failed Run produced no output artifact",
-        t033.output_artifact_id(stack.dbname, run_id) is None,
-        {"output_artifact_id": t033.output_artifact_id(stack.dbname, run_id)},
+        observations.output_artifact_id(stack.dbname, run_id) is None,
+        {"output_artifact_id": observations.output_artifact_id(stack.dbname, run_id)},
     )
     node_read = requester.client.get(f"/api/v1/runs/{run_id}/node-results")
     record.http("GET", f"/api/v1/runs/{run_id}/node-results (failed Run)", node_read)

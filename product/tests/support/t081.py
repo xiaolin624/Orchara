@@ -13,7 +13,8 @@ transition with SQL.
 
 from __future__ import annotations
 
-from support import t027, t029, t033, t035, t078
+from support import run_observations as observations
+from support import t027, t029, t035, t078
 from support import stack as st
 
 # T081's independent child pool and the per-parent scope prefix.
@@ -244,7 +245,7 @@ def wait_for(predicate, *, timeout: float = 10.0, interval: float = 0.05):
 
 
 def wait_run_state(dbname: str, run_id: str, states: set[str], *, timeout: float = 60.0):
-    return t033.wait_run_state(dbname, run_id, states, timeout=timeout)
+    return observations.wait_run_state(dbname, run_id, states, timeout=timeout)
 
 
 def assert_slot_consistent(dbname: str) -> None:

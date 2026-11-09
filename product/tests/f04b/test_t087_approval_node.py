@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from support import run_observations as observations
 from support import t029, t033, t035, t041, t083, t087
 from support.fixtures import (  # noqa: F401 - pytest fixtures
     fresh_database,
@@ -109,7 +110,7 @@ def test_node_approval_is_a_server_built_business_decision_and_replays_idempoten
     fetched = t087.get_approval(owner.creator, approval["id"])
     assert fetched.status == 200, fetched.text
     assert fetched.json["state"] == "pending", fetched.json
-    content = t033.artifact_content(owner.creator, approval["proposal_artifact_id"])
+    content = observations.artifact_content(owner.creator, approval["proposal_artifact_id"])
     assert content.status == 200, content.text
     assert json.loads(content.raw)["node_id"] == "approve1"
     stranger = t033.minimal_owner(t033_stack)
@@ -136,8 +137,8 @@ def test_node_approval_is_a_server_built_business_decision_and_replays_idempoten
     # no capability grant, no node success and no published node output.
     assert t087.operation_rows(t033_stack.dbname, run["id"]) == []
     assert t087.usage_ledger_rows(t033_stack.dbname, run["id"]) == []
-    assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
-    assert t087.node_states(t033_stack.dbname, run["id"]) == {}
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
+    assert observations.node_states(t033_stack.dbname, run["id"]) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +208,8 @@ def test_approved_node_approval_resumes_the_same_run_once(t033_stack, sandbox) -
     assert approval is not None, t087.approval_rows(t033_stack.dbname)
     assert waiting["checkpoint_id"] == "approval:" + approval["id"], waiting
     assert approval["state"] == "pending", approval
-    assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["approve1"] == ["pending", "running"], states
 
     decided = t087.decide(
@@ -224,7 +225,7 @@ def test_approved_node_approval_resumes_the_same_run_once(t033_stack, sandbox) -
     assert report["status"] == "executed", report
     assert report["outcome"] == "succeeded", report
     assert report.get("error_code", "") == "", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # Exactly one approval and exactly one resume job: the replay reused the
@@ -236,21 +237,21 @@ def test_approved_node_approval_resumes_the_same_run_once(t033_stack, sandbox) -
 
     # The node published the decision as data (only after approval) and the end
     # node sealed it into the final output.
-    rows = t087.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     data_rows = [row for row in rows if row["node_id"] == "approve1" and row["kind"] == "data"]
     assert len(data_rows) == 1, rows
-    document = t087.artifact_document(t033_stack, owner, data_rows[0]["artifact_id"])
+    document = observations.artifact_document(owner.creator, data_rows[0]["artifact_id"])
     assert document["approval_id"] == approval["id"], document
     assert document["decision"] == "approved", document
     assert document["params_sha256"] == approval["params_sha256"], document
     assert document["proposal"] == {"subject": "order-42", "amount": "1250.00"}, document
-    final = t087.artifact_document(
-        t033_stack, owner, t087.output_artifact_id(t033_stack.dbname, run["id"])
+    final = observations.artifact_document(
+        owner.creator, observations.output_artifact_id(t033_stack.dbname, run["id"])
     )
     assert final == {"approval_id": approval["id"], "decision": "approved"}, final
 
     # Two attempts touched the node: the first parked, the resumed one published.
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["approve1"] == [
         "pending", "running", "pending", "running", "succeeded"
     ], states
@@ -285,7 +286,7 @@ def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
     assert approval is not None and approval["state"] == "pending", approval
     assert waiting["checkpoint_id"] == "approval:" + approval["id"], waiting
 
-    rows_before = t087.node_result_rows(t033_stack.dbname, run["id"])
+    rows_before = observations.node_result_rows(t033_stack.dbname, run["id"])
     join_rows_before = [row for row in rows_before if row["node_id"] == "join"]
     assert len(join_rows_before) == 1, join_rows_before
     for node_id in ("left", "right"):
@@ -293,11 +294,11 @@ def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
             row for row in rows_before if row["node_id"] == node_id and row["kind"] == "data"
         ]
         assert len(node_rows) == 1, (node_id, rows_before)
-    join_before = t087.artifact_document(
-        t033_stack, owner, join_rows_before[0]["artifact_id"]
+    join_before = observations.artifact_document(
+        owner.creator, join_rows_before[0]["artifact_id"]
     )
     assert set(join_before["results"]) == {"left", "right"}, join_before
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["join"] == ["pending", "running", "succeeded"], states
 
     decided = t087.decide(
@@ -311,10 +312,10 @@ def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
     completed, report = t087.exec_once(t033_stack)
     assert completed.returncode == 0, (completed.stderr, report)
     assert report["outcome"] == "succeeded", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
-    rows_after = t087.node_result_rows(t033_stack.dbname, run["id"])
+    rows_after = observations.node_result_rows(t033_stack.dbname, run["id"])
     join_rows_after = [row for row in rows_after if row["node_id"] == "join"]
     assert join_rows_after == join_rows_before, (
         "the resumed attempt must reuse the one join artifact",
@@ -326,13 +327,13 @@ def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
             row for row in rows_after if row["node_id"] == node_id and row["kind"] == "data"
         ]
         assert len(node_rows) == 1, (node_id, rows_after)
-    join_after = t087.artifact_document(
-        t033_stack, owner, join_rows_after[0]["artifact_id"]
+    join_after = observations.artifact_document(
+        owner.creator, join_rows_after[0]["artifact_id"]
     )
     assert join_after == join_before, (join_before, join_after)
 
-    final = t087.artifact_document(
-        t033_stack, owner, t087.output_artifact_id(t033_stack.dbname, run["id"])
+    final = observations.artifact_document(
+        owner.creator, observations.output_artifact_id(t033_stack.dbname, run["id"])
     )
     assert final["approval_id"] == approval["id"], final
     assert final["decision"] == "approved", final
@@ -342,13 +343,13 @@ def test_a_real_resume_reuses_the_join_and_never_fires_it_twice(
     # in one attempt.
     join_succeeded = [
         event
-        for event in t087.node_events(t033_stack.dbname, run["id"])
+        for event in observations.node_events(t033_stack.dbname, run["id"])
         if event["payload"]["node_id"] == "join"
         and event["payload"]["state"] == "succeeded"
     ]
     attempts = [event["payload"]["attempt_no"] for event in join_succeeded]
     assert attempts == [1, 2], attempts
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["join"] == ["pending", "running", "succeeded", "succeeded"], states
     assert t033.no_orphan_evidence()["runsc_list"] == []
 
@@ -373,13 +374,13 @@ def test_rejected_node_approval_terminates_the_run_without_a_resume(t033_stack, 
     state = t087.run_row(t033_stack.dbname, run["id"])
     assert state["state"] == "failed", state
     assert state["error_code"] == t087.REJECTED_CODE, state
-    assert t087.output_artifact_id(t033_stack.dbname, run["id"]) is None
+    assert observations.output_artifact_id(t033_stack.dbname, run["id"]) is None
     assert t035.resume_jobs(t033_stack.dbname, run["id"]) == []
     assert t087.operation_rows(t033_stack.dbname, run["id"]) == []
     assert t087.usage_ledger_rows(t033_stack.dbname, run["id"]) == []
     # The node never reports success and the end node never runs.
-    assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["approve1"] == ["pending", "running"], states
     assert "end" not in states, states
 
@@ -419,10 +420,10 @@ def test_expired_node_approval_terminates_the_run_and_refuses_the_decision(
     state = t087.run_row(t033_stack.dbname, run["id"])
     assert state["state"] == "failed", state
     assert state["error_code"] == t087.EXPIRED_CODE, state
-    assert t087.output_artifact_id(t033_stack.dbname, run["id"]) is None
+    assert observations.output_artifact_id(t033_stack.dbname, run["id"]) is None
     assert t035.resume_jobs(t033_stack.dbname, run["id"]) == []
     assert t087.operation_rows(t033_stack.dbname, run["id"]) == []
-    assert t087.node_result_rows(t033_stack.dbname, run["id"]) == []
+    assert observations.node_result_rows(t033_stack.dbname, run["id"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -470,9 +471,9 @@ def test_a_parked_approval_expires_automatically_without_a_decision(
     }, decision
     assert t035.waiting_row(stack.dbname, run["id"])["resume_job_id"] is None
     assert t035.resume_jobs(stack.dbname, run["id"]) == []
-    assert t087.output_artifact_id(stack.dbname, run["id"]) is None
-    assert t087.node_result_rows(stack.dbname, run["id"]) == []
-    states = t087.node_states(stack.dbname, run["id"])
+    assert observations.output_artifact_id(stack.dbname, run["id"]) is None
+    assert observations.node_result_rows(stack.dbname, run["id"]) == []
+    states = observations.node_states(stack.dbname, run["id"])
     assert states["approve1"] == ["pending", "running"], states
     assert "end" not in states, states
 
@@ -537,7 +538,7 @@ def test_an_expiry_handoff_failure_rolls_back_and_is_retried(
         "reference": approval["id"],
     }, decision
     assert t035.resume_jobs(stack.dbname, run["id"]) == []
-    assert t087.output_artifact_id(stack.dbname, run["id"]) is None
+    assert observations.output_artifact_id(stack.dbname, run["id"]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +618,7 @@ def test_two_approvals_wait_twice_and_converge_on_one_run(t033_stack, sandbox) -
 
     _completed, report = t087.exec_once(t033_stack)
     assert report["status"] == "executed" and report["outcome"] == "succeeded", report
-    state = t033.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
+    state = observations.wait_run_state(t033_stack.dbname, run["id"], {"succeeded"})
     assert state["finished_at"] is not None, state
 
     # Each wait produced its own approval and its own resume job; no row or job
@@ -631,17 +632,19 @@ def test_two_approvals_wait_twice_and_converge_on_one_run(t033_stack, sandbox) -
 
     # Each approval node published exactly one data output; the first was reused
     # by the later attempts instead of executing twice.
-    rows = t087.node_result_rows(t033_stack.dbname, run["id"])
+    rows = observations.node_result_rows(t033_stack.dbname, run["id"])
     for node_id, approval in (("a1", first), ("a2", second)):
         node_rows = [row for row in rows if row["node_id"] == node_id]
         assert len(node_rows) == 1, (node_id, node_rows)
-        document = t087.artifact_document(t033_stack, owner, node_rows[0]["artifact_id"])
+        document = observations.artifact_document(
+            owner.creator, node_rows[0]["artifact_id"]
+        )
         assert document["approval_id"] == approval["id"], (node_id, document)
-    final = t087.artifact_document(
-        t033_stack, owner, t087.output_artifact_id(t033_stack.dbname, run["id"])
+    final = observations.artifact_document(
+        owner.creator, observations.output_artifact_id(t033_stack.dbname, run["id"])
     )
     assert final == {"first": first["id"], "second": second["id"]}, final
-    states = t087.node_states(t033_stack.dbname, run["id"])
+    states = observations.node_states(t033_stack.dbname, run["id"])
     assert states["a2"] == ["pending", "running", "pending", "running", "succeeded"], states
     assert t087.operation_rows(t033_stack.dbname, run["id"]) == []
 

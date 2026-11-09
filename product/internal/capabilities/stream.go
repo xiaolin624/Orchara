@@ -14,11 +14,18 @@ package capabilities
 // persisted. The in-process owner preview (internal/api) is a temporary buffer
 // with a short TTL and a single-process limitation.
 
+// C2.02: the streaming entry now uses the same private model-attempt session as
+// Invoke. The streaming content half below supplies the real StreamProvider and
+// the per-generation frames; candidate resolution, the bounded attempts, the
+// retry/fallback classification, the ledger closing and the dense attempt
+// numbering are the shared driver's.
+
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
-	"time"
 
 	"orchara/platform/internal/modelproxy"
 )
@@ -255,7 +262,176 @@ func (s *Service) Stream(
 		}
 		return prepared.replay, nil
 	}
-	return s.dispatchStream(ctx, run, normalized, spec, prepared.operationID, emit)
+	session := newModelAttemptSession(s, run, normalized, spec, prepared.operationID, true)
+	content := &streamModelContent{
+		service: s, run: run, input: normalized, spec: spec,
+		operationID: prepared.operationID, emit: emit,
+	}
+	return session.dispatch(ctx, modelContentHandler{
+		Call:       content.call,
+		Complete:   content.complete,
+		Notice:     content.notice,
+		Failed:     content.failed,
+		CancelCode: CodeStreamCancelled,
+	})
+}
+
+// errStreamConsumerStopped marks a physical stream attempt aborted because the
+// frame consumer stopped (client disconnect, closed response writer). It is a
+// cancellation, never a provider claim: the driver must not retry, must not
+// fail over and must not record a provider error for it.
+var errStreamConsumerStopped = errors.New("the model stream consumer stopped")
+
+// streamModelContent is the streaming content half of the shared attempt
+// session. Call performs exactly one physical stream attempt and projects its
+// chunks into frames of that attempt's generation; Complete validates the
+// completed generation and seals it through the same finishModelSuccess as the
+// synchronous path. The driver owns candidates, attempts, retries, fallback and
+// the ledger; this type never decides to retry or fail over.
+type streamModelContent struct {
+	service     *Service
+	run         *runContext
+	input       Input
+	spec        *capabilitySpec
+	operationID string
+	emit        func(Frame) error
+	// generation is the buffer of the attempt currently being called. The driver
+	// calls Call and Complete for one attempt at a time, and every attempt gets a
+	// new buffer, so content never crosses generations.
+	generation *streamGeneration
+}
+
+// call performs one physical stream attempt. Every chunk is buffered into this
+// attempt's generation and emitted as a frame tagged with the attempt row id
+// (the generation id). An emit error stops the provider and is reported as a
+// consumer stop, so the driver closes the attempt as a cancellation.
+func (content *streamModelContent) call(
+	ctx context.Context,
+	attempt modelAttemptInfo,
+) (modelproxy.ProviderResponse, error) {
+	provider, ok := attempt.Provider.(modelproxy.StreamProvider)
+	if !ok {
+		// candidate() resolves the streaming seam before any attempt row exists;
+		// this guard only keeps a programming error from being read as a
+		// provider failure.
+		return modelproxy.ProviderResponse{}, modelproxy.ErrAdapterUnavailable
+	}
+	generation := newStreamGeneration(content.operationID, attempt.AttemptID)
+	content.generation = generation
+	response, streamErr := provider.Stream(ctx, modelproxy.CallRequest{
+		Candidate: attempt.Candidate,
+		Params:    content.input.Params,
+		Attempt:   attempt.Attempt,
+	}, func(chunk modelproxy.Chunk) error {
+		if err := content.emit(generation.frameForChunk(chunk)); err != nil {
+			return fmt.Errorf("%w: %w", errStreamConsumerStopped, err)
+		}
+		return nil
+	})
+	return response, streamErr
+}
+
+// complete consumes an answer that arrived. The streamed draft must be exactly
+// the provider's complete content, and only complete tool calls from this
+// generation may enter the final projection. The sealing/settlement error of a
+// complete answer is terminal and its real usage is settled by the same
+// finishModelSuccess rules as the synchronous path.
+func (content *streamModelContent) complete(
+	ctx context.Context,
+	attempt modelAttemptInfo,
+	response modelproxy.ProviderResponse,
+) (*Result, error) {
+	generation := content.generation
+	if generation == nil || generation.generationID != attempt.AttemptID {
+		return nil, capFailure(500, CodeInternal, "the streamed generation is missing")
+	}
+	finalText, _ := response.Data["text"].(string)
+	if generation.textValue() != finalText {
+		// The complete provider answer exists; its usage is real consumption. The
+		// close runs on the bounded cleanup context so a consumer that vanished
+		// while the answer was assembled cannot leave the attempt dispatching; a
+		// close that cannot commit is reported instead of the assembly refusal.
+		message := "the streamed content does not match the final provider content"
+		if attempt.Fallback != nil {
+			message = "the streamed fallback content does not match the final provider content"
+		}
+		if cleanup := content.service.closeAfterProviderFailure(ctx, content.operationID,
+			attempt.Attempt, CodeProviderResponseInvalid, usageProjection(response.Data),
+			attempt.Pricing,
+		); cleanup != nil {
+			_ = content.emit(Frame{
+				Type: FrameError, OperationID: content.operationID, GenerationID: attempt.AttemptID,
+				Error: &StreamError{Code: cleanup.Code, Message: message},
+			})
+			return nil, cleanup
+		}
+		_ = content.emit(Frame{
+			Type: FrameError, OperationID: content.operationID, GenerationID: attempt.AttemptID,
+			Error: &StreamError{Code: CodeProviderResponseInvalid, Message: message},
+		})
+		return nil, capFailure(422, CodeProviderResponseInvalid, message)
+	}
+	data := make(map[string]any, len(response.Data))
+	for key, value := range response.Data {
+		data[key] = value
+	}
+	// An incomplete tool call was already dropped by the buffer: it can never
+	// reach final validation, the receipt or execution.
+	data["tool_calls"] = generation.completeToolCalls()
+	response.Data = data
+	result, sealErr := content.service.finishModelSuccess(ctx, content.run, content.input,
+		content.spec, content.operationID, attempt.Attempt, response,
+		attempt.Fallback, attempt.Pricing)
+	if sealErr != nil {
+		code := CodeInternal
+		message := "the streamed model answer could not be sealed"
+		if typed, ok := AsError(sealErr); ok {
+			code, message = typed.Code, typed.Message
+		}
+		_ = content.emit(Frame{
+			Type: FrameError, OperationID: content.operationID, GenerationID: attempt.AttemptID,
+			Error: &StreamError{Code: code, Message: message},
+		})
+		return nil, sealErr
+	}
+	if err := content.emit(finalFrame(result, attempt.AttemptID)); err != nil {
+		// The receipt is already sealed; the success stands even though this
+		// consumer disappeared before reading the final frame.
+		return result, nil
+	}
+	return result, nil
+}
+
+// notice emits the provisional frame of a retry or of the compatible fallback.
+// Its delivery failure is returned unchanged: the driver closes the operation
+// and dispatches nothing further.
+func (content *streamModelContent) notice(
+	_ context.Context,
+	attempt modelAttemptInfo,
+	notice modelNotice,
+) error {
+	message := "the model stream failed transiently; a new generation will start"
+	if notice.Kind == NoticeFallback {
+		message = "the primary model profile is unavailable; a compatible fallback will answer"
+	}
+	return content.emit(Frame{
+		Type: FrameError, OperationID: content.operationID, GenerationID: attempt.AttemptID,
+		Retryable: true,
+		Error:     &StreamError{Code: notice.Code, Message: message},
+	})
+}
+
+// failed emits the terminal frame of a provider failure that the driver already
+// recorded. A failure to deliver it cannot change the ledger outcome.
+func (content *streamModelContent) failed(attempt modelAttemptInfo, failure modelFailure) {
+	message := "the model provider stream did not complete"
+	if attempt.Fallback != nil {
+		message = "the fallback model provider stream did not complete"
+	}
+	_ = content.emit(Frame{
+		Type: FrameError, OperationID: content.operationID, GenerationID: attempt.AttemptID,
+		Error: &StreamError{Code: failure.Code, Message: message},
+	})
 }
 
 // replayedGenerationID names the physical attempt that produced a replayed
@@ -296,285 +472,4 @@ func finalFrame(result *Result, generationID string) Frame {
 		}
 	}
 	return frame
-}
-
-// dispatchStream is the server-owned retry loop. Only a typed transient failure
-// with attempts remaining starts a new generation; every other failure is final.
-func (s *Service) dispatchStream(
-	ctx context.Context,
-	run *runContext,
-	input Input,
-	spec *capabilitySpec,
-	operationID string,
-	emit func(Frame) error,
-) (*Result, error) {
-	if s.Providers == nil {
-		return nil, capFailure(503, CodeProviderNotConfigured, "no model provider is configured")
-	}
-	candidate := &modelproxy.Candidate{
-		ID: spec.Profile.ID, Provider: spec.Profile.Provider, ModelID: spec.Profile.ModelID,
-		EndpointRef: spec.Profile.EndpointRef, SecretRef: spec.Profile.SecretRef,
-		Config:          spec.Profile.ConfigJSON,
-		ValidationState: spec.Profile.ValidationState,
-	}
-	provider, err := s.Providers.StreamingFor(candidate)
-	if err != nil {
-		return nil, providerFailure(err)
-	}
-	reservation, capErr := reservationFor(spec.Profile, run, input.Params)
-	if capErr != nil {
-		return nil, capErr
-	}
-	pricing, capErr := priceForProfile(spec.Profile, run.Currency)
-	if capErr != nil {
-		return nil, capErr
-	}
-	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
-		attemptID, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation)
-		if capErr != nil {
-			return nil, capErr
-		}
-		generation := newStreamGeneration(operationID, attemptID)
-		var consumerStopped error
-		response, streamErr := provider.Stream(ctx, modelproxy.CallRequest{
-			Candidate: candidate,
-			Params:    input.Params,
-			Attempt:   attempt,
-		}, func(chunk modelproxy.Chunk) error {
-			frame := generation.frameForChunk(chunk)
-			if err := emit(frame); err != nil {
-				consumerStopped = err
-				return err
-			}
-			return nil
-		})
-		if streamErr != nil {
-			if consumerStopped != nil || ctx.Err() != nil {
-				// The consumer went away: stop here, never commit success. The
-				// attempt is closed as failed and the operation is failed, not
-				// left dispatching for a reader to mistake for an in-flight call.
-				// The cleanup must not inherit the cancelled request context, or
-				// the ledger write itself would be cancelled and the row would be
-				// stuck in dispatching.
-				cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				_ = s.failAttemptAndOperation(cleanupCtx, operationID, attempt, CodeStreamCancelled)
-				cancel()
-				return nil, capFailure(503, CodeStreamCancelled,
-					"the model stream was stopped before it completed")
-			}
-			transient := modelproxy.IsTransient(streamErr)
-			code := CodeProviderTransient
-			if !transient {
-				code = providerErrorCode(streamErr)
-			}
-			if transient && attempt < maxPhysicalAttempts {
-				if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
-					return nil, capErr
-				}
-				// The failed generation gets a terminal-for-itself frame with
-				// retryable=true; the next generation's frames replace it. The
-				// old text is never appended to the new generation's text.
-				_ = emit(Frame{
-					Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-					Retryable: true,
-					Error: &StreamError{Code: code,
-						Message: "the model stream failed transiently; a new generation will start"},
-				})
-				continue
-			}
-			// T045: the primary's bounded retries are exhausted by an
-			// availability fault. A compatible fallback gets one generation of
-			// its own; the failed primary generation's text is never appended to
-			// it. A permission/schema answer is terminal and never falls back.
-			// F06/T046: release this generation's reservation first, so the
-			// fallback is gated against the budget that is actually free.
-			if reason, eligible := fallbackReasonFor(streamErr); eligible {
-				if capErr := s.resetAttemptForRetry(ctx, operationID, attempt, code); capErr != nil {
-					return nil, capErr
-				}
-				if selection := s.selectFallback(ctx, run, spec, input.Params, reason); selection != nil {
-					_ = emit(Frame{
-						Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-						Retryable: true,
-						Error: &StreamError{Code: code,
-							Message: "the primary model profile is unavailable; a compatible fallback will answer"},
-					})
-					return s.dispatchStreamFallback(ctx, run, input, spec, operationID,
-						maxPhysicalAttempts+1, selection, emit)
-				}
-			}
-			_ = s.failAttemptAndOperation(ctx, operationID, attempt, code)
-			_ = emit(Frame{
-				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-				Error: &StreamError{Code: code,
-					Message: "the model provider stream did not complete"},
-			})
-			return nil, capFailure(503, code, "the model provider stream did not complete")
-		}
-
-		// Success: verify the streamed draft is exactly the provider's complete
-		// content, then validate the assembled complete tool calls exactly as
-		// T041 does. An incomplete call was already dropped by the buffer.
-		finalText, _ := response.Data["text"].(string)
-		if generation.textValue() != finalText {
-			// The complete provider answer exists; its usage is real consumption.
-			_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
-				CodeProviderResponseInvalid, usageProjection(response.Data), pricing)
-			_ = emit(Frame{
-				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-				Error: &StreamError{Code: CodeProviderResponseInvalid,
-					Message: "the streamed content does not match the final provider content"},
-			})
-			return nil, capFailure(422, CodeProviderResponseInvalid,
-				"the streamed content does not match the final provider content")
-		}
-		data := make(map[string]any, len(response.Data))
-		for key, value := range response.Data {
-			data[key] = value
-		}
-		data["tool_calls"] = generation.completeToolCalls()
-		response.Data = data
-		result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, nil, pricing)
-		if sealErr != nil {
-			code := CodeInternal
-			message := "the streamed model answer could not be sealed"
-			if typed, ok := AsError(sealErr); ok {
-				code, message = typed.Code, typed.Message
-			}
-			_ = emit(Frame{
-				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-				Error: &StreamError{Code: code, Message: message},
-			})
-			return nil, sealErr
-		}
-		if err := emit(finalFrame(result, generation.generationID)); err != nil {
-			// The receipt is already sealed; the success stands even though this
-			// consumer disappeared before reading the final frame.
-			return result, nil
-		}
-		return result, nil
-	}
-	return nil, capFailure(503, CodeProviderTransient, "the model provider exhausted its attempts")
-}
-
-// dispatchStreamFallback spends the operation's single fallback attempt on the
-// streaming path, in a generation of its own. The primary generation's text is
-// never concatenated with the fallback's: each frame names its generation and
-// the final frame carries the receipt of the fallback answer only.
-func (s *Service) dispatchStreamFallback(
-	ctx context.Context,
-	run *runContext,
-	input Input,
-	spec *capabilitySpec,
-	operationID string,
-	attempt int,
-	selection *fallbackSelection,
-	emit func(Frame) error,
-) (*Result, error) {
-	profile := selection.Profile
-	candidate := &modelproxy.Candidate{
-		ID: profile.ID, Provider: profile.Provider, ModelID: profile.ModelID,
-		EndpointRef: profile.EndpointRef, SecretRef: profile.SecretRef,
-		Config:          profile.ConfigJSON,
-		ValidationState: profile.ValidationState,
-	}
-	provider, err := s.Providers.StreamingFor(candidate)
-	if err != nil {
-		_ = s.failOperation(ctx, operationID, providerErrorCode(err))
-		_ = emit(Frame{
-			Type: FrameError, OperationID: operationID,
-			Error: &StreamError{Code: providerErrorCode(err),
-				Message: "no provider can dispatch the compatible fallback"},
-		})
-		return nil, providerFailure(err)
-	}
-	reservation, capErr := reservationFor(profile, run, input.Params)
-	if capErr != nil {
-		_ = s.failOperation(ctx, operationID, capErr.Code)
-		return nil, capErr
-	}
-	pricing, capErr := priceForProfile(profile, run.Currency)
-	if capErr != nil {
-		_ = s.failOperation(ctx, operationID, capErr.Code)
-		return nil, capErr
-	}
-	attemptID, capErr := s.beginModelAttempt(ctx, run, operationID, input.AttemptToken, attempt, reservation)
-	if capErr != nil {
-		return nil, capErr
-	}
-	generation := newStreamGeneration(operationID, attemptID)
-	var consumerStopped error
-	response, streamErr := provider.Stream(ctx, modelproxy.CallRequest{
-		Candidate: candidate,
-		Params:    input.Params,
-		Attempt:   attempt,
-	}, func(chunk modelproxy.Chunk) error {
-		frame := generation.frameForChunk(chunk)
-		if err := emit(frame); err != nil {
-			consumerStopped = err
-			return err
-		}
-		return nil
-	})
-	if streamErr != nil {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if consumerStopped != nil || ctx.Err() != nil {
-			_ = s.failAttemptAndOperation(cleanupCtx, operationID, attempt, CodeStreamCancelled)
-			_ = emit(Frame{
-				Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-				Error: &StreamError{Code: CodeStreamCancelled,
-					Message: "the fallback model stream was stopped before it completed"},
-			})
-			return nil, capFailure(503, CodeStreamCancelled,
-				"the fallback model stream was stopped before it completed")
-		}
-		code := providerErrorCode(streamErr)
-		if modelproxy.IsTransient(streamErr) {
-			code = CodeProviderTransient
-		}
-		_ = s.failAttemptAndOperation(cleanupCtx, operationID, attempt, code)
-		_ = emit(Frame{
-			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-			Error: &StreamError{Code: code, Message: "the fallback model provider stream did not complete"},
-		})
-		return nil, capFailure(503, code, "the fallback model provider stream did not complete")
-	}
-	finalText, _ := response.Data["text"].(string)
-	if generation.textValue() != finalText {
-		// The complete fallback answer exists; its usage is real consumption.
-		_ = s.failModelAttemptAfterProvider(ctx, operationID, attempt,
-			CodeProviderResponseInvalid, usageProjection(response.Data), pricing)
-		_ = emit(Frame{
-			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-			Error: &StreamError{Code: CodeProviderResponseInvalid,
-				Message: "the streamed fallback content does not match the final provider content"},
-		})
-		return nil, capFailure(422, CodeProviderResponseInvalid,
-			"the streamed fallback content does not match the final provider content")
-	}
-	data := make(map[string]any, len(response.Data))
-	for key, value := range response.Data {
-		data[key] = value
-	}
-	data["tool_calls"] = generation.completeToolCalls()
-	response.Data = data
-	fact := &fallbackFact{ProfileVersionID: profile.ID, Reason: selection.Reason}
-	result, sealErr := s.finishModelSuccess(ctx, run, input, spec, operationID, attempt, response, fact, pricing)
-	if sealErr != nil {
-		code := CodeInternal
-		message := "the streamed fallback answer could not be sealed"
-		if typed, ok := AsError(sealErr); ok {
-			code, message = typed.Code, typed.Message
-		}
-		_ = emit(Frame{
-			Type: FrameError, OperationID: operationID, GenerationID: generation.generationID,
-			Error: &StreamError{Code: code, Message: message},
-		})
-		return nil, sealErr
-	}
-	if err := emit(finalFrame(result, generation.generationID)); err != nil {
-		return result, nil
-	}
-	return result, nil
 }

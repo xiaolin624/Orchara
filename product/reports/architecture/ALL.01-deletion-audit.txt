@@ -1,0 +1,59 @@
+# ALL.01 deletion audit - commit 5fa2eea - 2026-11-09T18:04:44.9381602+08:00
+# search space: git grep over the whole worktree (tracked files); categories below.
+#   production: product/{internal,cmd,apps,tools,deploy,contracts,migrations} tools deploy contracts examples
+#   tests:      product/tests
+#   historical: product/reports product/PROGRESS.md product/docs docs research root *.md
+
+## C2 model attempt lifecycle
+pattern dispatchStream                     all=14  production=0   tests=0   historical=14
+pattern dispatchStreamFallback             all=13  production=0   tests=0   historical=13
+pattern dispatchModelFallback              all=0   production=0   tests=0   historical=0
+pattern dispatchModel                      all=14  production=3   tests=0   historical=11
+  PROD  product/internal/capabilities/service.go:219:	return s.dispatchModel(ctx, run, normalized, spec, prepared.operationID)
+  PROD  product/internal/capabilities/service.go:1032:// dispatchModel drives the synchronous complete-response path through the shared
+  PROD  product/internal/capabilities/service.go:1038:func (s *Service) dispatchModel(
+pattern dispatchFallback                   all=17  production=4   tests=0   historical=13
+  PROD  product/internal/capabilities/attempt.go:371:		return session.dispatchFallback(ctx, selection, attempt+1, content)
+  PROD  product/internal/capabilities/attempt.go:421:// dispatchFallback spends the operation's single fallback attempt. attempt is the
+  PROD  product/internal/capabilities/attempt.go:428:func (session *modelAttemptSession) dispatchFallback(
+  PROD  product/internal/capabilities/fallback.go:21://   - The fallback is structural: the unified driver calls dispatchFallback
+
+## C3 verified chunk read
+pattern readChunkText                      all=33  production=0   tests=0   historical=33
+pattern validateCachedItems                all=21  production=0   tests=0   historical=21
+pattern cacheHitReadFailureReason          all=14  production=0   tests=0   historical=14
+pattern cacheDiscardDecision               all=16  production=0   tests=0   historical=16
+pattern matchesSealedBody                  all=19  production=0   tests=0   historical=19
+pattern cacheBodySHA256                    all=13  production=0   tests=0   historical=13
+
+## C4 fake linear view
+pattern graphLinearView                    all=39  production=0   tests=0   historical=39
+pattern linearRun\.available               all=11  production=0   tests=0   historical=11
+pattern linearRun\.skip                    all=5   production=0   tests=0   historical=5
+pattern graphNodeView\.start               all=9   production=0   tests=0   historical=9
+pattern graphNodeAttempt\.started          all=7   production=0   tests=0   historical=7
+
+## C5 ticket-number supports
+pattern T024Stack                          all=9   production=0   tests=0   historical=9
+pattern T029Stack                          all=8   production=0   tests=0   historical=8
+pattern T031Stack                          all=8   production=0   tests=0   historical=8
+pattern T033Stack                          all=8   production=0   tests=0   historical=8
+pattern run_linear_once                    all=8   production=0   tests=0   historical=8
+
+## C6 page run-state fallback
+pattern runStream[A-Za-z]*                 all=93  production=0   tests=0   historical=93
+pattern RunStateDependencyUnavailable      all=20  production=0   tests=2   historical=18
+  TEST  product/tests/f12/test_c6_04_page_contract.py:9:   ``*RunStateDependencyUnavailable()`` 小 helper、``typeof`` 旧全局 /
+  TEST  product/tests/f12/test_c6_04_page_contract.py:164:        assert "RunStateDependencyUnavailable" not in source, (
+
+## C2 old lifecycle loops (production, internal/capabilities only)
+expected: exactly one long-lived attempt loop, in internal/capabilities/attempt.go
+  LOOP  product/internal/capabilities/attempt.go:274:	for attempt := 1; attempt <= maxPhysicalAttempts; attempt++ {
+dispatchModel hits above are the content handler of the same private session (service.go:1038); dispatchFallback is session.dispatchFallback in the unified driver (attempt.go:428).
+
+## C5 AST support-contract check (product/reports/architecture/C5.04-contract-check.py --phase all)
+  phase=all
+  callers=0
+  definitions=0
+exit=0
+exit=0

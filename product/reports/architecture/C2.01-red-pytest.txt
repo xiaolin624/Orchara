@@ -1,0 +1,83 @@
+FF..                                                                     [100%]
+================================== FAILURES ===================================
+___ test_an_adapter_class_primary_fault_is_not_retried_before_the_fallback ____
+
+f06_stack = Stack(server=<support.stack.ApiServer object at 0x000001AFAFEA02F0>, dsn='postgresql://<redacted>@...chara-sandboxprobe.exe')}, signing_key='<redacted-test-signing-key>')
+
+    def test_an_adapter_class_primary_fault_is_not_retried_before_the_fallback(f06_stack) -> None:
+        """``adapter_unavailable`` is availability, not a retryable transient.
+    
+        The same fault already costs exactly one physical attempt on the fallback
+        path and one generation on the streaming path. Before C2.01 the synchronous
+        primary retried it three times because "retryable" and "may fall back" were
+        decided by one predicate: the delivery mode changed the attempt count.
+        """
+        owner = t041.owner(f06_stack)
+        fallback_id = t045.seed_profile(
+            f06_stack.dbname, owner.creator.principal_id, model_id="stub-model"
+        )
+        configure_primary(f06_stack, owner, model_id="stub-adapter-down-primary",
+                          fallback_ids=[fallback_id])
+        owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
+    
+        operation_id = t041.new_uuid()
+        response = t041.invoke(t041.worker_client(f06_stack), lease,
+                               operation_id=operation_id, params=t041.model_params())
+        assert response.status == 200, response.text
+        assert response.json["data"]["fallback"] == {
+            "primary_profile_version_id": t041.GOLDEN_MODEL_ID,
+            "profile_version_id": fallback_id,
+            "reason": "adapter_unavailable",
+        }, response.json
+    
+        attempts = t041.attempt_rows(f06_stack.dbname, operation_id)
+>       assert [row["attempt_no"] for row in attempts] == [1, 2], attempts
+E       AssertionError: [{'attempt_no': 1, 'attempt_token': 'a9448091-7861-4957-9696-62552f1edbbf', 'charged_amount': None, 'created_at': '202...8091-7861-4957-9696-62552f1edbbf', 'charged_amount': '0.00003500', 'created_at': '2026-11-09 13:53:00.175683+08', ...}]
+E       assert [1, 2, 3, 4] == [1, 2]
+E         
+E         Left contains 2 more items, first extra item: 3
+E         Use -v to get more diff
+
+tests\f06\test_c201_model_attempts.py:97: AssertionError
+__ test_a_pre_dispatch_price_refusal_closes_the_operation_without_an_attempt __
+
+f06_stack = Stack(server=<support.stack.ApiServer object at 0x000001AFAFFAFBC0>, dsn='postgresql://<redacted>@...chara-sandboxprobe.exe')}, signing_key='<redacted-test-signing-key>')
+
+    def test_a_pre_dispatch_price_refusal_closes_the_operation_without_an_attempt(f06_stack) -> None:
+        """A refused reservation must not leave a phantom ``authorized`` operation.
+    
+        The accepted budget refusal closes the operation with its typed code and
+        writes no attempt. The fallback path routed a pre-dispatch price failure the
+        same way; the primary path left the operation ``authorized`` forever, so a
+        replay answered ``operation_in_progress`` for a call that never happened.
+        """
+        owner = t041.owner(f06_stack)
+        config = t045.compatible_config()
+        config["price"] = {
+            "currency": "USD",
+            "input_per_million": "not-a-decimal",
+            "output_per_million": "2",
+        }
+        t045.set_profile(f06_stack.dbname, t041.GOLDEN_MODEL_ID, model_id="stub-model", config=config)
+        owner, run, lease = t041.claimed_run(f06_stack, run_owner=owner)
+    
+        params = t041.model_params()
+        operation_id = t041.new_uuid()
+        response = t041.invoke(t041.worker_client(f06_stack), lease,
+                               operation_id=operation_id, params=params)
+        assert response.status == 422, response.text
+        assert response.json["error"]["code"] == "budget_price_invalid", response.text
+    
+        operation = t041.operation_row(f06_stack.dbname, run["id"], operation_id)
+>       assert operation["state"] == "failed", operation
+E       AssertionError: {'capability_kind': 'model', 'capability_version': '22222222-2222-4222-8222-222222222222', 'created_at': '2026-11-09 13:53:06.115352+08', 'dispatched_at': None, ...}
+E       assert 'authorized' == 'failed'
+E         
+E         - failed
+E         + authorized
+
+tests\f06\test_c201_model_attempts.py:155: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/f06/test_c201_model_attempts.py::test_an_adapter_class_primary_fault_is_not_retried_before_the_fallback
+FAILED tests/f06/test_c201_model_attempts.py::test_a_pre_dispatch_price_refusal_closes_the_operation_without_an_attempt
+2 failed, 2 passed in 37.69s

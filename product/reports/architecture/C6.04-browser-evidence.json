@@ -1,0 +1,224 @@
+{
+  "ticket": "C6.04 (#158)",
+  "browser": "playwright channel=chrome headless, real cmd/api over loopback",
+  "matrix": "3 pages x (normal, 404, syntax_error)",
+  "environment": {
+    "platform": "nt",
+    "node": "D:\\develop\\nodejs\\node.EXE",
+    "pytest": "9.0.3"
+  },
+  "cases": [
+    {
+      "page": "runs",
+      "case": "normal",
+      "page_script": "runs.js",
+      "url": "/runs?run=9f22d786-ea51-41f9-b5bb-3273f5116795",
+      "browser_version": "157.0.8103.38",
+      "guard_ready": true,
+      "namespace_type": "object",
+      "legacy_global_type": "undefined",
+      "banner_hidden": true,
+      "paused_applied": 0,
+      "detail_state": "queued",
+      "detail_note": "尚未被领取（queued）：取消会立即生效（Run 直接 cancelled、job void），不会创建恢复任务。 可操作：取消 Run；刷新快照",
+      "page_errors": []
+    },
+    {
+      "page": "runs",
+      "case": "404",
+      "page_script": "runs.js",
+      "url": "/runs?run=9f22d786-ea51-41f9-b5bb-3273f5116795",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "detail-cancel-button": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "run list + paused row click",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": []
+    },
+    {
+      "page": "runs",
+      "case": "syntax_error",
+      "page_script": "runs.js",
+      "url": "/runs?run=9f22d786-ea51-41f9-b5bb-3273f5116795",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "detail-cancel-button": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "run list + paused row click",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ]
+    },
+    {
+      "page": "chat",
+      "case": "normal",
+      "page_script": "chat.js",
+      "url": "/chat",
+      "browser_version": "157.0.8103.38",
+      "guard_ready": true,
+      "namespace_type": "object",
+      "legacy_global_type": "undefined",
+      "banner_hidden": true,
+      "paused_applied": 0,
+      "page_errors": []
+    },
+    {
+      "page": "chat",
+      "case": "404",
+      "page_script": "chat.js",
+      "url": "/chat",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "chat-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "chat-cancel": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "interaction-reply": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "conversation create",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": []
+    },
+    {
+      "page": "chat",
+      "case": "syntax_error",
+      "page_script": "chat.js",
+      "url": "/chat",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "chat-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "chat-cancel": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "interaction-reply": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "conversation create",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ]
+    },
+    {
+      "page": "debug",
+      "case": "normal",
+      "page_script": "debug.js",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "browser_version": "157.0.8103.38",
+      "guard_ready": true,
+      "namespace_type": "object",
+      "legacy_global_type": "undefined",
+      "banner_hidden": true,
+      "paused_applied": 0,
+      "page_errors": []
+    },
+    {
+      "page": "debug",
+      "case": "404",
+      "page_script": "debug.js",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "debug-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "runview-cancel": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "draft revision + refused submit",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": []
+    },
+    {
+      "page": "debug",
+      "case": "syntax_error",
+      "page_script": "debug.js",
+      "url": "/apps/33333333-3333-4333-8333-333333333333/debug",
+      "browser_version": "157.0.8103.38",
+      "banner_text": "运行状态暂不可用：共享状态脚本未加载（404 或语法错误）。已暂停运行状态观察与相关操作；导航和重新加载仍可使用。",
+      "banner_message": "运行状态暂不可用",
+      "paused_controls": {
+        "debug-submit": {
+          "disabled": true,
+          "applied": "true"
+        },
+        "runview-cancel": {
+          "disabled": true,
+          "applied": "true"
+        }
+      },
+      "guard_ready": false,
+      "namespace_type": "undefined",
+      "independent_function": "draft revision + refused submit",
+      "reload_banner_visible": true,
+      "navigation_after_failure": "/apps",
+      "detail_requests": [],
+      "events_requests": [],
+      "page_errors": [
+        "Function statements require a function name",
+        "Function statements require a function name"
+      ]
+    }
+  ]
+}

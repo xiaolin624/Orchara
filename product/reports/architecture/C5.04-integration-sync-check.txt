@@ -1,0 +1,2 @@
+no drift: current source, both copies and synchronized baseline agree
+sync-exit=0

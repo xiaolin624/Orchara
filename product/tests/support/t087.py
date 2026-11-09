@@ -21,6 +21,7 @@ import json
 import uuid
 
 from support import execution_support as execution
+from support import run_observations as observations
 from support import stack as st
 from support import t025, t027, t029, t033, t035, t041, t042, t048, t050, t083
 
@@ -339,22 +340,6 @@ def approval_row(dbname: str, approval_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def output_artifact_id(dbname: str, run_id: str) -> str | None:
-    return t033.output_artifact_id(dbname, run_id)
-
-
-def node_result_rows(dbname: str, run_id: str) -> list[dict]:
-    return t042.node_result_rows(dbname, run_id)
-
-
-def node_states(dbname: str, run_id: str) -> dict[str, list[str]]:
-    return t083.node_states(dbname, run_id)
-
-
-def node_events(dbname: str, run_id: str) -> list[dict]:
-    return t042.node_events(dbname, run_id)
-
-
 def run_events(dbname: str, run_id: str, event_type: str) -> list[dict]:
     rows = st.sql_rows(
         dbname,
@@ -386,14 +371,7 @@ def proposal_artifact_row(dbname: str, artifact_id: str) -> dict:
 def proposal_document(stack, approval: dict) -> dict:
     """Read the sealed server proposal object the human page renders."""
     artifact = proposal_artifact_row(stack.dbname, approval["proposal_artifact_id"])
-    payload = (stack.object_dir / artifact["object_key"]).read_bytes()
-    return json.loads(payload)
-
-
-def artifact_document(stack, owner, artifact_id: str) -> dict:
-    content = t033.artifact_content(owner.creator, artifact_id)
-    assert content.status == 200, content.text
-    return json.loads(content.raw)
+    return observations.sealed_object_document(stack, artifact)
 
 
 def run_artifact_ids(dbname: str, run_id: str) -> set[str]:

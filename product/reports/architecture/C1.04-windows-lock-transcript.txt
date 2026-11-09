@@ -1,0 +1,33 @@
+﻿WINDOWS: sys.getwindowsversion(major=10, minor=0, build=26200, platform=2, service_pack='') PYTHON: 3.12.2
+TEMP ROOT: C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product
+EXIT: 0
+STDOUT: copied 2 files; manifest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product\docs\spec\SYNC-MANIFEST.json (2 spec + 1 contract digests)
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product --check
+EXIT: 0
+STDOUT: no drift: current source, both copies and synchronized baseline agree
+HOLDER: pid 50256 said 'ready'
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product --check
+EXIT: 1
+STDOUT: drift or verification failure: 1 finding(s)
+  busy                 C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product (another check or sync holds the lock)
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product
+EXIT: 1
+STDOUT: busy: C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product: another check or sync holds the lock
+MANAGED DIGEST UNCHANGED BY COMPETITORS: True
+LOCK READ: PermissionError winerror=None
+LOCK DELETE: PermissionError winerror=32
+HOLDER ALIVE AFTER COMPETITORS: True
+MANAGED DIGEST AFTER DELETE ATTEMPT: True
+HOLDER EXIT: 0
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product --check
+EXIT: 0
+STDOUT: no drift: current source, both copies and synchronized baseline agree
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product
+EXIT: 0
+STDOUT: copied 2 files; manifest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product\docs\spec\SYNC-MANIFEST.json (2 spec + 1 contract digests)
+COMMAND: D:\Python\python.exe -X utf8 E:\Orchara-wt\C1.04\product\tools\sync_spec.py --source C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\repo --dest C:\Users\19677\AppData\Local\Temp\c104-win-dfxk_gp4\product --check
+EXIT: 0
+STDOUT: no drift: current source, both copies and synchronized baseline agree
+LOCK REUSABLE AFTER NORMAL EXIT: True
+PASS Windows C1.04 lock transcript

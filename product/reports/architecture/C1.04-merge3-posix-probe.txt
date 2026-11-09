@@ -1,0 +1,31 @@
+﻿PLATFORM: linux 6.6.87.2-microsoft-standard-WSL2
+PYTHON: 3.12.3
+TEMP ROOT: /tmp/c104-posix-huap34a8
+PYTEST: not installed in this distro; pytest suite not_run
+PASS initial sync exits zero: copied 3 files; manifest /tmp/c104-posix-huap34a8/product/docs/spec/SYNC-MANIFEST.json (3 spec + 1 contract digests)
+PASS clean check exits zero: no drift: current source, both copies and synchronized baseline agree
+PASS POSIX source change is drift with nonzero status: drift or verification failure: 1 finding(s)
+  source_modified      source/README.md (content differs from the synchronized baseline)
+PASS POSIX sync publishes the change: copied 3 files; manifest /tmp/c104-posix-huap34a8/product/docs/spec/SYNC-MANIFEST.json (3 spec + 1 contract digests)
+PASS check passes after POSIX sync: no drift: current source, both copies and synchronized baseline agree
+PASS check competitor reports busy while sync holds the lock: drift or verification failure: 1 finding(s)
+  busy                 /tmp/c104-posix-huap34a8/product (another check or sync holds the lock)
+PASS check competitor fails fast: 0.672s
+PASS sync competitor reports busy while sync holds the lock: busy: /tmp/c104-posix-huap34a8/product: another check or sync holds the lock
+PASS sync competitor fails fast: 0.533s
+PASS busy competitors do not modify managed copies
+PASS busy competitors leave the holder alive
+PASS lock file carries no holder PID: b'0'
+PASS POSIX unlink of the held lock file succeeds
+PASS check after lock-file deletion still reports busy: drift or verification failure: 1 finding(s)
+  busy                 /tmp/c104-posix-huap34a8/product (another check or sync holds the lock)
+PASS sync after lock-file deletion still reports busy: busy: /tmp/c104-posix-huap34a8/product: another check or sync holds the lock
+PASS lock-file deletion competitors do not modify managed content
+PASS lock-file deletion competitors leave the holder alive
+PASS lock holder exits normally: exit=0
+PASS check works after the holder exits: no drift: current source, both copies and synchronized baseline agree
+PASS sync works after the holder exits: copied 3 files; manifest /tmp/c104-posix-huap34a8/product/docs/spec/SYNC-MANIFEST.json (3 spec + 1 contract digests)
+PASS managed content is unchanged by the release/reuse cycle
+PASS the next successful operation restores the lock file
+SUMMARY: 22 passed, 0 failed
+PASS POSIX C1.04 probe: source change, sync, shared process lock, busy diagnostics, lock-file deletion rejection, release/reuse

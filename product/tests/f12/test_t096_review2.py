@@ -151,6 +151,12 @@ vm.runInContext(
   context,
   { filename: 'runstream.js' }
 );
+// C6.04 (#158): the guard is part of the real page load order.
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
+);
 vm.runInContext(
   fs.readFileSync(webDir + '/assets/runs.js', 'utf8'),
   context,
@@ -356,6 +362,18 @@ const context = {
   beginRunView: function (view) { runViewCalls.push(view); },
 };
 vm.createContext(context);
+// C6.01 (#155): the real shared run-state bytes load before debug.js.
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'),
+  context,
+  { filename: 'runstream.js' }
+);
+// C6.04 (#158): the guard is part of the real page load order.
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
+);
 vm.runInContext(
   fs.readFileSync(webDir + '/assets/debug.js', 'utf8'),
   context,
@@ -559,6 +577,12 @@ vm.runInContext(
   fs.readFileSync(webDir + '/assets/runstream.js', 'utf8'),
   context,
   { filename: 'runstream.js' }
+);
+// C6.04 (#158): the guard is part of the real page load order.
+vm.runInContext(
+  fs.readFileSync(webDir + '/assets/runstate-guard.js', 'utf8'),
+  context,
+  { filename: 'runstate-guard.js' }
 );
 vm.runInContext(
   fs.readFileSync(webDir + '/assets/runs.js', 'utf8'),

@@ -1,0 +1,2 @@
+ok  	orchara/platform/internal/capabilities	2.472s
+ok  	orchara/platform/internal/modelproxy	3.133s

@@ -25,7 +25,6 @@ from support.runtime_stack import Stack
 from support import f00b, stack as st, t024, t027, t028, t029, t031
 
 # Re-exports so a T033 test imports one module.
-T033Stack = Stack
 Session = t031.Session
 admin_session = t031.admin_session
 session_for = t031.session_for
@@ -272,27 +271,6 @@ def wait_scoped_status(
 
 
 # ---------------------------------------------------------------------------
-# maintenance finalize worker (concurrent with the supervisor)
-# ---------------------------------------------------------------------------
-FinalizeWorker = execution.FinalizeWorker
-
-
-# ---------------------------------------------------------------------------
-# cmd/supervisor exec --once
-# ---------------------------------------------------------------------------
-rootfs_digest = execution.rootfs_digest
-
-
-supervisor_exec_env = execution.supervisor_exec_env
-
-
-run_supervisor_exec = execution.run_supervisor_exec
-
-
-exec_report = execution.exec_report
-
-
-# ---------------------------------------------------------------------------
 # WSL / runsc inspection (small, bounded calls)
 # ---------------------------------------------------------------------------
 def wsl(command: str, *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
@@ -347,10 +325,6 @@ def artifact_download(session: Session, artifact_id: str):
     return session.client.get(f"/api/v1/artifacts/{artifact_id}/download")
 
 
-def artifact_content(session: Session, artifact_id: str):
-    return session.client.get(f"/api/v1/artifacts/{artifact_id}/content")
-
-
 def provenance_row(dbname: str, artifact_id: str) -> dict | None:
     rows = st.sql_rows(
         dbname,
@@ -391,28 +365,6 @@ def artifact_by_purpose(dbname: str, run_id: str, purpose: str) -> dict | None:
         f"AND a.purpose = {st.quote_literal(purpose)} ORDER BY a.created_at, a.id",
     )
     return rows[0] if rows else None
-
-
-def output_artifact_id(dbname: str, run_id: str) -> str | None:
-    value = st.sql(
-        dbname,
-        "SELECT COALESCE(output_artifact_id::text, '') FROM platform.runs "
-        f"WHERE id = {st.quote_literal(run_id)}::uuid",
-    )
-    return value or None
-
-
-def wait_run_state(
-    dbname: str, run_id: str, states: set[str], *, timeout: float = 60.0
-) -> dict:
-    deadline = time.time() + timeout
-    last: dict = {}
-    while time.time() < deadline:
-        last = run_state_row(dbname, run_id)
-        if last["state"] in states:
-            return last
-        time.sleep(0.05)
-    raise AssertionError(f"run {run_id} never reached {states}: {last}")
 
 
 ARTIFACT_FIELDS = {"id", "state", "media_type", "size_bytes"}

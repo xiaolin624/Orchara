@@ -1,0 +1,21 @@
+﻿C6.03 merge: node syntax checks and deleted-fallback / shared-interface grep at integration tip
+
+### node --check apps\web\src\assets\runs.js
+(no output)
+exit=0
+
+### node --check apps\web\src\assets\runstream.js
+(no output)
+exit=0
+
+### grep counts in runs.js
+typeof runStream = 0
+function describeRunState = 0
+runStreamChildSummary = 0
+runStreamTruth = 0
+runStreamFailure = 0
+runStreamArtifactReadout = 0
+runStreamCancelAcceptedText = 0
+runStreamSnapshotPath = 0
+runStreamSnapshotCorrection = 0
+OrcharaRunState = 8

@@ -36,6 +36,14 @@ function debugApplicationId(pathname) {
   return match ? match[1].toLowerCase() : null;
 }
 
+/**
+ * C6.04 (#158): `OrcharaRunStateGuard.ready` is the only dependency fact this
+ * page consults. Submitting a debug Run and observing it (poll, SSE timeline,
+ * node view, cancel) are the affected operations; the draft revision read, the
+ * form fields, the evaluation-progress entry, navigation and reload stay usable.
+ * There is no page-local dependency helper and no legacy export to fall back to.
+ */
+
 function debugRunsPath(applicationId) {
   return '/api/v1/applications/' + encodeURIComponent(applicationId) + '/debug-runs';
 }
@@ -135,53 +143,34 @@ function runSummary(run) {
 }
 
 /**
- * A run is polled while it can still change on its own. queued/running and the
- * transitional states continue; terminal states stop. F03 owns the transitions,
- * so today the poll simply shows a stable queued run.
- */
-function runIsTerminal(state) {
-  return state === 'succeeded' || state === 'failed' || state === 'cancelled';
-}
-
-/**
  * T031: one honest sentence per execution stage. A result proposal moves the
  * Run to phase=finalizing, but that is still not success: the Go finalizer waits
  * for supervisor exit/sandbox/DB-drain evidence. Success is only ever described
  * for a committed terminal state.
+ *
+ * C6.05 (review-2): the terminal decision, stage and phase come from the shared
+ * `OrcharaRunState.view` projection; this page only turns those facts into its
+ * own sentence. It keeps no Run terminal dictionary of its own.
  */
 function describeRunStage(run) {
-  const summary = runSummary(run || {});
-  // The debug page's runSummary deliberately carries no phase; read the field
-  // from the contract Run body itself.
-  const phase = (run && run.phase) || '';
-  if (runIsTerminal(summary.state)) {
-    return '已进入终态 ' + summary.state + '（由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
+  const truth = OrcharaRunState.view(run || {}, {});
+  const state = truth.state || 'unknown';
+  if (truth.terminal) {
+    return '已进入终态 ' + truth.state + '（由 Go finalizer 在结果提议与 supervisor 退出证据齐全后提交）。';
   }
-  if (summary.state === 'recovery_pending') {
+  if (truth.stage === 'recovery_pending') {
     return '已确认退出但没有结果，Run 挂起在 recovery_pending；恢复证据齐全前不会重新执行。';
   }
-  if (summary.state === 'needs_reconciliation') {
+  if (truth.stage === 'needs_reconciliation') {
     return 'Run 等待人工核对（needs_reconciliation）；不显示为成功或失败。';
   }
-  if (summary.state === 'running' && phase === 'finalizing') {
+  if (truth.stage === 'finalizing') {
     return '结果提议已保存，正在 finalizing：等待 supervisor 的退出证据（进程/沙箱/数据库排空），终态前这不是成功。';
   }
-  if (summary.state === 'running') {
+  if (truth.stage === 'running') {
     return '正在执行（executing）；结果提议与退出证据由 F03 supervisor 协议提交。';
   }
-  return '当前阶段 ' + (phase || 'idle') + '（' + summary.state + '）。';
-}
-
-function shouldPollRun(run, pollsSoFar, maxPolls) {
-  if (!run || typeof run.state !== 'string') {
-    return false;
-  }
-  if (runIsTerminal(run.state)) {
-    return false;
-  }
-  const polls = Number.isFinite(pollsSoFar) ? pollsSoFar : 0;
-  const limit = Number.isFinite(maxPolls) ? maxPolls : 40;
-  return polls < limit;
+  return '当前阶段 ' + (truth.phase || 'idle') + '（' + state + '）。';
 }
 
 /** Read the header the contract Run schema cannot carry. */
@@ -327,6 +316,12 @@ function initDebug() {
   }
 
   async function poll(runId) {
+    if (!OrcharaRunStateGuard.ready) {
+      // C6.01: pause the realtime Run observation; never present a raw snapshot
+      // as interpreted state.
+      stopPolling();
+      return;
+    }
     polls += 1;
     try {
       const polled = await fetchRun(runId);
@@ -337,9 +332,14 @@ function initDebug() {
         frozenRevision,
         polled.lease,
       );
-      if (shouldPollRun(polled.run, polls, DEBUG_MAX_POLLS)) {
+      const runState =
+        polled.run && typeof polled.run.state === 'string' ? polled.run.state : '';
+      if (
+        runState !== '' &&
+        OrcharaRunState.shouldPoll('dispatched', runState, polls, DEBUG_MAX_POLLS)
+      ) {
         pollTimer = setTimeout(() => poll(runId), DEBUG_POLL_INTERVAL_MS);
-      } else if (!runIsTerminal(polled.run.state)) {
+      } else if (!OrcharaRunState.isTerminal(runState)) {
         // F12/T096: waiting/finalizing/cancelling runs outlive the 60s budget.
         // Keep observing (slowly) instead of freezing the page on a stale state.
         debugStatus(
@@ -364,6 +364,13 @@ function initDebug() {
 
   async function submit(event) {
     event.preventDefault();
+    if (!OrcharaRunStateGuard.ready) {
+      debugStatus(
+        '运行状态暂不可用：已暂停创建调试 Run 与运行状态观察；导航和重新加载仍可使用。',
+        'bad',
+      );
+      return;
+    }
     let payload;
     try {
       payload = debugPayloadFromFields({

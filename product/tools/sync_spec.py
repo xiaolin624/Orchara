@@ -228,32 +228,57 @@ def _audit(layout: _Layout, source: dict[str, str]) -> list[dict[str, str]]:
 
 @contextmanager
 def _locked(layout: _Layout) -> Iterator[None]:
+    """Hold one non-blocking OS lock shared by check and sync.
+
+    On POSIX the private state directory itself is locked as well as the named
+    lock file: another process can unlink an open lock file, and a fresh lock
+    on a new inode would otherwise bypass the first holder. Deleting the lock
+    file therefore cannot hand the workspace to a competing tool process.
+    Windows keeps the open lock file undeletable and needs only its byte-range
+    lock. Hostile replacement of the whole state directory is outside the
+    tool's trust model.
+    """
     _no_redirects(layout.state)
     layout.state.mkdir(parents=True, exist_ok=True)
     path = layout.state / "lock"
     _no_redirects(path)
-    with path.open("a+b") as lock:
-        if path.stat().st_size == 0:
-            lock.write(b"0")
-            lock.flush()
-        lock.seek(0)
-        try:
-            if os.name == "nt":
-                import msvcrt
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            raise SyncError("busy", layout.dest, "another check or sync holds the lock") from error
-        try:
-            yield
-        finally:
+    directory: int | None = None
+    fcntl = None
+    try:
+        if os.name != "nt":
+            import fcntl
+            directory = os.open(layout.state, os.O_RDONLY)
+            try:
+                fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                raise SyncError("busy", layout.dest,
+                                "another check or sync holds the lock") from error
+        with path.open("a+b") as lock:
+            if path.stat().st_size == 0:
+                lock.write(b"0")
+                lock.flush()
             lock.seek(0)
-            if os.name == "nt":
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                raise SyncError("busy", layout.dest,
+                                "another check or sync holds the lock") from error
+            try:
+                yield
+            finally:
+                lock.seek(0)
+                if os.name == "nt":
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    finally:
+        if directory is not None:
+            fcntl.flock(directory, fcntl.LOCK_UN)
+            os.close(directory)
 
 
 def _guard(layout: _Layout, path: Path) -> None:

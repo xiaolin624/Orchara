@@ -23,8 +23,9 @@ from __future__ import annotations
 import json
 import time
 
+from support import run_observations as observations
 from support import execution_support as execution
-from support import f00b, t025, t027, t029, t033, t035, t068, t075
+from support import f00b, t025, t027, t029, t035, t068, t075
 from support import stack as st
 
 KIND_CHILDREN = "children"
@@ -483,7 +484,7 @@ def waiting_row(dbname: str, run_id: str) -> dict | None:
 
 
 def wait_run_state(dbname: str, run_id: str, states: set[str], *, timeout: float = 60.0) -> dict:
-    return t033.wait_run_state(dbname, run_id, states, timeout=timeout)
+    return observations.wait_run_state(dbname, run_id, states, timeout=timeout)
 
 
 def wait_for_resume_job(dbname: str, run_id: str, *, timeout: float = 10.0) -> dict:
