@@ -105,13 +105,15 @@ def test_app_js_is_the_shared_helper(pages_server) -> None:
 
 
 def test_root_page_keeps_its_strings_and_links(pages_server) -> None:
-    """Regression: the F00 page content asserted by tests/f00 must survive."""
-    response = pages_server.http.get("/")
+    """The root enters chat; the real process-status page remains available."""
+    root = pages_server.http.get("/")
+    assert root.status == 303 and root.header("Location") == "/chat"
+    response = pages_server.http.get("/status")
     assert response.status == 200, response.text
     body = response.text
-    for marker in ("Orchara 平台状态", "/health/live", "/api/status", "运行中", "status === 'alive'"):
+    for marker in ("平台状态", "/health/live", "/api/status", "运行中", "status === 'alive'"):
         assert marker in body, f"/ is missing {marker!r}"
-    for link in ('href="/admin"', 'href="/activate"', 'href="/apps"'):
+    for link in ('href="/login"', 'src="/assets/nav.js"'):
         assert link in body, f"/ is missing the navigation link {link!r}"
 
 
@@ -127,7 +129,7 @@ def test_pages_are_served_from_orchara_web_dir(fresh_database, go_binaries, api_
     admin_path = web_dir / "admin.html"
     admin_path.write_text(
         admin_path.read_text(encoding="utf-8").replace(
-            "<title>Orchara 管理台（F01 身份）</title>", f"<title>{marker}</title>"
+            "<title>管理台 · Orchara</title>", f"<title>{marker}</title>"
         ),
         encoding="utf-8",
     )

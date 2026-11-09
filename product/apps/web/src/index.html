@@ -1,68 +1,60 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 平台状态（F00 骨架）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.5; }
-    h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
-    .sub { opacity: .65; font-size: .85rem; margin-bottom: 1.5rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>平台状态 · Orchara</title>
+<style>
     .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-width: 60rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem; }
     .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
     .value { font-size: 1.5rem; font-weight: 600; margin-top: .35rem; }
     .ok { color: #15803d; }
     .bad { color: #b91c1c; }
     .warn { color: #a16207; }
-    ul { padding-left: 1.1rem; margin: .5rem 0 0; font-size: .85rem; }
-    code { font-size: .8rem; opacity: .8; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-auth="optional">
-  <h1>Orchara 平台状态</h1>
-  <nav style="margin:.25rem 0 .75rem;font-size:.9rem">
-    <a href="/login" style="margin-right:1rem">登录</a>
-    <a href="/admin" style="margin-right:1rem">管理台</a>
-    <a href="/activate" style="margin-right:1rem">激活账号</a>
-    <a href="/apps">应用目录</a>
-  </nav>
-  <p class="sub">
+<body data-auth="optional" data-page="index"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>管理</span><span class="separator">/</span><span>平台状态</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="pulse">SYSTEM STATUS</p><h1>平台状态</h1><p class="page-description">查看平台进程、依赖与当前运行环境的实际状态。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     这是 F00 骨架页面：显示真实进程与依赖状态，<strong>不是</strong>业务功能。
     数据来自 <code>/api/status</code>，每 3 秒刷新。
-  </p>
-
-  <div class="grid">
-    <div class="card">
-      <div class="label">存活 (liveness)</div>
-      <div class="value" id="live">…</div>
-      <div class="label" style="margin-top:.6rem">版本</div>
-      <div id="version">…</div>
-    </div>
-    <div class="card">
-      <div class="label">就绪 (readiness)</div>
-      <div class="value" id="ready">…</div>
-      <div class="label" style="margin-top:.6rem">已运行</div>
-      <div id="uptime">…</div>
-    </div>
-    <div class="card">
-      <div class="label">依赖检查</div>
-      <ul id="checks"><li>…</li></ul>
-    </div>
-    <div class="card">
-      <div class="label">环境 profile</div>
-      <div class="value" id="environment-profile">…</div>
-      <div class="label" style="margin-top:.6rem">结果标记</div>
-      <div id="environment-stub" class="warn">…</div>
-    </div>
-  </div>
-
-  <p class="sub" style="margin-top:1.5rem" id="stamp"></p>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script>
+  </p></details><div class="page-sections">
+<div class="grid">
+<div class="card">
+<div class="label">存活 (liveness)</div>
+<div class="value" id="live">…</div>
+<div class="label" style="margin-top:.6rem">版本</div>
+<div id="version">…</div>
+</div>
+<div class="card">
+<div class="label">就绪 (readiness)</div>
+<div class="value" id="ready">…</div>
+<div class="label" style="margin-top:.6rem">已运行</div>
+<div id="uptime">…</div>
+</div>
+<div class="card">
+<div class="label">依赖检查</div>
+<ul id="checks"><li>…</li></ul>
+</div>
+<div class="card">
+<div class="label">环境 profile</div>
+<div class="value" id="environment-profile">…</div>
+<div class="label" style="margin-top:.6rem">结果标记</div>
+<div class="warn" id="environment-stub">…</div>
+</div>
+</div>
+<p class="sub" id="stamp" style="margin-top:1.5rem"></p>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
     const liveEl = document.getElementById('live');
     const readyEl = document.getElementById('ready');
     const versionEl = document.getElementById('version');

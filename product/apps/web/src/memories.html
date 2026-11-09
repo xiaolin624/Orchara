@@ -1,74 +1,53 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 个人记忆（F09/T054 · T058）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    ul { padding-left: 0; margin: .4rem 0 0; list-style: none; }
-    li { margin: .8rem 0; padding: .6rem .7rem; border-left: 3px solid rgba(128,128,128,.5); }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>个人记忆 · Orchara</title>
+<style>
     .row { display: grid; grid-template-columns: 7.5rem 1fr; gap: .2rem .9rem; font-size: .88rem; }
     .row .label { opacity: .7; }
     .row .value { word-break: break-word; white-space: pre-wrap; }
-    code { font-size: .82rem; opacity: .85; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .hint { font-size: .82rem; opacity: .7; }
     .decision-buttons { display: flex; gap: .75rem; margin-top: .7rem; flex-wrap: wrap; }
     .memory-editor { margin-top: .7rem; display: grid; gap: .4rem; }
     .memory-text { width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; }
-    button { padding: .4rem .9rem; font: inherit; cursor: pointer; }
-    [hidden] { display: none !important; }
   </style>
-  <link rel="stylesheet" href="/assets/mobile.css" />
+<link href="/assets/mobile.css" rel="stylesheet"/>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-memories">
-  <nav aria-label="主导航">
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/runs">运行</a>
-    <a href="/approvals">审批</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>个人长期记忆（F09/T054 · T058）</h1>
-  <p class="sub">
+<body class="page-memories" data-page="memories"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>个人数据</span><span class="separator">/</span><span>个人记忆</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="brain">PERSONAL MEMORY</p><h1>个人记忆</h1><p class="page-description">由你决定保存哪些信息，以及它们可以在哪些应用中使用。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     候选只是<strong>提议</strong>：它由 Run 内的自动抽取提出，正文由服务端封存，<strong>确认前不可召回</strong>。
     只有你明确点击“确认”才会保存为个人记忆；拒绝或过期都不会生成记忆，也不会自动保存。
     重复确认返回同一条记忆，不会产生第二条记录，也不会复制第二份正文。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     个人记忆按“使用者 + 应用范围”隔离，换到另一个应用不会自动带走。管理员也不是例外：
     看不到或决定不了别人的候选与记忆。页面全部使用 textContent 渲染服务端文本，
     不在浏览器里保留凭据或记忆正文。
-  </p>
-
-  <section class="card">
-    <h2>待我确认的候选</h2>
-    <p class="hint">
+  </p></details><div class="page-sections">
+<section class="card">
+<h2>待我确认的候选</h2>
+<p class="hint">
       每条候选显示来源、交互（Run）封存范围、保存范围（哪个应用）、过期时间与候选内容；
       确认/拒绝按钮只对“待确认”的候选出现。页面没有“全选”，默认不勾选任何候选，
       必须逐条明确决定；服务端在决定时会再次校验过期时间与所有者。
       候选状态：待确认 / 已确认 / 已拒绝 / 已过期。
     </p>
-    <p id="candidates-status" class="status" role="status" aria-live="polite">正在加载候选…</p>
-    <ul id="candidates-list" data-auth-content></ul>
-    <p id="candidates-empty" class="hint" hidden>当前没有候选。只有确认后的候选才会出现在下面的“当前记忆”里。</p>
-    <button id="candidates-next" type="button" hidden>下一页候选</button>
-    <p id="decision-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section class="card">
-    <h2>当前记忆</h2>
-    <p class="hint">
+<p class="status" id="candidates-status" aria-live="polite" role="status">正在加载候选…</p>
+<ul id="candidates-list" data-auth-content=""></ul>
+<p class="hint" id="candidates-empty" hidden="">当前没有候选。只有确认后的候选才会出现在下面的“当前记忆”里。</p>
+<button id="candidates-next" hidden="" type="button">下一页候选</button>
+<p class="status" id="decision-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card">
+<h2>当前记忆</h2>
+<p class="hint">
       每条记忆按 revision 标识版本。编辑记忆使用强 ETag 与 If-Match：页面会先读取当前 ETag，
       保存时必须精确匹配；缺失 If-Match 服务端返回 428，版本已变返回 412（版本冲突），
       页面随后用最新 ETag 提示你显式重试，不会静默覆盖。删除这条记忆后，旧内容会立即停止召回：
@@ -76,25 +55,25 @@
       页面如实显示“删除状态”，不声称副本已删除。点击“保存修改”只会带页面刚读到的 If-Match 提交，
       页面没有任何“跳过校验”的入口。
     </p>
-    <p id="memories-status" class="status" role="status" aria-live="polite">正在加载记忆…</p>
-    <ul id="memories-list" data-auth-content></ul>
-    <p id="memories-empty" class="hint" hidden>还没有已确认的个人记忆。确认一条候选，或在一个应用里明确“记住”。</p>
-    <button id="memories-next" type="button" hidden>下一页记忆</button>
-    <p id="memory-action-status" class="status" role="status" aria-live="polite"></p>
-    <button id="memory-conflict-retry" type="button" hidden>用最新版本重试</button>
-  </section>
-
-  <section class="card" id="deletion-card" hidden>
-    <h2>最近一次删除</h2>
-    <p class="hint">
+<p class="status" id="memories-status" aria-live="polite" role="status">正在加载记忆…</p>
+<ul id="memories-list" data-auth-content=""></ul>
+<p class="hint" id="memories-empty" hidden="">还没有已确认的个人记忆。确认一条候选，或在一个应用里明确“记住”。</p>
+<button id="memories-next" hidden="" type="button">下一页记忆</button>
+<p class="status" id="memory-action-status" aria-live="polite" role="status"></p>
+<button id="memory-conflict-retry" hidden="" type="button">用最新版本重试</button>
+</section>
+<section class="card" id="deletion-card" hidden="">
+<h2>最近一次删除</h2>
+<p class="hint">
       删除接口返回的是删除任务（deletion_job），不是记忆 id。旧内容已停止召回；
       物理副本清理状态以服务端返回的删除任务状态为准，本页不做乐观推断。
     </p>
-    <div id="deletion-status" class="rows"></div>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/memories.js"></script>
+<div class="rows" id="deletion-status"></div>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/memories.js"></script>
 </body>
 </html>

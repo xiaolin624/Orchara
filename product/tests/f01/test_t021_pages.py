@@ -69,7 +69,7 @@ def test_admin_page_has_the_disable_form_and_feedback(pages_server) -> None:
 def test_the_existing_admin_sections_survive_the_t021_additions(pages_server) -> None:
     body = pages_server.http.get("/admin").text
     for marker in (
-        "Orchara 管理台（F01 身份）",
+        "管理台 · Orchara",
         "只显示一次",
         'id="signin-form"',
         'id="invite-form"',

@@ -1,60 +1,46 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 登录</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 40rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; }
-    label { display: block; margin: .6rem 0; font-size: .9rem; }
-    input { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
-    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
-    [hidden] { display: none !important; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>欢迎回来 · Orchara</title>
+<style>
+</style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-auth="optional">
-  <nav>
-    <a href="/">状态</a>
-    <a href="/activate">激活账号</a>
-  </nav>
-
-  <h1>登录</h1>
-  <p class="sub">
-    用管理员分配、并已在 <a href="/activate">/activate</a> 激活的登录名与密码登录。
-    会话保存在 HttpOnly 的 <code>platform_session</code> Cookie 里；本页不会把令牌
-    写进地址栏、URL 查询或浏览器存储。
-  </p>
-
-  <section class="card">
-    <form method="post" id="login-form" autocomplete="on">
-      <label for="login">登录名
-        <input id="login" name="login" autocomplete="username" required />
-      </label>
-      <label for="password">密码
-        <input id="password" name="password" type="password" autocomplete="current-password" required />
-      </label>
-      <button type="submit">登录</button>
-    </form>
-    <p id="login-status" class="status" role="status" aria-live="polite"></p>
-    <p class="hint">
+<body data-auth="optional" data-page="login"><div class="auth-layout"><aside class="auth-story"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">IDEAS INTO WORKFLOWS</p><h2>让想法成为<br/>可运行的工作流。</h2><p>连接模型、工具与知识，<br/>构建属于团队的 Agent 应用。</p></div><small>ORCHARA · 团队 Agent 工作空间</small><div class="auth-art" aria-hidden="true"></div>
+</aside>
+<div class="auth-main"><div class="auth-mobile-brand"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="user">WELCOME TO ORCHARA</p><h1>欢迎回来</h1><p class="page-description">登录你的工作空间，继续今天的工作。</p></div></header>
+<div class="page-sections">
+<section class="card">
+<form id="login-form" autocomplete="on" method="post">
+<label for="login">登录名
+        <input id="login" name="login" autocomplete="username" required=""/>
+</label>
+<label for="password">密码
+        <input id="password" name="password" autocomplete="current-password" required="" type="password"/>
+</label>
+<button type="submit">登录</button>
+</form>
+<p class="status" id="login-status" aria-live="polite" role="status"></p>
+<p class="hint">
       还没有账号？请让管理员在管理台生成一次性邀请令牌，然后到
       <a href="/activate">激活页</a> 设置密码。
     </p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script>
+</section>
+</div><nav aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate">激活账号</a><a href="/chat">返回工作空间</a></nav>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    用管理员分配、并已在 <a href="/activate">/activate</a> 激活的登录名与密码登录。
+    会话保存在 HttpOnly 的 <code>platform_session</code> Cookie 里；本页不会把令牌
+    写进地址栏、URL 查询或浏览器存储。
+  </p></details></main>
+</div></div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
     const loginForm = document.getElementById('login-form');
     const loginStatus = document.getElementById('login-status');
 
@@ -95,14 +81,11 @@
           },
         });
         document.getElementById('password').value = '';
-        // The login response carries no roles. Read the identity and land on the
-        // page this role can actually use: sending every account to /admin left
-        // a plain user on a page whose panels were all hidden.
+        // Refresh the server identity before entering the conversation workspace.
         const current = await identity(true);
-        const isAdmin =
-          Array.isArray(current.roles) && current.roles.indexOf('admin') !== -1;
-        setStatus(isAdmin ? '登录成功，正在进入管理台…' : '登录成功，正在进入应用目录…', 'ok');
-        window.location.assign(isAdmin ? '/admin' : '/apps');
+        const destination = OrcharaNav.isHuman(current) ? '/chat' : '/status';
+        setStatus('登录成功，正在进入工作空间…', 'ok');
+        window.location.assign(destination);
       } catch (error) {
         setStatus(
           LOGIN_MESSAGES[error.code] || `登录失败 [${error.code}] ${error.message}`,

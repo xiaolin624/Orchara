@@ -1,145 +1,127 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>会话与请求 · Orchara</title>
-    <link rel="stylesheet" href="/assets/canvas.css" />
-    <link rel="stylesheet" href="/assets/mobile.css" />
-  </head>
-  <body class="page-chat">
-    <header class="topbar">
-      <strong>Orchara</strong>
-      <nav aria-label="主导航">
-        <a href="/apps">应用</a>
-        <a href="/chat">会话</a>
-        <a href="/runs">运行</a>
-        <a href="/personal-data">个人数据</a>
-        <a href="/login" id="logout-link" data-orchara-logout="true">退出</a>
-      </nav>
-    </header>
+<!DOCTYPE html>
 
-    <main class="page">
-      <!-- C6.01 (#155): the shared run-state dependency failure banner. Hidden on
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>对话工作区 · Orchara</title>
+<link href="/assets/canvas.css" rel="stylesheet"/>
+<link href="/assets/mobile.css" rel="stylesheet"/>
+<link href="/assets/design.css" rel="stylesheet"/>
+</head>
+<body class="page-chat" data-page="chat"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>对话</span><span class="separator">/</span><span>对话工作区</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="chat">YOUR WORKSPACE</p><h1>对话工作区</h1><p class="page-description">描述你的需求，让合适的应用帮你完成工作。</p></div><div class="heading-actions"><a href="/catalog">浏览应用</a></div></header>
+<div class="page-sections">
+<!-- C6.01 (#155): the shared run-state dependency failure banner. Hidden on
            the normal path; assets/runstate-guard.js shows it and pauses the
            controls marked data-runstate-paused. Navigation/reload stay usable. -->
-      <p id="runstate-status" class="status bad" role="alert" hidden></p>
-      <section class="panel" id="conversation-panel">
-        <h1>会话</h1>
-        <p class="hint" data-mobile-scope="no-full-canvas-editing">
-          手机/小屏支持：新建会话、上传需求与附件、提交、查看状态、答复澄清、打开审批和运行结果。
-          完整画布编辑（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
-        </p>
-        <p class="hint">
+<p class="status bad" id="runstate-status" hidden="" role="alert"></p>
+<div class="chat-layout"><section class="panel" id="conversation-panel"><h2>我的会话</h2>
+<div class="row">
+<button id="conversation-create" data-icon="plus" type="button">新建会话</button>
+<span class="status" id="conversation-status"></span>
+</div>
+<ul id="conversation-list" aria-label="我的会话" data-auth-content=""></ul>
+<details class="conversation-help"><summary>会话与队列说明</summary><p class="hint" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用。</p><p class="hint">
           每个会话只有一个逻辑执行槽：最早的未完成请求占槽，后续普通请求按顺序排队。
           固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。
-        </p>
-        <div class="row">
-          <button type="button" id="conversation-create">新建会话</button>
-          <span id="conversation-status" class="status"></span>
-        </div>
-        <ul id="conversation-list" data-auth-content aria-label="我的会话"></ul>
-      </section>
-
-      <section class="panel" id="chat-panel" hidden>
-        <h2>当前会话 <code id="chat-conversation-id"></code></h2>
-
-        <div class="row">
-          <label for="chat-version-id">固定版本（可选）</label>
-          <input id="chat-version-id" type="text" placeholder="application_version_id" />
-          <span class="hint">填写后直接使用该发布版本，不经过模型匹配。</span>
-        </div>
-
-        <form id="chat-message-form">
-          <label for="chat-message">需求</label>
-          <textarea id="chat-message" rows="4" maxlength="32000" required></textarea>
-
-          <fieldset id="chat-handoff">
-            <legend>跨应用交接（可选）：先生成服务端预览，再确认最小范围</legend>
-            <p class="hint">
+        </p></details></section>
+<section class="panel" id="chat-empty" aria-label="开始会话"><span class="welcome-symbol" data-icon="spark"></span><h2>今天，想完成什么？</h2><p>新建一个会话，描述你的需求。你可以上传资料，也可以从应用目录选择一个应用开始。</p><a href="/catalog">探索应用目录 →</a></section>
+<section class="panel" id="chat-panel" hidden="">
+<h2>当前会话 </h2><details class="conversation-meta"><summary>会话信息</summary><code id="chat-conversation-id"></code></details>
+<details><summary>指定应用版本（可选）</summary><div class="row">
+<label for="chat-version-id">固定版本（可选）</label>
+<input id="chat-version-id" placeholder="application_version_id" type="text"/>
+<span class="hint">填写后直接使用该发布版本，不经过模型匹配。</span>
+</div></details>
+<form id="chat-message-form">
+<label for="chat-message">需求</label>
+<textarea id="chat-message" maxlength="32000" placeholder="例如：分析本月销售数据，按地区汇总金额并生成报告…" required="" rows="4"></textarea>
+<details><summary>跨应用交接（可选）</summary><fieldset id="chat-handoff">
+<legend>跨应用交接（可选）：先生成服务端预览，再确认最小范围</legend>
+<p class="hint">
               新应用只会收到本次需求、你在下面勾选的来源附件和这份服务端摘要；
               旧应用的内部历史、对话正文与个人记忆不会自动传递。
             </p>
-            <label for="chat-handoff-source-runs">来源 Run（逗号分隔，最多 5 个）</label>
-            <input id="chat-handoff-source-runs" type="text" />
-            <div class="row">
-              <button type="button" id="chat-handoff-load-artifacts">读取来源 Run 的产出附件</button>
-              <span id="chat-handoff-artifact-status" class="status"></span>
-            </div>
-            <fieldset id="chat-handoff-artifacts">
-              <legend>选择要交接的来源附件（最多 5 个）</legend>
-              <ul id="chat-handoff-artifact-options"></ul>
-            </fieldset>
-            <div class="row">
-              <button type="button" id="chat-handoff-preview-button">生成交接预览</button>
-              <span id="chat-handoff-preview-status" class="status"></span>
-            </div>
-            <pre id="chat-handoff-preview" aria-live="polite"></pre>
-            <p id="chat-handoff-scope" class="hint"></p>
-            <pre id="chat-handoff-summary" hidden></pre>
-            <label class="checkbox">
-              <input id="chat-handoff-confirmed" type="checkbox" />
+<label for="chat-handoff-source-runs">来源 Run（逗号分隔，最多 5 个）</label>
+<input id="chat-handoff-source-runs" type="text"/>
+<div class="row">
+<button id="chat-handoff-load-artifacts" type="button">读取来源 Run 的产出附件</button>
+<span class="status" id="chat-handoff-artifact-status"></span>
+</div>
+<fieldset id="chat-handoff-artifacts">
+<legend>选择要交接的来源附件（最多 5 个）</legend>
+<ul id="chat-handoff-artifact-options"></ul>
+</fieldset>
+<div class="row">
+<button id="chat-handoff-preview-button" type="button">生成交接预览</button>
+<span class="status" id="chat-handoff-preview-status"></span>
+</div>
+<pre id="chat-handoff-preview" aria-live="polite"></pre>
+<p class="hint" id="chat-handoff-scope"></p>
+<pre id="chat-handoff-summary" hidden=""></pre>
+<label class="checkbox">
+<input id="chat-handoff-confirmed" type="checkbox"/>
               我确认只交接上面预览的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
             </label>
-          </fieldset>
-
-          <fieldset id="chat-attachments">
-            <legend>附件（最多 5 个，均为真实上传并封存的 artifact）</legend>
-            <input id="chat-attachment-input" type="file" />
-            <button type="button" id="chat-attachment-upload">上传附件</button>
-            <span id="chat-attachment-status" class="status"></span>
-            <ul id="chat-attachment-lines"></ul>
-          </fieldset>
-
-          <button type="submit" id="chat-submit" data-runstate-paused="true">提交需求</button>
-          <span id="chat-submit-status" class="status"></span>
-        </form>
-
-        <section id="request-panel" hidden>
-          <h3>请求</h3>
-          <p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
-          <p id="chat-request-error" class="status bad" data-error-code="" hidden></p>
-          <p>处理版本：<span id="chat-handling"></span></p>
-          <p id="chat-run-link"></p>
-          <p id="chat-queue-status"></p>
-          <button type="button" id="chat-cancel" data-runstate-paused="true">取消该请求</button>
-        </section>
-
-        <section id="interaction-panel" hidden>
-          <h3>需要你的确认</h3>
-          <p id="interaction-prompt"></p>
-          <p id="interaction-missing" class="hint"></p>
-          <p id="interaction-expires" class="hint"></p>
-          <ul id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
-          <button type="button" id="interaction-select" hidden>使用所选候选继续</button>
-          <label for="interaction-message">补充信息（可选，最多 32000 字）</label>
-          <textarea id="interaction-message" rows="3" maxlength="32000"></textarea>
-          <p id="interaction-attachments-hint" class="hint">
+</fieldset></details>
+<fieldset id="chat-attachments">
+<legend>添加附件（最多 5 个）</legend>
+<input id="chat-attachment-input" type="file"/>
+<button id="chat-attachment-upload" type="button">上传附件</button>
+<span class="status" id="chat-attachment-status"></span>
+<ul id="chat-attachment-lines"></ul>
+</fieldset>
+<button id="chat-submit" data-icon="arrow" data-runstate-paused="true" type="submit">提交需求</button>
+<span class="status" id="chat-submit-status"></span>
+</form>
+<section id="request-panel" hidden="">
+<h3>请求</h3>
+<p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
+<p class="status bad" id="chat-request-error" data-error-code="" hidden=""></p>
+<p>处理版本：<span id="chat-handling"></span></p>
+<p id="chat-run-link"></p>
+<p id="chat-queue-status"></p>
+<button id="chat-cancel" data-runstate-paused="true" type="button">取消该请求</button>
+</section>
+<section id="interaction-panel" hidden="">
+<h3>需要你的确认</h3>
+<p id="interaction-prompt"></p>
+<p class="hint" id="interaction-missing"></p>
+<p class="hint" id="interaction-expires"></p>
+<ul id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
+<button id="interaction-select" hidden="" type="button">使用所选候选继续</button>
+<label for="interaction-message">补充信息（可选，最多 32000 字）</label>
+<textarea id="interaction-message" maxlength="32000" rows="3"></textarea>
+<p class="hint" id="interaction-attachments-hint">
             补充输入需要文件时，请先用上方“附件”上传；提交答复时会把已上传的附件一并带上。
           </p>
-          <button type="button" id="interaction-reply" data-runstate-paused="true">提交答复</button>
-          <span id="interaction-status" class="status"></span>
-        </section>
-
-        <section id="queue-panel">
-          <h3>会话队列</h3>
-          <ol id="queue-list"></ol>
-        </section>
-
-        <section id="messages-panel">
-          <h3>会话消息</h3>
-          <ul id="chat-messages"></ul>
-        </section>
-      </section>
-    </main>
-
-    <script src="/assets/app.js"></script>
-    <script src="/assets/nav.js"></script>
-    <script src="/assets/runstream.js"></script>
-    <script src="/assets/runstate-guard.js"></script>
-    <script src="/assets/attachments.js"></script>
-    <script src="/assets/chat.js"></script>
-    <script>
+<button id="interaction-reply" data-runstate-paused="true" type="button">提交答复</button>
+<span class="status" id="interaction-status"></span>
+</section>
+<section id="queue-panel">
+<h3>会话队列</h3>
+<ol id="queue-list"></ol>
+</section>
+<section id="messages-panel">
+<h3>会话消息</h3>
+<ul id="chat-messages"></ul>
+</section>
+</section>
+</div>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/runstream.js"></script>
+<script src="/assets/runstate-guard.js"></script>
+<script src="/assets/attachments.js"></script>
+<script src="/assets/chat.js"></script>
+<script>
       /*
        * catalog.js links "/chat?version=<application_version_id>" here (the
        * catalog's "用这个版本提交" action). The chat page used to ignore the
@@ -158,5 +140,5 @@
         }
       })();
     </script>
-  </body>
+</body>
 </html>

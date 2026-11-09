@@ -35,7 +35,10 @@ def test_the_api_is_ready_and_serves_the_real_pages(dev_stack) -> None:
     assert ready.json["status"] == "ready", ready.text
     assert ready.json["checks"]["database"]["status"] == "ok", ready.text
 
-    for path in ("/", "/login", "/apps", "/attachments", "/runs", "/models"):
+    root = dev_stack.http.get("/")
+    assert root.status == 303
+    assert root.header("Location") == "/chat"
+    for path in ("/status", "/chat", "/login", "/apps", "/attachments", "/runs", "/models"):
         page = dev_stack.http.get(path)
         assert page.status == 200, (path, page.status, page.text[:200])
         assert "text/html" in page.header("Content-Type"), path
@@ -52,7 +55,7 @@ def test_the_profile_is_explicit_and_stub_results_are_marked(dev_stack) -> None:
 
 def test_the_status_page_renders_the_profile_and_the_stub_flag(dev_stack) -> None:
     """AC2: a stub result must be identifiable from the product UI, not only a report."""
-    page = dev_stack.http.get("/")
+    page = dev_stack.http.get("/status")
     assert page.status == 200, page.text
     body = page.text
     for marker in ('id="environment-profile"', 'id="environment-stub"', "status.stub_results"):

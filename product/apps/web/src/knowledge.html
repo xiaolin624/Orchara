@@ -1,26 +1,11 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 知识库（F10 摄取与检索）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    h3 { font-size: .92rem; margin: .9rem 0 .3rem; }
-    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .86rem; margin: .7rem 0 .25rem; }
-    input[type="text"], input[type="number"], input[type="file"], select { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    button { margin-top: .55rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>知识库 · Orchara</title>
+<style>
     dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
     dl.facts dt { opacity: .7; }
     dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
@@ -31,22 +16,17 @@
     .meta { font-size: .8rem; opacity: .75; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
     .bad-citation { border-left-color: #b91c1c; }
     pre#citation-text { white-space: pre-wrap; font-size: .86rem; background: rgba(128,128,128,.08); padding: .6rem; border-radius: .4rem; }
-    [hidden] { display: none !important; }
   </style>
-  <link rel="stylesheet" href="/assets/mobile.css" />
+<link href="/assets/mobile.css" rel="stylesheet"/>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-knowledge">
-  <nav aria-label="主导航">
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/attachments">附件</a>
-    <a href="/knowledge">知识库</a>
-    <a href="/tools">工具</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>知识库：上传文本、表格或 PDF 资料并检索到可追溯片段</h1>
-  <p class="sub">
+<body class="page-knowledge" data-page="knowledge"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>知识库</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="book">KNOWLEDGE & SOURCES</p><h1>知识库</h1><p class="page-description">整理资料、检索内容，并通过引用追溯答案的来源。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
     <code>txt/md/csv/xlsx/pdf</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
     分块、生成确定性 embedding 与每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为
@@ -55,139 +35,132 @@
     扫描件不会被当作 OCR 成功。单元格公式一律不执行。解析为空或失败会显示具体失败码与位置，
     绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档版本过滤，再排序取前 K；点击引用会
     重新校验当前可读性后返回片段正文。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
     <code>textContent</code> 渲染服务端文本，不把凭据或签名 URL 写入浏览器存储。
-  </p>
-
-  <section class="card">
-    <h2>1. 创建知识库</h2>
-    <form id="kb-form" method="post">
-      <label for="kb-name">知识库名称</label>
-      <input id="kb-name" name="name" type="text" autocomplete="off" maxlength="200" required />
-      <button id="kb-submit" type="submit">创建</button>
-      <p id="kb-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <h3>我的知识库</h3>
-    <ul id="kb-list" class="bases" data-auth-content aria-live="polite"></ul>
-    <label for="kb-select">当前知识库</label>
-    <select id="kb-select"></select>
-  </section>
-
-  <section class="card">
-    <h2>2. 上传 txt/md/csv/xlsx/pdf 并封存</h2>
-    <form id="upload-form" method="post">
-      <label for="knowledge-file">文件（.txt / .md / .csv / .xlsx / .pdf，字节上限 20 MiB）</label>
-      <input id="knowledge-file" name="file" type="file"
-             accept=".txt,.md,.csv,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
-             required />
-      <button id="upload-submit" type="submit">上传并封存</button>
-      <p id="upload-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="artifact-panel" hidden aria-live="polite">
-      <h3>附件状态</h3>
-      <dl class="facts">
-        <dt>artifact id</dt><dd id="artifact-id"></dd>
-        <dt>状态</dt><dd id="artifact-state"></dd>
-      </dl>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>3. 开始摄取并查看进度</h2>
-    <form id="ingest-form" method="post">
-      <label for="ingest-artifact">已就绪的附件 artifact id（上传成功后自动填入）</label>
-      <input id="ingest-artifact" type="text" autocomplete="off" spellcheck="false" />
-      <button id="ingest-submit" type="submit">开始摄取</button>
-      <p id="ingest-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="document-panel" hidden aria-live="polite">
-      <h3>文档状态</h3>
-      <dl class="facts">
-        <dt>document id</dt><dd id="document-id"></dd>
-        <dt>状态</dt><dd id="document-state"></dd>
-        <dt>失败码</dt><dd id="document-error-code"></dd>
-        <dt>片段数</dt><dd id="document-chunks"></dd>
-      </dl>
-      <p id="document-diagnostics" class="status" role="status" aria-live="polite"></p>
-    </div>
-    <div id="index-panel" hidden aria-live="polite">
-      <h3>索引版本、进度与激活切换</h3>
-      <dl class="facts">
-        <dt>当前激活索引</dt><dd id="index-active"></dd>
-      </dl>
-      <pre id="index-progress" class="meta"></pre>
-      <ul id="index-versions" class="bases"></ul>
-      <form id="reindex-form" method="post">
-        <p class="hint">
+  </p></details><div class="page-sections">
+<section class="card">
+<h2>1. 创建知识库</h2>
+<form id="kb-form" method="post">
+<label for="kb-name">知识库名称</label>
+<input id="kb-name" name="name" autocomplete="off" maxlength="200" required="" type="text"/>
+<button id="kb-submit" type="submit">创建</button>
+<p class="status" id="kb-status" aria-live="polite" role="status"></p>
+</form>
+<h3>我的知识库</h3>
+<ul class="bases" id="kb-list" aria-live="polite" data-auth-content=""></ul>
+<label for="kb-select">当前知识库</label>
+<select id="kb-select"></select>
+</section>
+<section class="card">
+<h2>2. 上传 txt/md/csv/xlsx/pdf 并封存</h2>
+<form id="upload-form" method="post">
+<label for="knowledge-file">文件（.txt / .md / .csv / .xlsx / .pdf，字节上限 20 MiB）</label>
+<input id="knowledge-file" name="file" accept=".txt,.md,.csv,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" required="" type="file"/>
+<button id="upload-submit" type="submit">上传并封存</button>
+<p class="status" id="upload-status" aria-live="polite" role="status"></p>
+</form>
+<div id="artifact-panel" aria-live="polite" hidden="">
+<h3>附件状态</h3>
+<dl class="facts">
+<dt>artifact id</dt><dd id="artifact-id"></dd>
+<dt>状态</dt><dd id="artifact-state"></dd>
+</dl>
+</div>
+</section>
+<section class="card">
+<h2>3. 开始摄取并查看进度</h2>
+<form id="ingest-form" method="post">
+<label for="ingest-artifact">已就绪的附件 artifact id（上传成功后自动填入）</label>
+<input id="ingest-artifact" autocomplete="off" spellcheck="false" type="text"/>
+<button id="ingest-submit" type="submit">开始摄取</button>
+<p class="status" id="ingest-status" aria-live="polite" role="status"></p>
+</form>
+<div id="document-panel" aria-live="polite" hidden="">
+<h3>文档状态</h3>
+<dl class="facts">
+<dt>document id</dt><dd id="document-id"></dd>
+<dt>状态</dt><dd id="document-state"></dd>
+<dt>失败码</dt><dd id="document-error-code"></dd>
+<dt>片段数</dt><dd id="document-chunks"></dd>
+</dl>
+<p class="status" id="document-diagnostics" aria-live="polite" role="status"></p>
+</div>
+<div id="index-panel" aria-live="polite" hidden="">
+<h3>索引版本、进度与激活切换</h3>
+<dl class="facts">
+<dt>当前激活索引</dt><dd id="index-active"></dd>
+</dl>
+<pre class="meta" id="index-progress"></pre>
+<ul class="bases" id="index-versions"></ul>
+<form id="reindex-form" method="post">
+<p class="hint">
           重建会创建<strong>新的索引版本</strong>并排队后台任务；构建期间旧的活动索引仍然可读。
           只有服务器在激活事务里重新核对源版本、索引版本与删除标记后，激活指针才会切换；
           旧任务晚到只会得到 <code>stale_revision</code>/<code>source_deleted</code>，不会覆盖新版本，
           也不会复活已删除文档。失败的重建保留旧活动索引，可再次提交。
         </p>
-        <button id="reindex-submit" type="submit">重建当前资料的索引</button>
-        <p id="reindex-status" class="status" role="status" aria-live="polite"></p>
-      </form>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>4. 检索并打开可追溯片段</h2>
-    <form id="query-form" method="post">
-      <label for="query-text">问题</label>
-      <input id="query-text" type="text" autocomplete="off" maxlength="2000" required />
-      <label for="query-top-k">返回片段数 top_k（1..50，默认 8）</label>
-      <input id="query-top-k" type="number" min="1" max="50" step="1" value="8" />
-      <button id="query-submit" type="submit">检索</button>
-      <p id="query-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <p id="retrieval-meta" class="meta"></p>
-    <div id="results" aria-live="polite"></div>
-    <div id="citation-panel" hidden>
-      <h3>引用详情（重新校验当前可读性）</h3>
-      <p id="citation-meta" class="meta"></p>
-      <pre id="citation-text"></pre>
-      <p id="citation-status" class="status" role="status" aria-live="polite"></p>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>5. 就知识库提问（回答只引用本次检索且当前可读的资料）</h2>
-    <p class="hint">
+<button id="reindex-submit" type="submit">重建当前资料的索引</button>
+<p class="status" id="reindex-status" aria-live="polite" role="status"></p>
+</form>
+</div>
+</section>
+<section class="card">
+<h2>4. 检索并打开可追溯片段</h2>
+<form id="query-form" method="post">
+<label for="query-text">问题</label>
+<input id="query-text" autocomplete="off" maxlength="2000" required="" type="text"/>
+<label for="query-top-k">返回片段数 top_k（1..50，默认 8）</label>
+<input id="query-top-k" max="50" min="1" step="1" type="number" value="8"/>
+<button id="query-submit" type="submit">检索</button>
+<p class="status" id="query-status" aria-live="polite" role="status"></p>
+</form>
+<p class="meta" id="retrieval-meta"></p>
+<div id="results" aria-live="polite"></div>
+<div id="citation-panel" hidden="">
+<h3>引用详情（重新校验当前可读性）</h3>
+<p class="meta" id="citation-meta"></p>
+<pre id="citation-text"></pre>
+<p class="status" id="citation-status" aria-live="polite" role="status"></p>
+</div>
+</section>
+<section class="card">
+<h2>5. 就知识库提问（回答只引用本次检索且当前可读的资料）</h2>
+<p class="hint">
       服务端先做与检索相同的 ACL/当前版本过滤，再用抽取式 stub 组合作答（本构建
       <strong>未配置模型 provider</strong>，回答都标注生成方式，不会冒充模型答案）。返回前逐个校验：
       引用必须属于本次检索，且必须在当前授权与当前文档版本下可读；否则整条回答被拒绝。
       没有检索到资料时返回空答案（不是错误）。点击引用会重新打开
       <code>GET /knowledge-citations/{id}</code>；撤销或删除后显示“引用不可用”，绝不回放旧正文。
     </p>
-    <form id="answer-form" method="post">
-      <label for="answer-query">问题</label>
-      <input id="answer-query" type="text" autocomplete="off" maxlength="2000" required />
-      <label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
-      <input id="answer-top-k" type="number" min="1" max="50" step="1" value="8" />
-      <button id="answer-submit" type="submit">提问</button>
-      <p id="answer-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="answer-panel" hidden aria-live="polite">
-      <h3>回答</h3>
-      <p id="answer-generation" class="meta"></p>
-      <pre id="answer-text"></pre>
-      <p id="answer-retrieval" class="meta"></p>
-      <h3>引用（点击重新校验当前可读性）</h3>
-      <ul id="answer-citations" class="bases"></ul>
-      <div id="answer-citation-panel" hidden>
-        <p id="answer-citation-meta" class="meta"></p>
-        <pre id="answer-citation-text"></pre>
-        <p id="answer-citation-status" class="status" role="status" aria-live="polite"></p>
-      </div>
-    </div>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/knowledge.js"></script>
-  <script>
+<form id="answer-form" method="post">
+<label for="answer-query">问题</label>
+<input id="answer-query" autocomplete="off" maxlength="2000" required="" type="text"/>
+<label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
+<input id="answer-top-k" max="50" min="1" step="1" type="number" value="8"/>
+<button id="answer-submit" type="submit">提问</button>
+<p class="status" id="answer-status" aria-live="polite" role="status"></p>
+</form>
+<div id="answer-panel" aria-live="polite" hidden="">
+<h3>回答</h3>
+<p class="meta" id="answer-generation"></p>
+<pre id="answer-text"></pre>
+<p class="meta" id="answer-retrieval"></p>
+<h3>引用（点击重新校验当前可读性）</h3>
+<ul class="bases" id="answer-citations"></ul>
+<div id="answer-citation-panel" hidden="">
+<p class="meta" id="answer-citation-meta"></p>
+<pre id="answer-citation-text"></pre>
+<p class="status" id="answer-citation-status" aria-live="polite" role="status"></p>
+</div>
+</div>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/knowledge.js"></script>
+<script>
     (() => {
       'use strict';
 

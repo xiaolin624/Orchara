@@ -1,83 +1,59 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 授权用途目录（F08/T077）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    ul { padding-left: 0; margin: .4rem 0 0; list-style: none; }
-    li { border-top: 1px solid rgba(128,128,128,.25); padding: .7rem 0; }
-    li:first-child { border-top: 0; }
-    code { font-size: .82rem; opacity: .85; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>应用目录 · Orchara</title>
+<style>
     .badge { display: inline-block; font-size: .78rem; border-radius: 999px; padding: .05rem .6rem; border: 1px solid currentColor; }
     .badge.fallback { color: #a16207; }
     .badge.index { color: #15803d; }
     .card-purpose { font-weight: 600; margin: .1rem 0 .3rem; }
     .facts { font-size: .86rem; opacity: .85; margin: .15rem 0; }
     .facts strong { opacity: .95; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     input[type="search"] { font: inherit; padding: .4rem .55rem; width: 18rem; max-width: 100%; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录（创作）</a>
-    <a href="/catalog">用途目录检索</a>
-    <a href="/chat">会话</a>
-    <a href="/runs">运行</a>
-  </nav>
-
-  <h1>授权用途目录（F08/T077）</h1>
-  <p class="sub">
+<body data-page="catalog"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>应用目录</span><span class="separator">/</span><span>应用目录</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="grid">EXPLORE APPLICATIONS</p><h1>应用目录</h1><p class="page-description">找到适合当前任务的应用，了解它的能力、输入与使用范围。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     只显示<strong>你当前有权读取且未撤销</strong>的已发布版本；每条结果都带用途、边界、
     必填输入、预期输出和示例。目录索引是权威表的投影：索引落后时本页会明确显示
     “回退检索（索引落后）”，改在授权范围内做全文检索，并在返回前再次核对授权与撤销。
-  </p>
-
-  <section class="card">
-    <h2>检索用途</h2>
-    <form id="catalog-search-form" method="get">
-      <label for="catalog-query">按用途/能力描述检索</label>
-      <input id="catalog-query" name="q" type="search" maxlength="200" autocomplete="off"
-             placeholder="例如：销售报表汇总" />
-      <button id="catalog-search-submit" type="submit">检索</button>
-    </form>
-    <p id="catalog-retrieval" class="hint" role="status" aria-live="polite"></p>
-    <p id="catalog-status" class="status" role="status" aria-live="polite">正在加载…</p>
-  </section>
-
-  <section class="card">
-    <h2>可读版本</h2>
-    <p id="catalog-count" class="hint"></p>
-    <ul id="catalog-results" data-auth-content></ul>
-    <p id="catalog-empty" class="hint" hidden></p>
-    <button id="catalog-next" type="button" hidden>下一页</button>
-  </section>
-
-  <p class="hint">
+  </p><p class="hint">
     目录索引与知识库索引是两套表、两套重建路径：本页的重建只读
     <code>application_versions</code> 的能力卡，不读写 <code>knowledge_chunks</code>。
     “用这个版本提交”会带上版本 id 进入会话页；路由与澄清属于 T079。
-  </p>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/catalog.js"></script>
-  <script>
+  </p></details><div class="page-sections">
+<section class="card">
+<h2>检索用途</h2>
+<form id="catalog-search-form" method="get">
+<label for="catalog-query">按用途/能力描述检索</label>
+<input id="catalog-query" name="q" autocomplete="off" maxlength="200" placeholder="例如：销售报表汇总" type="search"/>
+<button id="catalog-search-submit" data-icon="search" type="submit">检索</button>
+</form>
+<p class="hint" id="catalog-retrieval" aria-live="polite" role="status"></p>
+<p class="status" id="catalog-status" aria-live="polite" role="status">正在加载…</p>
+</section>
+<section class="card">
+<h2>可用应用</h2>
+<p class="hint" id="catalog-count"></p>
+<ul class="app-cards" id="catalog-results" data-auth-content=""></ul>
+<p class="empty-state" id="catalog-empty" hidden=""></p>
+<button id="catalog-next" hidden="" type="button">下一页</button>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/catalog.js"></script>
+<script>
     const form = document.getElementById('catalog-search-form');
     const queryInput = document.getElementById('catalog-query');
     const statusElement = document.getElementById('catalog-status');

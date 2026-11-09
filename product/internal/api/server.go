@@ -630,6 +630,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/requests/{request_id}/reply", s.handleReplyInteraction)
 
 	mux.HandleFunc("GET /login", s.staticPage("login.html"))
+	// The process status remains available in the management navigation.
+	mux.HandleFunc("GET /status", s.staticPage("index.html"))
 	mux.HandleFunc("GET /admin", s.staticPage("admin.html"))
 	mux.HandleFunc("GET /activate", s.staticPage("activate.html"))
 	mux.HandleFunc("GET /apps", s.staticPage("apps.html"))
@@ -689,6 +691,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// F06/T050: the approval queue/detail page. Static, compile-time path.
 	mux.HandleFunc("GET /approvals", s.staticPage("approvals.html"))
 	mux.HandleFunc("GET /assets/app.js", s.staticPage(filepath.Join("assets", "app.js")))
+	mux.HandleFunc("GET /assets/nav.js", s.staticPage(filepath.Join("assets", "nav.js")))
+	mux.HandleFunc("GET /assets/ui.js", s.staticPage(filepath.Join("assets", "ui.js")))
+	mux.HandleFunc("GET /assets/design.css", s.staticPage(filepath.Join("assets", "design.css")))
 	mux.HandleFunc("GET /assets/editor.js", s.staticPage(filepath.Join("assets", "editor.js")))
 	mux.HandleFunc("GET /assets/debug.js", s.staticPage(filepath.Join("assets", "debug.js")))
 	// F04B/T083: the debug page's node-state table (pure run-view helpers + DOM

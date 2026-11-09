@@ -1,0 +1,172 @@
+{
+  "profile": "dev-stub",
+  "data": "generated UI review fixtures",
+  "pages": [
+    {
+      "page": "index",
+      "route": "/status",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "login",
+      "route": "/login",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "activate",
+      "route": "/activate",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "apps",
+      "route": "/apps",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "catalog",
+      "route": "/catalog",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "editor",
+      "route": "/apps/c8b118ef-8a05-43d6-8d2e-bd5e912fbc5b/edit",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "debug",
+      "route": "/apps/c8b118ef-8a05-43d6-8d2e-bd5e912fbc5b/debug",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "chat",
+      "route": "/chat",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "runs",
+      "route": "/runs",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "approvals",
+      "route": "/approvals",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "tools",
+      "route": "/tools",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "models",
+      "route": "/models",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "attachments",
+      "route": "/attachments",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "knowledge",
+      "route": "/knowledge",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "memories",
+      "route": "/memories",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "personal-data",
+      "route": "/personal-data",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "evaluate",
+      "route": "/apps/c8b118ef-8a05-43d6-8d2e-bd5e912fbc5b/evaluate",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "evaluations",
+      "route": "/evaluations/316bc15a-6423-4f72-8bac-afc0e9005032",
+      "desktop": "passed",
+      "state": "not-found error"
+    },
+    {
+      "page": "publish",
+      "route": "/apps/c8b118ef-8a05-43d6-8d2e-bd5e912fbc5b/publish",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "reviews",
+      "route": "/reviews",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "versions",
+      "route": "/apps/c8b118ef-8a05-43d6-8d2e-bd5e912fbc5b/versions",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    },
+    {
+      "page": "admin",
+      "route": "/admin",
+      "desktop": "passed",
+      "state": "real dev-stub API"
+    }
+  ],
+  "checks": [
+    "root redirects to /chat",
+    "real login enters /chat",
+    "primary, secondary and button text meet 4.5:1 contrast",
+    "create application and add a model node through real UI",
+    "concurrent server save shows actual conflict without overwriting local draft",
+    "keyboard navigation begins with a visible skip-to-content link",
+    "conversation creation, composer and desktop sidebar toggle",
+    "mobile navigation opens and Escape closes it",
+    "reduced motion disables sidebar transitions",
+    "conversation, approval, run and personal-data layouts fit phone landscape",
+    "clicking logout SVG revokes the real session"
+  ],
+  "page_errors": [],
+  "contrast": {
+    "body text": 15.22,
+    "secondary text": 4.97,
+    "primary button": 5.64
+  },
+  "result": "passed",
+  "checked_at": "2026-11-09T14:01:46.867854+00:00"
+}

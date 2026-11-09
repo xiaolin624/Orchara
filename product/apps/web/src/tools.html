@@ -1,101 +1,76 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 工具提交与审核（F05）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 58rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .86rem; margin: .55rem 0 .2rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>工具中心 · Orchara</title>
+<style>
     input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
-    textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     button.secondary { background: transparent; }
-    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
-    li { margin: .6rem 0; }
     code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .72; }
     .build { border-top: 1px dashed rgba(128,128,128,.35); margin-top: .55rem; padding-top: .55rem; }
     .review-box { margin-top: .5rem; display: grid; gap: .3rem; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用</a>
-    <a href="/attachments">附件</a>
-    <a href="/runs">运行</a>
-    <a href="/tools">工具</a>
-    <a href="/admin">管理台</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>工具提交、隔离构建与审核（F05/T037）</h1>
-  <p class="sub">
+<body data-page="tools"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>工具中心</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="tool">TOOLS & CAPABILITIES</p><h1>工具中心</h1><p class="page-description">管理可复用工具，跟进构建进度与组织发布审核。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     创作者提交一个已上传为 <code>purpose=tool_source</code> 的 zip 源包、输入/输出 Schema
     与依赖锁，平台在隔离沙箱（gVisor/runsc、无网络、只读输入）中构建，成功后才写入
     <code>ready</code>。构建成功不等于组织批准：只有管理员审核通过的工具才能进入共享执行；
     作者自己的未批准 ready 工具只能用于私有调试。撤销后新执行与依赖校验都会被拒绝。
-  </p>
-  <p class="hint">
-    <code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
+  </p><p class="hint">
+<code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
     SHA-256），不是 OCI 镜像；F15A 才构建镜像。依赖锁需要本地 wheelhouse 的包在最小根文件系统上
     会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。
-  </p>
-
-  <section class="card" id="submit-card">
-    <h2>提交工具源包</h2>
-    <p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把 artifact id 填在这里。</p>
-    <form id="submit-form">
-      <label for="source-artifact-id">source_artifact_id</label>
-      <input id="source-artifact-id" name="source_artifact_id" type="text" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" />
-      <label for="risk-class">risk_class</label>
-      <select id="risk-class" name="risk_class">
-        <option value="pure">pure</option>
-        <option value="read">read</option>
-        <option value="write">write</option>
-      </select>
-      <label for="input-schema">input_schema（JSON 对象）</label>
-      <textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
-      <label for="output-schema">output_schema（JSON 对象）</label>
-      <textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
-      <label for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label>
-      <textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea>
-      <p class="hint">连接器版本当前恒为空：F06 负责连接器，服务器会拒绝非空列表而不是静默丢弃。</p>
-      <button id="submit-button" type="submit">提交并排队隔离构建</button>
-    </form>
-    <p id="submit-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section class="card" id="review-card" hidden>
-    <h2>管理员审核队列</h2>
-    <p id="review-status" class="status" role="status" aria-live="polite"></p>
-    <ul id="review-list" data-auth-content></ul>
-  </section>
-
-  <section class="card">
-    <h2>可见工具</h2>
-    <p id="tools-status" class="status" role="status" aria-live="polite">正在加载工具…</p>
-    <ul id="tools-list" data-auth-content></ul>
-    <p id="tools-empty" class="hint" hidden>当前没有可见的工具：你既不是所有者，也没有已批准共享的工具。</p>
-    <button id="tools-next" type="button" hidden>下一页</button>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/tools.js"></script>
-  <script>
+  </p></details><div class="page-sections">
+<section class="card" id="submit-card">
+<h2>提交工具源包</h2>
+<p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把 artifact id 填在这里。</p>
+<form id="submit-form">
+<label for="source-artifact-id">source_artifact_id</label>
+<input id="source-artifact-id" name="source_artifact_id" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" type="text"/>
+<label for="risk-class">risk_class</label>
+<select id="risk-class" name="risk_class">
+<option value="pure">pure</option>
+<option value="read">read</option>
+<option value="write">write</option>
+</select>
+<label for="input-schema">input_schema（JSON 对象）</label>
+<textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
+<label for="output-schema">output_schema（JSON 对象）</label>
+<textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
+<label for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label>
+<textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea>
+<p class="hint">连接器版本当前恒为空：F06 负责连接器，服务器会拒绝非空列表而不是静默丢弃。</p>
+<button id="submit-button" type="submit">提交并排队隔离构建</button>
+</form>
+<p class="status" id="submit-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="review-card" hidden="">
+<h2>管理员审核队列</h2>
+<p class="status" id="review-status" aria-live="polite" role="status"></p>
+<ul id="review-list" data-auth-content=""></ul>
+</section>
+<section class="card">
+<h2>可见工具</h2>
+<p class="status" id="tools-status" aria-live="polite" role="status">正在加载工具…</p>
+<ul id="tools-list" data-auth-content=""></ul>
+<p class="hint" id="tools-empty" hidden="">当前没有可见的工具：你既不是所有者，也没有已批准共享的工具。</p>
+<button id="tools-next" hidden="" type="button">下一页</button>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/tools.js"></script>
+<script>
     const submitForm = document.getElementById('submit-form');
     const submitStatus = document.getElementById('submit-status');
     const toolsList = document.getElementById('tools-list');

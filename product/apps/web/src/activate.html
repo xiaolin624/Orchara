@@ -1,58 +1,48 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 账号激活</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 40rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; }
-    label { display: block; margin: .6rem 0; font-size: .9rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>开启你的工作空间 · Orchara</title>
+<style>
     input, textarea { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
-    button { margin-top: .5rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-auth="optional">
-  <nav><a href="/">状态</a> <a href="/login">登录</a> <a href="/admin">管理台</a></nav>
-
-  <h1>账号激活</h1>
-  <p class="sub">
+<body data-auth="optional" data-page="activate"><div class="auth-layout"><aside class="auth-story"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">IDEAS INTO WORKFLOWS</p><h2>让想法成为<br/>可运行的工作流。</h2><p>连接模型、工具与知识，<br/>构建属于团队的 Agent 应用。</p></div><small>ORCHARA · 团队 Agent 工作空间</small><div class="auth-art" aria-hidden="true"></div>
+</aside>
+<div class="auth-main"><div class="auth-mobile-brand"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="user">GET STARTED</p><h1>开启你的工作空间</h1><p class="page-description">使用管理员提供的邀请令牌，设置密码并激活账号。</p></div></header>
+<div class="page-sections">
+<section class="card">
+<form id="activate-form" method="post">
+<label for="activation-token">一次性激活令牌
+        <textarea id="activation-token" name="activation_token" autocomplete="off" required="" rows="3"></textarea>
+</label>
+<label for="password">新密码（至少 12 位）
+        <input id="password" name="password" autocomplete="new-password" minlength="12" required="" type="password"/>
+</label>
+<label for="confirm-password">确认新密码
+        <input id="confirm-password" name="confirm_password" autocomplete="new-password" minlength="12" required="" type="password"/>
+</label>
+<button type="submit">激活并设置密码</button>
+</form>
+<p class="status" id="activate-status" aria-live="polite" role="status"></p>
+<div id="activate-success" hidden="">
+<p>激活成功，现在可以前往 <a href="/admin">管理台</a> 登录。</p>
+</div>
+</section>
+</div><nav aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate">激活账号</a><a href="/chat">返回工作空间</a></nav>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     把管理员转交的一次性令牌粘贴到下面，设置至少 12 位的新密码。
     令牌只从请求体提交，绝不放进 URL。
-  </p>
-
-  <section class="card">
-    <form method="post" id="activate-form">
-      <label for="activation-token">一次性激活令牌
-        <textarea id="activation-token" name="activation_token" rows="3" autocomplete="off" required></textarea>
-      </label>
-      <label for="password">新密码（至少 12 位）
-        <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required />
-      </label>
-      <label for="confirm-password">确认新密码
-        <input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required />
-      </label>
-      <button type="submit">激活并设置密码</button>
-    </form>
-    <p id="activate-status" class="status" role="status" aria-live="polite"></p>
-    <div id="activate-success" hidden>
-      <p>激活成功，现在可以前往 <a href="/admin">管理台</a> 登录。</p>
-    </div>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script>
+  </p></details></main>
+</div></div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script>
     const activateForm = document.getElementById('activate-form');
     const activateStatus = document.getElementById('activate-status');
     const activateSuccess = document.getElementById('activate-success');

@@ -97,6 +97,7 @@ def test_chat_js_explains_failures_and_keeps_the_queue_visible(node_binary: str,
               appendChild(child) { this.children.push(child); return child; }
               replaceChildren() { this.children = []; }
               addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+              setAttribute(name, value) { this[name] = String(value); }
               set textContent(value) {
                 this._text = String(value === undefined || value === null ? '' : value);
                 this.textHistory.push(this._text);
@@ -113,7 +114,8 @@ def test_chat_js_explains_failures_and_keeps_the_queue_visible(node_binary: str,
               getElementById: (id) => elementFor(id),
               createElement: (tag) => new Element(tag),
               querySelectorAll: (selector) =>
-                selector === '#chat-messages li' ? elementFor('chat-messages').children : [],
+                selector === '#chat-messages li' ? elementFor('chat-messages').children :
+                selector === '#conversation-list button' ? elementFor('conversation-list').children.map(item => item.children[0]) : [],
               querySelector: () => null,
             };
 

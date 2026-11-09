@@ -128,7 +128,7 @@ def test_the_apps_page_lists_the_visible_applications(pages_server) -> None:
         "next_cursor",
         "active_version_id",
         "下一页",
-        "当前没有可见的应用",
+        "还没有可见的应用",
         "requireLogin(",
         # T095 centralised the session-failure branch in app.js: every page now
         # calls the shared helper instead of repeating `error.status === 401` and

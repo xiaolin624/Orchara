@@ -74,8 +74,7 @@ def test_the_runs_page_is_served_with_real_link_markers(t029_stack) -> None:
         "X-Run-Lease-Deadline",
         "/assets/app.js",
         "/assets/runs.js",
-        "/apps",
-        "/attachments",
+        "/assets/nav.js",
     ):
         assert marker in body, f"runs.html is missing {marker!r}"
 
@@ -114,11 +113,13 @@ def test_runs_js_is_the_served_asset(t029_stack) -> None:
 def test_the_apps_page_and_the_debug_page_link_to_runs(t029_stack) -> None:
     apps = t029_stack.server.http.get("/apps")
     assert apps.status == 200
-    assert 'href="/runs"' in apps.text, "apps.html has no runs link"
+    assert 'src="/assets/nav.js"' in apps.text
+    nav = t029_stack.server.http.get("/assets/nav.js")
+    assert nav.status == 200 and "href: '/runs'" in nav.text
 
     debug = t029_stack.server.http.get(f"/apps/{t029.new_uuid()}/debug")
     assert debug.status == 200
-    assert 'href="/runs"' in debug.text, "debug.html has no runs link"
+    assert 'src="/assets/nav.js"' in debug.text
     assert 'id="run-phase"' in debug.text, "debug.html does not show the run phase"
     assert 'id="run-lease"' in debug.text, "debug.html does not show the real lease"
     assert "X-Run-Lease-Deadline" in debug.text

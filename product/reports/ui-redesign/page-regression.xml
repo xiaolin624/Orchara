@@ -1,0 +1,573 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="14" skipped="0" tests="187" time="623.194" timestamp="2026-11-09T21:41:35.590789+08:00" hostname="AI"><testcase classname="product.tests.f11.test_t073_pages" name="test_the_personal_data_page_serves_the_diagnostic_grant_section" time="16.397" /><testcase classname="product.tests.f11.test_t073_pages" name="test_the_personal_data_script_serves_the_t073_grant_helpers" time="2.691" /><testcase classname="product.tests.f11.test_t073_pages" name="test_the_diagnostic_grant_helpers_execute_under_node" time="0.100" /><testcase classname="product.tests.f11.test_t069_pages" name="test_the_personal_data_page_serves_delete_and_progress_sections" time="2.548" /><testcase classname="product.tests.f11.test_t069_pages" name="test_the_personal_data_script_serves_the_t069_helpers" time="2.794" /><testcase classname="product.tests.f11.test_t069_pages" name="test_the_deletion_progress_helpers_execute_under_node" time="0.090" /><testcase classname="product.tests.t070.test_t070_pages" name="test_the_versions_page_is_served_per_application" time="14.788" /><testcase classname="product.tests.t070.test_t070_pages" name="test_the_versions_asset_is_the_served_asset" time="2.421" /><testcase classname="product.tests.t070.test_t070_pages" name="test_the_catalog_page_exposes_the_version_page_and_availability" time="2.399" /><testcase classname="product.tests.t070.test_t070_pages" name="test_versions_logic_executes_under_node" time="0.094" /><testcase classname="product.tests.f03.test_t038_pages" name="test_the_runs_page_and_asset_carry_the_recovery_panel" time="14.682" /><testcase classname="product.tests.f03.test_t038_pages" name="test_real_recovery_headers_and_states_feed_the_page" time="4.787" /><testcase classname="product.tests.f03.test_t038_pages" name="test_recovery_page_logic_executes_under_node" time="0.107" /><testcase classname="product.tests.f03.test_t038_pages" name="test_runs_asset_parses_with_node" time="0.072" /><testcase classname="product.tests.f03.test_t036_pages" name="test_the_runs_page_and_asset_carry_the_cancel_panel" time="17.101" /><testcase classname="product.tests.f03.test_t036_pages" name="test_real_cancel_headers_and_states_feed_the_page" time="4.459" /><testcase classname="product.tests.f03.test_t036_pages" name="test_cancel_page_logic_executes_under_node" time="0.127" /><testcase classname="product.tests.f03.test_t036_pages" name="test_runs_asset_parses_with_node" time="0.079" /><testcase classname="product.tests.f03.test_t035_pages" name="test_the_runs_page_and_asset_carry_the_waiting_panel" time="14.299" /><testcase classname="product.tests.f03.test_t035_pages" name="test_real_waiting_headers_feed_the_page" time="4.000" /><testcase classname="product.tests.f03.test_t035_pages" name="test_the_waiting_logic_executes_under_node" time="0.100" /><testcase classname="product.tests.f03.test_t035_pages" name="test_assets_parse_with_node" time="0.063" /><testcase classname="product.tests.f03.test_t034_pages" name="test_the_runs_page_and_asset_carry_the_active_clock_and_reason" time="15.108" /><testcase classname="product.tests.f03.test_t034_pages" name="test_real_active_headers_feed_the_page" time="4.188" /><testcase classname="product.tests.f03.test_t034_pages" name="test_the_active_clock_logic_executes_under_node" time="0.095" /><testcase classname="product.tests.f03.test_t034_pages" name="test_assets_parse_with_node" time="0.064" /><testcase classname="product.tests.f03.test_t032_pages" name="test_the_runs_page_is_served_with_timeline_markers" time="14.356"><failure message="AssertionError: assert 'location.search' not in '&lt;!DOCTYPE h...&gt;\n&lt;/html&gt;\n'&#10;  &#10;  'location.search' is contained here:&#10;    ms(window.location.search).get('run');&#10;  ?           +++++++++++++++&#10;          if (!runID || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runID)) {&#10;            return;&#10;          }...&#10;  &#10;  ...Full output truncated (7 lines hidden), use '-vv' to show">t032_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC668890&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_runs_page_is_served_with_timeline_markers(t032_stack) -&gt; None:
+        response = t032_stack.server.http.get("/runs")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        body = response.text
+        for marker in (
+            'id="detail-timeline"',
+            'id="detail-timeline-status"',
+            'id="detail-preview"',
+            'data-preview="not_run"',
+            "/api/v1/runs/{id}/events",
+            "Last-Event-ID",
+            "finalizing",
+            "F06",
+            "/assets/runs.js",
+        ):
+            assert marker in body, f"runs.html is missing {marker!r}"
+
+        assert "localStorage" not in body
+        assert "sessionStorage" not in body
+&gt;       assert "location.search" not in body
+E       AssertionError: assert 'location.search' not in '&lt;!DOCTYPE h...&gt;\n&lt;/html&gt;\n'
+E
+E         'location.search' is contained here:
+E           ms(window.location.search).get('run');
+E         ?           +++++++++++++++
+E                 if (!runID || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runID)) {
+E                   return;
+E                 }...
+E
+E         ...Full output truncated (7 lines hidden), use '-vv' to show
+
+product\tests\f03\test_t032_pages.py:68: AssertionError</failure></testcase><testcase classname="product.tests.f03.test_t032_pages" name="test_runs_js_is_the_served_timeline_client" time="2.592" /><testcase classname="product.tests.f03.test_t032_pages" name="test_the_debug_page_renders_the_same_durable_timeline" time="2.413" /><testcase classname="product.tests.f03.test_t032_pages" name="test_the_served_pages_and_assets_parse_with_node" time="2.952" /><testcase classname="product.tests.f03.test_t032_pages" name="test_runs_timeline_logic_executes_under_node" time="0.096" /><testcase classname="product.tests.f03.test_t031_pages" name="test_the_runs_page_shows_the_execution_lifecycle_and_the_finalizing_rule" time="15.196" /><testcase classname="product.tests.f03.test_t031_pages" name="test_the_debug_page_explains_finalizing_without_claiming_success" time="2.453" /><testcase classname="product.tests.f03.test_t031_pages" name="test_the_served_pages_and_assets_parse_with_node" time="2.782" /><testcase classname="product.tests.f03.test_t031_pages" name="test_the_lifecycle_logic_executes_under_node" time="0.092" /><testcase classname="product.tests.f03.test_t029_pages" name="test_the_runs_page_is_served_with_real_link_markers" time="14.334"><failure message="AssertionError: runs.html is missing '/attachments'&#10;assert '/attachments' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-... loadRunDetail === \'function\') {\n        loadRunDetail(runID);\n      }\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">t029_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC61D220&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_runs_page_is_served_with_real_link_markers(t029_stack) -&gt; None:
+        response = t029_stack.server.http.get("/runs")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        assert response.header("Cache-Control") == "no-store"
+        body = response.text
+        for marker in (
+            'id="runs-status"',
+            'role="status"',
+            'id="runs-list"',
+            'id="runs-empty"',
+            'id="runs-next"',
+            'id="run-detail"',
+            'id="detail-id"',
+            'id="detail-state"',
+            'id="detail-phase"',
+            'id="detail-kind"',
+            'id="detail-revision"',
+            'id="detail-snapshot"',
+            'id="detail-manifest"',
+            'id="detail-lease"',
+            'id="detail-note"',
+            "/api/v1/runs",
+            "/api/v1/runs/{id}",
+            "X-Run-Attempt-Started-At",
+            "X-Run-Lease-Deadline",
+            "/assets/app.js",
+            "/assets/runs.js",
+            "/apps",
+            "/attachments",
+        ):
+&gt;           assert marker in body, f"runs.html is missing {marker!r}"
+E           AssertionError: runs.html is missing '/attachments'
+E           assert '/attachments' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-... loadRunDetail === \'function\') {\n        loadRunDetail(runID);\n      }\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f03\test_t029_pages.py:80: AssertionError</failure></testcase><testcase classname="product.tests.f03.test_t029_pages" name="test_runs_js_is_the_served_asset" time="2.426" /><testcase classname="product.tests.f03.test_t029_pages" name="test_the_apps_page_and_the_debug_page_link_to_runs" time="2.522"><failure message="AssertionError: apps.html has no runs link&#10;assert 'href=&quot;/runs&quot;' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'&#10; +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC639B80&gt;.text">t029_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC61C0E0&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_apps_page_and_the_debug_page_link_to_runs(t029_stack) -&gt; None:
+        apps = t029_stack.server.http.get("/apps")
+        assert apps.status == 200
+&gt;       assert 'href="/runs"' in apps.text, "apps.html has no runs link"
+E       AssertionError: apps.html has no runs link
+E       assert 'href="/runs"' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+E        +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC639B80&gt;.text
+
+product\tests\f03\test_t029_pages.py:117: AssertionError</failure></testcase><testcase classname="product.tests.f03.test_t029_pages" name="test_the_served_pages_and_assets_parse_with_node" time="3.449" /><testcase classname="product.tests.f03.test_t029_pages" name="test_runs_page_logic_executes_under_node" time="0.103" /><testcase classname="product.tests.f02a.test_t027_pages" name="test_the_debug_page_is_served_per_application" time="15.330"><failure message="AssertionError: debug.html is missing '/apps'&#10;assert '/apps' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">t027_stack = T027Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC63ABA0&gt;, dsn='postgresql://orchara_owner:orchara_dev_o...e'), 'sandboxprobe': WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-871/f00b-go-bin9/orchara-sandboxprobe.exe')})
+
+    def test_the_debug_page_is_served_per_application(t027_stack) -&gt; None:
+        response = t027_stack.server.http.get(f"/apps/{t027.new_uuid()}/debug")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        assert response.header("Cache-Control") == "no-store"
+        body = response.text
+
+        for marker in (
+            'id="debug-form"',
+            'method="post"',
+            'id="debug-revision"',
+            'id="debug-input"',
+            'id="debug-artifacts"',
+            'id="debug-submit"',
+            'id="debug-status"',
+            'role="status"',
+            'id="debug-key"',
+            'id="run-panel"',
+            'id="run-id"',
+            'id="run-state"',
+            'id="run-kind"',
+            'id="run-revision"',
+            'id="run-draft-revision"',
+            'id="run-snapshot"',
+            'id="run-manifest"',
+            'id="run-note"',
+            "Idempotency-Key",
+            "409",
+            "/api/v1/applications/{id}/debug-runs",
+            "/api/v1/runs/{id}",
+            "/assets/app.js",
+            "/assets/debug.js",
+            "/apps",
+        ):
+&gt;           assert marker in body, f"debug.html is missing {marker!r}"
+E           AssertionError: debug.html is missing '/apps'
+E           assert '/apps' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f02a\test_t027_pages.py:91: AssertionError</failure></testcase><testcase classname="product.tests.f02a.test_t027_pages" name="test_debug_js_is_the_served_asset" time="2.614" /><testcase classname="product.tests.f02a.test_t027_pages" name="test_the_editor_and_the_apps_page_link_into_the_debug_entry" time="3.179"><failure message="assert '调试入口' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...s&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/canvas.js&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/editor.js&quot;&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'&#10; +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...s&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/canvas.js&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/editor.js&quot;&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC648980&gt;.text">t027_stack = T027Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC670A10&gt;, dsn='postgresql://orchara_owner:orchara_dev_o...e'), 'sandboxprobe': WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-871/f00b-go-bin9/orchara-sandboxprobe.exe')})
+
+    def test_the_editor_and_the_apps_page_link_into_the_debug_entry(t027_stack) -&gt; None:
+        editor = t027_stack.server.http.get(f"/apps/{t027.new_uuid()}/edit")
+        assert editor.status == 200, editor.text
+        assert 'id="debug-entry"' in editor.text, "the editor has no debug entry"
+&gt;       assert "调试入口" in editor.text
+E       assert '调试入口' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...s"&gt;&lt;/script&gt;\n&lt;script src="/assets/canvas.js"&gt;&lt;/script&gt;\n&lt;script src="/assets/editor.js"&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+E        +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...s"&gt;&lt;/script&gt;\n&lt;script src="/assets/canvas.js"&gt;&lt;/script&gt;\n&lt;script src="/assets/editor.js"&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC648980&gt;.text
+
+product\tests\f02a\test_t027_pages.py:140: AssertionError</failure></testcase><testcase classname="product.tests.f02a.test_t027_pages" name="test_the_real_page_serves_for_a_real_application" time="3.741"><failure message="assert 'id=&quot;run-panel&quot; class=&quot;card&quot; hidden' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'&#10; +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC6385C0&gt;.text">t027_stack = T027Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC673BC0&gt;, dsn='postgresql://orchara_owner:orchara_dev_o...e'), 'sandboxprobe': WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-871/f00b-go-bin9/orchara-sandboxprobe.exe')})
+
+    def test_the_real_page_serves_for_a_real_application(t027_stack) -&gt; None:
+        admin = t027.admin_session(t027_stack)
+        creator = t027.invite_and_activate(
+            t027_stack, admin, "t027-page-" + secrets.token_hex(4), roles=("creator",)
+        )
+        application = t027.create_application_or_fail(creator, "debug page app")
+        page = t027_stack.server.http.get(f"/apps/{application['id']}/debug")
+        assert page.status == 200
+        assert "debug.html" not in page.text
+        # The run panel starts hidden; nothing is rendered before a submission.
+&gt;       assert 'id="run-panel" class="card" hidden' in page.text
+E       assert 'id="run-panel" class="card" hidden' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+E        +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ow.location.assign(\'/evaluations/\' + encodeURIComponent(id));\n      });\n    })();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC6385C0&gt;.text
+
+product\tests\f02a\test_t027_pages.py:162: AssertionError</failure></testcase><testcase classname="product.tests.f02a.test_t027_pages" name="test_inline_scripts_and_debug_js_parse_with_node" time="2.605" /><testcase classname="product.tests.f02a.test_t027_pages" name="test_debug_page_logic_executes_under_node" time="0.103" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_the_editor_page_is_served_per_application" time="21.879"><failure message="AssertionError: editor.html is missing 'If-Match'&#10;assert 'If-Match' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...s&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/canvas.js&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/editor.js&quot;&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">f02a_stack = F02AStack(server=&lt;support.stack.ApiServer object at 0x00000273FC64AAE0&gt;, dsn='postgresql://orchara_owner:orchara_dev_o...'), 'sandboxprobe': WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-871/f00b-go-bin10/orchara-sandboxprobe.exe')})
+
+    def test_the_editor_page_is_served_per_application(f02a_stack) -&gt; None:
+        response = f02a_stack.server.http.get(f"/apps/{f.new_uuid()}/edit")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        assert response.header("Cache-Control") == "no-store"
+        body = response.text
+
+        for marker in (
+            'id="draft-form"',
+            'method="post"',
+            'id="draft-revision"',
+            'id="editor-status"',
+            'role="status"',
+            'id="card-purpose"',
+            'id="card-includes"',
+            'id="card-excludes"',
+            'id="card-required-inputs"',
+            'id="card-expected-outputs"',
+            'id="card-examples"',
+            'id="draft-definition"',
+            'id="draft-layout"',
+            'id="draft-save"',
+            'id="conflict-panel"',
+            'id="conflict-reload"',
+            'id="conflict-download"',
+            'id="conflict-status"',
+            "重载服务器版本",
+            "保留本地副本",
+            "If-Match",
+            "412",
+            "/assets/app.js",
+            "/assets/editor.js",
+            "/apps",
+            "/api/v1/applications/{id}/draft",
+        ):
+&gt;           assert marker in body, f"editor.html is missing {marker!r}"
+E           AssertionError: editor.html is missing 'If-Match'
+E           assert 'If-Match' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...s"&gt;&lt;/script&gt;\n&lt;script src="/assets/canvas.js"&gt;&lt;/script&gt;\n&lt;script src="/assets/editor.js"&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f02a\test_t023_pages.py:90: AssertionError</failure></testcase><testcase classname="product.tests.f02a.test_t023_pages" name="test_only_the_named_editor_paths_are_served" time="2.562" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_editor_js_is_the_served_asset" time="2.507" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_the_apps_page_links_into_the_editor_and_can_create" time="3.010" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_the_real_creator_path_serves_the_page_and_refreshes_the_saved_draft" time="3.234" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_inline_scripts_and_editor_js_parse_with_node" time="3.181" /><testcase classname="product.tests.f02a.test_t023_pages" name="test_editor_logic_executes_under_node" time="0.092" /><testcase classname="product.tests.f02b.test_t068_pages" name="test_the_publish_page_is_served_per_application" time="14.181" /><testcase classname="product.tests.f02b.test_t068_pages" name="test_the_review_pages_are_served" time="2.756" /><testcase classname="product.tests.f02b.test_t068_pages" name="test_the_page_assets_are_the_served_javascript" time="2.430" /><testcase classname="product.tests.f02b.test_t068_pages" name="test_publish_page_logic_under_node" time="2.817" /><testcase classname="product.tests.f02b.test_t068_pages" name="test_reviews_page_logic_under_node" time="2.463" /><testcase classname="product.tests.f06.test_t051_pages" name="test_runs_page_has_the_unknown_and_reconcile_markers" time="14.934" /><testcase classname="product.tests.f06.test_t051_pages" name="test_runs_js_has_the_reconciliation_helpers" time="2.723" /><testcase classname="product.tests.f06.test_t051_pages" name="test_unknown_operation_projection_executes_under_node" time="0.100" /><testcase classname="product.tests.f06.test_t050_pages" name="test_approval_page_is_served_with_the_real_proposal_sections" time="2.637" /><testcase classname="product.tests.f06.test_t050_pages" name="test_approval_script_is_served_with_the_expected_helpers" time="2.387" /><testcase classname="product.tests.f06.test_t050_pages" name="test_approval_page_behaviour_executes_under_node" time="0.093" /><testcase classname="product.tests.f06.test_t049_pages" name="test_apps_page_offers_the_sales_template_action" time="2.645"><failure message="assert '共享版本属于 F02B' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">f06_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC61C890&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_apps_page_offers_the_sales_template_action(f06_stack) -&gt; None:
+        response = f06_stack.server.http.get("/apps")
+        assert response.status == 200, response.text
+        body = response.text
+        for marker in (
+            'id="create-from-template"',
+            "从销售模板创建",
+            "salesTemplateInstantiateRequest",
+            "F04A/T049",
+            "F02B",
+            "/assets/app.js",
+        ):
+            assert marker in body, f"apps.html is missing {marker!r}"
+        # The action copies a private draft; it must not claim to publish a version.
+&gt;       assert "共享版本属于 F02B" in body
+E       assert '共享版本属于 F02B' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f06\test_t049_pages.py:48: AssertionError</failure></testcase><testcase classname="product.tests.f06.test_t049_pages" name="test_debug_page_is_served_for_the_copied_application" time="2.428" /><testcase classname="product.tests.f06.test_t049_pages" name="test_sales_template_request_executes_under_node" time="0.087" /><testcase classname="product.tests.f06.test_t049_pages" name="test_run_pages_expose_report_download_and_stub_label" time="2.832" /><testcase classname="product.tests.f06.test_t048_pages" name="test_runs_page_has_the_connector_target_column" time="2.462" /><testcase classname="product.tests.f06.test_t048_pages" name="test_runs_js_has_the_connector_projection_helpers" time="3.152" /><testcase classname="product.tests.f06.test_t048_pages" name="test_connector_ledger_projection_executes_under_node" time="0.097" /><testcase classname="product.tests.f06.test_t047_pages" name="test_the_runs_page_carries_the_context_trace_section" time="2.485" /><testcase classname="product.tests.f06.test_t047_pages" name="test_runs_js_exposes_the_context_trace_client" time="2.978" /><testcase classname="product.tests.f06.test_t047_pages" name="test_runs_js_context_trace_summary_executes_under_node" time="0.107" /><testcase classname="product.tests.f06.test_t046_pages" name="test_runs_page_has_the_budget_projection" time="2.608" /><testcase classname="product.tests.f06.test_t046_pages" name="test_runs_js_has_the_budget_helpers" time="2.946" /><testcase classname="product.tests.f06.test_t046_pages" name="test_budget_helpers_execute_under_node" time="0.100" /><testcase classname="product.tests.f06.test_t045_pages" name="test_runs_js_has_the_fallback_helpers" time="3.567" /><testcase classname="product.tests.f06.test_t045_pages" name="test_runs_page_hint_documents_the_fallback_projection" time="3.469" /><testcase classname="product.tests.f06.test_t045_pages" name="test_fallback_ledger_helpers_execute_under_node" time="0.109" /><testcase classname="product.tests.f06.test_t044_pages" name="test_debug_page_has_a_real_temporary_preview_panel" time="3.656" /><testcase classname="product.tests.f06.test_t044_pages" name="test_runs_page_has_the_temporary_preview_panel" time="3.059" /><testcase classname="product.tests.f06.test_t044_pages" name="test_preview_asset_is_served_and_has_no_persistence" time="2.893" /><testcase classname="product.tests.f06.test_t044_pages" name="test_preview_helpers_execute_under_node" time="0.119" /><testcase classname="product.tests.f06.test_t043_pages" name="test_the_runs_page_carries_the_agent_node_panel" time="15.437" /><testcase classname="product.tests.f06.test_t043_pages" name="test_runs_js_exposes_the_agent_client" time="2.457" /><testcase classname="product.tests.f06.test_t043_pages" name="test_runs_js_agent_summary_executes_under_node" time="0.105" /><testcase classname="product.tests.f06.test_t042_pages" name="test_the_runs_page_carries_the_node_results_panel" time="13.950" /><testcase classname="product.tests.f06.test_t042_pages" name="test_runs_js_exposes_the_node_result_client" time="2.441" /><testcase classname="product.tests.f06.test_t042_pages" name="test_runs_js_node_results_logic_executes_under_node" time="0.092" /><testcase classname="product.tests.f06.test_t041_pages" name="test_runs_page_has_the_capability_ledger_panel" time="2.678" /><testcase classname="product.tests.f06.test_t041_pages" name="test_runs_js_has_the_capability_ledger_helpers" time="2.403" /><testcase classname="product.tests.f06.test_t041_pages" name="test_capability_ledger_helpers_execute_under_node" time="0.094" /><testcase classname="product.tests.f06.test_t039_pages" name="test_the_models_page_is_served_with_register_list_and_report_sections" time="2.891" /><testcase classname="product.tests.f06.test_t039_pages" name="test_models_js_is_served_with_the_client_helpers" time="2.418" /><testcase classname="product.tests.f06.test_t039_pages" name="test_admin_page_links_to_the_model_page" time="2.876"><failure message="assert 'href=&quot;/models&quot;' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...error.code}] ${error.message}`, \'bad\');\n      }\n    });\n\n    restoreIdentity();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'&#10; +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...error.code}] ${error.message}`, \'bad\');\n      }\n    });\n\n    restoreIdentity();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x0000027381017590&gt;.text">f06_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC61C0E0&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_admin_page_links_to_the_model_page(f06_stack) -&gt; None:
+        response = f06_stack.server.http.get("/admin")
+        assert response.status == 200, response.text
+&gt;       assert 'href="/models"' in response.text
+E       assert 'href="/models"' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...error.code}] ${error.message}`, \'bad\');\n      }\n    });\n\n    restoreIdentity();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+E        +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...error.code}] ${error.message}`, \'bad\');\n      }\n    });\n\n    restoreIdentity();\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x0000027381017590&gt;.text
+
+product\tests\f06\test_t039_pages.py:85: AssertionError</failure></testcase><testcase classname="product.tests.f06.test_t039_pages" name="test_models_js_behaviour_executes_under_node" time="0.091" /><testcase classname="product.tests.f10.test_t064_pages" name="test_the_knowledge_page_serves_the_grounded_answer_view" time="14.024" /><testcase classname="product.tests.f10.test_t064_pages" name="test_knowledge_js_serves_the_answer_helpers" time="2.450" /><testcase classname="product.tests.f10.test_t064_pages" name="test_knowledge_answer_helpers_execute_under_node" time="0.091" /><testcase classname="product.tests.f10.test_t061_pages" name="test_the_knowledge_page_exposes_the_index_version_section" time="2.773" /><testcase classname="product.tests.f10.test_t061_pages" name="test_knowledge_js_is_served_with_the_index_helpers" time="2.602" /><testcase classname="product.tests.f10.test_t061_pages" name="test_index_version_helpers_execute_under_node" time="0.090" /><testcase classname="product.tests.f10.test_t060_pages" name="test_the_knowledge_page_offers_pdf_uploads" time="2.785" /><testcase classname="product.tests.f10.test_t060_pages" name="test_knowledge_js_is_served_with_the_pdf_helpers" time="2.426" /><testcase classname="product.tests.f10.test_t060_pages" name="test_knowledge_js_pdf_behaviour_executes_under_node" time="0.089" /><testcase classname="product.tests.f10.test_t059_pages" name="test_the_knowledge_page_offers_csv_and_xlsx_uploads" time="2.404" /><testcase classname="product.tests.f10.test_t059_pages" name="test_knowledge_js_is_served_with_the_tabular_helpers" time="2.681" /><testcase classname="product.tests.f10.test_t059_pages" name="test_knowledge_js_tabular_behaviour_executes_under_node" time="0.088" /><testcase classname="product.tests.f10.test_t055_pages" name="test_the_knowledge_page_is_served_with_the_full_user_path" time="2.405" /><testcase classname="product.tests.f10.test_t055_pages" name="test_knowledge_js_is_served_with_the_client_helpers" time="2.817" /><testcase classname="product.tests.f10.test_t055_pages" name="test_knowledge_js_behaviour_executes_under_node" time="0.091" /><testcase classname="product.tests.f04a.test_canvas_assets" name="test_the_committed_bundle_is_valid_javascript" time="0.077" /><testcase classname="product.tests.f04a.test_canvas_assets" name="test_the_bundle_exposes_the_mount_contract" time="0.005" /><testcase classname="product.tests.f04a.test_canvas_assets" name="test_the_canvas_dependencies_are_pinned_and_locked" time="0.012" /><testcase classname="product.tests.f04a.test_canvas_assets" name="test_the_editor_page_hosts_the_canvas_and_keeps_the_save_path" time="0.002" /><testcase classname="product.tests.f04a.test_canvas_assets" name="test_the_canvas_pure_modules_pass_under_node" time="0.082" /><testcase classname="product.tests.f08.test_t084_pages" name="test_the_chat_page_serves_the_failure_explanation_surface" time="14.654" /><testcase classname="product.tests.f08.test_t084_pages" name="test_chat_js_explains_failures_and_keeps_the_queue_visible" time="0.155"><failure message="AssertionError: &#10;  AssertionError [ERR_ASSERTION]: conversation list&#10;  &#10;  0 !== 1&#10;  &#10;      at D:\caches\pytest\pytest-of-19677\pytest-871\test_chat_js_explains_failures0\t084-chat-dom.js:144:22&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['D:\\develop\\nodejs\\node.EXE', 'D:\\caches\\pytest\\pytest-of-19677\\pytest-871\\test_chat_js...n\n    at D:\\caches\\pytest\\pytest-of-19677\\pytest-871\\test_chat_js_explains_failures0\\t084-chat-dom.js:144:22\n').returncode">node_binary = 'D:\\develop\\nodejs\\node.EXE'
+tmp_path = WindowsPath('D:/caches/pytest/pytest-of-19677/pytest-871/test_chat_js_explains_failures0')
+
+    def test_chat_js_explains_failures_and_keeps_the_queue_visible(node_binary: str, tmp_path) -&gt; None:
+        harness = tmp_path / "t084-chat-dom.js"
+        harness.write_text(
+            textwrap.dedent(
+                r"""
+                'use strict';
+
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const webDir = __WEB_DIR__;
+                const CONV = __CONV__;
+                const R1 = __R1__;
+                const R2 = __R2__;
+                const R3 = __R3__;
+
+                // The minimal DOM the real page code touches: elements by id, child
+                // lists, listeners, dataset and a textContent setter that records every
+                // assignment (so a transient queue-position write is observable).
+                class Element {
+                  constructor(tag, id) {
+                    this.tagName = tag;
+                    this.id = id || '';
+                    this.children = [];
+                    this.listeners = {};
+                    this.dataset = {};
+                    this._text = '';
+                    this.textHistory = [];
+                    this.value = '';
+                    this.checked = false;
+                    this.hidden = false;
+                    this.className = '';
+                    this.files = [];
+                  }
+                  appendChild(child) { this.children.push(child); return child; }
+                  replaceChildren() { this.children = []; }
+                  addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+                  set textContent(value) {
+                    this._text = String(value === undefined || value === null ? '' : value);
+                    this.textHistory.push(this._text);
+                  }
+                  get textContent() { return this._text; }
+                }
+
+                const elements = new Map();
+                const elementFor = (id) =&gt; {
+                  if (!elements.has(id)) elements.set(id, new Element('div', id));
+                  return elements.get(id);
+                };
+                const document = {
+                  getElementById: (id) =&gt; elementFor(id),
+                  createElement: (tag) =&gt; new Element(tag),
+                  querySelectorAll: (selector) =&gt;
+                    selector === '#chat-messages li' ? elementFor('chat-messages').children : [],
+                  querySelector: () =&gt; null,
+                };
+
+                function message(id, requestID) {
+                  return { id, role: 'user', request_id: requestID, run_id: null,
+                           body_artifact_id: null, created_at: '2026-11-05T00:00:00Z',
+                           kind: 'request' };
+                }
+                function failed(requestID, code) {
+                  return { id: requestID, state: 'failed', run_id: null, interaction: null,
+                           error_code: code };
+                }
+                function queued(requestID) {
+                  return { id: requestID, state: 'queued', run_id: null, interaction: null,
+                           error_code: null };
+                }
+                const GET = {
+                  '/api/v1/auth/me': { status: 200, body: { csrf_token: 'test-csrf', principal_id: 'p-1' } },
+                  '/api/v1/conversations': {
+                    status: 200,
+                    body: { items: [{ id: CONV, created_at: '2026-11-05T00:00:00Z' }] },
+                  },
+                  ['/api/v1/conversations/' + CONV + '/messages']: {
+                    status: 200,
+                    body: { items: [message('m3', R3), message('m2', R2), message('m1', R1)] },
+                  },
+                  ['/api/v1/requests/' + R1]: { status: 200, body: failed(R1, 'no_matching_application') },
+                  ['/api/v1/requests/' + R2]: {
+                    status: 200, body: queued(R2), headers: { 'X-Request-Queue-Position': '2' },
+                  },
+                  ['/api/v1/requests/' + R3]: { status: 200, body: failed(R3, 'interaction_expired') },
+                };
+                const POST = {
+                  '/api/v1/requests': {
+                    status: 202, body: failed(R1, 'no_matching_application'),
+                  },
+                };
+                function response(entry) {
+                  return {
+                    ok: entry.status &gt;= 200 &amp;&amp; entry.status &lt; 300,
+                    status: entry.status,
+                    headers: {
+                      get: (name) =&gt; (entry.headers &amp;&amp; entry.headers[name]) || null,
+                    },
+                    text: async () =&gt; JSON.stringify(entry.body),
+                  };
+                }
+                async function fetch(path, init) {
+                  const method = (init &amp;&amp; init.method) || 'GET';
+                  const table = method === 'POST' ? POST : GET;
+                  const entry = table[path];
+                  assert.ok(entry, 'unscripted ' + method + ' ' + path);
+                  return response(entry);
+                }
+
+                const timers = [];
+                const context = {
+                  console,
+                  document,
+                  fetch,
+                  window: { location: { assign() {} }, open() {} },
+                  crypto: { randomUUID: () =&gt; '00000000-0000-4000-8000-000000000000' },
+                  setTimeout: (fn, ms) =&gt; { timers.push({ fn, ms }); return timers.length; },
+                  clearTimeout: () =&gt; {},
+                  hostTick: () =&gt; new Promise((resolve) =&gt; setImmediate(resolve)),
+                };
+                vm.createContext(context);
+                // C6.01 (#155): runstream.js is part of the page's real load order;
+                // C6.04 (#158): the guard follows it, before the page scripts.
+    for (const file of ['app.js', 'runstream.js', 'runstate-guard.js', 'attachments.js', 'chat.js']) {
+                  vm.runInContext(fs.readFileSync(webDir + '/assets/' + file, 'utf8'), context);
+                }
+
+                async function settle(rounds) {
+                  for (let index = 0; index &lt; (rounds || 4); index += 1) {
+                    await context.hostTick();
+                  }
+                }
+                // The page's click listeners start an async render and return nothing,
+                // so a test click is "invoke the real listener, then let the microtask
+                // queue drain".
+                async function click(element) {
+                  assert.strictEqual(element.listeners.click.length &gt;= 1, true);
+                  element.listeners.click[0]();
+                  await settle(6);
+                }
+
+                (async () =&gt; {
+                  // -- page load: identity, conversation list, nothing else ---------
+                  for (let index = 0; index &lt; 20 &amp;&amp; elementFor('conversation-list').children.length === 0; index += 1) {
+                    await context.hostTick();
+                  }
+                  assert.strictEqual(elementFor('conversation-list').children.length, 1, 'conversation list');
+                  const conversationButton = elementFor('conversation-list').children[0].children[0];
+                  await click(conversationButton);
+
+                  // -- the ordered queue is rendered with real positions -------------
+                  const rows = elementFor('queue-list').children;
+                  assert.strictEqual(rows.length, 3, 'three queue rows: ' + rows.length);
+                  const rowText = (row) =&gt; row.children[0].textContent;
+                  assert.ok(rowText(rows[0]).startsWith('1. 失败 · ' + R1.slice(0, 8)), rowText(rows[0]));
+                  assert.ok(rowText(rows[1]).startsWith('2. 排队中 · ' + R2.slice(0, 8)), rowText(rows[1]));
+                  assert.ok(rowText(rows[2]).startsWith('3. 失败 · ' + R3.slice(0, 8)), rowText(rows[2]));
+                  assert.ok(elementFor('chat-queue-status').textHistory.some(
+                    (text) =&gt; text.indexOf('3 项请求') &gt;= 0), 'queue summary was never rendered');
+                  // A queued row is cancellable from the queue itself.
+                  assert.strictEqual(rows[1].children.length, 2, 'queued row has a cancel button');
+
+                  // -- a failed request shows the reason, not only "失败" ------------
+                  await click(rows[0].children[0]);
+                  const failureElement = elementFor('chat-request-error');
+                  assert.strictEqual(elementFor('chat-request-state').textContent, '失败');
+                  assert.strictEqual(failureElement.hidden, false);
+                  assert.strictEqual(failureElement.dataset.errorCode, 'no_matching_application');
+                  assert.ok(failureElement.textContent.indexOf('未找到匹配的应用') &gt;= 0, failureElement.textContent);
+                  assert.ok(failureElement.textContent.indexOf('换一种说法') &gt;= 0, failureElement.textContent);
+                  assert.ok(failureElement.textHistory.some((text) =&gt; text.indexOf('未找到匹配的应用') &gt;= 0));
+
+                  // -- an expired interaction explains the expiry and how to recover -
+                  await click(rows[2].children[0]);
+                  assert.strictEqual(failureElement.dataset.errorCode, 'interaction_expired');
+                  assert.ok(failureElement.textContent.indexOf('过期') &gt;= 0, failureElement.textContent);
+                  assert.ok(failureElement.textContent.indexOf('重新提交') &gt;= 0, failureElement.textContent);
+
+                  // -- the queued request renders its server-side queue position -----
+                  await click(rows[1].children[0]);
+                  assert.ok(
+                    elementFor('chat-queue-status').textHistory.some(
+                      (text) =&gt; text.indexOf('排队位置：第 2 位') &gt;= 0),
+                    'queue position header was never rendered: ' +
+                      JSON.stringify(elementFor('chat-queue-status').textHistory),
+                  );
+
+                  // -- the submit path (POST response) shows the same explanation ----
+                  elementFor('chat-message').value = 'please summarise this csv';
+                  const submit = elementFor('chat-message-form').listeners.submit[0];
+                  await submit({ preventDefault() {} });
+                  await settle(4);
+                  assert.strictEqual(failureElement.dataset.errorCode, 'no_matching_application');
+                  assert.ok(failureElement.textContent.indexOf('未找到匹配的应用') &gt;= 0);
+
+                  // -- unknown codes are said out loud; non-failures hide the block --
+                  const unknown = context.describeRequestFailure(
+                    { state: 'failed', error_code: 'some_new_code' });
+                  assert.strictEqual(unknown.visible, true);
+                  assert.ok(unknown.text.indexOf('some_new_code') &gt;= 0, unknown.text);
+                  context.applyRequestFailure(document, { state: 'failed', error_code: 'some_new_code' });
+                  assert.strictEqual(failureElement.dataset.errorCode, 'some_new_code');
+                  context.applyRequestFailure(document, { state: 'dispatched', error_code: 'x' });
+                  assert.strictEqual(failureElement.hidden, true);
+                  assert.strictEqual(failureElement.dataset.errorCode, '');
+
+                  // The seven-state vocabulary is unchanged by the new block.
+                  assert.strictEqual(context.describeRequestState('failed'), '失败');
+                  assert.strictEqual(context.describeRequestState('queued'), '排队中');
+
+                  console.log('t084 chat.js DOM harness: ok');
+                })().catch((error) =&gt; {
+                  console.error(error &amp;&amp; error.stack ? error.stack : String(error));
+                  process.exit(1);
+                });
+                """
+            )
+            .replace("__WEB_DIR__", json.dumps(str(WEB)))
+            .replace("__CONV__", json.dumps("11111111-1111-4111-8111-111111111111"))
+            .replace("__R1__", json.dumps("22222222-2222-4222-8222-222222222222"))
+            .replace("__R2__", json.dumps("33333333-3333-4333-8333-333333333333"))
+            .replace("__R3__", json.dumps("44444444-4444-4444-8444-444444444444")),
+            encoding="utf-8",
+        )
+        completed = subprocess.run(
+            [node_binary, str(harness)],
+            cwd=str(st.PRODUCT_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+&gt;       assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+E       AssertionError:
+E         AssertionError [ERR_ASSERTION]: conversation list
+E
+E         0 !== 1
+E
+E             at D:\caches\pytest\pytest-of-19677\pytest-871\test_chat_js_explains_failures0\t084-chat-dom.js:144:22
+E
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\develop\\nodejs\\node.EXE', 'D:\\caches\\pytest\\pytest-of-19677\\pytest-871\\test_chat_js...n\n    at D:\\caches\\pytest\\pytest-of-19677\\pytest-871\\test_chat_js_explains_failures0\\t084-chat-dom.js:144:22\n').returncode
+
+product\tests\f08\test_t084_pages.py:296: AssertionError</failure></testcase><testcase classname="product.tests.f08.test_t082_pages" name="test_the_chat_page_serves_the_handover_preview_surface" time="2.626" /><testcase classname="product.tests.f08.test_t082_pages" name="test_chat_js_handover_helpers_execute_under_node" time="0.095" /><testcase classname="product.tests.f08.test_t079_pages" name="test_the_chat_page_serves_the_interaction_surface" time="2.872" /><testcase classname="product.tests.f08.test_t079_pages" name="test_chat_js_interaction_helpers_execute_under_node" time="0.097" /><testcase classname="product.tests.f08.test_t077_pages" name="test_the_catalog_page_is_served_with_the_real_surfaces" time="2.649"><failure message="AssertionError: catalog.html is missing '用途目录'&#10;assert '用途目录' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...nextCursor) {\n        loadPage(nextCursor);\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">f08_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC3FA330&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_catalog_page_is_served_with_the_real_surfaces(f08_stack) -&gt; None:
+        response = f08_stack.server.http.get("/catalog")
+        assert response.status == 200, response.text
+        body = response.text
+        for marker in (
+            'id="catalog-search-form"',
+            'id="catalog-query"',
+            'id="catalog-search-submit"',
+            'id="catalog-retrieval"',
+            'id="catalog-status"',
+            'id="catalog-count"',
+            'id="catalog-results"',
+            'id="catalog-empty"',
+            'id="catalog-next"',
+            "用途目录",
+            "回退检索（索引落后）",
+            "/assets/catalog.js",
+        ):
+&gt;           assert marker in body, f"catalog.html is missing {marker!r}"
+E           AssertionError: catalog.html is missing '用途目录'
+E           assert '用途目录' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...nextCursor) {\n        loadPage(nextCursor);\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f08\test_t077_pages.py:46: AssertionError</failure></testcase><testcase classname="product.tests.f08.test_t077_pages" name="test_catalog_js_helpers_execute_under_node" time="0.089" /><testcase classname="product.tests.f08.test_t074_pages" name="test_the_conversation_page_is_served_with_the_real_surfaces" time="3.040" /><testcase classname="product.tests.f08.test_t074_pages" name="test_chat_js_helpers_execute_under_node" time="0.100" /><testcase classname="product.tests.f08.test_postreview_pages" name="test_reopening_a_conversation_restores_the_pending_request_and_an_actionable_queue" time="0.120" /><testcase classname="product.tests.f08.test_postreview_pages" name="test_the_reply_carries_the_uploaded_missing_input_artifact" time="0.119" /><testcase classname="product.tests.f09.test_t058_pages" name="test_the_memory_page_serves_the_revision_and_deletion_sections" time="14.399" /><testcase classname="product.tests.f09.test_t058_pages" name="test_the_memory_script_serves_the_t058_helpers" time="2.550" /><testcase classname="product.tests.f09.test_t058_pages" name="test_the_conflict_recovery_and_deletion_state_execute_under_node" time="0.093" /><testcase classname="product.tests.f09.test_t054_pages" name="test_the_memory_page_is_served_with_the_real_sections" time="2.608" /><testcase classname="product.tests.f09.test_t054_pages" name="test_the_memory_script_is_served_with_the_expected_helpers" time="2.557" /><testcase classname="product.tests.f09.test_t054_pages" name="test_the_memory_page_behaviour_executes_under_node" time="0.091" /><testcase classname="product.tests.f07.test_t078_pages" name="test_the_runs_page_serves_the_child_runs_panel" time="13.960" /><testcase classname="product.tests.f07.test_t078_pages" name="test_the_served_page_and_asset_parse_with_node" time="0.149" /><testcase classname="product.tests.f07.test_t078_pages" name="test_the_child_runs_panel_logic_executes_under_node" time="0.097" /><testcase classname="product.tests.f07.test_t075_pages" name="test_the_editor_page_serves_the_call_app_panel" time="14.199" /><testcase classname="product.tests.f07.test_t075_pages" name="test_inline_scripts_and_editor_js_parse_with_node" time="0.067" /><testcase classname="product.tests.f07.test_t075_pages" name="test_call_app_panel_logic_executes_under_node" time="0.099" /><testcase classname="product.tests.f13a.test_t056_pages" name="test_the_evaluation_page_is_served_with_the_creator_path" time="13.985" /><testcase classname="product.tests.f13a.test_t056_pages" name="test_evaluate_js_is_served_with_the_client_helpers" time="2.425" /><testcase classname="product.tests.f13a.test_t056_pages" name="test_evaluate_js_behaviour_executes_under_node" time="0.089" /><testcase classname="product.tests.f05.test_t037_pages" name="test_the_tools_page_is_served_with_submit_and_review_sections" time="14.162" /><testcase classname="product.tests.f05.test_t037_pages" name="test_tools_js_is_served_with_the_client_helpers" time="2.641" /><testcase classname="product.tests.f05.test_t037_pages" name="test_tools_js_behaviour_executes_under_node" time="0.104" /><testcase classname="product.tests.f05.test_t033_pages" name="test_the_runs_page_is_served_with_the_sandbox_panel" time="14.857" /><testcase classname="product.tests.f05.test_t033_pages" name="test_runs_js_serves_the_panel_and_artifact_client" time="2.614" /><testcase classname="product.tests.f05.test_t033_pages" name="test_runs_js_panel_logic_executes_under_node" time="0.106" /><testcase classname="product.tests.f05.test_t030_pages" name="test_the_attachment_page_offers_the_preset_tool" time="17.849"><failure message="AssertionError: attachments.html is missing 'sales_stats'&#10;assert 'sales_stats' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/nav.js&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/attachments.js&quot;&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">t030_stack = Stack(server=&lt;support.stack.ApiServer object at 0x0000027381014A70&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_attachment_page_offers_the_preset_tool(t030_stack) -&gt; None:
+        response = t030_stack.server.http.get("/attachments")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        assert response.header("Cache-Control") == "no-store"
+        body = response.text
+
+        for marker in (
+            'id="tool-panel"',
+            'id="tool-artifact-id"',
+            'id="tool-run-submit"',
+            'id="tool-run-status"',
+            'id="tool-run-id"',
+            'id="tool-run-state"',
+            'id="tool-run-error-code"',
+            'id="tool-summary"',
+            'id="tool-summary-total"',
+            'id="tool-summary-count"',
+            'id="tool-summary-region-rows"',
+            'id="tool-diagnostics"',
+            'id="tool-diagnostics-code"',
+            'id="tool-diagnostics-message"',
+            'id="tool-diagnostics-fix"',
+            'id="tool-downloads"',
+            "/assets/attachments.js",
+            "Decimal",
+            "sales_stats",
+            "summary.csv",
+            "summary.json",
+        ):
+&gt;           assert marker in body, f"attachments.html is missing {marker!r}"
+E           AssertionError: attachments.html is missing 'sales_stats'
+E           assert 'sales_stats' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...&gt;&lt;/script&gt;\n&lt;script src="/assets/nav.js"&gt;&lt;/script&gt;\n&lt;script src="/assets/attachments.js"&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f05\test_t030_pages.py:78: AssertionError</failure></testcase><testcase classname="product.tests.f05.test_t030_pages" name="test_attachments_js_is_the_served_asset_with_the_tool_helpers" time="3.428" /><testcase classname="product.tests.f05.test_t030_pages" name="test_the_tool_page_parses_with_node" time="2.916" /><testcase classname="product.tests.f05.test_t030_pages" name="test_tool_page_logic_executes_under_node" time="0.130" /><testcase classname="product.tests.f05.test_t028_pages" name="test_the_attachment_page_is_served" time="19.615"><failure message="AssertionError: attachments.html is missing '/apps'&#10;assert '/apps' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/nav.js&quot;&gt;&lt;/script&gt;\n&lt;script src=&quot;/assets/attachments.js&quot;&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'">t028_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC492D20&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_attachment_page_is_served(t028_stack) -&gt; None:
+        response = t028_stack.server.http.get("/attachments")
+        assert response.status == 200, response.text
+        assert "text/html" in response.header("Content-Type")
+        assert response.header("Cache-Control") == "no-store"
+        body = response.text
+
+        for marker in (
+            'id="upload-form"',
+            'method="post"',
+            'id="upload-file"',
+            'type="file"',
+            'id="upload-media-type"',
+            'id="upload-purpose"',
+            'id="upload-submit"',
+            'id="upload-status"',
+            'role="status"',
+            'id="artifact-panel"',
+            'id="artifact-id"',
+            'id="artifact-state"',
+            'id="artifact-media-type"',
+            'id="artifact-size"',
+            'id="artifact-download"',
+            'id="artifact-quarantine"',
+            'id="artifact-quarantine-reason"',
+            "quarantined",
+            "20 MiB",
+            "/assets/app.js",
+            "/assets/attachments.js",
+            "/apps",
+            "/admin",
+        ):
+&gt;           assert marker in body, f"attachments.html is missing {marker!r}"
+E           AssertionError: attachments.html is missing '/apps'
+E           assert '/apps' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...&gt;&lt;/script&gt;\n&lt;script src="/assets/nav.js"&gt;&lt;/script&gt;\n&lt;script src="/assets/attachments.js"&gt;&lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+
+product\tests\f05\test_t028_pages.py:88: AssertionError</failure></testcase><testcase classname="product.tests.f05.test_t028_pages" name="test_attachments_js_is_the_served_asset" time="4.982" /><testcase classname="product.tests.f05.test_t028_pages" name="test_the_apps_and_debug_pages_link_into_the_attachment_page" time="4.291"><failure message="AssertionError: apps.html does not link the attachment page&#10;assert 'href=&quot;/attachments&quot;' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'&#10; +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang=&quot;zh-CN&quot;&gt;\n&lt;head&gt;\n&lt;meta charset=&quot;utf-8&quot;/&gt;\n&lt;meta name=&quot;viewport&quot; content=&quot;width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC3F9580&gt;.text">t028_stack = Stack(server=&lt;support.stack.ApiServer object at 0x00000273FC61EEA0&gt;, dsn='postgresql://orchara_owner:&lt;redacted&gt;@...chara-sandboxprobe.exe')}, signing_key='&lt;REDACTED-TEMP-SIGNING-KEY&gt;')
+
+    def test_the_apps_and_debug_pages_link_into_the_attachment_page(t028_stack) -&gt; None:
+        apps = t028_stack.server.http.get("/apps")
+        assert apps.status == 200
+&gt;       assert 'href="/attachments"' in apps.text, "apps.html does not link the attachment page"
+E       AssertionError: apps.html does not link the attachment page
+E       assert 'href="/attachments"' in '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n'
+E        +  where '&lt;!DOCTYPE html&gt;\n\n&lt;html lang="zh-CN"&gt;\n&lt;head&gt;\n&lt;meta charset="utf-8"/&gt;\n&lt;meta name="viewport" content="width=device-...ror.code + \'] \' + error.message, \'bad\');\n      }\n    });\n\n    loadPage(null);\n  &lt;/script&gt;\n&lt;/body&gt;\n&lt;/html&gt;\n' = &lt;support.stack.Response object at 0x00000273FC3F9580&gt;.text
+
+product\tests\f05\test_t028_pages.py:131: AssertionError</failure></testcase><testcase classname="product.tests.f05.test_t028_pages" name="test_inline_scripts_and_attachments_js_parse_with_node" time="3.632" /><testcase classname="product.tests.f05.test_t028_pages" name="test_attachment_page_logic_executes_under_node" time="0.174" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_mobile_stylesheet_is_linked_after_each_pages_own_style" time="0.006" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_the_wide_ledger_table_scrolls_instead_of_overflowing_the_phone" time="0.003" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_each_phone_journey_state_that_small_screens_keep_is_named_in_the_page" time="0.004" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_the_approval_page_explains_both_expiry_mechanisms_and_never_revives" time="0.152" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_chat_reports_conflict_expiry_and_no_result_with_a_next_step" time="0.150" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_memory_candidates_show_source_and_save_scope_and_default_to_no_choice" time="0.156" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_personal_data_shows_ingestion_states_and_never_grant_selection_by_default" time="0.158" /><testcase classname="product.tests.f12.test_t098_mobile_pages" name="test_a_revoked_citation_is_cleared_and_never_served_from_the_previous_body" time="0.147" /><testcase classname="product.tests.f12.test_t096_pages" name="test_every_contract_state_and_phase_has_an_explicit_ui_label" time="0.154" /><testcase classname="product.tests.f12.test_t096_pages" name="test_finalizing_is_not_a_terminal_success_or_failure" time="0.129" /><testcase classname="product.tests.f12.test_t096_pages" name="test_cancelling_copy_never_claims_external_writes_were_rolled_back" time="0.131" /><testcase classname="product.tests.f12.test_t096_pages" name="test_410_classifier_and_snapshot_rebuild_never_resume_silently" time="0.133" /><testcase classname="product.tests.f12.test_t096_pages" name="test_parent_child_waiting_and_partial_artifacts_are_explainable" time="0.117" /><testcase classname="product.tests.f12.test_t096_pages" name="test_dialogue_polling_and_copy_cover_the_real_run_states" time="0.129" /><testcase classname="product.tests.f12.test_t096_pages" name="test_runs_page_fetches_the_snapshot_and_rebuilds_on_410" time="0.138" /><testcase classname="product.tests.f12.test_t096_pages" name="test_chat_page_keeps_observing_the_run_after_dispatched" time="0.137" /><testcase classname="product.tests.f12.test_t096_pages" name="test_debug_page_long_runs_are_not_declared_stopped" time="0.002" /><testcase classname="product.tests.f12.test_t096_pages" name="test_file_readiness_vocabulary_is_explainable" time="0.116" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_navigation_is_rendered_per_role_and_the_page_re_reads_identity_on_refresh" time="0.151" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_a_401_or_disabled_principal_lands_on_login_and_never_keeps_stale_rows" time="0.146" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_a_non_creator_sees_no_creator_entry_and_no_dead_click_link" time="0.129" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_a_refused_creator_action_converges_the_page_to_the_current_identity" time="0.132" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_the_logout_link_revokes_the_session_instead_of_just_linking_to_login" time="0.132" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_the_versions_page_follows_next_cursor_instead_of_silently_dropping_it" time="0.112" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_the_models_page_follows_next_cursor_instead_of_only_announcing_it" time="0.132" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_personal_data_follows_next_cursor_for_its_inventory" time="0.124" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_every_page_loads_the_single_navigation_source" time="0.014" /><testcase classname="product.tests.f12.test_t095_page_roles" name="test_the_login_page_explains_a_disabled_principal_and_routes_by_role" time="0.141" /></testsuite></testsuites>

@@ -82,8 +82,7 @@ def test_the_attachment_page_is_served(t028_stack) -> None:
         "20 MiB",
         "/assets/app.js",
         "/assets/attachments.js",
-        "/apps",
-        "/admin",
+        "/assets/nav.js",
     ):
         assert marker in body, f"attachments.html is missing {marker!r}"
 
@@ -128,11 +127,13 @@ def test_attachments_js_is_the_served_asset(t028_stack) -> None:
 def test_the_apps_and_debug_pages_link_into_the_attachment_page(t028_stack) -> None:
     apps = t028_stack.server.http.get("/apps")
     assert apps.status == 200
-    assert 'href="/attachments"' in apps.text, "apps.html does not link the attachment page"
+    assert 'src="/assets/nav.js"' in apps.text
+    nav = t028_stack.server.http.get("/assets/nav.js")
+    assert nav.status == 200 and "href: '/attachments'" in nav.text
 
     debug = t028_stack.server.http.get(f"/apps/{t028.new_uuid()}/debug")
     assert debug.status == 200
-    assert 'href="/attachments"' in debug.text, "debug.html does not link the attachment page"
+    assert 'src="/assets/nav.js"' in debug.text
 
 
 def test_inline_scripts_and_attachments_js_parse_with_node(t028_stack, node_binary, tmp_path) -> None:

@@ -1,105 +1,79 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 模型登记与兼容验证（F06）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 62rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .86rem; margin: .55rem 0 .2rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>模型管理 · Orchara</title>
+<style>
     input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
-    textarea { min-height: 7rem; font-family: ui-monospace, monospace; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     button.secondary { background: transparent; }
-    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
-    li { margin: .6rem 0; }
     code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .72; }
     .warn { color: #b91c1c; font-size: .84rem; }
     .row-actions { margin-top: .35rem; }
     .report-grid { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; font-size: .86rem; }
     .report-grid dt { opacity: .7; }
     .report-grid dd { margin: 0; word-break: break-all; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用</a>
-    <a href="/attachments">附件</a>
-    <a href="/runs">运行</a>
-    <a href="/tools">工具</a>
-    <a href="/models">模型</a>
-    <a href="/admin">管理台</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>模型登记、兼容验证与固定 profile（F06/T039）</h1>
-  <p class="sub">
+<body data-page="models"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>管理台</span><span class="separator">/</span><span>模型管理</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="model">MODELS & PROFILES</p><h1>模型管理</h1><p class="page-description">登记模型版本、验证兼容性，为应用选择固定的模型配置。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化输出兼容用例，查看不可变报告，
     并且只有 <code>validation_state=passed</code> 且未撤销的版本才能被共享应用引用。
     pending/running/failed 的版本一律不能进入共享应用。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     凭据只使用预登记引用（<code>endpoint_ref</code>/<code>secret_ref</code>），本页不接收、不显示任何密钥文本；
     服务端为每个登记构建不可变 manifest 并记录 SHA-256。兼容验证由真实后台任务执行：
     <code>model_validate</code> 读取封存的合成 fixture，调用 stub 供应商，再上传封存报告。
-  </p>
-
-  <section class="card" id="register-card" hidden>
-    <h2>登记模型版本</h2>
-    <form id="register-form" method="post">
-      <label for="model-name">name</label>
-      <input id="model-name" name="name" type="text" autocomplete="off" maxlength="200" />
-      <label for="model-provider">provider</label>
-      <select id="model-provider" name="provider">
-        <option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option>
-        <option value="openai">openai</option>
-      </select>
-      <label for="model-id">model_id</label>
-      <input id="model-id" name="model_id" type="text" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" />
-      <label for="model-endpoint">endpoint_ref（预登记目的地）</label>
-      <select id="model-endpoint" name="endpoint_ref"></select>
-      <label for="model-credential">secret_ref（预登记凭据引用）</label>
-      <select id="model-credential" name="secret_ref"></select>
-      <label for="model-destination">data_destination</label>
-      <input id="model-destination" name="data_destination" type="text" readonly />
-      <label for="model-config">config（ModelConfig JSON）</label>
-      <textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea>
-      <button id="register-button" type="submit">登记为 pending</button>
-    </form>
-    <p id="register-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section class="card" id="models-card">
-    <h2>模型版本</h2>
-    <p class="hint">管理员看到全部版本；其他已登录身份只看到 passed 且未撤销的版本。登记本身不依赖任何已有应用报告。</p>
-    <p id="models-status" class="status" role="status" aria-live="polite"></p>
-    <ul id="models-list" data-auth-content></ul>
-    <button id="models-next" type="button" hidden>下一页</button>
-  </section>
-
-  <section class="card" id="report-card" hidden>
-    <h2>兼容报告与固定 profile</h2>
-    <p id="report-status" class="status" role="status" aria-live="polite"></p>
-    <dl class="report-grid" id="report-body"></dl>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/models.js"></script>
-  <script>
+  </p></details><div class="page-sections">
+<section class="card" id="register-card" hidden="">
+<h2>登记模型版本</h2>
+<form id="register-form" method="post">
+<label for="model-name">name</label>
+<input id="model-name" name="name" autocomplete="off" maxlength="200" type="text"/>
+<label for="model-provider">provider</label>
+<select id="model-provider" name="provider">
+<option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option>
+<option value="openai">openai</option>
+</select>
+<label for="model-id">model_id</label>
+<input id="model-id" name="model_id" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" type="text"/>
+<label for="model-endpoint">endpoint_ref（预登记目的地）</label>
+<select id="model-endpoint" name="endpoint_ref"></select>
+<label for="model-credential">secret_ref（预登记凭据引用）</label>
+<select id="model-credential" name="secret_ref"></select>
+<label for="model-destination">data_destination</label>
+<input id="model-destination" name="data_destination" readonly="" type="text"/>
+<label for="model-config">config（ModelConfig JSON）</label>
+<textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea>
+<button id="register-button" type="submit">登记为 pending</button>
+</form>
+<p class="status" id="register-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="models-card">
+<h2>模型版本</h2>
+<p class="hint">管理员看到全部版本；其他已登录身份只看到 passed 且未撤销的版本。登记本身不依赖任何已有应用报告。</p>
+<p class="status" id="models-status" aria-live="polite" role="status"></p>
+<ul id="models-list" data-auth-content=""></ul>
+<button id="models-next" hidden="" type="button">下一页</button>
+</section>
+<section class="card" id="report-card" hidden="">
+<h2>兼容报告与固定 profile</h2>
+<p class="status" id="report-status" aria-live="polite" role="status"></p>
+<dl class="report-grid" id="report-body"></dl>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/models.js"></script>
+<script>
     const registerCard = document.getElementById('register-card');
     const registerForm = document.getElementById('register-form');
     const registerStatus = document.getElementById('register-status');

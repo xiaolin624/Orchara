@@ -86,7 +86,7 @@ def test_the_debug_page_is_served_per_application(t027_stack) -> None:
         "/api/v1/runs/{id}",
         "/assets/app.js",
         "/assets/debug.js",
-        "/apps",
+        "/assets/nav.js",
     ):
         assert marker in body, f"debug.html is missing {marker!r}"
 
@@ -137,7 +137,7 @@ def test_the_editor_and_the_apps_page_link_into_the_debug_entry(t027_stack) -> N
     editor = t027_stack.server.http.get(f"/apps/{t027.new_uuid()}/edit")
     assert editor.status == 200, editor.text
     assert 'id="debug-entry"' in editor.text, "the editor has no debug entry"
-    assert "调试入口" in editor.text
+    assert "调试当前草稿" in editor.text
 
     editor_js = t027_stack.server.http.get("/assets/editor.js")
     assert editor_js.status == 200
@@ -159,7 +159,7 @@ def test_the_real_page_serves_for_a_real_application(t027_stack) -> None:
     assert page.status == 200
     assert "debug.html" not in page.text
     # The run panel starts hidden; nothing is rendered before a submission.
-    assert 'id="run-panel" class="card" hidden' in page.text
+    assert re.search(r'<section\b(?=[^>]*\bid="run-panel")(?=[^>]*\bhidden)[^>]*>', page.text)
 
 
 def test_inline_scripts_and_debug_js_parse_with_node(t027_stack, node_binary, tmp_path) -> None:

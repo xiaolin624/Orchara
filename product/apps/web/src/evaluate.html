@@ -1,32 +1,14 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 评测（F13A 逐例结果）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 68rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    h3 { font-size: .92rem; margin: .9rem 0 .3rem; }
-    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .86rem; margin: .7rem 0 .25rem; }
-    input[type="text"], input[type="number"], input[type="file"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    button { margin-top: .55rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>应用评测 · Orchara</title>
+<style>
     dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
     dl.facts dt { opacity: .7; }
     dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .6rem; }
-    th, td { text-align: left; vertical-align: top; padding: .4rem .5rem; border-bottom: 1px solid rgba(128,128,128,.22); }
-    th { font-weight: 600; opacity: .8; }
     td ul { margin: 0; padding-left: 1.05rem; }
     td li { margin: .12rem 0; }
     .verdict-passed { color: #15803d; font-weight: 600; }
@@ -34,100 +16,93 @@
     .verdict-blocked { color: #a16207; font-weight: 600; }
     .verdict-not_run { color: #6b7280; font-weight: 600; }
     .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/attachments">附件</a>
-    <a href="/tools">工具</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>运行评测并查看逐例结果</h1>
-  <p class="sub">
+<body data-page="evaluate"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>应用评测</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="check">EVALUATE & IMPROVE</p><h1>应用评测</h1><p class="page-description">使用独立预期验证应用，逐例比较实际结果并定位问题。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     本页走正式的 <code>evaluateDraft</code> 路径：先上传一个冻结的评估数据集
     （<code>purpose=evaluation_dataset</code>，JSON），并可选择上传案例引用的 CSV/XLSX 案例输入
     （<code>purpose=task_input</code>，按内容 SHA-256 绑定）。提交后平台冻结当前草稿快照、由受信执行器
     逐例真实运行，并把结果封存成只读报告。页面轮询到报告后读取逐例结果，展示<strong>独立期望</strong>、
     <strong>实际值/状态</strong>、<strong>失败原因</strong>和可下载的实际附件。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     逐例结果的期望/实际/失败原因来自封存的只读报告（<code>GET /evaluation-reports/{id}/cases</code>，
     ADR 0013），页面不重新计算任何金额；金额按报告里的十进制字符串原样展示。附件下载在点击时才向服务器换取
     短时签名链接，页面不把链接写入浏览器存储。只有评测所有者或管理员能读到报告（其他人 404）。
-  </p>
-
-  <section class="card">
-    <h2>1. 上传评估数据集与案例输入</h2>
-    <form id="evaluate-form" method="post">
-      <label for="evaluate-dataset-file">评估数据集（JSON，案例数组；服务端会严格校验）</label>
-      <input id="evaluate-dataset-file" name="dataset" type="file" accept=".json,application/json" required />
-      <label for="evaluate-fixture-file">案例输入文件（可选；数据集按内容 SHA-256 引用的 CSV/XLSX）</label>
-      <input id="evaluate-fixture-file" name="fixture" type="file" accept=".csv,.xlsx" />
-      <button id="evaluate-upload-submit" type="submit">上传并封存</button>
-      <p id="evaluate-upload-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="evaluate-artifact-panel" hidden aria-live="polite">
-      <h3>封存状态</h3>
-      <dl class="facts">
-        <dt>数据集 artifact id</dt><dd id="evaluate-dataset-id"></dd>
-        <dt>数据集状态</dt><dd id="evaluate-dataset-state"></dd>
-        <dt>案例输入 artifact id</dt><dd id="evaluate-fixture-id"></dd>
-        <dt>案例输入状态</dt><dd id="evaluate-fixture-state"></dd>
-      </dl>
-    </div>
-  </section>
-
-  <section class="card" data-requires-role="creator" hidden>
-    <h2>2. 开始评测并等待报告</h2>
-    <p class="hint">
+  </p></details><div class="page-sections">
+<section class="card">
+<h2>1. 上传评估数据集与案例输入</h2>
+<form id="evaluate-form" method="post">
+<label for="evaluate-dataset-file">评估数据集（JSON，案例数组；服务端会严格校验）</label>
+<input id="evaluate-dataset-file" name="dataset" accept=".json,application/json" required="" type="file"/>
+<label for="evaluate-fixture-file">案例输入文件（可选；数据集按内容 SHA-256 引用的 CSV/XLSX）</label>
+<input id="evaluate-fixture-file" name="fixture" accept=".csv,.xlsx" type="file"/>
+<button id="evaluate-upload-submit" type="submit">上传并封存</button>
+<p class="status" id="evaluate-upload-status" aria-live="polite" role="status"></p>
+</form>
+<div id="evaluate-artifact-panel" aria-live="polite" hidden="">
+<h3>封存状态</h3>
+<dl class="facts">
+<dt>数据集 artifact id</dt><dd id="evaluate-dataset-id"></dd>
+<dt>数据集状态</dt><dd id="evaluate-dataset-state"></dd>
+<dt>案例输入 artifact id</dt><dd id="evaluate-fixture-id"></dd>
+<dt>案例输入状态</dt><dd id="evaluate-fixture-state"></dd>
+</dl>
+</div>
+</section>
+<section class="card" data-requires-role="creator" hidden="">
+<h2>2. 开始评测并等待报告</h2>
+<p class="hint">
       提交评测需要 <code>creator</code> 角色且提交者本人是该应用的所有者；服务端不满足时返回
       <code>403 creator_role_required</code>（或 <code>403 forbidden</code>），因此没有该角色时本区域不显示。
     </p>
-    <form id="evaluation-submit-form" method="post">
-      <label for="evaluation-draft-revision">草稿 revision（提交时冻结该版本）</label>
-      <input id="evaluation-draft-revision" type="number" min="1" step="1" value="1" />
-      <label for="evaluation-dataset-artifact">数据集 artifact id（上传成功后自动填入）</label>
-      <input id="evaluation-dataset-artifact" type="text" autocomplete="off" spellcheck="false" />
-      <button id="evaluation-submit" type="submit">提交评测</button>
-      <p id="evaluation-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="evaluation-panel" hidden aria-live="polite">
-      <h3>评测任务</h3>
-      <dl class="facts">
-        <dt>evaluation id</dt><dd id="evaluation-id"></dd>
-        <dt>状态</dt><dd id="evaluation-state"></dd>
-        <dt>报告 id</dt><dd id="evaluation-report-id"></dd>
-      </dl>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>3. 逐例结果（只读报告）</h2>
-    <p id="evaluation-summary" class="status" role="status" aria-live="polite"></p>
-    <p id="case-empty" class="hint" hidden>报告还没有逐例结果。</p>
-    <table id="case-table" hidden>
-      <thead>
-        <tr>
-          <th>案例</th>
-          <th>判决</th>
-          <th>期望</th>
-          <th>实际</th>
-          <th>失败原因</th>
-          <th>实际附件</th>
-        </tr>
-      </thead>
-      <tbody id="case-rows" data-auth-content></tbody>
-    </table>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/evaluate.js"></script>
-  <script>
+<form id="evaluation-submit-form" method="post">
+<label for="evaluation-draft-revision">草稿 revision（提交时冻结该版本）</label>
+<input id="evaluation-draft-revision" min="1" step="1" type="number" value="1"/>
+<label for="evaluation-dataset-artifact">数据集 artifact id（上传成功后自动填入）</label>
+<input id="evaluation-dataset-artifact" autocomplete="off" spellcheck="false" type="text"/>
+<button id="evaluation-submit" type="submit">提交评测</button>
+<p class="status" id="evaluation-status" aria-live="polite" role="status"></p>
+</form>
+<div id="evaluation-panel" aria-live="polite" hidden="">
+<h3>评测任务</h3>
+<dl class="facts">
+<dt>evaluation id</dt><dd id="evaluation-id"></dd>
+<dt>状态</dt><dd id="evaluation-state"></dd>
+<dt>报告 id</dt><dd id="evaluation-report-id"></dd>
+</dl>
+</div>
+</section>
+<section class="card">
+<h2>3. 逐例结果（只读报告）</h2>
+<p class="status" id="evaluation-summary" aria-live="polite" role="status"></p>
+<p class="hint" id="case-empty" hidden="">报告还没有逐例结果。</p>
+<div class="table-scroll" aria-label="应用评测数据表（可横向滚动）" role="region" tabindex="0"><table id="case-table" hidden="">
+<thead>
+<tr>
+<th>案例</th>
+<th>判决</th>
+<th>期望</th>
+<th>实际</th>
+<th>失败原因</th>
+<th>实际附件</th>
+</tr>
+</thead>
+<tbody id="case-rows" data-auth-content=""></tbody>
+</table></div>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/evaluate.js"></script>
+<script>
     (() => {
       'use strict';
 
