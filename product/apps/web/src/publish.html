@@ -6,13 +6,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>发布应用 · Orchara</title>
 <style>
-    input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
-    dl.facts dt { opacity: .7; }
-    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    ul.plain { margin: .2rem 0 .2rem 1.1rem; padding: 0; font-size: .86rem; }
-    .tag { display: inline-block; border: 1px solid rgba(128,128,128,.4); border-radius: 999px; padding: 0 .5rem; margin: 0 .25rem .25rem 0; font-size: .78rem; }
-    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    /* T7 (#171): pre-publication checklist, content identity and data destination.
+       Page-local rules are scoped with body[data-page] because design.css is
+       linked after this block and would otherwise win at equal specificity. */
+    body[data-page="publish"] .publish-stack { display: grid; gap: 16px; }
+    body[data-page="publish"] .publish-columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    body[data-page="publish"] .publish-gate { border-color: var(--accent-line); }
+    body[data-page="publish"] .publish-checklist { display: grid; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
+    body[data-page="publish"] .check-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 9px 2px;
+      border-top: 1px solid var(--border);
+    }
+    body[data-page="publish"] .check-row:first-child { border-top: 0; }
+    body[data-page="publish"] .check-mark {
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      margin-top: 1px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 50%;
+      font-size: 10px;
+      line-height: 1;
+    }
+    body[data-page="publish"] .check-row[data-check-state="ok"] .check-mark {
+      border-color: var(--success);
+      background: var(--success-soft);
+      color: var(--success);
+    }
+    body[data-page="publish"] .check-row[data-check-state="ok"] .check-mark::before { content: "✓"; }
+    body[data-page="publish"] .check-row[data-check-state="missing"] .check-mark {
+      border-color: var(--warning);
+      background: var(--warning-soft);
+    }
+    body[data-page="publish"] .check-row[data-check-state="missing"] .check-mark::after {
+      content: "";
+      width: 2px;
+      height: 8px;
+      border-radius: 1px;
+      background: var(--warning);
+    }
+    body[data-page="publish"] .check-copy { display: grid; gap: 2px; min-width: 0; }
+    body[data-page="publish"] .check-copy strong { color: var(--text); font-size: var(--fs-12); font-weight: 600; }
+    body[data-page="publish"] .check-copy span { color: var(--muted); font-size: var(--fs-11); line-height: 1.6; overflow-wrap: anywhere; }
+    body[data-page="publish"] .check-fix { align-self: center; font-size: var(--fs-11); white-space: nowrap; }
+    body[data-page="publish"] .gate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+    body[data-page="publish"] .gate-actions > span { color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="publish"] .fact-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+    body[data-page="publish"] .fact-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+    body[data-page="publish"] .fact-group > h3 { margin: 0 0 8px; color: var(--text); font-size: var(--fs-13); font-weight: 600; }
+    body[data-page="publish"] dl.facts { grid-template-columns: minmax(96px, 148px) minmax(0, 1fr); margin: 0; }
+    body[data-page="publish"] dl.facts dt { padding: 6px 0; }
+    body[data-page="publish"] dl.facts dd {
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="publish"] ul.plain { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-12); }
+    body[data-page="publish"] ul.plain:empty::after { content: "未提供"; color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="publish"] .mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
+    body[data-page="publish"] #publish-form .field-help code { font-size: 10px; }
+    body[data-page="publish"] .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    @media (max-width: 1200px) {
+      body[data-page="publish"] .publish-columns { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 720px) {
+      body[data-page="publish"] .publish-stack { gap: 12px; }
+      body[data-page="publish"] .publish-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      body[data-page="publish"] .publish-stack .card { padding: 16px; }
+      body[data-page="publish"] .check-row { grid-template-columns: 18px minmax(0, 1fr); }
+      body[data-page="publish"] .check-fix { grid-column: 2; justify-self: start; }
+      body[data-page="publish"] dl.facts { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="publish"] dl.facts dt { padding-bottom: 0; border-bottom: 0; }
+      body[data-page="publish"] dl.facts dd { padding-top: 2px; }
+      body[data-page="publish"] .page-content table { min-width: 34rem; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
@@ -31,17 +109,35 @@
     发布预览与提交都需要 <code>creator</code> 角色；没有该角色时服务端返回
     <code>403 creator_role_required</code>，下面的预览/提交区域不会显示。
   </p></details><div class="page-sections">
-<section class="card" data-requires-role="creator" hidden="">
-<h2>1. 发布摘要（用途 / 风险 / 固定依赖）</h2>
-<button id="publish-preview" type="button">加载当前草稿的发布摘要</button>
+<div class="publish-stack">
+<section class="card publish-gate" data-requires-role="creator" hidden="">
+<div class="card-head"><h2>发布前检查</h2><span class="pill" data-tone="muted" data-shape="dash" data-publish-gate="idle">未加载摘要</span></div>
+<p class="hint">
+    清单由「加载发布摘要」返回的共享定义与封存证据推导：用途卡六项、至少 2 个示例需求，加上可信评测报告、
+    作者案例覆盖与内容身份。<strong>服务端</strong>的提交调用仍是最终判定，本清单只提前解释它一定会拒绝的缺项，
+    并给出修复入口。
+  </p>
+<ul class="checklist publish-checklist" data-publish-checklist>
+<li class="check-row" data-check-state="idle"><span class="check-mark" aria-hidden="true"></span><span class="check-copy"><strong>尚未加载发布摘要</strong><span>点击下方「加载发布摘要」后，这里逐项列出通过与缺项。</span></span></li>
+</ul>
+<p class="hint" data-publish-evidence>证据来源：未加载；报告生成时间：未提供（发布预览不返回该字段）。</p>
+<div class="gate-actions" data-publish-fixes hidden=""></div>
+</section>
+<div class="publish-columns">
+<section class="card publish-preview" data-requires-role="creator" hidden="">
+<div class="card-head"><h2>1. 发布摘要（用途 / 风险 / 固定依赖）</h2><button class="btn btn-secondary btn-small" id="publish-preview" type="button">加载发布摘要</button></div>
+<p class="hint">摘要来自服务端的共享定义投影，与提交时冻结的审核内容一致；它不包含会话、文件或正文。</p>
 <p class="status" id="publish-preview-status" aria-live="polite" role="status"></p>
 <div id="publish-preview-panel" aria-live="polite" hidden="">
+<div class="fact-group">
 <h3>内容身份</h3>
 <dl class="facts">
 <dt>manifest SHA-256</dt><dd id="publish-manifest-hash"></dd>
 <dt>执行 revision</dt><dd id="publish-execution-revision"></dd>
 <dt>草稿 revision</dt><dd id="publish-draft-revision"></dd>
 </dl>
+</div>
+<div class="fact-group">
 <h3>用途卡</h3>
 <dl class="facts">
 <dt>用途</dt><dd id="publish-purpose"></dd>
@@ -51,29 +147,45 @@
 <dt>预期输出</dt><dd id="publish-expected-outputs"></dd>
 <dt>示例需求</dt><dd id="publish-examples"></dd>
 </dl>
+</div>
+<div class="fact-group">
 <h3>模型数据去向</h3>
+<p class="hint">审核看到的是「作者的哪些内容会被送到哪个目的地」，不是使用者的会话内容。</p>
 <ul class="plain" id="publish-model-destinations"></ul>
+</div>
+<div class="fact-group">
 <h3>工具读写 / 联网</h3>
-<div class="table-scroll" aria-label="发布应用数据表（可横向滚动）" role="region" tabindex="0"><table>
+<div class="table-scroll" aria-label="发布应用工具能力表（可横向滚动）" role="region" tabindex="0"><table class="table table-compact">
 <thead><tr><th>工具版本</th><th>风险</th><th>读取</th><th>写入</th><th>联网</th><th>镜像</th></tr></thead>
 <tbody id="publish-tools"></tbody>
 </table></div>
+<p class="hint" data-tools-empty>本版本没有声明任何工具（工具能力未提供）。</p>
+</div>
+<div class="fact-group">
 <h3>固定子版本 / 连接器</h3>
 <ul class="plain" id="publish-subapps"></ul>
 <ul class="plain" id="publish-connectors"></ul>
 </div>
+</div>
 </section>
-<section class="card" data-requires-role="creator" hidden="">
-<h2>2. 绑定已评测内容并提交</h2>
+<section class="card publish-submit" data-requires-role="creator" hidden="">
+<div class="card-head"><h2>2. 绑定已评测内容并提交</h2></div>
 <form id="publish-form" method="post">
+<div class="field">
 <label for="publish-expected-hash">expected_manifest_sha256（64 位十六进制；摘要加载后自动填入）</label>
 <input id="publish-expected-hash" name="expected_manifest_sha256" autocomplete="off" required="" spellcheck="false" type="text"/>
+<p class="field-help">必须与冻结内容的 manifest 完全一致，否则服务端返回 <code>manifest_mismatch</code>。</p>
+</div>
+<div class="field">
 <label for="publish-report-id">evaluation_report_id（已通过的可信评测报告 UUID）</label>
 <input id="publish-report-id" name="evaluation_report_id" autocomplete="off" required="" spellcheck="false" type="text"/>
-<button id="publish-submit" type="submit">提交发布审核</button>
+<p class="field-help">来自评测页封存的只读报告；stub 结果不能当作真实模型质量，报告必须由服务端封存并通过。</p>
+</div>
+<div class="form-actions"><button id="publish-submit" type="submit">提交发布审核</button><span class="hint">提交后内容冻结，管理员按同一 hash 审核。</span></div>
 <p class="status" id="publish-status" aria-live="polite" role="status"></p>
 </form>
 <div id="publish-review-panel" aria-live="polite" hidden="">
+<div class="fact-group">
 <h3>已提交的审核</h3>
 <dl class="facts">
 <dt>审核 id</dt><dd id="publish-review-id"></dd>
@@ -82,7 +194,10 @@
 <p class="hint">管理员决定前内容保持冻结；被拒绝后草稿仍可继续编辑，但同一内容的重复提交会返回同一条审核记录。</p>
 <p><a id="publish-review-link" href="/reviews">在审核页查看冻结快照</a></p>
 </div>
+</div>
 </section>
+</div>
+</div>
 </div></main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>

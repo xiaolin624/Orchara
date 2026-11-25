@@ -157,6 +157,113 @@ function describeReviewSnapshot(snapshot) {
   };
 }
 
+/* ------------------------------------------------------------------------- */
+/* the pre-publication checklist (T7)                                         */
+/* ------------------------------------------------------------------------- */
+
+/** One checklist row: what the snapshot proves, or what is still missing. */
+function publicationCheckItem(key, label, ok, detail, fix) {
+  return {
+    key: String(key),
+    label: String(label),
+    ok: ok === true,
+    detail: String(detail === undefined || detail === null ? '' : detail),
+    fix: fix === undefined ? null : fix,
+  };
+}
+
+function publicationListDetail(list, emptyText, minimum) {
+  const values = listOf(list).map((item) => String(item)).filter((item) => item !== '');
+  if (values.length === 0) {
+    return emptyText;
+  }
+  const detail = values.join('；');
+  if (minimum && values.length < minimum) {
+    return detail + '（' + values.length + '/' + minimum + '）';
+  }
+  return detail;
+}
+
+/**
+ * The gate the publication page shows before submitting. It is derived from the
+ * same frozen snapshot the preview renders, so it can neither invent an item nor
+ * claim the server's decision: the submit call stays authoritative and this
+ * checklist only explains what that call will refuse.
+ *
+ * Six purpose-card fields + at least two examples, then the evidence the server
+ * actually gates on: a passed sealed report, its author-case coverage and the
+ * manifest identity the review will freeze.
+ */
+function describePublicationChecklist(snapshot) {
+  const view = describeReviewSnapshot(snapshot);
+  const purpose = view.purpose;
+  const items = [
+    publicationCheckItem(
+      'purpose', '用途', purpose.purpose.trim() !== '',
+      purpose.purpose.trim() === '' ? '未填写用途说明' : '已填写：' + purpose.purpose,
+      'edit',
+    ),
+    publicationCheckItem(
+      'includes', '适用范围', purpose.includes.length > 0,
+      publicationListDetail(purpose.includes, '未声明适用场景'),
+      'edit',
+    ),
+    publicationCheckItem(
+      'excludes', '不适用范围', purpose.excludes.length > 0,
+      publicationListDetail(purpose.excludes, '未声明不适用场景'),
+      'edit',
+    ),
+    publicationCheckItem(
+      'required_inputs', '必要输入', purpose.requiredInputs.length > 0,
+      publicationListDetail(purpose.requiredInputs, '未声明必要输入'),
+      'edit',
+    ),
+    publicationCheckItem(
+      'expected_outputs', '预期输出', purpose.expectedOutputs.length > 0,
+      publicationListDetail(purpose.expectedOutputs, '未声明预期输出'),
+      'edit',
+    ),
+    publicationCheckItem(
+      'examples', '示例需求（至少 2 个）', purpose.examples.length >= 2,
+      purpose.examples.length === 0
+        ? '未提供示例需求'
+        : '示例 ' + purpose.examples.length + ' 个' + (purpose.examples.length < 2 ? '（需要至少 2 个）' : '：' + purpose.examples.join('；')),
+      'edit',
+    ),
+    publicationCheckItem(
+      'model_destinations', '模型数据去向', view.modelDestinations.length > 0,
+      view.modelDestinations.length === 0
+        ? '未提供：快照没有声明任何模型目的地'
+        : view.modelDestinations.map((entry) => entry.label + '（' + entry.detail + '）').join('；'),
+      'edit',
+    ),
+    publicationCheckItem(
+      'author_cases', '作者案例（至少 ' + view.authorCases.minimum + ' 例）',
+      view.authorCases.satisfied,
+      view.authorCases.satisfied
+        ? view.authorCases.caseCount + ' 例，已覆盖 ' + view.authorCases.categories.length + ' 类'
+        : '未满足：' + view.authorCases.caseCount + ' 例，缺少 ' + (view.authorCases.missing.join(', ') || '（未提供分类）'),
+      'evaluate',
+    ),
+    publicationCheckItem(
+      'report', '可信评测报告（passed）',
+      view.reportID !== '' && view.reportStatus === 'passed',
+      view.reportID === ''
+        ? '未提供：预览没有返回 evaluation_report_id'
+        : '报告 ' + (view.reportStatus || '未提供') + ' · ' + view.reportID,
+      'evaluate',
+    ),
+    publicationCheckItem(
+      'manifest', '内容身份（manifest SHA-256）',
+      /^[0-9a-f]{64}$/.test(view.manifestSha256),
+      /^[0-9a-f]{64}$/.test(view.manifestSha256) ? view.manifestSha256 : '未提供',
+      null,
+    ),
+  ];
+  const missing = items.filter((item) => !item.ok).map((item) => item.key);
+  return { items: items, missing: missing, ready: missing.length === 0 };
+}
+
 /** A readable refusal: the contract's code and message, never a raw body. */
 function describePublicationFailure(failure) {
   if (!failure) {
@@ -214,6 +321,99 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       element.appendChild(tag);
     });
   };
+  const fixPath = (target) => {
+    if (target === 'evaluate') {
+      return '/apps/' + encodeURIComponent(applicationID) + '/evaluate';
+    }
+    return '/apps/' + encodeURIComponent(applicationID) + '/edit';
+  };
+  const renderChecklist = (payload) => {
+    const view = describeReviewSnapshot(payload);
+    const checklist = describePublicationChecklist(payload);
+    const list = document.querySelector('[data-publish-checklist]');
+    if (list) {
+      list.textContent = '';
+      checklist.items.forEach((item) => {
+        const row = document.createElement('li');
+        row.className = 'check-row';
+        row.setAttribute('data-check-state', item.ok ? 'ok' : 'missing');
+        row.setAttribute('data-check-key', item.key);
+        const mark = document.createElement('span');
+        mark.className = 'check-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        const copy = document.createElement('span');
+        copy.className = 'check-copy';
+        const label = document.createElement('strong');
+        label.textContent = item.label;
+        const detail = document.createElement('span');
+        detail.textContent = item.detail;
+        copy.append(label, detail);
+        row.append(mark, copy);
+        if (!item.ok && item.fix) {
+          const fix = document.createElement('a');
+          fix.className = 'check-fix';
+          fix.href = fixPath(item.fix);
+          fix.setAttribute('data-fix-target', item.fix);
+          fix.textContent = item.fix === 'evaluate' ? '去评测' : '去修正';
+          row.append(fix);
+        }
+        list.appendChild(row);
+      });
+    }
+    const pill = document.querySelector('[data-publish-gate]');
+    if (pill) {
+      pill.setAttribute('data-tone', checklist.ready ? 'success' : 'warning');
+      pill.setAttribute('data-shape', checklist.ready ? 'check' : 'alert');
+      pill.textContent = checklist.ready
+        ? '可提交'
+        : '缺 ' + checklist.missing.length + ' 项';
+    }
+    const fixes = document.querySelector('[data-publish-fixes]');
+    if (fixes) {
+      fixes.hidden = checklist.ready;
+      fixes.textContent = '';
+      if (!checklist.ready) {
+        const note = document.createElement('span');
+        note.textContent = '修复入口：';
+        fixes.appendChild(note);
+        [['edit', '打开编辑器补用途卡'], ['evaluate', '发起评测取得报告']].forEach(([target, label]) => {
+          const link = document.createElement('a');
+          link.className = 'btn btn-secondary btn-small';
+          link.href = fixPath(target);
+          link.setAttribute('data-fix-target', target);
+          link.textContent = label;
+          fixes.appendChild(link);
+        });
+      }
+    }
+    const evidence = document.querySelector('[data-publish-evidence]');
+    if (evidence) {
+      const parts = [];
+      if (view.reportID) {
+        parts.push(
+          '证据来源：封存评测报告 ' + view.reportID
+          + '（状态 ' + (view.reportStatus || '未提供')
+          + '，sha256 ' + (view.reportSha256 ? view.reportSha256.slice(0, 16) + '…' : '未提供') + '）',
+        );
+      } else {
+        parts.push('证据来源：未提供（发布预览没有返回 evaluation_report_id）');
+      }
+      parts.push('报告生成时间：未提供（发布预览不返回该字段）');
+      parts.push('页面读取时间：' + new Date().toISOString());
+      evidence.textContent = parts.join('；');
+    }
+    const submit = document.getElementById('publish-submit');
+    if (submit) {
+      // The server's submit call is still the authority; a proven missing item
+      // only stops the browser from sending a request that must be refused.
+      submit.disabled = !checklist.ready;
+      submit.setAttribute('aria-disabled', checklist.ready ? 'false' : 'true');
+      submit.title = checklist.ready
+        ? ''
+        : '发布前检查还缺 ' + checklist.missing.length + ' 项：' + checklist.missing.join(', ');
+    }
+    return checklist;
+  };
   const renderPreview = (payload) => {
     const view = describeReviewSnapshot(payload || {});
     const panel = document.getElementById('publish-preview-panel');
@@ -241,10 +441,13 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
         toolsBody.appendChild(row);
       });
     }
+    const toolsEmpty = document.querySelector('[data-tools-empty]');
+    if (toolsEmpty) toolsEmpty.hidden = view.toolCapabilities.length !== 0;
     listFill('publish-subapps', view.subappVersions.map((entry) => entry.label + ' — ' + entry.detail));
     listFill('publish-connectors', view.connectorPolicies.map((entry) => entry.key + ' — ' + entry.policySha256));
     const hashInput = document.getElementById('publish-expected-hash');
     if (hashInput && !hashInput.value) hashInput.value = view.manifestSha256;
+    renderChecklist(payload || {});
     return view;
   };
 

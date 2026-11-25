@@ -137,7 +137,12 @@ def test_the_editor_and_the_apps_page_link_into_the_debug_entry(t027_stack) -> N
     editor = t027_stack.server.http.get(f"/apps/{t027.new_uuid()}/edit")
     assert editor.status == 200, editor.text
     assert 'id="debug-entry"' in editor.text, "the editor has no debug entry"
-    assert "调试当前草稿" in editor.text
+    # T4 (#168) renamed the visible entry from "调试当前草稿" to
+    # "打开私有调试页". Pin the anchor and its Chinese label instead of the
+    # exact copy, so the entry stays user-visible without freezing wording.
+    entry = re.search(r'<a[^>]*id="debug-entry"[^>]*>(.*?)</a>', editor.text, re.S)
+    assert entry is not None, "the editor debug entry must be a labelled anchor"
+    assert "调试" in entry.group(1), "the debug entry must be labelled in Chinese"
 
     editor_js = t027_stack.server.http.get("/assets/editor.js")
     assert editor_js.status == 200

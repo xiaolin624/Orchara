@@ -1400,3 +1400,165 @@ kbd {
   .auth-main .auth-card { margin-bottom: 12px; }
   .auth-story-foot { display: none; }
 }
+
+/* ------------------------------------------------------------------------- */
+/* T6 (GitHub #170): knowledge, attachments, memories, personal data, tools    */
+/* and models. One row anatomy and one danger-zone treatment for the six data  */
+/* pages; every colour is a token, and later tickets append their own block.  */
+/* ------------------------------------------------------------------------- */
+
+/* the page-header statistic: real server values, filled after the read lands */
+.t6-stats { margin: 0 0 16px; }
+.t6-stats .stat-chip { align-items: center; }
+.t6-stats .stat-unit { color: var(--muted); font-size: var(--fs-11); }
+.t6-stats .stat-chip[data-t6-stat-note] { border-style: dashed; background: transparent; }
+.t6-stats .stat-chip[data-t6-stat-note] .stat-label { color: var(--text-2); }
+
+/* a data row: record line + status + facts + actions, hover on the whole row */
+.t6-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 14px 0 0;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--fs-11);
+  font-weight: 600;
+}
+.page-content ul.t6-rows { display: block; margin: 0; padding: 0; list-style: none; }
+.page-content ul.t6-rows > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 12px 2px;
+  border-top: 1px solid var(--border);
+  transition: background var(--dur-1) var(--ease);
+}
+.page-content ul.t6-rows > li > * { min-width: 0; }
+.page-content ul.t6-rows > li:first-child { border-top: 0; }
+.page-content ul.t6-rows > li:hover { background: var(--surface-hover); }
+.page-content ul.t6-rows > li.skeleton-row { display: block; padding: 14px 2px; }
+.page-content ul.t6-rows > li.skeleton-row:first-child { border-top: 0; }
+.t6-cell-main { flex: 1 1 240px; }
+.t6-cell-title { display: block; color: var(--text); font-size: var(--fs-13); font-weight: 600; overflow-wrap: anywhere; }
+.t6-cell-id {
+  display: block;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.t6-cell-text { display: block; margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-12); overflow-wrap: anywhere; }
+.t6-cell-status { flex: 0 0 auto; }
+.t6-cell-fact {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  font-variant-numeric: tabular-nums;
+}
+.t6-cell-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.t6-cell-actions .btn, .page-content ul.t6-rows > li > button { margin: 0; }
+.page-content dl.t6-facts { grid-template-columns: minmax(72px, 118px) minmax(0, 1fr); margin: 8px 0 0; }
+.t6-facts dt, .t6-facts dd { padding: 4px 0; font-size: var(--fs-12); }
+.t6-facts dd code { font-size: 10px; }
+
+/* toolbar: client-side search / filter / sort over the already loaded rows */
+.t6-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 4px; }
+.t6-toolbar input[type="search"] {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-height: 32px;
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.t6-toolbar .segmented { flex: 0 0 auto; }
+.t6-toolbar .segmented button { margin: 0; height: 24px; min-height: 24px; padding: 0 9px; font-size: var(--fs-11); }
+.t6-toolbar .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--accent-ink); box-shadow: var(--shadow-card); }
+.t6-toolbar-note { margin-left: auto; color: var(--muted); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
+
+/* a destructive zone never sits next to the primary action */
+.t6-danger {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+.t6-danger-title { margin: 0 0 4px; color: var(--danger); font-size: var(--fs-12); font-weight: 650; }
+.t6-danger p { margin: 0 0 8px; color: var(--text-2); font-size: var(--fs-11); line-height: 1.6; }
+.t6-danger .status { margin: 8px 0 0; }
+.t6-danger .field label, .t6-danger .field-label { color: var(--text-2); }
+
+/* the impact statement: numbered consequences, not a paragraph */
+.t6-impact { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.t6-impact > li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: 1.6;
+}
+.t6-impact .ui-icon { width: 15px; height: 15px; margin-top: 2px; color: var(--accent); }
+.t6-impact b { color: var(--text); font-weight: 600; }
+
+/* two work surfaces side by side once there is room, stacked on a phone */
+.t6-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1180px) {
+  .t6-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+/* the upload drop zone keeps a real file input and a keyboard-reachable label */
+.t6-upload {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 22px 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  text-align: center;
+}
+.t6-upload:focus-within { border-color: var(--accent); background: var(--accent-soft); }
+.t6-upload .ui-icon { width: 26px; height: 26px; color: var(--accent); }
+.t6-upload-label { color: var(--text); font-size: var(--fs-13); font-weight: 600; }
+.t6-upload .hint { margin: 0; }
+.t6-upload input[type="file"] {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.t6-upload input[type="file"]::file-selector-button {
+  min-height: 30px;
+  margin-right: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* a sub-section inside one card: title + facts, separated by a rule */
+.t6-block { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.t6-block:first-of-type { margin-top: 12px; }
+.t6-block-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 4px; }
+.t6-block-head h3 { margin: 0; font-size: var(--fs-13); }
+.t6-block > .hint { margin: 0 0 6px; }
+
+@media (max-width: 720px) {
+  .t6-cell-actions { width: 100%; margin-left: 0; }
+  .page-content dl.t6-facts { grid-template-columns: minmax(0, 1fr); }
+  .t6-facts dt { padding-bottom: 0; border: 0; }
+  .t6-facts dd { padding-top: 0; }
+  .t6-upload { padding: 16px 12px; }
+}

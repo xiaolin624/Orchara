@@ -6,18 +6,74 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>工具中心 · Orchara</title>
 <style>
-    input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
-    button.secondary { background: transparent; }
-    code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
-    .build { border-top: 1px dashed rgba(128,128,128,.35); margin-top: .55rem; padding-top: .55rem; }
-    .review-box { margin-top: .5rem; display: grid; gap: .3rem; }
+    /* T6 (#170): the tool registry. One row per tool version, the build facts on
+       demand, and the admin review queue as its own surface. */
+    body[data-page="tools"] .tool-submit {
+      margin: 0 0 6px;
+      padding: 12px 14px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+    }
+    body[data-page="tools"] .tool-submit .field { margin: 0 0 10px; }
+    body[data-page="tools"] .tool-submit .field-label { color: var(--accent-ink); }
+    body[data-page="tools"] .tool-submit input, body[data-page="tools"] .tool-submit select {
+      background: var(--surface);
+      border-color: var(--accent-line);
+    }
+    body[data-page="tools"] .tool-submit textarea { min-height: 64px; }
+    body[data-page="tools"] .tool-submit .hint { margin: 0 0 10px; }
+    body[data-page="tools"] .tool-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 0 0 10px; }
+    body[data-page="tools"] .tool-advanced {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    body[data-page="tools"] .tool-advanced summary { color: var(--text-2); font-size: var(--fs-12); }
+    body[data-page="tools"] .tool-advanced[open] summary { margin-bottom: 10px; color: var(--accent-ink); }
+    body[data-page="tools"] .tool-advanced .field:last-child { margin-bottom: 0; }
+    body[data-page="tools"] .build {
+      flex: 1 1 100%;
+      margin: 6px 0 0;
+      padding: 8px 10px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      font-size: var(--fs-11);
+    }
+    body[data-page="tools"] .build p { margin: 2px 0; }
+    body[data-page="tools"] .build a { margin-right: 10px; font-size: var(--fs-11); }
+    body[data-page="tools"] .review-box {
+      flex: 1 1 100%;
+      display: grid;
+      gap: 6px;
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      border: 1px solid var(--warning-line);
+      border-radius: var(--radius-sm);
+      background: var(--warning-soft);
+    }
+    body[data-page="tools"] .review-box label { margin: 0; color: var(--text-2); font-size: var(--fs-11); }
+    body[data-page="tools"] .review-box textarea { min-height: 52px; margin: 0; }
+    body[data-page="tools"] .review-box .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+    body[data-page="tools"] .review-box .btn { margin: 0; }
+    body[data-page="tools"] .tool-pager { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; }
+    body[data-page="tools"] .tool-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+    body[data-page="tools"] .tool-actions .btn { margin: 0; }
+    @media (max-width: 720px) {
+      body[data-page="tools"] .review-box .row { display: grid; grid-template-columns: 1fr; }
+      body[data-page="tools"] .tool-actions { display: grid; grid-template-columns: 1fr; }
+      body[data-page="tools"] .tool-actions .btn { width: 100%; justify-content: center; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-page="tools"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工具中心</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>工具中心</h1><p class="page-description">管理可复用工具，跟进构建进度与组织发布审核。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>工具来自服务端注册表</span><span>测试调用不伪造结果</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>工具中心</h1><p class="page-description">管理可复用工具，跟进隔离构建与组织发布审核。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/attachments">上传工具源包</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>工具来自服务端注册表</span><span>构建成功不等于组织批准</span><span>测试调用不伪造结果</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     创作者提交一个已上传为 <code>purpose=tool_source</code> 的 zip 源包、输入/输出 Schema
     与依赖锁，平台在隔离沙箱（gVisor/runsc、无网络、只读输入）中构建，成功后才写入
@@ -26,42 +82,61 @@
   </p><p class="hint">
 <code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
     SHA-256），不是 OCI 镜像；F15A 才构建镜像。依赖锁需要本地 wheelhouse 的包在最小根文件系统上
-    会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。
+    会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。撤销后再做依赖校验会返回
+    <code>dependency_revoked</code>，页面原样显示该错误码。
+  </p><p class="hint">
+    列表接口只返回七个字段（id、state、approved、manifest_sha256、image_digest、input_schema、
+    output_schema）：工具名称、版本号与构建时间不在列表返回中，本页不显示这三类信息；
+    构建日志/SBOM/审核记录来自非契约的 <code>GET /api/v1/tools/{id}/build</code>，只在展开时读取。
   </p></details><div class="page-sections">
+<div class="stat-row t6-stats" data-t6-stats="tools">
+<span class="stat-chip" data-tone="accent"><span class="stat-label">可见工具</span><span class="stat-value" data-t6-stat="visible">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">构建完成</span><span class="stat-value" data-t6-stat="ready">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">待审核</span><span class="stat-value" data-t6-stat="review">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip" data-t6-stat-note=""><span class="stat-label">只统计已加载的可见工具</span></span>
+</div>
 <section class="card" id="submit-card">
-<h2>提交工具源包</h2>
+<div class="card-head"><h2>提交工具源包</h2><span class="t6-toolbar-note">需要 creator 角色</span></div>
 <p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把 artifact id 填在这里。</p>
-<form id="submit-form">
-<label for="source-artifact-id">source_artifact_id</label>
-<input id="source-artifact-id" name="source_artifact_id" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" type="text"/>
-<label for="risk-class">risk_class</label>
-<select id="risk-class" name="risk_class">
-<option value="pure">pure</option>
-<option value="read">read</option>
-<option value="write">write</option>
-</select>
-<label for="input-schema">input_schema（JSON 对象）</label>
-<textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
-<label for="output-schema">output_schema（JSON 对象）</label>
-<textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea>
-<label for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label>
-<textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea>
+<form class="tool-submit" id="submit-form">
+<div class="tool-field-grid">
+<div class="field"><label class="field-label" for="source-artifact-id">source_artifact_id</label><input id="source-artifact-id" name="source_artifact_id" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" type="text"/></div>
+<div class="field"><label class="field-label" for="risk-class">risk_class</label><select id="risk-class" name="risk_class"><option value="pure">pure</option><option value="read">read</option><option value="write">write</option></select></div>
+</div>
+<details class="tool-advanced">
+<summary>Schema 与依赖锁（不填写则直接使用右侧默认值提交）</summary>
+<div class="field"><label class="field-label" for="input-schema">input_schema（JSON 对象）</label><textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
+<div class="field"><label class="field-label" for="output-schema">output_schema（JSON 对象）</label><textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
+<div class="field"><label class="field-label" for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label><textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea></div>
+</details>
 <p class="hint">连接器版本当前恒为空：F06 负责连接器，服务器会拒绝非空列表而不是静默丢弃。</p>
-<button id="submit-button" type="submit">提交并排队隔离构建</button>
+<button class="btn btn-primary" id="submit-button" data-icon="upload" type="submit">提交并排队隔离构建</button>
 </form>
 <p class="status" id="submit-status" aria-live="polite" role="status"></p>
 </section>
-<section class="card" id="review-card" hidden="">
-<h2>管理员审核队列</h2>
-<p class="status" id="review-status" aria-live="polite" role="status"></p>
-<ul id="review-list" data-auth-content=""></ul>
-</section>
 <section class="card">
-<h2>可见工具</h2>
-<p class="status" id="tools-status" aria-live="polite" role="status">正在加载工具…</p>
-<ul id="tools-list" data-auth-content=""></ul>
-<p class="hint" id="tools-empty" hidden="">当前没有可见的工具：你既不是所有者，也没有已批准共享的工具。</p>
-<button id="tools-next" hidden="" type="button">下一页</button>
+<div class="card-head"><h2>可见工具</h2><span class="t6-toolbar-note" data-t6-count>正在加载…</span></div>
+<p class="hint" id="tools-status" aria-live="polite" role="status">正在加载工具…</p>
+<div class="t6-toolbar" role="search">
+<input aria-label="按工具 id 或构建状态搜索已加载的工具" autocomplete="off" data-t6-search="" placeholder="搜索已加载的工具 id 或状态" type="search"/>
+<div class="segmented" role="group" aria-label="按构建状态筛选已加载的工具"><button aria-pressed="true" data-t6-tool-state="all" type="button">全部</button><button aria-pressed="false" data-t6-tool-state="ready" type="button">构建完成</button><button aria-pressed="false" data-t6-tool-state="building" type="button">构建中</button><button aria-pressed="false" data-t6-tool-state="failed" type="button">构建失败</button></div>
+</div>
+<p class="hint" data-t6-scope="">搜索与状态筛选只作用于已加载的工具，不会重新检索服务端；管理员看到全部可见版本，其他身份只看到已批准共享的工具。</p>
+<div class="t6-row-head" data-t6-tool-head="" aria-hidden="true"><span class="t6-cell-main">工具</span><span class="t6-cell-status">构建状态</span><span class="t6-cell-status">审批</span><span class="t6-cell-actions">操作</span></div>
+<ul class="t6-rows" id="tools-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<p class="empty-state" id="tools-empty" hidden=""><strong>当前没有可见的工具</strong>你既不是所有者，也没有已批准共享的工具。下一步：用上面的表单提交一个源包，或等管理员批准一个共享工具。</p>
+<div class="tool-pager"><button class="btn btn-small" id="tools-next" hidden="" type="button">下一页</button></div>
+</section>
+<section class="card" id="review-card" hidden="" data-t6-review="">
+<div class="card-head"><h2>管理员审核队列</h2><span class="t6-toolbar-note">ready 且未批准的工具</span></div>
+<p class="hint">批准与拒绝都必须填写原因，并绑定页面读到的 <code>manifest_sha256</code>：审核接口拒绝空的或伪造的哈希。</p>
+<p class="status" id="review-status" aria-live="polite" role="status"></p>
+<ul id="review-list" class="t6-rows" data-auth-content=""></ul>
+<div class="t6-danger" data-t6-danger="" hidden="">
+<p class="t6-danger-title">撤销工具（破坏性操作）</p>
+<p>撤销后新执行与依赖校验都会被拒绝（<code>dependency_revoked</code>）；撤销必须填写原因，
+        并且只作用于已经 ready 的工具。批准、拒绝与撤销都留在每一行的审核区，与“提交源包”的主操作分开。</p>
+</div>
 </section>
 </div></main>
 </div><script src="/assets/ui.js"></script>
@@ -81,12 +156,36 @@
 
     let identityState = null;
     let nextCursor = null;
-    let rendered = 0;
     let visibleItems = [];
+    let filterState = 'all';
+    let searchTerm = '';
+
+    // T6 presentation hooks; the business id inventory is a T1 contract, so the
+    // stat row, the count note and the toolbar carry data-* hooks.
+    function presentationNode(selector) {
+      return hook(selector);
+    }
+
+    function hook(selector) {
+      if (typeof document.querySelector !== 'function') {
+        return null;
+      }
+      return document.querySelector(selector) || null;
+    }
+
+    function setStat(key, value) {
+      const node = hook('[data-t6-stat="' + key + '"]');
+      if (node) {
+        node.textContent = String(value);
+      }
+    }
 
     function setStatus(element, message, kind) {
+      if (!element) {
+        return;
+      }
       element.textContent = message;
-      element.className = 'status ' + (kind || '');
+      element.className = 'status' + (kind ? ' ' + kind : '');
     }
 
     function node(tag, text, className) {
@@ -100,26 +199,120 @@
       return element;
     }
 
+    const TOOL_TONES = {
+      ready: ['success', 'check'],
+      building: ['accent', 'dot'],
+      submitted: ['warning', 'ring'],
+      failed: ['danger', 'alert'],
+      revoked: ['muted', 'dash'],
+    };
+
+    function pill(text, tone, shape) {
+      const element = document.createElement('span');
+      element.className = 'pill';
+      element.setAttribute('data-tone', tone);
+      element.setAttribute('data-shape', shape);
+      element.textContent = String(text);
+      return element;
+    }
+
+    function toolPill(described) {
+      const pair = TOOL_TONES[described.state] || ['muted', 'dot'];
+      return pill(described.stateText, pair[0], pair[1]);
+    }
+
+    function approvalPill(approved) {
+      return approved
+        ? pill('已批准共享', 'success', 'check')
+        : pill('未批准', 'muted', 'square');
+    }
+
+    function matchesFilter(tool) {
+      const described = describeToolVersion(tool);
+      const state = described.state;
+      let matchesState = filterState === 'all' || filterState === state;
+      if (filterState === 'building') {
+        matchesState = state === 'building' || state === 'submitted';
+      }
+      if (!matchesState) {
+        return false;
+      }
+      if (searchTerm === '') {
+        return true;
+      }
+      const haystack = (described.id + ' ' + state + ' ' + described.stateText).toLowerCase();
+      return haystack.indexOf(searchTerm) >= 0;
+    }
+
+    function applyToolFilter() {
+      let shown = 0;
+      for (const item of Array.from(toolsList.children || [])) {
+        if (!item.dataset || !item.dataset.toolId) {
+          continue;
+        }
+        const tool = visibleItems.find((entry) => String(entry.id) === item.dataset.toolId);
+        const visible = tool ? matchesFilter(tool) : true;
+        item.hidden = !visible;
+        if (visible) {
+          shown += 1;
+        }
+      }
+      const note = hook('[data-t6-count]');
+      if (note) {
+        note.textContent = '已加载 ' + visibleItems.length + ' 个工具'
+          + (filterState === 'all' && searchTerm === '' ? '' : ' · 显示 ' + shown + ' 个')
+          + (nextCursor ? '（可翻页）' : '');
+      }
+    }
+
+    function bindToolbar() {
+      const search = hook('[data-t6-search]');
+      if (search && typeof search.addEventListener === 'function') {
+        search.addEventListener('input', () => {
+          searchTerm = String(search.value || '').trim().toLowerCase();
+          applyToolFilter();
+        });
+      }
+      const chips = typeof document.querySelectorAll === 'function'
+        ? Array.from(document.querySelectorAll('[data-t6-tool-state]'))
+        : [];
+      for (const chip of chips) {
+        chip.addEventListener('click', () => {
+          filterState = String(chip.getAttribute('data-t6-tool-state') || 'all');
+          for (const other of chips) {
+            other.setAttribute('aria-pressed', other === chip ? 'true' : 'false');
+          }
+          applyToolFilter();
+        });
+      }
+    }
+
     function buildLine(tool) {
       const described = describeToolVersion(tool);
       const item = document.createElement('li');
       item.dataset.toolId = described.id;
+      item.dataset.toolState = described.state;
 
-      const head = document.createElement('strong');
-      head.textContent = described.stateText;
-      const id = node('code', described.id);
-      item.append(head, ' ', id);
+      const main = node('span', '', 't6-cell-main');
+      main.appendChild(node('span', '工具 ' + described.id.slice(0, 8), 't6-cell-title'));
+      main.appendChild(node('span', 'manifest_sha256: '
+        + (described.manifestSha256 || '尚未构建'), 't6-cell-id'));
+      main.appendChild(node('span', described.digest
+        ? '内容包摘要: ' + described.digest
+        : '摘要: 尚未构建', 't6-cell-text'));
+      main.appendChild(node('span', described.approvedText, 't6-cell-text'));
+      item.appendChild(main);
 
-      const approved = node('div', described.approvedText, 'hint');
-      item.appendChild(approved);
+      const status = node('span', '', 't6-cell-status');
+      status.appendChild(toolPill(described));
+      item.appendChild(status);
 
-      const manifest = node('div', 'manifest_sha256: ' + described.manifestSha256, 'mono');
-      item.appendChild(manifest);
+      const approval = node('span', '', 't6-cell-status');
+      approval.appendChild(approvalPill(described.approved));
+      item.appendChild(approval);
 
-      const digest = node('div', described.digest ? '内容包摘要: ' + described.digest : '摘要: 尚未构建', 'mono');
-      item.appendChild(digest);
-
-      const detailsButton = node('button', '构建日志 / SBOM / 审核记录', 'secondary');
+      const actions = node('span', '', 't6-cell-actions tool-actions');
+      const detailsButton = node('button', '构建日志 / SBOM / 审核记录', 'btn btn-secondary btn-small');
       detailsButton.type = 'button';
       const details = node('div', '', 'build');
       details.hidden = true;
@@ -130,7 +323,9 @@
         }
         await loadBuildFacts(described.id, details);
       });
-      item.append(detailsButton, details);
+      actions.appendChild(detailsButton);
+      item.appendChild(actions);
+      item.appendChild(details);
 
       if (canReview(identityState)) {
         item.appendChild(buildReviewControls(described));
@@ -144,13 +339,12 @@
         const facts = await api(toolBuildPath(toolId));
         const described = describeBuildFacts(facts);
         container.replaceChildren();
-        const line = node('p', described.stateLine, 'hint');
-        container.appendChild(line);
+        container.appendChild(node('p', described.stateLine, 'hint'));
         if (described.logPath) {
           const log = document.createElement('a');
           log.href = described.logPath;
           log.textContent = '下载构建日志';
-          container.append(log, ' ');
+          container.appendChild(log);
         }
         if (described.sbomPath) {
           const sbom = document.createElement('a');
@@ -169,22 +363,25 @@
 
     function buildReviewControls(described) {
       const box = node('div', '', 'review-box');
-      const reasonLabel = node('label', '审核/撤销原因');
+      box.appendChild(node('label', '审核 / 撤销原因（必填）'));
       const reason = document.createElement('textarea');
       reason.placeholder = '审核意见或撤销原因（必填）';
-      box.append(reasonLabel, reason);
+      box.appendChild(reason);
 
-      const decisionRow = document.createElement('div');
-      const approve = node('button', '批准共享');
+      const decisionRow = node('div', '', 'row');
+      const approve = node('button', '批准共享', 'btn btn-primary btn-small');
       approve.type = 'button';
-      const reject = node('button', '拒绝（不改变构建结果）', 'secondary');
+      const reject = node('button', '拒绝（不改变构建结果）', 'btn btn-secondary btn-small');
       reject.type = 'button';
-      const revoke = node('button', '撤销工具', 'secondary');
+      const revoke = node('button', '撤销工具', 'btn btn-danger btn-small');
       revoke.type = 'button';
-      decisionRow.append(approve, ' ', reject, ' ', revoke);
+      decisionRow.appendChild(approve);
+      decisionRow.appendChild(reject);
+      decisionRow.appendChild(revoke);
 
       const status = node('p', '', 'status');
-      box.append(decisionRow, status);
+      box.appendChild(decisionRow);
+      box.appendChild(status);
 
       async function sendReview(decision) {
         const payload = reviewBody(decision, described.manifestSha256, reason.value);
@@ -214,6 +411,10 @@
           setStatus(status, payload.error, 'bad');
           return;
         }
+        if (!window.confirm('撤销后新执行与依赖校验都会被拒绝（dependency_revoked）。撤销工具 '
+          + described.id.slice(0, 8) + '？')) {
+          return;
+        }
         try {
           await api(toolRevokePath(described.id), {
             method: 'POST',
@@ -233,14 +434,20 @@
       const queue = describeReviewQueue(items);
       reviewList.replaceChildren();
       setStatus(reviewStatus, queue.text, queue.count === 0 ? 'ok' : 'pending');
+      const dangerNote = presentationNode('[data-t6-danger]');
+      if (dangerNote) {
+        // The revoke guidance only applies when a ready, unapproved tool is
+        // actually on screen; an empty queue shows no destructive surface.
+        dangerNote.hidden = queue.count === 0;
+      }
       for (const tool of queue.items) {
         reviewList.appendChild(buildLine(tool));
       }
+      return queue;
     }
 
     async function loadPage(cursor, reset) {
       if (reset) {
-        rendered = 0;
         visibleItems = [];
         toolsList.replaceChildren();
       }
@@ -253,20 +460,29 @@
         for (const tool of items) {
           toolsList.appendChild(buildLine(tool));
           visibleItems.push(tool);
-          rendered += 1;
         }
         nextCursor = page.next_cursor || null;
         toolsNext.hidden = !nextCursor;
-        toolsEmpty.hidden = rendered !== 0;
-        setStatus(
-          toolsStatus,
-          rendered === 0 ? '没有可见的工具。' : '共显示 ' + rendered + ' 个工具' + (nextCursor ? '，还有下一页。' : '。'),
-          'ok',
-        );
+        toolsEmpty.hidden = visibleItems.length !== 0;
+        const ready = visibleItems.filter((tool) => String(tool.state) === 'ready').length;
+        setStat('visible', visibleItems.length);
+        setStat('ready', ready);
+        let queue = null;
         if (canReview(identityState)) {
           reviewCard.hidden = false;
-          renderReviewQueue(visibleItems);
+          queue = renderReviewQueue(visibleItems);
+          setStat('review', queue.count);
+        } else {
+          setStat('review', '—');
         }
+        setStatus(
+          toolsStatus,
+          visibleItems.length === 0
+            ? '没有可见的工具。'
+            : '共显示 ' + visibleItems.length + ' 个工具' + (nextCursor ? '，还有下一页。' : '。'),
+          'ok',
+        );
+        applyToolFilter();
       } catch (error) {
         if (error.status === 401) {
           window.location.assign('/login');
@@ -311,6 +527,7 @@
 
     (async () => {
       try {
+        bindToolbar();
         identityState = await requireLogin();
         document.getElementById('submit-card').hidden = !canSubmit(identityState);
         if (canReview(identityState)) {
