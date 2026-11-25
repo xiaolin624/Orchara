@@ -115,6 +115,7 @@ function snapshotBlocks(snapshot) {
     manifestSha256: String(value.manifest_sha256 || ''),
     reportID: String(value.report_id || ''),
     reportStatus: String(value.report_status || ''),
+    reportSha256: String(value.report_sha256 || ''),
     purpose: {
       purpose: String(card.purpose || ''),
       includes: stringList(card.includes),
@@ -197,18 +198,39 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       element.appendChild(tag);
     });
   };
+  const statePill = (state) => {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    const tones = { submitted: 'warning', approved: 'success', rejected: 'danger' };
+    const shapes = { submitted: 'ring', approved: 'check', rejected: 'alert' };
+    const labels = { submitted: '待审', approved: '已批准', rejected: '已拒绝' };
+    pill.setAttribute('data-tone', tones[state] || 'muted');
+    pill.setAttribute('data-shape', shapes[state] || 'dash');
+    pill.textContent = (labels[state] || '未知状态') + ' · ' + (state || 'unknown');
+    return pill;
+  };
   const renderList = (payload) => {
     const rows = document.getElementById('reviews-rows');
     if (!rows) return;
     rows.textContent = '';
-    describeReviewQueue(payload && payload.items).forEach((item) => {
+    const queue = describeReviewQueue(payload && payload.items);
+    queue.forEach((item) => {
       const row = document.createElement('tr');
-      const cells = [item.id, item.applicationID, item.state, item.manifestSha256];
+      row.setAttribute('data-review-state', item.state);
+      const cells = [item.id, item.applicationID];
       cells.forEach((value) => {
         const cell = document.createElement('td');
+        cell.className = 'mono-cell';
         cell.textContent = value;
         row.appendChild(cell);
       });
+      const stateCell = document.createElement('td');
+      stateCell.appendChild(statePill(item.state));
+      row.appendChild(stateCell);
+      const hashCell = document.createElement('td');
+      hashCell.className = 'mono-cell';
+      hashCell.textContent = item.manifestSha256;
+      row.appendChild(hashCell);
       const actionCell = document.createElement('td');
       const link = document.createElement('a');
       link.href = '/reviews/' + encodeURIComponent(item.id);
@@ -217,6 +239,15 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       row.appendChild(actionCell);
       rows.appendChild(row);
     });
+    const count = document.querySelector('[data-reviews-count]');
+    if (count) {
+      const pending = queue.filter((item) => item.state === 'submitted').length;
+      count.textContent = queue.length === 0
+        ? '没有审核记录'
+        : '待审 ' + pending + ' · 本页 ' + queue.length + ' 条';
+    }
+    const empty = document.querySelector('[data-reviews-empty]');
+    if (empty) empty.hidden = queue.length !== 0;
   };
   const renderDetail = (detail) => {
     const view = snapshotBlocks(detail.snapshot);
@@ -226,6 +257,22 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     fill('review-state', detail.state);
     fill('review-hash', detail.manifest_sha256);
     fill('review-report', view.reportStatus + ' / ' + detail.report_id);
+    const statePillNode = document.querySelector('[data-review-state-pill]');
+    if (statePillNode) {
+      statePillNode.setAttribute('data-tone',
+        detail.state === 'approved' ? 'success' : detail.state === 'rejected' ? 'danger' : 'warning');
+      statePillNode.setAttribute('data-shape',
+        detail.state === 'approved' ? 'check' : detail.state === 'rejected' ? 'alert' : 'ring');
+      statePillNode.textContent = detail.state || 'unknown';
+    }
+    const evidence = document.querySelector('[data-review-evidence]');
+    if (evidence) {
+      const sha = view.reportSha256 ? view.reportSha256.slice(0, 16) + '…' : '未提供';
+      evidence.textContent = '证据来源：封存评测报告 ' + (detail.report_id || '未提供')
+        + '（状态 ' + (view.reportStatus || '未提供')
+        + '，sha256 ' + sha
+        + '）；报告生成时间：未提供（审核详情不返回该字段）。';
+    }
     fill(
       'review-author-cases',
       view.authorCases.satisfied
