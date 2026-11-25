@@ -63,17 +63,7 @@
       font-weight: 600;
       overflow-wrap: anywhere;
     }
-    body[data-page="catalog"] .catalog-row-sub {
-      display: block;
-      margin-top: 2px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      overflow-wrap: anywhere;
-    }
     body[data-page="catalog"] .catalog-row-purpose { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; }
-    body[data-page="catalog"] .catalog-row-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; color: var(--muted); font-size: var(--fs-11); }
-    body[data-page="catalog"] .catalog-row-meta code { font-size: 10px; }
     body[data-page="catalog"] .catalog-row-facts {
       margin: 8px 0 0;
       padding: 8px 12px;
@@ -85,6 +75,10 @@
     body[data-page="catalog"] .catalog-row-facts summary { color: var(--text-2); font-size: var(--fs-11); font-weight: 550; }
     body[data-page="catalog"] .catalog-row-facts .facts { margin: 4px 0; color: var(--text-2); font-size: var(--fs-11); line-height: 1.6; }
     body[data-page="catalog"] .catalog-row-facts .facts strong { color: var(--text); }
+    /* Internal ids: on demand only, and wrapped so a 36-character uuid cannot
+       push the page sideways at 375px. */
+    body[data-page="catalog"] .catalog-row-id code { font-size: 10px; overflow-wrap: anywhere; }
+    body[data-page="catalog"] .catalog-row-facts .divider { margin: 8px 0; }
     body[data-page="catalog"] .catalog-row-action { flex: 0 0 auto; }
     body[data-page="catalog"] .catalog-unavailable {
       flex: 0 0 auto;
@@ -169,11 +163,6 @@
       statusElement.className = 'status ' + (kind || '');
     }
 
-    function shortID(value) {
-      const text = String(value || '');
-      return text.length > 12 ? text.slice(0, 8) + '…' : text;
-    }
-
     function initialOf(name) {
       const text = String(name || '').trim();
       return text ? Array.from(text)[0] : '?';
@@ -228,11 +217,7 @@
       title.className = 'catalog-row-title';
       const name = document.createElement('strong');
       name.textContent = (item && item.application_name) || '未命名应用';
-      const sub = document.createElement('span');
-      sub.className = 'catalog-row-sub';
-      sub.title = described.applicationID;
-      sub.textContent = '应用 ID ' + shortID(described.applicationID);
-      title.append(name, sub);
+      title.append(name);
       const versionPill = document.createElement('span');
       versionPill.className = 'pill';
       versionPill.setAttribute('data-tone', available ? 'success' : 'muted');
@@ -261,34 +246,33 @@
       purpose.textContent = '用途：' + (described.purpose || '（未填写用途）');
       entry.appendChild(purpose);
 
-      const meta = document.createElement('div');
-      meta.className = 'catalog-row-meta';
-      const versionLine = document.createElement('span');
-      versionLine.textContent = available ? '版本 ' + described.versionLabel : '版本 —';
-      const versionIDLine = document.createElement('span');
-      versionIDLine.title = described.versionID;
-      versionIDLine.appendChild(document.createTextNode('版本 ID '));
-      const versionCode = document.createElement('code');
-      versionCode.textContent = available ? shortID(described.versionID) : '—';
-      versionIDLine.appendChild(versionCode);
-      meta.append(versionLine, versionIDLine);
-      const manifest = (item && item.manifest_sha256) || '';
-      if (manifest) {
-        const manifestLine = document.createElement('span');
-        manifestLine.title = manifest;
-        manifestLine.appendChild(document.createTextNode('manifest '));
-        const manifestCode = document.createElement('code');
-        manifestCode.textContent = String(manifest).slice(0, 12);
-        manifestLine.appendChild(manifestCode);
-        meta.appendChild(manifestLine);
-      }
-      entry.appendChild(meta);
-
+      // Internal ids (version, manifest, application) are support data: they stay
+      // in the row's disclosure with the capability card, never on the main line.
       const facts = document.createElement('details');
       facts.className = 'catalog-row-facts';
       const summary = document.createElement('summary');
-      summary.textContent = '能力卡：包含 / 不包含 / 必填输入 / 预期输出 / 示例';
+      summary.textContent = '详情与能力卡：版本标识 / 包含 / 不包含 / 必填输入 / 预期输出 / 示例';
       facts.appendChild(summary);
+      const manifest = (item && item.manifest_sha256) || '';
+      for (const [label, value] of [
+        ['版本', available ? described.versionLabel : '暂无可用版本'],
+        ['版本 ID', available ? described.versionID : '—'],
+        ['manifest SHA-256', manifest || '—'],
+        ['应用 ID', described.applicationID || '—'],
+      ]) {
+        const line = document.createElement('p');
+        line.className = 'facts catalog-row-id';
+        const strong = document.createElement('strong');
+        strong.textContent = label + '：';
+        line.appendChild(strong);
+        const code = document.createElement('code');
+        code.textContent = String(value);
+        line.appendChild(code);
+        facts.appendChild(line);
+      }
+      const divider = document.createElement('hr');
+      divider.className = 'divider';
+      facts.appendChild(divider);
       for (const [label, values] of [
         ['包含', described.includes],
         ['不包含', described.excludes],
@@ -301,7 +285,7 @@
           facts.appendChild(line);
         }
       }
-      if (!facts.children.length || facts.children.length === 1) {
+      if (facts.children.length === 6) {
         const missing = document.createElement('p');
         missing.className = 'facts';
         missing.textContent = '这个版本的能力卡没有填写包含/不包含/输入/输出/示例。';

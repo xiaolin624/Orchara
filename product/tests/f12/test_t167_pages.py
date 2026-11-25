@@ -88,6 +88,11 @@ def test_the_apps_page_is_a_scannable_workspace() -> None:
     # Rows, loading skeleton, empty states, pager.
     assert re.search(r'<ul[^>]*id="apps-list"', html), "the rows must keep a list container"
     assert "skeleton" in html, "the loading skeleton is gone"
+    # A visual column reference keeps the three right-hand columns scannable.
+    head = re.search(r"data-apps-row-head[^>]*>(.*?)</div>", html, re.S)
+    assert head, "the list has no column header"
+    for label in ("名称", "状态", "版本", "操作"):
+        assert label in head.group(1), (label, head.group(1))
     assert 'id="apps-empty"' in html and "还没有可见的应用" in html
     assert "data-apps-filter-empty" in html, "there is no state for 'nothing matches the filter'"
     assert 'id="apps-next"' in html and "下一页" in html
@@ -124,6 +129,8 @@ def test_the_catalog_page_states_version_availability_and_scope() -> None:
 
     # An application without an active version is not silently rendered as usable.
     assert "暂无可用版本" in html, "the catalog does not name the unavailable state"
+    # Internal ids (version / manifest / application) belong in the row disclosure.
+    assert "详情与能力卡" in html, "the catalog rows have no on-demand details block"
     # The availability rule and the "submit with this version" path stay stated.
     assert "用这个版本提交" in html
     assert "active version 指针" in html
@@ -234,6 +241,19 @@ class El {
     if (name === 'class') return this.className || null;
     if (Object.prototype.hasOwnProperty.call(this.attributes, name)) return this.attributes[name];
     return null;
+  }
+  descendants() {
+    const out = [];
+    const walk = (node) => {
+      for (const child of node.children || []) {
+        if (child && child.children) {
+          out.push(child);
+          walk(child);
+        }
+      }
+    };
+    walk(this);
+    return out;
   }
 }
 
@@ -495,6 +515,26 @@ def test_search_filter_and_sort_act_on_the_loaded_rows_only(node_binary: str, tm
   assert.ok(links.some(function (href) { return /\/edit$/.test(href); }), JSON.stringify(links));
   assert.ok(links.some(function (href) { return /\/debug$/.test(href); }), JSON.stringify(links));
   assert.ok(links.some(function (href) { return /\/versions$/.test(href); }), JSON.stringify(links));
+
+  // Internal ids are disclosed on demand, never printed on the row's main line.
+  const details = publishedRow.descendants().filter(function (node) { return node.tagName === 'DETAILS'; })[0];
+  assert.ok(details, 'the row must disclose its internal ids behind a details element');
+  assert.ok(/详情/.test(details.children[0].textContent), details.children[0].textContent);
+  assert.strictEqual(details.children[0].textContent.indexOf(PUBLISHED.id), -1,
+    'the always-visible summary must not carry the raw id');
+  assert.ok(details.textContent.indexOf(PUBLISHED.id) !== -1,
+    'the full application id belongs in the disclosure');
+
+  // The version column says what it means even when there is no version at all.
+  const versionCell = publishedRow.children.filter(function (child) {
+    return String(child.className).split(/\s+/).indexOf('app-row-version') !== -1;
+  })[0];
+  assert.ok(versionCell, 'the row has no version cell');
+  assert.strictEqual(versionCell.textContent, '生效中');
+  const draftVersionCell = draftRow.children.filter(function (child) {
+    return String(child.className).split(/\s+/).indexOf('app-row-version') !== -1;
+  })[0];
+  assert.strictEqual(draftVersionCell.textContent, '未发布');
 
   // The stat row describes the loaded set, all of it.
   assert.strictEqual(page.q('[data-apps-stat="loaded"]').textContent, '2');
