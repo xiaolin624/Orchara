@@ -2,7 +2,7 @@
  * F04A/T040 canvas styles, rebuilt by T4 (GitHub #168) as the editor workbench.
  *
  * This file may only CONSUME the shared design tokens declared in
- * assets/design.css (var(--bg) 鈥?; it never re-declares them. Its one local
+ * assets/design.css (var(--bg) …); it never re-declares them. Its one local
  * token is the "control" node accent (--canvas-node-control) that the polish
  * spec names for condition/join/approval nodes and that design.css has no
  * equivalent for; it is defined once, below.
@@ -91,7 +91,7 @@
   cursor: text;
 }
 
-/* design.css loads after this file, and its `.page-content input鈥 rules are
+/* design.css loads after this file, and its `.page-content input…` rules are
    intentionally specific. The #canvas-root prefix keeps the workbench compact
    without touching the shared stylesheet. */
 #canvas-root .node-library .node-library-search input {
