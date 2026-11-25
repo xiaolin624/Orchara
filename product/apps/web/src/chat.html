@@ -46,6 +46,8 @@
     .page-chat .chat-rail__head h2 { margin: 0; font-size: var(--fs-14); }
     .page-chat .chat-rail__link { color: var(--muted); font-size: var(--fs-11); text-decoration: none; }
     .page-chat .chat-rail__link:hover { color: var(--accent-ink); text-decoration: underline; }
+    .page-chat .chat-rail__head-actions { display: flex; align-items: center; gap: 6px; }
+    .page-chat .chat-rail__close, .page-chat .chat-rail-scrim, .page-chat .chat-sessions-toggle { display: none; }
     .page-chat #conversation-create.btn { flex: 0 0 auto; width: 100%; margin: 0; }
     .page-chat #conversation-status { margin: 0; font-size: 10px; }
     .page-chat .conversation-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
@@ -227,6 +229,9 @@
     .page-chat .chip__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .page-chat .composer .chip__remove { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
     .page-chat .composer .chip__remove:hover { background: var(--surface-3); color: var(--danger); }
+    .page-chat #chat-attachments[data-attachments-open="false"] { display: none; }
+    .page-chat .composer__attach-toggle { margin: 0; }
+    .page-chat .composer__attach-status { margin: 0 0 6px; }
     .page-chat .composer__attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; padding: 0; border: 0; background: transparent; }
     .page-chat .composer__attachments legend { padding: 0; color: var(--muted); font-size: 10px; font-weight: 400; }
     .page-chat .composer__attachments input[type="file"] { flex: 1 1 170px; margin: 0; padding: 5px 8px; font-size: 10px; }
@@ -299,17 +304,83 @@
       .page-chat #chat-panel.chat-panel { overflow-y: auto; }
     }
     @media (max-width: 720px) {
-      .page-chat .page-content { padding: 10px 15px calc(52px + env(safe-area-inset-bottom, 0px)); }
-      .page-chat .chat-layout.chat-layout--workspace { display: block; overflow-y: auto; }
-      .page-chat .chat-workspace { display: block; overflow: visible; }
-      .page-chat #conversation-panel.chat-rail { position: static; max-height: 34vh; margin: 0 0 12px; overflow-y: auto; }
-      .page-chat #chat-panel.chat-panel { display: block; overflow: visible; }
-      .page-chat .chat-columns { display: block; overflow: visible; padding-right: 0; }
-      .page-chat .chat-context { display: block; }
-      .page-chat .chat-context > section { margin: 0 0 12px; }
-      .page-chat .chat-thread-head { flex-wrap: wrap; }
-      .page-chat .chat-conv-title { white-space: normal; }
-      .page-chat .composer { position: sticky; bottom: 0; margin-top: 10px; }
+      /* A phone shows the message stream plus a sticky composer; the session
+         list becomes a top drawer opened from the header. Nothing may sit under
+         the fixed bottom navigation: the page frame reserves its height. */
+      .page-chat .page-content { padding: 8px 12px calc(52px + env(safe-area-inset-bottom, 0px)); }
+      .page-chat .page-heading { margin-bottom: 6px; padding-bottom: 6px; }
+      .page-chat .page-meta { display: none; }
+      .page-chat .heading-actions .btn-ghost { display: none; }
+      .page-chat .chat-layout.chat-layout--workspace {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .page-chat .chat-workspace {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        justify-content: flex-start;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .page-chat .chat-sessions-toggle { display: inline-flex; }
+      .page-chat .chat-rail__close { display: inline-grid; }
+      .page-chat #conversation-panel.chat-rail {
+        position: fixed;
+        top: var(--topbar);
+        right: 0;
+        left: 0;
+        z-index: var(--z-drawer);
+        max-height: calc(100dvh - var(--topbar) - 52px - env(safe-area-inset-bottom, 0px));
+        margin: 0;
+        padding: 12px 14px 14px;
+        overflow-y: auto;
+        border-top: 0;
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        box-shadow: var(--shadow-pop);
+        transform: translateY(calc(-100% - var(--topbar)));
+        transition: transform var(--dur-2) var(--ease);
+      }
+      body.chat-sessions-open #conversation-panel.chat-rail { transform: translateY(0); }
+      body.chat-sessions-open .chat-rail-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: calc(var(--z-drawer) - 1);
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: var(--overlay);
+      }
+      .page-chat #chat-panel.chat-panel {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .page-chat .chat-thread-head { display: none; }
+      .page-chat .chat-columns {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+        padding-right: 0;
+      }
+      .page-chat .chat-thread { display: contents; }
+      .page-chat .thread-section.stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 0; }
+      .page-chat .chat-context { display: none; }
+      .page-chat .composer { position: static; flex: 0 0 auto; max-height: none; margin: 8px 0 0; }
+      .page-chat .composer__hint--desktop { display: none; }
+      .page-chat #chat-message.composer__input { min-height: 56px; }
+      .page-chat #interaction-panel.interaction-card { max-height: 38%; }
       .page-chat .run-card__facts { font-size: 10px; }
       .page-chat .chat-empty { padding: 16px; }
       .page-chat .chat-empty__head { grid-template-columns: 1fr; }
@@ -324,7 +395,7 @@
 <body class="page-chat" data-page="chat"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">对话工作区</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>对话工作区</h1></div><div class="heading-actions"><a class="btn btn-ghost btn-small" href="/catalog">浏览应用目录</a></div><p class="page-meta"><span>每个会话只有一个执行槽</span><span>固定版本提交仍需发布校验</span><span>不伪造运行进度</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>对话工作区</h1></div><div class="heading-actions"><button class="btn btn-secondary btn-small chat-sessions-toggle" data-sessions-toggle="true" type="button" data-icon="panel" aria-controls="conversation-panel" aria-expanded="false">会话</button><a class="btn btn-ghost btn-small" href="/catalog">浏览应用目录</a></div><p class="page-meta"><span>每个会话只有一个执行槽</span><span>固定版本提交仍需发布校验</span><span>不伪造运行进度</span></p></header>
 <div class="page-sections">
 <!-- C6.01 (#155): the shared run-state dependency failure banner. Hidden on
            the normal path; assets/runstate-guard.js shows it and pauses the
@@ -332,7 +403,7 @@
 <p class="status bad" id="runstate-status" hidden="" role="alert"></p>
 <div class="chat-layout chat-layout--workspace">
 <section class="panel chat-rail" id="conversation-panel" aria-label="我的会话">
-<div class="chat-rail__head"><h2>我的会话</h2><a class="chat-rail__link" href="/catalog">应用目录</a></div>
+<div class="chat-rail__head"><h2>我的会话</h2><span class="chat-rail__head-actions"><a class="chat-rail__link" href="/catalog">应用目录</a><button class="btn btn-icon btn-ghost chat-rail__close" data-sessions-close="true" type="button" aria-label="关闭会话列表" data-icon="close"></button></span></div>
 <button class="btn btn-primary btn-block" id="conversation-create" data-icon="plus" type="button">新建会话</button>
 <p class="status chat-rail__status" id="conversation-status" role="status" aria-live="polite"></p>
 <ul class="conversation-list" id="conversation-list" aria-label="我的会话" data-auth-content=""></ul>
@@ -341,6 +412,7 @@
           固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。
         </p></details>
 </section>
+<button class="chat-rail-scrim" data-sessions-close="true" tabindex="-1" aria-label="关闭会话列表" type="button"></button>
 <div class="chat-workspace">
 <section class="chat-empty" id="chat-empty" aria-label="开始会话">
 <div class="chat-empty__head">
@@ -421,15 +493,16 @@
 </section>
 <form class="composer" id="chat-message-form">
 <ul class="composer__chips" id="chat-attachment-lines" aria-label="已上传附件"></ul>
-<fieldset class="composer__attachments" id="chat-attachments">
+<span class="status composer__attach-status" id="chat-attachment-status" role="status" aria-live="polite"></span>
+<fieldset class="composer__attachments" id="chat-attachments" data-attachments-open="false">
 <legend>添加附件（最多 5 个）</legend>
 <input id="chat-attachment-input" type="file"/>
 <button class="btn btn-secondary btn-small" id="chat-attachment-upload" data-icon="upload" type="button">上传附件</button>
-<span class="status" id="chat-attachment-status" role="status" aria-live="polite"></span>
 </fieldset>
 <label class="composer__label" for="chat-message">需求</label>
 <textarea class="composer__input" id="chat-message" maxlength="32000" placeholder="例如：分析本月销售数据，按地区汇总金额并生成报告…" required="" rows="3"></textarea>
 <div class="composer__actions">
+<button class="btn btn-ghost btn-small composer__attach-toggle" data-attachments-toggle="true" type="button" data-icon="upload" aria-expanded="false" aria-controls="chat-attachments">添加附件</button>
 <details class="composer__version"><summary>固定版本</summary>
 <label for="chat-version-id">应用版本 id（可选）</label>
 <input id="chat-version-id" placeholder="application_version_id" type="text"/>
@@ -437,7 +510,8 @@
 </details>
 <button class="btn btn-primary composer__submit" id="chat-submit" data-runstate-paused="true" data-icon="arrow" type="submit">提交需求</button>
 </div>
-<p class="composer__hint mobile-scope" data-mobile-scope="no-full-canvas-editing">附件最多 5 个；提交后会占该会话的执行槽，再次提交会复用同一幂等键。手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用。</p>
+<p class="composer__hint composer__hint--desktop">附件最多 5 个；提交后会占该会话的执行槽，再次提交会复用同一幂等键。</p>
+<p class="composer__hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用。</p>
 </form>
 <p class="status" id="chat-submit-status" role="status" aria-live="polite"></p>
 </div>
