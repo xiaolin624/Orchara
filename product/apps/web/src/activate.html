@@ -10,11 +10,11 @@
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-auth="optional" data-page="activate"><div class="auth-layout"><aside class="auth-story"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">IDEAS INTO WORKFLOWS</p><h2>让想法成为<br/>可运行的工作流。</h2><p>连接模型、工具与知识，<br/>构建属于团队的 Agent 应用。</p></div><small>ORCHARA · 团队 Agent 工作空间</small><div class="auth-art" aria-hidden="true"></div>
+<body data-auth="optional" data-page="activate"><a class="skip-link" href="#main-content">跳转到主要内容</a><div class="auth-layout"><aside class="auth-story"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">IDEAS INTO WORKFLOWS</p><h2>让想法成为<br/>可运行的工作流。</h2><p>连接模型、工具与知识，<br/>构建属于团队的 Agent 应用。</p></div><small>ORCHARA · 团队 Agent 工作空间</small><div class="auth-art" aria-hidden="true"></div>
 </aside>
 <div class="auth-main"><div class="auth-mobile-brand"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="user">GET STARTED</p><h1>开启你的工作空间</h1><p class="page-description">使用管理员提供的邀请令牌，设置密码并激活账号。</p></div></header>
+<header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="user">GET STARTED</p><h1>开启你的工作空间</h1><p class="page-description">使用管理员提供的邀请令牌，设置密码并激活账号。</p></div><p class="page-meta"><span>邀请令牌一次性有效</span><span>密码至少 12 位</span></p></header>
 <div class="page-sections">
 <section class="card">
 <form id="activate-form" method="post">
@@ -34,7 +34,7 @@
 <p>激活成功，现在可以前往 <a href="/admin">管理台</a> 登录。</p>
 </div>
 </section>
-</div><nav aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate">激活账号</a><a href="/chat">返回工作空间</a></nav>
+</div><nav class="segmented" aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate" aria-current="page">激活账号</a><a href="/chat">返回工作空间</a></nav>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     把管理员转交的一次性令牌粘贴到下面，设置至少 12 位的新密码。
     令牌只从请求体提交，绝不放进 URL。
