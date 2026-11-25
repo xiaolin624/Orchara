@@ -1,6 +1,6 @@
 # Orchara 前端精细化（二期）规格
 
-日期：2026-11-26。状态：方向已选定，待实现。
+日期：2026-11-26。状态：**已实现并验收**（范围见 `product/reports/ui-polish/README.md`；集成 tip `2de56b1`）。
 上一轮：`docs/frontend-redesign.md` 与 [GitHub #163](https://github.com/xiaolin624/Orchara/issues/163)（已关闭，不重开）。
 基线：`736b8db`。基线截图：`product/reports/ui-redesign/screenshots/`、总览 `contact-sheet.png`。
 
