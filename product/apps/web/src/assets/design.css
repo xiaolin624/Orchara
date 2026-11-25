@@ -1306,3 +1306,97 @@ kbd {
 /* 8. page extension zone                                                    */
 /* Later tickets append page-specific rules here; do not reorder the layers. */
 /* ------------------------------------------------------------------------- */
+
+/* ------------------------------------------------------------------------- */
+/* T8 (GitHub #172): identity entry pages, platform status and admin console  */
+/* Appended after the layer order so later tickets can add their own block.   */
+/* ------------------------------------------------------------------------- */
+
+/* The brand story keeps direction C's warm surface and adds the short
+   terracotta rule; the three capability notes state real product facts. */
+.auth-story .auth-rule { width: 44px; height: 3px; margin: 18px 0 16px; border: 0; border-radius: 2px; background: var(--accent); }
+.auth-story-copy .auth-lede { max-width: 320px; margin: 0; color: var(--text-2); font-size: var(--fs-13); line-height: 1.75; }
+.auth-points { display: grid; gap: 12px; max-width: 340px; margin: 22px 0 0; padding: 0; list-style: none; }
+.auth-points > li { display: grid; grid-template-columns: 17px minmax(0, 1fr); gap: 9px; align-items: start; margin: 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; }
+.auth-points .ui-icon { width: 15px; height: 15px; margin-top: 2px; color: var(--accent); }
+.auth-points b { display: block; color: var(--text); font-weight: 600; }
+.auth-story-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: var(--fs-11); }
+.auth-mobile-brand { align-items: center; gap: 10px; }
+.auth-mobile-tagline { color: var(--muted); font-size: var(--fs-11); }
+
+/* The form rail: 340px, as specified, inside the padded auth frame. */
+.auth-main .page-content { max-width: 340px; }
+.auth-main .auth-card { padding: 0; margin: 0 0 14px; }
+.auth-main .field { margin: 0 0 14px; }
+.auth-main .field-label { display: block; margin: 0 0 5px; }
+.auth-main .field input { margin: 0; }
+.auth-main .auth-submit { margin-top: 4px; }
+.auth-main .hint { margin: 12px 0 0; font-size: var(--fs-11); }
+.auth-main .page-meta { margin-bottom: 2px; }
+
+/* The five login failures and the four activation failures get five/four
+   different tones; the code text and the left bar carry the meaning first. */
+.page-content .auth-status { margin: 0 0 16px; }
+.page-content .status.auth-status[data-code] {
+  padding: 9px 12px;
+  border: 1px solid var(--tone-line, var(--border));
+  border-left: 3px solid var(--tone, var(--border-strong));
+  border-radius: var(--radius-sm);
+  background: var(--tone-soft, var(--surface-2));
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: 1.65;
+}
+.page-content .status.auth-status[data-code]::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--tone, var(--muted));
+  vertical-align: middle;
+}
+[data-code="invalid_credentials"] { --tone: var(--danger); --tone-soft: var(--danger-soft); --tone-line: var(--danger-line); }
+[data-code="rate_limited"] { --tone: var(--warning); --tone-soft: var(--warning-soft); --tone-line: var(--warning-line); }
+[data-code="principal_disabled"] { --tone: var(--accent-ink); --tone-soft: var(--accent-soft); --tone-line: var(--accent-line); }
+[data-code="session_revoked"] { --tone: var(--info); --tone-soft: var(--info-soft); --tone-line: var(--info-line); }
+[data-code="session_expired"] { --tone: var(--muted); --tone-soft: var(--surface-2); --tone-line: var(--border-strong); }
+[data-code="activation_invalid"] { --tone: var(--danger); --tone-soft: var(--danger-soft); --tone-line: var(--danger-line); }
+[data-code="activation_expired"] { --tone: var(--warning); --tone-soft: var(--warning-soft); --tone-line: var(--warning-line); }
+[data-code="activation_consumed"] { --tone: var(--muted); --tone-soft: var(--surface-2); --tone-line: var(--border-strong); }
+[data-code="validation_failed"] { --tone: var(--accent-ink); --tone-soft: var(--accent-soft); --tone-line: var(--accent-line); }
+
+/* The reference list is visible, not a tooltip: every code the page can show
+   is readable before a failure happens. */
+.auth-error-index { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-2); }
+.auth-error-index h2 { margin: 0 0 3px; font-size: var(--fs-12); }
+.auth-error-index > p { margin: 0 0 8px; color: var(--muted); font-size: var(--fs-11); line-height: 1.55; }
+.page-content .auth-code-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.page-content .auth-code-list > li { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: baseline; gap: 9px; margin: 0; padding: 5px 8px 5px 7px; border: 1px solid var(--tone-line); border-left: 3px solid var(--tone); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-2); font-size: var(--fs-11); line-height: 1.5; }
+.page-content .auth-code-list code { padding: 0; background: none; color: var(--tone); font-size: 10px; font-weight: 650; }
+.auth-code-note { color: var(--muted); font-size: var(--fs-11); }
+
+/* Password rules stay on screen while the field is being filled. */
+.page-content .password-rules { margin: 8px 0 12px; padding: 8px 10px; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-11); line-height: 1.6; }
+.page-content .password-rules > li { position: relative; margin: 2px 0; padding-left: 14px; }
+.page-content .password-rules > li::before { content: ""; position: absolute; left: 1px; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+/* A one-time credential's success state replaces the form; it is a real
+   panel, not a toast that disappears with the token. */
+.auth-success { margin: 4px 0 0; padding: 16px; border: 1px solid var(--success-line); border-radius: var(--radius); background: var(--success-soft); }
+.auth-success h2 { margin: 0 0 6px; color: var(--success); font-size: var(--fs-14); }
+.auth-success p { margin: 0 0 12px; color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; }
+.auth-success .btn { min-height: 32px; }
+
+/* The failure reference lives inside the page's existing usage details; the
+   only always-visible error UI is the live #login-status / #activate-status
+   strip above the form. */
+.usage-notes .auth-error-index { margin: 12px 0 0; }
+
+@media (max-width: 720px) {
+  .auth-mobile-brand .brand { height: auto; }
+  .auth-mobile-tagline { display: block; margin-top: 2px; }
+  .auth-main .auth-card { margin-bottom: 12px; }
+  .auth-story-foot { display: none; }
+}
