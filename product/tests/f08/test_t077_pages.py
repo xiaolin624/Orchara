@@ -39,7 +39,7 @@ def test_the_catalog_page_is_served_with_the_real_surfaces(f08_stack) -> None:
         'id="catalog-results"',
         'id="catalog-empty"',
         'id="catalog-next"',
-        "用途目录",
+        "应用目录",
         "回退检索（索引落后）",
         "/assets/catalog.js",
     ):
@@ -71,7 +71,9 @@ def test_the_catalog_page_is_served_with_the_real_surfaces(f08_stack) -> None:
     # contract-shaped list untouched.
     apps = f08_stack.server.http.get("/apps")
     assert apps.status == 200, apps.text
-    assert 'href="/catalog"' in apps.text
+    assert 'src="/assets/nav.js"' in apps.text
+    nav = f08_stack.server.http.get("/assets/nav.js")
+    assert nav.status == 200 and "href: '/catalog'" in nav.text
 
 
 def test_catalog_js_helpers_execute_under_node(node_binary: str, tmp_path) -> None:

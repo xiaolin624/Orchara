@@ -65,7 +65,9 @@ def test_the_runs_page_is_served_with_timeline_markers(t032_stack) -> None:
 
     assert "localStorage" not in body
     assert "sessionStorage" not in body
-    assert "location.search" not in body
+    # Run deep links are allowed; credentials remain forbidden in query strings.
+    assert re.findall(r"URLSearchParams\([^)]*\)\.get\(\s*'([^']+)'", body) == ["run"]
+    assert "?token=" not in body
 
 
 def test_runs_js_is_the_served_timeline_client(t032_stack) -> None:

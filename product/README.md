@@ -104,7 +104,8 @@ go run ./cmd/api
 # F01 身份：迁移 → 建首个管理员（密码只从隐藏 stdin 读）→ 启动后访问页面
 go run ./cmd/admin migrate
 go run ./cmd/admin bootstrap --login admin --display-name "Platform Admin"
-# 页面：/login、/admin、/apps、/activate；F05/F06 另有 /attachments、/runs、/models
+# 默认入口：/ → /chat；登录后进入对话工作区。
+# 页面：/login、/admin、/apps、/activate；运行环境状态位于 /status。
 ```
 
 可选 profile：`dev-stub` / `linux-sandbox` / `real-model` / `capacity-stub`。
@@ -114,6 +115,14 @@ go run ./cmd/admin bootstrap --login admin --display-name "Platform Admin"
 （无模型凭据、无被接受的 Linux 隔离宿主）。
 
 一键基础检查：`python tools/ci_checks.py`（无 Go/数据库时加 `--quick`）。
+
+全站界面使用 `apps/web/src/assets/design.css` 与 `ui.js` 的共享设计系统；导航仍由
+`nav.js` 按当前身份和角色生成。画布样式及交互在 `apps/web/canvas/src/` 编辑，运行
+`npm.cmd run build` 后提交生成的 `assets/canvas.js` 与 `assets/canvas.css`。
+
+可复现的浏览器检查：`python tools/verify_frontend.py`（需本地开发工具链、Python Playwright
+与 Chrome），使用独立临时命名数据库和内存中的随机账号密码，将 22 页桌面截图、手机截图及
+真实登录/创建/草稿冲突/退出结果写入 `reports/ui-redesign/`；运行结束停止测试服务。
 
 健康检查同时提供契约路径 `/health/live`、`/health/ready`（`contracts/openapi.json`
 的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。页面每 3 秒读

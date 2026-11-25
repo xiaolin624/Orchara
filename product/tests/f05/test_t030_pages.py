@@ -71,7 +71,7 @@ def test_the_attachment_page_offers_the_preset_tool(t030_stack) -> None:
         'id="tool-downloads"',
         "/assets/attachments.js",
         "Decimal",
-        "sales_stats",
+        "预置销售统计工具",
         "summary.csv",
         "summary.json",
     ):

@@ -82,7 +82,9 @@ def test_models_js_is_served_with_the_client_helpers(f06_stack) -> None:
 def test_admin_page_links_to_the_model_page(f06_stack) -> None:
     response = f06_stack.server.http.get("/admin")
     assert response.status == 200, response.text
-    assert 'href="/models"' in response.text
+    assert 'src="/assets/nav.js"' in response.text
+    nav = f06_stack.server.http.get("/assets/nav.js")
+    assert nav.status == 200 and "href: '/models'" in nav.text
 
 
 def test_models_js_behaviour_executes_under_node(node_binary: str, tmp_path) -> None:

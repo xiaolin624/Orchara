@@ -1,87 +1,59 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 应用目录（F01 授权）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 46rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
-    li { margin: .45rem 0; }
-    code { font-size: .82rem; opacity: .85; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
-    [hidden] { display: none !important; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>应用与创作 · Orchara</title>
+<style>
+</style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/login">登录</a>
-    <a href="/admin">管理台</a>
-    <a href="/catalog">用途目录检索</a>
-    <a href="/attachments">附件</a>
-    <a href="/tools">工具</a>
-    <a href="/runs">运行</a>
-    <a href="/activate">激活账号</a>
-  </nav>
-
-  <h1>应用目录（F01 授权 / F02A 创作）</h1>
-  <p class="sub">
+<body data-page="apps"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>应用与创作</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="workflow">BUILD WITH ORCHARA</p><h1>应用与创作</h1><p class="page-description">将想法编排成工作流，创建、调试并维护你的 Agent 应用。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
     <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
     没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
     创建应用会同时建立 revision=1 的空草稿，随后进入编辑器填写用途卡和草稿。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     创建、保存、校验与调试是<strong>创作者（creator）</strong>操作：只有持有 creator 角色的账号
     才能写入，管理员也需要同时具备该角色（SECURITY §1）。缺少角色时服务器返回
     <code>403 creator_role_required</code>，本页会原样显示该错误码。
-  </p>
-
-  <section class="card" id="create-app-card" data-requires-role="creator" hidden>
-    <h2>新建应用</h2>
-    <form id="create-app-form" method="post">
-      <label for="create-app-name">应用名称</label>
-      <input id="create-app-name" name="name" type="text" maxlength="200" autocomplete="off" />
-      <button id="create-app-submit" type="submit">创建并进入编辑器</button>
-    </form>
-    <p id="create-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section class="card">
-    <h2>可见应用</h2>
-    <p id="apps-status" class="status" role="status" aria-live="polite">正在加载应用…</p>
-    <ul id="apps-list" data-auth-content></ul>
-    <p id="apps-empty" class="hint" hidden>当前没有可见的应用：你既不是任何应用的所有者，也没有收到有效的 read 授权。</p>
-    <button id="apps-next" type="button" hidden>下一页</button>
-  </section>
-
-  <section class="card" id="template-card" data-requires-role="creator" hidden>
-    <h2>从销售模板创建（F04A/T049）</h2>
-    <p class="hint">
-      复制服务端受控销售模板到你的账号：CSV/XLSX → 已验证统计（summary.json / summary.csv）→
-      只引用这些数字的报告正文。创建结果是你自己的私有草稿，随后直接进入调试流程；
-      它<strong>不是</strong>已发布版本，发布与共享版本属于 F02B。
-    </p>
-    <button id="create-from-template" type="button">从销售模板创建</button>
-    <p id="template-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/versions.js"></script>
-  <script>
+  </p></details><div class="page-sections">
+<div class="create-layout"><section class="card" id="create-app-card" data-requires-role="creator" hidden="">
+<h2>新建应用</h2>
+<form id="create-app-form" method="post">
+<label for="create-app-name">应用名称</label>
+<input id="create-app-name" name="name" autocomplete="off" maxlength="200" placeholder="例如：销售数据分析助手" type="text"/>
+<button id="create-app-submit" data-icon="plus" type="submit">创建并进入编辑器</button>
+</form>
+<p class="status" id="create-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="template-card" data-requires-role="creator" hidden="">
+<h2>从销售模板创建</h2>
+<p class="hint">从销售数据分析模板开始，配置自己的处理流程与报告要求。模板会创建仅供你编辑的草稿；组织共享需要经过发布审核。</p>
+<button id="create-from-template" data-icon="spark" type="button">从销售模板创建</button>
+<p class="status" id="template-status" aria-live="polite" role="status"></p>
+</section>
+</div>
+<section class="card">
+<h2>我的应用与已授权应用</h2>
+<p class="status" id="apps-status" aria-live="polite" role="status">正在加载应用…</p>
+<ul class="app-cards" id="apps-list" data-auth-content=""></ul>
+<p class="empty-state" id="apps-empty" hidden="">还没有可见的应用。你可以创建应用，或请应用所有者授予访问权限。</p>
+<button id="apps-next" hidden="" type="button">下一页</button>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/versions.js"></script>
+<script>
     const listElement = document.getElementById('apps-list');
     const statusElement = document.getElementById('apps-status');
     const emptyElement = document.getElementById('apps-empty');
@@ -128,7 +100,12 @@
       // field has no separate availability/state member).
       version.dataset.activeVersionId = application.active_version_id || '';
       version.textContent = describeCatalogAvailability(application);
-      item.append(name, ' ', id, ' ', version);
+      const metadata = document.createElement('details');
+      metadata.className = 'record-meta';
+      const summary = document.createElement('summary');
+      summary.textContent = '应用详情';
+      metadata.append(summary, id);
+      item.append(name, ' ', version, metadata);
       if (canWrite()) {
         const edit = document.createElement('a');
         edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';

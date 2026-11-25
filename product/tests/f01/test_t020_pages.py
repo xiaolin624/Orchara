@@ -100,6 +100,6 @@ def test_the_existing_admin_sections_survive_the_t020_additions(pages_server) ->
         'id="revoke-form"',
         'id="roles-panel"',
         'id="roles-form"',
-        "Orchara 管理台（F01 身份）",
+        "管理台 · Orchara",
     ):
         assert marker in body, f"admin.html lost {marker!r}"

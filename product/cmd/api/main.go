@@ -223,7 +223,7 @@ func run(logger *log.Logger) error {
 	// report 405; `GET /{$}` lets net/http own 404/405 and ContractErrors
 	// normalise those two answers into the contract envelope.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, indexPath)
+		http.Redirect(w, r, "/chat", http.StatusSeeOther)
 	})
 
 	server := &http.Server{

@@ -64,31 +64,35 @@
   function navItemsFor(identity) {
     if (!identity) {
       return [
-        { href: '/', label: '状态' },
+        { href: '/status', label: '状态' },
         { href: '/login', label: '登录' },
         { href: '/activate', label: '激活账号' },
       ];
     }
 
-    var items = [{ href: '/', label: '状态' }];
+    var items = [];
     if (isHuman(identity)) {
+      items.push({ href: '/chat', label: '会话' });
+      items.push({ href: '/catalog', label: '用途目录检索' });
+      items.push({ href: '/runs', label: '运行' });
+      items.push({ href: '/approvals', label: '审批' });
       items.push({
         href: '/apps',
         label: hasRole(identity, ROLE_CREATOR) ? '应用与创作' : '应用（只读）',
       });
-      items.push({ href: '/catalog', label: '用途目录检索' });
-      items.push({ href: '/runs', label: '运行' });
-      items.push({ href: '/chat', label: '会话' });
-      items.push({ href: '/approvals', label: '审批' });
-      items.push({ href: '/memories', label: '记忆' });
       items.push({ href: '/knowledge', label: '知识库' });
-      items.push({ href: '/personal-data', label: '个人数据' });
-      items.push({ href: '/attachments', label: '附件' });
       items.push({ href: '/tools', label: '工具' });
       items.push({ href: '/models', label: '模型' });
+      items.push({ href: '/memories', label: '记忆' });
+      items.push({ href: '/personal-data', label: '个人数据' });
+      items.push({ href: '/attachments', label: '附件' });
     }
     if (hasRole(identity, ROLE_ADMIN)) {
       items.push({ href: '/admin', label: '管理台' });
+      items.push({ href: '/reviews', label: '发布审核' });
+      items.push({ href: '/status', label: '状态' });
+    } else if (!isHuman(identity)) {
+      items.push({ href: '/status', label: '状态' });
     }
     items.push({ href: '/login', label: '退出', logout: true });
     return items;
@@ -118,6 +122,9 @@
    */
   function onNavigationClick(event) {
     var target = event && event.target;
+    if (target && typeof target.closest === 'function') {
+      target = target.closest('a[data-orchara-logout]');
+    }
     if (!target || typeof target.getAttribute !== 'function') {
       return;
     }
@@ -148,6 +155,9 @@
     var navs = document.querySelectorAll('nav');
     for (var navIndex = 0; navIndex < navs.length; navIndex += 1) {
       var nav = navs[navIndex];
+      if (nav.getAttribute && nav.getAttribute('data-static-navigation') === 'true') {
+        continue;
+      }
       nav.replaceChildren();
       for (var itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
         var item = items[itemIndex];
@@ -193,6 +203,9 @@
   function render(identity) {
     renderNavigation(identity);
     applyRoleVisibility(identity);
+    if (global.OrcharaUI) {
+      global.OrcharaUI.decorateNavigation(identity);
+    }
   }
 
   /** Re-read /auth/me and re-render; used after a 403 role refusal. */

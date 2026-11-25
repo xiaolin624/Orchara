@@ -777,7 +777,14 @@ function initChat() {
         const item = document.createElement('li');
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = conversation.id.slice(0, 8) + ' · ' + conversation.created_at;
+        const created = new Date(conversation.created_at);
+        const time = Number.isNaN(created.getTime()) ? '日期未知' : created.toLocaleString('zh-CN', {
+          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+        button.textContent = '会话 · ' + time;
+        button.title = conversation.id;
+        button.dataset.conversationId = conversation.id;
+        button.setAttribute('aria-pressed', String(conversation.id === currentConversationID));
         button.addEventListener('click', () => selectConversation(conversation.id));
         item.appendChild(button);
         list.appendChild(item);
@@ -793,6 +800,9 @@ function initChat() {
   async function selectConversation(conversationID) {
     stopPolling();
     currentConversationID = conversationID;
+    for (const button of document.querySelectorAll('#conversation-list button')) {
+      button.setAttribute('aria-pressed', String(button.dataset.conversationId === conversationID));
+    }
     currentRequestID = null;
     currentInteraction = null;
     currentInteractionAttempt = null;

@@ -39,13 +39,11 @@ def test_apps_page_offers_the_sales_template_action(f06_stack) -> None:
         'id="create-from-template"',
         "从销售模板创建",
         "salesTemplateInstantiateRequest",
-        "F04A/T049",
-        "F02B",
         "/assets/app.js",
     ):
         assert marker in body, f"apps.html is missing {marker!r}"
     # The action copies a private draft; it must not claim to publish a version.
-    assert "共享版本属于 F02B" in body
+    assert "模板会创建仅供你编辑的草稿" in body and "组织共享需要经过发布审核" in body
 
     served = f06_stack.server.http.get("/assets/app.js")
     assert served.status == 200, served.text

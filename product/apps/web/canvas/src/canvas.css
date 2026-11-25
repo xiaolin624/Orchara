@@ -460,3 +460,109 @@ button.link.danger {
   background: color-mix(in srgb, Canvas 90%, #64748b 10%);
   white-space: pre-wrap;
 }
+
+/* Shared product design: library / stage / properties. The graph and all
+   server-backed state continue to be owned by the existing canvas modules. */
+.orchara-canvas {
+  --canvas-brand: var(--primary, #5955d9);
+  color: #343b50;
+  background: white;
+  border: 0;
+  border-radius: 0;
+  margin-bottom: 0;
+  overflow-x: auto;
+}
+.canvas-toolbar {
+  min-height: 60px;
+  padding: 12px 20px;
+  background: #fff;
+  border-color: #e6e8f0;
+  min-width: 860px;
+}
+.canvas-toolbar-heading { display: flex; align-items: center; gap: 18px; }
+.canvas-toolbar-heading strong { font-size: 12px; font-weight: 600; }
+.canvas-toolbar-heading > span { font-size: 11px; color: #8990a1; }
+.canvas-body {
+  display: grid;
+  grid-template-columns: 180px minmax(340px, 1fr) 324px;
+  min-width: 860px;
+  min-height: 580px;
+}
+.node-library { background: #fff; padding: 21px 12px; border-right: 1px solid #e6e8f0; }
+.node-library h2 { font-size: 13px; font-weight: 600; padding: 0 7px; margin: 0 0 3px; }
+.node-library > .hint { color: #9398a8; font-size: 10px; padding: 0 7px; margin: 0 0 22px; }
+.node-library .palette { display: flex; flex-direction: column; gap: 7px; align-items: stretch; }
+.node-library .palette-button {
+  display: flex; gap: 10px; align-items: center; justify-content: flex-start;
+  min-height: 44px; width: 100%; padding: 7px 9px; margin: 0;
+  border: 1px solid transparent; background: #fff; color: #596174;
+  border-radius: 8px; font-size: 11px; cursor: pointer;
+}
+.node-library .palette-button:hover:not(:disabled) { background: #f6f4ff; border-color: #e4dff9; }
+.node-library .palette-button:disabled { opacity: .4; cursor: not-allowed; }
+.node-library .palette-button > span:not(.node-icon) { white-space: nowrap; }
+.add-indicator { margin-left: auto; color: #a9a4c3; font-size: 17px; font-weight: 300; }
+.node-icon { --node-color: #6958c2; display: inline-grid; place-items: center; width: 28px; height: 28px; color: var(--node-color); background: #f0edfb; border-radius: 7px; flex-shrink: 0; }
+.node-icon svg { width: 17px; height: 17px; }
+.node-type-start .node-icon, .orchara-node-start .node-icon { --node-color: #2a8a6a; background: #e9f6ee; }
+.node-type-python .node-icon, .orchara-node-python .node-icon { --node-color: #4581c2; background: #eaf1ff; }
+.node-type-agent .node-icon, .orchara-node-agent .node-icon { --node-color: #8a58c7; background: #f1eafa; }
+.node-type-model .node-icon, .orchara-node-model .node-icon { --node-color: #5f62ca; background: #ebecff; }
+.node-type-condition .node-icon, .orchara-node-condition .node-icon { --node-color: #b4822d; background: #fff4df; }
+.node-type-join .node-icon, .orchara-node-join .node-icon { --node-color: #2d8b8c; background: #e9f7f5; }
+.node-type-approval .node-icon, .orchara-node-approval .node-icon { --node-color: #ba6a7f; background: #fceef2; }
+.node-type-end .node-icon, .orchara-node-end .node-icon { --node-color: #788095; background: #eef0f5; }
+.canvas-stage { min-height: 580px; background: #fafbfe; }
+.canvas-stage .vue-flow__background { opacity: .7; }
+.vue-flow__node.orchara-node {
+  min-width: 170px; border: 1px solid #dfe1ec; border-radius: 10px;
+  background: #fff; box-shadow: 0 3px 8px #34394d0a; text-align: left;
+}
+.vue-flow__node.orchara-node.selected { border-color: #8b80df; box-shadow: 0 0 0 3px #e9e4ff; }
+.orchara-flow-node {
+  display: grid; grid-template-columns: 29px 1fr; grid-template-rows: auto auto;
+  column-gap: 10px; padding: 12px 14px; min-width: 170px; border: none; background: white;
+}
+.orchara-flow-node > .node-icon { grid-row: 1 / 3; align-self: center; }
+.orchara-flow-label { font-size: 14px; line-height: 1.7; font-weight: 600; }
+.orchara-flow-type { font-size: 11px; opacity: 1; color: #747b8e; }
+.orchara-flow-sources { grid-column: 1 / -1; font-size: 9px; color: #8b91a3; }
+.orchara-flow-node.orchara-node-condition, .orchara-flow-node.orchara-node-join { border: none; }
+.orchara-flow-node.orchara-node-approval { background-image: none; }
+.orchara-handle { width: 9px; height: 9px; border: 2px solid white; background: #a29bbf; }
+.orchara-edge { stroke: #aea7c5; stroke-width: 1.5; }
+.orchara-edge-port { stroke: #bc9c64; }
+.orchara-port-label { color: #8c819f; font-size: 9px; right: 9px; }
+.config-panel {
+  background: white; padding: 22px 19px; border-left: 1px solid #e6e8f0;
+  border-top: 0; max-height: 670px; gap: 7px;
+}
+.config-panel h2 { font-size: 13px; }
+.config-panel h3 { font-size: 12px; margin: 18px 0 8px; }
+.config-panel .panel-head { padding-bottom: 14px; border-bottom: 1px solid #ececf3; align-items: start; }
+.config-panel .hint { font-size: 11px; color: #8a8fa0; line-height: 1.9; }
+.config-panel .field-label { font-size: 11px; color: #6c7389; opacity: 1; margin: 12px 0 5px; }
+.config-panel input[type='text'], .config-panel input[type='number'], .config-panel textarea, .config-panel select {
+  border: 1px solid #dfe2ed; background: #fff; color: #495167;
+  border-radius: 7px; padding: 8px 10px; font-size: 11px; min-height: 34px;
+}
+.config-panel textarea { background: #fafbfe; font-size: 11px; }
+.config-panel button { font-size: 10px; }
+.config-panel .schema-row { grid-template-columns: minmax(0, 1fr) 62px auto auto; gap: 5px; }
+.config-panel .schema-row.add { grid-template-columns: minmax(0, 1fr) auto; }
+.config-panel button { white-space: nowrap; }
+.config-panel .schema-row input, .config-panel .schema-row select { padding: 5px; font-size: 10px; }
+.config-panel label.inline { font-size: 9px; gap: 3px; }
+.config-panel .callapp-row-fields { grid-template-columns: 80px minmax(0, 1fr); }
+.config-panel .case-row { overflow-x: auto; }
+.vue-flow__controls { overflow: hidden; border: 1px solid #e4e2ed; border-radius: 9px; box-shadow: 0 2px 6px #3027420a; }
+.vue-flow__controls button { background: white; color: #7a728e; }
+.toolbar-actions button { font-size: 11px; min-height: 34px; border-radius: 7px; padding: 7px 12px; }
+.toolbar-actions button.primary { background: var(--canvas-brand); border-color: var(--canvas-brand); }
+@media (min-width: 1700px) {
+  .canvas-body { grid-template-columns: 180px minmax(420px, 1fr) 360px; }
+  .canvas-stage { min-height: 640px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vue-flow * { transition: none !important; animation: none !important; }
+}

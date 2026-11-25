@@ -80,14 +80,15 @@ def test_the_editor_page_is_served_per_application(f02a_stack) -> None:
         'id="conflict-status"',
         "重载服务器版本",
         "保留本地副本",
-        "If-Match",
-        "412",
         "/assets/app.js",
         "/assets/editor.js",
         "/apps",
-        "/api/v1/applications/{id}/draft",
     ):
         assert marker in body, f"editor.html is missing {marker!r}"
+
+    # Protocol details belong to the client, not to business-facing button text.
+    client = f02a_stack.server.http.get("/assets/editor.js")
+    assert client.status == 200 and "If-Match" in client.text and "412" in client.text
 
     # No credential or token in a URL and no browser storage.
     assert "location.search" not in body

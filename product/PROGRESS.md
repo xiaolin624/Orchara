@@ -1,5 +1,15 @@
 # 产品实现进度（权威）
 
+## UI-163 全产品界面改版（2026-11-09）
+
+- task_id / status：GitHub [#163](https://github.com/xiaolin624/Orchara/issues/163) / `passed`（仅限本轮 UI 范围；前端交付分支待审）。
+- 范围：22 个页面及 Vue Flow 画布；统一浅色设计、分组侧边导航、图标、表单、卡片、表格与交互状态；对话默认入口、三栏画布、顶部保存和草稿冲突提示、技术信息按需展开。
+- code_commit / files：验收基线 `97d6e30`；交付分支 `feat/ui-redesign-163`。`apps/web/src/`、`apps/web/canvas/src/`、`internal/api/server.go`、`cmd/api/main.go`；复现工具 `tools/verify_frontend.py`。
+- 实测：Chrome headless + 真实 PG / HTTP / `dev-stub`；22 页桌面、9 页手机、4 条横屏布局通过；真实登录、新建应用/节点/会话、并发草稿保存冲突与退出通过；208 个不同页面回归用例的最新结果通过（批量及修正复验汇总）。
+- 命令与原始证据：[reports/ui-redesign/README.md](reports/ui-redesign/README.md)、`browser-report.json`、3 份分轮 JUnit 及 `combined-regression.xml`、34 张截图。`npm.cmd run build`、`go test ./internal/api ./cmd/api`、脚本解析、`sync_spec --check`、`git diff --check` 通过。
+- 设计决定：仓库根 `docs/frontend-redesign.md`；共识文档已同步，业务契约与既有 Q1–Q46 不变。没有把 UI 通过升级成真实模型/正式部署/完整 v1 验收。
+- 环境恢复：本轮 API、后台进程、Chrome 停止；开发 PG 恢复到原停止状态。其余业务及实验限制沿用下文。
+
 本文件是平台实现的进度权威。规格仓库里的 `docs/spec/PROGRESS.md` 只保留接手时的初始快照。
 
 状态取值：`not_started` / `in_progress` / `blocked` / `passed` / `failed` / `not_run`。

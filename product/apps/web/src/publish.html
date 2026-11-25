@@ -1,118 +1,94 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 发布提交（用途、风险与测试报告）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 66rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    h3 { font-size: .92rem; margin: .9rem 0 .3rem; }
-    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .86rem; margin: .7rem 0 .25rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>发布应用 · Orchara</title>
+<style>
     input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    button { margin-top: .55rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
     dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
     dl.facts dt { opacity: .7; }
     dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .6rem; }
-    th, td { text-align: left; vertical-align: top; padding: .35rem .5rem; border-bottom: 1px solid rgba(128,128,128,.22); }
-    th { font-weight: 600; opacity: .8; }
     ul.plain { margin: .2rem 0 .2rem 1.1rem; padding: 0; font-size: .86rem; }
     .tag { display: inline-block; border: 1px solid rgba(128,128,128,.4); border-radius: 999px; padding: 0 .5rem; margin: 0 .25rem .25rem 0; font-size: .78rem; }
     .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/reviews">发布审核</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>提交发布审核</h1>
-  <p class="sub">
+<body data-page="publish"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>发布应用</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="workflow">READY TO SHARE</p><h1>发布应用</h1><p class="page-description">确认应用用途、权限、固定依赖与测试报告，提交发布审核。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     提交前先查看这份内容的用途卡、模型数据去向、工具读写/联网需求、固定子版本和可信测试报告；确认后提交，
     管理员只会审核<strong>与当前 hash 完全一致</strong>的冻结内容。提交后再改草稿不会偷换审核内容，必须重新提交。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     本页调用正式契约：<code>POST /api/v1/applications/{id}/submit</code>（<code>Idempotency-Key</code> 必填）。
     摘要来自非契约的服务端预览 <code>POST .../publication-preview</code>，它返回与提交快照相同的共享定义投影，
     不创建审核记录。审核内容只包含共享定义与封存报告证据，不包含任何使用者的会话、文件或正文。
-  </p>
-
-  <p class="hint">
+  </p><p class="hint">
     发布预览与提交都需要 <code>creator</code> 角色；没有该角色时服务端返回
     <code>403 creator_role_required</code>，下面的预览/提交区域不会显示。
-  </p>
-
-  <section class="card" data-requires-role="creator" hidden>
-    <h2>1. 发布摘要（用途 / 风险 / 固定依赖）</h2>
-    <button id="publish-preview" type="button">加载当前草稿的发布摘要</button>
-    <p id="publish-preview-status" class="status" role="status" aria-live="polite"></p>
-    <div id="publish-preview-panel" hidden aria-live="polite">
-      <h3>内容身份</h3>
-      <dl class="facts">
-        <dt>manifest SHA-256</dt><dd id="publish-manifest-hash"></dd>
-        <dt>执行 revision</dt><dd id="publish-execution-revision"></dd>
-        <dt>草稿 revision</dt><dd id="publish-draft-revision"></dd>
-      </dl>
-      <h3>用途卡</h3>
-      <dl class="facts">
-        <dt>用途</dt><dd id="publish-purpose"></dd>
-        <dt>适用</dt><dd id="publish-includes"></dd>
-        <dt>不适用</dt><dd id="publish-excludes"></dd>
-        <dt>必要输入</dt><dd id="publish-required-inputs"></dd>
-        <dt>预期输出</dt><dd id="publish-expected-outputs"></dd>
-        <dt>示例需求</dt><dd id="publish-examples"></dd>
-      </dl>
-      <h3>模型数据去向</h3>
-      <ul id="publish-model-destinations" class="plain"></ul>
-      <h3>工具读写 / 联网</h3>
-      <table>
-        <thead><tr><th>工具版本</th><th>风险</th><th>读取</th><th>写入</th><th>联网</th><th>镜像</th></tr></thead>
-        <tbody id="publish-tools"></tbody>
-      </table>
-      <h3>固定子版本 / 连接器</h3>
-      <ul id="publish-subapps" class="plain"></ul>
-      <ul id="publish-connectors" class="plain"></ul>
-    </div>
-  </section>
-
-  <section class="card" data-requires-role="creator" hidden>
-    <h2>2. 绑定已评测内容并提交</h2>
-    <form id="publish-form" method="post">
-      <label for="publish-expected-hash">expected_manifest_sha256（64 位十六进制；摘要加载后自动填入）</label>
-      <input id="publish-expected-hash" name="expected_manifest_sha256" type="text" autocomplete="off" spellcheck="false" required />
-      <label for="publish-report-id">evaluation_report_id（已通过的可信评测报告 UUID）</label>
-      <input id="publish-report-id" name="evaluation_report_id" type="text" autocomplete="off" spellcheck="false" required />
-      <button id="publish-submit" type="submit">提交发布审核</button>
-      <p id="publish-status" class="status" role="status" aria-live="polite"></p>
-    </form>
-    <div id="publish-review-panel" hidden aria-live="polite">
-      <h3>已提交的审核</h3>
-      <dl class="facts">
-        <dt>审核 id</dt><dd id="publish-review-id"></dd>
-        <dt>状态</dt><dd id="publish-review-state"></dd>
-      </dl>
-      <p class="hint">管理员决定前内容保持冻结；被拒绝后草稿仍可继续编辑，但同一内容的重复提交会返回同一条审核记录。</p>
-      <p><a id="publish-review-link" href="/reviews">在审核页查看冻结快照</a></p>
-    </div>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/publish.js"></script>
+  </p></details><div class="page-sections">
+<section class="card" data-requires-role="creator" hidden="">
+<h2>1. 发布摘要（用途 / 风险 / 固定依赖）</h2>
+<button id="publish-preview" type="button">加载当前草稿的发布摘要</button>
+<p class="status" id="publish-preview-status" aria-live="polite" role="status"></p>
+<div id="publish-preview-panel" aria-live="polite" hidden="">
+<h3>内容身份</h3>
+<dl class="facts">
+<dt>manifest SHA-256</dt><dd id="publish-manifest-hash"></dd>
+<dt>执行 revision</dt><dd id="publish-execution-revision"></dd>
+<dt>草稿 revision</dt><dd id="publish-draft-revision"></dd>
+</dl>
+<h3>用途卡</h3>
+<dl class="facts">
+<dt>用途</dt><dd id="publish-purpose"></dd>
+<dt>适用</dt><dd id="publish-includes"></dd>
+<dt>不适用</dt><dd id="publish-excludes"></dd>
+<dt>必要输入</dt><dd id="publish-required-inputs"></dd>
+<dt>预期输出</dt><dd id="publish-expected-outputs"></dd>
+<dt>示例需求</dt><dd id="publish-examples"></dd>
+</dl>
+<h3>模型数据去向</h3>
+<ul class="plain" id="publish-model-destinations"></ul>
+<h3>工具读写 / 联网</h3>
+<div class="table-scroll" aria-label="发布应用数据表（可横向滚动）" role="region" tabindex="0"><table>
+<thead><tr><th>工具版本</th><th>风险</th><th>读取</th><th>写入</th><th>联网</th><th>镜像</th></tr></thead>
+<tbody id="publish-tools"></tbody>
+</table></div>
+<h3>固定子版本 / 连接器</h3>
+<ul class="plain" id="publish-subapps"></ul>
+<ul class="plain" id="publish-connectors"></ul>
+</div>
+</section>
+<section class="card" data-requires-role="creator" hidden="">
+<h2>2. 绑定已评测内容并提交</h2>
+<form id="publish-form" method="post">
+<label for="publish-expected-hash">expected_manifest_sha256（64 位十六进制；摘要加载后自动填入）</label>
+<input id="publish-expected-hash" name="expected_manifest_sha256" autocomplete="off" required="" spellcheck="false" type="text"/>
+<label for="publish-report-id">evaluation_report_id（已通过的可信评测报告 UUID）</label>
+<input id="publish-report-id" name="evaluation_report_id" autocomplete="off" required="" spellcheck="false" type="text"/>
+<button id="publish-submit" type="submit">提交发布审核</button>
+<p class="status" id="publish-status" aria-live="polite" role="status"></p>
+</form>
+<div id="publish-review-panel" aria-live="polite" hidden="">
+<h3>已提交的审核</h3>
+<dl class="facts">
+<dt>审核 id</dt><dd id="publish-review-id"></dd>
+<dt>状态</dt><dd id="publish-review-state"></dd>
+</dl>
+<p class="hint">管理员决定前内容保持冻结；被拒绝后草稿仍可继续编辑，但同一内容的重复提交会返回同一条审核记录。</p>
+<p><a id="publish-review-link" href="/reviews">在审核页查看冻结快照</a></p>
+</div>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/publish.js"></script>
 </body>
 </html>

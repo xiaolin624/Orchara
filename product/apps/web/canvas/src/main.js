@@ -1787,12 +1787,34 @@ function renderFlowNode(props) {
     class: 'orchara-flow-node orchara-node-' + type,
     style: { minHeight: height + 'px' },
   }, [
+    nodeIcon(type),
     h('span', { class: 'orchara-flow-label' }, data.label || type),
     h('span', { class: 'orchara-flow-type' }, type),
     sourceLabels.length
       ? h('span', { class: 'orchara-flow-sources' }, '来源: ' + sourceLabels.join(' · '))
       : null,
     ...handles,
+  ]);
+}
+
+
+// A small, consistent vector vocabulary for the ten existing node types.
+function nodeIcon(type) {
+  const symbols = {
+    start: ['m9 5 10 7-10 7V5Z'],
+    end: ['M6 6h12v12H6z'],
+    python: ['m8 7-5 5 5 5', 'm16 7 5 5-5 5', 'm14 4-4 16'],
+    agent: ['M5 7h14v13H5z', 'M12 3v4', 'M9 12v2', 'M15 12v2', 'M9 17h6'],
+    model: ['m12 3 9 5-9 5-9-5 9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
+    retrieve: ['M3 4c4-1 7-1 9 1 2-2 5-2 9-1v15c-4-1-7-1-9 1-2-2-5-2-9-1V4Z', 'M12 5v15'],
+    condition: ['m12 2 10 10-10 10L2 12 12 2Z', 'M12 8v5', 'M12 16h.01'],
+    join: ['M5 3v4c0 3 7 3 7 6v8', 'M19 3v4c0 3-7 3-7 6', 'm8 17 4 4 4-4'],
+    approval: ['M5 3h14v18H5z', 'm8 12 3 3 5-6'],
+    call_app: ['M3 3h7v7H3z', 'M14 14h7v7h-7z', 'M14 5h5v5', 'm19 5-5 5'],
+  };
+  return h('span', { class: 'node-icon', 'aria-hidden': 'true' }, [
+    h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+      (symbols[type] || symbols.model).map((d) => h('path', { d }))),
   ]);
 }
 
@@ -1812,10 +1834,26 @@ function renderApp(state) {
 
   return h('div', { class: 'orchara-canvas' }, [
     h('div', { class: 'canvas-toolbar' }, [
-      h('div', { class: 'palette', role: 'group', 'aria-label': '节点面板' },
+      h('div', { class: 'canvas-toolbar-heading' }, [h('strong', {}, '可视化编排'), h('span', {}, nodes.length + ' 个节点 · ' + edges.length + ' 条连线')]),
+      h('div', { class: 'toolbar-actions' }, [
+        h('button', {
+          type: 'button',
+          id: 'canvas-validate',
+          class: 'primary',
+          onClick: () => validate(state),
+        }, '校验草稿'),
+        h('button', {
+          type: 'button',
+          id: 'canvas-export',
+          onClick: () => downloadExport(state),
+        }, '导出工作流'),
+      ]),
+    ]),
+    h('div', { class: 'canvas-body' }, [
+      h('aside', { class: 'node-library', 'aria-label': '节点库' }, [h('h2', {}, '节点库'), h('p', { class: 'hint' }, '点击添加到画布'), h('div', { class: 'palette', role: 'group', 'aria-label': '节点面板' },
         NODE_TYPES.map((type) => h('button', {
           type: 'button',
-          class: 'palette-button',
+          class: 'palette-button node-type-' + type,
           'data-node-type': type,
           disabled: !REPEATABLE_NODE_TYPES.includes(type)
             && state.definition.nodes.some((node) => node.type === type),
@@ -1834,22 +1872,7 @@ function renderApp(state) {
             state.statusKind = 'ok';
             ensureCallAppForSelection(state, result.node.id);
           },
-        }, '+ ' + NODE_LABELS[type]))),
-      h('div', { class: 'toolbar-actions' }, [
-        h('button', {
-          type: 'button',
-          id: 'canvas-validate',
-          class: 'primary',
-          onClick: () => validate(state),
-        }, '校验草稿'),
-        h('button', {
-          type: 'button',
-          id: 'canvas-export',
-          onClick: () => downloadExport(state),
-        }, '导出 {definition, layout}'),
-      ]),
-    ]),
-    h('div', { class: 'canvas-body' }, [
+        }, [nodeIcon(type), h('span', {}, NODE_LABELS[type]), h('span', { class: 'add-indicator', 'aria-hidden': 'true' }, '+')])))]),
       h('div', { class: 'canvas-stage' },
         h(VueFlow, {
           nodes,

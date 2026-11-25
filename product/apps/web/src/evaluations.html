@@ -1,120 +1,101 @@
 ﻿<!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 评测进展与报告（F13A）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 60rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    h3 { font-size: .92rem; margin: 1rem 0 .3rem; }
-    .sub { opacity: .72; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>评测进度 · Orchara</title>
+<style>
     dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
     dl.facts dt { opacity: .7; }
     dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .5rem 0 0; white-space: pre-wrap; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
     .explain { font-size: .88rem; margin: .55rem 0 0; }
     .explain strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-    button { margin-top: .6rem; padding: .42rem .95rem; font: inherit; cursor: pointer; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/runs">运行列表</a>
-    <a href="/login">登录</a>
-  </nav>
-
-  <h1>评测进展与报告</h1>
-  <p class="sub">
+<body data-page="evaluations"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>评测进度</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="pulse">EVALUATION PROGRESS</p><h1>评测进度</h1><p class="page-description">跟进评测任务的执行状态，查看报告与实际产物。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     本页是非契约的评测进展视图（ADR 0019）：轮询
     <code>GET /api/v1/evaluations/{id}/progress</code> 显示<strong>已持久化的逐例计数</strong>，
     再从契约读 <code>GET /api/v1/evaluation-reports/{id}</code> 显示不可变报告。
     刷新不会丢状态：评测 id 在 URL 路径里，页面重新读取同一份服务端事实。
     页面<strong>不把 state 换算成百分比</strong>，也不伪造进度条：数字只来自 runner
     在每例结束时写入的判定。
-  </p>
-  <p id="evaluation-status" class="status" role="status" aria-live="polite">正在读取评测进展…</p>
-
-  <section id="progress-panel" class="card" data-auth-content hidden aria-live="polite">
-    <h2>评测进展</h2>
-    <dl class="facts">
-      <dt>evaluation id</dt><dd id="p-evaluation"></dd>
-      <dt>任务状态</dt><dd id="p-state"></dd>
-      <dt>案例计数</dt><dd id="p-counts"></dd>
-      <dt>总案例数</dt><dd id="p-total"></dd>
-      <dt>已处理案例</dt><dd id="p-completed"></dd>
-      <dt>失败案例</dt><dd id="p-failed"></dd>
-      <dt>report_id</dt><dd id="p-report-id"></dd>
-      <dt>报告状态</dt><dd id="p-report-status"></dd>
-      <dt>失败分类</dt><dd id="p-failure-class"></dd>
-      <dt>error_code</dt><dd id="p-error-code"></dd>
-      <dt>created_at</dt><dd id="p-created-at"></dd>
-      <dt>finished_at</dt><dd id="p-finished-at"></dd>
-    </dl>
-    <p id="p-note" class="explain" aria-live="polite"></p>
-  </section>
-
-  <section id="failure-class-explanation" class="card">
-    <h2>“报告失败”与“任务失败”是两件事</h2>
-    <p id="business-sentence" class="explain">
-      <strong>业务失败（报告 failed，任务 succeeded）：</strong>
+  </p></details><div class="page-sections">
+<p class="status" id="evaluation-status" aria-live="polite" role="status">正在读取评测进展…</p>
+<section class="card" id="progress-panel" aria-live="polite" data-auth-content="" hidden="">
+<h2>评测进展</h2>
+<dl class="facts">
+<dt>evaluation id</dt><dd id="p-evaluation"></dd>
+<dt>任务状态</dt><dd id="p-state"></dd>
+<dt>案例计数</dt><dd id="p-counts"></dd>
+<dt>总案例数</dt><dd id="p-total"></dd>
+<dt>已处理案例</dt><dd id="p-completed"></dd>
+<dt>失败案例</dt><dd id="p-failed"></dd>
+<dt>report_id</dt><dd id="p-report-id"></dd>
+<dt>报告状态</dt><dd id="p-report-status"></dd>
+<dt>失败分类</dt><dd id="p-failure-class"></dd>
+<dt>error_code</dt><dd id="p-error-code"></dd>
+<dt>created_at</dt><dd id="p-created-at"></dd>
+<dt>finished_at</dt><dd id="p-finished-at"></dd>
+</dl>
+<p class="explain" id="p-note" aria-live="polite"></p>
+</section>
+<section class="card" id="failure-class-explanation">
+<h2>“报告失败”与“任务失败”是两件事</h2>
+<p class="explain" id="business-sentence">
+<strong>业务失败（报告 failed，任务 succeeded）：</strong>
       平台完成了评测，密封报告给出的是对<strong>被评测应用</strong>的判定。
       这表示应用的某些案例没有通过，或者案例没有被判为通过；它不是平台故障，
       报告仍然可读、不可变。
     </p>
-    <p id="infrastructure-sentence" class="explain">
-      <strong>设施失败（任务 failed，没有报告）：</strong>
+<p class="explain" id="infrastructure-sentence">
+<strong>设施失败（任务 failed，没有报告）：</strong>
       评测任务没有执行完，平台没有产出任何报告，所以 <code>report_id</code> 为空。
       这属于任务/平台侧失败，不能当成应用判定；原因码来自任务的 error_code。
     </p>
-    <p id="not-run-sentence" class="explain">
-      <strong><code>not_run</code> 是报告状态，不是任务状态：</strong>
+<p class="explain" id="not-run-sentence">
+<strong><code>not_run</code> 是报告状态，不是任务状态：</strong>
       一份 <code>not_run</code> 报告表示没有任何一例产出可判定结论（例如目标类型在本构建不可执行）。
       对应的评测任务仍然是 <code>succeeded</code>，任务失败只会表现为 <code>failed</code> 且没有报告。
     </p>
-    <p class="hint">
+<p class="hint">
       页面只展示服务端事实：<code>failure_class=business</code> 当且仅当存在报告且报告不是 passed；
       <code>failure_class=infrastructure</code> 当且仅当任务失败且没有报告。
     </p>
-  </section>
-
-  <section id="report-panel" class="card" hidden aria-live="polite">
-    <h2>不可变报告</h2>
-    <dl class="facts">
-      <dt>report id</dt><dd id="report-id"></dd>
-      <dt>报告状态</dt><dd id="report-status"></dd>
-      <dt>manifest_sha256</dt><dd id="report-manifest"></dd>
-      <dt>result_artifact_id</dt><dd id="report-artifact"></dd>
-      <dt>最后读取</dt><dd id="report-read-at"></dd>
-    </dl>
-    <p id="report-immutable-note" class="hint">
+</section>
+<section class="card" id="report-panel" aria-live="polite" hidden="">
+<h2>不可变报告</h2>
+<dl class="facts">
+<dt>report id</dt><dd id="report-id"></dd>
+<dt>报告状态</dt><dd id="report-status"></dd>
+<dt>manifest_sha256</dt><dd id="report-manifest"></dd>
+<dt>result_artifact_id</dt><dd id="report-artifact"></dd>
+<dt>最后读取</dt><dd id="report-read-at"></dd>
+</dl>
+<p class="hint" id="report-immutable-note">
       报告创建后字节与 sha256 不再变化。再次读取同一个 report_id 必须显示完全相同的
       id/status/manifest_sha256/result_artifact_id；页面比较两次快照，不会重写历史。
     </p>
-    <button id="report-refresh" type="button">重新读取报告（验证不可变）</button>
-    <p id="report-refresh-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section id="report-empty" class="card" hidden>
-    <h2>报告</h2>
-    <p class="explain">尚无报告（report_id 为空）。任务结束后报告才会存在；设施失败不会生成报告。</p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/evaluations.js"></script>
-  <script>
+<button id="report-refresh" type="button">重新读取报告（验证不可变）</button>
+<p class="status" id="report-refresh-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="report-empty" hidden="">
+<h2>报告</h2>
+<p class="explain">尚无报告（report_id 为空）。任务结束后报告才会存在；设施失败不会生成报告。</p>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/evaluations.js"></script>
+<script>
     (function () {
       'use strict';
 

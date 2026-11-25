@@ -1,85 +1,63 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 版本与撤销（F02B）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
-    li { margin: .45rem 0; }
-    code { font-size: .82rem; opacity: .85; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
-    label { display: block; margin-top: .7rem; font-size: .9rem; }
-    textarea { width: 100%; min-height: 4.5rem; font: inherit; }
-    select { font: inherit; min-width: 16rem; }
-    button { margin-top: .7rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
-    [hidden] { display: none !important; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>版本管理 · Orchara</title>
+<style>
+</style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body id="versions-page">
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/admin">管理台</a>
-    <a href="/runs">运行</a>
-  </nav>
-
-  <h1>版本与撤销（F02B/T070）</h1>
-  <p class="sub">
+<body id="versions-page" data-page="versions"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>版本管理</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="folder">VERSIONS & HISTORY</p><h1>版本管理</h1><p class="page-description">查看已发布的固定版本，管理可用性与版本撤销。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
     <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
     <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
     生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
-  </p>
-  <p id="application-availability" class="status" role="status" aria-live="polite">正在读取应用可用性…</p>
-
-  <section class="card">
-    <h2>已发布版本</h2>
-    <p id="versions-status" class="status" role="status" aria-live="polite">正在加载版本…</p>
-    <ul id="versions-list" data-auth-content></ul>
-    <button id="versions-next" type="button" hidden>下一页</button>
-    <p class="hint">
+  </p></details><div class="page-sections">
+<p class="status" id="application-availability" aria-live="polite" role="status">正在读取应用可用性…</p>
+<section class="card">
+<h2>已发布版本</h2>
+<p class="status" id="versions-status" aria-live="polite" role="status">正在加载版本…</p>
+<ul id="versions-list" data-auth-content=""></ul>
+<button id="versions-next" hidden="" type="button">下一页</button>
+<p class="hint">
       已撤销的版本按契约从列表和详情中消失（<code>Version</code> 没有状态字段，因此用“不可见”表达不可用，
       详情返回 404）。版本详情：<code>GET /api/v1/versions/{id}</code>；运行入口校验：
       <code>GET /api/v1/versions/{id}/runnable</code>（撤销后返回 409 <code>version_revoked</code>）。
     </p>
-  </section>
-
-  <section class="card">
-    <h2>撤销版本（仅管理员）</h2>
-    <form id="revoke-form" method="post">
-      <label for="revoke-version-id">要撤销的版本</label>
-      <select id="revoke-version-id" name="version_id"></select>
-      <label for="revoke-reason">撤销原因（必填，最多 2000 字符）</label>
-      <textarea id="revoke-reason" name="reason" maxlength="2000" autocomplete="off"></textarea>
-      <label for="revoke-stop-existing">
-        <input id="revoke-stop-existing" name="stop_existing" type="checkbox" />
+</section>
+<section class="card">
+<h2>撤销版本（仅管理员）</h2>
+<form id="revoke-form" method="post">
+<label for="revoke-version-id">要撤销的版本</label>
+<select id="revoke-version-id" name="version_id"></select>
+<label for="revoke-reason">撤销原因（必填，最多 2000 字符）</label>
+<textarea id="revoke-reason" name="reason" autocomplete="off" maxlength="2000"></textarea>
+<label for="revoke-stop-existing">
+<input id="revoke-stop-existing" name="stop_existing" type="checkbox"/>
         同时停止该版本正在进行的运行（记录取消意图，由执行器完成终止）
       </label>
-      <button id="revoke-submit" type="submit">撤销这个版本</button>
-    </form>
-    <p id="revoke-status" class="status" role="status" aria-live="polite"></p>
-    <p class="hint">
+<button id="revoke-submit" type="submit">撤销这个版本</button>
+</form>
+<p class="status" id="revoke-status" aria-live="polite" role="status"></p>
+<p class="hint">
       不勾选“同时停止”时只记录撤销，正在进行的运行不受影响。勾选后服务器只记录取消意图并追加一条
       <code>run.status</code> 事件（原因是 <code>version_revoked</code>），不会在撤销事务里直接写终态。
     </p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/versions.js"></script>
-  <script>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/versions.js"></script>
+<script>
     const applicationId = applicationIdFromVersionsPath(window.location.pathname);
     const versionsList = document.getElementById('versions-list');
     const versionsStatus = document.getElementById('versions-status');

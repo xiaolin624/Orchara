@@ -882,15 +882,16 @@ def test_every_page_loads_the_single_navigation_source() -> None:
     # only for a creator, which the Node test observes from the real inline script.
     assert "const canWrite" in apps
 
-    chat = (web_dir / "chat.html").read_text(encoding="utf-8")
-    # The old decorative logout was a plain link with no handler.
-    assert 'data-orchara-logout="true"' in chat
+    # Logout is rendered by the shared navigation, including the icon/label
+    # children. Its actual session-revocation behavior is tested above.
+    nav = (web_dir / "assets/nav.js").read_text(encoding="utf-8")
+    assert "data-orchara-logout" in nav
 
 
 def test_the_login_page_explains_a_disabled_principal_and_routes_by_role(
     node_binary: str, tmp_path
 ) -> None:
-    """AC3: /login?error=principal_disabled explains itself; a plain user lands on /apps."""
+    """AC3: disabled identity is explained; human accounts enter the conversation workspace."""
     scenario = r"""
   // An already-revoked visitor is sent to /login?error=principal_disabled by the
   // page they were on. The login page must explain that specific state.
@@ -942,8 +943,7 @@ def test_the_login_page_explains_a_disabled_principal_and_routes_by_role(
     'the login page must explain session_revoked: ' +
       revokedPage.byId.get('login-status').textContent);
 
-  // A successful sign-in by a plain user must not be sent to /admin, where all
-  // panels would be hidden: the role decides the landing page.
+  // A human sign-in enters the shared conversation workspace.
   let signedIn = false;
   const login = createPage({
     pathname: '/login',
@@ -974,12 +974,11 @@ def test_the_login_page_explains_a_disabled_principal_and_routes_by_role(
   login.byId.get('password').value = 'correct horse battery staple';
   login.byId.get('login-form').submit();
   await flush();
-  assert.deepStrictEqual(login.navigations, ['/apps'],
-    'a non-admin sign-in must land on /apps, not on the admin page: ' +
+  assert.deepStrictEqual(login.navigations, ['/chat'],
+    'a human sign-in must land on /chat: ' +
       JSON.stringify(login.navigations));
 
-  // An administrator still lands on the admin page, because that is the page
-  // whose panels its role may use.
+  // Administrators use the same default workspace, with management in navigation.
   const adminLogin = createPage({
     pathname: '/login',
     search: '',
@@ -1008,8 +1007,8 @@ def test_the_login_page_explains_a_disabled_principal_and_routes_by_role(
   adminLogin.byId.get('password').value = 'correct horse battery staple';
   adminLogin.byId.get('login-form').submit();
   await flush();
-  assert.deepStrictEqual(adminLogin.navigations, ['/admin'],
-    'an administrator sign-in must land on /admin: ' +
+  assert.deepStrictEqual(adminLogin.navigations, ['/chat'],
+    'an administrator sign-in must land on /chat: ' +
       JSON.stringify(adminLogin.navigations));
   process.stdout.write('login ok\n');
 """

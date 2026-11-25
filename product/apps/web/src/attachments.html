@@ -1,43 +1,26 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 附件上传（F05 上传准入）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .88rem; margin: .8rem 0 .25rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>文件与附件 · Orchara</title>
+<style>
     select, input[type="file"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
     dl.artifact { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
     dl.artifact dt { opacity: .7; }
     dl.artifact dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
     .quarantine { border-left: 3px solid #b91c1c; padding: .4rem .7rem; margin: .8rem 0 0; font-size: .88rem; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/login">登录</a>
-    <a href="/admin">管理台</a>
-    <a href="/tools">工具</a>
-  </nav>
-
-  <h1>附件上传（F05 上传准入）</h1>
-  <p class="sub">
+<body data-page="attachments"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>个人数据</span><span class="separator">/</span><span>文件与附件</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="file">FILES & ARTIFACTS</p><h1>文件与附件</h1><p class="page-description">上传任务资料，查看处理状态并获取已就绪的文件。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     选择文件后，本页调用 <code>POST /api/v1/artifacts/uploads</code> 预分配<strong>暂存 key</strong>和
     <strong>封存 key</strong>，把字节 PUT 到短时签名 URL，再调用
     <code>POST /api/v1/artifacts/{id}/complete</code> 提交 SHA-256。服务器随后在
@@ -45,104 +28,93 @@
     状态依次为 <strong>uploading → scanning → ready</strong>，不通过的内容进入
     <strong>quarantined</strong>。校验后即使签名暂存 URL 尚未过期、有人覆盖暂存对象，也不会改变已封存字节。
     只有本人能读取自己的附件；管理员不会因此获得任意用户文件正文的读取权。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     首版准入支持 text/plain、text/csv、application/json 与 .xlsx；拒绝宏、路径穿越、超解压/超条目、
     类型不一致和非法 JSON/CSV/编码的内容。被隔离的附件不可下载，只显示安全的隔离原因代码。
     上传成功时页面只在内存里计算 SHA-256，不把凭据或签名 URL 写入 URL 或浏览器存储。
-  </p>
-
-  <form id="upload-form" method="post">
-    <section class="card">
-      <h2>选择要封存的附件</h2>
-      <label for="upload-file">文件（1 字节至 20 MiB）</label>
-      <input id="upload-file" name="file" type="file" required />
-
-      <label for="upload-media-type">声明媒体类型（media_type）</label>
-      <select id="upload-media-type" name="media_type">
-        <option value="text/plain">text/plain</option>
-        <option value="text/csv">text/csv</option>
-        <option value="application/json">application/json</option>
-        <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">xlsx</option>
-      </select>
-
-      <label for="upload-purpose">用途（purpose）</label>
-      <select id="upload-purpose" name="purpose">
-        <option value="task_input">task_input（任务输入）</option>
-        <option value="tool_source">tool_source（工具源码）</option>
-        <option value="knowledge">knowledge（知识资料）</option>
-        <option value="evaluation_dataset">evaluation_dataset（评测数据）</option>
-      </select>
-
-      <p class="hint">上传按钮负责：计算 SHA-256 → 预分配 → PUT 暂存 → complete → 轮询状态。</p>
-      <button id="upload-submit" type="submit">上传并开始校验</button>
-      <p id="upload-status" class="status" role="status" aria-live="polite"></p>
-    </section>
-  </form>
-
-  <section id="artifact-panel" class="card" data-auth-content hidden aria-live="polite">
-    <h2>附件状态</h2>
-    <dl class="artifact">
-      <dt>artifact id</dt><dd id="artifact-id"></dd>
-      <dt>状态</dt><dd id="artifact-state"></dd>
-      <dt>media_type</dt><dd id="artifact-media-type"></dd>
-      <dt>大小（字节）</dt><dd id="artifact-size"></dd>
-    </dl>
-    <p id="artifact-note" class="hint"></p>
-    <div id="artifact-quarantine" class="quarantine" hidden>
+  </p></details><div class="page-sections">
+<form id="upload-form" method="post">
+<section class="card">
+<h2>选择要封存的附件</h2>
+<label for="upload-file">文件（1 字节至 20 MiB）</label>
+<input id="upload-file" name="file" required="" type="file"/>
+<label for="upload-media-type">声明媒体类型（media_type）</label>
+<select id="upload-media-type" name="media_type">
+<option value="text/plain">text/plain</option>
+<option value="text/csv">text/csv</option>
+<option value="application/json">application/json</option>
+<option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">xlsx</option>
+</select>
+<label for="upload-purpose">用途（purpose）</label>
+<select id="upload-purpose" name="purpose">
+<option value="task_input">task_input（任务输入）</option>
+<option value="tool_source">tool_source（工具源码）</option>
+<option value="knowledge">knowledge（知识资料）</option>
+<option value="evaluation_dataset">evaluation_dataset（评测数据）</option>
+</select>
+<p class="hint">上传按钮负责：计算 SHA-256 → 预分配 → PUT 暂存 → complete → 轮询状态。</p>
+<button id="upload-submit" type="submit">上传并开始校验</button>
+<p class="status" id="upload-status" aria-live="polite" role="status"></p>
+</section>
+</form>
+<section class="card" id="artifact-panel" aria-live="polite" data-auth-content="" hidden="">
+<h2>附件状态</h2>
+<dl class="artifact">
+<dt>artifact id</dt><dd id="artifact-id"></dd>
+<dt>状态</dt><dd id="artifact-state"></dd>
+<dt>media_type</dt><dd id="artifact-media-type"></dd>
+<dt>大小（字节）</dt><dd id="artifact-size"></dd>
+</dl>
+<p class="hint" id="artifact-note"></p>
+<div class="quarantine" id="artifact-quarantine" hidden="">
       隔离原因：<code id="artifact-quarantine-reason"></code>
-    </div>
-    <button id="artifact-download" type="button" hidden>下载已封存内容</button>
-    <p id="artifact-download-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <section id="tool-panel" class="card" aria-live="polite">
-    <h2>预置销售统计工具（sales_stats，F05/T030）</h2>
-    <p class="hint">
+</div>
+<button id="artifact-download" hidden="" type="button">下载已封存内容</button>
+<p class="status" id="artifact-download-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="tool-panel" aria-live="polite">
+<h2>预置销售统计工具</h2>
+<p class="hint">
       对一个<strong>已就绪</strong>的 CSV/XLSX 附件运行平台预置的销售统计工具：
       服务器在后台任务里用受限子进程执行固定脚本，校验 <code>output.json</code> 与产物，
       再用 <code>Decimal</code> 字符串返回总额、地区金额与订单数，并可下载
       <code>summary.csv</code> 与 <code>summary.json</code>。金额从不经过浮点数。
       失败时只显示安全的错误码、修复建议和诊断附件，不展示脚本 stdout 作为正文。
     </p>
-    <label for="tool-artifact-id">要统计的附件 artifact id</label>
-    <input id="tool-artifact-id" type="text" autocomplete="off" spellcheck="false"
-           placeholder="上传成功后会自动填入" />
-    <button id="tool-run-submit" type="button">运行销售统计</button>
-    <p id="tool-run-status" class="status" role="status" aria-live="polite"></p>
-
-    <dl class="artifact">
-      <dt>任务 id</dt><dd id="tool-run-id"></dd>
-      <dt>状态</dt><dd id="tool-run-state"></dd>
-      <dt>错误码</dt><dd id="tool-run-error-code"></dd>
-    </dl>
-
-    <div id="tool-summary" hidden>
-      <h3>统计结果（Decimal 字符串）</h3>
-      <dl class="artifact">
-        <dt>总额</dt><dd id="tool-summary-total"></dd>
-        <dt>订单数</dt><dd id="tool-summary-count"></dd>
-      </dl>
-      <table id="tool-summary-regions">
-        <thead><tr><th>地区</th><th>金额</th></tr></thead>
-        <tbody id="tool-summary-region-rows"></tbody>
-      </table>
-    </div>
-
-    <div id="tool-diagnostics" class="quarantine" hidden>
-      <p>错误码：<code id="tool-diagnostics-code"></code></p>
-      <p>说明：<span id="tool-diagnostics-message"></span></p>
-      <p>修复建议：<span id="tool-diagnostics-fix"></span></p>
-      <p id="tool-diagnostics-location" class="hint"></p>
-    </div>
-
-    <h3>可下载结果</h3>
-    <ul id="tool-downloads"></ul>
-    <p id="tool-log-note" class="hint"></p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/attachments.js"></script>
+<label for="tool-artifact-id">要统计的附件 artifact id</label>
+<input id="tool-artifact-id" autocomplete="off" placeholder="上传成功后会自动填入" spellcheck="false" type="text"/>
+<button id="tool-run-submit" type="button">运行销售统计</button>
+<p class="status" id="tool-run-status" aria-live="polite" role="status"></p>
+<dl class="artifact">
+<dt>任务 id</dt><dd id="tool-run-id"></dd>
+<dt>状态</dt><dd id="tool-run-state"></dd>
+<dt>错误码</dt><dd id="tool-run-error-code"></dd>
+</dl>
+<div id="tool-summary" hidden="">
+<h3>统计结果（Decimal 字符串）</h3>
+<dl class="artifact">
+<dt>总额</dt><dd id="tool-summary-total"></dd>
+<dt>订单数</dt><dd id="tool-summary-count"></dd>
+</dl>
+<div class="table-scroll" aria-label="文件与附件数据表（可横向滚动）" role="region" tabindex="0"><table id="tool-summary-regions">
+<thead><tr><th>地区</th><th>金额</th></tr></thead>
+<tbody id="tool-summary-region-rows"></tbody>
+</table></div>
+</div>
+<div class="quarantine" id="tool-diagnostics" hidden="">
+<p>错误码：<code id="tool-diagnostics-code"></code></p>
+<p>说明：<span id="tool-diagnostics-message"></span></p>
+<p>修复建议：<span id="tool-diagnostics-fix"></span></p>
+<p class="hint" id="tool-diagnostics-location"></p>
+</div>
+<h3>可下载结果</h3>
+<ul id="tool-downloads"></ul>
+<p class="hint" id="tool-log-note"></p>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/attachments.js"></script>
 </body>
 </html>

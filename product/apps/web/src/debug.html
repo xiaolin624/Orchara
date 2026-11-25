@@ -1,29 +1,15 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 私有调试（F02A 快照）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 52rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    label { display: block; font-size: .88rem; margin: .8rem 0 .25rem; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>应用调试 · Orchara</title>
+<style>
     input[type="number"], input[type="text"], textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .45rem .55rem; }
-    textarea { min-height: 7rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-    .hint { font-size: .82rem; opacity: .7; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
     dl.run { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
     dl.run dt { opacity: .7; }
     dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    button { margin-top: .6rem; padding: .45rem 1rem; font: inherit; cursor: pointer; }
     table.run-node-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .5rem; }
     table.run-node-table th, table.run-node-table td { text-align: left; padding: .3rem .45rem; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
     table.run-node-table th { font-weight: 600; opacity: .8; }
@@ -49,28 +35,16 @@
     .run-node-citation.unavailable { color: #b91c1c; text-decoration: line-through; }
     .run-node-citation-status { display: block; margin: .15rem 0 .15rem 1rem; font-size: .82rem; }
     .run-node-citation-status.state-failed { color: #b91c1c; }
-    [hidden] { display: none !important; }
   </style>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body>
-  <nav>
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/runs">运行列表</a>
-    <a href="/login">登录</a>
-    <a href="/admin">管理台</a>
-    <a href="/attachments">附件</a>
-  </nav>
-
-  <h1>私有调试（F02A 快照）</h1>
-  <!-- C6.01 (#155): shared run-state dependency banner; the draft read stays,
-       submission/poll/SSE/node view/cancel pause when the guard fails. -->
-  <p id="runstate-status" class="status bad" role="alert" hidden></p>
-  <p class="sub" data-mobile-scope="no-full-canvas-editing">
-    小屏边界：本页的节点调试表与画布不承诺在手机上可用。手机支持的是对话、审批与查看结果
-    （/chat、/approvals、/runs）；需要调试节点时请使用桌面浏览器。
-  </p>
-  <p class="sub">
+<body data-page="debug"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>应用调试</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="run">TEST & INSPECT</p><h1>应用调试</h1><p class="page-description">用固定草稿快照发起调试，查看每个节点的实际状态与结果。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     提交 <code>POST /api/v1/applications/{id}/debug-runs</code> 会把<strong>指定的草稿 revision</strong>
     冻结成仅自己可见的执行快照，并创建一个 <code>kind=debug</code> 的 queued Run。调试不创建公共版本、
     发布审核、平台 Request 或 Conversation；草稿随后如何修改都不会改变已经创建的 Run、快照和输入字节。
@@ -81,131 +55,126 @@
     <code>execution_snapshot_id</code>，以及服务器返回的真实租约事实
     （<code>X-Run-Attempt-Started-At</code> / <code>X-Run-Lease-Deadline</code>，仅在尝试存活时出现）。
     领取、心跳与退出证据由 F03 内部 supervisor 协议完成；页面不伪造进度。
-  </p>
-  <p class="hint">
+  </p><p class="hint">
     执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示结果提议已保存、
     仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空），本页不会在终态前显示成功；页面会持续轮询
     <code>GET /api/v1/runs/{id}</code> 直到服务端提交终态。持久时间线来自
     <code>GET /api/v1/runs/{id}/events</code>（SSE，按 <code>Last-Event-ID</code> 重连、按 seq 去重），
     关闭/断线不会中断服务端业务；窗口过期时服务端回 410，页面改用 Run 快照。
-  </p>
-
-  <section class="card">
-    <h2>当前草稿</h2>
-    <p class="hint">revision 来自 <code>GET /api/v1/applications/{id}/draft</code> 的 <code>ETag</code>；调试只接受当前 revision，旧 revision 返回 409。</p>
-    <p id="debug-status" class="status" role="status" aria-live="polite">正在加载当前草稿 revision…</p>
-  </section>
-
-  <p class="hint" id="debug-role-hint">
+  </p></details><div class="page-sections">
+<!-- C6.01 (#155): shared run-state dependency banner; the draft read stays,
+       submission/poll/SSE/node view/cancel pause when the guard fails. -->
+<p class="status bad" id="runstate-status" hidden="" role="alert"></p>
+<p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
+<section class="card">
+<h2>当前草稿</h2>
+<p class="hint">revision 来自 <code>GET /api/v1/applications/{id}/draft</code> 的 <code>ETag</code>；调试只接受当前 revision，旧 revision 返回 409。</p>
+<p class="status" id="debug-status" aria-live="polite" role="status">正在加载当前草稿 revision…</p>
+</section>
+<p class="hint" id="debug-role-hint">
     创建私有调试 Run 需要 <code>creator</code> 角色；没有该角色时服务端返回
     <code>403 creator_role_required</code>，本页不会显示提交表单（只读查看草稿 revision）。
   </p>
-
-  <form id="debug-form" method="post" data-requires-role="creator" hidden>
-    <section class="card">
-      <h2>测试输入</h2>
-      <label for="debug-revision">要冻结的草稿 revision（draft_revision）</label>
-      <input id="debug-revision" name="draft_revision" type="number" min="1" step="1" required />
-
-      <label for="debug-input">测试输入（JSON 对象，input）</label>
-      <textarea id="debug-input" name="input" spellcheck="false">{"text": "hello"}</textarea>
-
-      <label for="debug-artifacts">可选输入 artifact UUID（artifact_ids，每行一个，最多 5 个）</label>
-      <textarea id="debug-artifacts" name="artifact_ids" spellcheck="false"></textarea>
-
-      <p class="hint">本次提交的 <code>Idempotency-Key</code>：<code id="debug-key">生成中</code>（只在本页内存中，不进入 URL 或浏览器存储）</p>
-      <button id="debug-submit" type="submit" data-runstate-paused="true">创建私有调试 Run</button>
-    </section>
-  </form>
-
-  <section id="run-panel" class="card" hidden aria-live="polite">
-    <h2>已固定的调试 Run</h2>
-    <dl class="run">
-      <dt>run id</dt><dd id="run-id"></dd>
-      <dt>state</dt><dd id="run-state"></dd>
-      <dt>phase</dt><dd id="run-phase"></dd>
-      <dt>kind</dt><dd id="run-kind"></dd>
-      <dt>revision（Run 自身）</dt><dd id="run-revision"></dd>
-      <dt>冻结的 draft revision</dt><dd id="run-draft-revision"></dd>
-      <dt>execution_snapshot_id</dt><dd id="run-snapshot"></dd>
-      <dt>manifest_sha256</dt><dd id="run-manifest"></dd>
-      <dt>领取 / 租约</dt><dd id="run-lease"></dd>
-      <dt>持久时间线</dt><dd id="run-timeline-status" role="status" aria-live="polite">未连接</dd>
-    </dl>
-    <ul id="run-timeline" aria-live="polite"></ul>
-    <p id="run-note" class="hint"></p>
-    <p id="run-preview" class="hint" data-preview="not_run">
+<form id="debug-form" data-requires-role="creator" hidden="" method="post">
+<section class="card">
+<h2>测试输入</h2>
+<label for="debug-revision">要冻结的草稿 revision（draft_revision）</label>
+<input id="debug-revision" name="draft_revision" min="1" required="" step="1" type="number"/>
+<label for="debug-input">测试输入（JSON 对象，input）</label>
+<textarea id="debug-input" name="input" spellcheck="false">{"text": "hello"}</textarea>
+<label for="debug-artifacts">可选输入 artifact UUID（artifact_ids，每行一个，最多 5 个）</label>
+<textarea id="debug-artifacts" name="artifact_ids" spellcheck="false"></textarea>
+<p class="hint">本次提交的 <code>Idempotency-Key</code>：<code id="debug-key">生成中</code>（只在本页内存中，不进入 URL 或浏览器存储）</p>
+<button id="debug-submit" data-runstate-paused="true" type="submit">创建私有调试 Run</button>
+</section>
+</form>
+<section class="card" id="run-panel" aria-live="polite" hidden="">
+<h2>已固定的调试 Run</h2>
+<dl class="run">
+<dt>run id</dt><dd id="run-id"></dd>
+<dt>state</dt><dd id="run-state"></dd>
+<dt>phase</dt><dd id="run-phase"></dd>
+<dt>kind</dt><dd id="run-kind"></dd>
+<dt>revision（Run 自身）</dt><dd id="run-revision"></dd>
+<dt>冻结的 draft revision</dt><dd id="run-draft-revision"></dd>
+<dt>execution_snapshot_id</dt><dd id="run-snapshot"></dd>
+<dt>manifest_sha256</dt><dd id="run-manifest"></dd>
+<dt>领取 / 租约</dt><dd id="run-lease"></dd>
+<dt>持久时间线</dt><dd id="run-timeline-status" aria-live="polite" role="status">未连接</dd>
+</dl>
+<ul id="run-timeline" aria-live="polite"></ul>
+<p class="hint" id="run-note"></p>
+<p class="hint" id="run-preview" data-preview="not_run">
       临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
       operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
       不执行。预览不持久，最终以持久 Run 快照/事件为准。
     </p>
-    <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
-  </section>
-
-  <section id="runview-panel" class="card" hidden aria-live="polite">
-    <h2>节点状态（按草稿定义顺序）</h2>
-    <p id="runview-status" class="status" role="status" aria-live="polite">未开始</p>
-    <p id="runview-run-state" class="hint"></p>
-    <p id="runview-error" class="status" role="status" aria-live="polite"></p>
-    <p id="runview-summary" class="hint"></p>
-    <table id="run-node-table" class="run-node-table">
-      <thead>
-        <tr>
-          <th>节点</th>
-          <th>类型</th>
-          <th>状态</th>
-          <th>attempt</th>
-          <th>分支 / join 来源</th>
-          <th>错误码</th>
-        </tr>
-      </thead>
-      <tbody id="run-node-rows" data-auth-content></tbody>
-    </table>
-    <p id="runview-legend" class="hint">
-      <span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
+<p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
+</section>
+<section class="card" id="runview-panel" aria-live="polite" hidden="">
+<h2>节点状态（按草稿定义顺序）</h2>
+<p class="status" id="runview-status" aria-live="polite" role="status">未开始</p>
+<p class="hint" id="runview-run-state"></p>
+<p class="status" id="runview-error" aria-live="polite" role="status"></p>
+<p class="hint" id="runview-summary"></p>
+<div class="table-scroll" aria-label="应用调试数据表（可横向滚动）" role="region" tabindex="0"><table class="run-node-table" id="run-node-table">
+<thead>
+<tr>
+<th>节点</th>
+<th>类型</th>
+<th>状态</th>
+<th>attempt</th>
+<th>分支 / join 来源</th>
+<th>错误码</th>
+</tr>
+</thead>
+<tbody id="run-node-rows" data-auth-content=""></tbody>
+</table></div>
+<p class="hint" id="runview-legend">
+<span class="legend-skipped">已跳过</span> 表示<strong>未选中的分支</strong>（不是失败）；
       <span class="legend-failed">失败</span> 表示节点本身失败；
       <span class="legend-converged">已收敛的错误</span> 表示
       <strong>optional 分支</strong>的纯读/计算错误已被汇合为<strong>错误数据</strong>
       （Run 仍然成功；写操作/越权/预算/审批失败不会被降级，仍会让 Run 失败）。
       条件节点的选中端口来自它的
       data artifact（<code>port</code> / <code>matched_case</code>）；汇合节点的每个来源来自
-      data artifact 信封（<code>results.&lt;source&gt;.status</code> / <code>value</code> /
+      data artifact 信封（<code>results.<source/>.status</code> / <code>value</code> /
       <code>error_code</code>）。这些是<strong>非契约</strong>数据面：owner 通过
-      <code>GET /api/v1/runs/{id}/node-results</code> 找到 <code>kind=&quot;data&quot;</code>
+      <code>GET /api/v1/runs/{id}/node-results</code> 找到 <code>kind="data"</code>
       的 artifact，再读 <code>GET /api/v1/artifacts/{id}/content</code>。
     </p>
-    <p class="hint">
+<p class="hint">
       节点表按<strong>当前草稿定义</strong>排序；实际执行的是提交时冻结的 revision。
       事件流断线会按 <code>Last-Event-ID</code> 续传；<strong>410</strong>（保留窗口过期）时
       本表只显示持久 node-results 能证明的事实，并标注「由节点结果推断」，不伪造历史事件。
     </p>
-    <button id="runview-cancel" type="button" disabled data-runstate-paused="true">取消 Run</button>
-    <p id="runview-cancel-status" class="status" role="status" aria-live="polite"></p>
-    <p class="hint"><a id="runview-runs-link" href="/runs">在运行列表查看这个 Run</a></p>
-  </section>
-
-  <section id="evaluation-progress-entry" class="card">
-    <h2>评测进展（异步评测）</h2>
-    <p class="hint">
+<button id="runview-cancel" data-runstate-paused="true" disabled="" type="button">取消 Run</button>
+<p class="status" id="runview-cancel-status" aria-live="polite" role="status"></p>
+<p class="hint"><a id="runview-runs-link" href="/runs">在运行列表查看这个 Run</a></p>
+</section>
+<section class="card" id="evaluation-progress-entry">
+<h2>评测进展（异步评测）</h2>
+<p class="hint">
       异步评测在后台逐例运行。把评测提交返回的 evaluation id 粘贴到下面，打开可刷新、可分享的
       <code>/evaluations/{id}</code> 进展页；页面会说明「报告 <code>failed</code>（业务判定）」
       与「任务 <code>failed</code>（设施失败、没有报告）」的区别，并在报告存在后显示其不可变内容。
     </p>
-    <label for="evaluation-id-input">evaluation id（UUID）</label>
-    <input id="evaluation-id-input" type="text" spellcheck="false" autocomplete="off" />
-    <button id="open-evaluation-progress" type="button">打开评测进展页</button>
-    <p id="evaluation-id-status" class="status" role="status" aria-live="polite"></p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/runstream.js"></script>
-  <script src="/assets/runstate-guard.js"></script>
-  <script src="/assets/runview.js"></script>
-  <script src="/assets/stream-preview.js"></script>
-  <script src="/assets/runs.js"></script>
-  <script src="/assets/debug.js"></script>
-  <script>
+<label for="evaluation-id-input">evaluation id（UUID）</label>
+<input id="evaluation-id-input" autocomplete="off" spellcheck="false" type="text"/>
+<button id="open-evaluation-progress" type="button">打开评测进展页</button>
+<p class="status" id="evaluation-id-status" aria-live="polite" role="status"></p>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/runstream.js"></script>
+<script src="/assets/runstate-guard.js"></script>
+<script src="/assets/runview.js"></script>
+<script src="/assets/stream-preview.js"></script>
+<script src="/assets/runs.js"></script>
+<script src="/assets/debug.js"></script>
+<script>
     (function () {
       'use strict';
       var button = document.getElementById('open-evaluation-progress');

@@ -1,100 +1,75 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orchara 运行审批（F06/T050）</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 2rem; line-height: 1.55; max-width: 56rem; }
-    h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-    h2 { font-size: 1rem; margin: 0 0 .75rem; }
-    .sub { opacity: .7; font-size: .88rem; margin-bottom: 1.25rem; }
-    nav a { margin-right: 1rem; }
-    .card { border: 1px solid rgba(128,128,128,.35); border-radius: .6rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-    ul { padding-left: 1.1rem; margin: .4rem 0 0; }
-    li { margin: .5rem 0; }
-    code { font-size: .82rem; opacity: .85; }
-    .status { min-height: 1.4rem; font-size: .88rem; margin: .6rem 0 0; }
-    .status.ok { color: #15803d; }
-    .status.bad { color: #b91c1c; }
-    .status.pending { color: #a16207; }
-    .hint { font-size: .82rem; opacity: .7; }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>待我审批 · Orchara</title>
+<style>
     dl.proposal { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
     dl.proposal dt { opacity: .7; }
     dl.proposal dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; white-space: pre-wrap; }
     .decision-buttons { display: flex; gap: .75rem; margin-top: .9rem; }
-    button { padding: .45rem 1rem; font: inherit; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: .55; }
-    [hidden] { display: none !important; }
   </style>
-  <link rel="stylesheet" href="/assets/mobile.css" />
+<link href="/assets/mobile.css" rel="stylesheet"/>
+<link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-approvals">
-  <nav aria-label="主导航">
-    <a href="/">状态</a>
-    <a href="/apps">应用目录</a>
-    <a href="/runs">运行</a>
-    <a href="/tools">工具</a>
-    <a href="/login">登录</a>
-    <a href="/admin">管理台</a>
-  </nav>
-
-  <h1>运行审批（F06/T050）</h1>
-  <p class="sub" data-mobile-scope="no-full-canvas-editing">
-    小屏支持查看待我审批、核对服务端封存的真实参数并明确批准或拒绝。
-    完整画布编辑（/editor、/debug）不承诺在手机上可用，请使用桌面浏览器。
-  </p>
-  <p class="sub">
+<body class="page-approvals" data-page="approvals"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
+<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
+</aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>对话</span><span class="separator">/</span><span>待我审批</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<main class="page-content" id="main-content" tabindex="-1">
+<header class="page-heading"><div><p class="eyebrow" data-icon="check">REVIEW & DECIDE</p><h1>待我审批</h1><p class="page-description">核对具体操作的目标、内容和数据去向，再做出决定。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     审批只针对本 Run 的某一个受控操作。页面显示的是<strong>服务端封存的真实提案</strong>
     （原始目标、方法/路径、规范化参数与哈希、数据去向、来源版本、过期时间），不是 worker 自报的文案。
     批准<strong>不会赋予额外权限</strong>：恢复后的尝试仍会重新校验 attempt、manifest、策略、权限与预算，
     并通过唯一的 <code>authorized → dispatching</code> CAS 最多派发一次。
-  </p>
-  <p class="hint">
-    <strong>诚实边界：</strong>取消/拒绝不会撤销已经发生的外部写入；本页不提供“撤销”。审批必须由
+  </p><p class="hint">
+<strong>诚实边界：</strong>取消/拒绝不会撤销已经发生的外部写入；本页不提供“撤销”。审批必须由
     <strong>指定的人类审批人</strong>（F04A 为 Run 所有者）做出，管理员不是默认审批人；发布审核是另一个
     聚合，不能代替运行审批。批准/拒绝按钮<strong>没有默认选择</strong>，只有你明确点击才会提交。
-  </p>
-
-  <section class="card">
-    <h2>待我审批</h2>
-    <p id="approvals-status" class="status" role="status" aria-live="polite">正在加载审批…</p>
-    <ul id="approvals-list" data-auth-content></ul>
-    <p id="approvals-empty" class="hint" hidden>当前没有指定给你的待审批操作。</p>
-    <button id="approvals-next" type="button" hidden>下一页</button>
-  </section>
-
-  <section id="approval-detail" class="card" data-auth-content hidden aria-live="polite">
-    <h2>审批详情</h2>
-    <dl class="proposal">
-      <dt>审批 id</dt><dd id="detail-id"></dd>
-      <dt>Run</dt><dd id="detail-run"></dd>
-      <dt>状态</dt><dd id="detail-state"></dd>
-      <dt>参数哈希</dt><dd id="detail-params-sha"></dd>
-      <dt>过期时间</dt><dd id="detail-expires"></dd>
-      <dt>真实目标</dt><dd id="detail-target"></dd>
-      <dt>风险</dt><dd id="detail-risk"></dd>
-      <dt>规范化参数</dt><dd id="detail-params"></dd>
-      <dt>数据去向</dt><dd id="detail-destination"></dd>
-      <dt>来源版本（快照 / manifest / 策略）</dt><dd id="detail-sources"></dd>
-      <dt>提案封装</dt><dd id="detail-proposal-sha"></dd>
-    </dl>
-    <p id="approval-expiry-note" class="hint" role="note" hidden></p>
-    <div class="decision-buttons">
-      <button id="approve-button" type="button" disabled>批准这次操作</button>
-      <button id="reject-button" type="button" disabled>拒绝这次操作</button>
-    </div>
-    <p id="decision-status" class="status" role="status" aria-live="polite"></p>
-    <p class="hint">
+  </p></details><div class="page-sections">
+<p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
+<section class="card">
+<h2>待我审批</h2>
+<p class="status" id="approvals-status" aria-live="polite" role="status">正在加载审批…</p>
+<ul id="approvals-list" data-auth-content=""></ul>
+<p class="hint" id="approvals-empty" hidden="">当前没有指定给你的待审批操作。</p>
+<button id="approvals-next" hidden="" type="button">下一页</button>
+</section>
+<section class="card" id="approval-detail" aria-live="polite" data-auth-content="" hidden="">
+<h2>审批详情</h2>
+<dl class="proposal">
+<dt>审批 id</dt><dd id="detail-id"></dd>
+<dt>Run</dt><dd id="detail-run"></dd>
+<dt>状态</dt><dd id="detail-state"></dd>
+<dt>参数哈希</dt><dd id="detail-params-sha"></dd>
+<dt>过期时间</dt><dd id="detail-expires"></dd>
+<dt>真实目标</dt><dd id="detail-target"></dd>
+<dt>风险</dt><dd id="detail-risk"></dd>
+<dt>规范化参数</dt><dd id="detail-params"></dd>
+<dt>数据去向</dt><dd id="detail-destination"></dd>
+<dt>来源版本（快照 / manifest / 策略）</dt><dd id="detail-sources"></dd>
+<dt>提案封装</dt><dd id="detail-proposal-sha"></dd>
+</dl>
+<p class="hint" id="approval-expiry-note" hidden="" role="note"></p>
+<div class="decision-buttons">
+<button id="approve-button" disabled="" type="button">批准这次操作</button>
+<button id="reject-button" disabled="" type="button">拒绝这次操作</button>
+</div>
+<p class="status" id="decision-status" aria-live="polite" role="status"></p>
+<p class="hint">
       批准后平台会先保存决定，再由唯一的 resume 事务在旧尝试退出后排队；恢复的尝试仍在
       capability 代理中重新校验权限/预算，并在派发前做状态 CAS。拒绝或过期会让等待中的 Run 以
       <code>approval_rejected</code> / <code>approval_expired</code> 失败，且不产生外部写入。
     </p>
-  </section>
-
-  <script src="/assets/app.js"></script>
-  <script src="/assets/nav.js"></script>
-  <script src="/assets/approvals.js"></script>
+</section>
+</div></main>
+</div><script src="/assets/ui.js"></script>
+<script src="/assets/app.js"></script>
+<script src="/assets/nav.js"></script>
+<script src="/assets/approvals.js"></script>
 </body>
 </html>

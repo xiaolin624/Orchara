@@ -49,8 +49,8 @@ def test_login_page_is_served_and_posts_the_contract_path(pages_server) -> None:
     ):
         assert marker in body, f"login.html is missing {marker!r}"
 
-    # Whatever the role split, an administrator must still land on /admin.
-    assert "'/admin'" in body and "'/apps'" in body
+    # All human roles enter the conversation workspace after an identity read.
+    assert "'/chat'" in body and "await identity(true)" in body
 
     # The two failures the page exists to explain are visible text, not a
     # console message.
@@ -131,7 +131,7 @@ def test_app_js_exposes_the_session_helpers(pages_server) -> None:
 
 
 def test_activate_page_and_index_link_to_the_login_page(pages_server) -> None:
-    for path in ("/activate", "/"):
+    for path in ("/activate", "/status"):
         response = pages_server.http.get(path)
         assert response.status == 200, response.text
         assert 'href="/login"' in response.text, f"{path} has no link to /login"

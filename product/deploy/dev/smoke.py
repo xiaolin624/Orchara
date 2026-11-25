@@ -623,12 +623,14 @@ def run(
     assert ready.status == 200 and ready.json["status"] == "ready", ready.text[:300]
 
     pages = {}
-    for path in ("/", "/login", "/apps", "/attachments", "/runs", "/models"):
+    root = anonymous.get("/")
+    assert root.status == 303 and root.header("Location") == "/chat"
+    for path in ("/status", "/chat", "/login", "/apps", "/attachments", "/runs", "/models"):
         page = anonymous.get(path)
         assert page.status == 200 and "text/html" in (page.header("Content-Type") or ""), (path, page.status)
         pages[path] = {"status": page.status, "sha256": sha256_hex(page.raw), "bytes": len(page.raw)}
     # AC2: the human status page renders the profile and the stub flag from /api/status.
-    index_body = anonymous.get("/").text
+    index_body = anonymous.get("/status").text
     for marker in ('id="environment-profile"', 'id="environment-stub"', "stub_results"):
         assert marker in index_body, f"the status page does not visibly mark the profile/stub: {marker!r}"
     step(
@@ -640,7 +642,7 @@ def run(
         pages=pages,
         stub_visible_in=[
             "GET /api/status (profile=dev-stub, stub_results=true)",
-            "GET / (status page renders the profile and stub flag from /api/status)",
+            "GET /status (status page renders the profile and stub flag from /api/status)",
             "the sealed model compatibility report (provider=stub, stub=true) rendered by /models",
         ],
     )

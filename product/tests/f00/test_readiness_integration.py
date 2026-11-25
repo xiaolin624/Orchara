@@ -204,9 +204,9 @@ def test_contract_paths_are_served(api_server) -> None:
 
 
 def test_console_page_is_served(api_server) -> None:
-    code, body = _get("/")
+    code, body = _get("/status")
     assert code == 200
-    assert "Orchara 平台状态" in body
+    assert "平台状态" in body and "Orchara" in body
     # Liveness must come from its own endpoint, not be assumed from a successful fetch.
     assert "/health/live" in body, "the page must read liveness from /health/live"
     assert "/api/status" in body, "the page must read dependency state from /api/status"
