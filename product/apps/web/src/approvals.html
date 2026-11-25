@@ -15,12 +15,10 @@
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-approvals" data-page="approvals"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>对话</span><span class="separator">/</span><span>待我审批</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body class="page-approvals" data-page="approvals"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><nav class="breadcrumb" aria-label="面包屑" data-static-navigation="true"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">待我审批</span></nav><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="check">REVIEW & DECIDE</p><h1>待我审批</h1><p class="page-description">核对具体操作的目标、内容和数据去向，再做出决定。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<header class="page-heading"><div class="page-head-main"><h1>待我审批</h1><p class="page-description">核对具体操作的目标、内容和数据去向，再做出决定。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>批准代表允许该次外部写入</span><span>过期审批不可复活</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     审批只针对本 Run 的某一个受控操作。页面显示的是<strong>服务端封存的真实提案</strong>
     （原始目标、方法/路径、规范化参数与哈希、数据去向、来源版本、过期时间），不是 worker 自报的文案。
@@ -31,7 +29,7 @@
     <strong>指定的人类审批人</strong>（F04A 为 Run 所有者）做出，管理员不是默认审批人；发布审核是另一个
     聚合，不能代替运行审批。批准/拒绝按钮<strong>没有默认选择</strong>，只有你明确点击才会提交。
   </p></details><div class="page-sections">
-<p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
+<p class="inline-note mobile-scope" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
 <section class="card">
 <h2>待我审批</h2>
 <p class="status" id="approvals-status" aria-live="polite" role="status">正在加载审批…</p>
@@ -56,8 +54,8 @@
 </dl>
 <p class="hint" id="approval-expiry-note" hidden="" role="note"></p>
 <div class="decision-buttons">
-<button id="approve-button" disabled="" type="button">批准这次操作</button>
-<button id="reject-button" disabled="" type="button">拒绝这次操作</button>
+<button class="btn btn-primary" id="approve-button" disabled="" type="button">批准这次操作</button>
+<button class="btn btn-danger" id="reject-button" disabled="" type="button">拒绝这次操作</button>
 </div>
 <p class="status" id="decision-status" aria-live="polite" role="status"></p>
 <p class="hint">
@@ -67,6 +65,7 @@
     </p>
 </section>
 </div></main>
+<nav class="mobile-tabbar" aria-label="手机主导航" data-static-navigation="true"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals" aria-current="page"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data"><span data-icon="database"></span><span>我的</span></a></nav>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
