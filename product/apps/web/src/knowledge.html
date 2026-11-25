@@ -6,16 +6,86 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>知识库 · Orchara</title>
 <style>
-    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
-    dl.facts dt { opacity: .7; }
-    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    ul.bases { list-style: none; padding: 0; margin: .3rem 0 0; font-size: .88rem; }
-    ul.bases li { padding: .2rem 0; border-bottom: 1px solid rgba(128,128,128,.18); }
-    article.chunk { border-left: 3px solid rgba(37,99,235,.55); padding: .35rem .75rem; margin: .7rem 0; }
-    article.chunk p { margin: .25rem 0; font-size: .87rem; white-space: pre-wrap; }
-    .meta { font-size: .8rem; opacity: .75; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    .bad-citation { border-left-color: #b91c1c; }
-    pre#citation-text { white-space: pre-wrap; font-size: .86rem; background: rgba(128,128,128,.08); padding: .6rem; border-radius: .4rem; }
+    /* T6 (#170): the knowledge workspace. Scoped with body[data-page] so these
+       rules outrank design.css without editing its shared layers. */
+    body[data-page="knowledge"] .kb-create {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 8px 12px;
+      margin: 0 0 6px;
+      padding: 12px 14px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+    }
+    body[data-page="knowledge"] .kb-create .field { flex: 1 1 260px; min-width: 180px; max-width: 420px; margin: 0; }
+    body[data-page="knowledge"] .kb-create .field-label { display: block; margin: 0 0 4px; color: var(--accent-ink); }
+    body[data-page="knowledge"] .kb-create input {
+      margin: 0;
+      min-height: 32px;
+      background: var(--surface);
+      border-color: var(--accent-line);
+    }
+    body[data-page="knowledge"] .kb-create .btn { flex: 0 0 auto; }
+    body[data-page="knowledge"] .kb-create .status { flex: 1 1 100%; margin: 6px 0 0; }
+    body[data-page="knowledge"] .kb-picker {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      margin: 10px 0 0;
+    }
+    body[data-page="knowledge"] .kb-picker label { margin: 0; color: var(--muted); font-size: var(--fs-12); }
+    body[data-page="knowledge"] .kb-picker select { width: auto; min-width: 220px; max-width: 100%; margin: 0; }
+    /* one knowledge base per row: name + revision + the opaque id */
+    body[data-page="knowledge"] .page-content ul.kb-bases { display: block; margin: 8px 0 0; padding: 0; list-style: none; }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 10px;
+      margin: 0;
+      padding: 8px 2px;
+      border-top: 1px solid var(--border);
+      font-size: var(--fs-12);
+    }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li:first-child { border-top: 0; }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li:hover { background: var(--surface-hover); }
+    body[data-page="knowledge"] .kb-base-name { color: var(--text); font-weight: 600; font-size: var(--fs-13); }
+    body[data-page="knowledge"] .kb-base-revision { color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-11); }
+    body[data-page="knowledge"] .kb-base-id { color: var(--muted); font-family: var(--font-mono); font-size: 10px; overflow-wrap: anywhere; }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li.kb-base-empty { color: var(--muted); font-size: var(--fs-12); }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li.skeleton-row { display: block; padding: 12px 2px; }
+    body[data-page="knowledge"] .kb-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 0; }
+    /* the retrieval chunk keeps the citation body and its provenance */
+    body[data-page="knowledge"] article.chunk {
+      margin: 10px 0;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--teal);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+    body[data-page="knowledge"] article.chunk p { margin: 4px 0; font-size: var(--fs-12); line-height: 1.65; white-space: pre-wrap; }
+    body[data-page="knowledge"] article.chunk .meta { color: var(--muted); font-family: var(--font-mono); font-size: 10px; white-space: normal; }
+    body[data-page="knowledge"] article.chunk.bad-citation { border-left-color: var(--danger); background: var(--danger-soft); }
+    body[data-page="knowledge"] .page-content pre#citation-text,
+    body[data-page="knowledge"] .page-content pre#answer-citation-text {
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      font-size: var(--fs-12);
+      white-space: pre-wrap;
+    }
+    body[data-page="knowledge"] .page-content pre#answer-text { margin: 8px 0 0; padding: 10px 12px; font-size: var(--fs-12); }
+    body[data-page="knowledge"] .page-content ul.kb-bases > li.bad-citation { border-left: 3px solid var(--danger); padding-left: 8px; background: var(--danger-soft); }
+    body[data-page="knowledge"] .kb-answer .meta { color: var(--muted); font-family: var(--font-mono); font-size: 10px; overflow-wrap: anywhere; }
+    @media (max-width: 720px) {
+      body[data-page="knowledge"] .kb-create { display: grid; grid-template-columns: 1fr; }
+      body[data-page="knowledge"] .kb-create .field { max-width: none; }
+      body[data-page="knowledge"] .kb-picker { display: grid; grid-template-columns: 1fr; }
+      body[data-page="knowledge"] .kb-picker select { min-width: 0; width: 100%; }
+    }
   </style>
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
@@ -23,7 +93,7 @@
 <body class="page-knowledge" data-page="knowledge"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">知识库</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>知识库</h1><p class="page-description">整理资料、检索内容，并通过引用追溯答案的来源。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>摄取状态来自服务端任务</span><span>重建索引会生成新版本</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>知识库</h1><p class="page-description">整理资料、摄取文档、检索内容，并通过引用追溯答案的来源。</p></div><div class="heading-actions"><a class="btn btn-primary" data-icon="plus" href="#kb-form">创建知识库</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>摄取状态来自服务端任务</span><span>重建索引会生成新版本</span><span>文档列表只返回 id、状态与版本</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
     <code>txt/md/csv/xlsx/pdf</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
@@ -37,46 +107,69 @@
     只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
     <code>textContent</code> 渲染服务端文本，不把凭据或签名 URL 写入浏览器存储。
   </p></details><div class="page-sections">
+<div class="stat-row t6-stats" data-t6-stats="knowledge">
+<span class="stat-chip" data-tone="accent"><span class="stat-label">知识库</span><span class="stat-value" data-t6-stat="bases">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">文档</span><span class="stat-value" data-t6-stat="documents">—</span><span class="stat-unit">篇</span></span>
+<span class="stat-chip"><span class="stat-label">可检索</span><span class="stat-value" data-t6-stat="searchable">—</span><span class="stat-unit">篇</span></span>
+<span class="stat-chip"><span class="stat-label">摄取失败</span><span class="stat-value" data-t6-stat="failed">—</span><span class="stat-unit">篇</span></span>
+<span class="stat-chip" data-t6-stat-note=""><span class="stat-label">只统计当前知识库已加载的文档</span></span>
+</div>
 <section class="card">
-<h2>1. 创建知识库</h2>
-<form id="kb-form" method="post">
-<label for="kb-name">知识库名称</label>
-<input id="kb-name" name="name" autocomplete="off" maxlength="200" required="" type="text"/>
-<button id="kb-submit" type="submit">创建</button>
+<div class="card-head"><h2>知识库与文档</h2><span class="t6-toolbar-note" data-t6-count>正在加载…</span></div>
+<form class="kb-create" id="kb-form" method="post">
+<div class="field"><label class="field-label" for="kb-name">知识库名称</label><input id="kb-name" name="name" autocomplete="off" maxlength="200" required="" type="text"/></div>
+<button class="btn btn-primary" id="kb-submit" data-icon="plus" type="submit">创建</button>
 <p class="status" id="kb-status" aria-live="polite" role="status"></p>
 </form>
-<h3>我的知识库</h3>
-<ul class="bases" id="kb-list" aria-live="polite" data-auth-content=""></ul>
+<div class="kb-picker">
 <label for="kb-select">当前知识库</label>
 <select id="kb-select"></select>
+<span class="hint">切换知识库会清空下方的文档表与检索结果，不会混合两个库的资料。</span>
+</div>
+<ul class="kb-bases" id="kb-list" aria-live="polite" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<div class="t6-block">
+<div class="t6-block-head"><h3>文档</h3><span class="hint">按摄取状态筛选已加载的文档。</span></div>
+<div class="t6-toolbar" role="search">
+<input aria-label="按文档 id 或状态搜索已加载的文档" autocomplete="off" data-t6-search="" placeholder="搜索已加载的文档 id 或状态" type="search"/>
+<div class="segmented" role="group" aria-label="按摄取状态筛选已加载的文档"><button aria-pressed="true" data-t6-doc-state="all" type="button">全部</button><button aria-pressed="false" data-t6-doc-state="ready" type="button">可检索</button><button aria-pressed="false" data-t6-doc-state="active" type="button">处理中</button><button aria-pressed="false" data-t6-doc-state="failed" type="button">摄取失败</button></div>
+</div>
+<p class="hint" data-t6-scope="">搜索与状态筛选只作用于已加载的文档，不会重新检索服务端；“全部”包含删除中的文档。</p>
+<div class="t6-row-head" data-t6-doc-head="" aria-hidden="true"><span class="t6-cell-main">文档</span><span class="t6-cell-status">摄取状态</span><span class="t6-cell-fact">版本</span><span class="t6-cell-fact">来源附件</span><span class="t6-cell-actions">操作</span></div>
+<ul class="t6-rows" data-t6-docs=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<p class="empty-state" data-t6-docs-empty="" hidden=""><strong>当前知识库还没有文档</strong>下一步：在“摄取与索引”里把已就绪的附件绑定为知识文档；摄取完成前不会出现在检索里。</p>
+<p class="hint" data-t6-doc-missing="">文档列表接口只返回 <code>id</code>、<code>knowledge_base_id</code>、<code>state</code>、<code>revision</code> 与 <code>source_artifact_id</code>：文档<strong>名称</strong>、<strong>类型</strong>与<strong>更新时间</strong>不在列表返回中，本页不显示这三列，也不从附件名臆造；分块数只在下方“文档状态”里由诊断接口给出。删除中的文档会如实标为“删除中”，不会显示成可检索。</p>
+</div>
 </section>
 <section class="card">
-<h2>2. 上传 txt/md/csv/xlsx/pdf 并封存</h2>
+<div class="card-head"><h2>摄取与索引</h2><span class="t6-toolbar-note">上传 → 封存 → 摄取 → 索引</span></div>
+<div class="t6-block">
+<div class="t6-block-head"><h3>上传 txt/md/csv/xlsx/pdf 并封存</h3></div>
+<p class="hint">文件先上传为附件（字节上限 20 MiB），封存通过后才可以选择它作为摄取来源；上传与摄取是两步，不会跳过准入直接解析。</p>
 <form id="upload-form" method="post">
 <label for="knowledge-file">文件（.txt / .md / .csv / .xlsx / .pdf，字节上限 20 MiB）</label>
-<input id="knowledge-file" name="file" accept=".txt,.md,.csv,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" required="" type="file"/>
-<button id="upload-submit" type="submit">上传并封存</button>
+<input accept=".txt,.md,.csv,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" id="knowledge-file" name="file" required="" type="file"/>
+<button class="btn btn-secondary" id="upload-submit" data-icon="upload" type="submit">上传并封存</button>
 <p class="status" id="upload-status" aria-live="polite" role="status"></p>
 </form>
 <div id="artifact-panel" aria-live="polite" hidden="">
 <h3>附件状态</h3>
-<dl class="facts">
+<dl class="t6-facts">
 <dt>artifact id</dt><dd id="artifact-id"></dd>
 <dt>状态</dt><dd id="artifact-state"></dd>
 </dl>
 </div>
-</section>
-<section class="card">
-<h2>3. 开始摄取并查看进度</h2>
+</div>
+<div class="t6-block">
+<div class="t6-block-head"><h3>开始摄取并查看进度</h3></div>
 <form id="ingest-form" method="post">
 <label for="ingest-artifact">已就绪的附件 artifact id（上传成功后自动填入）</label>
 <input id="ingest-artifact" autocomplete="off" spellcheck="false" type="text"/>
-<button id="ingest-submit" type="submit">开始摄取</button>
+<button class="btn btn-primary" id="ingest-submit" data-icon="play" type="submit">开始摄取</button>
 <p class="status" id="ingest-status" aria-live="polite" role="status"></p>
 </form>
 <div id="document-panel" aria-live="polite" hidden="">
-<h3>文档状态</h3>
-<dl class="facts">
+<div class="t6-block-head"><h3>文档状态</h3><span class="hint">失败码与片段数来自诊断接口</span></div>
+<dl class="t6-facts">
 <dt>document id</dt><dd id="document-id"></dd>
 <dt>状态</dt><dd id="document-state"></dd>
 <dt>失败码</dt><dd id="document-error-code"></dd>
@@ -84,13 +177,15 @@
 </dl>
 <p class="status" id="document-diagnostics" aria-live="polite" role="status"></p>
 </div>
+</div>
+<div class="t6-block">
+<div class="t6-block-head"><h3>索引版本、进度与激活切换</h3></div>
 <div id="index-panel" aria-live="polite" hidden="">
-<h3>索引版本、进度与激活切换</h3>
-<dl class="facts">
+<dl class="t6-facts">
 <dt>当前激活索引</dt><dd id="index-active"></dd>
 </dl>
 <pre class="meta" id="index-progress"></pre>
-<ul class="bases" id="index-versions"></ul>
+<ul class="kb-bases" id="index-versions"></ul>
 <form id="reindex-form" method="post">
 <p class="hint">
           重建会创建<strong>新的索引版本</strong>并排队后台任务；构建期间旧的活动索引仍然可读。
@@ -98,45 +193,49 @@
           旧任务晚到只会得到 <code>stale_revision</code>/<code>source_deleted</code>，不会覆盖新版本，
           也不会复活已删除文档。失败的重建保留旧活动索引，可再次提交。
         </p>
-<button id="reindex-submit" type="submit">重建当前资料的索引</button>
+<button class="btn btn-secondary" id="reindex-submit" data-icon="refresh" type="submit">重建当前资料的索引</button>
 <p class="status" id="reindex-status" aria-live="polite" role="status"></p>
 </form>
 </div>
+</div>
 </section>
 <section class="card">
-<h2>4. 检索并打开可追溯片段</h2>
+<div class="card-head"><h2>检索与问答</h2><span class="t6-toolbar-note">引用会重新校验当前可读性</span></div>
+<div class="t6-split">
+<div class="t6-block">
+<div class="t6-block-head"><h3>检索并打开可追溯片段</h3></div>
 <form id="query-form" method="post">
 <label for="query-text">问题</label>
 <input id="query-text" autocomplete="off" maxlength="2000" required="" type="text"/>
 <label for="query-top-k">返回片段数 top_k（1..50，默认 8）</label>
 <input id="query-top-k" max="50" min="1" step="1" type="number" value="8"/>
-<button id="query-submit" type="submit">检索</button>
+<button class="btn btn-primary" id="query-submit" data-icon="search" type="submit">检索</button>
 <p class="status" id="query-status" aria-live="polite" role="status"></p>
 </form>
 <p class="meta" id="retrieval-meta"></p>
 <div id="results" aria-live="polite"></div>
 <div id="citation-panel" hidden="">
-<h3>引用详情（重新校验当前可读性）</h3>
+<div class="t6-block-head"><h3>引用详情（重新校验当前可读性）</h3></div>
 <p class="meta" id="citation-meta"></p>
 <pre id="citation-text"></pre>
 <p class="status" id="citation-status" aria-live="polite" role="status"></p>
 </div>
-</section>
-<section class="card">
-<h2>5. 就知识库提问（回答只引用本次检索且当前可读的资料）</h2>
+</div>
+<div class="t6-block kb-answer">
+<div class="t6-block-head"><h3>就知识库提问（回答只引用本次检索且当前可读的资料）</h3></div>
 <p class="hint">
-      服务端先做与检索相同的 ACL/当前版本过滤，再用抽取式 stub 组合作答（本构建
-      <strong>未配置模型 provider</strong>，回答都标注生成方式，不会冒充模型答案）。返回前逐个校验：
-      引用必须属于本次检索，且必须在当前授权与当前文档版本下可读；否则整条回答被拒绝。
-      没有检索到资料时返回空答案（不是错误）。点击引用会重新打开
-      <code>GET /knowledge-citations/{id}</code>；撤销或删除后显示“引用不可用”，绝不回放旧正文。
-    </p>
+        服务端先做与检索相同的 ACL/当前版本过滤，再用抽取式 stub 组合作答（本构建
+        <strong>未配置模型</strong> provider，回答都标注生成方式，不会冒充模型答案）。返回前逐个校验：
+        引用必须属于本次检索，且必须在当前授权与当前文档版本下可读；否则整条回答被拒绝。
+        没有检索到资料时返回空答案（不是错误）。点击引用会重新打开
+        <code>GET /knowledge-citations/{id}</code>；撤销或删除后显示“引用不可用”，绝不回放旧正文。
+      </p>
 <form id="answer-form" method="post">
 <label for="answer-query">问题</label>
 <input id="answer-query" autocomplete="off" maxlength="2000" required="" type="text"/>
 <label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
 <input id="answer-top-k" max="50" min="1" step="1" type="number" value="8"/>
-<button id="answer-submit" type="submit">提问</button>
+<button class="btn btn-secondary" id="answer-submit" data-icon="spark" type="submit">提问</button>
 <p class="status" id="answer-status" aria-live="polite" role="status"></p>
 </form>
 <div id="answer-panel" aria-live="polite" hidden="">
@@ -145,14 +244,17 @@
 <pre id="answer-text"></pre>
 <p class="meta" id="answer-retrieval"></p>
 <h3>引用（点击重新校验当前可读性）</h3>
-<ul class="bases" id="answer-citations"></ul>
+<ul class="kb-bases" id="answer-citations"></ul>
 <div id="answer-citation-panel" hidden="">
 <p class="meta" id="answer-citation-meta"></p>
 <pre id="answer-citation-text"></pre>
 <p class="status" id="answer-citation-status" aria-live="polite" role="status"></p>
 </div>
 </div>
+</div>
+</div>
 </section>
+<p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机端承诺知识库、文档、摄取状态与引用的单列浏览；完整画布编辑不在手机端承诺（本页不提供画布编辑）。</p>
 </div></main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data" aria-current="page"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
@@ -168,8 +270,31 @@
       let currentArtifact = '';
       let currentDocument = '';
       let currentFile = null;
+      // T6 presentation state: the documents are loaded once and filtered in the
+      // page; search and the state chips never issue a request of their own.
+      const documentsState = { items: [], search: '', state: 'all' };
 
       const el = (id) => document.getElementById(id);
+
+      /**
+       * A T6 (#170) presentation hook. The business id inventory is a T1 contract
+       * (tests/f12/test_t165_shell.py), so the stat row and the document table
+       * carry data-* hooks. The lookup is lazy and null-safe: the Node harnesses
+       * shim only part of the document surface.
+       */
+      function hook(selector) {
+        if (typeof document.querySelector !== 'function') {
+          return null;
+        }
+        return document.querySelector(selector) || null;
+      }
+
+      function setStat(key, value) {
+        const node = hook('[data-t6-stat="' + key + '"]');
+        if (node) {
+          node.textContent = String(value);
+        }
+      }
 
       function setStatus(node, text, kind) {
         if (!node) {
@@ -183,6 +308,41 @@
         while (node && node.firstChild) {
           node.removeChild(node.firstChild);
         }
+      }
+
+      function line(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) {
+          node.className = className;
+        }
+        if (text !== undefined && text !== null) {
+          node.textContent = String(text);
+        }
+        return node;
+      }
+
+      function pill(text, tone, shape) {
+        const node = line('span', 'pill', text);
+        node.setAttribute('data-tone', tone);
+        node.setAttribute('data-shape', shape);
+        return node;
+      }
+
+      // Shape + text first, colour third (spec 2.4). A failed document is an
+      // alert triangle, a searchable one a check, the in-flight states a dot.
+      const DOC_TONES = {
+        ready: ['success', 'check'],
+        failed: ['danger', 'alert'],
+        uploaded: ['accent', 'dot'],
+        scanning: ['accent', 'dot'],
+        indexing: ['accent', 'dot'],
+        deleting: ['muted', 'dash'],
+        deleted: ['muted', 'dash'],
+      };
+
+      function documentPill(view) {
+        const pair = DOC_TONES[view.state] || ['muted', 'dot'];
+        return pill(view.stateText, pair[0], pair[1]);
       }
 
       async function sha256Hex(buffer) {
@@ -214,8 +374,10 @@
         clear(select);
         items.forEach((base) => {
           const row = document.createElement('li');
-          row.textContent = String(base.name || '') + ' · revision ' + String(base.revision || 1)
-            + ' · ' + String(base.id || '');
+          row.dataset.baseId = String(base.id || '');
+          row.appendChild(line('span', 'kb-base-name', String(base.name || '（未命名知识库）')));
+          row.appendChild(line('span', 'kb-base-revision', 'revision ' + String(base.revision || 1)));
+          row.appendChild(line('span', 'kb-base-id', String(base.id || '')));
           list.appendChild(row);
 
           const option = document.createElement('option');
@@ -223,17 +385,169 @@
           option.textContent = String(base.name || base.id || '');
           select.appendChild(option);
         });
+        setStat('bases', items.length);
         if (items.length === 0) {
           const empty = document.createElement('li');
-          empty.textContent = '还没有知识库';
+          empty.className = 'kb-base-empty';
+          empty.textContent = '还没有知识库：用上面的表单创建一个，再回来摄取文档。';
           list.appendChild(empty);
           currentBase = '';
+          await loadDocuments();
           return;
         }
         const wanted = String(preferredId || currentBase || '');
         const match = items.find((base) => String(base.id) === wanted) || items[0];
         select.value = String(match.id);
         currentBase = String(match.id);
+        await loadDocuments();
+      }
+
+      /** Render one document row from the contract projection, never a guess. */
+      function renderDocumentRow(record) {
+        const view = describeDocument(record);
+        const item = document.createElement('li');
+        item.dataset.docId = view.id;
+        item.dataset.docState = view.state;
+        item.dataset.docSearch = (view.id + ' ' + view.state + ' ' + view.stateText + ' '
+          + view.sourceArtifactId).toLowerCase();
+
+        const main = line('span', 't6-cell-main');
+        main.appendChild(line('span', 't6-cell-title', '文档 ' + view.id.slice(0, 8)));
+        main.appendChild(line('span', 't6-cell-id', view.id));
+        item.appendChild(main);
+
+        const status = line('span', 't6-cell-status');
+        status.appendChild(documentPill(view));
+        item.appendChild(status);
+
+        item.appendChild(line('span', 't6-cell-fact', 'revision ' + view.revision));
+        const artifact = line('span', 't6-cell-fact',
+          view.sourceArtifactId ? view.sourceArtifactId.slice(0, 8) : '—');
+        item.appendChild(artifact);
+
+        const actions = line('span', 't6-cell-actions');
+        const open = line('button', 'btn btn-secondary btn-small', '查看状态');
+        open.type = 'button';
+        open.addEventListener('click', () => {
+          currentDocument = view.id;
+          showDocument(view.id).catch((error) => {
+            setStatus(el('document-diagnostics'), '读取文档状态失败 ' + describeFailure(error), 'bad');
+          });
+        });
+        actions.appendChild(open);
+        item.appendChild(actions);
+        return item;
+      }
+
+      /** One bounded read of a document plus its diagnostics (no polling loop). */
+      async function showDocument(documentId) {
+        const record = await api(knowledgeDocumentPath(documentId));
+        const view = renderDocument(record);
+        el('document-panel').hidden = false;
+        try {
+          const diagnostics = await api(knowledgeDocumentDiagnosticsPath(documentId));
+          renderDiagnostics(diagnostics);
+        } catch (error) {
+          if (error.status === 404) {
+            throw error;
+          }
+          if (!view.searchable) {
+            setStatus(el('document-diagnostics'), '诊断暂不可用 ' + describeFailure(error), 'bad');
+          }
+        }
+        return view;
+      }
+
+      function applyDocumentFilter() {
+        const list = hook('[data-t6-docs]');
+        if (!list || !list.children) {
+          return;
+        }
+        const term = String(documentsState.search || '').trim().toLowerCase();
+        let shown = 0;
+        for (const row of list.children) {
+          const searchable = String(row.dataset && row.dataset.docSearch ? row.dataset.docSearch : '');
+          const state = String(row.dataset && row.dataset.docState ? row.dataset.docState : '');
+          let matchesState = documentsState.state === 'all' || state === documentsState.state;
+          if (documentsState.state === 'active') {
+            matchesState = state === 'uploaded' || state === 'scanning' || state === 'indexing';
+          }
+          const matchesTerm = term === '' || searchable.indexOf(term) >= 0;
+          const visible = matchesState && matchesTerm;
+          row.hidden = !visible;
+          if (visible) {
+            shown += 1;
+          }
+        }
+        const empty = hook('[data-t6-docs-empty]');
+        if (empty) {
+          empty.hidden = shown !== 0;
+        }
+        const note = hook('[data-t6-count]');
+        if (note) {
+          note.textContent = '已加载 ' + documentsState.items.length + ' 篇文档'
+            + (documentsState.state === 'all' && term === '' ? '' : ' · 显示 ' + shown + ' 篇');
+        }
+      }
+
+      async function loadDocuments() {
+        const list = hook('[data-t6-docs]');
+        if (!list) {
+          return;
+        }
+        clear(list);
+        documentsState.items = [];
+        if (!currentBase) {
+          setStat('documents', 0);
+          setStat('searchable', 0);
+          setStat('failed', 0);
+          applyDocumentFilter();
+          return;
+        }
+        let items = [];
+        let cursor = null;
+        for (let page = 0; page < 100; page += 1) {
+          const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+          const payload = await api(knowledgeDocumentsPath(currentBase) + query);
+          items = items.concat(Array.isArray(payload && payload.items) ? payload.items : []);
+          cursor = (payload && payload.next_cursor) || null;
+          if (!cursor) {
+            break;
+          }
+        }
+        documentsState.items = items;
+        items.forEach((document) => {
+          list.appendChild(renderDocumentRow(document));
+        });
+        const ready = items.filter((document) => String(document.state) === 'ready').length;
+        const failed = items.filter((document) => String(document.state) === 'failed').length;
+        setStat('documents', items.length);
+        setStat('searchable', ready);
+        setStat('failed', failed);
+        applyDocumentFilter();
+      }
+
+      function bindDocumentToolbar() {
+        const search = hook('[data-t6-search]');
+        if (search && typeof search.addEventListener === 'function') {
+          search.addEventListener('input', () => {
+            documentsState.search = String(search.value || '');
+            applyDocumentFilter();
+          });
+        }
+        const chips = typeof document.querySelectorAll === 'function'
+          ? Array.from(document.querySelectorAll('[data-t6-doc-state]'))
+          : [];
+        chips.forEach((chip) => {
+          chip.addEventListener('click', () => {
+            documentsState.state = String(chip.getAttribute('data-t6-doc-state') || 'all');
+            chips.forEach((other) => {
+              other.setAttribute('aria-pressed',
+                other === chip ? 'true' : 'false');
+            });
+            applyDocumentFilter();
+          });
+        });
       }
 
       function renderArtifact(artifact) {
@@ -246,8 +560,8 @@
         }
       }
 
-      function renderDocument(document) {
-        const view = describeDocument(document);
+      function renderDocument(record) {
+        const view = describeDocument(record);
         el('document-panel').hidden = false;
         el('document-id').textContent = view.id;
         el('document-state').textContent = view.stateText;
@@ -295,8 +609,8 @@
 
       async function pollDocument(documentId) {
         for (;;) {
-          const document = await api(knowledgeDocumentPath(documentId));
-          const view = renderDocument(document);
+          const record = await api(knowledgeDocumentPath(documentId));
+          const view = renderDocument(record);
           let diagnostics = null;
           try {
             diagnostics = await api(knowledgeDocumentDiagnosticsPath(documentId));
@@ -307,6 +621,7 @@
             }
           }
           if (!shouldPollDocument(view.state)) {
+            await loadDocuments();
             return { document: view, diagnostics: diagnostics };
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -353,6 +668,9 @@
         currentDocument = '';
         el('document-panel').hidden = true;
         clearAnswerPanel();
+        loadDocuments().catch((error) => {
+          setStatus(el('kb-status'), '读取文档失败 ' + describeFailure(error), 'bad');
+        });
       });
 
       el('knowledge-file').addEventListener('change', () => {
@@ -520,6 +838,7 @@
 
           const open = document.createElement('button');
           open.type = 'button';
+          open.className = 'btn btn-secondary btn-small';
           open.textContent = '打开引用';
           open.addEventListener('click', async () => {
             const panel = el('citation-panel');
@@ -632,6 +951,7 @@
           row.appendChild(quote);
           const open = document.createElement('button');
           open.type = 'button';
+          open.className = 'btn btn-secondary btn-small';
           open.textContent = '打开引用';
           open.addEventListener('click', () => openAnswerCitation(citation));
           row.appendChild(open);
@@ -671,6 +991,7 @@
 
       (async () => {
         try {
+          bindDocumentToolbar();
           await requireLogin();
           csrfToken = await csrf();
           await loadBases();

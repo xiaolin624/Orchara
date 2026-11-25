@@ -6,63 +6,102 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>模型管理 · Orchara</title>
 <style>
-    input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: .4rem .5rem; }
-    button.secondary { background: transparent; }
-    code, .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
-    .warn { color: #b91c1c; font-size: .84rem; }
-    .row-actions { margin-top: .35rem; }
-    .report-grid { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; font-size: .86rem; }
-    .report-grid dt { opacity: .7; }
-    .report-grid dd { margin: 0; word-break: break-all; }
+    /* T6 (#170): the model registry. Registration is an admin strip; the list is
+       one row per version with its availability and the binding report. */
+    body[data-page="models"] .model-register {
+      margin: 0 0 6px;
+      padding: 12px 14px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+    }
+    body[data-page="models"] .model-register .field { margin: 0 0 10px; }
+    body[data-page="models"] .model-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+    body[data-page="models"] .model-field-grid .field { min-width: 0; }
+    body[data-page="models"] .model-register .field-label { color: var(--accent-ink); }
+    body[data-page="models"] .model-register input, body[data-page="models"] .model-register select {
+      background: var(--surface);
+      border-color: var(--accent-line);
+    }
+    body[data-page="models"] .model-register input[readonly] { background: var(--surface-2); color: var(--text-2); }
+    body[data-page="models"] .model-register textarea { min-height: 74px; }
+    body[data-page="models"] .model-register .status { margin: 8px 0 0; }
+    body[data-page="models"] .model-warning {
+      flex: 1 1 100%;
+      color: var(--warning);
+      font-size: var(--fs-11);
+      line-height: 1.6;
+    }
+    body[data-page="models"] .model-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+    body[data-page="models"] .model-actions .btn { margin: 0; }
+    body[data-page="models"] .model-pager { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; }
+    body[data-page="models"] .page-content dl.report-grid { grid-template-columns: minmax(120px, 220px) minmax(0, 1fr); margin: 8px 0 0; }
+    body[data-page="models"] .page-content dl.report-grid dt { font-size: var(--fs-11); }
+    body[data-page="models"] .page-content dl.report-grid dd { font-size: var(--fs-12); font-family: var(--font-mono); }
+    @media (max-width: 720px) {
+      body[data-page="models"] .model-field-grid { grid-template-columns: 1fr; }
+      body[data-page="models"] .page-content dl.report-grid { grid-template-columns: 1fr; gap: 0; }
+      body[data-page="models"] .model-actions { display: grid; grid-template-columns: 1fr; }
+      body[data-page="models"] .model-actions .btn { width: 100%; justify-content: center; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-page="models"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/admin">管理台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">模型管理</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>模型管理</h1><p class="page-description">登记模型版本、验证兼容性，为应用选择固定的模型配置。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>可用性来自服务端</span><span>stub 结果不得当作真实模型</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>模型管理</h1><p class="page-description">登记模型版本、验证兼容性，为应用选择固定的模型配置。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/admin">管理台</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>可用性来自服务端</span><span>stub 结果不得当作真实模型</span><span>只有已通过验证的版本可被共享应用引用</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化输出兼容用例，查看不可变报告，
     并且只有 <code>validation_state=passed</code> 且未撤销的版本才能被共享应用引用。
     pending/running/failed 的版本一律不能进入共享应用。
   </p><p class="hint">
     凭据只使用预登记引用（<code>endpoint_ref</code>/<code>secret_ref</code>），本页不接收、不显示任何密钥文本；
-    服务端为每个登记构建不可变 manifest 并记录 SHA-256。兼容验证由真实后台任务执行：
+    服务端为每个登记构建不可变 manifest 并记录 <code>manifest_sha256</code>。兼容验证由真实后台任务执行：
     <code>model_validate</code> 读取封存的合成 fixture，调用 stub 供应商，再上传封存报告。
+  </p><p class="hint">
+    列表接口只返回 id、name、model_id、validation_state、data_destination 与 evaluation_report_id：
+    供应商（provider）、上下文窗口与价格不在列表返回中，本页不显示这三类信息；
+    它们只出现在登记表单的 config 输入里，由服务端校验后写入 manifest。
   </p></details><div class="page-sections">
+<div class="stat-row t6-stats" data-t6-stats="models">
+<span class="stat-chip" data-tone="accent"><span class="stat-label">已加载版本</span><span class="stat-value" data-t6-stat="versions">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">已通过</span><span class="stat-value" data-t6-stat="passed">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">待验证</span><span class="stat-value" data-t6-stat="pending">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip" data-t6-stat-note=""><span class="stat-label">只统计已加载的版本</span></span>
+</div>
 <section class="card" id="register-card" hidden="">
-<h2>登记模型版本</h2>
+<div class="card-head"><h2>登记模型版本</h2><span class="t6-toolbar-note">需要 admin 角色</span></div>
+<div class="model-register">
 <form id="register-form" method="post">
-<label for="model-name">name</label>
-<input id="model-name" name="name" autocomplete="off" maxlength="200" type="text"/>
-<label for="model-provider">provider</label>
-<select id="model-provider" name="provider">
-<option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option>
-<option value="openai">openai</option>
-</select>
-<label for="model-id">model_id</label>
-<input id="model-id" name="model_id" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" type="text"/>
-<label for="model-endpoint">endpoint_ref（预登记目的地）</label>
-<select id="model-endpoint" name="endpoint_ref"></select>
-<label for="model-credential">secret_ref（预登记凭据引用）</label>
-<select id="model-credential" name="secret_ref"></select>
-<label for="model-destination">data_destination</label>
-<input id="model-destination" name="data_destination" readonly="" type="text"/>
-<label for="model-config">config（ModelConfig JSON）</label>
-<textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea>
-<button id="register-button" type="submit">登记为 pending</button>
+<div class="model-field-grid">
+<div class="field"><label class="field-label" for="model-name">name</label><input id="model-name" name="name" autocomplete="off" maxlength="200" type="text"/></div>
+<div class="field"><label class="field-label" for="model-provider">provider</label><select id="model-provider" name="provider"><option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option><option value="openai">openai</option></select></div>
+<div class="field"><label class="field-label" for="model-id">model_id</label><input id="model-id" name="model_id" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" type="text"/></div>
+<div class="field"><label class="field-label" for="model-endpoint">endpoint_ref（预登记目的地）</label><select id="model-endpoint" name="endpoint_ref"></select></div>
+<div class="field"><label class="field-label" for="model-credential">secret_ref（预登记凭据引用）</label><select id="model-credential" name="secret_ref"></select></div>
+<div class="field"><label class="field-label" for="model-destination">data_destination</label><input id="model-destination" name="data_destination" readonly="" type="text"/></div>
+</div>
+<div class="field"><label class="field-label" for="model-config">config（ModelConfig JSON）</label><textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea></div>
+<button class="btn btn-primary" id="register-button" data-icon="plus" type="submit">登记为 pending</button>
 </form>
+</div>
 <p class="status" id="register-status" aria-live="polite" role="status"></p>
 </section>
 <section class="card" id="models-card">
-<h2>模型版本</h2>
+<div class="card-head"><h2>模型版本</h2><span class="t6-toolbar-note" data-t6-count>正在加载…</span></div>
 <p class="hint">管理员看到全部版本；其他已登录身份只看到 passed 且未撤销的版本。登记本身不依赖任何已有应用报告。</p>
 <p class="status" id="models-status" aria-live="polite" role="status"></p>
-<ul id="models-list" data-auth-content=""></ul>
-<button id="models-next" hidden="" type="button">下一页</button>
+<div class="t6-toolbar" role="search"><input aria-label="按名称或模型 id 搜索已加载的版本" autocomplete="off" data-t6-search="" placeholder="搜索已加载的模型名称或 model id" type="search"/></div>
+<p class="hint" data-t6-scope="">搜索只作用于已加载的版本，不会重新检索服务端；翻页取得更多版本后可再次搜索。</p>
+<div class="t6-row-head" data-t6-model-head="" aria-hidden="true"><span class="t6-cell-main">模型</span><span class="t6-cell-status">可用状态</span><span class="t6-cell-fact">数据去向</span><span class="t6-cell-fact">绑定报告</span><span class="t6-cell-actions">操作</span></div>
+<ul class="t6-rows" id="models-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<p class="empty-state" data-t6-models-empty="" hidden=""><strong>还没有可见的模型版本</strong>下一步：管理员可以用上面的表单登记一个版本，再运行兼容验证。</p>
+<div class="model-pager"><button class="btn btn-small" id="models-next" hidden="" type="button">下一页</button></div>
+<p class="hint" data-t6-model-missing="">列表接口只返回 id、name、model_id、validation_state、data_destination 与 evaluation_report_id：<strong>provider</strong>、<strong>上下文窗口</strong>与价格不在列表返回中，本页不显示这三类信息，也不从 config 猜一个值填进去。</p>
 </section>
 <section class="card" id="report-card" hidden="">
-<h2>兼容报告与固定 profile</h2>
+<div class="card-head"><h2>兼容报告与固定 profile</h2><span class="toolbar-note">不可变报告，读取时重新校验</span></div>
 <p class="status" id="report-status" aria-live="polite" role="status"></p>
 <dl class="report-grid" id="report-body"></dl>
 </section>
@@ -87,11 +126,58 @@
 
     let identityState = null;
     let nextCursor = null;
+    let renderedModels = [];
+    let searchTerm = '';
     const validateKeys = new Map();
 
+    // T6 presentation hooks; the business id inventory is a T1 contract, so the
+    // stat row, the count note and the toolbar carry data-* hooks.
+    function hook(selector) {
+      if (typeof document.querySelector !== 'function') {
+        return null;
+      }
+      return document.querySelector(selector) || null;
+    }
+
+    function setStat(key, value) {
+      const node = hook('[data-t6-stat="' + key + '"]');
+      if (node) {
+        node.textContent = String(value);
+      }
+    }
+
     function setStatus(element, text, kind) {
+      if (!element) {
+        return;
+      }
       element.textContent = text;
       element.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function node(tag, text, className) {
+      const element = document.createElement(tag);
+      if (text !== undefined && text !== null) {
+        element.textContent = String(text);
+      }
+      if (className) {
+        element.className = className;
+      }
+      return element;
+    }
+
+    const MODEL_TONES = {
+      passed: ['success', 'check'],
+      pending: ['warning', 'ring'],
+      running: ['accent', 'dot'],
+      failed: ['danger', 'alert'],
+    };
+
+    function pill(text, tone, shape) {
+      const element = document.createElement('span');
+      element.className = 'pill';
+      element.setAttribute('data-tone', tone);
+      element.setAttribute('data-shape', shape);
+      return element;
     }
 
     function applyEndpointDestination() {
@@ -123,11 +209,7 @@
     }
 
     function reportDetail(term, value) {
-      const dt = document.createElement('dt');
-      dt.textContent = term;
-      const dd = document.createElement('dd');
-      dd.textContent = value;
-      reportBody.append(dt, dd);
+      reportBody.append(node('dt', term), node('dd', value));
     }
 
     async function showReport(reportId) {
@@ -206,42 +288,82 @@
       const view = describeModel(item);
       const row = document.createElement('li');
       row.dataset.modelId = view.id;
-      const head = document.createElement('div');
-      head.textContent = view.name + ' · ' + view.modelId + ' · ' + view.stateText;
-      row.appendChild(head);
-      const meta = document.createElement('div');
-      meta.className = 'mono';
-      meta.textContent = 'id ' + view.id + ' · 目的地 ' + view.dataDestination;
-      row.appendChild(meta);
+      row.dataset.validationState = view.state;
+
+      const main = node('span', '', 't6-cell-main');
+      main.appendChild(node('span', view.name || view.modelId || '（未命名版本）', 't6-cell-title'));
+      main.appendChild(node('span', 'model_id ' + view.modelId + ' · id ' + view.id, 't6-cell-id'));
+      row.appendChild(main);
+
+      const status = node('span', '', 't6-cell-status');
+      const tones = MODEL_TONES[view.state] || ['muted', 'dot'];
+      status.appendChild(pill(view.stateText, tones[0], tones[1]));
+      row.appendChild(status);
+
+      row.appendChild(node('span', view.dataDestination || '—', 't6-cell-fact'));
+      row.appendChild(node('span', view.reportId
+        ? '报告 ' + view.reportId.slice(0, 8)
+        : '无报告', 't6-cell-fact'));
+
+      const actions = node('span', '', 't6-cell-actions model-actions');
       if (view.reportId) {
-        const reportLine = document.createElement('div');
-        reportLine.className = 'mono';
-        reportLine.textContent = 'report ' + view.reportId;
-        row.appendChild(reportLine);
-        const reportButton = document.createElement('button');
+        const reportButton = node('button', '查看报告与 profile', 'btn btn-secondary btn-small');
         reportButton.type = 'button';
-        reportButton.className = 'secondary';
-        reportButton.textContent = '查看报告与 profile';
         reportButton.addEventListener('click', () => showReport(view.reportId));
-        row.appendChild(reportButton);
-      }
-      if (view.warning) {
-        const warning = document.createElement('div');
-        warning.className = 'warn';
-        warning.textContent = view.warning;
-        row.appendChild(warning);
+        actions.appendChild(reportButton);
       }
       if (view.canValidate) {
-        const actions = document.createElement('div');
-        actions.className = 'row-actions';
-        const button = document.createElement('button');
+        const button = node('button', '运行兼容验证', 'btn btn-primary btn-small');
         button.type = 'button';
-        button.textContent = '运行兼容验证';
         button.addEventListener('click', () => validateModel(view.id));
         actions.appendChild(button);
-        row.appendChild(actions);
+      }
+      row.appendChild(actions);
+
+      if (view.warning) {
+        row.appendChild(node('span', view.warning, 'model-warning'));
       }
       return row;
+    }
+
+    function applyModelFilter() {
+      let shown = 0;
+      for (const row of Array.from(modelsList.children || [])) {
+        if (!row.dataset || !row.dataset.modelId) {
+          continue;
+        }
+        const model = renderedModels.find((entry) => String(entry.id) === row.dataset.modelId);
+        const described = model ? describeModel(model) : null;
+        const haystack = described
+          ? (described.name + ' ' + described.modelId + ' ' + described.id).toLowerCase()
+          : '';
+        const visible = !described || searchTerm === '' || haystack.indexOf(searchTerm) >= 0;
+        row.hidden = !visible;
+        if (visible) {
+          shown += 1;
+        }
+      }
+      const note = hook('[data-t6-count]');
+      if (note) {
+        note.textContent = '已加载 ' + renderedModels.length + ' 个版本'
+          + (searchTerm === '' ? '' : ' · 匹配 ' + shown + ' 个')
+          + (nextCursor ? '（可翻页）' : '');
+      }
+      const empty = hook('[data-t6-models-empty]');
+      if (empty) {
+        empty.hidden = !(renderedModels.length === 0 || shown === 0);
+      }
+    }
+
+    function bindModelSearch() {
+      const input = hook('[data-t6-search]');
+      if (!input || typeof input.addEventListener !== 'function') {
+        return;
+      }
+      input.addEventListener('input', () => {
+        searchTerm = String(input.value || '').trim().toLowerCase();
+        applyModelFilter();
+      });
     }
 
     async function loadPage(cursor, replace) {
@@ -255,9 +377,11 @@
         const page = await api(modelsPath() + '?' + query.toString());
         if (replace !== false) {
           modelsList.replaceChildren();
+          renderedModels = [];
         }
         for (const item of page.items || []) {
           modelsList.appendChild(renderModel(item));
+          renderedModels.push(item);
         }
         // The list contract has items + next_cursor; the page used to compute
         // the cursor and only mention "还有下一页" without offering the control,
@@ -265,6 +389,14 @@
         nextCursor = page.next_cursor || null;
         modelsNext.hidden = !nextCursor;
         const shown = modelsList.children.length;
+        const passed = renderedModels.filter(
+          (item) => String(item.validation_state) === 'passed').length;
+        const pending = renderedModels.filter(
+          (item) => String(item.validation_state) !== 'passed').length;
+        setStat('versions', renderedModels.length);
+        setStat('passed', passed);
+        setStat('pending', pending);
+        applyModelFilter();
         setStatus(
           modelsStatus,
           '共显示 ' + shown + ' 个版本' + (nextCursor ? '（还有下一页）' : ''),
@@ -320,6 +452,7 @@
 
     (async () => {
       try {
+        bindModelSearch();
         identityState = await requireLogin();
         registerCard.hidden = !canRegister(identityState);
         if (canRegister(identityState)) {

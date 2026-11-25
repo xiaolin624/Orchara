@@ -458,12 +458,76 @@ function diagnosticsFields(document) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// T6 (#170) presentation hooks. The stat row and the state pills carry data-*
+// attributes because the business id inventory is a T1 contract
+// (tests/f12/test_t165_shell.py). Every lookup is lazy and null-safe: the Node
+// page harnesses shim no document at all.
+// ---------------------------------------------------------------------------
+function presentationNode(selector) {
+  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') {
+    return null;
+  }
+  return document.querySelector(selector) || null;
+}
+
+function setStat(key, value) {
+  const node = presentationNode('[data-t6-stat="' + key + '"]');
+  if (node) {
+    node.textContent = String(value);
+  }
+}
+
+/** Shape + text first, colour third: the state language of the redesign. */
+function setStatePill(selector, text, tone, shape) {
+  const node = presentationNode(selector);
+  if (!node) {
+    return;
+  }
+  node.textContent = String(text);
+  node.setAttribute('data-tone', tone);
+  node.setAttribute('data-shape', shape);
+  node.hidden = false;
+}
+
+const ARTIFACT_TONES = {
+  ready: ['success', 'check'],
+  quarantined: ['danger', 'alert'],
+  scanning: ['accent', 'dot'],
+  uploading: ['accent', 'dot'],
+  deleted: ['muted', 'dash'],
+};
+
+const TOOL_RUN_TONES = {
+  succeeded: ['success', 'check'],
+  failed: ['danger', 'alert'],
+  leased: ['accent', 'dot'],
+  ready: ['warning', 'ring'],
+};
+
+/**
+ * A byte count rendered for a human, with no float parsing of the contract
+ * value: the API sends an integer, and only the display divides it.
+ */
+function formatFileSize(value) {
+  const bytes = typeof value === 'string' ? parseInt(value, 10) : value;
+  if (typeof bytes !== 'number' || !isFinite(bytes) || bytes < 0) {
+    return '—';
+  }
+  if (bytes < 1024) {
+    return String(bytes) + ' B';
+  }
+  if (bytes < 1024 * 1024) {
+    return (bytes / 1024).toFixed(1) + ' KiB';
+  }
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MiB';
+}
+
 function initTools() {
   const panel = document.getElementById('tool-panel');
   if (!panel) {
     return;
-  }
-  const status = document.getElementById('tool-run-status');
+  }  const status = document.getElementById('tool-run-status');
   const downloads = document.getElementById('tool-downloads');
   const logNote = document.getElementById('tool-log-note');
   let pollTimer = null;
@@ -479,6 +543,13 @@ function initTools() {
     document.getElementById('tool-run-id').textContent = run.id;
     document.getElementById('tool-run-state').textContent = toolRunStatusLabel(run.state);
     document.getElementById('tool-run-error-code').textContent = run.error_code || '—';
+    const runTone = TOOL_RUN_TONES[run.state] || ['muted', 'dash'];
+    setStat('tool', toolRunStatusLabel(run.state));
+    setStatePill('[data-t6-tool-pill]', toolRunStatusLabel(run.state), runTone[0], runTone[1]);
+    const skeleton = presentationNode('[data-t6-tool-skeleton]');
+    if (skeleton) {
+      skeleton.hidden = !(run.state === 'ready' || run.state === 'leased');
+    }
     document.getElementById('tool-summary').hidden = true;
     document.getElementById('tool-diagnostics').hidden = true;
     downloads.replaceChildren();
@@ -658,10 +729,19 @@ function initAttachments() {
   function renderArtifact(artifact, reason) {
     currentArtifactID = artifact.id;
     const summary = artifactSummary(artifact);
+    const emptyState = presentationNode('[data-t6-artifact-empty]');
+    if (emptyState) {
+      emptyState.hidden = true;
+    }
     document.getElementById('artifact-id').textContent = summary.id;
     document.getElementById('artifact-state').textContent = summary.state;
     document.getElementById('artifact-media-type').textContent = summary.mediaType;
     document.getElementById('artifact-size').textContent = String(summary.sizeBytes);
+    const artifactTone = ARTIFACT_TONES[summary.state] || ['muted', 'dash'];
+    setStat('upload', summary.state);
+    setStat('size', formatFileSize(summary.sizeBytes));
+    setStatePill('[data-t6-upload-pill]', summary.state, artifactTone[0], artifactTone[1]);
+    setStatePill('[data-t6-artifact-pill]', summary.state, artifactTone[0], artifactTone[1]);
     panel.hidden = false;
     const toolArtifactInput = document.getElementById('tool-artifact-id');
     if (toolArtifactInput) {
