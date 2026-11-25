@@ -60,9 +60,33 @@
     return identity.kind === undefined || identity.kind === 'user';
   }
 
+  /*
+   * Presentation metadata only: the icon name and the group label each entry is
+   * rendered with. It is stamped as data-nav-icon/data-nav-group on the anchor,
+   * and assets/ui.js turns it into the visual sidebar structure. The labels and
+   * the role rules above stay the single source of truth.
+   */
+  var NAV_VISUALS = {
+    '/chat': ['chat', '工作空间'],
+    '/catalog': ['grid', '工作空间'],
+    '/runs': ['run', '工作空间'],
+    '/approvals': ['shield', '工作空间'],
+    '/apps': ['workflow', '创作与资源'],
+    '/knowledge': ['book', '创作与资源'],
+    '/tools': ['tool', '创作与资源'],
+    '/models': ['model', '创作与资源'],
+    '/memories': ['brain', '个人空间'],
+    '/personal-data': ['database', '个人空间'],
+    '/attachments': ['file', '个人空间'],
+    '/admin': ['settings', '管理'],
+    '/reviews': ['check', '管理'],
+    '/status': ['pulse', '管理'],
+    '/login': ['logout', '账号'],
+    '/activate': ['user', '账号'],
+  };
+
   /** The navigation entries the current identity may see, in display order. */
-  function navItemsFor(identity) {
-    if (!identity) {
+  function navItemsFor(identity) {    if (!identity) {
       return [
         { href: '/status', label: '状态' },
         { href: '/login', label: '登录' },
@@ -164,6 +188,9 @@
         var link = document.createElement('a');
         link.href = item.href;
         link.textContent = item.label;
+        var visual = NAV_VISUALS[item.href] || ['grid', '工作空间'];
+        link.setAttribute('data-nav-icon', item.logout ? 'logout' : visual[0]);
+        link.setAttribute('data-nav-group', visual[1]);
         if (item.logout) {
           link.setAttribute('data-orchara-logout', 'true');
         }
