@@ -30,6 +30,13 @@ def contrast(first: str, second: str) -> float:
     return (light + .05) / (dark + .05)
 
 
+def css_color(color: str) -> str:
+    """Translate a #rrggbb design token into the browser's computed rgb() form."""
+    value = color.strip().lstrip('#')
+    assert len(value) == 6, f"the design token is not a 6-digit hex colour: {color}"
+    return 'rgb({}, {}, {})'.format(*(int(value[i:i + 2], 16) for i in (0, 2, 4)))
+
+
 def verify(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     screenshots = out / 'screenshots'
@@ -59,11 +66,25 @@ def verify(out: Path) -> None:
             page.wait_for_url('**/chat')
             page.locator('#account-label').filter(has_text='我的工作空间').wait_for()
             report['checks'].append('real login enters /chat')
-            colors = page.evaluate("Object.fromEntries(['--text','--muted','--primary','--surface'].map(k => [k, getComputedStyle(document.documentElement).getPropertyValue(k).trim()]))")
-            pairs = {'body text': (colors['--text'], colors['--surface']), 'secondary text': (colors['--muted'], colors['--surface']), 'primary button': ('#ffffff', colors['--primary'])}
+            tokens = page.evaluate(
+                "Object.fromEntries("
+                "['--bg','--text','--text-2','--muted','--accent','--accent-ink','--accent-soft','--surface']"
+                ".map(k => [k, getComputedStyle(document.documentElement).getPropertyValue(k).trim()]))"
+            )
+            pairs = {
+                'body text': (tokens['--text'], tokens['--surface']),
+                'secondary text': (tokens['--text-2'], tokens['--surface']),
+                'muted text': (tokens['--muted'], tokens['--surface']),
+                'primary button': ('#ffffff', tokens['--accent']),
+                'accent ink on soft': (tokens['--accent-ink'], tokens['--accent-soft']),
+            }
+            report['tokens'] = tokens
             report['contrast'] = {name: round(contrast(*pair), 2) for name, pair in pairs.items()}
             assert min(report['contrast'].values()) >= 4.5, report['contrast']
-            report['checks'].append('primary, secondary and button text meet 4.5:1 contrast')
+            report['checks'].append('text, muted, button and accent-ink pairs meet 4.5:1 contrast')
+            # The shell background is whatever --bg says; the page must not
+            # hard-code a colour that drifts from the token.
+            expected_background = css_color(tokens['--bg'])
             me = context.request.get(stack.base_url + '/api/v1/auth/me').json()
             csrf = me['csrf_token']
             # Bootstrap intentionally grants admin, not creator. Grant the
@@ -122,7 +143,7 @@ def verify(out: Path) -> None:
                 assert page.locator('h1').count() == 1, name
                 assert page.locator('link[href="/assets/design.css"]').count() == 1, name
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
-                assert page.locator('body').evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(246, 247, 251)', name
+                assert page.locator('body').evaluate("el => getComputedStyle(el).backgroundColor") == expected_background, (name, expected_background)
                 page.screenshot(path=str(screenshots / (name + '-desktop.png')), full_page=True)
                 report['pages'].append({'page': name, 'route': route, 'desktop': 'passed', 'state': 'not-found error' if name == 'evaluations' else 'real dev-stub API'})
                 print('[ui] desktop ' + name, flush=True)
@@ -145,7 +166,7 @@ def verify(out: Path) -> None:
                 page.goto(stack.base_url + routes[name])
                 page.wait_for_timeout(180)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
-                page.screenshot(path=str(screenshots / (name + '-mobile.png')), full_page=True)
+                page.screenshot(path=str(screenshots / (name + '-mobile.png')), full_page=False)
                 next(item for item in report['pages'] if item['page'] == name)['mobile'] = 'passed'
                 print('[ui] mobile ' + name, flush=True)
             page.goto(stack.base_url + '/chat')
