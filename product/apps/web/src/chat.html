@@ -5,6 +5,318 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>对话工作区 · Orchara</title>
+<style>
+    /* T2 (#166): the conversation workspace. Page-local rules only; the shared
+       component vocabulary stays in design.css. This block sits before
+       mobile.css/design.css (T098 pins the head order), so every rule that
+       replaces a page-specialisation rule carries one more class.
+
+       The page is a viewport workbench: the shell sets 100dvh, the page header is
+       compressed to H1 + one meta line, and the three columns scroll inside their
+       own panes. The page itself never scrolls. */
+    .page-chat .app-workspace { height: 100dvh; min-height: 0; overflow: hidden; }
+    .page-chat .page-content { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; padding: 12px 16px 14px; overflow: hidden; }
+    .page-chat .page-heading { flex: 0 0 auto; margin: 0 0 10px; padding: 0 0 9px; }
+    .page-chat .page-heading h1 { font-size: var(--fs-20); }
+    .page-chat .page-description { display: none; }
+    .page-chat .page-meta { margin-top: 3px; font-size: 10px; }
+    .page-chat .page-sections { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+    .page-chat .chat-layout.chat-layout--workspace {
+      display: grid;
+      flex: 1 1 auto;
+      grid-template-columns: 248px minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .page-chat .chat-workspace { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; min-height: 0; min-width: 0; }
+
+    /* left rail: the conversation list (its own scroll pane) */
+    .page-chat #conversation-panel.chat-rail {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      min-height: 0;
+      margin: 0;
+      padding: 13px 12px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+    .page-chat .chat-rail__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .page-chat .chat-rail__head h2 { margin: 0; font-size: var(--fs-14); }
+    .page-chat .chat-rail__link { color: var(--muted); font-size: var(--fs-11); text-decoration: none; }
+    .page-chat .chat-rail__link:hover { color: var(--accent-ink); text-decoration: underline; }
+    .page-chat #conversation-create.btn { flex: 0 0 auto; width: 100%; margin: 0; }
+    .page-chat #conversation-status { margin: 0; font-size: 10px; }
+    .page-chat .conversation-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+    .page-chat #conversation-list > li.conversation-item { margin: 0; padding: 0; border: 0; }
+    .page-chat .conversation-list > li[data-group-label]::before {
+      content: attr(data-group-label);
+      display: block;
+      margin: 9px 0 5px;
+      padding: 0 6px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: .04em;
+    }
+    .page-chat #conversation-list .conversation-item__button {
+      display: block;
+      width: 100%;
+      margin: 0;
+      padding: 8px 9px 7px 11px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      box-shadow: inset 0 0 0 transparent;
+      text-align: left;
+    }
+    .page-chat #conversation-list .conversation-item__title {
+      display: -webkit-box;
+      overflow: hidden;
+      color: var(--text);
+      font-size: var(--fs-12);
+      font-weight: 550;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .page-chat #conversation-list .conversation-item__meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; }
+    .page-chat #conversation-list .conversation-item__meta .pill { flex: 0 0 auto; }
+    .page-chat #conversation-list .conversation-item__time { margin-left: auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .page-chat #conversation-list .conversation-item__button:hover { background: var(--surface-2); }
+    .page-chat #conversation-list .conversation-item__button[aria-pressed="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .page-chat #conversation-list .conversation-item__button[aria-pressed="true"] .conversation-item__title { color: var(--accent-ink); font-weight: 650; }
+
+    /* empty state: a landing, not a centred one-liner */
+    .page-chat #chat-empty.chat-empty {
+      display: grid;
+      flex: 0 1 auto;
+      max-height: 100%;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      min-height: 0;
+      padding: 24px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow-card);
+      text-align: left;
+      align-items: stretch;
+      align-content: start;
+      justify-content: start;
+    }
+    .page-chat .chat-empty__head { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 2px 14px; align-items: start; }
+    .page-chat .chat-empty__symbol { display: grid; place-items: center; grid-row: 1 / span 3; width: 44px; height: 44px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); color: var(--accent); }
+    .page-chat .chat-empty__symbol .ui-icon { width: 22px; height: 22px; }
+    .page-chat .chat-empty__head h2 { margin: 0; font-size: var(--fs-20); }
+    .page-chat .chat-empty__head p { max-width: 62ch; margin: 6px 0 0; color: var(--text-2); font-size: var(--fs-13); line-height: 1.7; }
+    .page-chat .chat-empty__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .page-chat .chat-empty__label { margin: 0 0 8px; color: var(--muted); font-size: var(--fs-11); }
+    .page-chat .suggestion-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .page-chat .suggestion-list > li { margin: 0; padding: 0; }
+    .page-chat .suggestion { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; margin: 0; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); text-align: left; }
+    .page-chat .suggestion:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+    .page-chat .suggestion__title { color: var(--text); font-size: var(--fs-12); font-weight: 600; }
+    .page-chat .suggestion__text { color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .page-chat .chat-empty__flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0; padding: 14px 0 0; border-top: 1px solid var(--border); list-style: none; }
+    .page-chat .chat-empty__flow > li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; align-items: baseline; margin: 0; }
+    .page-chat .chat-empty__flow strong { font-size: var(--fs-12); }
+    .page-chat .chat-empty__flow li > span:not(.flow-step) { color: var(--muted); font-size: 10px; }
+    .page-chat .flow-step { grid-row: 1 / span 2; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: 10px; font-weight: 650; }
+
+    /* the conversation pane: title row, message stream, composer, context rail */
+    .page-chat #chat-panel.chat-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; padding: 0; }
+    .page-chat .chat-thread-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; padding: 0 0 9px; border-bottom: 1px solid var(--border); }
+    .page-chat .chat-thread-head__main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .page-chat .chat-conv-title { max-width: 100%; margin: 0; overflow: hidden; font-size: var(--fs-14); text-overflow: ellipsis; white-space: nowrap; }
+    .page-chat .chat-thread-head .conversation-meta { flex: 0 0 auto; margin: 0; padding: 4px 9px; background: var(--surface-2); }
+    .page-chat .chat-thread-head .conversation-meta > p { margin: 6px 0 0; }
+    .page-chat .chat-columns { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; min-height: 0; }
+    .page-chat .chat-thread { display: flex; flex-direction: column; width: 100%; max-width: 760px; min-height: 0; margin: 0 auto; }
+    .page-chat .thread-section.stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
+    .page-chat .chat-context { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
+
+    /* message stream: user / Orchara / system blocks */
+    .page-chat .message-list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+    .page-chat #chat-messages > li.message { display: block; margin: 0; padding: 0; border-radius: 0; background: transparent; }
+    .page-chat .message-main { min-width: 0; }
+    .page-chat .message-head { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; }
+    .page-chat .message--user .message-head { justify-content: flex-end; }
+    .page-chat .message-avatar { display: inline-grid; flex: 0 0 auto; place-items: center; width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-2); color: var(--text-2); font-size: 9px; font-weight: 650; order: 1; }
+    .page-chat .message--user .message-avatar { order: 3; border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); }
+    .page-chat .message-label { order: 2; color: var(--text-2); font-size: 10px; font-weight: 600; }
+    .page-chat .message--user .message-label { order: 1; }
+    .page-chat .message-time { order: 3; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .page-chat .message--user .message-time { order: 2; }
+    .page-chat .message-body { margin: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-2); font: inherit; font-size: var(--fs-12); line-height: 1.7; }
+    .page-chat .message--user .message-body { max-width: 94%; margin-left: auto; border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+    .page-chat .message--assistant .message-body, .page-chat .message--system .message-body { border-left: 2px solid var(--teal); }
+    .page-chat .message-note { color: var(--muted); }
+
+    /* run card: 4px stage bar, five dots, pill, fact grid, destination. The same
+       class structure serves the inline card and the right-rail mirror. */
+    .page-chat #request-panel.run-card, .page-chat .stream-run.run-card { position: relative; margin: 0; padding: 15px 13px 12px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+    .page-chat .stream-run.run-card { margin: 14px 0 0; }
+    .page-chat .run-card__bar { position: absolute; top: 0; right: 0; left: 0; height: 4px; background: var(--surface-3); }
+    .page-chat .run-card__fill { display: block; width: 0; height: 100%; background: var(--accent); transition: width var(--dur-3) var(--ease), background var(--dur-2) var(--ease); }
+    .page-chat .run-card[data-step="1"] .run-card__fill { width: 18%; }
+    .page-chat .run-card[data-step="2"] .run-card__fill { width: 36%; }
+    .page-chat .run-card[data-step="3"] .run-card__fill { width: 58%; }
+    .page-chat .run-card[data-step="4"] .run-card__fill { width: 80%; }
+    .page-chat .run-card[data-step="5"] .run-card__fill { width: 100%; }
+    .page-chat .run-card[data-tone="success"] .run-card__fill { background: var(--success); }
+    .page-chat .run-card[data-tone="danger"] .run-card__fill { background: var(--danger); }
+    .page-chat .run-card[data-tone="warning"] .run-card__fill { background: var(--warning); }
+    .page-chat .run-card[data-tone="muted"] .run-card__fill { background: var(--muted); }
+    .page-chat .run-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+    .page-chat .run-card__head h3 { margin: 0; font-size: var(--fs-12); font-weight: 600; }
+    .page-chat .run-card__steps { gap: 4px 3px; margin: 0 0 10px; }
+    .page-chat .run-card__steps .step { font-size: 10px; }
+    .page-chat .run-card__steps .step + .step::before { content: none; }
+    .page-chat .step.is-failed { color: var(--danger); font-weight: 600; }
+    .page-chat .step.is-failed .step-dot { border-color: var(--danger); background: var(--danger-soft); box-shadow: none; }
+    .page-chat .run-card__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 10px; margin: 0 0 9px; font-size: var(--fs-11); }
+    .page-chat .run-card__facts dt { padding: 4px 0; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 10px; }
+    .page-chat .run-card__facts dd { margin: 0; padding: 4px 0; border-bottom: 1px solid var(--border); color: var(--text-2); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .page-chat .run-card__handling { margin: 0 0 8px; padding: 7px 9px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); font-size: 10px; line-height: 1.6; }
+    .page-chat #chat-handling:empty { display: none; }
+    .page-chat #request-panel .run-card__error { margin: 0 0 8px; font-size: 10px; }
+    .page-chat .run-card__run { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+    .page-chat .run-card__run-id { font-size: 10px; }
+    .page-chat #chat-run-link { margin: 0; }
+    .page-chat #chat-run-link a, .page-chat .run-card__run-link { color: var(--accent-ink); font-size: var(--fs-11); font-weight: 550; text-decoration: none; }
+    .page-chat #chat-run-link a:hover, .page-chat .run-card__run-link:hover { text-decoration: underline; }
+    .page-chat .run-card__destination { display: flex; gap: 7px; margin: 0 0 8px; padding: 8px 9px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--text-2); font-size: 10px; line-height: 1.6; }
+    .page-chat .run-card__destination .ui-icon { flex: 0 0 auto; width: 13px; height: 13px; margin-top: 1px; color: var(--teal); }
+    .page-chat .run-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .page-chat .run-card__actions .btn { margin: 0; }
+
+    /* inline failure card: the stream explains a failed request itself */
+    .page-chat .stream-failure { margin: 14px 0 0; padding: 12px 13px; border: 1px solid var(--danger-line); border-radius: var(--radius); background: var(--danger-soft); }
+    .page-chat .stream-failure__title { display: flex; align-items: center; gap: 7px; margin: 0 0 7px; color: var(--danger); font-size: var(--fs-12); font-weight: 650; }
+    .page-chat .stream-failure__title .ui-icon { width: 14px; height: 14px; }
+    .page-chat .stream-failure__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; color: var(--text-2); font-size: 10px; }
+    .page-chat .stream-failure__code { color: var(--danger); font-size: 10px; }
+    .page-chat .stream-failure__reason { margin: 0 0 6px; color: var(--text); font-size: var(--fs-12); line-height: 1.65; }
+    .page-chat .stream-failure__advice { margin: 0 0 10px; color: var(--text-2); font-size: 10px; line-height: 1.6; }
+    .page-chat .stream-failure__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .page-chat .stream-failure__actions .btn { margin: 0; }
+
+    /* interaction: the one surface that needs an answer */
+    .page-chat #interaction-panel.interaction-card { flex: 0 0 auto; max-height: 42%; margin: 10px 0 0; padding: 12px 13px; overflow-y: auto; border: 1px solid var(--warning-line); border-radius: var(--radius); background: var(--warning-soft); }
+    .page-chat .interaction-card h3 { margin: 0 0 6px; color: var(--warning); font-size: var(--fs-12); font-weight: 600; }
+    .page-chat .interaction-prompt { margin: 0 0 6px; color: var(--text); font-size: var(--fs-12); line-height: 1.7; }
+    .page-chat .candidate-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 0; list-style: none; }
+    .page-chat .candidate-list > li { margin: 0; padding: 0; }
+    .page-chat .candidate-list label { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 7px 9px; border: 1px solid var(--warning-line); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-2); font-size: 10px; font-weight: 400; line-height: 1.6; }
+    .page-chat .candidate-list label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    .page-chat .interaction-card .status { margin: 8px 0 0; }
+
+    /* composer: pinned to the bottom of the message column */
+    .page-chat .composer { flex: 0 0 auto; max-height: 52%; margin: 10px 0 0; padding: 10px 12px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+    .page-chat .composer__chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+    .page-chat .composer__chips:empty { display: none; }
+    .page-chat .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin: 0; padding: 2px 2px 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 10px; }
+    .page-chat .chip__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .page-chat .composer .chip__remove { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+    .page-chat .composer .chip__remove:hover { background: var(--surface-3); color: var(--danger); }
+    .page-chat .composer__attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; padding: 0; border: 0; background: transparent; }
+    .page-chat .composer__attachments legend { padding: 0; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .page-chat .composer__attachments input[type="file"] { flex: 1 1 170px; margin: 0; padding: 5px 8px; font-size: 10px; }
+    .page-chat .composer .status { flex-basis: 100%; margin: 0; font-size: 10px; }
+    .page-chat .composer__label { margin: 0 0 4px; }
+    .page-chat #chat-message.composer__input { min-height: 72px; max-height: 160px; margin: 0; padding: 9px 11px; }
+    .page-chat .composer__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 0; }
+    .page-chat .composer__actions .composer__submit { min-width: 112px; margin: 0 0 0 auto; }
+    .page-chat .composer__version { margin: 0; border: 0; background: transparent; box-shadow: none; }
+    .page-chat .composer__version > summary { color: var(--muted); font-size: 10px; }
+    .page-chat .composer__version label { margin: 4px 0 2px; font-size: 10px; }
+    .page-chat #chat-version-id { max-width: 320px; margin: 0; font-size: 10px; }
+    .page-chat .composer__version .field-help { margin: 4px 0 0; font-size: 10px; }
+    .page-chat .composer__hint { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .page-chat .composer .btn:disabled, .page-chat .interaction-card .btn:disabled, .page-chat .run-card .btn:disabled { cursor: not-allowed; opacity: .55; }
+    .page-chat .composer .btn[data-runstate-paused-applied="true"] { opacity: .55; }
+    .page-chat #chat-submit-status { flex: 0 0 auto; margin: 6px 0 0; font-size: 10px; }
+
+    /* right rail cards: uniform 12px/600 titles, 12px gaps */
+    .page-chat .context-card { padding: 13px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+    .page-chat .context-card h3 { margin: 0 0 7px; font-size: var(--fs-12); font-weight: 600; }
+    .page-chat .context-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .page-chat .context-card__head h3 { margin-bottom: 6px; }
+    .page-chat .context-output-count { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .page-chat .context-note { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .page-chat .context-outputs { display: flex; flex-direction: column; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
+    .page-chat .context-outputs > li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; padding: 6px 0; border-top: 1px solid var(--border); font-size: 10px; }
+    .page-chat .context-outputs > li:first-child { border-top: 0; }
+    .page-chat .context-outputs a { color: var(--accent-ink); text-decoration: none; overflow-wrap: anywhere; }
+    .page-chat .context-outputs a:hover { text-decoration: underline; }
+    .page-chat .context-output-meta { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .page-chat .context-empty-item { color: var(--muted); font-size: 10px; }
+    .page-chat #queue-list { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+    .page-chat .queue-item { display: flex; align-items: center; gap: 5px; margin: 0; padding: 0; }
+    .page-chat .queue-item > .queue-select { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 5px 7px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font-size: 10px; justify-content: flex-start; text-align: left; }
+    .page-chat .queue-item > .queue-select::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .page-chat .queue-item > .queue-select[data-state="queued"]::before,
+    .page-chat .queue-item > .queue-select[data-state="awaiting_input"]::before,
+    .page-chat .queue-item > .queue-select[data-state="awaiting_selection"]::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--warning); }
+    .page-chat .queue-item > .queue-select[data-state="dispatched"]::before,
+    .page-chat .queue-item > .queue-select[data-state="routing"]::before { background: var(--accent); }
+    .page-chat .queue-item > .queue-select[data-state="failed"]::before { background: var(--danger); }
+    .page-chat .queue-item > .queue-select[data-state="cancelled"]::before { width: 7px; height: 2px; border-radius: 1px; }
+    .page-chat .queue-item > .queue-select:hover { border-color: var(--border); background: var(--surface-2); }
+    .page-chat .queue-item[data-active="true"] > .queue-select { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); }
+    .page-chat .queue-item > .queue-cancel { flex: 0 0 auto; min-height: 0; margin: 0; padding: 4px 7px; border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger); font-size: 10px; }
+    .page-chat .context-handoff .handoff-details { margin: 8px 0 0; padding: 8px 10px; background: var(--surface-2); }
+    .page-chat .context-handoff .handoff-details > summary { font-size: 10px; }
+    .page-chat .context-handoff fieldset { margin: 8px 0; padding: 8px 10px; background: var(--surface); }
+    .page-chat .context-handoff legend { font-size: 10px; }
+    .page-chat .context-handoff label { font-size: 10px; }
+    .page-chat .context-handoff .status { margin: 0; font-size: 10px; }
+    .page-chat .context-handoff #chat-handoff-preview { font-size: 10px; }
+
+    /* responsive: the rail stays a column, the context rail moves below, then
+       everything becomes one scrolling column with a sticky composer. */
+    @media (max-width: 1320px) {
+      .page-chat .chat-columns { grid-template-columns: minmax(0, 1fr) 272px; gap: 12px; }
+    }
+    @media (max-width: 1120px) {
+      .page-chat .chat-layout.chat-layout--workspace { grid-template-columns: 216px minmax(0, 1fr); gap: 12px; }
+      .page-chat .chat-columns { display: block; overflow-y: auto; padding-right: 4px; }
+      .page-chat .chat-thread { display: contents; }
+      .page-chat .thread-section.stream { overflow: visible; padding-right: 0; }
+      .page-chat .chat-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; overflow: visible; padding-right: 0; }
+      .page-chat .composer { position: sticky; bottom: 0; z-index: var(--z-sticky); margin-top: 12px; box-shadow: var(--shadow-pop); }
+      .page-chat #chat-panel.chat-panel { min-height: 0; }
+      .page-chat #chat-empty.chat-empty { overflow: visible; }
+      .page-chat .chat-workspace { overflow-y: auto; }
+      .page-chat #chat-panel.chat-panel { overflow-y: auto; }
+    }
+    @media (max-width: 720px) {
+      .page-chat .page-content { padding: 10px 15px calc(52px + env(safe-area-inset-bottom, 0px)); }
+      .page-chat .chat-layout.chat-layout--workspace { display: block; overflow-y: auto; }
+      .page-chat .chat-workspace { display: block; overflow: visible; }
+      .page-chat #conversation-panel.chat-rail { position: static; max-height: 34vh; margin: 0 0 12px; overflow-y: auto; }
+      .page-chat #chat-panel.chat-panel { display: block; overflow: visible; }
+      .page-chat .chat-columns { display: block; overflow: visible; padding-right: 0; }
+      .page-chat .chat-context { display: block; }
+      .page-chat .chat-context > section { margin: 0 0 12px; }
+      .page-chat .chat-thread-head { flex-wrap: wrap; }
+      .page-chat .chat-conv-title { white-space: normal; }
+      .page-chat .composer { position: sticky; bottom: 0; margin-top: 10px; }
+      .page-chat .run-card__facts { font-size: 10px; }
+      .page-chat .chat-empty { padding: 16px; }
+      .page-chat .chat-empty__head { grid-template-columns: 1fr; }
+      .page-chat .chat-empty__symbol { grid-row: auto; }
+      .page-chat .chat-empty__flow { grid-template-columns: 1fr; }
+    }
+</style>
 <link href="/assets/canvas.css" rel="stylesheet"/>
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
@@ -12,34 +324,166 @@
 <body class="page-chat" data-page="chat"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">对话工作区</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>对话工作区</h1><p class="page-description">描述你的需求，让合适的应用帮你完成工作。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/catalog">浏览应用</a></div><p class="page-meta"><span>每个会话只有一个执行槽</span><span>固定版本提交仍需发布校验</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>对话工作区</h1></div><div class="heading-actions"><a class="btn btn-ghost btn-small" href="/catalog">浏览应用目录</a></div><p class="page-meta"><span>每个会话只有一个执行槽</span><span>固定版本提交仍需发布校验</span><span>不伪造运行进度</span></p></header>
 <div class="page-sections">
 <!-- C6.01 (#155): the shared run-state dependency failure banner. Hidden on
            the normal path; assets/runstate-guard.js shows it and pauses the
            controls marked data-runstate-paused. Navigation/reload stay usable. -->
 <p class="status bad" id="runstate-status" hidden="" role="alert"></p>
-<div class="chat-layout"><section class="panel" id="conversation-panel"><h2>我的会话</h2>
-<div class="row">
-<button id="conversation-create" data-icon="plus" type="button">新建会话</button>
-<span class="status" id="conversation-status"></span>
-</div>
-<ul id="conversation-list" aria-label="我的会话" data-auth-content=""></ul>
-<details class="conversation-help"><summary>会话与队列说明</summary><p class="inline-note" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用。</p><p class="hint">
+<div class="chat-layout chat-layout--workspace">
+<section class="panel chat-rail" id="conversation-panel" aria-label="我的会话">
+<div class="chat-rail__head"><h2>我的会话</h2><a class="chat-rail__link" href="/catalog">应用目录</a></div>
+<button class="btn btn-primary btn-block" id="conversation-create" data-icon="plus" type="button">新建会话</button>
+<p class="status chat-rail__status" id="conversation-status" role="status" aria-live="polite"></p>
+<ul class="conversation-list" id="conversation-list" aria-label="我的会话" data-auth-content=""></ul>
+<details class="conversation-help"><summary>会话与队列说明</summary><p class="hint">
           每个会话只有一个逻辑执行槽：最早的未完成请求占槽，后续普通请求按顺序排队。
           固定版本提交会跳过模型匹配，但仍占同一队列并接受同一权限/发布状态校验。
-        </p></details></section>
-<section class="panel" id="chat-empty" aria-label="开始会话"><span class="welcome-symbol" data-icon="spark"></span><h2>今天，想完成什么？</h2><p>新建一个会话，描述你的需求。你可以上传资料，也可以从应用目录选择一个应用开始。</p><a href="/catalog">探索应用目录 →</a></section>
-<section class="panel" id="chat-panel" hidden="">
-<h2>当前会话 </h2><details class="conversation-meta"><summary>会话信息</summary><code id="chat-conversation-id"></code></details>
-<details><summary>指定应用版本（可选）</summary><div class="row">
-<label for="chat-version-id">固定版本（可选）</label>
+        </p></details>
+</section>
+<div class="chat-workspace">
+<section class="chat-empty" id="chat-empty" aria-label="开始会话">
+<div class="chat-empty__head">
+<span class="chat-empty__symbol" data-icon="spark" aria-hidden="true"></span>
+<h2>今天，想完成什么？</h2>
+<p>描述你的需求，Orchara 会匹配应用、安排执行，并把运行状态、队列位置与数据去向放进上下文栏。</p>
+<div class="chat-empty__actions"><button class="btn btn-primary" data-new-conversation="true" type="button">新建会话</button><a class="btn btn-secondary" href="/catalog">探索应用目录</a></div>
+</div>
+<div class="chat-empty__suggestions">
+<p class="chat-empty__label">示例需求：点击只会填入输入框，不会直接提交。</p>
+<ul class="suggestion-list">
+<li><button class="suggestion" data-suggestion="分析本月销售数据，按地区汇总金额，并生成一份可以发给管理层的周报。" type="button"><span class="suggestion__title">分析本月销售数据</span><span class="suggestion__text">按地区汇总金额并生成周报</span></button></li>
+<li><button class="suggestion" data-suggestion="帮我核对这份季度报告的结论与数字，列出需要补充证据的地方。" type="button"><span class="suggestion__title">审阅季度报告</span><span class="suggestion__text">核对结论与数字，标出缺证据之处</span></button></li>
+<li><button class="suggestion" data-suggestion="根据知识库回答：发布流程必须完成哪些检查？请给出处。" type="button"><span class="suggestion__title">查产品文档</span><span class="suggestion__text">基于知识库回答并要求给出出处</span></button></li>
+</ul>
+</div>
+<ol class="chat-empty__flow">
+<li><span class="flow-step" aria-hidden="true">1</span><strong>描述需求</strong><span>用一句话说清目标与输入</span></li>
+<li><span class="flow-step" aria-hidden="true">2</span><strong>匹配并运行</strong><span>确认候选或补充信息后执行</span></li>
+<li><span class="flow-step" aria-hidden="true">3</span><strong>查看产出</strong><span>运行卡展示状态、阶段与数据去向</span></li>
+</ol>
+</section>
+<section class="chat-panel" id="chat-panel" hidden="" aria-label="当前会话">
+<header class="chat-thread-head">
+<div class="chat-thread-head__main"><h2 class="chat-conv-title">会话</h2><span class="pill chat-conv-pill" data-tone="muted" data-shape="square" hidden=""><span id="chat-request-state"></span></span></div>
+<details class="conversation-meta"><summary>会话信息</summary><p class="hint">会话 <code id="chat-conversation-id"></code>；同一个会话只有一个逻辑执行槽，队列与当前运行状态在上下文栏。</p></details>
+</header>
+<div class="chat-columns">
+<div class="chat-thread">
+<section class="thread-section stream" id="messages-panel" aria-label="会话消息">
+<ul class="message-list" id="chat-messages" aria-label="会话消息"></ul>
+<section class="run-card stream-run" data-step="0" data-tone="muted" hidden="" aria-label="本次运行的运行卡">
+<div class="run-card__bar" aria-hidden="true"><i class="run-card__fill"></i></div>
+<div class="run-card__head"><h3>本次运行</h3><span class="pill run-pill" data-tone="muted" data-shape="square">尚未分派运行</span></div>
+<ol class="steps run-card__steps" aria-label="运行阶段：匹配应用、排队、模型调用、产出、完成">
+<li class="step" data-step-index="1"><span class="step-dot" aria-hidden="true"></span><span class="step-label">匹配应用</span></li>
+<li class="step" data-step-index="2"><span class="step-dot" aria-hidden="true"></span><span class="step-label">排队</span></li>
+<li class="step" data-step-index="3"><span class="step-dot" aria-hidden="true"></span><span class="step-label">模型调用</span></li>
+<li class="step" data-step-index="4"><span class="step-dot" aria-hidden="true"></span><span class="step-label">产出</span></li>
+<li class="step" data-step-index="5"><span class="step-dot" aria-hidden="true"></span><span class="step-label">完成</span></li>
+</ol>
+<dl class="run-card__facts">
+<dt>状态</dt><dd class="run-fact-state">尚未分派运行</dd>
+<dt>阶段</dt><dd class="run-fact-phase">—</dd>
+<dt>处理版本</dt><dd class="run-fact-version">尚未分派</dd>
+<dt>剩余队列</dt><dd class="run-fact-queue">队列为空</dd>
+</dl>
+<p class="run-card__handling" hidden=""></p>
+<p class="run-card__run"><code class="run-card__run-id"></code><a class="run-card__run-link" href="/runs" hidden="">查看运行详情</a></p>
+<p class="run-card__destination"><span data-icon="database" aria-hidden="true"></span><span>数据去向：需求文本与已上传附件随请求提交给平台，只由匹配到的应用版本在本次运行中读取；运行产出登记在本次运行的产物中。页面不展示未经服务端确认的数据去向。</span></p>
+<div class="run-card__actions"><button class="btn btn-danger btn-small" data-stream-cancel="true" type="button" hidden="">取消该请求</button></div>
+</section>
+<div class="stream-failure" hidden="" aria-label="请求失败">
+<p class="stream-failure__title"><span data-icon="alert" aria-hidden="true"></span>请求失败</p>
+<p class="stream-failure__meta"><code class="stream-failure__code" data-error-code=""></code><span class="stream-failure__retryable"></span></p>
+<p class="stream-failure__reason"></p>
+<p class="stream-failure__advice"></p>
+<div class="stream-failure__actions">
+<button class="btn btn-secondary btn-small" data-stream-retry="true" type="button">重新填写需求</button>
+<a class="btn btn-ghost btn-small" href="/catalog">打开应用目录</a>
+</div>
+</div>
+</section>
+<section class="interaction-card" id="interaction-panel" hidden="" aria-label="需要你的确认">
+<h3>需要你的确认</h3>
+<p class="interaction-prompt" id="interaction-prompt"></p>
+<p class="hint" id="interaction-missing"></p>
+<p class="hint" id="interaction-expires"></p>
+<ul class="candidate-list" id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
+<button class="btn btn-secondary btn-small" id="interaction-select" hidden="" type="button">使用所选候选继续</button>
+<label for="interaction-message">补充信息（可选，最多 32000 字）</label>
+<textarea id="interaction-message" maxlength="32000" rows="3"></textarea>
+<p class="hint" id="interaction-attachments-hint">
+            补充输入需要文件时，请先用下方「上传附件」上传；提交答复时会把已上传的附件一并带上。
+          </p>
+<button class="btn btn-primary btn-small" id="interaction-reply" data-runstate-paused="true" type="button">提交答复</button>
+<span class="status" id="interaction-status" role="status" aria-live="polite"></span>
+</section>
+<form class="composer" id="chat-message-form">
+<ul class="composer__chips" id="chat-attachment-lines" aria-label="已上传附件"></ul>
+<fieldset class="composer__attachments" id="chat-attachments">
+<legend>添加附件（最多 5 个）</legend>
+<input id="chat-attachment-input" type="file"/>
+<button class="btn btn-secondary btn-small" id="chat-attachment-upload" data-icon="upload" type="button">上传附件</button>
+<span class="status" id="chat-attachment-status" role="status" aria-live="polite"></span>
+</fieldset>
+<label class="composer__label" for="chat-message">需求</label>
+<textarea class="composer__input" id="chat-message" maxlength="32000" placeholder="例如：分析本月销售数据，按地区汇总金额并生成报告…" required="" rows="3"></textarea>
+<div class="composer__actions">
+<details class="composer__version"><summary>固定版本</summary>
+<label for="chat-version-id">应用版本 id（可选）</label>
 <input id="chat-version-id" placeholder="application_version_id" type="text"/>
-<span class="hint">填写后直接使用该发布版本，不经过模型匹配。</span>
-</div></details>
-<form id="chat-message-form">
-<label for="chat-message">需求</label>
-<textarea id="chat-message" maxlength="32000" placeholder="例如：分析本月销售数据，按地区汇总金额并生成报告…" required="" rows="4"></textarea>
-<details><summary>跨应用交接（可选）</summary><fieldset id="chat-handoff">
+<p class="field-help">填写后直接使用该发布版本，不经过模型匹配；仍占用同一会话队列。</p>
+</details>
+<button class="btn btn-primary composer__submit" id="chat-submit" data-runstate-paused="true" data-icon="arrow" type="submit">提交需求</button>
+</div>
+<p class="composer__hint mobile-scope" data-mobile-scope="no-full-canvas-editing">附件最多 5 个；提交后会占该会话的执行槽，再次提交会复用同一幂等键。手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用。</p>
+</form>
+<p class="status" id="chat-submit-status" role="status" aria-live="polite"></p>
+</div>
+<aside class="chat-context" aria-label="本次运行上下文">
+<section class="run-card" id="request-panel" data-step="0" data-tone="muted" hidden="" aria-label="当前运行">
+<div class="run-card__bar" aria-hidden="true"><i class="run-card__fill"></i></div>
+<div class="run-card__head"><h3>当前运行</h3><span class="pill run-pill" data-tone="muted" data-shape="square">尚未分派运行</span></div>
+<p class="run-card__id">请求 <code id="chat-request-id"></code></p>
+<ol class="steps run-card__steps" aria-label="运行阶段：匹配应用、排队、模型调用、产出、完成">
+<li class="step" data-step-index="1"><span class="step-dot" aria-hidden="true"></span><span class="step-label">匹配应用</span></li>
+<li class="step" data-step-index="2"><span class="step-dot" aria-hidden="true"></span><span class="step-label">排队</span></li>
+<li class="step" data-step-index="3"><span class="step-dot" aria-hidden="true"></span><span class="step-label">模型调用</span></li>
+<li class="step" data-step-index="4"><span class="step-dot" aria-hidden="true"></span><span class="step-label">产出</span></li>
+<li class="step" data-step-index="5"><span class="step-dot" aria-hidden="true"></span><span class="step-label">完成</span></li>
+</ol>
+<dl class="run-card__facts">
+<dt>状态</dt><dd class="run-fact-state">尚未分派运行</dd>
+<dt>阶段</dt><dd class="run-fact-phase">—</dd>
+<dt>处理版本</dt><dd class="run-fact-version">尚未分派</dd>
+<dt>剩余队列</dt><dd class="run-fact-queue">队列为空</dd>
+</dl>
+<p class="run-card__handling" id="chat-handling"></p>
+<p class="status bad run-card__error" id="chat-request-error" data-error-code="" hidden=""></p>
+<p class="run-card__run"><code class="run-card__run-id"></code><span id="chat-run-link"></span></p>
+<p class="run-card__destination"><span data-icon="database" aria-hidden="true"></span><span>数据去向：需求文本与已上传附件随请求提交给平台，只由匹配到的应用版本在本次运行中读取；运行产出登记在本次运行的产物中。页面不展示未经服务端确认的数据去向。</span></p>
+<div class="run-card__actions"><button class="btn btn-danger btn-small" id="chat-cancel" data-runstate-paused="true" data-icon="close" type="button">取消该请求</button></div>
+</section>
+<section class="context-card" id="queue-panel" aria-label="会话队列">
+<h3>会话队列</h3>
+<ol id="queue-list"></ol>
+<p class="context-note" id="chat-queue-status"></p>
+</section>
+<section class="context-card" aria-label="本次产出">
+<div class="context-card__head"><h3>本次产出</h3><span class="context-output-count">0 个</span></div>
+<ul class="context-outputs" aria-label="本次会话的结果附件"></ul>
+<p class="context-note">只有服务端登记为结果附件的条目才出现在这里；运行未进入终态时不会标为最终产物。</p>
+</section>
+<section class="context-card context-destination" aria-label="数据去向">
+<h3>数据去向</h3>
+<p class="context-note">需求与附件只提交给本次选中的处理版本；运行产出登记在本次运行的产物中，可以下载，也可以由你决定是否用于跨应用交接。</p>
+<p class="context-note">取消只停止受控执行，不会撤回已经发生的外部写入。</p>
+</section>
+<section class="context-card context-handoff" aria-label="可交接应用">
+<h3>可交接应用</h3>
+<p class="context-note">先生成服务端预览，再确认最小范围；旧应用的内部历史、对话正文与个人记忆不会自动传递。</p>
+<details class="handoff-details"><summary>跨应用交接（可选）</summary><fieldset id="chat-handoff">
 <legend>跨应用交接（可选）：先生成服务端预览，再确认最小范围</legend>
 <p class="hint">
               新应用只会收到本次需求、你在下面勾选的来源附件和这份服务端摘要；
@@ -48,68 +492,29 @@
 <label for="chat-handoff-source-runs">来源 Run（逗号分隔，最多 5 个）</label>
 <input id="chat-handoff-source-runs" type="text"/>
 <div class="row">
-<button id="chat-handoff-load-artifacts" type="button">读取来源 Run 的产出附件</button>
-<span class="status" id="chat-handoff-artifact-status"></span>
+<button class="btn btn-secondary btn-small" id="chat-handoff-load-artifacts" type="button">读取来源 Run 的产出附件</button>
+<span class="status" id="chat-handoff-artifact-status" role="status" aria-live="polite"></span>
 </div>
 <fieldset id="chat-handoff-artifacts">
 <legend>选择要交接的来源附件（最多 5 个）</legend>
 <ul id="chat-handoff-artifact-options"></ul>
 </fieldset>
 <div class="row">
-<button id="chat-handoff-preview-button" type="button">生成交接预览</button>
-<span class="status" id="chat-handoff-preview-status"></span>
+<button class="btn btn-secondary btn-small" id="chat-handoff-preview-button" type="button">生成交接预览</button>
+<span class="status" id="chat-handoff-preview-status" role="status" aria-live="polite"></span>
 </div>
 <pre id="chat-handoff-preview" aria-live="polite"></pre>
 <p class="hint" id="chat-handoff-scope"></p>
 <pre id="chat-handoff-summary" hidden=""></pre>
-<label class="checkbox">
-<input id="chat-handoff-confirmed" type="checkbox"/>
+<label class="checkbox"><input id="chat-handoff-confirmed" type="checkbox"/>
               我确认只交接上面预览的来源 Run、摘要与附件；不包含旧应用的内部历史或个人记忆。
             </label>
 </fieldset></details>
-<fieldset id="chat-attachments">
-<legend>添加附件（最多 5 个）</legend>
-<input id="chat-attachment-input" type="file"/>
-<button id="chat-attachment-upload" type="button">上传附件</button>
-<span class="status" id="chat-attachment-status"></span>
-<ul id="chat-attachment-lines"></ul>
-</fieldset>
-<button id="chat-submit" data-icon="arrow" data-runstate-paused="true" type="submit">提交需求</button>
-<span class="status" id="chat-submit-status"></span>
-</form>
-<section id="request-panel" hidden="">
-<h3>请求</h3>
-<p><code id="chat-request-id"></code> <span id="chat-request-state"></span></p>
-<p class="status bad" id="chat-request-error" data-error-code="" hidden=""></p>
-<p>处理版本：<span id="chat-handling"></span></p>
-<p id="chat-run-link"></p>
-<p id="chat-queue-status"></p>
-<button id="chat-cancel" data-runstate-paused="true" type="button">取消该请求</button>
 </section>
-<section id="interaction-panel" hidden="">
-<h3>需要你的确认</h3>
-<p id="interaction-prompt"></p>
-<p class="hint" id="interaction-missing"></p>
-<p class="hint" id="interaction-expires"></p>
-<ul id="interaction-candidates" aria-label="候选应用（序号仅为候选顺序）"></ul>
-<button id="interaction-select" hidden="" type="button">使用所选候选继续</button>
-<label for="interaction-message">补充信息（可选，最多 32000 字）</label>
-<textarea id="interaction-message" maxlength="32000" rows="3"></textarea>
-<p class="hint" id="interaction-attachments-hint">
-            补充输入需要文件时，请先用上方“附件”上传；提交答复时会把已上传的附件一并带上。
-          </p>
-<button id="interaction-reply" data-runstate-paused="true" type="button">提交答复</button>
-<span class="status" id="interaction-status"></span>
+</aside>
+</div>
 </section>
-<section id="queue-panel">
-<h3>会话队列</h3>
-<ol id="queue-list"></ol>
-</section>
-<section id="messages-panel">
-<h3>会话消息</h3>
-<ul id="chat-messages"></ul>
-</section>
-</section>
+</div>
 </div>
 </div></main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat" aria-current="page"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data"><span data-icon="database"></span><span>我的</span></a></div>
