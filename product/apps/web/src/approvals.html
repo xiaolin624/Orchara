@@ -6,11 +6,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>待我审批 · Orchara</title>
 <style>
-    dl.proposal { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
-    dl.proposal dt { opacity: .7; }
-    dl.proposal dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; white-space: pre-wrap; }
-    .decision-buttons { display: flex; gap: .75rem; margin-top: .9rem; }
+    /* T5 (#169): a 360px pending queue + the sealed proposal and its decision
+       band. Shared components still come from design.css. */
+    [hidden] { display: none !important; }
+
+    .approvals-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .approvals-list-card { position: sticky; top: calc(var(--topbar) + 12px); }
+    .approvals-list-card .card-head { margin-bottom: 10px; }
+    .approvals-scope { margin: 0 0 8px; }
+    .approvals-pager { margin-top: 10px; }
+    .page-content #approvals-list { margin: 0; }
+    .page-content #approvals-list > li.approval-row { margin: 0; padding: 0; border-top: 0; border-bottom: 1px solid var(--border); }
+    .page-content #approvals-list > li.approval-row:last-child { border-bottom: 0; }
+
+    /* One row = one focus stop; the whole row opens the proposal. */
+    .approval-row-button {
+      display: flex; flex-direction: column; gap: 5px; align-items: stretch;
+      width: 100%; margin: 0; padding: 10px 8px; border: 0; border-radius: var(--radius-sm);
+      background: transparent; color: var(--text); text-align: left; cursor: pointer;
+    }
+    .approval-row-button:hover { background: var(--surface-2); }
+    .approval-row-button[aria-current="true"] {
+      background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .approval-row-top, .approval-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+    .approval-row-run { padding: 0; background: none; color: var(--text-2); font-size: var(--fs-11); font-weight: 600; }
+    .approval-row-meta { color: var(--muted); font-size: var(--fs-11); overflow-wrap: anywhere; }
+    .approval-row .pill { font-size: 10px; }
+    /* A still-decidable approval keeps the 2px warning rule on the row. */
+    .approval-row-button:has(.approval-row-state[data-tone="warning"]) { box-shadow: inset 2px 0 0 var(--warning); }
+
+    /* Detail: header band, the request, the destination, the decision. */
+    .approval-detail { margin: 0; }
+    .approvals-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .approvals-head-id { padding: 0; background: none; color: var(--text); font-size: var(--fs-12); overflow-wrap: anywhere; }
+    .approvals-head-run { color: var(--muted); font-size: var(--fs-11); }
+    .approvals-head-run code { padding: 0; background: none; color: var(--text-2); font-size: var(--fs-11); word-break: break-all; }
+    .approval-facts { grid-template-columns: minmax(84px, 140px) minmax(0, 1fr); margin: 10px 0 0; }
+    .approval-facts dt, .approval-facts dd { padding: 6px 0; }
+    #detail-target, #detail-params, #detail-params-sha, #detail-proposal-sha, #detail-sources {
+      font-family: var(--font-mono); font-size: var(--fs-11); white-space: pre-wrap; word-break: break-all;
+    }
+    #detail-destination { color: var(--text); font-weight: 600; }
+    .approval-block { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); }
+    .approval-block > h3 { margin: 0 0 4px; font-size: var(--fs-13); font-weight: 650; }
+    .approval-block .hint { margin: 8px 0 0; }
+    .approval-readonly { margin: 12px 0 0; }
+    .approval-decision {
+      margin: 16px 0 0; padding: 14px;
+      border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2);
+    }
+    .approval-decision > h3 { margin: 0 0 6px; font-size: var(--fs-13); font-weight: 650; }
+    .approval-decision .hint { margin: 0 0 10px; }
+    .approval-decision .decision-buttons { margin-top: 0; }
+    .approval-decision #decision-status { margin: 10px 0 0; }
+    .approval-notes { margin: 14px 0 0; border-style: dashed; background: transparent; box-shadow: none; }
+    .page-content .approval-notes > summary { color: var(--text-2); font-size: var(--fs-12); }
     button:disabled { cursor: not-allowed; opacity: .55; }
+
+    @media (max-width: 1200px) {
+      .approvals-layout { grid-template-columns: 300px minmax(0, 1fr); }
+    }
+    @media (max-width: 900px) {
+      .approvals-layout { display: block; }
+      .approvals-list-card { position: static; margin-bottom: 14px; }
+    }
+    @media (max-width: 720px) {
+      .approvals-layout { display: block; }
+      .approvals-list-card { margin-bottom: 14px; }
+      .page-content .approval-facts { grid-template-columns: 1fr; }
+      .approval-row-button { min-height: 44px; }
+      .approval-decision { padding: 12px; }
+      .approval-decision .decision-buttons { flex-direction: column; }
+      .approval-decision .decision-buttons .btn { width: 100%; min-height: 44px; }
+    }
   </style>
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
@@ -18,7 +87,7 @@
 <body class="page-approvals" data-page="approvals"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">待我审批</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>待我审批</h1><p class="page-description">核对具体操作的目标、内容和数据去向，再做出决定。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>批准代表允许该次外部写入</span><span>过期审批不可复活</span></p></header>
+<header class="page-heading"><div class="page-head-main"><h1>待我审批</h1><p class="page-description">核对具体操作的目标、内容和数据去向，再做出决定。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>批准代表允许该次外部写入</span><span>过期审批不可复活</span><span>没有默认选择</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     审批只针对本 Run 的某一个受控操作。页面显示的是<strong>服务端封存的真实提案</strong>
     （原始目标、方法/路径、规范化参数与哈希、数据去向、来源版本、过期时间），不是 worker 自报的文案。
@@ -30,40 +99,62 @@
     聚合，不能代替运行审批。批准/拒绝按钮<strong>没有默认选择</strong>，只有你明确点击才会提交。
   </p></details><div class="page-sections">
 <p class="inline-note mobile-scope" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
-<section class="card">
-<h2>待我审批</h2>
+<div class="approvals-layout">
+<section class="card approvals-list-card" aria-label="待我审批列表">
+<div class="card-head"><h2>待我审批</h2><span class="toolbar-note" data-approvals-count>正在加载…</span></div>
+<p class="hint approvals-scope" data-approvals-scope="">列表只含指定给你的审批；待审批排在前面，过期时间来自服务端。</p>
 <p class="status" id="approvals-status" aria-live="polite" role="status">正在加载审批…</p>
-<ul id="approvals-list" data-auth-content=""></ul>
-<p class="hint" id="approvals-empty" hidden="">当前没有指定给你的待审批操作。</p>
-<button id="approvals-next" hidden="" type="button">下一页</button>
+<ul id="approvals-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<p class="empty-state" id="approvals-empty" hidden=""><strong>当前没有待审批操作</strong>指定给你的审批会出现在这里。</p>
+<div class="approvals-pager"><button class="btn btn-small" id="approvals-next" hidden="" type="button">下一页</button></div>
 </section>
-<section class="card" id="approval-detail" aria-live="polite" data-auth-content="" hidden="">
-<h2>审批详情</h2>
-<dl class="proposal">
-<dt>审批 id</dt><dd id="detail-id"></dd>
-<dt>Run</dt><dd id="detail-run"></dd>
+<section class="card approval-detail" id="approval-detail" aria-live="polite" data-auth-content="" hidden="">
+<div class="approvals-detail-head">
+<span class="pill" data-approvals-detail-state="" data-tone="muted" data-shape="ring" hidden=""></span>
+<code class="approvals-head-id" id="detail-id"></code>
+<span class="approvals-head-run">Run <code id="detail-run"></code></span>
+</div>
+<dl class="approval-facts">
 <dt>状态</dt><dd id="detail-state"></dd>
-<dt>参数哈希</dt><dd id="detail-params-sha"></dd>
 <dt>过期时间</dt><dd id="detail-expires"></dd>
+<dt>参数哈希</dt><dd id="detail-params-sha"></dd>
+</dl>
+<section class="approval-block" aria-label="请求内容">
+<h3>请求内容</h3>
+<dl class="approval-facts">
 <dt>真实目标</dt><dd id="detail-target"></dd>
-<dt>风险</dt><dd id="detail-risk"></dd>
 <dt>规范化参数</dt><dd id="detail-params"></dd>
+</dl>
+</section>
+<section class="approval-block" aria-label="风险与数据去向">
+<h3>风险与数据去向</h3>
+<dl class="approval-facts">
+<dt>风险</dt><dd id="detail-risk"></dd>
 <dt>数据去向</dt><dd id="detail-destination"></dd>
-<dt>来源版本（快照 / manifest / 策略）</dt><dd id="detail-sources"></dd>
+</dl>
+<p class="hint">数据去向是服务端封存的真实目的地；批准只针对这一次操作，不改变后续写入的目的地。</p>
+</section>
+<section class="approval-block" aria-label="来源版本">
+<h3>来源版本（快照 / manifest / 策略）</h3>
+<dl class="approval-facts">
+<dt>来源</dt><dd id="detail-sources"></dd>
 <dt>提案封装</dt><dd id="detail-proposal-sha"></dd>
 </dl>
+</section>
 <p class="hint" id="approval-expiry-note" hidden="" role="note"></p>
+<p class="inline-note approval-readonly" data-approvals-readonly="" data-tone="info" hidden="" role="status"><span data-icon="lock" aria-hidden="true"></span><span data-approvals-readonly-text></span></p>
+<section class="approval-decision" data-approvals-decision="" aria-label="决策">
+<h3>决策</h3>
+<p class="hint">批准 / 拒绝没有默认选择：只有你明确点击按钮，并在二次确认对话框里确认后才会提交；决定只携带你的选择与上方参数哈希。</p>
 <div class="decision-buttons">
 <button class="btn btn-primary" id="approve-button" disabled="" type="button">批准这次操作</button>
 <button class="btn btn-danger" id="reject-button" disabled="" type="button">拒绝这次操作</button>
 </div>
 <p class="status" id="decision-status" aria-live="polite" role="status"></p>
-<p class="hint">
-      批准后平台会先保存决定，再由唯一的 resume 事务在旧尝试退出后排队；恢复的尝试仍在
-      capability 代理中重新校验权限/预算，并在派发前做状态 CAS。拒绝或过期会让等待中的 Run 以
-      <code>approval_rejected</code> / <code>approval_expired</code> 失败，且不产生外部写入。
-    </p>
 </section>
+<details class="approval-notes"><summary>批准之后会发生什么</summary><p class="hint">批准后平台会先保存决定，再由唯一的 resume 事务在旧尝试退出后排队；恢复的尝试仍在 capability 代理中重新校验权限/预算，并在派发前做状态 CAS。拒绝或过期会让等待中的 Run 以 <code>approval_rejected</code> / <code>approval_expired</code> 失败，且不产生外部写入。</p></details>
+</section>
+</div>
 </div></main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals" aria-current="page"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>

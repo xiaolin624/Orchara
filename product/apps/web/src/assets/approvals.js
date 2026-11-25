@@ -288,6 +288,183 @@ function decisionConfirmationText(decision, kind) {
   return '拒绝会让等待中的 Run 以 approval_rejected 失败。拒绝不会撤销已经发生的外部写入。';
 }
 
+// ---------------------------------------------------------------------------
+// T5 (#169): the decision workbench.
+//
+// The queue and the detail are one page split in two: a 360px pending list and
+// the sealed proposal. Every badge is a shape + text pair (colour is only the
+// third encoding), the list states the real count and the server's real expiry,
+// and an approval that cannot be decided says so in one explicit read-only band.
+// Nothing here changes what a decision carries or sends.
+// ---------------------------------------------------------------------------
+
+/** One DOM query that is quiet when the shim has no document or no querySelector. */
+function approvalQuery(selector) {
+  if (typeof document === 'undefined' || !document) {
+    return null;
+  }
+  if (typeof document.querySelector !== 'function') {
+    return null;
+  }
+  return document.querySelector(selector);
+}
+
+/** The multi-node form of `approvalQuery`, always an array. */
+function approvalQueryAll(selector) {
+  if (typeof document === 'undefined' || !document) {
+    return [];
+  }
+  if (typeof document.querySelectorAll !== 'function') {
+    return [];
+  }
+  const found = document.querySelectorAll(selector);
+  return found ? Array.prototype.slice.call(found) : [];
+}
+
+/**
+ * Mark the queue row whose proposal is on screen. Presentation only:
+ * `aria-current` names the open approval for assistive technology.
+ */
+function markSelectedApprovalRow(approvalID) {
+  for (const row of approvalQueryAll('.approval-row-button')) {
+    const selected = Boolean(row && row.dataset && row.dataset.approvalId === approvalID);
+    if (row && typeof row.setAttribute === 'function') {
+      row.setAttribute('aria-current', selected ? 'true' : 'false');
+    }
+  }
+}
+
+// The double encoding of one approval state: `pending` is a waiting ring, a
+// decision is a check or an alert, and an expired/invalidated row is a dash.
+const APPROVAL_STATE_BADGES = Object.freeze({
+  pending: { tone: 'warning', shape: 'ring' },
+  approved: { tone: 'success', shape: 'check' },
+  rejected: { tone: 'danger', shape: 'alert' },
+  expired: { tone: 'muted', shape: 'dash' },
+  invalidated: { tone: 'muted', shape: 'dash' },
+});
+
+/** One state badge for the queue row and the detail head. */
+function approvalStateBadge(state) {
+  const value = String(state || '');
+  const known = APPROVAL_STATE_BADGES[value] || { tone: 'muted', shape: 'ring' };
+  return {
+    state: value,
+    tone: known.tone,
+    shape: known.shape,
+    label: approvalStateText(value),
+  };
+}
+
+/** The queue's loaded count: how many are still waiting, and the page total. */
+function approvalCountNote(items) {
+  const list = items || [];
+  const pending = list.filter((item) => item.isPending).length;
+  const total = list.length;
+  return total === pending
+    ? '待审批 ' + pending + ' 条'
+    : '待审批 ' + pending + ' 条 / 共 ' + total + ' 条';
+}
+
+/**
+ * The read-only explanation for an approval that cannot be decided. `''` means
+ * the decision window is open; every other value is a fact about the server
+ * state, not a guess.
+ */
+function approvalReadonlyText(approval, canDecide) {
+  if (canDecide) {
+    return '';
+  }
+  const state = String((approval && approval.state) || '');
+  if (state === 'expired') {
+    return '只读：这条审批已过期，批准/拒绝都不可用（过期不能复活，需要重新提交产生这次操作的任务）。';
+  }
+  if (state === 'invalidated') {
+    return '只读：这条审批已失效（Run 已取消或进入终态），没有决定窗口，也不会复活。';
+  }
+  if (state === 'approved') {
+    return '只读：这条审批已由你批准，决定已保存；恢复仍由唯一 resume 事务在旧尝试退出后排队。';
+  }
+  if (state === 'rejected') {
+    return '只读：这条审批已由你拒绝，等待中的 Run 会以 approval_rejected 失败，且不产生外部写入。';
+  }
+  if (approval && approval.paramsMismatch) {
+    return '只读：页面上的参数哈希与服务端当前提案不一致，请重新打开详情核对后再决定。';
+  }
+  return '只读：当前不可决定（状态：' + (approval && approval.stateText ? approval.stateText : '未知') + '）。';
+}
+
+/** Show or clear the read-only band; the buttons are handled by the caller. */
+function showApprovalReadonly(text) {
+  const note = approvalQuery('[data-approvals-readonly]');
+  if (!note) {
+    return;
+  }
+  note.hidden = text === '';
+  if (typeof note.setAttribute === 'function') {
+    note.setAttribute('data-tone', text === '' ? 'info' : 'warning');
+  }
+  const label = approvalQuery('[data-approvals-readonly-text]');
+  if (label) {
+    label.textContent = text;
+  }
+}
+
+/** Paint the detail head badge from the server state. */
+function showApprovalBadge(state) {
+  const element = approvalQuery('[data-approvals-detail-state]');
+  if (!element) {
+    return;
+  }
+  const badge = approvalStateBadge(state);
+  element.textContent = badge.label;
+  if (typeof element.setAttribute === 'function') {
+    element.setAttribute('data-tone', badge.tone);
+    element.setAttribute('data-shape', badge.shape);
+  }
+  element.hidden = badge.state === '';
+}
+
+/**
+ * One queue row: a single button (one focus stop per approval) holding the state
+ * badge, the run's short id and the server's real expiry. The row never invents
+ * a title or a reason: the sealed proposal is read in the detail pane.
+ */
+function renderApprovalRow(approval) {
+  const item = document.createElement('li');
+  item.className = 'approval-row';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'approval-row-button';
+  open.dataset.approvalId = approval.id;
+
+  const top = document.createElement('span');
+  top.className = 'approval-row-top';
+  const badge = approvalStateBadge(approval.state);
+  const statePill = document.createElement('span');
+  statePill.className = 'pill approval-row-state';
+  if (typeof statePill.setAttribute === 'function') {
+    statePill.setAttribute('data-tone', badge.tone);
+    statePill.setAttribute('data-shape', badge.shape);
+  }
+  statePill.textContent = badge.label;
+  const run = document.createElement('code');
+  run.className = 'approval-row-run';
+  run.textContent = 'Run ' + String(approval.runID || '').slice(0, 8);
+  top.append(statePill, run);
+
+  const meta = document.createElement('span');
+  meta.className = 'approval-row-meta';
+  meta.textContent = approval.expiresAt
+    ? '过期 ' + approval.expiresAt
+    : '（服务端未返回过期时间）';
+
+  open.append(top, meta);
+  open.addEventListener('click', () => loadApprovalDetail(approval.id));
+  item.append(open);
+  return item;
+}
+
 async function loadApprovalsPage(cursor) {
   const status = document.getElementById('approvals-status');
   status.textContent = '正在加载审批…';
@@ -298,21 +475,24 @@ async function loadApprovalsPage(cursor) {
     const list = document.getElementById('approvals-list');
     list.replaceChildren();
     for (const item of items) {
-      const row = document.createElement('li');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = '查看 ' + item.runID + '（' + item.stateText + '）';
-      button.addEventListener('click', () => loadApprovalDetail(item.id));
-      row.append(button);
-      list.append(row);
+      list.append(renderApprovalRow(item));
     }
     document.getElementById('approvals-empty').hidden = items.length !== 0;
     const next = document.getElementById('approvals-next');
     nextCursor = body.next_cursor || null;
     next.hidden = !nextCursor;
+    const count = approvalQuery('[data-approvals-count]');
+    if (count) {
+      count.textContent = approvalCountNote(items);
+    }
     status.textContent = '共 ' + items.length + ' 条（待审批优先）。';
     status.className = 'status ok';
   } catch (error) {
+    // The error surface replaces the rows and the loading skeleton.
+    const list = document.getElementById('approvals-list');
+    if (list) {
+      list.replaceChildren();
+    }
     status.textContent = '审批列表不可用：' + (error && error.message ? error.message : '未知错误');
     status.className = 'status bad';
   }
@@ -328,9 +508,11 @@ async function loadApprovalDetail(approvalID) {
     const approval = describeApproval(await api(approvalPath(approvalID)));
     displayedApproval = approval;
     detail.hidden = false;
+    markSelectedApprovalRow(approval.id);
     document.getElementById('detail-id').textContent = approval.id;
     document.getElementById('detail-run').textContent = approval.runID;
     document.getElementById('detail-state').textContent = approval.stateText;
+    showApprovalBadge(approval.state);
     document.getElementById('detail-params-sha').textContent = approval.paramsSHA256;
     document.getElementById('detail-expires').textContent = approval.expiresAt;
     document.getElementById('detail-target').textContent = '正在读取服务端提案…';
@@ -372,13 +554,24 @@ async function loadApprovalDetail(approvalID) {
     // Only a still-pending approval can be decided, and only after the exact
     // proposal is on screen. There is no preselected decision.
     const canDecide = approval.isPending && proposal.paramsSHA256 === approval.paramsSHA256;
+    approval.paramsMismatch = proposal.paramsSHA256 !== approval.paramsSHA256;
     document.getElementById('approve-button').disabled = !canDecide;
     document.getElementById('reject-button').disabled = !canDecide;
+    showApprovalReadonly(approvalReadonlyText(approval, canDecide));
     status.textContent = canDecide
       ? '请核对真实目标、参数与被写入的去向后再明确选择批准或拒绝。'
       : '该审批不可再决定（状态：' + approval.stateText + '）。';
     status.className = 'status ' + (canDecide ? 'pending' : 'bad');
   } catch (error) {
+    // A failed detail read is not a decision window: the decision stays closed
+    // and the page says why in the read-only band.
+    document.getElementById('approve-button').disabled = true;
+    document.getElementById('reject-button').disabled = true;
+    showApprovalReadonly(
+      '只读：审批详情不可用，未显示完整提案时不会提供决定（'
+        + (error && error.code ? error.code : 'error')
+        + '）。',
+    );
     status.textContent = '审批详情不可用：' + (error && error.message ? error.message : '未知错误');
     status.className = 'status bad';
   }
@@ -405,6 +598,8 @@ async function decideApproval(decision) {
     }));
     displayedApproval = updated;
     document.getElementById('detail-state').textContent = updated.stateText;
+    showApprovalBadge(updated.state);
+    showApprovalReadonly(approvalReadonlyText(updated, false));
     status.textContent = '已提交：' + updated.stateText +
       '。决定已保存；恢复仍由唯一 resume 事务在旧尝试退出后排队。';
     status.className = 'status ok';
@@ -432,6 +627,10 @@ async function decideApproval(decision) {
         // decision and must not re-enable the buttons.
       }
     }
+    // The refused decision is the durable fact: a re-read that still looks
+    // decidable (e.g. approver_mismatch is a permission refusal, not a state
+    // change) must not silently re-open the decision window.
+    showApprovalReadonly('只读：这次决定没有保存。' + plan.text);
   }
 }
 

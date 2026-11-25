@@ -1460,23 +1460,342 @@ function runsStatus(message, kind) {
   element.className = 'status ' + (kind || '');
 }
 
-function renderRunItem(run) {
+// ---------------------------------------------------------------------------
+// T5 (#169): the run workbench.
+//
+// A Run row is a shape + text badge pair (colour is only the third encoding),
+// the short id, the phase badge and the contract fields the list really returns.
+// The Run contract has no application name and no timestamps, so the row and the
+// toolbar refuse to render those instead of inventing them: the filters are a
+// view over the already loaded Runs and never re-query the server.
+//
+// The shared state module is consulted through the dependency guard: on the
+// C6.01 failure path (`OrcharaRunState` is absent or incomplete) the list must
+// still render and stay readable, so `degradedRunListRowFacts` uses the raw enum
+// values and never touches the missing namespace.
+// ---------------------------------------------------------------------------
+
+/** One DOM query that is quiet when the shim has no document at all. */
+function pageQuery(selector) {
+  if (typeof document === 'undefined' || !document) {
+    return null;
+  }
+  if (typeof document.querySelector !== 'function') {
+    return null;
+  }
+  return document.querySelector(selector);
+}
+
+/** The multi-node form of `pageQuery`, always an array. */
+function pageQueryAll(selector) {
+  if (typeof document === 'undefined' || !document) {
+    return [];
+  }
+  if (typeof document.querySelectorAll !== 'function') {
+    return [];
+  }
+  const found = document.querySelectorAll(selector);
+  return found ? Array.prototype.slice.call(found) : [];
+}
+
+// The double encoding of every contract Run.state: shape first, then wording,
+// then (third) colour. `needs_reconciliation` is a human decision, not a failure;
+// `cancelling` is a stop in flight, not a stopped Run.
+const RUN_STATE_BADGES = Object.freeze({
+  queued: { tone: 'muted', shape: 'ring' },
+  running: { tone: 'accent', shape: 'dot' },
+  waiting_approval: { tone: 'warning', shape: 'ring' },
+  waiting_children: { tone: 'warning', shape: 'ring' },
+  cancelling: { tone: 'warning', shape: 'dash' },
+  recovery_pending: { tone: 'warning', shape: 'ring' },
+  needs_reconciliation: { tone: 'warning', shape: 'alert' },
+  succeeded: { tone: 'success', shape: 'check' },
+  failed: { tone: 'danger', shape: 'alert' },
+  cancelled: { tone: 'muted', shape: 'dash' },
+});
+
+// `finalizing` is a phase, never a state: the Run is still waiting for the
+// supervisor exit evidence, so it can never wear the success shape.
+const RUN_PHASE_BADGES = Object.freeze({
+  idle: { tone: 'muted', shape: 'square' },
+  executing: { tone: 'accent', shape: 'dot' },
+  waiting: { tone: 'warning', shape: 'ring' },
+  finalizing: { tone: 'warning', shape: 'dash' },
+});
+
+/** One state badge: the shared label, plus its shape/tone. */
+function runStateBadge(state) {
+  const value = String(state || '');
+  const known = RUN_STATE_BADGES[value] || { tone: 'muted', shape: 'ring' };
+  const label = OrcharaRunState.stateLabel(value);
+  return {
+    state: value,
+    tone: known.tone,
+    shape: known.shape,
+    label: label || value || '未知',
+  };
+}
+
+/** One phase badge: the shared phase label, plus its shape/tone. */
+function runPhaseBadge(phase) {
+  const value = String(phase || '');
+  const known = RUN_PHASE_BADGES[value] || { tone: 'muted', shape: 'square' };
+  const label = OrcharaRunState.phaseLabel(value);
+  return {
+    state: value,
+    tone: known.tone,
+    shape: known.shape,
+    label: label || value || '（未提供）',
+  };
+}
+
+/**
+ * The list group of one contract state. `terminal` comes from the one shared
+ * terminal rule (`OrcharaRunState.isTerminal`), never from a page-local copy.
+ */
+function runStateGroup(state) {
+  const value = String(state || '');
+  if (OrcharaRunState.isTerminal(value)) {
+    return 'terminal';
+  }
+  switch (value) {
+    case 'queued':
+    case 'waiting_approval':
+    case 'waiting_children':
+    case 'recovery_pending':
+      return 'waiting';
+    case 'needs_reconciliation':
+      return 'attention';
+    case 'running':
+    case 'cancelling':
+      return 'active';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * True when a loaded Run belongs to the selected view. With both filters on
+ * "全部" no shared rule is consulted at all, which keeps the dependency-failure
+ * path (no `OrcharaRunState`) from raising inside a list render.
+ */
+function runMatchesFilters(run, stateFilter, kindFilter) {
+  const kind = String((run && run.kind) || '');
+  const kindFilterValue = String(kindFilter || '');
+  const kindOK = kindFilterValue === '' || kindFilterValue === 'all' || kind === kindFilterValue;
+  const groupFilter = String(stateFilter || '');
+  if (!kindOK) {
+    return false;
+  }
+  if (groupFilter === '' || groupFilter === 'all') {
+    return true;
+  }
+  return runStateGroup(String((run && run.state) || '')) === groupFilter;
+}
+
+/** The row projection of one contract Run: only fields the API returns. */
+function runListRowFacts(run) {
   const summary = runSummary(run);
+  const stateBadge = runStateBadge(summary.state);
+  const phaseBadge = runPhaseBadge(summary.phase);
+  return {
+    id: summary.id,
+    idShort: String(summary.id || '').slice(0, 8),
+    state: summary.state,
+    stateText: stateBadge.label,
+    stateTone: stateBadge.tone,
+    stateShape: stateBadge.shape,
+    phase: summary.phase,
+    phaseText: phaseBadge.label,
+    phaseTone: phaseBadge.tone,
+    phaseShape: phaseBadge.shape,
+    kind: summary.kind,
+    revision: summary.revision,
+    snapshotShort: String(summary.executionSnapshotID || '').slice(0, 8),
+  };
+}
+
+/**
+ * The same row shape without the shared labels, for the C6.01 failure path: the
+ * list stays readable, the raw server values are shown verbatim, and the missing
+ * namespace is never dereferenced.
+ */
+function degradedRunListRowFacts(run) {
+  const summary = runSummary(run);
+  return {
+    id: summary.id,
+    idShort: String(summary.id || '').slice(0, 8),
+    state: summary.state,
+    stateText: summary.state,
+    stateTone: 'muted',
+    stateShape: 'ring',
+    phase: summary.phase,
+    phaseText: summary.phase || '（未提供）',
+    phaseTone: 'muted',
+    phaseShape: 'square',
+    kind: summary.kind,
+    revision: summary.revision,
+    snapshotShort: String(summary.executionSnapshotID || '').slice(0, 8),
+  };
+}
+
+// Every Run loaded so far, in arrival order. The filters are views over this
+// array (the list endpoint has no state/kind filter), so they never re-query.
+const loadedRuns = [];
+const renderedRunKinds = [];
+
+/** The loaded-count note; a filtered view says how many rows it hides. */
+function runCountNote(visible, total) {
+  const base = '已加载 ' + total + ' 条';
+  return visible === total ? base : base + '，当前显示 ' + visible + ' 条';
+}
+
+/** Add one option per real kind that has been loaded (never a guessed kind). */
+function syncRunKindFilter() {
+  const select = pageQuery('[data-runs-filter-kind]');
+  if (!select || typeof select.appendChild !== 'function') {
+    return;
+  }
+  for (const run of loadedRuns) {
+    const kind = String((run && run.kind) || '');
+    if (kind === '' || renderedRunKinds.indexOf(kind) >= 0) {
+      continue;
+    }
+    renderedRunKinds.push(kind);
+    const option = document.createElement('option');
+    option.value = kind;
+    option.textContent = kind;
+    select.appendChild(option);
+  }
+}
+
+/** Re-render the list from the loaded Runs through the current filter view. */
+function applyRunFilters() {
+  const list = document.getElementById('runs-list');
+  if (!list) {
+    return 0;
+  }
+  const stateElement = pageQuery('[data-runs-filter-state]');
+  const kindElement = pageQuery('[data-runs-filter-kind]');
+  const stateFilter = stateElement && typeof stateElement.value === 'string'
+    ? stateElement.value
+    : 'all';
+  const kindFilter = kindElement && typeof kindElement.value === 'string'
+    ? kindElement.value
+    : 'all';
+  const visible = [];
+  for (const run of loadedRuns) {
+    if (runMatchesFilters(run, stateFilter, kindFilter)) {
+      visible.push(run);
+    }
+  }
+  list.replaceChildren();
+  for (const run of visible) {
+    renderRunItem(run);
+  }
+  const total = loadedRuns.length;
+  const count = pageQuery('[data-runs-count]');
+  if (count) {
+    count.textContent = runCountNote(visible.length, total);
+  }
+  const empty = document.getElementById('runs-empty');
+  if (empty) {
+    empty.hidden = total !== 0;
+  }
+  const filterEmpty = pageQuery('[data-runs-filter-empty]');
+  if (filterEmpty) {
+    filterEmpty.hidden = !(total > 0 && visible.length === 0);
+  }
+  const pagerNote = pageQuery('[data-runs-pager-note]');
+  if (pagerNote) {
+    pagerNote.textContent = nextCursor
+      ? '还有下一页：下一页会追加到已加载的 Run。'
+      : '分页：本页已加载的 Run 已全部显示。';
+  }
+  return visible.length;
+}
+
+/**
+ * Wire the toolbar. Grouping by state needs the shared terminal rule, so on the
+ * dependency-failure path the selects stay inert and say why instead of raising
+ * when someone touches them.
+ */
+function wireRunFilters() {
+  const ready = OrcharaRunStateGuard.ready;
+  for (const selector of ['[data-runs-filter-state]', '[data-runs-filter-kind]']) {
+    const element = pageQuery(selector);
+    if (!element) {
+      continue;
+    }
+    if (!ready) {
+      element.disabled = true;
+      continue;
+    }
+    if (typeof element.addEventListener === 'function') {
+      element.addEventListener('change', () => {
+        applyRunFilters();
+      });
+    }
+  }
+}
+
+/** One focus stop per Run: the row itself opens the detail observation. */
+function renderRunItem(run) {  const facts = OrcharaRunStateGuard.ready
+    ? runListRowFacts(run)
+    : degradedRunListRowFacts(run);
   const item = document.createElement('li');
-  const state = document.createElement('strong');
-  state.textContent = summary.state + ' / ' + (summary.phase || 'idle');
-  const kind = document.createElement('span');
-  kind.textContent = ' kind=' + summary.kind + ' revision=' + summary.revision;
-  const id = document.createElement('code');
-  id.textContent = ' ' + summary.id;
-  const snapshot = document.createElement('span');
-  snapshot.textContent = ' snapshot=' + summary.executionSnapshotID;
+  item.className = 'run-row';
   const open = document.createElement('button');
   open.type = 'button';
-  open.textContent = '查看详情';
-  open.addEventListener('click', () => loadRunDetail(summary.id));
-  item.append(state, kind, id, snapshot, ' ', open);
+  open.className = 'run-row-button';
+  open.dataset.runId = facts.id;
+
+  const top = document.createElement('span');
+  top.className = 'run-row-top';
+  const statePill = document.createElement('span');
+  statePill.className = 'pill run-row-state';
+  statePill.setAttribute('data-tone', facts.stateTone);
+  statePill.setAttribute('data-shape', facts.stateShape);
+  statePill.textContent = facts.stateText;
+  const id = document.createElement('code');
+  id.className = 'run-row-id';
+  id.textContent = facts.idShort;
+  top.append(statePill, id);
+
+  const meta = document.createElement('span');
+  meta.className = 'run-row-meta';
+  const phasePill = document.createElement('span');
+  phasePill.className = 'pill run-row-phase';
+  phasePill.setAttribute('data-tone', facts.phaseTone);
+  phasePill.setAttribute('data-shape', facts.phaseShape);
+  phasePill.textContent = facts.phaseText;
+  const rest = document.createElement('span');
+  rest.className = 'run-row-rest';
+  const parts = ['kind=' + facts.kind, 'revision=' + facts.revision];
+  if (facts.snapshotShort !== '') {
+    parts.push('快照 ' + facts.snapshotShort);
+  }
+  rest.textContent = parts.join(' · ');
+  meta.append(phasePill, rest);
+
+  open.append(top, meta);
+  open.addEventListener('click', () => loadRunDetail(facts.id));
+  item.append(open);
   document.getElementById('runs-list').appendChild(item);
+}
+
+/**
+ * Mark the row whose detail is on screen. Presentation only: `aria-current`
+ * names the open Run for assistive technology, and the CSS gives it the accent
+ * rule so the list and the observation column agree on which Run is selected.
+ */
+function markSelectedRunRow(runId) {
+  for (const row of pageQueryAll('.run-row-button')) {
+    const selected = Boolean(row && row.dataset && row.dataset.runId === runId);
+    if (row && typeof row.setAttribute === 'function') {
+      row.setAttribute('aria-current', selected ? 'true' : 'false');
+    }
+  }
 }
 
 // T036: the last Run snapshot rendered. A committed terminal state is never
@@ -1538,9 +1857,36 @@ function showRunDetail(run, facts) {
     cancelButton.textContent = cancel.buttonLabel;
     cancelButton.dataset.runId = summary.id;
   }
+  updateRunBadges(merged);
+  markSelectedRunRow(summary.id);
   renderSandboxPanel(merged, facts);
   document.getElementById('run-detail').hidden = false;
   return merged;
+}
+
+/**
+ * T5: the detail head shows the same shape + text pair as the list row, so a
+ * finalizing Run never wears the success shape and a cancelling Run never claims
+ * to be stopped. Only presentation is written here; the raw state/phase values
+ * stay in the contract fields below.
+ */
+function updateRunBadges(run) {
+  const stateBadge = runStateBadge(run && run.state);
+  const phaseBadge = runPhaseBadge(run && run.phase);
+  const stateElement = pageQuery('[data-runs-detail-state]');
+  if (stateElement) {
+    stateElement.textContent = stateBadge.label;
+    stateElement.setAttribute('data-tone', stateBadge.tone);
+    stateElement.setAttribute('data-shape', stateBadge.shape);
+    stateElement.hidden = stateBadge.state === '';
+  }
+  const phaseElement = pageQuery('[data-runs-detail-phase]');
+  if (phaseElement) {
+    phaseElement.textContent = phaseBadge.label;
+    phaseElement.setAttribute('data-tone', phaseBadge.tone);
+    phaseElement.setAttribute('data-shape', phaseBadge.shape);
+    phaseElement.hidden = phaseBadge.state === '';
+  }
 }
 
 // T033: the sandbox panel and the owner-only artifact list.
@@ -2227,23 +2573,34 @@ async function loadRunsPage(cursor) {
     await requireLogin();
     const page = await api(listRunsPath(cursor, 20));
     const items = page.items || [];
-    for (const run of items) {
-      renderRunItem(run);
+    if (!cursor) {
+      // The first page starts a fresh view; a later page appends to it, so the
+      // filter keeps covering everything that has been loaded.
+      loadedRuns.length = 0;
     }
-    const next = page.next_cursor || null;
-    document.getElementById('runs-next').hidden = !next;
-    document.getElementById('runs-empty').hidden = items.length !== 0;
+    for (const run of items) {
+      loadedRuns.push(run);
+    }
+    nextCursor = page.next_cursor || null;
+    document.getElementById('runs-next').hidden = !nextCursor;
+    syncRunKindFilter();
+    applyRunFilters();
     runsStatus(
       items.length === 0
         ? '没有属于你的 Run。'
-        : '本页 ' + items.length + ' 个 Run' + (next ? '，还有下一页。' : '。'),
+        : '本页 ' + items.length + ' 个 Run' + (nextCursor ? '，还有下一页。' : '。'),
       'ok',
     );
-    nextCursor = next;
   } catch (error) {
     if (error.status === 401) {
       window.location.assign('/login');
       return;
+    }
+    // The error surface replaces the rows and the loading skeleton: a failed read
+    // must never be left looking like a slow one.
+    const list = document.getElementById('runs-list');
+    if (list) {
+      list.replaceChildren();
     }
     runsStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
   }
@@ -3054,7 +3411,7 @@ let nextCursor = null;
 if (typeof document !== 'undefined' && document.getElementById && document.getElementById('runs-list')) {
   document.getElementById('runs-next').addEventListener('click', () => {
     if (nextCursor) {
-      document.getElementById('runs-list').replaceChildren();
+      // The next page appends to the loaded view; applyRunFilters re-renders it.
       loadRunsPage(nextCursor);
     }
   });
@@ -3067,5 +3424,6 @@ if (typeof document !== 'undefined' && document.getElementById && document.getEl
       }
     });
   }
+  wireRunFilters();
   loadRunsPage(null);
 }
