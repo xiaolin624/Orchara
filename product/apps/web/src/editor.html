@@ -47,9 +47,10 @@
     }
     .editor-app-ref {
       overflow: hidden;
-      color: var(--muted);
+      color: var(--text);
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: var(--fs-12);
+      font-weight: 600;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -89,6 +90,18 @@
     .editor-debug:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
     body.page-editor .page-heading .btn-secondary { min-height: 32px; }
     body.page-editor .page-heading .btn-primary { min-height: 32px; }
+    /* T9 (#173): the one validate action stays in the toolbar and keeps the
+       #canvas-validate hook; the inspector footer only offers save. */
+    body.page-editor .page-heading #canvas-validate {
+      background: var(--surface);
+      border-color: var(--border-strong);
+      color: var(--text-2);
+    }
+    body.page-editor .page-heading #canvas-validate:hover:not(:disabled) {
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
 
     /* status line: draft revision, definition validation, layout, preflight */
     body.page-editor .page-meta {
@@ -310,12 +323,12 @@
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body class="page-editor" data-page="editor"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工作流编辑器</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工作流编辑器</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading">
 <div class="editor-toolbar-main">
 <a class="editor-back" href="/apps" aria-label="返回应用列表" title="返回应用列表" data-icon="chevron-left"></a>
-<div class="editor-title"><h1>工作流编辑器</h1><span class="editor-app-ref" data-editor-app-ref>正在读取应用</span></div>
+<div class="editor-title"><h1 class="sr-only">工作流编辑器</h1><span class="editor-app-ref" data-editor-app-ref>正在读取应用</span></div>
 <span class="pill" data-tone="accent" data-shape="square">草稿</span>
 <span class="editor-rev">revision <strong id="draft-revision">加载中</strong></span>
 </div>
@@ -382,9 +395,9 @@
            画布是主编辑器；文本域与画布双向同源。非法 DSL 仍可保存，但不能调试或提交
            （校验按钮显示服务端定位错误）。layout 只影响视图，不改变执行内容。
         </p>
-<label for="draft-definition">definition（JSON 对象）</label>
+<label for="draft-definition">工作流定义（JSON 对象）<span class="field-api">definition</span></label>
 <textarea class="definition" id="draft-definition" name="definition" spellcheck="false"></textarea>
-<label for="draft-layout">layout（JSON 对象）</label>
+<label for="draft-layout">画布布局（JSON 对象）<span class="field-api">layout</span></label>
 <textarea class="layout" id="draft-layout" name="layout" spellcheck="false"></textarea>
 </details>
 </section>

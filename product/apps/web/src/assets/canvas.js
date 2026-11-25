@@ -23185,12 +23185,15 @@ Edge: ${id2}`,
           id: "canvas-delete-node",
           onClick: () => deleteSelectedNode(state, selected)
         }, "删除节点") : null,
+        // T9 (#173): the toolbar owns the single validate action. The
+        // inspector footer keeps the save affordance and submits the real
+        // draft form through its existing submit handler.
         h("button", {
-          type: "button",
-          class: "btn btn-secondary btn-small",
-          id: "canvas-validate",
-          onClick: () => validate(state)
-        }, "校验草稿")
+          type: "submit",
+          form: "draft-form",
+          class: "btn btn-primary btn-small",
+          id: "canvas-save-draft"
+        }, "保存草稿")
       ])
     ]);
   }

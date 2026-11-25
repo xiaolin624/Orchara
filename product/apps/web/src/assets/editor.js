@@ -576,8 +576,16 @@ function editorApplyReadOnly(identity) {
     banner.hidden = false;
   }
   const validate = document.querySelector('[data-editor-action="validate"]');
-  if (validate && editorWorkbench.readOnly) {
-    validate.hidden = true;
+  if (validate) {
+    // T9 (#173): the toolbar is now the single validate entry, and it keeps the
+    // historical DOM id. The page's static id inventory is a pinned contract,
+    // so the id is attached at runtime instead of being written into the HTML.
+    if (!validate.id) {
+      validate.id = 'canvas-validate';
+    }
+    if (editorWorkbench.readOnly) {
+      validate.hidden = true;
+    }
   }
 }
 

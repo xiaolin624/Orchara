@@ -56,19 +56,14 @@
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-page="admin"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/admin">管理台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">管理台</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/admin">管理</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">管理台</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="settings">ADMIN CONSOLE</p><h1>管理台</h1><p class="page-description">管理组织成员、角色、资源授权与服务账号；每次管理写入都会进入审计。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>角色变更立即生效</span><span>邀请令牌只显示一次</span><span>危险操作需要确认</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
-    未登录会跳转到登录页。邀请返回的一次性激活令牌与创建 API key 返回的一次性明文都
-    <strong>只显示一次</strong>，平台只保存它们的哈希，请人工转交/立即保存。
-    资源授权、角色修改、服务账号与 API key 也在这里，写入都会带本会话的 CSRF 令牌。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <section class="card" data-admin-section="users">
 <div class="section-head"><p class="section-index">01 · 用户与角色</p><h2>用户与角色</h2><p class="section-note">角色的增减在下一次请求立即生效，不需要重新登录；至少保留一个启用中的人类管理员，否则服务端会拒绝并返回 <code>last_admin</code>。</p></div>
 <p class="status" id="auth-status" aria-live="polite" role="status">正在读取当前身份…</p>
-<dl class="identity-facts"><dt>principal</dt><dd><code id="identity-principal">—</code></dd><dt>角色</dt><dd><span id="identity-roles">—</span></dd></dl>
+<dl class="identity-facts"><dt>主体（principal）</dt><dd><code id="identity-principal">—</code></dd><dt>角色</dt><dd><span id="identity-roles">—</span></dd></dl>
 <div class="admin-actions"><button class="btn btn-secondary" id="logout-button" data-icon="logout" type="button">退出登录</button></div>
 <div class="admin-subpanel" id="roles-panel" hidden="">
 <h3>修改用户角色</h3>
@@ -77,12 +72,12 @@
       至少保留一个启用中的人类管理员，否则请求会被拒绝。
     </p>
 <form id="roles-form" method="post">
-<div class="field"><label class="field-label" for="roles-principal">principal id</label><input id="roles-principal" name="principal_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="roles-principal">主体 ID（principal）<span class="field-api">principal_id</span></label><input id="roles-principal" name="principal_id" placeholder="uuid" required=""/></div>
 <fieldset>
 <legend>角色</legend>
-<label><input name="roles" checked="" type="checkbox" value="user"/> user</label>
-<label><input name="roles" type="checkbox" value="creator"/> creator</label>
-<label><input name="roles" type="checkbox" value="admin"/> admin</label>
+<label><input name="roles" checked="" type="checkbox" value="user"/> 用户（user）</label>
+<label><input name="roles" type="checkbox" value="creator"/> 创作（creator）</label>
+<label><input name="roles" type="checkbox" value="admin"/> 管理（admin）</label>
 </fieldset>
 <button type="submit">保存角色</button>
 </form>
@@ -98,7 +93,7 @@
       <code>principal_not_found</code>。原因必填并写入审计。
     </p>
 <form id="disable-form" method="post">
-<div class="field"><label class="field-label" for="disable-principal">principal id</label><input id="disable-principal" name="principal_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="disable-principal">主体 ID（principal）<span class="field-api">principal_id</span></label><input id="disable-principal" name="principal_id" placeholder="uuid" required=""/></div>
 <div class="field"><label class="field-label" for="disable-state">目标状态</label><select id="disable-state" name="disabled"><option selected="" value="true">禁用</option><option value="false">启用</option></select></div>
 <div class="field"><label class="field-label" for="disable-reason">原因（必填，写入审计）</label><input id="disable-reason" name="reason" placeholder="例如：离职交接" required=""/></div>
 <button type="submit">提交</button>
@@ -124,9 +119,9 @@
 <div class="field"><label class="field-label" for="invite-display-name">显示名</label><input id="invite-display-name" name="display_name" required=""/></div>
 <fieldset>
 <legend>角色</legend>
-<label><input name="roles" checked="" type="checkbox" value="user"/> user</label>
-<label><input name="roles" type="checkbox" value="creator"/> creator</label>
-<label><input name="roles" type="checkbox" value="admin"/> admin</label>
+<label><input name="roles" checked="" type="checkbox" value="user"/> 用户（user）</label>
+<label><input name="roles" type="checkbox" value="creator"/> 创作（creator）</label>
+<label><input name="roles" type="checkbox" value="admin"/> 管理（admin）</label>
 </fieldset>
 <button type="submit">生成一次性邀请</button>
 </form>
@@ -144,17 +139,17 @@
 <div class="section-head"><p class="section-index">03 · 授权</p><h2>资源授权</h2><p class="section-note">授权后目标用户在应用目录立即看到该应用；撤销后下一次读取立即被拒绝。F01 只开放 application 资源与 read 动作。</p></div>
 <div class="admin-grid">
 <div>
-<h3>授予 read</h3>
+<h3>授予只读（read）</h3>
 <form id="grant-form" method="post">
-<div class="field"><label class="field-label" for="grant-principal">被授权 principal id</label><input id="grant-principal" name="principal_id" placeholder="uuid" required=""/></div>
-<div class="field"><label class="field-label" for="grant-resource">资源 id（application）</label><input id="grant-resource" name="resource_id" placeholder="uuid" required=""/></div>
-<div class="field"><label class="field-label" for="grant-action">动作</label><select id="grant-action" name="action"><option selected="" value="read">read</option></select></div>
-<div class="field"><label class="field-label" for="grant-expires">过期时间（可选，RFC3339，例如 2026-12-31T00:00:00Z）</label><input id="grant-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z"/></div>
-<button type="submit">授予 read</button>
+<div class="field"><label class="field-label" for="grant-principal">被授权主体 ID<span class="field-api">principal_id</span></label><input id="grant-principal" name="principal_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="grant-resource">资源 ID（application）<span class="field-api">resource_id</span></label><input id="grant-resource" name="resource_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="grant-action">动作</label><select id="grant-action" name="action"><option selected="" value="read">只读（read）</option></select></div>
+<div class="field"><label class="field-label" for="grant-expires">过期时间（可选，RFC 3339，例如 2026-12-31T00:00:00Z）<span class="field-api">expires_at</span></label><input id="grant-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z"/></div>
+<button type="submit">授予只读（read）</button>
 </form>
 <p class="status" id="grant-status" aria-live="polite" role="status"></p>
 <div class="result-panel" id="grant-result" hidden="">
-<p class="ok">已创建授权，grant id：<code id="grant-id">—</code></p>
+<p class="ok">已创建授权，授权 ID：<code id="grant-id">—</code></p>
 <p class="hint">撤销时把该 id 填入右侧表单；撤销会让下一次读取立即失败，不需要刷新缓存。</p>
 </div>
 </div>
@@ -162,7 +157,7 @@
 <div class="danger-head"><h3>撤销授权</h3><span class="pill" data-tone="danger" data-shape="alert">危险操作</span></div>
 <p class="hint">撤销在服务端立即生效，目标用户的下一次读取会失败；撤销后无法恢复，只能重新授予。</p>
 <form id="revoke-form" method="post">
-<div class="field"><label class="field-label" for="revoke-grant-id">grant id</label><input id="revoke-grant-id" name="grant_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="revoke-grant-id">授权 ID<span class="field-api">grant_id</span></label><input id="revoke-grant-id" name="grant_id" placeholder="uuid" required=""/></div>
 <button type="submit">撤销授权</button>
 </form>
 <p class="status" id="revoke-status" aria-live="polite" role="status"></p>
@@ -179,12 +174,12 @@
     </p>
 <form id="service-account-form" method="post">
 <div class="field"><label class="field-label" for="sa-display-name">显示名</label><input id="sa-display-name" name="display_name" required=""/></div>
-<div class="field"><label class="field-label" for="sa-responsible">负责人 principal id（必须是启用中的人类用户）</label><input id="sa-responsible" name="responsible_user_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="sa-responsible">负责人主体 ID（必须是启用中的人类用户）<span class="field-api">responsible_user_id</span></label><input id="sa-responsible" name="responsible_user_id" placeholder="uuid" required=""/></div>
 <button type="submit">创建服务账号</button>
 </form>
 <p class="status" id="sa-status" aria-live="polite" role="status"></p>
 <div class="result-panel" id="sa-result" hidden="">
-<p class="ok">服务账号已创建，principal id：<code id="sa-principal-id">—</code></p>
+<p class="ok">服务账号已创建，主体 ID：<code id="sa-principal-id">—</code></p>
 <p class="hint">它不能登录，也没有角色；请把该 id 填进下面的 API key 表单。平台只保存负责人归属，不会把负责人的个人数据授权给它。</p>
 </div>
 </div>
@@ -196,25 +191,25 @@
       个人/记忆 scope 对服务账号一律拒绝。key 明文只返回一次，平台只保存 SHA-256。
     </p>
 <form id="api-key-form" method="post">
-<div class="field"><label class="field-label" for="api-key-principal">服务账号 principal id</label><input id="api-key-principal" name="principal_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="api-key-principal">服务账号主体 ID<span class="field-api">principal_id</span></label><input id="api-key-principal" name="principal_id" placeholder="uuid" required=""/></div>
 <fieldset>
-<legend>scope</legend>
-<label><input id="api-key-scope-application-read" name="scopes" checked="" type="checkbox" value="application:read"/> application:read</label>
+<legend>权限范围（scope）</legend>
+<label><input id="api-key-scope-application-read" name="scopes" checked="" type="checkbox" value="application:read"/> 应用只读（application:read）</label>
 </fieldset>
-<div class="field"><label class="field-label" for="api-key-expires">过期时间（RFC3339，必须晚于现在，例如 2026-12-31T00:00:00Z）</label><input id="api-key-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z" required=""/></div>
+<div class="field"><label class="field-label" for="api-key-expires">过期时间（RFC 3339，必须晚于现在，例如 2026-12-31T00:00:00Z）<span class="field-api">expires_at</span></label><input id="api-key-expires" name="expires_at" placeholder="2026-12-31T00:00:00Z" required=""/></div>
 <button type="submit">创建 API key</button>
 </form>
 <p class="status" id="api-key-status" aria-live="polite" role="status"></p>
 <div class="result-panel" id="api-key-result" hidden="">
 <p class="warn">API key 明文只显示一次（离开本页后无法再次获取）：</p>
 <textarea id="api-key-secret" aria-label="一次性 API key" data-auth-content="" readonly="" rows="3"></textarea>
-<p class="hint">key id 为 <code id="api-key-id">—</code>；撤销时填入下面的表单。</p>
+<p class="hint">API key ID 为 <code id="api-key-id">—</code>；撤销时填入下面的表单。</p>
 </div>
 <div class="danger-zone" data-danger="revoke-api-key">
 <div class="danger-head"><h3>撤销 API key</h3><span class="pill" data-tone="danger" data-shape="alert">危险操作</span></div>
 <p class="hint">撤销在服务端立即生效，使用该 key 的下一次调用会失败；重复撤销是幂等的。</p>
 <form id="api-key-revoke-form" method="post">
-<div class="field"><label class="field-label" for="revoke-api-key-id">key id</label><input id="revoke-api-key-id" name="key_id" placeholder="uuid" required=""/></div>
+<div class="field"><label class="field-label" for="revoke-api-key-id">密钥 ID（API key）<span class="field-api">key_id</span></label><input id="revoke-api-key-id" name="key_id" placeholder="uuid" required=""/></div>
 <button type="submit">撤销 key</button>
 </form>
 <p class="status" id="api-key-revoke-status" aria-live="polite" role="status"></p>
@@ -234,7 +229,7 @@
 <tr><td>撤销授权</td><td><code>grant.revoked</code></td><td>principal、资源类型、资源 id</td></tr>
 <tr><td>创建服务账号</td><td><code>service_account.created</code></td><td>显示名、负责人</td></tr>
 <tr><td>签发 API key</td><td><code>api_key.created</code></td><td>principal、scope、过期时间</td></tr>
-<tr><td>撤销 API key</td><td><code>api_key.revoked</code></td><td>principal、key id</td></tr>
+<tr><td>撤销 API key</td><td><code>api_key.revoked</code></td><td>主体（principal）、key ID</td></tr>
 <tr><td>禁用主体</td><td><code>principal.disabled</code></td><td>原因（必填）</td></tr>
 <tr><td>启用主体</td><td><code>principal.enabled</code></td><td>原因（必填）</td></tr>
 <tr><td>登录 / 退出</td><td><code>auth.login</code> / <code>auth.logout</code></td><td>principal</td></tr>
@@ -243,7 +238,14 @@
 </div>
 <p class="hint">审计事件只由服务端写入；本版本没有修改或删除审计记录的接口。禁用/启用的原因会原样写入 metadata，因此该字段必填。</p>
 </section>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    本页先向 <code>/api/v1/auth/me</code> 读取当前身份，刷新后仍然记得你是谁；
+    未登录会跳转到登录页。邀请返回的一次性激活令牌与创建 API key 返回的一次性明文都
+    <strong>只显示一次</strong>，平台只保存它们的哈希，请人工转交/立即保存。
+    资源授权、角色修改、服务账号与 API key 也在这里，写入都会带本会话的 CSRF 令牌。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

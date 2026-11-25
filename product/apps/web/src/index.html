@@ -54,11 +54,7 @@
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/status">管理</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">平台状态</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="pulse">SYSTEM STATUS</p><h1>平台状态</h1><p class="page-description">查看平台进程、依赖与当前运行环境的实际状态；未知项不会被写成正常。</p></div><div class="heading-actions"><button class="btn btn-secondary" data-refresh="" data-icon="refresh" type="button">重新检查</button><a class="btn btn-ghost" href="/chat">前往对话</a></div><p class="page-meta"><span>每 3 秒刷新</span><span>数据来源 /health/live 与 /api/status</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    这是 F00 骨架页面：显示真实进程与依赖状态，<strong>不是</strong>业务功能。
-    存活来自 <code>/health/live</code>，就绪与依赖检查来自 <code>/api/status</code>，每 3 秒刷新。
-    本页只呈现接口已经返回的事实；接口没有提供的检查项会标成「未纳入检查」。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <section class="card status-overview" aria-label="总体状态">
 <div class="overview-summary"><span class="pill" data-tone="muted" data-shape="ring" data-overall-status="">正在检查…</span><div class="overview-copy"><span class="overview-label">总体状态</span><span class="overview-hint" data-overall-hint="">正在读取 /health/live 与 /api/status</span></div></div>
 <div class="stat-row overview-facts"><div class="stat-chip"><span class="stat-label">检查时间</span><span class="stat-value" id="stamp">尚未检查</span></div><div class="stat-chip"><span class="stat-label">环境</span><span class="pill" data-tone="muted" data-shape="square" data-profile-badge="">正在读取</span></div><div class="stat-chip"><span class="stat-label">刷新</span><span class="stat-value">每 3 秒</span></div></div>
@@ -66,7 +62,7 @@
 <div class="health-grid">
 <article class="card health-card" data-health="api">
 <div class="health-head"><span class="health-icon" data-icon="pulse"></span><h2>API 进程</h2><span class="pill" data-tone="muted" data-shape="ring" data-health-state="api">正在读取</span></div>
-<dl class="health-facts"><dt>存活 (liveness)</dt><dd><span class="kv-value" id="live">…</span></dd><dt>就绪 (readiness)</dt><dd><span class="kv-value" id="ready">…</span></dd></dl>
+<dl class="health-facts"><dt>存活（liveness）</dt><dd><span class="kv-value" id="live">…</span></dd><dt>就绪（readiness）</dt><dd><span class="kv-value" id="ready">…</span></dd></dl>
 <p class="health-note">存活与就绪分开判断：进程活着不代表依赖可用。</p>
 </article>
 <article class="card health-card" data-health="database">
@@ -96,7 +92,13 @@
 <dl class="kv-table"><dt>环境 profile</dt><dd><span class="kv-value" id="environment-profile">…</span></dd><dt>结果标记</dt><dd><span class="kv-value" id="environment-stub">…</span></dd><dt>版本</dt><dd><span class="kv-value" id="version">…</span></dd><dt>已运行</dt><dd><span class="kv-value" id="uptime">…</span></dd></dl>
 <p class="hint">profile 与结果标记来自 <code>/api/status</code>；版本与已运行来自 <code>/health/live</code>。</p>
 </div>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    这是 F00 骨架页面：显示真实进程与依赖状态，<strong>不是</strong>业务功能。
+    存活来自 <code>/health/live</code>，就绪与依赖检查来自 <code>/api/status</code>，每 3 秒刷新。
+    本页只呈现接口已经返回的事实；接口没有提供的检查项会标成「未纳入检查」。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

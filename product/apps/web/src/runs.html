@@ -87,58 +87,11 @@
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-runs" data-page="runs"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<body class="page-runs" data-page="runs" data-tabbar="true"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">运行记录</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>运行记录</h1><p class="page-description">找到一次运行，判断它现在怎样、为什么，以及还能做什么。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>运行状态来自共享 Run 状态模块</span><span>无租约不伪造进度</span><span>详情轮询到终态为止</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
-    同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
-    <strong>真实租约事实</strong>（<code>X-Run-Attempt-Started-At</code>、
-    <code>X-Run-Lease-Deadline</code>，来自数据库时钟）；没有租约事实时本页不伪造进度。
-    领取、心跳与退出证据属于 F03 内部 supervisor 协议，普通页面只读它们的结果。
-  </p><p class="hint">
-    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
-    但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
-    详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
-    累计活跃时间来自同一响应的非契约响应头 <code>X-Run-Active-Elapsed-Ms</code> /
-    <code>X-Run-Max-Active-Ms</code> / <code>X-Run-Deadline-Exceeded</code>（契约 Run 没有这些字段）：
-    跨尝试累计为一个时钟，新 attempt 不重置；上限为 NULL 表示未知/无截止，不是 0。
-    持久时间线来自 <code>GET /api/v1/runs/{id}/events</code>（SSE，<code>id: seq</code>、
-    <code>event: type</code>、<code>data: event.schema 封套</code>）。断线后客户端按
-    <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
-    <code>details.snapshot_url</code> 指向的 Run 快照，而不是伪装完整历史。
-  </p><p class="hint">
-    等待审批/子任务（F03/T035）：worker 在固定 checkpoint 停止后，Run 进入
-    <strong>waiting_approval / waiting_children</strong>（phase=waiting），等待事实保存在
-    <code>platform.run_waitings</code>。等待期间<strong>释放 worker 执行槽</strong>，但
-    <strong>逻辑会话槽与 Run 一直占用到终态</strong>：等待与恢复排队都不是终态。
-    只有“解决结果 + supervisor 退出确认 + checkpoint”齐全后才创建<strong>唯一</strong>恢复任务
-    （<code>jobs.kind=resume</code>，携带封存的 canonical 恢复输入）。等待/决定/退出/恢复事实由非契约
-    响应头 <code>X-Run-Waiting-Kind</code> / <code>X-Run-Waiting-Outcome</code> /
-    <code>X-Run-Waiting-Decided-At</code> / <code>X-Run-Waiting-Exit-Confirmed-At</code> /
-    <code>X-Run-Resume-Job-ID</code> / <code>X-Run-Resume-Job-State</code> 提供；本页不伪造批准、
-    不显示恢复输入内容，也不把 202/200 解释为已恢复。
-  </p><p class="hint">
-    取消（F03/T036）：owner 可在详情中调用 <code>POST /api/v1/runs/{id}/cancel</code>
-    （幂等；会话带 CSRF，API key 需 <code>application:write</code>）。取消只表示<strong>接受停止意图</strong>：
-    有活动执行单元时 Run 进入 <strong>cancelling（正在停止）</strong>，结果/登记/新上传/审批调用被拒绝，
-    supervisor 退出证据齐全后才提交 <strong>cancelled（已停止）</strong>；存在未知外部写时转
-    <code>needs_reconciliation</code>，不假装取消已撤销远端效果。迟到结果/事件不会把终态翻回。
-  </p><p class="hint">
-    保守恢复（F03/T038）：租约超期的 Run 只会被<strong>挂起</strong>在
-    <strong>recovery_pending</strong>（<code>recovery_reason=lease_expired</code>），supervisor
-    已确认退出但没有结果的 Run 挂起为 <code>exit_without_result</code>。挂起期间 job 保持
-    <strong>held</strong>、执行槽仍占用、旧 attempt token 不被替换；<strong>不会自动接管，也不会创建第二个
-    执行者</strong>（claim 只选 queued Run）。只有运维在证明旧执行单元/沙箱已销毁、checkpoint 数据库连接
-    已排空、冻结 manifest 与输入仍可用之后，用
-    <code>orchara-admin runs sweep-leases --grace 60s [--dry-run]</code>（只挂起）与
-    <code>orchara-admin runs recover --run <id> --evidence <file> [--check-only]</file></id></code>
-    重新排队；本页只显示原因、挂起时间与是否已有受审计证据，<strong>不提供伪造的“恢复”按钮</strong>。
-    恢复事实由非契约响应头 <code>X-Run-Recovery-Reason</code> /
-    <code>X-Run-Recovery-Since</code> / <code>X-Run-Recovery-Evidence-At</code> /
-    <code>X-Run-Recovery-Evidence-SHA256</code> 提供；终态不会因恢复证据而改变。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <!-- C6.01 (#155): shared run-state dependency banner; normal path leaves it
        hidden. The run list stays readable; the detail observation is paused. -->
 <p class="status bad" id="runstate-status" hidden="" role="alert"></p>
@@ -152,7 +105,7 @@
 <p class="hint runs-scope" data-runs-scope="">筛选只作用于已加载的 Run：运行列表接口不返回应用名与开始时间/耗时，本页不伪造这两类列。</p>
 <p class="status" id="runs-status" aria-live="polite" role="status">正在加载运行…</p>
 <ul id="runs-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="runs-empty" hidden=""><strong>还没有属于你的 Run</strong>调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
+<div class="empty-state" id="runs-empty" hidden=""><span class="empty-mark" data-icon="run" aria-hidden="true"></span><strong>还没有属于你的运行</strong><p class="empty-explain">在应用调试页提交一次测试输入，就会创建一个排队中的运行；运行状态与详情会出现在这里。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/apps">选择应用开始调试</a><a class="btn btn-ghost btn-small" href="/chat">前往对话</a></div></div>
 <div class="runs-filter-empty" data-runs-filter-empty="" hidden=""><p>已加载的 Run 里没有匹配当前筛选的条目。</p></div>
 <div class="runs-pager"><span class="hint" data-runs-pager-note=""></span><button class="btn btn-small" id="runs-next" hidden="" type="button">下一页</button></div>
 </section>
@@ -293,7 +246,56 @@
 </div>
 </section>
 </div>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
+    同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
+    <strong>真实租约事实</strong>（<code>X-Run-Attempt-Started-At</code>、
+    <code>X-Run-Lease-Deadline</code>，来自数据库时钟）；没有租约事实时本页不伪造进度。
+    领取、心跳与退出证据属于 F03 内部 supervisor 协议，普通页面只读它们的结果。
+  </p><p class="hint">
+    执行阶段：<strong>executing → finalizing → 终态</strong>。finalizing 表示 worker 的结果提议已保存，
+    但仍在等待 supervisor 的退出证据（进程/沙箱/数据库排空）；在终态提交前本页不会显示成功。
+    详情页会在 Run 未进入终态时轮询 <code>GET /api/v1/runs/{id}</code>，进入终态后停止。
+    累计活跃时间来自同一响应的非契约响应头 <code>X-Run-Active-Elapsed-Ms</code> /
+    <code>X-Run-Max-Active-Ms</code> / <code>X-Run-Deadline-Exceeded</code>（契约 Run 没有这些字段）：
+    跨尝试累计为一个时钟，新 attempt 不重置；上限为 NULL 表示未知/无截止，不是 0。
+    持久时间线来自 <code>GET /api/v1/runs/{id}/events</code>（SSE，<code>id: seq</code>、
+    <code>event: type</code>、<code>data: event.schema 封套</code>）。断线后客户端按
+    <code>Last-Event-ID</code> 重连并按 seq 去重；服务端若返回 410 事件保留窗口过期，页面改为显示
+    <code>details.snapshot_url</code> 指向的 Run 快照，而不是伪装完整历史。
+  </p><p class="hint">
+    等待审批/子任务（F03/T035）：worker 在固定 checkpoint 停止后，Run 进入
+    <strong>waiting_approval / waiting_children</strong>（phase=waiting），等待事实保存在
+    <code>platform.run_waitings</code>。等待期间<strong>释放 worker 执行槽</strong>，但
+    <strong>逻辑会话槽与 Run 一直占用到终态</strong>：等待与恢复排队都不是终态。
+    只有“解决结果 + supervisor 退出确认 + checkpoint”齐全后才创建<strong>唯一</strong>恢复任务
+    （<code>jobs.kind=resume</code>，携带封存的 canonical 恢复输入）。等待/决定/退出/恢复事实由非契约
+    响应头 <code>X-Run-Waiting-Kind</code> / <code>X-Run-Waiting-Outcome</code> /
+    <code>X-Run-Waiting-Decided-At</code> / <code>X-Run-Waiting-Exit-Confirmed-At</code> /
+    <code>X-Run-Resume-Job-ID</code> / <code>X-Run-Resume-Job-State</code> 提供；本页不伪造批准、
+    不显示恢复输入内容，也不把 202/200 解释为已恢复。
+  </p><p class="hint">
+    取消（F03/T036）：owner 可在详情中调用 <code>POST /api/v1/runs/{id}/cancel</code>
+    （幂等；会话带 CSRF，API key 需 <code>application:write</code>）。取消只表示<strong>接受停止意图</strong>：
+    有活动执行单元时 Run 进入 <strong>cancelling（正在停止）</strong>，结果/登记/新上传/审批调用被拒绝，
+    supervisor 退出证据齐全后才提交 <strong>cancelled（已停止）</strong>；存在未知外部写时转
+    <code>needs_reconciliation</code>，不假装取消已撤销远端效果。迟到结果/事件不会把终态翻回。
+  </p><p class="hint">
+    保守恢复（F03/T038）：租约超期的 Run 只会被<strong>挂起</strong>在
+    <strong>recovery_pending</strong>（<code>recovery_reason=lease_expired</code>），supervisor
+    已确认退出但没有结果的 Run 挂起为 <code>exit_without_result</code>。挂起期间 job 保持
+    <strong>held</strong>、执行槽仍占用、旧 attempt token 不被替换；<strong>不会自动接管，也不会创建第二个
+    执行者</strong>（claim 只选 queued Run）。只有运维在证明旧执行单元/沙箱已销毁、checkpoint 数据库连接
+    已排空、冻结 manifest 与输入仍可用之后，用
+    <code>orchara-admin runs sweep-leases --grace 60s [--dry-run]</code>（只挂起）与
+    <code>orchara-admin runs recover --run <id> --evidence <file> [--check-only]</file></id></code>
+    重新排队；本页只显示原因、挂起时间与是否已有受审计证据，<strong>不提供伪造的“恢复”按钮</strong>。
+    恢复事实由非契约响应头 <code>X-Run-Recovery-Reason</code> /
+    <code>X-Run-Recovery-Since</code> / <code>X-Run-Recovery-Evidence-At</code> /
+    <code>X-Run-Recovery-Evidence-SHA256</code> 提供；终态不会因恢复证据而改变。
+  </p></details>
+</main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs" aria-current="page"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>

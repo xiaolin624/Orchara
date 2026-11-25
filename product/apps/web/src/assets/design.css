@@ -1562,3 +1562,171 @@ kbd {
   .t6-facts dd { padding-top: 0; }
   .t6-upload { padding: 16px 12px; }
 }
+
+/* ------------------------------------------------------------------------- */
+/* T9 (GitHub #173): cross-page precision pass. Mobile safe area, the flat    */
+/* documentation line, focus rings, empty-state anatomy, API-name hints and   */
+/* the per-page fixes that must outrank the earlier layer order. Only adds or */
+/* overrides shared rules; no earlier block is reordered.                     */
+/* ------------------------------------------------------------------------- */
+
+/* 1. Long technical notes are documentation, not a card that pushes the page
+   down. Every page ends with one 11px disclosure line; the original
+   <details class="usage-notes"> element, its summary and every paragraph stay
+   byte-for-byte (tests assert the text). */
+.page-content .usage-notes {
+  margin: 22px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.page-content .usage-notes > summary {
+  color: var(--muted);
+  font-size: var(--fs-11);
+  font-weight: 500;
+  line-height: 1.7;
+}
+.page-content .usage-notes[open] > summary {
+  margin-bottom: 10px;
+  color: var(--accent-ink);
+}
+.page-content .usage-notes p {
+  margin: 0 0 8px;
+  font-size: var(--fs-12);
+}
+.page-content .usage-notes p:last-child { margin-bottom: 0; }
+.page-content .usage-notes code { font-size: 10px; }
+.auth-main .usage-notes {
+  margin-top: 18px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+.auth-main .usage-notes .auth-error-index { margin: 12px 0 0; }
+
+/* 2. A field's API name stays available to whoever checks the request, but as a
+   quiet mono hint on the right of the same line instead of the visible label. */
+.page-content .field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.page-content .field-api,
+.page-content .field-label .field-api {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  font-weight: 400;
+  letter-spacing: -.1px;
+  white-space: nowrap;
+}
+.page-content label .field-api { margin-left: 6px; }
+body[data-page="editor"] .field-api { display: inline-block; }
+
+/* 3. Empty states share one anatomy: icon, 14px title, 12px explanation and a
+   real primary action (the shared .empty-state rules already style the rest). */
+.empty-state .empty-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.empty-state .empty-mark .ui-icon { width: 19px; height: 19px; margin: 0; }
+.empty-state .empty-explain {
+  margin: 0 auto;
+  max-width: 58ch;
+  color: var(--muted);
+  font-size: var(--fs-12);
+  line-height: 1.7;
+}
+.empty-state .empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.empty-state .empty-actions .btn { margin: 0; }
+
+/* 4. The application ID inside a row disclosure is its own block: the label
+   sits on one line and the mono UUID wraps under the same left indent as the
+   row title instead of wrapping under the details marker. */
+body[data-page="apps"] .app-row-id {
+  display: block;
+  margin: 3px 0 0;
+  padding-left: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+body[data-page="apps"] .app-row-id-label {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs-11);
+}
+body[data-page="apps"] .app-row-id code {
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* 5. The topbar "new application" action has no context on the admin console
+   or the platform status page (the creator gate itself keeps working). */
+body[data-page="admin"] .topbar-new,
+body[data-page="index"] .topbar-new { display: none; }
+
+/* 6. Every hand-drawn interaction gets the same visible focus ring. The global
+   :focus-visible rule already covers most elements; these selectors keep the
+   ring inside the component instead of relying on inheritance. */
+.mobile-tabbar a:focus-visible,
+.segmented a:focus-visible,
+.segmented button:focus-visible,
+.page-content details summary:focus-visible,
+.page-content .pill:focus-visible,
+.page-content .app-row-meta summary:focus-visible,
+.page-content .t6-upload input[type="file"]:focus-visible,
+.page-content .table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.mobile-tabbar a:focus-visible { border-radius: 6px; }
+
+/* 7. Numbers in tables, statistics, facts and durations keep a fixed advance so
+   columns and chips never jitter while polling. */
+.page-content dd,
+.page-content .status,
+.page-content .hint[data-duration],
+.page-content .elapsed,
+.page-content .duration,
+.page-content .stat-value,
+.page-content time,
+.page-content td,
+.page-content th { font-variant-numeric: tabular-nums; }
+
+/* 8. The phone tab bar clearance lives with the bar in mobile.css
+   (calc(52px + env(safe-area-inset-bottom) + 16px)); pages that do not declare
+   data-tabbar="true" keep their normal bottom padding. */
+
+/* 9. Half-width parentheses read like code comments in Chinese copy. Visible
+   page prose uses the full-width pair; API codes, URLs and JSON keep theirs. */

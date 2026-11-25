@@ -446,8 +446,11 @@ body.page-chat {
   .mobile-tabbar a[aria-current="page"] .ui-icon { color: var(--accent); }
   .mobile-tabbar a:hover { background: var(--surface-2); text-decoration: none; }
 
+  /* T9 (#173): the fixed tab bar owns 52px, the safe area adds the home
+     indicator, and 16px keeps the last block clear of the bar's top border.
+     Without this clearance the last card scrolls underneath the bar. */
   body[data-tabbar="true"] .page-content {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   /* Drawer: the shared off-canvas sidebar, full height, safe-area aware. */
@@ -470,6 +473,16 @@ body.page-chat {
   .page-content button,
   .page-content .btn,
   .decision-buttons button { min-height: 44px; }
+  /* T9 (#173): the shared desktop density rule (.page-content .btn 34px) and
+     the page-level 24-26px chips must not shrink the phone target. Scoped to
+     the six tab-bar pages so the desktop-tuned pages keep their density. */
+  body[data-tabbar="true"] .page-content button,
+  body[data-tabbar="true"] .page-content .btn,
+  body[data-tabbar="true"] .page-content .segmented button,
+  body[data-tabbar="true"] .page-content .segmented a {
+    min-height: 44px;
+  }
+  body[data-tabbar="true"] .page-content .btn-icon { min-width: 44px; }
   .page-content input[type="text"],
   .page-content input[type="search"],
   .page-content input[type="password"],

@@ -90,23 +90,11 @@
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-knowledge" data-page="knowledge"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">知识库</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<body class="page-knowledge" data-page="knowledge" data-tabbar="true"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">知识库</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>知识库</h1><p class="page-description">整理资料、摄取文档、检索内容，并通过引用追溯答案的来源。</p></div><div class="heading-actions"><a class="btn btn-primary" data-icon="plus" href="#kb-form">创建知识库</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>摄取状态来自服务端任务</span><span>重建索引会生成新版本</span><span>文档列表只返回 id、状态与版本</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
-    <code>txt/md/csv/xlsx/pdf</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
-    分块、生成确定性 embedding 与每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为
-    <strong>可检索</strong>。CSV/XLSX 片段在引用里保留表头行与行范围（CSV 为逻辑记录行，
-    XLSX 为工作表自身的行号）；PDF 片段保留页码与页内字符范围，没有文字层的页会被如实记为空白页，
-    扫描件不会被当作 OCR 成功。单元格公式一律不执行。解析为空或失败会显示具体失败码与位置，
-    绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档版本过滤，再排序取前 K；点击引用会
-    重新校验当前可读性后返回片段正文。
-  </p><p class="hint">
-    只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
-    <code>textContent</code> 渲染服务端文本，不把凭据或签名 URL 写入浏览器存储。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="stat-row t6-stats" data-t6-stats="knowledge">
 <span class="stat-chip" data-tone="accent"><span class="stat-label">知识库</span><span class="stat-value" data-t6-stat="bases">—</span><span class="stat-unit">个</span></span>
 <span class="stat-chip"><span class="stat-label">文档</span><span class="stat-value" data-t6-stat="documents">—</span><span class="stat-unit">篇</span></span>
@@ -130,13 +118,13 @@
 <div class="t6-block">
 <div class="t6-block-head"><h3>文档</h3><span class="hint">按摄取状态筛选已加载的文档。</span></div>
 <div class="t6-toolbar" role="search">
-<input aria-label="按文档 id 或状态搜索已加载的文档" autocomplete="off" data-t6-search="" placeholder="搜索已加载的文档 id 或状态" type="search"/>
+<input aria-label="按文档 ID 或状态搜索已加载的文档" autocomplete="off" data-t6-search="" placeholder="搜索已加载的文档 ID 或状态" type="search"/>
 <div class="segmented" role="group" aria-label="按摄取状态筛选已加载的文档"><button aria-pressed="true" data-t6-doc-state="all" type="button">全部</button><button aria-pressed="false" data-t6-doc-state="ready" type="button">可检索</button><button aria-pressed="false" data-t6-doc-state="active" type="button">处理中</button><button aria-pressed="false" data-t6-doc-state="failed" type="button">摄取失败</button></div>
 </div>
 <p class="hint" data-t6-scope="">搜索与状态筛选只作用于已加载的文档，不会重新检索服务端；“全部”包含删除中的文档。</p>
 <div class="t6-row-head" data-t6-doc-head="" aria-hidden="true"><span class="t6-cell-main">文档</span><span class="t6-cell-status">摄取状态</span><span class="t6-cell-fact">版本</span><span class="t6-cell-fact">来源附件</span><span class="t6-cell-actions">操作</span></div>
 <ul class="t6-rows" data-t6-docs=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" data-t6-docs-empty="" hidden=""><strong>当前知识库还没有文档</strong>下一步：在“摄取与索引”里把已就绪的附件绑定为知识文档；摄取完成前不会出现在检索里。</p>
+<div class="empty-state" data-t6-docs-empty="" hidden=""><span class="empty-mark" data-icon="book" aria-hidden="true"></span><strong>当前知识库还没有文档</strong><p class="empty-explain">在“摄取与索引”里把已就绪的附件绑定为知识文档；摄取完成前不会出现在检索里。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#ingest-form">开始摄取</a><a class="btn btn-ghost btn-small" href="#upload-form">上传资料</a></div></div>
 <p class="hint" data-t6-doc-missing="">文档列表接口只返回 <code>id</code>、<code>knowledge_base_id</code>、<code>state</code>、<code>revision</code> 与 <code>source_artifact_id</code>：文档<strong>名称</strong>、<strong>类型</strong>与<strong>更新时间</strong>不在列表返回中，本页不显示这三列，也不从附件名臆造；分块数只在下方“文档状态”里由诊断接口给出。删除中的文档会如实标为“删除中”，不会显示成可检索。</p>
 </div>
 </section>
@@ -154,7 +142,7 @@
 <div id="artifact-panel" aria-live="polite" hidden="">
 <h3>附件状态</h3>
 <dl class="t6-facts">
-<dt>artifact id</dt><dd id="artifact-id"></dd>
+<dt>附件 ID</dt><dd id="artifact-id"></dd>
 <dt>状态</dt><dd id="artifact-state"></dd>
 </dl>
 </div>
@@ -162,7 +150,7 @@
 <div class="t6-block">
 <div class="t6-block-head"><h3>开始摄取并查看进度</h3></div>
 <form id="ingest-form" method="post">
-<label for="ingest-artifact">已就绪的附件 artifact id（上传成功后自动填入）</label>
+<label for="ingest-artifact">已就绪的附件 ID（上传成功后自动填入）<span class="field-api">artifact_id</span></label>
 <input id="ingest-artifact" autocomplete="off" spellcheck="false" type="text"/>
 <button class="btn btn-primary" id="ingest-submit" data-icon="play" type="submit">开始摄取</button>
 <p class="status" id="ingest-status" aria-live="polite" role="status"></p>
@@ -170,7 +158,7 @@
 <div id="document-panel" aria-live="polite" hidden="">
 <div class="t6-block-head"><h3>文档状态</h3><span class="hint">失败码与片段数来自诊断接口</span></div>
 <dl class="t6-facts">
-<dt>document id</dt><dd id="document-id"></dd>
+<dt>文档 ID</dt><dd id="document-id"></dd>
 <dt>状态</dt><dd id="document-state"></dd>
 <dt>失败码</dt><dd id="document-error-code"></dd>
 <dt>片段数</dt><dd id="document-chunks"></dd>
@@ -207,7 +195,7 @@
 <form id="query-form" method="post">
 <label for="query-text">问题</label>
 <input id="query-text" autocomplete="off" maxlength="2000" required="" type="text"/>
-<label for="query-top-k">返回片段数 top_k（1..50，默认 8）</label>
+<label for="query-top-k">返回片段数（1–50，默认 8）<span class="field-api">top_k</span></label>
 <input id="query-top-k" max="50" min="1" step="1" type="number" value="8"/>
 <button class="btn btn-primary" id="query-submit" data-icon="search" type="submit">检索</button>
 <p class="status" id="query-status" aria-live="polite" role="status"></p>
@@ -233,7 +221,7 @@
 <form id="answer-form" method="post">
 <label for="answer-query">问题</label>
 <input id="answer-query" autocomplete="off" maxlength="2000" required="" type="text"/>
-<label for="answer-top-k">引用候选片段数 top_k（1..50，默认 8）</label>
+<label for="answer-top-k">引用候选片段数（1–50，默认 8）<span class="field-api">top_k</span></label>
 <input id="answer-top-k" max="50" min="1" step="1" type="number" value="8"/>
 <button class="btn btn-secondary" id="answer-submit" data-icon="spark" type="submit">提问</button>
 <p class="status" id="answer-status" aria-live="polite" role="status"></p>
@@ -255,7 +243,21 @@
 </div>
 </section>
 <p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机端承诺知识库、文档、摄取状态与引用的单列浏览；完整画布编辑不在手机端承诺（本页不提供画布编辑）。</p>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    本页走完整的用户路径：先创建知识库，用现有的附件上传与封存流程上传
+    <code>txt/md/csv/xlsx/pdf</code>，再把已就绪的附件绑定为知识文档。服务端在受控后台任务里解析、
+    分块、生成确定性 embedding 与每片段封存正文；只有全部片段都写入且引用一致时，文档才会变为
+    <strong>可检索</strong>。CSV/XLSX 片段在引用里保留表头行与行范围（CSV 为逻辑记录行，
+    XLSX 为工作表自身的行号）；PDF 片段保留页码与页内字符范围，没有文字层的页会被如实记为空白页，
+    扫描件不会被当作 OCR 成功。单元格公式一律不执行。解析为空或失败会显示具体失败码与位置，
+    绝不会标记为可检索。检索在 SQL 中先按当前授权与当前文档版本过滤，再排序取前 K；点击引用会
+    重新校验当前可读性后返回片段正文。
+  </p><p class="hint">
+    只有本人可读自己的知识库；管理员也不会因此获得任意用户资料的正文字节。页面只用
+    <code>textContent</code> 渲染服务端文本，不把凭据或签名 URL 写入浏览器存储。
+  </p></details>
+</main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data" aria-current="page"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
@@ -813,14 +815,33 @@
           : 'embedding=' + view.embeddingModelRevision + ' · ' + view.indexText
             + ' · top_k=' + view.topK + ' · acl_epoch=' + view.aclEpoch;
         if (view.empty) {
-          const empty = document.createElement('p');
-          empty.className = 'hint';
-          empty.textContent = view.emptyText;
+          // Same empty-state anatomy as the static blocks: mark, 14px title,
+          // 12px explanation and one real next step. The copy is unchanged.
+          const empty = document.createElement('div');
+          empty.className = 'empty-state';
+          const mark = document.createElement('span');
+          mark.className = 'empty-mark';
+          mark.setAttribute('aria-hidden', 'true');
+          if (typeof OrcharaUI !== 'undefined' && OrcharaUI.icon) {
+            mark.appendChild(OrcharaUI.icon('search'));
+          }
+          const title = document.createElement('strong');
+          title.textContent = view.emptyText;
+          const explain = document.createElement('p');
+          explain.className = 'empty-explain';
+          explain.textContent = view.emptyNextText;
+          const actions = document.createElement('div');
+          actions.className = 'empty-actions';
+          const again = document.createElement('a');
+          again.className = 'btn btn-primary btn-small';
+          again.href = '#query-text';
+          again.textContent = '换个关键词重新检索';
+          actions.appendChild(again);
+          empty.appendChild(mark);
+          empty.appendChild(title);
+          empty.appendChild(explain);
+          empty.appendChild(actions);
           el('results').appendChild(empty);
-          const next = document.createElement('p');
-          next.className = 'hint';
-          next.textContent = view.emptyNextText;
-          el('results').appendChild(next);
           return view;
         }
         view.items.forEach((item) => {
