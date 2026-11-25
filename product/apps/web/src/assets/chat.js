@@ -1244,6 +1244,47 @@ function applyQueueFact(document, text) {
 }
 
 /**
+ * The attachment picker is collapsed by default: the composer shows one
+ * 「添加附件」 button plus the picked chips, and the real file input expands in
+ * place only while picking. The ids and the upload flow are unchanged.
+ */
+function setAttachmentPickerOpen(document, open) {
+  const picker = document.getElementById('chat-attachments');
+  if (picker) {
+    picker.dataset.attachmentsOpen = open ? 'true' : 'false';
+  }
+  if (typeof document.querySelectorAll !== 'function') {
+    return;
+  }
+  for (const button of document.querySelectorAll('[data-attachments-toggle]')) {
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+}
+
+/**
+ * The phone session list is a top drawer. It reuses the shared drawer pattern:
+ * one body class, a toggle in the header, a close control and a scrim, and it
+ * closes when a conversation is selected or Escape is pressed.
+ */
+function setSessionsDrawer(document, open) {
+  if (!document.body || !document.body.classList) {
+    return;
+  }
+  document.body.classList.toggle('chat-sessions-open', open);
+  if (typeof document.querySelectorAll !== 'function') {
+    return;
+  }
+  for (const button of document.querySelectorAll('[data-sessions-toggle]')) {
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+}
+
+function sessionsDrawerOpen(document) {
+  return Boolean(document.body && document.body.classList &&
+    document.body.classList.contains('chat-sessions-open'));
+}
+
+/**
  * The inline failure card: the message stream explains a failed request itself
  * instead of leaving the failure only in the right rail. It shows the stable
  * server code, the same reason sentence the rail uses and one honest next step.
@@ -1522,6 +1563,7 @@ function initChat() {
 
   async function selectConversation(conversationID) {
     stopPolling();
+    setSessionsDrawer(document, false);
     currentConversationID = conversationID;
     for (const button of document.querySelectorAll('#conversation-list button')) {
       button.setAttribute('aria-pressed', String(button.dataset.conversationId === conversationID));
@@ -1961,13 +2003,18 @@ function initChat() {
       if (!shouldPollHandling(result.request.state, runState, attempts, 100)) {
         stopPolling();
         if (requestIsTerminal(result.request.state)) {
-          // T2 (#166): the terminal sentence keeps its exact wording; only the
-          // tone follows the outcome, so a failed request is never painted as ok.
-          setStatus(
-            submitStatus,
-            '请求已' + describeRequestState(result.request.state),
-            result.request.state === 'failed' ? 'bad' : 'warn',
-          );
+          if (result.request.state === 'failed') {
+            // T2 follow-up: the inline failure card owns the explanation. The
+            // bottom line is reserved for the submit action itself, so the same
+            // sentence is never painted twice (and never in a success tone).
+            setStatus(submitStatus, '', '');
+          } else {
+            setStatus(
+              submitStatus,
+              '请求已' + describeRequestState(result.request.state),
+              'warn',
+            );
+          }
         } else if (OrcharaRunState.isTerminal(runState)) {
           // F12/T096: the dispatched Request is not "done"; the Run outcome is.
           const outcome = runState === 'succeeded' ? 'ok'
@@ -2143,6 +2190,9 @@ function initChat() {
       return;
     }
     try {
+      // The picker expands only while picking: as soon as a real upload starts,
+      // the composer collapses back to the 添加附件 button plus the chips.
+      setAttachmentPickerOpen(document, false);
       const csrfToken = await csrf();
       setStatus(attachmentStatus, '正在计算 SHA-256…', 'pending');
       const buffer = await file.arrayBuffer();
@@ -2257,6 +2307,33 @@ function initChat() {
           document.getElementById('chat-message') ? document.getElementById('chat-message').value : '');
       });
     }
+    // T2 follow-up: the picker expands in place and collapses after upload; the
+    // phone session list is a drawer opened from the header and closed by a
+    // selection, the scrim or Escape.
+    for (const button of document.querySelectorAll('[data-attachments-toggle]')) {
+      button.addEventListener('click', () => {
+        const picker = document.getElementById('chat-attachments');
+        const open = Boolean(picker) && picker.dataset.attachmentsOpen === 'true';
+        setAttachmentPickerOpen(document, !open);
+      });
+    }
+    for (const button of document.querySelectorAll('[data-sessions-toggle]')) {
+      button.addEventListener('click', () => {
+        setSessionsDrawer(document, !sessionsDrawerOpen(document));
+      });
+    }
+    for (const button of document.querySelectorAll('[data-sessions-close]')) {
+      button.addEventListener('click', () => {
+        setSessionsDrawer(document, false);
+      });
+    }
+  }
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (event) => {
+      if (event && event.key === 'Escape' && sessionsDrawerOpen(document)) {
+        setSessionsDrawer(document, false);
+      }
+    });
   }
 
   document.getElementById('chat-attachment-upload').addEventListener('click', uploadAttachment);

@@ -67,6 +67,11 @@ def test_the_chat_page_serves_the_viewport_workbench() -> None:
         'class="stream-failure"',
         'data-stream-cancel="true"',
         'data-stream-retry="true"',
+        'data-sessions-toggle="true"',
+        'data-sessions-close="true"',
+        'class="chat-rail-scrim"',
+        'data-attachments-toggle="true"',
+        'data-attachments-open="false"',
         '<dt>状态</dt>',
         '<dt>阶段</dt>',
         '<dt>处理版本</dt>',
@@ -87,6 +92,10 @@ def test_the_chat_page_serves_the_viewport_workbench() -> None:
     assert "height: 4px" in html
     assert "position: sticky" in html
     assert "@media (max-width: 720px)" in html
+    # The phone frame reserves the fixed bottom navigation and the session list
+    # is a drawer, never a block stacked above the stream on a 375px screen.
+    assert "calc(52px + env(safe-area-inset-bottom" in html
+    assert "body.chat-sessions-open #conversation-panel.chat-rail" in html
     assert 'class="page-description"' not in html, "the workbench header keeps H1 + one meta line"
     # Every business id of the conversation page survives the workspace rewrite.
     for element_id in (
@@ -243,6 +252,9 @@ function queryAll(selector) {
   if (text === '[data-new-conversation]') {
     return elements.filter((item) => item.attrs['data-new-conversation'] !== undefined);
   }
+  if (text === '[data-attachments-toggle]') {
+    return elements.filter((item) => item.attrs['data-attachments-toggle'] !== undefined);
+  }
   return [];
 }
 
@@ -325,6 +337,9 @@ panel.appendChild(outputCount);
 getElementById('interaction-panel').hidden = true;
 const suggestion = element('button');
 suggestion.setAttribute('data-suggestion', SUGGESTION);
+const attachToggle = element('button');
+attachToggle.setAttribute('data-attachments-toggle', 'true');
+getElementById('chat-attachments').dataset.attachmentsOpen = 'false';
 
 // --- fetch shims ------------------------------------------------------------
 function fakeHeaders(values) {
@@ -534,9 +549,16 @@ function childByClass(node, className) {
     childByClass(panel, 'context-output-count')[0].textContent, '1 个');
 
   // -- attachment chips are removable without a request ---------------------
+  // The real file input lives inside the collapsed picker: expanding it does not
+  // change the ids, and a started upload collapses it again.
+  const picker = getElementById('chat-attachments');
+  assert.strictEqual(picker.dataset.attachmentsOpen, 'false', 'the picker starts collapsed');
+  attachToggle.click();
+  assert.strictEqual(picker.dataset.attachmentsOpen, 'true', 'the toggle expands the picker');
   getElementById('chat-attachment-input').files = [{ arrayBuffer: async () => new ArrayBuffer(8) }];
   getElementById('chat-attachment-upload').click();
   await flush();
+  assert.strictEqual(picker.dataset.attachmentsOpen, 'false', 'an upload collapses the picker');
   const chips = getElementById('chat-attachment-lines').children;
   assert.strictEqual(chips.length, 1, 'the uploaded attachment is a chip');
   assert.strictEqual(chips[0].children.length, 2, 'a chip is a label plus a remove control');
