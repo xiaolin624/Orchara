@@ -205,7 +205,8 @@
 
     .editor-mobile-note { display: none; }
     body.page-editor .editor-mobile-note { display: none; }
-    body.page-editor .editor-readonly { margin: 10px 14px 0; }
+    body.page-editor .editor-readonly { color: var(--warning); }
+    body.page-editor .editor-readonly .editor-state-icon { color: var(--warning); }
 
     /* advanced authoring stays available but folded: it never stretches the page */
     .editor-advanced {
@@ -348,9 +349,9 @@
 <ul data-editor-preflight-list><li>正在读取草稿…</li></ul>
 </div>
 </details>
+<span class="editor-state editor-readonly" data-editor-readonly data-tone="warning" hidden=""><span class="editor-state-icon" data-shape="alert" aria-hidden="true"></span>只读视图 · 保存与校验已隐藏</span>
 <p class="status" id="editor-status" role="status" aria-live="polite">正在加载使用说明和草稿…</p>
 </div>
-<p class="inline-note editor-readonly" data-tone="info" data-editor-readonly hidden="">只读视图：当前身份没有创作者角色。画布与 JSON 仍可查看；保存草稿与校验需要创作者角色及该应用的写入权限。</p>
 <div class="page-sections">
 <section class="card conflict" id="conflict-panel" aria-live="polite" hidden="">
 <div class="editor-conflict-head"><span class="pill" data-tone="warning" data-shape="alert">保存冲突</span><h2>服务器上的草稿已经更新</h2></div>

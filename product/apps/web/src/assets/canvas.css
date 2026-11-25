@@ -380,6 +380,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr);
   background: var(--bg);
 }
 .node-library {
@@ -1302,6 +1303,10 @@ label.field-label {
   color: var(--muted);
 }
 .error-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 6px 8px;
   border: 1px solid var(--danger-line);
   border-radius: var(--radius-sm);
@@ -1310,7 +1315,29 @@ label.field-label {
   font: inherit;
   font-size: var(--fs-11);
   text-align: left;
+  white-space: normal;
   cursor: pointer;
+}
+#canvas-root .errors .error-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+#canvas-root .errors .error-item code {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+#canvas-root .errors .error-item .hint {
+  display: block;
+  margin: 0;
 }
 .error-item:hover {
   border-color: var(--danger);
