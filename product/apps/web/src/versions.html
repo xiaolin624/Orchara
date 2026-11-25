@@ -54,15 +54,10 @@
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body id="versions-page" data-page="versions"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">版本管理</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">版本管理</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>版本管理</h1><p class="page-description">查看已发布的固定版本，管理可用性与版本撤销。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>撤销后 active 指针为空</span><span>应用随即不可用</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
-    <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
-    <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
-    生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="versions-stack">
 <p class="status availability-banner" id="application-availability" aria-live="polite" role="status">正在读取应用可用性…</p>
 <section class="card">
@@ -70,10 +65,10 @@
 <p class="status" id="versions-status" aria-live="polite" role="status">正在加载版本…</p>
 <p class="hint" data-version-legend><span class="pill" data-tone="success" data-shape="check">当前生效</span> 是 <code>Application.active_version_id</code> 指向的版本；<span class="pill" data-tone="muted" data-shape="dash">历史版本</span> 仍然可见，但不再是生效指针。</p>
 <div class="table-scroll" aria-label="已发布版本（可横向滚动）" role="region" tabindex="0"><table class="table">
-<thead><tr><th>版本</th><th>版本 id</th><th>manifest SHA-256</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>
+<thead><tr><th>版本</th><th>版本 ID</th><th>manifest SHA-256</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>
 <tbody id="versions-list" data-auth-content=""></tbody>
 </table></div>
-<div class="empty-state" data-versions-empty hidden=""><strong>没有可见版本</strong><p>这个应用还没有发布过版本，或已发布的版本都被撤销了。</p></div>
+<div class="empty-state" data-versions-empty hidden=""><span class="empty-mark" data-icon="layers" aria-hidden="true"></span><strong>没有可见版本</strong><p class="empty-explain">这个应用还没有发布过版本，或已发布的版本都被撤销了。撤销后 active 指针为空，应用随即不可用。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/apps">返回应用与创作</a><a class="btn btn-ghost btn-small" href="/catalog">查看应用目录</a></div></div>
 <button class="btn btn-secondary btn-small" id="versions-next" hidden="" type="button">下一页</button>
 <p class="hint">
       已撤销的版本按契约从列表和详情中消失（<code>Version</code> 没有状态字段，因此用“不可见”表达不可用，
@@ -119,7 +114,14 @@
     </p>
 </section>
 </div>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
+    <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
+    <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
+    生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

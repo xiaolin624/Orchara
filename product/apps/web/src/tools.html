@@ -62,6 +62,7 @@
     body[data-page="tools"] .tool-pager { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; }
     body[data-page="tools"] .tool-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
     body[data-page="tools"] .tool-actions .btn { margin: 0; }
+    body[data-page="tools"] .tool-advanced textarea { font-family: var(--font-mono); font-size: var(--fs-12); }
     @media (max-width: 720px) {
       body[data-page="tools"] .review-box .row { display: grid; grid-template-columns: 1fr; }
       body[data-page="tools"] .tool-actions { display: grid; grid-template-columns: 1fr; }
@@ -71,24 +72,10 @@
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-page="tools"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工具中心</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工具中心</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>工具中心</h1><p class="page-description">管理可复用工具，跟进隔离构建与组织发布审核。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/attachments">上传工具源包</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>工具来自服务端注册表</span><span>构建成功不等于组织批准</span><span>测试调用不伪造结果</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    创作者提交一个已上传为 <code>purpose=tool_source</code> 的 zip 源包、输入/输出 Schema
-    与依赖锁，平台在隔离沙箱（gVisor/runsc、无网络、只读输入）中构建，成功后才写入
-    <code>ready</code>。构建成功不等于组织批准：只有管理员审核通过的工具才能进入共享执行；
-    作者自己的未批准 ready 工具只能用于私有调试。撤销后新执行与依赖校验都会被拒绝。
-  </p><p class="hint">
-<code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
-    SHA-256），不是 OCI 镜像；F15A 才构建镜像。依赖锁需要本地 wheelhouse 的包在最小根文件系统上
-    会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。撤销后再做依赖校验会返回
-    <code>dependency_revoked</code>，页面原样显示该错误码。
-  </p><p class="hint">
-    列表接口只返回七个字段（id、state、approved、manifest_sha256、image_digest、input_schema、
-    output_schema）：工具名称、版本号与构建时间不在列表返回中，本页不显示这三类信息；
-    构建日志/SBOM/审核记录来自非契约的 <code>GET /api/v1/tools/{id}/build</code>，只在展开时读取。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="stat-row t6-stats" data-t6-stats="tools">
 <span class="stat-chip" data-tone="accent"><span class="stat-label">可见工具</span><span class="stat-value" data-t6-stat="visible">—</span><span class="stat-unit">个</span></span>
 <span class="stat-chip"><span class="stat-label">构建完成</span><span class="stat-value" data-t6-stat="ready">—</span><span class="stat-unit">个</span></span>
@@ -97,17 +84,17 @@
 </div>
 <section class="card" id="submit-card">
 <div class="card-head"><h2>提交工具源包</h2><span class="t6-toolbar-note">需要 creator 角色</span></div>
-<p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把 artifact id 填在这里。</p>
+<p class="hint">源包先通过 <a href="/attachments">附件页</a> 以 <code>tool_source</code> + <code>application/zip</code> 上传并完成准入，再把附件 ID 填在这里。</p>
 <form class="tool-submit" id="submit-form">
 <div class="tool-field-grid">
-<div class="field"><label class="field-label" for="source-artifact-id">source_artifact_id</label><input id="source-artifact-id" name="source_artifact_id" autocomplete="off" placeholder="已 ready 的 tool_source artifact UUID" type="text"/></div>
-<div class="field"><label class="field-label" for="risk-class">risk_class</label><select id="risk-class" name="risk_class"><option value="pure">pure</option><option value="read">read</option><option value="write">write</option></select></div>
+<div class="field"><label class="field-label" for="source-artifact-id">工具源包附件 ID<span class="field-api">source_artifact_id</span></label><input id="source-artifact-id" name="source_artifact_id" autocomplete="off" placeholder="已就绪的 tool_source 附件 UUID" type="text"/></div>
+<div class="field"><label class="field-label" for="risk-class">风险类别<span class="field-api">risk_class</span></label><select id="risk-class" name="risk_class"><option value="pure">纯函数（pure）</option><option value="read">只读（read）</option><option value="write">写入（write）</option></select></div>
 </div>
 <details class="tool-advanced">
 <summary>Schema 与依赖锁（不填写则直接使用右侧默认值提交）</summary>
-<div class="field"><label class="field-label" for="input-schema">input_schema（JSON 对象）</label><textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
-<div class="field"><label class="field-label" for="output-schema">output_schema（JSON 对象）</label><textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
-<div class="field"><label class="field-label" for="dependency-lock">dependency_lock（JSON 对象；空依赖用 {"requirements":[]}）</label><textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea></div>
+<div class="field"><label class="field-label" for="input-schema">输入 Schema（JSON 对象）<span class="field-api">input_schema</span></label><textarea id="input-schema" name="input_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
+<div class="field"><label class="field-label" for="output-schema">输出 Schema（JSON 对象）<span class="field-api">output_schema</span></label><textarea id="output-schema" name="output_schema">{"type":"object","properties":{},"additionalProperties":false}</textarea></div>
+<div class="field"><label class="field-label" for="dependency-lock">依赖锁（JSON 对象；空依赖用 {"requirements":[]}）<span class="field-api">dependency_lock</span></label><textarea id="dependency-lock" name="dependency_lock">{"requirements":[]}</textarea></div>
 </details>
 <p class="hint">连接器版本当前恒为空：F06 负责连接器，服务器会拒绝非空列表而不是静默丢弃。</p>
 <button class="btn btn-primary" id="submit-button" data-icon="upload" type="submit">提交并排队隔离构建</button>
@@ -124,7 +111,7 @@
 <p class="hint" data-t6-scope="">搜索与状态筛选只作用于已加载的工具，不会重新检索服务端；管理员看到全部可见版本，其他身份只看到已批准共享的工具。</p>
 <div class="t6-row-head" data-t6-tool-head="" aria-hidden="true"><span class="t6-cell-main">工具</span><span class="t6-cell-status">构建状态</span><span class="t6-cell-status">审批</span><span class="t6-cell-actions">操作</span></div>
 <ul class="t6-rows" id="tools-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="tools-empty" hidden=""><strong>当前没有可见的工具</strong>你既不是所有者，也没有已批准共享的工具。下一步：用上面的表单提交一个源包，或等管理员批准一个共享工具。</p>
+<div class="empty-state" id="tools-empty" hidden=""><span class="empty-mark" data-icon="tool" aria-hidden="true"></span><strong>当前没有可见的工具</strong><p class="empty-explain">你既不是所有者，也没有已批准共享的工具。可以提交一个工具源包，或等管理员批准一个共享工具。</p><div class="empty-actions"><a class="btn btn-primary btn-small" data-requires-role="creator" href="#submit-form">提交工具源包</a><a class="btn btn-ghost btn-small" href="/attachments">前往附件页上传</a></div></div>
 <div class="tool-pager"><button class="btn btn-small" id="tools-next" hidden="" type="button">下一页</button></div>
 </section>
 <section class="card" id="review-card" hidden="" data-t6-review="">
@@ -138,7 +125,23 @@
         并且只作用于已经 ready 的工具。批准、拒绝与撤销都留在每一行的审核区，与“提交源包”的主操作分开。</p>
 </div>
 </section>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    创作者提交一个已上传为 <code>purpose=tool_source</code> 的 zip 源包、输入/输出 Schema
+    与依赖锁，平台在隔离沙箱（gVisor/runsc、无网络、只读输入）中构建，成功后才写入
+    <code>ready</code>。构建成功不等于组织批准：只有管理员审核通过的工具才能进入共享执行；
+    作者自己的未批准 ready 工具只能用于私有调试。撤销后新执行与依赖校验都会被拒绝。
+  </p><p class="hint">
+<code>image_digest</code> 在本票是<strong>内容包摘要</strong>（source + lock + SBOM 字节的
+    SHA-256），不是 OCI 镜像；F15A 才构建镜像。依赖锁需要本地 wheelhouse 的包在最小根文件系统上
+    会安全失败为 <code>dependencies_unavailable</code>，不会伪成功。撤销后再做依赖校验会返回
+    <code>dependency_revoked</code>，页面原样显示该错误码。
+  </p><p class="hint">
+    列表接口只返回七个字段（id、state、approved、manifest_sha256、image_digest、input_schema、
+    output_schema）：工具名称、版本号与构建时间不在列表返回中，本页不显示这三类信息；
+    构建日志/SBOM/审核记录来自非契约的 <code>GET /api/v1/tools/{id}/build</code>，只在展开时读取。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -355,7 +358,7 @@
         if (described.buildErrorCode) {
           container.appendChild(node('p', '构建失败码：' + described.buildErrorCode, 'status bad'));
         }
-        container.appendChild(node('p', 'artifact id 只用于本页下载；对象键不会出现在页面或日志里。', 'hint'));
+        container.appendChild(node('p', '附件 ID 只用于本页下载；对象键不会出现在页面或日志里。', 'hint'));
       } catch (error) {
         container.replaceChildren(node('p', '构建事实读取失败 ' + describeFailure(error), 'status bad'));
       }

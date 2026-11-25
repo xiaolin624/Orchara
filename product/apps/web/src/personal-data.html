@@ -74,24 +74,11 @@
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-personal-data" data-page="personal-data"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/personal-data">个人数据</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">个人数据</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<body class="page-personal-data" data-page="personal-data" data-tabbar="true"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/personal-data">账号</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">个人数据</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>个人数据</h1><p class="page-description">看清自己有哪些数据，理解删除的影响范围，并管理有期限的诊断授权。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/memories">个人记忆</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>覆盖对象存储、检索索引与备份账本</span><span>删除任务可在下方查看</span><span>本构建未提供导出接口</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    删除在服务端是<strong>先 tombstone、后异步清理</strong>：请求返回 202 删除任务之前，
-    旧内容已经在同一个数据库事务里停止被下载、检索、缓存命中与恢复读取；受影响且仍可执行的
-    Run 会进入既有取消流程。物理副本由后续清理任务完成，本页如实显示任务状态与
-    <code>remaining_scopes</code>，不声称字节已删除。
-  </p><p class="hint">
-    本页只使用当前登录者自己的数据：他人的、未知的或格式错误的 id 都得到同一个 404。
-    删除任务返回的 <code>id</code> 是 deletion_job id，不是被删资源的 id。
-  </p><p class="hint">
-    两个读接口的数字就是上面的统计：<code>GET /api/v1/memories</code> 与每个知识库的
-    <code>GET /knowledge-bases/{id}/documents</code>（分页会被完整跟随），授权来自
-    <code>GET /api/v1/diagnostic-grants</code>。本页没有“导出”接口可调用，因此不显示导出按钮；
-    也没有删除历史列表接口，只显示最近一次删除任务。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="stat-row t6-stats" data-t6-stats="personal-data">
 <span class="stat-chip" data-tone="accent"><span class="stat-label">个人记忆</span><span class="stat-value" data-t6-stat="memories">—</span><span class="stat-unit">条</span></span>
 <span class="stat-chip"><span class="stat-label">知识文档</span><span class="stat-value" data-t6-stat="documents">—</span><span class="stat-unit">篇</span></span>
@@ -105,7 +92,7 @@
 <div class="t6-block-head"><h3>我的记忆</h3><span class="hint">删除后该记忆立即从读取、列表与模型召回中消失。</span></div>
 <p class="status" id="memories-status" aria-live="polite" role="status">正在加载记忆…</p>
 <ul class="t6-rows" id="memories-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="memories-empty" hidden=""><strong>还没有已确认的个人记忆</strong>下一步：回到候选列表确认一条待确认候选。</p>
+<div class="empty-state" id="memories-empty" hidden=""><span class="empty-mark" data-icon="brain" aria-hidden="true"></span><strong>还没有已确认的个人记忆</strong><p class="empty-explain">确认一条候选后，记忆会出现在这里，也可以按 id 删除。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/memories">查看待确认候选</a><a class="btn btn-ghost btn-small" href="/chat">前往对话</a></div></div>
 </div>
 <div class="t6-block">
 <div class="t6-block-head"><h3>我的知识文档</h3><span class="hint">失败时显示服务端返回的稳定失败码</span></div>
@@ -116,13 +103,13 @@
       </p>
 <p class="status" id="documents-status" aria-live="polite" role="status">正在加载知识文档…</p>
 <ul class="t6-rows" id="documents-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="documents-empty" hidden=""><strong>还没有知识文档</strong>下一步：在知识库页上传资料并完成摄取。</p>
+<div class="empty-state" id="documents-empty" hidden=""><span class="empty-mark" data-icon="book" aria-hidden="true"></span><strong>还没有知识文档</strong><p class="empty-explain">在知识库页上传资料并完成摄取后，文档会出现在这里；删除中的文档会如实标为“删除中”。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/knowledge">前往知识库</a><a class="btn btn-ghost btn-small" href="/attachments">上传附件</a></div></div>
 </div>
 <div class="t6-block">
 <div class="t6-block-head"><h3>我的诊断授权</h3></div>
 <p class="hint">授权对象、用途与到期时间按服务端记录展示；撤销后状态立即变为“已撤销”。</p>
 <ul class="t6-rows" id="grants-list" data-auth-content=""></ul>
-<p class="empty-state" id="grants-empty" hidden=""><strong>还没有诊断授权</strong>下一步：在下方“诊断授权”里选择一个运行的制品并指定用途与到期时间。</p>
+<div class="empty-state" id="grants-empty" hidden=""><span class="empty-mark" data-icon="key" aria-hidden="true"></span><strong>还没有诊断授权</strong><p class="empty-explain">在下方“诊断授权”里选择一个运行的可授权对象，并指定用途与到期时间。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#grant-run-id">创建诊断授权</a><a class="btn btn-ghost btn-small" href="/runs">查看运行记录</a></div></div>
 </div>
 <p class="hint" data-t6-no-export="">导出：本构建未提供导出接口，导出未纳入本页检查——页面不显示一个只能失败的导出按钮，也不声称数据可以导出。</p>
 </section>
@@ -138,7 +125,7 @@
 <p class="t6-danger-title">按 id 删除文件（不可撤销）</p>
 <p>文件（artifact）的 id 出现在附件上传页或运行制品里。被发布/可恢复运行或应用配置引用的
         配置 artifact 不会被删除，服务端返回 409 <code>resource_in_use</code>；页面会原样显示该错误码。</p>
-<div class="pd-field"><label for="artifact-id">artifact id</label><input id="artifact-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
+<div class="pd-field"><label for="artifact-id">文件附件 ID<span class="field-api">artifact_id</span></label><input id="artifact-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
 <button class="btn btn-danger" id="delete-artifact" data-icon="stop" type="button">删除这个文件</button>
 </div>
 </section>
@@ -149,12 +136,12 @@
       每次正文读取都会写审计（运行/尝试/操作关联），授权到期或撤销后立即失效。诊断授权
       <strong>不包含训练同意</strong>，也不会把正文复制进审计或日志。
     </p>
-<div class="pd-field"><label for="grant-run-id">运行 id</label><input id="grant-run-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
+<div class="pd-field"><label for="grant-run-id">运行 ID</label><input id="grant-run-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
 <p><button class="btn btn-secondary btn-small" id="grant-load-objects" data-icon="search" type="button">列出这个运行的可授权对象</button></p>
 <p class="hint">对象列表默认不勾选：每个对象都要你明确选择才会进入授权范围，不会批量全选。</p>
 <p class="status" id="grant-objects-status" aria-live="polite" role="status"></p>
 <ul class="pd-objects" id="grant-objects-list"></ul>
-<div class="pd-field"><label for="grant-grantee-id">管理员 principal id</label><input id="grant-grantee-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
+<div class="pd-field"><label for="grant-grantee-id">管理员主体 ID<span class="field-api">principal_id</span></label><input id="grant-grantee-id" autocomplete="off" placeholder="00000000-0000-4000-8000-000000000000" spellcheck="false" type="text"/></div>
 <div class="pd-field"><label for="grant-purposes">用途（逗号分隔的小写 token）</label><input id="grant-purposes" autocomplete="off" spellcheck="false" type="text" value="troubleshooting"/></div>
 <div class="pd-field"><label for="grant-expires">到期时间（本地时间）</label><input id="grant-expires" type="datetime-local"/></div>
 <button class="btn btn-primary" id="create-grant" data-icon="key" type="button">授权</button>
@@ -173,7 +160,22 @@
 </section>
 <p class="status" id="action-status" aria-live="polite" role="status"></p>
 <p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机端承诺记忆、文档、授权与删除状态的单列浏览；完整画布编辑不在手机端承诺（本页不提供画布编辑）。</p>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    删除在服务端是<strong>先 tombstone、后异步清理</strong>：请求返回 202 删除任务之前，
+    旧内容已经在同一个数据库事务里停止被下载、检索、缓存命中与恢复读取；受影响且仍可执行的
+    Run 会进入既有取消流程。物理副本由后续清理任务完成，本页如实显示任务状态与
+    <code>remaining_scopes</code>，不声称字节已删除。
+  </p><p class="hint">
+    本页只使用当前登录者自己的数据：他人的、未知的或格式错误的 id 都得到同一个 404。
+    删除任务返回的 <code>id</code> 是 deletion_job id，不是被删资源的 id。
+  </p><p class="hint">
+    两个读接口的数字就是上面的统计：<code>GET /api/v1/memories</code> 与每个知识库的
+    <code>GET /knowledge-bases/{id}/documents</code>（分页会被完整跟随），授权来自
+    <code>GET /api/v1/diagnostic-grants</code>。本页没有“导出”接口可调用，因此不显示导出按钮；
+    也没有删除历史列表接口，只显示最近一次删除任务。
+  </p></details>
+</main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data" aria-current="page"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>

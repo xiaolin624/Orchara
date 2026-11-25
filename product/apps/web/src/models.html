@@ -24,7 +24,7 @@
       border-color: var(--accent-line);
     }
     body[data-page="models"] .model-register input[readonly] { background: var(--surface-2); color: var(--text-2); }
-    body[data-page="models"] .model-register textarea { min-height: 74px; }
+    body[data-page="models"] .model-register textarea { min-height: 74px; font-family: var(--font-mono); font-size: var(--fs-12); }
     body[data-page="models"] .model-register .status { margin: 8px 0 0; }
     body[data-page="models"] .model-warning {
       flex: 1 1 100%;
@@ -51,19 +51,7 @@
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/admin">管理台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">模型管理</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>模型管理</h1><p class="page-description">登记模型版本、验证兼容性，为应用选择固定的模型配置。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/admin">管理台</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>可用性来自服务端</span><span>stub 结果不得当作真实模型</span><span>只有已通过验证的版本可被共享应用引用</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化输出兼容用例，查看不可变报告，
-    并且只有 <code>validation_state=passed</code> 且未撤销的版本才能被共享应用引用。
-    pending/running/failed 的版本一律不能进入共享应用。
-  </p><p class="hint">
-    凭据只使用预登记引用（<code>endpoint_ref</code>/<code>secret_ref</code>），本页不接收、不显示任何密钥文本；
-    服务端为每个登记构建不可变 manifest 并记录 <code>manifest_sha256</code>。兼容验证由真实后台任务执行：
-    <code>model_validate</code> 读取封存的合成 fixture，调用 stub 供应商，再上传封存报告。
-  </p><p class="hint">
-    列表接口只返回 id、name、model_id、validation_state、data_destination 与 evaluation_report_id：
-    供应商（provider）、上下文窗口与价格不在列表返回中，本页不显示这三类信息；
-    它们只出现在登记表单的 config 输入里，由服务端校验后写入 manifest。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="stat-row t6-stats" data-t6-stats="models">
 <span class="stat-chip" data-tone="accent"><span class="stat-label">已加载版本</span><span class="stat-value" data-t6-stat="versions">—</span><span class="stat-unit">个</span></span>
 <span class="stat-chip"><span class="stat-label">已通过</span><span class="stat-value" data-t6-stat="passed">—</span><span class="stat-unit">个</span></span>
@@ -75,15 +63,15 @@
 <div class="model-register">
 <form id="register-form" method="post">
 <div class="model-field-grid">
-<div class="field"><label class="field-label" for="model-name">name</label><input id="model-name" name="name" autocomplete="off" maxlength="200" type="text"/></div>
-<div class="field"><label class="field-label" for="model-provider">provider</label><select id="model-provider" name="provider"><option value="stub">stub（仅 dev-stub / capacity-stub 目的地）</option><option value="openai">openai</option></select></div>
-<div class="field"><label class="field-label" for="model-id">model_id</label><input id="model-id" name="model_id" autocomplete="off" maxlength="200" placeholder="stub-model-1（以 -incompatible 结尾会得到失败用例）" type="text"/></div>
-<div class="field"><label class="field-label" for="model-endpoint">endpoint_ref（预登记目的地）</label><select id="model-endpoint" name="endpoint_ref"></select></div>
-<div class="field"><label class="field-label" for="model-credential">secret_ref（预登记凭据引用）</label><select id="model-credential" name="secret_ref"></select></div>
-<div class="field"><label class="field-label" for="model-destination">data_destination</label><input id="model-destination" name="data_destination" readonly="" type="text"/></div>
+<div class="field"><label class="field-label" for="model-name">名称<span class="field-api">name</span></label><input id="model-name" name="name" autocomplete="off" maxlength="200" placeholder="例如：销售分析模型" type="text"/></div>
+<div class="field"><label class="field-label" for="model-provider">供应商<span class="field-api">provider</span></label><select id="model-provider" name="provider"><option value="stub">桩（stub，仅 dev-stub / capacity-stub 目的地）</option><option value="openai">OpenAI（openai）</option></select></div>
+<div class="field"><label class="field-label" for="model-id">模型 ID<span class="field-api">model_id</span></label><input id="model-id" name="model_id" autocomplete="off" maxlength="200" placeholder="例如：stub-model-1（以 -incompatible 结尾会得到失败用例）" type="text"/></div>
+<div class="field"><label class="field-label" for="model-endpoint">端点引用（预登记目的地）<span class="field-api">endpoint_ref</span></label><select id="model-endpoint" name="endpoint_ref"></select></div>
+<div class="field"><label class="field-label" for="model-credential">凭据引用（预登记）<span class="field-api">secret_ref</span></label><select id="model-credential" name="secret_ref"></select></div>
+<div class="field"><label class="field-label" for="model-destination">数据去向<span class="field-api">data_destination</span></label><input id="model-destination" name="data_destination" readonly="" type="text"/></div>
 </div>
-<div class="field"><label class="field-label" for="model-config">config（ModelConfig JSON）</label><textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea></div>
-<button class="btn btn-primary" id="register-button" data-icon="plus" type="submit">登记为 pending</button>
+<div class="field"><label class="field-label" for="model-config">模型配置（JSON）<span class="field-api">config</span></label><textarea id="model-config" name="config">{"kind":"generation","protocol":"chat_compatible","context_window":8192,"max_output_tokens":1024,"timeout_ms":30000,"price":{"currency":"USD","input_per_million":"0","output_per_million":"0"}}</textarea></div>
+<button class="btn btn-primary" id="register-button" data-icon="plus" type="submit">登记为待验证（pending）</button>
 </form>
 </div>
 <p class="status" id="register-status" aria-live="polite" role="status"></p>
@@ -96,7 +84,7 @@
 <p class="hint" data-t6-scope="">搜索只作用于已加载的版本，不会重新检索服务端；翻页取得更多版本后可再次搜索。</p>
 <div class="t6-row-head" data-t6-model-head="" aria-hidden="true"><span class="t6-cell-main">模型</span><span class="t6-cell-status">可用状态</span><span class="t6-cell-fact">数据去向</span><span class="t6-cell-fact">绑定报告</span><span class="t6-cell-actions">操作</span></div>
 <ul class="t6-rows" id="models-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" data-t6-models-empty="" hidden=""><strong>还没有可见的模型版本</strong>下一步：管理员可以用上面的表单登记一个版本，再运行兼容验证。</p>
+<div class="empty-state" data-t6-models-empty="" hidden=""><span class="empty-mark" data-icon="model" aria-hidden="true"></span><strong>还没有可见的模型版本</strong><p class="empty-explain">管理员可以用上面的表单登记一个版本，再运行兼容验证。只有验证通过且未撤销的版本才能被共享应用引用。</p><div class="empty-actions"><a class="btn btn-primary btn-small" data-requires-role="admin" href="#register-card">登记模型版本</a><a class="btn btn-ghost btn-small" href="/admin">前往管理台</a></div></div>
 <div class="model-pager"><button class="btn btn-small" id="models-next" hidden="" type="button">下一页</button></div>
 <p class="hint" data-t6-model-missing="">列表接口只返回 id、name、model_id、validation_state、data_destination 与 evaluation_report_id：<strong>provider</strong>、<strong>上下文窗口</strong>与价格不在列表返回中，本页不显示这三类信息，也不从 config 猜一个值填进去。</p>
 </section>
@@ -105,7 +93,21 @@
 <p class="status" id="report-status" aria-live="polite" role="status"></p>
 <dl class="report-grid" id="report-body"></dl>
 </section>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    管理员从预登记的目的地/凭据引用登记模型版本，运行平台合成的结构化输出兼容用例，查看不可变报告，
+    并且只有 <code>validation_state=passed</code> 且未撤销的版本才能被共享应用引用。
+    pending/running/failed 的版本一律不能进入共享应用。
+  </p><p class="hint">
+    凭据只使用预登记引用（<code>endpoint_ref</code>/<code>secret_ref</code>），本页不接收、不显示任何密钥文本；
+    服务端为每个登记构建不可变 manifest 并记录 <code>manifest_sha256</code>。兼容验证由真实后台任务执行：
+    <code>model_validate</code> 读取封存的合成 fixture，调用 stub 供应商，再上传封存报告。
+  </p><p class="hint">
+    列表接口只返回 id、name、model_id、validation_state、data_destination 与 evaluation_report_id：
+    供应商（provider）、上下文窗口与价格不在列表返回中，本页不显示这三类信息；
+    它们只出现在登记表单的 config 输入里，由服务端校验后写入 manifest。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

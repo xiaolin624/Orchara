@@ -253,23 +253,10 @@
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-page="apps"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">应用与创作</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">应用与创作</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>应用与创作</h1><p class="page-description">将想法编排成工作流，创建、调试并维护你的 Agent 应用。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>只显示你拥有的或已获授权的应用</span><span>创建与保存需要 creator 角色</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
-    <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
-    没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
-    创建应用会同时建立 revision=1 的空草稿，随后进入编辑器填写用途卡和草稿。
-  </p><p class="hint">
-    创建、保存、校验与调试是<strong>创作者（creator）</strong>操作：只有持有 creator 角色的账号
-    才能写入，管理员也需要同时具备该角色（SECURITY §1）。缺少角色时服务器返回
-    <code>403 creator_role_required</code>，本页会原样显示该错误码。
-  </p><p class="hint">
-    本页的统计、搜索、状态筛选与排序都只覆盖<strong>已经加载</strong>的条目：列表接口只返回
-    名称、ID 与生效版本（<code>active_version_id</code>），不返回负责人或最近活动，
-    因此本页不展示这两类信息。还有下一页时，统计会明确写出「已加载」，不会当作全量。
-  </p></details><div class="page-sections">
+<header class="page-heading"><div class="page-head-main"><h1>应用与创作</h1><p class="page-description">将想法编排成工作流，创建、调试并维护你的应用。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>只显示你拥有的或已获授权的应用</span><span>创建与保存需要 creator 角色</span></p></header>
+<div class="page-sections">
 <div class="stat-row apps-stats" data-apps-stats>
 <span class="stat-chip" data-tone="accent"><span class="stat-label">已加载</span><span class="stat-value" data-apps-stat="loaded">—</span><span class="stat-unit">个应用</span></span>
 <span class="stat-chip"><span class="stat-label">已发布</span><span class="stat-value" data-apps-stat="published">—</span><span class="stat-unit">个</span></span>
@@ -298,7 +285,7 @@
 <p class="status" id="apps-status" aria-live="polite" role="status">正在加载应用…</p>
 <div class="apps-row-head" data-apps-row-head="" aria-hidden="true"><span class="apps-row-head-avatar"></span><span class="apps-row-head-title">名称</span><span class="apps-row-head-status">状态</span><span class="apps-row-head-version">版本</span><span class="apps-row-head-actions">操作</span></div>
 <ul class="app-rows" id="apps-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<div class="apps-empty-block"><p class="empty-state" id="apps-empty" hidden=""><strong>还没有可见的应用</strong>你可以用上面的表单新建一个应用，或请应用所有者授予访问权限。</p></div>
+<div class="apps-empty-block"><div class="empty-state" id="apps-empty" hidden=""><span class="empty-mark" data-icon="grid" aria-hidden="true"></span><strong>还没有可见的应用</strong><p class="empty-explain">你可以用上面的表单新建一个应用，或请应用所有者授予访问权限。创建与保存需要 creator 角色。</p><div class="empty-actions"><a class="btn btn-primary btn-small" data-requires-role="creator" href="#create-app-name">新建应用</a><a class="btn btn-ghost btn-small" href="/catalog">浏览应用目录</a></div></div></div>
 <div class="apps-filter-empty" data-apps-filter-empty="" hidden=""><p>已加载的应用里没有匹配当前搜索与筛选的条目。</p><button class="btn btn-small" type="button" data-apps-clear="">清除搜索与筛选</button></div>
 <div class="apps-pager"><span class="hint" data-apps-pager-note="">正在加载…</span><button class="btn btn-small" id="apps-next" hidden="" type="button">下一页</button></div>
 </section>
@@ -308,7 +295,22 @@
 <button class="btn btn-secondary" id="create-from-template" data-icon="spark" type="button">从销售模板创建</button>
 <p class="status" id="template-status" aria-live="polite" role="status"></p>
 </section>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
+    <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
+    没有授权时与本页的“空”状态一致。未登录会被跳转到登录页。
+    创建应用会同时建立 revision=1 的空草稿，随后进入编辑器填写用途卡和草稿。
+  </p><p class="hint">
+    创建、保存、校验与调试是<strong>创作者（creator）</strong>操作：只有持有 creator 角色的账号
+    才能写入，管理员也需要同时具备该角色（SECURITY §1）。缺少角色时服务器返回
+    <code>403 creator_role_required</code>，本页会原样显示该错误码。
+  </p><p class="hint">
+    本页的统计、搜索、状态筛选与排序都只覆盖<strong>已经加载</strong>的条目：列表接口只返回
+    名称、ID 与生效版本（<code>active_version_id</code>），不返回负责人或最近活动，
+    因此本页不展示这两类信息。还有下一页时，统计会明确写出「已加载」，不会当作全量。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -409,18 +411,22 @@
       meta.appendChild(summary);
       const idLine = document.createElement('span');
       idLine.className = 'app-row-id';
-      idLine.textContent = '应用 ID ';
+      const idLabel = document.createElement('span');
+      idLabel.className = 'app-row-id-label';
+      idLabel.textContent = '应用 ID';
       const idCode = document.createElement('code');
       idCode.textContent = String(application.id || '');
-      idLine.appendChild(idCode);
+      idLine.append(idLabel, idCode);
       meta.appendChild(idLine);
       if (application.active_version_id) {
         const activeLine = document.createElement('span');
         activeLine.className = 'app-row-id';
-        activeLine.textContent = '生效版本 ';
+        const activeLabel = document.createElement('span');
+        activeLabel.className = 'app-row-id-label';
+        activeLabel.textContent = '生效版本';
         const activeCode = document.createElement('code');
         activeCode.textContent = String(application.active_version_id);
-        activeLine.appendChild(activeCode);
+        activeLine.append(activeLabel, activeCode);
         meta.appendChild(activeLine);
       }
       title.append(name, meta);

@@ -67,23 +67,11 @@
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-memories" data-page="memories"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<body class="page-memories" data-page="memories" data-tabbar="true"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/personal-data">个人数据</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">个人记忆</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><h1>个人记忆</h1><p class="page-description">由你决定保存哪些信息，以及它们可以在哪些应用中使用。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/personal-data">个人数据与删除</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>候选未经确认不可召回</span><span>记忆按使用者与应用范围隔离</span><span>删除后不可召回</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    候选只是<strong>提议</strong>：它由 Run 内的自动抽取提出，正文由服务端封存，<strong>确认前不可召回</strong>。
-    只有你明确点击“确认”才会保存为个人记忆；拒绝或过期都不会生成记忆，也不会自动保存。
-    重复确认返回同一条记忆，不会产生第二条记录，也不会复制第二份正文。
-  </p><p class="hint">
-    个人记忆按“使用者 + 应用范围”隔离，换到另一个应用不会自动带走。管理员也不是例外：
-    看不到或决定不了别人的候选与记忆。页面全部使用 textContent 渲染服务端文本，
-    不在浏览器里保留凭据或记忆正文。
-  </p><p class="hint">
-    记忆契约只有四个字段（<code>id</code>、<code>application_id</code>、<code>revision</code>、<code>text</code>）：
-    列表接口不返回创建时间、来源 Run id 或标签，因此本页不展示这三类信息，也不臆造；
-    候选的“来源”只写服务端封存的抽取类别，不编造具体 Run id。
-  </p></details><div class="page-sections">
+<div class="page-sections">
 <div class="stat-row t6-stats" data-t6-stats="memories">
 <span class="stat-chip" data-tone="accent"><span class="stat-label">待确认候选</span><span class="stat-value" data-t6-stat="candidates">—</span><span class="stat-unit">条</span></span>
 <span class="stat-chip"><span class="stat-label">已加载记忆</span><span class="stat-value" data-t6-stat="memories">—</span><span class="stat-unit">条</span></span>
@@ -100,7 +88,7 @@
     </p>
 <p class="status" id="candidates-status" aria-live="polite" role="status">正在加载候选…</p>
 <ul id="candidates-list" class="t6-rows" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="candidates-empty" hidden=""><strong>当前没有候选</strong>只有确认后的候选才会出现在下面的“当前记忆”里。下一步：在一个应用里明确要求“记住”，再回来确认。</p>
+<div class="empty-state" id="candidates-empty" hidden=""><span class="empty-mark" data-icon="brain" aria-hidden="true"></span><strong>当前没有候选</strong><p class="empty-explain">候选由运行内自动抽取提出，只有确认后的候选才会出现在下面的“当前记忆”里。在一个应用里明确要求“记住”，再回来确认。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/chat">前往对话</a><a class="btn btn-ghost btn-small" href="#memories-list">查看当前记忆</a></div></div>
 <div class="mem-pager"><button class="btn btn-small" id="candidates-next" hidden="" type="button">下一页候选</button></div>
 <p class="status" id="decision-status" aria-live="polite" role="status"></p>
 </section>
@@ -118,7 +106,7 @@
     </p>
 <p class="status" id="memories-status" aria-live="polite" role="status">正在加载记忆…</p>
 <ul id="memories-list" class="t6-rows" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
-<p class="empty-state" id="memories-empty" hidden=""><strong>还没有已确认的个人记忆</strong>确认一条候选，或在一个应用里明确“记住”。下一步：回到候选列表确认一条待确认候选。</p>
+<div class="empty-state" id="memories-empty" hidden=""><span class="empty-mark" data-icon="brain" aria-hidden="true"></span><strong>还没有已确认的个人记忆</strong><p class="empty-explain">确认一条候选，或在一个应用里明确“记住”。记忆按使用者与应用范围隔离，不会跨应用自动带走。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#candidates-list">查看待确认候选</a><a class="btn btn-ghost btn-small" href="/chat">前往对话</a></div></div>
 <div class="mem-pager"><button class="btn btn-small" id="memories-next" hidden="" type="button">下一页记忆</button></div>
 <p class="status" id="memory-action-status" aria-live="polite" role="status"></p>
 <button class="btn btn-secondary btn-small" id="memory-conflict-retry" hidden="" type="button">用最新版本重试</button>
@@ -140,7 +128,21 @@
 <div class="rows" id="deletion-status"></div>
 </section>
 <p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机端承诺候选、记忆与删除状态的单列浏览；完整画布编辑不在手机端承诺（本页不提供画布编辑）。</p>
-</div></main>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    候选只是<strong>提议</strong>：它由 Run 内的自动抽取提出，正文由服务端封存，<strong>确认前不可召回</strong>。
+    只有你明确点击“确认”才会保存为个人记忆；拒绝或过期都不会生成记忆，也不会自动保存。
+    重复确认返回同一条记忆，不会产生第二条记录，也不会复制第二份正文。
+  </p><p class="hint">
+    个人记忆按“使用者 + 应用范围”隔离，换到另一个应用不会自动带走。管理员也不是例外：
+    看不到或决定不了别人的候选与记忆。页面全部使用 textContent 渲染服务端文本，
+    不在浏览器里保留凭据或记忆正文。
+  </p><p class="hint">
+    记忆契约只有四个字段（<code>id</code>、<code>application_id</code>、<code>revision</code>、<code>text</code>）：
+    列表接口不返回创建时间、来源 Run id 或标签，因此本页不展示这三类信息，也不臆造；
+    候选的“来源”只写服务端封存的抽取类别，不编造具体 Run id。
+  </p></details>
+</main>
 <div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data" aria-current="page"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
