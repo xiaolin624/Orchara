@@ -6,35 +6,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>应用调试 · Orchara</title>
 <style>
-    input[type="number"], input[type="text"], textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .45rem .55rem; }
-    dl.run { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
-    dl.run dt { opacity: .7; }
-    dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    table.run-node-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: .5rem; }
-    table.run-node-table th, table.run-node-table td { text-align: left; padding: .3rem .45rem; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
-    table.run-node-table th { font-weight: 600; opacity: .8; }
-    .node-state { display: inline-block; padding: .05rem .4rem; border-radius: .35rem; white-space: nowrap; }
-    .run-node-row.state-skipped td { opacity: .65; }
-    .run-node-row.state-skipped .node-state { color: #6b7280; background: rgba(107,114,128,.14); }
-    .run-node-row.state-skipped .node-state::before { content: "⏭ "; }
-    .run-node-row.state-failed .node-state { color: #b91c1c; background: rgba(185,28,28,.14); font-weight: 600; }
-    .run-node-row.state-failed .node-state::before { content: "✕ "; }
-    .run-node-row.state-succeeded .node-state { color: #15803d; background: rgba(21,128,61,.12); }
-    .run-node-row.state-running .node-state, .run-node-row.state-pending .node-state { color: #a16207; background: rgba(161,98,7,.12); }
-    .run-node-row.state-unknown .node-state { opacity: .7; }
-    .legend-skipped { color: #6b7280; font-weight: 600; }
-    .legend-failed { color: #b91c1c; font-weight: 600; }
-    .legend-converged { color: #a16207; font-weight: 600; }
+    /* T7 (#171): input -> run control -> run panel -> node view -> evaluation entry.
+       Scoped with body[data-page] because design.css is linked after this block. */
+    body[data-page="debug"] .debug-stack { display: grid; gap: 16px; }
+    body[data-page="debug"] .debug-columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+      gap: 16px;
+      align-items: start;
+    }
+    body[data-page="debug"] .fact-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    body[data-page="debug"] dl.run { grid-template-columns: minmax(120px, 190px) minmax(0, 1fr); margin: 0; }
+    body[data-page="debug"] dl.run dt { padding: 6px 0; }
+    body[data-page="debug"] dl.run dd {
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="debug"] input[type="number"], body[data-page="debug"] input[type="text"], body[data-page="debug"] textarea { font-family: inherit; }
+    body[data-page="debug"] textarea { font-family: var(--font-mono); font-size: var(--fs-12); }
+    body[data-page="debug"] #run-timeline { display: grid; gap: 6px; margin: 12px 0; padding: 0; list-style: none; }
+    body[data-page="debug"] #run-timeline > li {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="debug"] #run-preview { padding: 8px 11px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+    body[data-page="debug"] #run-preview > * { margin: 3px 0; font-size: var(--fs-12); line-height: 1.65; }
+    body[data-page="debug"] #run-preview > *:first-child { margin-top: 0; }
+    body[data-page="debug"] #run-preview > *:last-child { margin-bottom: 0; }
+    body[data-page="debug"] #run-preview .preview-text { max-height: 16rem; overflow: auto; background: var(--surface-2); }
+    body[data-page="debug"] table.run-node-table { margin: 0; }
+    body[data-page="debug"] table.run-node-table th { font-size: var(--fs-11); }
+    body[data-page="debug"] table.run-node-table td { font-size: var(--fs-11); }
+    body[data-page="debug"] .node-state { display: inline-block; padding: 1px 6px; border-radius: 4px; white-space: nowrap; font-size: var(--fs-11); }
+    body[data-page="debug"] .run-node-row.state-skipped td { color: var(--muted); }
+    body[data-page="debug"] .run-node-row.state-skipped .node-state { color: var(--muted); background: var(--surface-3); }
+    body[data-page="debug"] .run-node-row.state-skipped .node-state::before { content: "⏭ "; }
+    body[data-page="debug"] .run-node-row.state-failed .node-state { color: var(--danger); background: var(--danger-soft); font-weight: 600; }
+    body[data-page="debug"] .run-node-row.state-failed .node-state::before { content: "✕ "; }
+    body[data-page="debug"] .run-node-row.state-succeeded .node-state { color: var(--success); background: var(--success-soft); }
+    body[data-page="debug"] .run-node-row.state-succeeded .node-state::before { content: "✓ "; }
+    body[data-page="debug"] .run-node-row.state-running .node-state,
+    body[data-page="debug"] .run-node-row.state-pending .node-state { color: var(--warning); background: var(--warning-soft); }
+    body[data-page="debug"] .run-node-row.state-unknown .node-state { color: var(--muted); background: var(--surface-2); }
+    body[data-page="debug"] .legend-skipped { color: var(--muted); font-weight: 600; }
+    body[data-page="debug"] .legend-failed { color: var(--danger); font-weight: 600; }
+    body[data-page="debug"] .legend-converged { color: var(--warning); font-weight: 600; }
     /* F04B/T085: an optional branch's folded error is error data, not a failure. */
-    .run-node-join-source.state-converged { color: #92400e; }
-    .run-node-join-source { margin: .15rem 0; }
-    .run-node-join-source.state-skipped { opacity: .65; }
-    .run-node-branch details { margin: .25rem 0 .25rem 1rem; }
-    .run-node-branch pre { max-height: 12rem; overflow: auto; }
-    .run-node-citation { display: block; margin: .15rem 0; font-size: .82rem; word-break: break-all; }
-    .run-node-citation.unavailable { color: #b91c1c; text-decoration: line-through; }
-    .run-node-citation-status { display: block; margin: .15rem 0 .15rem 1rem; font-size: .82rem; }
-    .run-node-citation-status.state-failed { color: #b91c1c; }
+    body[data-page="debug"] .run-node-join-source.state-converged { color: var(--warning); }
+    body[data-page="debug"] .run-node-join-source { margin: 2px 0; }
+    body[data-page="debug"] .run-node-join-source.state-skipped { color: var(--muted); }
+    body[data-page="debug"] .run-node-branch details { margin: 4px 0 4px 14px; }
+    body[data-page="debug"] .run-node-branch pre { max-height: 12rem; overflow: auto; }
+    body[data-page="debug"] .run-node-citation { display: block; margin: 2px 0; font-size: var(--fs-11); overflow-wrap: anywhere; }
+    body[data-page="debug"] .run-node-citation.unavailable { color: var(--danger); text-decoration: line-through; }
+    body[data-page="debug"] .run-node-citation-status { display: block; margin: 2px 0 2px 14px; font-size: var(--fs-11); }
+    body[data-page="debug"] .run-node-citation-status.state-failed { color: var(--danger); }
+    body[data-page="debug"] .run-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    body[data-page="debug"] .run-controls .hint { margin: 0; }
+    @media (max-width: 1200px) {
+      body[data-page="debug"] .debug-columns { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 720px) {
+      body[data-page="debug"] .debug-stack { gap: 12px; }
+      body[data-page="debug"] .debug-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      body[data-page="debug"] .debug-stack .card { padding: 16px; }
+      body[data-page="debug"] dl.run { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="debug"] dl.run dt { padding-bottom: 0; border-bottom: 0; }
+      body[data-page="debug"] dl.run dd { padding-top: 2px; }
+      body[data-page="debug"] .page-content table { min-width: 38rem; }
+      body[data-page="debug"] .mobile-scope { display: block; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
@@ -60,34 +107,44 @@
     <code>GET /api/v1/runs/{id}/events</code>（SSE，按 <code>Last-Event-ID</code> 重连、按 seq 去重），
     关闭/断线不会中断服务端业务；窗口过期时服务端回 410，页面改用 Run 快照。
   </p></details><div class="page-sections">
+<div class="debug-stack">
 <!-- C6.01 (#155): shared run-state dependency banner; the draft read stays,
-       submission/poll/SSE/node view/cancel pause when the guard fails. -->
+     submission/poll/SSE/node view/cancel pause when the guard fails. -->
 <p class="status bad" id="runstate-status" hidden="" role="alert"></p>
 <p class="inline-note mobile-scope" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
 <section class="card">
-<h2>当前草稿</h2>
+<div class="card-head"><h2>当前草稿</h2><span class="pill" data-tone="muted" data-shape="square">草稿</span></div>
 <p class="hint">revision 来自 <code>GET /api/v1/applications/{id}/draft</code> 的 <code>ETag</code>；调试只接受当前 revision，旧 revision 返回 409。</p>
 <p class="status" id="debug-status" aria-live="polite" role="status">正在加载当前草稿 revision…</p>
-</section>
 <p class="hint" id="debug-role-hint">
     创建私有调试 Run 需要 <code>creator</code> 角色；没有该角色时服务端返回
     <code>403 creator_role_required</code>，本页不会显示提交表单（只读查看草稿 revision）。
   </p>
+</section>
+<div class="debug-columns">
 <form id="debug-form" data-requires-role="creator" hidden="" method="post">
 <section class="card">
-<h2>测试输入</h2>
+<div class="card-head"><h2>测试输入</h2><span class="pill" data-tone="accent" data-shape="dot">冻结快照</span></div>
+<div class="field">
 <label for="debug-revision">要冻结的草稿 revision（draft_revision）</label>
 <input id="debug-revision" name="draft_revision" min="1" required="" step="1" type="number"/>
+<p class="field-help">必须是保存后才能执行的当前 revision；服务器不满足时返回 409 <code>revision_conflict</code>。</p>
+</div>
+<div class="field">
 <label for="debug-input">测试输入（JSON 对象，input）</label>
 <textarea id="debug-input" name="input" spellcheck="false">{"text": "hello"}</textarea>
+</div>
+<div class="field">
 <label for="debug-artifacts">可选输入 artifact UUID（artifact_ids，每行一个，最多 5 个）</label>
 <textarea id="debug-artifacts" name="artifact_ids" spellcheck="false"></textarea>
+</div>
+<p class="hint" data-input-schema>输入 schema：本页不读取草稿声明的输入字段（接口未提供），请按编辑器里「用途卡 · 必要输入」填 JSON 对象；形状不符会由服务端定位到字段。</p>
 <p class="hint">本次提交的 <code>Idempotency-Key</code>：<code id="debug-key">生成中</code>（只在本页内存中，不进入 URL 或浏览器存储）</p>
-<button id="debug-submit" data-runstate-paused="true" type="submit">创建私有调试 Run</button>
+<div class="run-controls"><button id="debug-submit" data-runstate-paused="true" type="submit">创建私有调试 Run</button><span class="hint">运行控制：创建、取消与轮询都在本页；页面不伪造进度。</span></div>
 </section>
 </form>
-<section class="card" id="run-panel" aria-live="polite" hidden="">
-<h2>已固定的调试 Run</h2>
+<section id="run-panel" class="card" hidden aria-live="polite">
+<div class="card-head"><h2>已固定的调试 Run</h2><span class="pill" data-tone="muted" data-shape="ring" data-run-panel-state>未开始</span></div>
 <dl class="run">
 <dt>run id</dt><dd id="run-id"></dd>
 <dt>state</dt><dd id="run-state"></dd>
@@ -102,20 +159,22 @@
 </dl>
 <ul id="run-timeline" aria-live="polite"></ul>
 <p class="hint" id="run-note"></p>
-<p class="hint" id="run-preview" data-preview="not_run">
+<p class="hint">运行耗时：来自服务端响应头 <code>X-Run-Active-Elapsed-Ms</code>（与租约同一处事实）；响应头没有它时显示「未提供」，页面不按轮询节奏估算。</p>
+<p class="hint">产物：本页只显示 Run 快照、持久事件与节点状态；节点的产出 artifact 与下载入口在<a href="/runs">运行详情</a>里查看。</p>
+<div class="hint" id="run-preview" data-preview="not_run">
       临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
       operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
       不执行。预览不持久，最终以持久 Run 快照/事件为准。
-    </p>
+    </div>
 <p class="hint"><a href="/runs">在运行列表中查看全部 Run 与真实租约</a></p>
 </section>
 <section class="card" id="runview-panel" aria-live="polite" hidden="">
-<h2>节点状态（按草稿定义顺序）</h2>
+<div class="card-head"><h2>节点状态（按草稿定义顺序）</h2></div>
 <p class="status" id="runview-status" aria-live="polite" role="status">未开始</p>
 <p class="hint" id="runview-run-state"></p>
 <p class="status" id="runview-error" aria-live="polite" role="status"></p>
 <p class="hint" id="runview-summary"></p>
-<div class="table-scroll" aria-label="应用调试数据表（可横向滚动）" role="region" tabindex="0"><table class="run-node-table" id="run-node-table">
+<div class="table-scroll" aria-label="应用调试节点状态（可横向滚动）" role="region" tabindex="0"><table class="table run-node-table" id="run-node-table">
 <thead>
 <tr>
 <th>节点</th>
@@ -136,7 +195,7 @@
       （Run 仍然成功；写操作/越权/预算/审批失败不会被降级，仍会让 Run 失败）。
       条件节点的选中端口来自它的
       data artifact（<code>port</code> / <code>matched_case</code>）；汇合节点的每个来源来自
-      data artifact 信封（<code>results.<source/>.status</code> / <code>value</code> /
+      data artifact 信封（<code>results.&lt;source/&gt;.status</code> / <code>value</code> /
       <code>error_code</code>）。这些是<strong>非契约</strong>数据面：owner 通过
       <code>GET /api/v1/runs/{id}/node-results</code> 找到 <code>kind="data"</code>
       的 artifact，再读 <code>GET /api/v1/artifacts/{id}/content</code>。
@@ -146,12 +205,13 @@
       事件流断线会按 <code>Last-Event-ID</code> 续传；<strong>410</strong>（保留窗口过期）时
       本表只显示持久 node-results 能证明的事实，并标注「由节点结果推断」，不伪造历史事件。
     </p>
-<button id="runview-cancel" data-runstate-paused="true" disabled="" type="button">取消 Run</button>
+<div class="run-controls"><button id="runview-cancel" data-runstate-paused="true" disabled="" type="button">取消 Run</button></div>
 <p class="status" id="runview-cancel-status" aria-live="polite" role="status"></p>
 <p class="hint"><a id="runview-runs-link" href="/runs">在运行列表查看这个 Run</a></p>
 </section>
+</div>
 <section class="card" id="evaluation-progress-entry">
-<h2>评测进展（异步评测）</h2>
+<div class="card-head"><h2>评测进展（异步评测）</h2></div>
 <p class="hint">
       异步评测在后台逐例运行。把评测提交返回的 evaluation id 粘贴到下面，打开可刷新、可分享的
       <code>/evaluations/{id}</code> 进展页；页面会说明「报告 <code>failed</code>（业务判定）」
@@ -162,6 +222,7 @@
 <button id="open-evaluation-progress" type="button">打开评测进展页</button>
 <p class="status" id="evaluation-id-status" aria-live="polite" role="status"></p>
 </section>
+</div>
 </div></main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
