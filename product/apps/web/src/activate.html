@@ -6,39 +6,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>开启你的工作空间 · Orchara</title>
 <style>
-    input, textarea { width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .4rem .5rem; font: inherit; }
+    /* Activation-only rhythm; the shared auth frame lives in design.css (T8). */
+    .auth-story-copy .eyebrow { margin-bottom: 10px; }
+    .auth-card textarea { min-height: 74px; }
+    .auth-card .hint { line-height: 1.7; }
+    .auth-error-index { margin-top: 22px; }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-auth="optional" data-page="activate"><a class="skip-link" href="#main-content">跳转到主要内容</a><div class="auth-layout"><aside class="auth-story"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">IDEAS INTO WORKFLOWS</p><h2>让想法成为<br/>可运行的工作流。</h2><p>连接模型、工具与知识，<br/>构建属于团队的 Agent 应用。</p></div><small>ORCHARA · 团队 Agent 工作空间</small><div class="auth-art" aria-hidden="true"></div>
+<body data-auth="optional" data-page="activate"><a class="skip-link" href="#main-content">跳转到主要内容</a><div class="auth-layout"><aside class="auth-story" aria-label="Orchara 产品说明"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="auth-story-copy"><p class="eyebrow">GET STARTED</p><h2>一次令牌，<br/>开启你的工作空间。</h2><hr class="auth-rule"/><p class="auth-lede">邀请令牌由管理员在管理台生成，用来设置密码；平台只保存密码哈希与令牌哈希。</p><ul class="auth-points"><li><span data-icon="key"></span><span><b>令牌只用一次</b>激活成功后立即失效，之后用登录名与密码进入</span></li><li><span data-icon="lock"></span><span><b>密码由你自己设置</b>至少 12 位，且不能与登录名相同</span></li><li><span data-icon="check"></span><span><b>不在前端判断权限</b>角色与授权由服务端决定，本页只负责设置密码</span></li></ul></div><div class="auth-story-foot"><span>ORCHARA · 团队 Agent 工作空间</span><span>入口页 · 激活账号</span></div><div class="auth-art" aria-hidden="true"></div>
 </aside>
-<div class="auth-main"><div class="auth-mobile-brand"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a></div>
+<div class="auth-main"><div class="auth-mobile-brand"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><span class="auth-mobile-tagline">团队 Agent 工作空间</span></div>
 <main class="page-content" id="main-content" tabindex="-1">
 <header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="user">GET STARTED</p><h1>开启你的工作空间</h1><p class="page-description">使用管理员提供的邀请令牌，设置密码并激活账号。</p></div><p class="page-meta"><span>邀请令牌一次性有效</span><span>密码至少 12 位</span></p></header>
 <div class="page-sections">
-<section class="card">
+<p class="status auth-status" id="activate-status" aria-live="polite" role="status"></p>
+<section class="card auth-card">
 <form id="activate-form" method="post">
-<label for="activation-token">一次性激活令牌
-        <textarea id="activation-token" name="activation_token" autocomplete="off" required="" rows="3"></textarea>
-</label>
-<label for="password">新密码（至少 12 位）
-        <input id="password" name="password" autocomplete="new-password" minlength="12" required="" type="password"/>
-</label>
-<label for="confirm-password">确认新密码
-        <input id="confirm-password" name="confirm_password" autocomplete="new-password" minlength="12" required="" type="password"/>
-</label>
-<button type="submit">激活并设置密码</button>
+<div class="field"><label class="field-label" for="activation-token">一次性激活令牌</label><textarea id="activation-token" name="activation_token" autocomplete="off" required="" rows="3"></textarea><p class="field-help">管理员在管理台生成时显示一次；本页只把它放进请求体，绝不写进 URL。</p></div>
+<div class="field"><label class="field-label" for="password">新密码</label><input id="password" name="password" autocomplete="new-password" minlength="12" required="" type="password"/><ul class="password-rules"><li>至少 12 个字符</li><li>不能与登录名相同（登录名由邀请令牌决定）</li></ul></div>
+<div class="field"><label class="field-label" for="confirm-password">确认新密码</label><input id="confirm-password" name="confirm_password" autocomplete="new-password" minlength="12" required="" type="password"/></div>
+<button class="btn btn-primary btn-block auth-submit" type="submit">激活并设置密码</button>
 </form>
-<p class="status" id="activate-status" aria-live="polite" role="status"></p>
-<div id="activate-success" hidden="">
-<p>激活成功，现在可以前往 <a href="/admin">管理台</a> 登录。</p>
+<div class="auth-success" id="activate-success" hidden="">
+<h2>账号已激活</h2>
+<p>密码已设置，令牌已失效。现在用同一个登录名登录工作空间。</p>
+<a class="btn btn-primary" href="/login">去登录</a>
 </div>
 </section>
-</div><nav class="segmented" aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate" aria-current="page">激活账号</a><a href="/chat">返回工作空间</a></nav>
+<nav class="segmented" aria-label="账号导航" data-static-navigation="true"><a href="/login">登录账号</a><a href="/activate" aria-current="page">激活账号</a><a href="/chat">返回工作空间</a></nav>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    把管理员转交的一次性令牌粘贴到下面，设置至少 12 位的新密码。
-    令牌只从请求体提交，绝不放进 URL。
-  </p></details></main>
+    把管理员转交的一次性令牌粘贴到下面，设置至少 12 位的新密码；密码不能与登录名相同。
+    令牌由管理员在管理台生成并人工转交，激活成功后立即失效，之后用登录名与密码登录。
+  </p><section class="auth-error-index" aria-label="激活失败原因说明">
+<h2>激活失败时，页面会原样显示服务端的错误码</h2>
+<p>令牌是一次性的，且只在有效期内可用；密码规则由服务端再次校验。</p>
+<ul class="auth-code-list">
+<li class="auth-code" data-code="activation_invalid"><code>activation_invalid</code><span>令牌无效或无法识别</span></li>
+<li class="auth-code" data-code="activation_expired"><code>activation_expired</code><span>令牌已过期，请让管理员重新生成</span></li>
+<li class="auth-code" data-code="activation_consumed"><code>activation_consumed</code><span>令牌已被使用，一次性令牌不能重复激活</span></li>
+<li class="auth-code" data-code="validation_failed"><code>validation_failed</code><span>新密码不符合规则（字段 password）</span></li>
+</ul>
+</section></details>
+</div></main>
 </div></div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -49,10 +59,21 @@
     const activationTokenField = document.getElementById('activation-token');
     const passwordField = document.getElementById('password');
     const confirmField = document.getElementById('confirm-password');
+    const activateSubmit = document.querySelector('.auth-submit');
 
-    function setStatus(message, kind) {
+    // Presentation only: each refusal keeps its own tone, the code stays text.
+    const ACTIVATE_TONES = {
+      activation_invalid: 'danger',
+      activation_expired: 'warning',
+      activation_consumed: 'muted',
+      validation_failed: 'accent',
+    };
+
+    function setStatus(message, kind, code) {
       activateStatus.textContent = message;
-      activateStatus.className = 'status ' + (kind || '');
+      activateStatus.className = 'status auth-status ' + (kind || '');
+      activateStatus.setAttribute('data-code', code || '');
+      activateStatus.setAttribute('data-tone', ACTIVATE_TONES[code] || 'muted');
     }
 
     activateForm.addEventListener('submit', async (event) => {
@@ -65,6 +86,10 @@
         setStatus('两次输入的密码不一致', 'bad');
         return;
       }
+      if (activateSubmit) {
+        activateSubmit.disabled = true;
+      }
+      activateForm.setAttribute('aria-busy', 'true');
       setStatus('正在激活…', 'pending');
       try {
         await api('/api/v1/auth/activate', {
@@ -78,7 +103,12 @@
         activateSuccess.hidden = false;
         setStatus('激活成功', 'ok');
       } catch (error) {
-        setStatus(`激活失败 [${error.code}] ${error.message}`, 'bad');
+        setStatus(`激活失败 [${error.code}] ${error.message}`, 'bad', error.code);
+      } finally {
+        if (activateSubmit) {
+          activateSubmit.disabled = false;
+        }
+        activateForm.setAttribute('aria-busy', 'false');
       }
     });
   </script>
