@@ -7,56 +7,389 @@
 <title>工作流编辑器 · Orchara</title>
 <link href="/assets/canvas.css" rel="stylesheet"/>
 <style>
-    textarea.definition, textarea.layout { min-height: 12rem; }
-    .revision { font-size: .9rem; }
-    .revision strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-    .conflict { border-color: #b45309; }
-    .conflict .status { margin-top: .5rem; }
-    .conflict button { margin-right: .5rem; }
-    .callapp-row { display: grid; grid-template-columns: 14rem 9rem 1fr; gap: .5rem; align-items: center; margin: .35rem 0; }
+    /* T4 (#168): the editor is a full-height workbench, not a page of cards.
+       Page-local rules only; tokens come from design.css. The body-scoped
+       selectors outrank design.css's shared page rules (which load later). */
+    body.page-editor .page-content { padding: 0 0 20px; }
+    body.page-editor .page-heading {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 12px;
+      height: 52px;
+      margin: 0;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .editor-toolbar-main { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .editor-back {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-2);
+    }
+    .editor-back:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); text-decoration: none; }
+    .editor-back .ui-icon { width: 17px; height: 17px; }
+    .editor-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    body.page-editor .page-heading h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: var(--fs-14);
+      font-weight: 650;
+      letter-spacing: -.1px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .editor-app-ref {
+      overflow: hidden;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.page-editor .page-heading .pill { flex: 0 0 auto; height: 20px; }
+    .editor-rev {
+      color: var(--muted);
+      font-size: var(--fs-11);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .editor-rev strong { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+    .editor-toolbar-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }
+    .editor-toolbar-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+    .editor-group {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+      padding: 1px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+    }
+    .editor-group .btn-icon { width: 26px; height: 26px; min-height: 26px; border: 0; background: transparent; }
+    .editor-group .btn-icon:hover:not(:disabled) { background: var(--surface); }
+    .editor-group .btn-icon:disabled { opacity: .38; }
+    .editor-group .ui-icon { width: 15px; height: 15px; }
+    .editor-zoom-value {
+      min-width: 42px;
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .editor-toolbar-controls .btn-small, .editor-toolbar-actions .btn-small { min-height: 30px; padding: 0 10px; font-size: var(--fs-12); }
+    .editor-debug { color: var(--text-2); }
+    .editor-debug:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
+    body.page-editor .page-heading .btn-secondary { min-height: 32px; }
+    body.page-editor .page-heading .btn-primary { min-height: 32px; }
+
+    /* status line: draft revision, definition validation, layout, preflight */
+    body.page-editor .page-meta {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 14px;
+      height: 38px;
+      margin: 0;
+      padding: 0 14px;
+      overflow: visible;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-2);
+      font-size: var(--fs-12);
+    }
+    body.page-editor .page-meta > span + span::before { content: none; }
+    .editor-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+    .editor-state strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .editor-state-icon {
+      display: inline-grid;
+      place-items: center;
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border-radius: 2px;
+      background: var(--muted);
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1;
+    }
+    .editor-state-icon[data-shape="ring"] { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; border-radius: 50%; }
+    .editor-state-icon[data-shape="check"] { background: none; }
+    .editor-state-icon[data-shape="check"]::before { content: "✓"; }
+    .editor-state-icon[data-shape="alert"] { width: auto; height: auto; background: none; border-radius: 0; font-size: 11px; }
+    .editor-state-icon[data-shape="alert"]::before { content: "△"; }
+    .editor-state[data-tone="ok"] .editor-state-icon { color: var(--success); }
+    .editor-state[data-tone="ok"] strong { color: var(--success); }
+    .editor-state[data-tone="bad"] .editor-state-icon { color: var(--danger); }
+    .editor-state[data-tone="bad"] strong { color: var(--danger); }
+    .editor-state[data-tone="pending"] .editor-state-icon { color: var(--warning); }
+    .editor-state[data-tone="pending"] strong { color: var(--warning); }
+    .editor-preflight { position: relative; flex: 0 0 auto; }
+    .editor-preflight summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--warning);
+      cursor: pointer;
+      list-style: none;
+      white-space: nowrap;
+    }
+    .editor-preflight summary::-webkit-details-marker { display: none; }
+    .editor-preflight summary::after {
+      content: "▾";
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .editor-preflight[open] summary::after { content: "▴"; }
+    .editor-preflight summary strong { color: var(--warning); font-variant-numeric: tabular-nums; }
+    .editor-preflight[data-tone="ok"] summary { color: var(--success); }
+    .editor-preflight[data-tone="ok"] summary strong { color: var(--success); }
+    .editor-preflight-body {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: var(--z-drawer);
+      width: min(380px, 82vw);
+      padding: 12px 14px;
+      border: 1px solid var(--warning-line);
+      border-radius: var(--radius);
+      background: var(--warning-soft);
+      box-shadow: var(--shadow-pop);
+      color: var(--text-2);
+      font-size: var(--fs-12);
+      line-height: 1.6;
+    }
+    .editor-preflight[data-tone="ok"] .editor-preflight-body { border-color: var(--success-line); background: var(--success-soft); }
+    .editor-preflight-body p { margin: 0 0 6px; }
+    .editor-preflight-body ul { margin: 0; padding-left: 18px; }
+    .editor-preflight-body li { margin: 2px 0; }
+    body.page-editor .page-meta .status { margin: 0 0 0 auto; color: var(--muted); font-size: var(--fs-11); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.page-editor .page-meta .status.ok { color: var(--success); }
+    body.page-editor .page-meta .status.bad { color: var(--danger); }
+    body.page-editor .page-meta .status.pending { color: var(--accent-ink); }
+
+    /* the canvas host: exactly the viewport minus the two chrome rows */
+    .editor-workbench {
+      display: block;
+      height: calc(100dvh - var(--topbar) - 52px - 38px);
+      min-height: 640px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    body.page-editor #canvas-root { height: 100%; }
+    .editor-workbench .orchara-canvas { height: 100%; }
+
+    /* conflict: a real warning card, never a modal that traps the page */
+    body.page-editor .conflict {
+      display: block;
+      margin: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--warning-line);
+      border-radius: var(--radius);
+      background: var(--warning-soft);
+      box-shadow: none;
+    }
+    body.page-editor .conflict[hidden] { display: none; }
+    .editor-conflict-head { display: flex; align-items: center; gap: 10px; }
+    body.page-editor .conflict h2 { margin: 0; color: var(--warning); font-size: var(--fs-14); }
+    body.page-editor .conflict .hint { margin: 8px 0 0; max-width: 82ch; color: var(--text-2); font-size: var(--fs-12); line-height: 1.65; }
+    body.page-editor .conflict .decision-buttons { margin-top: 12px; }
+    body.page-editor .conflict .status { margin: 8px 0 0; }
+
+    .editor-mobile-note { display: none; }
+    body.page-editor .editor-mobile-note { display: none; }
+    body.page-editor .editor-readonly { color: var(--warning); }
+    body.page-editor .editor-readonly .editor-state-icon { color: var(--warning); }
+
+    /* advanced authoring stays available but folded: it never stretches the page */
+    .editor-advanced {
+      margin: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow-card);
+    }
+    .editor-advanced > summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 16px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: var(--fs-13);
+      font-weight: 600;
+      list-style: none;
+    }
+    .editor-advanced > summary::-webkit-details-marker { display: none; }
+    .editor-advanced > summary::before {
+      content: "▸";
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .editor-advanced[open] > summary::before { content: "▾"; }
+    .editor-advanced-desc { overflow: hidden; min-width: 0; color: var(--muted); font-size: var(--fs-11); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+    .editor-advanced-state { margin-left: auto; color: var(--muted); font-size: var(--fs-11); font-weight: 400; }
+    .editor-advanced[open] .editor-advanced-state { display: none; }
+    .editor-advanced-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+      gap: 18px;
+      padding: 0 16px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .editor-advanced-body > * { min-width: 0; }
+    .editor-advanced-body .card { margin: 14px 0 0; box-shadow: none; }
+    body.page-editor .application-settings { padding: 0 16px 12px; }
+    body.page-editor .application-settings > summary { padding: 12px 0 8px; }
+    body.page-editor .application-settings .settings-grid { gap: 0 18px; }
+    body.page-editor .application-settings textarea { min-height: 64px; }
+    body.page-editor .editor-json { padding: 0 16px 14px; }
+    body.page-editor .editor-json h2 { margin: 0; padding: 12px 0 8px; font-size: var(--fs-14); }
+    body.page-editor #json-view > summary { padding: 8px 0; color: var(--text-2); font-size: var(--fs-12); }
+    body.page-editor #json-view textarea { min-height: 10rem; font-family: var(--font-mono); font-size: var(--fs-11); }
+    body.page-editor #subapp-card { padding: 0 16px 14px; }
+    body.page-editor #subapp-card h2 { margin: 0; padding: 12px 0 6px; font-size: var(--fs-14); }
+    body.page-editor #subapp-card h3 { margin: 14px 0 4px; font-size: var(--fs-12); }
+    body.page-editor #subapp-card .hint { font-size: var(--fs-11); line-height: 1.65; }
+    body.page-editor #subapp-card select, body.page-editor #subapp-card input[type="text"] { min-height: 34px; }
+    .callapp-row { display: grid; grid-template-columns: minmax(11rem, 1fr) 9rem minmax(0, 1.2fr); gap: 8px; align-items: center; margin: 5px 0; }
     .callapp-row input[type="checkbox"] { justify-self: start; }
-    .callapp-field { font-size: .84rem; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
-    .node-chip { margin: .25rem .35rem .25rem 0; padding: .25rem .6rem; border: 1px solid rgba(128,128,128,.5); border-radius: 999px; background: transparent; font-size: .82rem; cursor: pointer; }
-    .node-chip.call-app { border-style: dashed; }
-    .node-chip.invalid { border-color: #b91c1c; color: #b91c1c; font-weight: 600; }
-    .node-chip-id { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; margin-right: .35rem; }
-    .node-chip-type { opacity: .7; }
-    .node-chip-errors { margin-left: .4rem; }
-    .node-error { font-size: .8rem; color: #b91c1c; margin: .15rem 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    .callapp-field { font-family: var(--font-mono); font-size: 10px; overflow-wrap: anywhere; }
+    body.page-editor .node-chip { margin: 3px 5px 3px 0; padding: 2px 9px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); font-size: var(--fs-11); cursor: pointer; }
+    body.page-editor .node-chip:hover { border-color: var(--muted); }
+    body.page-editor .node-chip.call-app { border-style: dashed; }
+    body.page-editor .node-chip.invalid { border-color: var(--danger); color: var(--danger); font-weight: 600; }
+    .node-chip-id { margin-right: 4px; font-family: var(--font-mono); font-size: 10px; }
+    .node-chip-type { color: var(--muted); font-size: 10px; }
+    .node-chip-errors { margin-left: 5px; color: var(--danger); font-size: 10px; }
+    .node-error { margin: 3px 0; color: var(--danger); font-family: var(--font-mono); font-size: 10px; line-height: 1.5; }
+
+    @media (max-width: 1180px) {
+      .editor-toolbar-controls .btn-small { display: none; }
+      .editor-app-ref { display: none; }
+    }
+    @media (max-width: 1024px) {
+      .editor-toolbar-actions .editor-debug { display: none; }
+    }
+    @media (max-width: 900px) {
+      .editor-workbench { display: none; }
+      body.page-editor .editor-mobile-note {
+        display: block;
+        margin: 16px 14px 0;
+      }
+      body.page-editor .page-heading { flex-wrap: wrap; height: auto; padding: 10px 12px; gap: 8px; }
+      .editor-toolbar-controls { margin-left: 0; order: 3; width: 100%; justify-content: flex-end; }
+      .editor-toolbar-actions { margin-left: auto; }
+      .editor-toolbar-controls .btn-small { display: inline-flex; }
+      .editor-app-ref { display: none; }
+      body.page-editor .page-meta { flex-wrap: wrap; height: auto; min-height: 38px; padding: 6px 12px; gap: 8px 12px; }
+      body.page-editor .page-meta .status { margin-left: 0; width: 100%; }
+      .editor-preflight { position: static; }
+      .editor-preflight[open] { flex: 1 0 100%; }
+      .editor-preflight-body { position: static; width: 100%; margin-top: 8px; box-shadow: none; }
+      .editor-advanced-body { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      body.page-editor .editor-toolbar-controls,
+      body.page-editor .editor-toolbar-actions { display: none; }
+      body.page-editor .page-heading h1 { font-size: var(--fs-13); }
+      .editor-rev { display: none; }
+      .editor-advanced { margin: 12px; }
+      .editor-advanced-desc { display: none; }
+      .callapp-row { grid-template-columns: 1fr; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body class="page-editor" data-page="editor"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">工作流编辑器</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><h1>工作流编辑器</h1><p class="page-description">连接节点、配置能力，让每一步协作清晰可见。</p></div><div class="heading-actions"><button class="primary" id="draft-save" data-requires-role="creator" form="draft-form" hidden="" type="submit">保存草稿</button><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>layout 只影响视图</span><span>保存冲突不自动覆盖</span></p></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">画布支持节点、条件分支和汇合。保存会记录草稿版本；如服务器上的草稿已被更新，请选择重载服务器版本或保留本地副本。保存需要创作者角色和应用写入权限。</p><p class="hint" id="editor-role-hint">保存与校验需要创作者角色及该应用的写入权限；仅有读取授权时可查看内容。</p></details><div class="page-sections">
-<p class="inline-note mobile-scope" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
-<section class="card draft-overview">
-<h2>当前草稿</h2><span class="pill" data-tone="muted" data-shape="square">草稿</span>
-<p class="revision">草稿版本：<strong id="draft-revision">加载中</strong>
-</p>
-<p class="hint"><a id="debug-entry" href="/apps">调试当前草稿</a></p>
-<p class="status" id="editor-status" aria-live="polite" role="status">正在加载使用说明和草稿…</p>
-</section>
+<header class="page-heading">
+<div class="editor-toolbar-main">
+<a class="editor-back" href="/apps" aria-label="返回应用列表" title="返回应用列表" data-icon="chevron-left"></a>
+<div class="editor-title"><h1>工作流编辑器</h1><span class="editor-app-ref" data-editor-app-ref>正在读取应用</span></div>
+<span class="pill" data-tone="accent" data-shape="square">草稿</span>
+<span class="editor-rev">revision <strong id="draft-revision">加载中</strong></span>
+</div>
+<div class="editor-toolbar-controls">
+<div class="editor-group" role="group" aria-label="编辑历史">
+<button class="btn btn-icon btn-ghost" data-editor-action="undo" aria-label="撤销" title="撤销（Ctrl+Z）" type="button" disabled=""><svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7 4 12l5 5"></path><path d="M4 12h9a6 6 0 0 1 6 6v1"></path></svg></button>
+<button class="btn btn-icon btn-ghost" data-editor-action="redo" aria-label="重做" title="重做（Ctrl+Shift+Z）" type="button" disabled=""><svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 7 5 5-5 5"></path><path d="M20 12h-9a6 6 0 0 0-6 6v1"></path></svg></button>
+</div>
+<div class="editor-group editor-zoom" role="group" aria-label="画布缩放">
+<button class="btn btn-icon btn-ghost" data-editor-action="zoom-out" aria-label="缩小画布" title="缩小画布" type="button" data-editor-canvas-only disabled="">−</button>
+<span class="editor-zoom-value" data-editor-zoom-value aria-hidden="true">100%</span>
+<button class="btn btn-icon btn-ghost" data-editor-action="zoom-in" aria-label="放大画布" title="放大画布" type="button" data-editor-canvas-only disabled="">+</button>
+</div>
+<button class="btn btn-ghost btn-small" data-editor-action="auto-layout" title="按节点顺序重新排布（只影响 layout）" type="button" data-editor-canvas-only disabled="">自动布局</button>
+<button class="btn btn-ghost btn-small" data-editor-action="export" title="导出 definition / layout JSON" type="button" data-editor-canvas-only disabled="">导出工作流</button>
+</div>
+<div class="editor-toolbar-actions">
+<a class="btn btn-ghost btn-small editor-debug" id="debug-entry" href="/apps">打开私有调试页</a>
+<button class="btn btn-secondary" data-editor-action="validate" title="调用服务端校验并定位字段或连线" type="button" data-editor-canvas-only disabled="">校验草稿</button>
+<button class="btn btn-primary" id="draft-save" data-requires-role="creator" form="draft-form" hidden="" type="submit">保存草稿</button>
+</div>
+</header>
+<div class="page-meta" data-editor-statusbar aria-label="草稿状态">
+<span class="editor-state"><span class="editor-state-icon" data-shape="square" aria-hidden="true"></span>草稿 revision <strong data-editor-revision>加载中</strong></span>
+<span class="editor-state" data-editor-definition data-tone="idle"><span class="editor-state-icon" data-shape="ring" aria-hidden="true"></span>definition <strong data-editor-definition-value>未校验</strong></span>
+<span class="editor-state" data-editor-layout data-tone="ok"><span class="editor-state-icon" data-shape="check" aria-hidden="true"></span>layout <strong data-editor-layout-state>已同步到表单</strong></span>
+<details class="editor-preflight" data-editor-preflight>
+<summary><span class="editor-state-icon" data-shape="alert" aria-hidden="true"></span>发布前提示 <strong data-editor-preflight-count>读取中</strong></summary>
+<div class="editor-preflight-body">
+<p>发布页会执行完整检查（用途、示例与测试证据）。这份草稿还有 <strong data-editor-preflight-count-body>0</strong> 项可以先补齐：</p>
+<ul data-editor-preflight-list><li>正在读取草稿…</li></ul>
+</div>
+</details>
+<span class="editor-state editor-readonly" data-editor-readonly data-tone="warning" hidden=""><span class="editor-state-icon" data-shape="alert" aria-hidden="true"></span>只读视图 · 保存与校验已隐藏</span>
+<p class="status" id="editor-status" role="status" aria-live="polite">正在加载使用说明和草稿…</p>
+</div>
+<div class="page-sections">
 <section class="card conflict" id="conflict-panel" aria-live="polite" hidden="">
-<h2>保存冲突</h2>
-<p class="hint">
-      服务器上的草稿已经更新。本页不会自动覆盖，也不会自动重载。请选择：
-      <strong>重载服务器版本</strong>会丢弃本地未保存修改；<strong>保留本地副本</strong>
-      会把当前表单内容下载为 JSON 文件，之后再决定如何合并。
-    </p>
-<button id="conflict-reload" type="button">重载服务器版本</button>
-<button id="conflict-download" type="button">保留本地副本（下载 JSON）</button>
+<div class="editor-conflict-head"><span class="pill" data-tone="warning" data-shape="alert">保存冲突</span><h2>服务器上的草稿已经更新</h2></div>
+<p class="hint">本页不会自动覆盖，也不会自动重载。请选择：<strong>重载服务器版本</strong>会丢弃本地未保存修改；<strong>保留本地副本</strong>会把当前表单内容下载为 JSON 文件，之后再决定如何合并。</p>
+<div class="decision-buttons">
+<button class="btn btn-secondary" id="conflict-reload" type="button">重载服务器版本</button>
+<button class="btn btn-secondary" id="conflict-download" type="button">保留本地副本（下载 JSON）</button>
+</div>
 <p class="status" id="conflict-status" role="status"></p>
 </section>
-<section class="card canvas-card" aria-label="工作流画布">
-<h2>工作流画布</h2>
-<p class="hint">从左侧添加节点，在画布中连线，点击节点配置参数。校验后可定位到具体字段或连线。</p>
+<section class="editor-workbench" data-editor-workbench aria-label="工作流画布">
 <div id="canvas-root"></div>
 <noscript>画布需要 JavaScript；下方的 JSON 视图仍可通过表单保存。</noscript>
 </section>
-<details class="advanced-section"><summary>高级配置：子应用调用与映射</summary><section class="card" id="subapp-card" aria-label="子应用调用 call_app">
+<p class="inline-note mobile-scope editor-mobile-note" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
+<details class="editor-advanced" data-editor-advanced>
+<summary><span class="editor-advanced-label">高级配置</span><span class="editor-advanced-desc">应用用途说明 · 子应用调用与映射 · definition / layout JSON</span><span class="editor-advanced-state">折叠时不占用画布高度</span></summary>
+<div class="editor-advanced-body">
+<form id="draft-form" data-requires-role="creator" hidden="" method="post">
+<details class="card application-settings"><summary>应用用途说明</summary>
+<p class="hint">说明应用的适用范围、所需输入和预期结果。发布前请完善全部六项，并至少提供两个示例；列表每行填写一项。</p>
+<div class="settings-grid"><div><label for="card-purpose">用途</label><textarea id="card-purpose" name="purpose"></textarea></div><div><label for="card-includes">包含</label><textarea id="card-includes" name="includes"></textarea></div><div><label for="card-excludes">不包含</label><textarea id="card-excludes" name="excludes"></textarea></div><div><label for="card-required-inputs">必需输入</label><textarea id="card-required-inputs" name="required_inputs"></textarea></div><div><label for="card-expected-outputs">预期输出</label><textarea id="card-expected-outputs" name="expected_outputs"></textarea></div><div><label for="card-examples">示例</label><textarea id="card-examples" name="examples"></textarea></div></div></details>
+<section class="card editor-json">
+<h2>高级：工作流定义</h2>
+<details id="json-view">
+<summary>JSON 视图（画布同步的 definition / layout，可折叠）</summary>
+<p class="hint">
+           画布是主编辑器；文本域与画布双向同源。非法 DSL 仍可保存，但不能调试或提交
+           （校验按钮显示服务端定位错误）。layout 只影响视图，不改变执行内容。
+        </p>
+<label for="draft-definition">definition（JSON 对象）</label>
+<textarea class="definition" id="draft-definition" name="definition" spellcheck="false"></textarea>
+<label for="draft-layout">layout（JSON 对象）</label>
+<textarea class="layout" id="draft-layout" name="layout" spellcheck="false"></textarea>
+</details>
+</section>
+</form>
+<section class="card" id="subapp-card" aria-label="子应用调用 call_app">
 <h2>子应用调用</h2>
 <p class="hint">
       只列出服务端按读权限过滤后的应用与已发布版本；<strong>固定版本不接受 latest</strong>。
@@ -85,35 +418,19 @@
       子应用只保证其冻结 Schema 声明的输出。
     </p>
 <div id="callapp-output-rows"></div>
-<button id="callapp-add" type="button">加入 / 更新 call_app 节点</button>
-<button id="callapp-validate" type="button">保存并校验</button>
+<button class="btn btn-secondary btn-small" id="callapp-add" type="button">加入 / 更新 call_app 节点</button>
+<button class="btn btn-secondary btn-small" id="callapp-validate" type="button">保存并校验</button>
 <p class="status" id="callapp-status" aria-live="polite" role="status"></p>
 <h3>节点与定位错误</h3>
 <p class="hint">节点条：红色 = 服务端定位到该节点；虚线 = call_app 节点。点击节点可把它的固定版本与映射载回面板。</p>
 <div id="editor-node-list"></div>
 <div id="callapp-errors"></div>
 </section>
+<p class="hint" id="editor-role-hint">保存与校验需要创作者角色及该应用的写入权限；仅有读取授权时可查看内容，画布编辑与草稿保存会被隐藏。</p>
+</div>
 </details>
-<form id="draft-form" data-requires-role="creator" hidden="" method="post">
-<details class="card application-settings"><summary>应用用途说明</summary>
-<p class="hint">说明应用的适用范围、所需输入和预期结果。发布前请完善全部六项，并至少提供两个示例；列表每行填写一项。</p>
-<div class="settings-grid"><div><label for="card-purpose">用途</label><textarea id="card-purpose" name="purpose"></textarea></div><div><label for="card-includes">包含</label><textarea id="card-includes" name="includes"></textarea></div><div><label for="card-excludes">不包含</label><textarea id="card-excludes" name="excludes"></textarea></div><div><label for="card-required-inputs">必需输入</label><textarea id="card-required-inputs" name="required_inputs"></textarea></div><div><label for="card-expected-outputs">预期输出</label><textarea id="card-expected-outputs" name="expected_outputs"></textarea></div><div><label for="card-examples">示例</label><textarea id="card-examples" name="examples"></textarea></div></div></details>
-<section class="card">
-<h2>高级：工作流定义</h2>
-<details id="json-view">
-<summary>JSON 视图（画布同步的 definition / layout，可折叠）</summary>
-<p class="hint">
-          画布是主编辑器；文本域与画布双向同源。非法 DSL 仍可保存，但不能调试或提交
-          （校验按钮显示服务端定位错误）。layout 只影响视图，不改变执行内容。
-        </p>
-<label for="draft-definition">definition（JSON 对象）</label>
-<textarea class="definition" id="draft-definition" name="definition" spellcheck="false"></textarea>
-<label for="draft-layout">layout（JSON 对象）</label>
-<textarea class="layout" id="draft-layout" name="layout" spellcheck="false"></textarea>
-</details>
-</section>
-</form>
-</div></main>
+</div>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
