@@ -6,13 +6,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>应用目录 · Orchara</title>
 <style>
-    .badge { display: inline-block; font-size: .78rem; border-radius: 999px; padding: .05rem .6rem; border: 1px solid currentColor; }
-    .badge.fallback { color: #a16207; }
-    .badge.index { color: #15803d; }
-    .card-purpose { font-weight: 600; margin: .1rem 0 .3rem; }
-    .facts { font-size: .86rem; opacity: .85; margin: .15rem 0; }
-    .facts strong { opacity: .95; }
-    input[type="search"] { font: inherit; padding: .4rem .55rem; width: 18rem; max-width: 100%; }
+    /* T3 (#167): purpose catalog. Scoped with body[data-page="catalog"] so these
+       rules outrank design.css's generic form/list rules without editing it. */
+    body[data-page="catalog"] .catalog-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+    body[data-page="catalog"] .catalog-toolbar input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+      flex: 1 1 260px;
+      max-width: 420px;
+      margin: 0;
+      min-height: 32px;
+      font-size: var(--fs-12);
+    }
+    body[data-page="catalog"] .catalog-toolbar .toolbar-note { margin-left: auto; }
+    body[data-page="catalog"] #catalog-retrieval { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 0; }
+    body[data-page="catalog"] #catalog-retrieval:empty { display: none; }
+    body[data-page="catalog"] .catalog-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 20px;
+      padding: 0 8px;
+      border: 1px solid var(--accent-line);
+      border-radius: 5px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      font-size: var(--fs-11);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    body[data-page="catalog"] .catalog-badge[data-source="fallback"] {
+      border-color: var(--warning-line);
+      background: var(--warning-soft);
+      color: var(--warning);
+    }
+    body[data-page="catalog"] .catalog-badge[data-source="unknown"] {
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+      color: var(--text-2);
+    }
+
+    /* Result rows: one application version per row, scannable, then the card. */
+    body[data-page="catalog"] .page-content ul.catalog-rows { margin: 14px 0 0; padding: 0; list-style: none; }
+    body[data-page="catalog"] .page-content ul.catalog-rows > li {
+      display: block;
+      margin: 0;
+      padding: 14px 0;
+      border-top: 1px solid var(--border);
+    }
+    body[data-page="catalog"] .page-content ul.catalog-rows > li:first-child { border-top: 0; }
+    body[data-page="catalog"] .catalog-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+    body[data-page="catalog"] .catalog-row-avatar { width: 26px; height: 26px; font-size: var(--fs-11); }
+    body[data-page="catalog"] .catalog-row-title { flex: 1 1 240px; min-width: 0; }
+    body[data-page="catalog"] .catalog-row-title strong {
+      display: block;
+      color: var(--text);
+      font-size: var(--fs-13);
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    body[data-page="catalog"] .catalog-row-sub {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+    body[data-page="catalog"] .catalog-row-purpose { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; }
+    body[data-page="catalog"] .catalog-row-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="catalog"] .catalog-row-meta code { font-size: 10px; }
+    body[data-page="catalog"] .catalog-row-facts {
+      margin: 8px 0 0;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      box-shadow: none;
+    }
+    body[data-page="catalog"] .catalog-row-facts summary { color: var(--text-2); font-size: var(--fs-11); font-weight: 550; }
+    body[data-page="catalog"] .catalog-row-facts .facts { margin: 4px 0; color: var(--text-2); font-size: var(--fs-11); line-height: 1.6; }
+    body[data-page="catalog"] .catalog-row-facts .facts strong { color: var(--text); }
+    body[data-page="catalog"] .catalog-row-action { flex: 0 0 auto; }
+    body[data-page="catalog"] .catalog-unavailable {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: var(--fs-11);
+    }
+    body[data-page="catalog"] .catalog-legend { margin: 8px 0 0; }
+    body[data-page="catalog"] .catalog-pager {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    body[data-page="catalog"] .catalog-pager .hint { margin: 0; }
+    body[data-page="catalog"] .catalog-pager button { margin: 0 0 0 auto; }
+
+    @media (max-width: 720px) {
+      body[data-page="catalog"] .catalog-toolbar input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) { max-width: none; flex-basis: 100%; }
+      body[data-page="catalog"] .catalog-toolbar .toolbar-note { margin-left: 0; }
+      body[data-page="catalog"] .catalog-pager button { margin: 0; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
@@ -28,23 +124,27 @@
     目录索引与知识库索引是两套表、两套重建路径：本页的重建只读
     <code>application_versions</code> 的能力卡，不读写 <code>knowledge_chunks</code>。
     “用这个版本提交”会带上版本 id 进入会话页；路由与澄清属于 T079。
+  </p><p class="hint">
+    一条结果就是一个<strong>可读的已发布版本</strong>：有可用版本时显示版本号与 manifest 短哈希，
+    没有生效版本（未发布或已撤销）的应用不会出现在结果里，即「暂无可用版本」。
+    目录接口不返回发布者与更新时间，因此本页不展示这两项，避免用索引时间冒充版本事实。
   </p></details><div class="page-sections">
-<section class="card">
-<h2>检索用途</h2>
-<form class="toolbar" id="catalog-search-form" method="get">
-<label for="catalog-query">按用途/能力描述检索</label>
+<section class="card catalog-search-card">
+<form class="toolbar catalog-toolbar" id="catalog-search-form" method="get">
+<label class="sr-only" for="catalog-query">按用途/能力描述检索</label>
 <input class="toolbar-search" id="catalog-query" name="q" autocomplete="off" maxlength="200" placeholder="例如：销售报表汇总" type="search"/>
-<button id="catalog-search-submit" data-icon="search" type="submit">检索</button><span class="toolbar-note">只检索你有权读取且未撤销的已发布版本</span>
+<button class="btn btn-primary" id="catalog-search-submit" data-icon="search" type="submit">检索</button>
+<span class="toolbar-note">只检索你有权读取且未撤销的已发布版本</span>
 </form>
 <p class="hint" id="catalog-retrieval" aria-live="polite" role="status"></p>
 <p class="status" id="catalog-status" aria-live="polite" role="status">正在加载…</p>
 </section>
-<section class="card">
-<h2>可用应用</h2>
-<p class="hint" id="catalog-count"></p>
-<ul class="app-cards" id="catalog-results" data-auth-content=""></ul>
+<section class="card catalog-results-card">
+<div class="card-head"><h2>可用应用</h2><p class="hint" id="catalog-count"></p></div>
+<p class="hint catalog-legend">每行右侧的「用这个版本提交」会带上该版本进入会话页；没有生效版本的应用不会出现，即「暂无可用版本」。</p>
+<ul class="catalog-rows" id="catalog-results" data-auth-content=""></ul>
 <p class="empty-state" id="catalog-empty" hidden=""></p>
-<button id="catalog-next" hidden="" type="button">下一页</button>
+<div class="catalog-pager"><span class="hint">分页来自服务端游标；「下一页」继续检索同一条件。</span><button class="btn btn-small" id="catalog-next" hidden="" type="button">下一页</button></div>
 </section>
 </div></main>
 </div><script src="/assets/ui.js"></script>
@@ -69,6 +169,16 @@
       statusElement.className = 'status ' + (kind || '');
     }
 
+    function shortID(value) {
+      const text = String(value || '');
+      return text.length > 12 ? text.slice(0, 8) + '…' : text;
+    }
+
+    function initialOf(name) {
+      const text = String(name || '').trim();
+      return text ? Array.from(text)[0] : '?';
+    }
+
     function fact(label, values) {
       if (!values || values.length === 0) {
         return null;
@@ -84,35 +194,101 @@
 
     function renderRetrieval(retrieval) {
       const described = describeRetrieval(retrieval);
+      const source = described.source === 'fallback'
+        ? 'fallback'
+        : (described.source === 'index' ? 'index' : 'unknown');
       const badge = document.createElement('span');
-      badge.className = 'badge ' + (described.source === 'fallback' ? 'fallback' : 'index');
+      badge.className = 'catalog-badge';
+      badge.setAttribute('data-source', source);
       badge.textContent = described.label;
-      retrievalElement.replaceChildren(
-        badge,
-        document.createTextNode(' ' + described.explanation
-          + '（已复核 ' + described.rechecked + ' 条，拒绝 ' + described.rejectedByRecheck + ' 条）'),
-      );
+      const explanation = document.createElement('span');
+      explanation.className = 'hint';
+      explanation.textContent = described.explanation
+        + '（已复核 ' + described.rechecked + ' 条，拒绝 ' + described.rejectedByRecheck + ' 条）';
+      retrievalElement.replaceChildren(badge, explanation);
     }
 
     // Every node is built with textContent: card text is user/creator data and is
-    // never parsed as markup.
+    // never parsed as markup. One row is one readable published version; the
+    // submit link is the path the catalog is for, so it stays the row action.
     function renderItem(item) {
       const described = describeCatalogHit(item);
+      const available = Boolean(described.versionID);
       const entry = document.createElement('li');
-      const title = document.createElement('p');
-      title.className = 'card-purpose';
+      entry.className = 'catalog-row';
+
+      const head = document.createElement('div');
+      head.className = 'catalog-row-head';
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar catalog-row-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.setAttribute('title', '应用名称首字');
+      avatar.textContent = initialOf((item && item.application_name) || '');
+      const title = document.createElement('div');
+      title.className = 'catalog-row-title';
       const name = document.createElement('strong');
-      name.textContent = described.title;
-      title.appendChild(name);
-      const version = document.createElement('code');
-      version.textContent = ' ' + described.versionID;
-      title.appendChild(version);
-      entry.appendChild(title);
+      name.textContent = (item && item.application_name) || '未命名应用';
+      const sub = document.createElement('span');
+      sub.className = 'catalog-row-sub';
+      sub.title = described.applicationID;
+      sub.textContent = '应用 ID ' + shortID(described.applicationID);
+      title.append(name, sub);
+      const versionPill = document.createElement('span');
+      versionPill.className = 'pill';
+      versionPill.setAttribute('data-tone', available ? 'success' : 'muted');
+      versionPill.setAttribute('data-shape', available ? 'check' : 'square');
+      versionPill.textContent = available ? '可用 · ' + described.versionLabel : '暂无可用版本';
+      head.append(avatar, title, versionPill);
+
+      if (available) {
+        const useLink = document.createElement('a');
+        useLink.className = 'btn btn-secondary btn-small catalog-row-action';
+        useLink.href = catalogSubmitTarget(item);
+        useLink.textContent = '用这个版本提交 →';
+        head.appendChild(useLink);
+      } else {
+        // No active version means the server has nothing to submit for this row;
+        // the page says so instead of rendering a link that cannot work.
+        const unavailable = document.createElement('span');
+        unavailable.className = 'catalog-unavailable';
+        unavailable.textContent = '没有生效版本：未发布或已撤销';
+        head.appendChild(unavailable);
+      }
+      entry.appendChild(head);
 
       const purpose = document.createElement('p');
-      purpose.className = 'facts';
+      purpose.className = 'catalog-row-purpose';
       purpose.textContent = '用途：' + (described.purpose || '（未填写用途）');
       entry.appendChild(purpose);
+
+      const meta = document.createElement('div');
+      meta.className = 'catalog-row-meta';
+      const versionLine = document.createElement('span');
+      versionLine.textContent = available ? '版本 ' + described.versionLabel : '版本 —';
+      const versionIDLine = document.createElement('span');
+      versionIDLine.title = described.versionID;
+      versionIDLine.appendChild(document.createTextNode('版本 ID '));
+      const versionCode = document.createElement('code');
+      versionCode.textContent = available ? shortID(described.versionID) : '—';
+      versionIDLine.appendChild(versionCode);
+      meta.append(versionLine, versionIDLine);
+      const manifest = (item && item.manifest_sha256) || '';
+      if (manifest) {
+        const manifestLine = document.createElement('span');
+        manifestLine.title = manifest;
+        manifestLine.appendChild(document.createTextNode('manifest '));
+        const manifestCode = document.createElement('code');
+        manifestCode.textContent = String(manifest).slice(0, 12);
+        manifestLine.appendChild(manifestCode);
+        meta.appendChild(manifestLine);
+      }
+      entry.appendChild(meta);
+
+      const facts = document.createElement('details');
+      facts.className = 'catalog-row-facts';
+      const summary = document.createElement('summary');
+      summary.textContent = '能力卡：包含 / 不包含 / 必填输入 / 预期输出 / 示例';
+      facts.appendChild(summary);
       for (const [label, values] of [
         ['包含', described.includes],
         ['不包含', described.excludes],
@@ -122,14 +298,16 @@
       ]) {
         const line = fact(label, values);
         if (line) {
-          entry.appendChild(line);
+          facts.appendChild(line);
         }
       }
-
-      const useLink = document.createElement('a');
-      useLink.href = catalogSubmitTarget(item);
-      useLink.textContent = '用这个版本提交 →';
-      entry.appendChild(useLink);
+      if (!facts.children.length || facts.children.length === 1) {
+        const missing = document.createElement('p');
+        missing.className = 'facts';
+        missing.textContent = '这个版本的能力卡没有填写包含/不包含/输入/输出/示例。';
+        facts.appendChild(missing);
+      }
+      entry.appendChild(facts);
       resultsElement.appendChild(entry);
     }
 
