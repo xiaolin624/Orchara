@@ -150,7 +150,9 @@
     }
     function closeMenu() {
       document.body.classList.remove('nav-open');
-      setExpanded(true);
+      // T11 (#175): a closed drawer is collapsed; leaving the toggle reporting
+      // aria-expanded="true" told screen readers the menu was still open.
+      setExpanded(false);
       if (sidebar && media.matches) sidebar.inert = true;
       if (workspace) workspace.inert = false;
     }

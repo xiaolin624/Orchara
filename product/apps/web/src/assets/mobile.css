@@ -23,6 +23,11 @@
  * The touch target is 44x44 CSS px (WCAG 2.5.5) on everything a phone must tap:
  * navigation links, buttons, and the wide-table scroll region stays focusable.
  *
+ * T11 (#175): the shared phone shell (drawer sizes, bottom tab bar, safe-area
+ * clearance, 44px targets, 16px inputs) now lives once in design.css, which
+ * every page loads. This file keeps only the legacy page-level phone layout for
+ * the six journeys above; it no longer re-declares the shell.
+ *
  * Honest boundary: no browser is available in this build, so the committed
  * rules below are asserted statically and the DOM structure is executed under
  * Node; the real reflow is `not_run` (see reports/f12/T098-*.md).
@@ -246,12 +251,6 @@ body.page-chat {
 /* 3. Phone layout shared by every page that links this file.                */
 /* ------------------------------------------------------------------------- */
 @media (max-width: 720px) {
-  /* The page-local styles use 2rem padding and a fixed max-width; a phone must
-     use the width it has. The !important is scoped to this breakpoint. */
-  body {
-    padding: 0.9rem !important;
-    max-width: none !important;
-  }
 
   body > nav {
     display: flex;
@@ -375,9 +374,6 @@ body.page-chat {
 }
 
 @media (max-width: 480px) {
-  body {
-    padding: 0.7rem !important;
-  }
 
   .card,
   .panel {
@@ -402,110 +398,4 @@ body.page-chat {
   * {
     scroll-behavior: auto;
   }
-}
-
-/* ------------------------------------------------------------------------- */
-/* T1 (#165) mobile shell: drawer, bottom navigation, safe area, touch size.  */
-/* The six pages that load this file get the phone shell; desktop keeps the   */
-/* shared sidebar/topbar from design.css.                                     */
-/* ------------------------------------------------------------------------- */
-.mobile-tabbar { display: none; }
-
-@media (max-width: 720px) {
-  .mobile-tabbar {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 30;
-    display: flex;
-    align-items: stretch;
-    height: calc(52px + env(safe-area-inset-bottom, 0px));
-    padding: 0 2px env(safe-area-inset-bottom, 0px);
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-  }
-
-  .mobile-tabbar a {
-    display: flex;
-    flex: 1 1 0;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    min-width: 0;
-    min-height: 44px;
-    color: var(--muted);
-    font-size: 10px;
-    line-height: 1.3;
-    text-decoration: none;
-  }
-
-  .mobile-tabbar a .ui-icon { width: 20px; height: 20px; }
-  .mobile-tabbar a[aria-current="page"] { color: var(--accent-ink); font-weight: 600; }
-  .mobile-tabbar a[aria-current="page"] .ui-icon { color: var(--accent); }
-  .mobile-tabbar a:hover { background: var(--surface-2); text-decoration: none; }
-
-  /* T9 (#173): the fixed tab bar owns 52px, the safe area adds the home
-     indicator, and 16px keeps the last block clear of the bar's top border.
-     Without this clearance the last card scrolls underneath the bar. */
-  body[data-tabbar="true"] .page-content {
-    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 16px);
-  }
-
-  /* Drawer: the shared off-canvas sidebar, full height, safe-area aware. */
-  .app-sidebar { z-index: var(--z-drawer); }
-  .sidebar-hint { display: block; }
-  .app-sidebar nav a { height: auto; min-height: 44px; padding: 10px 8px; }
-  .app-sidebar nav a .ui-icon { width: 20px; height: 20px; }
-  .sidebar-footer {
-    height: auto;
-    min-height: 52px;
-    padding-top: 4px;
-    padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
-  }
-  #sidebar-toggle,
-  .sidebar-footer .btn-icon,
-  .topbar-account { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
-  .topbar-account .account-avatar { width: 28px; height: 28px; }
-
-  /* 44px touch targets and 16px inputs (iOS does not zoom on focus). */
-  .page-content button,
-  .page-content .btn,
-  .decision-buttons button { min-height: 44px; }
-  /* T9 (#173): the shared desktop density rule (.page-content .btn 34px) and
-     the page-level 24-26px chips must not shrink the phone target. Scoped to
-     the six tab-bar pages so the desktop-tuned pages keep their density. */
-  body[data-tabbar="true"] .page-content button,
-  body[data-tabbar="true"] .page-content .btn,
-  body[data-tabbar="true"] .page-content .segmented button,
-  body[data-tabbar="true"] .page-content .segmented a {
-    min-height: 44px;
-  }
-  body[data-tabbar="true"] .page-content .btn-icon { min-width: 44px; }
-  .page-content input[type="text"],
-  .page-content input[type="search"],
-  .page-content input[type="password"],
-  .page-content input[type="number"],
-  .page-content input[type="file"],
-  .page-content input[type="datetime-local"],
-  .page-content textarea,
-  .page-content select { font-size: 16px; }
-}
-
-@media (max-width: 480px) {
-  .mobile-tabbar a { font-size: 9px; }
-  .mobile-tabbar a .ui-icon { width: 18px; height: 18px; }
-}
-
-/* T1: the shared sidebar/topbar owns the page frame now, so the legacy phone
-   body gutter (14px) would inset the fixed drawer and topbar. Remove it; the
-   page content keeps its own 15px gutter from design.css. */
-@media (max-width: 720px) {
-  body { padding: 0 !important; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #app-sidebar,
-  body.nav-open .app-sidebar { transition: none !important; }
 }

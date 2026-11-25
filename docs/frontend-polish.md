@@ -90,6 +90,8 @@
 ### 2.2 排版
 
 - 正文 13px / 1.55；次要文字 12px；元数据与表格表头 11px；标签 12px/550。
+- 字号下限 11px：任何可见文本（含页内元数据、表格、徽标计数、时间戳、手机底栏）不得低于 11px；
+  仅 `sr-only` 这类视觉隐藏文本、以及用户代理自带的表单内部文本不在此限。层级靠颜色/字重区分，不靠继续缩小字号。
 - H1 24px/650/-0.3px；H2（区块标题）15px/650；H3 13px/650；页头描述 13px `--text-2`，最大 68ch。
 - 数字（计数、时间、版本、run id）用 `font-variant-numeric: tabular-nums`；节点 id、hash、JSON 用 `--font-mono`。
 - 中文不加大写英文标记；eyebrow 仅在品牌/入口页保留，业务页用「区块标题 + 12px 说明」。
@@ -183,7 +185,10 @@ select、checkbox/radio、卡片/区块（带标题槽与操作槽）、表格�
 
 ## 6. 不可破坏的契约（实现前必读 EXPLORATION.md §2、§5）
 
-- 22 个 HTML 数量不变；每个页面唯一 `<h1>`、唯一 `aria-current="page"`、恰好一个 `link[href="/assets/design.css"]`。
+- 22 个 HTML 数量不变；每个页面唯一 `<h1>`、恰好一个 `link[href="/assets/design.css"]`。
+- `aria-current="page"` 按导航地标判定：每个导航地标（`nav` / `[role="navigation"]`）内最多一个
+  `aria-current="page"`，且当前页所在的地标各有一个；侧栏主导航（`nav[data-orchara-nav]`）必须恰好一个。
+  面包屑与手机 tabbar 各自标一次是允许的（它们本是不同地标），同一地标内不得出现两个。
 - `<script src="/assets/x.js"></script>` 精确子串与顺序契约；`runstream → runstate-guard → 页面脚本`；不得加 `defer`/`type=module`。
 - `data-runstate-paused` 必须写在 `id=` 之后；6 个暂停按钮一个都不能少。
 - `nav.js` 会清空重写所有 `<nav>`，只有 `data-static-navigation="true"` 幸存。
@@ -192,3 +197,10 @@ select、checkbox/radio、卡片/区块（带标题槽与操作槽）、表格�
 - 全仓库不得出现 `runStream` 字面量（连注释）；用 `runstream.js` 或「共享 Run 状态模块」。
 - 画布源码改动必须 `npm.cmd run build` 并提交产物。
 - `verify_frontend.py` 的硬编码样式断言随新 token 同步更新，但行为断言（身份、导航、唯一性、无溢出、reduced-motion、logout）不得放宽。
+
+## 7. 已知取舍
+
+两轴复核（T11 #175）确认以下两项为「可接受但需记录」，本票不修：
+
+1. **静态外壳重复**：22 个页面各自内嵌同一份约 1.1KB 的侧栏/顶栏静态 HTML（`aside.app-sidebar`、`div.workspace-bar`、`nav-scrim` 等）；`nav.js` 只重写导航条目，不生成外壳。本仓库没有模板系统或页面构建步骤，引入模板会改变「静态 HTML 由 API 直接提供、无构建依赖」的部署形态，也会牵动 22 页的静态断言口径，超出本轮修复范围。代价是 22 份重复；收益是每页可直接打开且无构建步骤。若后续要统一，应另开模板票，并同步 `verify_frontend.py` 与壳层断言。
+2. **chat 取数函数独立成对**：`chat.js` 的 `readArtifactText` 与 `runs.js` 的 `fetchArtifactText` 是同构实现（同一内容端点、`credentials: same-origin`、`cache: no-store`、`redirect: error`）。保持独立，因为 `/chat` 不加载 `runs.js`，为一次 GET 引入整个运行页资产会把对话页耦合到运行页。请求形状已由 `tests/f08/test_t166_chat_workspace.py` 断言；契约变化时两处必须同时改（`chat.js` 的函数注释已标注来源与等价性）。

@@ -138,11 +138,13 @@ def test_the_editor_and_the_apps_page_link_into_the_debug_entry(t027_stack) -> N
     assert editor.status == 200, editor.text
     assert 'id="debug-entry"' in editor.text, "the editor has no debug entry"
     # T4 (#168) renamed the visible entry from "调试当前草稿" to
-    # "打开私有调试页". Pin the anchor and its Chinese label instead of the
-    # exact copy, so the entry stays user-visible without freezing wording.
+    # "打开私有调试页". T11 (#175) restored the exact copy assertion: a
+    # substring check for "调试" would keep passing after any wording drift.
     entry = re.search(r'<a[^>]*id="debug-entry"[^>]*>(.*?)</a>', editor.text, re.S)
     assert entry is not None, "the editor debug entry must be a labelled anchor"
-    assert "调试" in entry.group(1), "the debug entry must be labelled in Chinese"
+    assert entry.group(1).strip() == "打开私有调试页", (
+        "the debug entry copy changed: " + entry.group(1).strip()
+    )
 
     editor_js = t027_stack.server.http.get("/assets/editor.js")
     assert editor_js.status == 200

@@ -2,9 +2,10 @@
  * F04A/T040 canvas styles, rebuilt by T4 (GitHub #168) as the editor workbench.
  *
  * This file may only CONSUME the shared design tokens declared in
- * assets/design.css (var(--bg) …); it never re-declares them. The one literal
- * colour is the "control" node accent (#7a5c2e) the polish spec names for
- * condition/join/approval nodes, which has no equivalent shared token.
+ * assets/design.css (var(--bg) 鈥?; it never re-declares them. Its one local
+ * token is the "control" node accent (--canvas-node-control) that the polish
+ * spec names for condition/join/approval nodes and that design.css has no
+ * equivalent for; it is defined once, below.
  *
  * Layout: node library 232px | stage (flex) | inspector 320px. The host page
  * sets the workbench height; this file fills it (height: 100%).
@@ -15,6 +16,10 @@
  * ------------------------------------------------------------------------- */
 
 .orchara-canvas {
+  /* T11 (#175): canvas-local token, defined once. The shared palette has no
+     control-node accent, and the four node rules below must not repeat a bare
+     hex. */
+  --canvas-node-control: #7a5c2e;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -86,7 +91,7 @@
   cursor: text;
 }
 
-/* design.css loads after this file, and its `.page-content input…` rules are
+/* design.css loads after this file, and its `.page-content input鈥 rules are
    intentionally specific. The #canvas-root prefix keeps the workbench compact
    without touching the shared stylesheet. */
 #canvas-root .node-library .node-library-search input {
@@ -159,7 +164,7 @@
 .palette-group[data-node-group="input"] .palette-group-title::before { background: var(--teal); }
 .palette-group[data-node-group="model"] .palette-group-title::before,
 .palette-group[data-node-group="capability"] .palette-group-title::before { background: var(--accent); }
-.palette-group[data-node-group="control"] .palette-group-title::before { background: #7a5c2e; }
+.palette-group[data-node-group="control"] .palette-group-title::before { background: var(--canvas-node-control); }
 .palette-group[data-node-group="output"] .palette-group-title::before { background: var(--muted); }
 
 .node-library .palette {
@@ -215,7 +220,7 @@
 .palette-desc {
   overflow: hidden;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -261,7 +266,7 @@
 .node-library-foot .hint {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.6;
 }
 
@@ -291,7 +296,7 @@
 .node-type-approval .node-icon,
 .orchara-node-condition .node-icon,
 .orchara-node-join .node-icon,
-.orchara-node-approval .node-icon { background: var(--warning-soft); color: #7a5c2e; }
+.orchara-node-approval .node-icon { background: var(--warning-soft); color: var(--canvas-node-control); }
 .node-type-end .node-icon,
 .orchara-node-end .node-icon { background: var(--surface-2); color: var(--muted); }
 .node-type-python .node-icon,
@@ -338,7 +343,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   pointer-events: none;
 }
 
@@ -472,7 +477,7 @@
   background: var(--surface);
 }
 
-/* the 3px node type bar: input teal, model accent, control #7a5c2e, output muted */
+/* the 3px node type bar: input teal, model accent, control --canvas-node-control, output muted */
 .orchara-flow-node::before {
   content: "";
   position: absolute;
@@ -485,7 +490,7 @@
 .orchara-flow-node.orchara-node-model::before { background: var(--accent); }
 .orchara-flow-node.orchara-node-condition::before,
 .orchara-flow-node.orchara-node-join::before,
-.orchara-flow-node.orchara-node-approval::before { background: #7a5c2e; }
+.orchara-flow-node.orchara-node-approval::before { background: var(--canvas-node-control); }
 .orchara-flow-node.orchara-node-end::before { background: var(--muted); }
 .orchara-flow-node.orchara-node-python::before,
 .orchara-flow-node.orchara-node-agent::before,
@@ -517,7 +522,7 @@
   overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -531,7 +536,7 @@
   grid-column: 1 / -1;
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-11);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -565,9 +570,9 @@
   padding: 0 3px;
   transform: translateY(-50%);
   background: var(--surface);
-  color: #7a5c2e;
+  color: var(--canvas-node-control);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--fs-11);
   pointer-events: none;
 }
 
@@ -600,7 +605,7 @@
 .vue-flow__edge-text {
   fill: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 .vue-flow__edge-textbg {
@@ -653,7 +658,7 @@
   overflow-wrap: anywhere;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.5;
 }
 
@@ -782,7 +787,7 @@
   padding: 0;
   background: none;
   color: var(--text);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 #canvas-root .node-info-list dt,
@@ -859,7 +864,7 @@ label.field-label {
   align-items: center;
   margin: 0;
   color: var(--text-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
   white-space: nowrap;
 }
 
@@ -936,12 +941,12 @@ label.field-label {
   overflow-wrap: anywhere;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 .type-chip {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   white-space: nowrap;
 }
 
@@ -952,7 +957,7 @@ label.field-label {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 .schema-json.readonly {
@@ -984,7 +989,7 @@ label.field-label {
 
 .case-index {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   text-align: center;
 }
 
@@ -999,7 +1004,7 @@ label.field-label {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 .port-chip.connected {
@@ -1094,7 +1099,7 @@ label.field-label {
   background: none;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -1122,7 +1127,7 @@ label.field-label {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 
 .panel-actions {

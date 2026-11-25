@@ -717,6 +717,12 @@ function attachmentPickerLines(artifactIDs) {
  * conversation page threw "fetchArtifactText is not defined" for every sealed
  * request/result body and the message stream stayed empty. The conversation page
  * reads its own sealed bytes now; nothing about the contract changes.
+ *
+ * T11 (#175): this function deliberately stays the independent twin of
+ * runs.js's `fetchArtifactText` (same endpoint, credentials, no-store and
+ * redirect:error shape, asserted in tests/f08/test_t166_chat_workspace.py)
+ * instead of importing it, because /chat must not start depending on the whole
+ * runs.js asset for one GET. Change the request shape in both places together.
  */
 async function readArtifactText(artifactID) {
   const response = await fetch(artifactContentPath(artifactID), {
@@ -1282,6 +1288,58 @@ function setSessionsDrawer(document, open) {
 function sessionsDrawerOpen(document) {
   return Boolean(document.body && document.body.classList &&
     document.body.classList.contains('chat-sessions-open'));
+}
+
+/**
+ * T11 (#175): the phone context sheet.
+ *
+ * The desktop right rail is this same `#chat-context` element: on a phone it
+ * becomes a bottom sheet opened from the header. It reuses the rail's existing
+ * DOM and its renderers (the current-run card, the queue, the outputs, the data
+ * destination note and the handoff form), so opening it issues no request of
+ * its own; it only presents what the page already loaded. While closed on a
+ * phone the sheet is inert, and Escape or the scrim returns focus to the
+ * toggle.
+ */
+function setContextDrawer(document, open) {
+  if (!document.body || !document.body.classList) {
+    return;
+  }
+  document.body.classList.toggle('chat-context-open', open);
+  if (typeof document.querySelectorAll !== 'function') {
+    return;
+  }
+  for (const button of document.querySelectorAll('[data-context-toggle]')) {
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  const panel = document.getElementById('chat-context');
+  const phone = typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 720px)').matches;
+  if (panel) {
+    panel.inert = Boolean(phone && !open);
+  }
+  if (open && panel && typeof panel.querySelector === 'function') {
+    const close = panel.querySelector('[data-context-close]');
+    if (close && typeof close.focus === 'function') {
+      close.focus();
+    }
+  }
+}
+
+function contextDrawerOpen(document) {
+  return Boolean(document.body && document.body.classList &&
+    document.body.classList.contains('chat-context-open'));
+}
+
+/** Escape and the scrim return focus to the header toggle that opened the sheet. */
+function focusContextToggle(document) {
+  if (typeof document.querySelector !== 'function') {
+    return;
+  }
+  const toggle = document.querySelector('[data-context-toggle]');
+  if (toggle && typeof toggle.focus === 'function') {
+    toggle.focus();
+  }
 }
 
 /**
@@ -2327,11 +2385,41 @@ function initChat() {
         setSessionsDrawer(document, false);
       });
     }
+    // T11 (#175): the phone context sheet shares the session drawer pattern.
+    for (const button of document.querySelectorAll('[data-context-toggle]')) {
+      button.addEventListener('click', () => {
+        setContextDrawer(document, !contextDrawerOpen(document));
+      });
+    }
+    for (const button of document.querySelectorAll('[data-context-close]')) {
+      button.addEventListener('click', () => {
+        setContextDrawer(document, false);
+        focusContextToggle(document);
+      });
+    }
+  }
+  if (typeof document.querySelectorAll === 'function') {
+    // The sheet is inert while it is closed on a phone; sync that state on load
+    // and when the viewport crosses the phone breakpoint.
+    setContextDrawer(document, contextDrawerOpen(document));
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      const contextMedia = window.matchMedia('(max-width: 720px)');
+      const syncContextDrawer = () => {
+        setContextDrawer(document, contextDrawerOpen(document));
+      };
+      if (typeof contextMedia.addEventListener === 'function') {
+        contextMedia.addEventListener('change', syncContextDrawer);
+      }
+    }
   }
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('keydown', (event) => {
       if (event && event.key === 'Escape' && sessionsDrawerOpen(document)) {
         setSessionsDrawer(document, false);
+      }
+      if (event && event.key === 'Escape' && contextDrawerOpen(document)) {
+        setContextDrawer(document, false);
+        focusContextToggle(document);
       }
     });
   }
