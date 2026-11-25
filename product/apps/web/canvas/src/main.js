@@ -17,7 +17,14 @@
  */
 
 import { createApp, h, reactive, nextTick } from 'vue';
-import { VueFlow, applyNodeChanges, applyEdgeChanges, Handle, Position } from '@vue-flow/core';
+import {
+  VueFlow,
+  applyNodeChanges,
+  applyEdgeChanges,
+  Handle,
+  MarkerType,
+  Position,
+} from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import '@vue-flow/core/dist/style.css';
@@ -61,6 +68,40 @@ import {
 } from './lib/callapp.js';
 
 const SCHEMA_TYPES = ['string', 'integer', 'number', 'boolean', 'object', 'array'];
+
+/*
+ * T4 (GitHub #168): the node library mirrors the graph's four regions.
+ * `NODE_LABELS`/`NODE_TYPES` stay the single vocabulary; the groups only decide
+ * where a type is offered. Descriptions are the short, honest summary of what
+ * the existing node config panels already do (no new capability is implied).
+ */
+const NODE_GROUPS = [
+  { id: 'input', label: '输入', types: ['start'] },
+  { id: 'capability', label: '能力', types: ['model', 'python', 'retrieve', 'call_app', 'agent'] },
+  { id: 'control', label: '控制', types: ['condition', 'join', 'approval'] },
+  { id: 'output', label: '输出', types: ['end'] },
+];
+
+const NODE_DESCRIPTIONS = {
+  start: '接收会话输入与参数',
+  python: '运行受限 Python 脚本',
+  agent: '受控 Agent 节点',
+  model: '调用推理模型生成内容',
+  retrieve: '从知识库检索相关片段',
+  call_app: '调用已发布的子应用',
+  condition: '按表达式选择执行路径',
+  join: '并行执行后在汇合点等待',
+  approval: '发起前等待人工确认',
+  end: '声明输出字段并结束运行',
+};
+
+/** History depth for undo/redo; edits are coalesced while the creator types. */
+const HISTORY_LIMIT = 60;
+const HISTORY_COALESCE_MS = 450;
+
+function nodeDescription(type) {
+  return NODE_DESCRIPTIONS[type] || '该节点类型不在本画布的创作面板内';
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -1483,7 +1524,40 @@ function renderEdgePanel(state, edge, index) {
 
 function refreshLocalProblems(state) {
   state.localProblems = regionProblems(state.definition);
+  syncInvalidNodes(state);
   return state.localProblems;
+}
+
+/**
+ * The error state is visual, so it must be recomputed from the located errors
+ * (server + local) rather than from a stale render closure. Only nodes whose
+ * state actually changed are replaced, so Vue Flow keeps positions/selection.
+ */
+function syncInvalidNodes(state) {
+  const invalid = new Set();
+  for (const error of state.errors || []) {
+    if (error && error.nodeId) {
+      invalid.add(error.nodeId);
+    }
+  }
+  for (const problem of state.localProblems || []) {
+    if (problem && problem.nodeId) {
+      invalid.add(problem.nodeId);
+    }
+  }
+  state.flowNodes = state.flowNodes.map((node) => {
+    const wantInvalid = invalid.has(node.id);
+    const hasInvalid = Boolean(node.data && node.data.invalid);
+    if (wantInvalid === hasInvalid) {
+      return node;
+    }
+    const type = (node.data && node.data.nodeType) || 'python';
+    return {
+      ...node,
+      class: 'orchara-node orchara-node-' + type + (wantInvalid ? ' orchara-node-invalid' : ''),
+      data: { ...node.data, invalid: wantInvalid },
+    };
+  });
 }
 
 function renderErrorList(state) {
@@ -1598,6 +1672,7 @@ async function validate(state) {
     refreshLocalProblems(state);
     state.status = '页面 API 助手不可用，无法请求服务端校验；已显示本地规则提示。';
     state.statusKind = 'bad';
+    notifyValidation(state, { valid: false });
     return;
   }
   try {
@@ -1617,17 +1692,21 @@ async function validate(state) {
         ? '（本地仍有 ' + state.localProblems.length + ' 条提示，以服务端为准。）'
         : (state.manifestHash ? ' manifest SHA256 已显示。' : ''));
       state.statusKind = 'ok';
+      notifyValidation(state, { valid: true });
       return;
     }
+    refreshLocalProblems(state);
     state.status = '校验失败：' + state.errors.length + ' 个定位错误。点击错误跳转到节点字段或高亮连接。';
     state.statusKind = 'bad';
     if (state.errors.length > 0) {
       focusError(state, state.errors[0]);
     }
+    notifyValidation(state, { valid: false });
   } catch (error) {
     refreshLocalProblems(state);
     state.status = '校验请求失败 [' + (error.code || 'error') + '] ' + error.message;
     state.statusKind = 'bad';
+    notifyValidation(state, { valid: false });
   }
 }
 
@@ -1724,8 +1803,19 @@ function rebuild(state) {
 }
 
 function emitChange(state) {
+  const definition = clone(state.definition);
+  const layout = clone(state.layout);
+  // Vue Flow reports dimension/hover changes that never touch the documents.
+  // Only a real definition/layout change reaches the page save path (and the
+  // undo history), so a fresh draft does not look edited on first paint.
+  const signature = JSON.stringify([definition, layout]);
+  if (signature === state.lastEmitSignature) {
+    return;
+  }
+  state.lastEmitSignature = signature;
+  recordHistory(state);
   if (typeof state.options.onChange === 'function') {
-    state.options.onChange(clone(state.definition), clone(state.layout));
+    state.options.onChange(definition, layout);
   }
 }
 
@@ -1736,12 +1826,189 @@ function commit(state) {
 }
 
 // ---------------------------------------------------------------------------
+// T4 (#168): draft history, viewport commands and validation notifications
+// ---------------------------------------------------------------------------
+//
+// History snapshots the two documents the page saves (definition + layout) and
+// never the widget-only state. Consecutive edits inside a short window replace
+// the newest entry, so a burst of typing undoes as one step. Undo/redo rebuild
+// the graph from the snapshot, exactly like loading a draft does, so ids,
+// selection and located errors cannot drift from the documents.
+
+function snapshotOf(state) {
+  return { definition: clone(state.definition), layout: clone(state.layout) };
+}
+
+function snapshotKey(snapshot) {
+  return JSON.stringify(snapshot);
+}
+
+function notifyHistory(state) {
+  if (typeof state.options.onHistory !== 'function') {
+    return;
+  }
+  const index = typeof state.historyIndex === 'number' ? state.historyIndex : 0;
+  state.options.onHistory({
+    canUndo: index > 0,
+    canRedo: index < state.history.length - 1,
+    depth: state.history.length,
+    index,
+  });
+}
+
+function recordHistory(state) {
+  if (state.historyApplying) {
+    return;
+  }
+  const snapshot = snapshotOf(state);
+  const key = snapshotKey(snapshot);
+  const current = state.history[state.historyIndex];
+  if (current && snapshotKey(current) === key) {
+    return;
+  }
+  const now = Date.now();
+  const coalesce = current !== undefined
+    && state.historyIndex === state.history.length - 1
+    && now - (state.lastHistoryAt || 0) < HISTORY_COALESCE_MS;
+  if (coalesce) {
+    state.history[state.historyIndex] = snapshot;
+  } else {
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    state.history.push(snapshot);
+    if (state.history.length > HISTORY_LIMIT) {
+      state.history.shift();
+    }
+    state.historyIndex = state.history.length - 1;
+  }
+  state.lastHistoryAt = now;
+  notifyHistory(state);
+}
+
+function applyHistorySnapshot(state, snapshot) {
+  state.historyApplying = true;
+  try {
+    state.definition = clone(snapshot.definition);
+    state.layout = clone(snapshot.layout);
+    const graph = definitionToGraph(state.definition, state.layout);
+    state.flowNodes = graph.nodes;
+    state.flowEdges = graph.edges;
+    state.selectedId = state.definition.nodes[0] ? state.definition.nodes[0].id : '';
+    state.selectedEdgeId = '';
+    state.highlightedEdgeId = '';
+    state.errors = [];
+    refreshLocalProblems(state);
+    emitChange(state);
+  } finally {
+    state.historyApplying = false;
+  }
+  notifyHistory(state);
+}
+
+function undo(state) {
+  if (state.historyIndex <= 0) {
+    return false;
+  }
+  state.historyIndex -= 1;
+  applyHistorySnapshot(state, state.history[state.historyIndex]);
+  state.status = '已撤销到上一个编辑状态。';
+  state.statusKind = '';
+  return true;
+}
+
+function redo(state) {
+  if (state.historyIndex >= state.history.length - 1) {
+    return false;
+  }
+  state.historyIndex += 1;
+  applyHistorySnapshot(state, state.history[state.historyIndex]);
+  state.status = '已重做下一个编辑状态。';
+  state.statusKind = '';
+  return true;
+}
+
+// The Vue Flow store instance is not draft state: keep it out of the reactive
+// graph so proxying a library store can never surprise the canvas actions.
+let activeFlow = null;
+
+function flowApiOf(state) {
+  return activeFlow && typeof activeFlow === 'object' ? activeFlow : null;
+}
+
+function zoomIn(state) {
+  const flow = flowApiOf(state);
+  if (flow && typeof flow.zoomIn === 'function') {
+    flow.zoomIn({ duration: 120 });
+    return true;
+  }
+  return false;
+}
+
+function zoomOut(state) {
+  const flow = flowApiOf(state);
+  if (flow && typeof flow.zoomOut === 'function') {
+    flow.zoomOut({ duration: 120 });
+    return true;
+  }
+  return false;
+}
+
+function fitView(state) {
+  const flow = flowApiOf(state);
+  if (flow && typeof flow.fitView === 'function') {
+    flow.fitView({ padding: 0.18, duration: 160 });
+    return true;
+  }
+  return false;
+}
+
+/** Re-seat every node with the deterministic default layout, then fit the view. */
+function autoLayout(state) {
+  const layout = defaultLayout(state.definition);
+  const positions = layout && layout.positions ? layout.positions : {};
+  const flow = flowApiOf(state);
+  Object.keys(positions).forEach((id) => {
+    if (flow && typeof flow.findNode === 'function') {
+      const node = flow.findNode(id);
+      if (node && node.position) {
+        node.position = { ...positions[id] };
+        return;
+      }
+    }
+    const node = state.flowNodes.find((candidate) => candidate.id === id);
+    if (node) {
+      node.position = { ...positions[id] };
+    }
+  });
+  state.layout = layoutFromGraph(state.flowNodes, state.layout);
+  emitChange(state);
+  fitView(state);
+  state.status = '已按节点顺序重新排布画布（只写入 layout，不改变执行定义）。';
+  state.statusKind = 'ok';
+  return true;
+}
+
+function notifyValidation(state, outcome) {
+  if (typeof state.options.onValidation !== 'function') {
+    return;
+  }
+  state.options.onValidation({
+    valid: Boolean(outcome && outcome.valid),
+    errors: Array.isArray(state.errors) ? state.errors.length : 0,
+    localProblems: Array.isArray(state.localProblems) ? state.localProblems.length : 0,
+    manifestHash: state.manifestHash || '',
+    message: state.status || '',
+    kind: state.statusKind || '',
+  });
+}
+
+// ---------------------------------------------------------------------------
 // rendering
 // ---------------------------------------------------------------------------
 
 function renderFlowNode(props) {
   const data = (props && props.data) || {};
   const type = data.nodeType || 'python';
+  const nodeId = String(props && props.id ? props.id : (data.nodeId || ''));
   const ports = type === 'condition'
     ? (Array.isArray(data.ports) && data.ports.length ? data.ports : conditionPorts(data.config || {}))
     : [];
@@ -1777,19 +2044,30 @@ function renderFlowNode(props) {
       class: 'orchara-handle orchara-handle-source',
     }));
   }
+  // A condition node grows a little with each named port; every other node is
+  // one title/id pair tall. The actual box is sized by the stylesheet.
   const height = type === 'condition'
-    ? Math.max(48, ports.length * 26 + 28)
-    : 48;
+    ? Math.max(58, ports.length * 26 + 38)
+    : 58;
   const sourceLabels = type === 'join' && Array.isArray(data.sourceLabels)
     ? data.sourceLabels
     : [];
+  const invalid = data.invalid === true;
   return h('div', {
     class: 'orchara-flow-node orchara-node-' + type,
+    // `data-node-type` belongs to the palette buttons (the verify contract);
+    // the rendered node uses its own attribute so selectors never collide.
+    'data-flow-node-type': type,
+    'data-flow-node-id': nodeId,
+    'data-invalid': invalid ? 'true' : 'false',
+    title: (NODE_LABELS[type] || type) + (nodeId ? ' · ' + nodeId : ''),
     style: { minHeight: height + 'px' },
   }, [
     nodeIcon(type),
-    h('span', { class: 'orchara-flow-label' }, data.label || type),
-    h('span', { class: 'orchara-flow-type' }, type),
+    h('span', { class: 'orchara-flow-copy' }, [
+      h('span', { class: 'orchara-flow-label' }, data.label || type),
+      h('span', { class: 'orchara-flow-id' }, nodeId || type),
+    ]),
     sourceLabels.length
       ? h('span', { class: 'orchara-flow-sources' }, '来源: ' + sourceLabels.join(' · '))
       : null,
@@ -1818,75 +2096,286 @@ function nodeIcon(type) {
   ]);
 }
 
+function searchIcon() {
+  return h('svg', {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': 1.7,
+    'stroke-linecap': 'round',
+  }, [h('circle', { cx: 11, cy: 11, r: 6.5 }), h('path', { d: 'm16 16 4 4' })]);
+}
+
+function paletteMatches(type, query) {
+  if (!query) {
+    return true;
+  }
+  const haystack = [
+    type,
+    NODE_LABELS[type] || '',
+    nodeDescription(type),
+  ].join(' ').toLowerCase();
+  return haystack.includes(query);
+}
+
+function paletteButton(state, type) {
+  const readOnly = Boolean(state.options && state.options.readOnly);
+  const unavailable = readOnly || (!REPEATABLE_NODE_TYPES.includes(type)
+    && state.definition.nodes.some((node) => node.type === type));
+  return h('button', {
+    type: 'button',
+    class: 'palette-button node-type-' + type,
+    'data-node-type': type,
+    'aria-label': (readOnly
+      ? '只读视图，无法添加 '
+      : (unavailable ? '已存在，无法再添加 ' : '添加')) + (NODE_LABELS[type] || type) + '节点',
+    disabled: unavailable,
+    onClick: () => addFromPalette(state, type),
+  }, [
+    nodeIcon(type),
+    h('span', { class: 'palette-copy' }, [
+      h('span', { class: 'palette-name' }, NODE_LABELS[type] || type),
+      h('span', { class: 'palette-desc' }, nodeDescription(type)),
+    ]),
+    h('span', { class: 'add-indicator', 'aria-hidden': 'true' }, '+'),
+  ]);
+}
+
+function addFromPalette(state, type) {
+  const result = addNode(state.flowNodes, state.flowEdges, type, state.layout);
+  if (!result.ok) {
+    state.status = result.reason;
+    state.statusKind = 'bad';
+    return;
+  }
+  state.flowNodes = [...state.flowNodes, result.node];
+  rebuild(state);
+  state.selectedId = result.node.id;
+  state.selectedEdgeId = '';
+  state.status = '已添加 ' + (NODE_LABELS[type] || type) + '（' + result.node.id + '）。';
+  state.statusKind = 'ok';
+  ensureCallAppForSelection(state, result.node.id);
+}
+
+function renderNodeLibrary(state) {
+  const query = String(state.paletteQuery || '').trim().toLowerCase();
+  const groups = NODE_GROUPS
+    .map((group) => ({ ...group, types: group.types.filter((type) => paletteMatches(type, query)) }))
+    .filter((group) => group.types.length > 0);
+  const available = NODE_GROUPS.reduce((total, group) => total + group.types.length, 0);
+  return h('aside', { class: 'node-library', 'aria-label': '节点库' }, [
+    h('div', { class: 'node-library-head' }, [
+      h('h2', {}, '节点库'),
+      h('span', { class: 'node-library-count' }, available + ' 类'),
+    ]),
+    h('label', { class: 'node-library-search' }, [
+      h('span', { class: 'sr-only' }, '搜索节点'),
+      h('input', {
+        type: 'search',
+        placeholder: '搜索节点',
+        value: state.paletteQuery || '',
+        autocomplete: 'off',
+        onInput: (event) => { state.paletteQuery = event.target.value; },
+      }),
+      searchIcon(),
+    ]),
+    h('p', { class: 'node-library-hint' }, '拖拽到画布，或点击添加'),
+    ...(groups.length
+      ? groups.map((group) => h('div', {
+          class: 'palette-group',
+          'data-node-group': group.id,
+          key: 'group-' + group.id,
+        }, [
+          h('h3', { class: 'palette-group-title' }, group.label),
+          h('div', { class: 'palette', role: 'group', 'aria-label': group.label + '节点' },
+            group.types.map((type) => paletteButton(state, type))),
+        ]))
+      : [h('p', { class: 'node-library-empty' }, '没有匹配的节点；清空搜索可看到全部类型。')]),
+    h('div', { class: 'node-library-foot' }, [
+      h('p', { class: 'hint' }, '画布只编辑 definition 与 layout；保存与校验在页面工具条。'),
+    ]),
+  ]);
+}
+
+function nodeNeighbours(state, node) {
+  const edges = state.definition.edges || [];
+  return {
+    upstream: edges.filter((edge) => edge.target === node.id).map((edge) => edge.source),
+    downstream: edges.filter((edge) => edge.source === node.id).map((edge) => edge.target),
+  };
+}
+
+function renderNodeInfo(state, node) {
+  const neighbours = nodeNeighbours(state, node);
+  return h('section', { class: 'panel-group node-info', 'data-panel-group': 'info' }, [
+    h('h3', {}, '节点信息'),
+    h('dl', { class: 'node-info-list' }, [
+      h('div', {}, [h('dt', {}, '节点 id'), h('dd', {}, h('code', {}, node.id))]),
+      h('div', {}, [
+        h('dt', {}, '类型'),
+        h('dd', {}, (NODE_LABELS[node.type] || node.type) + ' · ' + node.type),
+      ]),
+      h('div', {}, [
+        h('dt', {}, '上游'),
+        h('dd', {}, neighbours.upstream.length ? neighbours.upstream.join(' · ') : '无'),
+      ]),
+      h('div', {}, [
+        h('dt', {}, '下游'),
+        h('dd', {}, neighbours.downstream.length ? neighbours.downstream.join(' · ') : '无'),
+      ]),
+    ]),
+  ]);
+}
+
+function renderPanelFields(state, selected, selectedEdge, selectedEdgeIndex) {
+  return h('div', { class: 'panel-fields' }, [
+    selected && selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'model' ? renderModelPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'retrieve' ? renderRetrievePanel(state.definition, state, selected) : null,
+    selected && selected.type === 'call_app' ? renderCallAppPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'condition' ? renderConditionPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'join' ? renderJoinPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'approval' ? renderApprovalPanel(state.definition, state, selected) : null,
+    selected && selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
+    selected && !NODE_TYPES.includes(selected.type)
+      ? [h('p', { class: 'hint' },
+          '该节点类型（' + selected.type + '）不在本画布的创作面板内；定义会原样保存，'
+          + '配置请用页面 JSON 视图编辑。')]
+      : null,
+    selectedEdge ? renderEdgePanel(state, selectedEdge, selectedEdgeIndex) : null,
+    selected ? [
+      h('h3', {}, '布局'),
+      h('p', { class: 'hint' },
+        '位置保存在独立的 layout.positions，不进入执行定义，也不改变发布哈希。'),
+    ] : null,
+  ]);
+}
+
+function renderConfigPanel(state, selected, selectedEdge, selectedEdgeIndex) {
+  const readOnly = Boolean(state.options && state.options.readOnly);
+  const title = selected
+    ? (NODE_LABELS[selected.type] || selected.type)
+    : (selectedEdge ? '连接' : '选择节点配置');
+  const subtitle = selected
+    ? selected.id
+    : (selectedEdge ? selectedEdge.source + ' → ' + selectedEdge.target : '点击画布中的节点或连线');
+  const fields = [
+    selected ? renderNodeInfo(state, selected) : null,
+    selected || selectedEdge
+      ? renderPanelFields(state, selected, selectedEdge, selectedEdgeIndex)
+      : h('p', { class: 'hint' },
+          '点击节点配置、点击连线编辑端口。条件节点按端口分出各分支，普通节点多出口前必须由 join 声明 fork；'
+          + '只有 join 可以多入。Delete 删除选中的节点或连线。'),
+    h('section', { class: 'panel-group', 'data-panel-group': 'validation' }, [
+      h('h3', {}, '校验'),
+      h('div', {
+        id: 'canvas-status',
+        class: 'status ' + (state.statusKind || ''),
+        role: 'status',
+      }, state.status || '画布已就绪。'),
+      renderErrorList(state),
+    ]),
+    h('section', { class: 'panel-group', 'data-panel-group': 'preflight' }, [
+      h('h3', {}, '发布前检查'),
+      h('p', { class: 'hint' },
+        '画布只校验节点与连线。发布前还需要在发布页确认用途说明、示例与测试证据；'
+        + 'layout 只影响视图，不改变执行内容。'),
+      state.localProblems.length
+        ? h('p', { class: 'hint' },
+            '本地规则提示 ' + state.localProblems.length + ' 条，点击「校验」后以服务端定位为准。')
+        : h('p', { class: 'hint' }, '本地规则没有发现节点或连线问题。'),
+    ]),
+  ];
+  return h('aside', { class: 'config-panel', 'aria-live': 'polite' }, [
+    h('div', { class: 'panel-head' }, [
+      h('div', {}, [
+        h('h2', {}, title),
+        h('p', { class: 'panel-sub' }, subtitle),
+      ]),
+      readOnly
+        ? h('span', { class: 'pill', 'data-tone': 'muted', 'data-shape': 'dash' }, '只读')
+        : (selected ? h('span', { class: 'pill', 'data-tone': 'accent', 'data-shape': 'dot' }, '已选中') : null),
+    ]),
+    readOnly
+      ? h('fieldset', { class: 'panel-fieldset panel-scroll', disabled: true }, fields)
+      : h('div', { class: 'panel-scroll' }, fields),
+    readOnly
+      ? h('p', { class: 'panel-readonly' }, '只读视图：保存草稿与校验需要创作者角色及该应用的写入权限。')
+      : h('div', { class: 'panel-actions' }, [
+          selected ? h('button', {
+            type: 'button',
+            class: 'btn btn-danger btn-small',
+            id: 'canvas-delete-node',
+            onClick: () => deleteSelectedNode(state, selected),
+          }, '删除节点') : null,
+          h('button', {
+            type: 'button',
+            class: 'btn btn-secondary btn-small',
+            id: 'canvas-validate',
+            onClick: () => validate(state),
+          }, '校验草稿'),
+        ]),
+  ]);
+}
+
+function deleteSelectedNode(state, selected) {
+  const removed = removeNode(state.flowNodes, state.flowEdges, selected.id);
+  state.flowNodes = removed.nodes;
+  state.flowEdges = removed.edges;
+  state.selectedId = '';
+  rebuild(state);
+  state.status = '已删除节点 ' + selected.id + '；配对 join 的悬空来源已清理。';
+  state.statusKind = 'ok';
+}
+
 function renderApp(state) {
   const nodes = state.flowNodes;
-  const edges = state.highlightedEdgeId
-    ? state.flowEdges.map((edge) => (edge.id === state.highlightedEdgeId
-      ? { ...edge, class: (edge.class || 'orchara-edge') + ' orchara-edge-invalid' }
-      : edge))
-    : state.flowEdges;
+  const edges = state.flowEdges.map((edge) => ({
+    ...edge,
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--muted)', width: 16, height: 16 },
+    class: (edge.class || 'orchara-edge')
+      + (edge.id === state.highlightedEdgeId ? ' orchara-edge-invalid' : ''),
+  }));
   const selected = state.definition.nodes.find((node) => node.id === state.selectedId);
   const selectedEdgeIndex = state.selectedEdgeId
     ? state.flowEdges.findIndex((edge) => edge.id === state.selectedEdgeId)
     : -1;
   const selectedEdge = selectedEdgeIndex >= 0 ? state.flowEdges[selectedEdgeIndex] : null;
-  const invalidNodeIds = new Set(state.errors.filter((error) => error.nodeId).map((error) => error.nodeId));
 
   return h('div', { class: 'orchara-canvas' }, [
-    h('div', { class: 'canvas-toolbar' }, [
-      h('div', { class: 'canvas-toolbar-heading' }, [h('strong', {}, '可视化编排'), h('span', {}, nodes.length + ' 个节点 · ' + edges.length + ' 条连线')]),
-      h('div', { class: 'toolbar-actions' }, [
-        h('button', {
-          type: 'button',
-          id: 'canvas-validate',
-          class: 'primary',
-          onClick: () => validate(state),
-        }, '校验草稿'),
-        h('button', {
-          type: 'button',
-          id: 'canvas-export',
-          onClick: () => downloadExport(state),
-        }, '导出工作流'),
-      ]),
-    ]),
     h('div', { class: 'canvas-body' }, [
-      h('aside', { class: 'node-library', 'aria-label': '节点库' }, [h('h2', {}, '节点库'), h('p', { class: 'hint' }, '点击添加到画布'), h('div', { class: 'palette', role: 'group', 'aria-label': '节点面板' },
-        NODE_TYPES.map((type) => h('button', {
-          type: 'button',
-          class: 'palette-button node-type-' + type,
-          'data-node-type': type,
-          disabled: !REPEATABLE_NODE_TYPES.includes(type)
-            && state.definition.nodes.some((node) => node.type === type),
-          onClick: () => {
-            const result = addNode(nodes, edges, type, state.layout);
-            if (!result.ok) {
-              state.status = result.reason;
-              state.statusKind = 'bad';
-              return;
-            }
-            state.flowNodes = [...nodes, result.node];
-            rebuild(state);
-            state.selectedId = result.node.id;
-            state.selectedEdgeId = '';
-            state.status = '已添加 ' + NODE_LABELS[type] + '（' + result.node.id + '）。';
-            state.statusKind = 'ok';
-            ensureCallAppForSelection(state, result.node.id);
-          },
-        }, [nodeIcon(type), h('span', {}, NODE_LABELS[type]), h('span', { class: 'add-indicator', 'aria-hidden': 'true' }, '+')])))]),
-      h('div', { class: 'canvas-stage' },
+      renderNodeLibrary(state),
+      h('div', { class: 'canvas-stage' }, [
+        h('div', { class: 'canvas-hint' }, '拖动节点 · 滚轮缩放 · Delete 删除选中'),
+        h('div', { class: 'canvas-float', 'data-float': 'stats' }, [
+          h('strong', {}, nodes.length + ' 个节点'),
+          ' · ',
+          edges.length + ' 条连线',
+        ]),
+        h('div', { class: 'canvas-float', 'data-float': 'zoom' },
+          Math.round(state.zoomPercent || 100) + '%'),
         h(VueFlow, {
           nodes,
           edges,
           fitViewOnInit: true,
           minZoom: 0.2,
           maxZoom: 2,
+          nodesDraggable: !(state.options && state.options.readOnly),
+          nodesConnectable: !(state.options && state.options.readOnly),
           'onNodesChange': (changes) => {
             state.flowNodes = applyNodeChanges(changes, state.flowNodes);
             syncLayout(state);
           },
           'onEdgesChange': (changes) => {
+            // Vue Flow also reports selection-only changes; only a structural
+            // change may rewrite the definition (and reorder its node list).
+            const structural = (changes || []).some((change) => change && change.type !== 'select');
             state.flowEdges = applyEdgeChanges(changes, state.flowEdges);
-            rebuild(state);
+            if (structural) {
+              rebuild(state);
+            }
           },
           'onConnect': (connection) => {
             const verdict = canConnect(state.flowNodes, state.flowEdges, connection);
@@ -1928,65 +2417,34 @@ function renderApp(state) {
             state.selectedId = '';
             state.selectedEdgeId = '';
           },
+          'onPaneReady': (instance) => {
+            activeFlow = instance;
+          },
+          'onViewportChange': (viewport) => {
+            const zoom = viewport && typeof viewport.zoom === 'number' ? viewport.zoom : 1;
+            const percent = Math.round(zoom * 100);
+            if (percent === state.zoomPercent) {
+              return;
+            }
+            state.zoomPercent = percent;
+            if (typeof state.options.onViewport === 'function') {
+              state.options.onViewport({ zoom: percent });
+            }
+          },
         }, {
           'node-default': (props) => renderFlowNode(props),
-          default: () => [h(Background), h(Controls)],
+          default: () => [
+            h(Background, { gap: 22, size: 1.4 }),
+            h(Controls, {
+              class: 'canvas-float',
+              'data-float': 'controls',
+              position: 'bottom-right',
+              showInteractive: true,
+            }),
+          ],
         }),
-      ),
-      h('aside', { class: 'config-panel', 'aria-live': 'polite' }, [
-        h('div', { class: 'panel-head' }, [
-          h('h2', {}, selected
-            ? (NODE_LABELS[selected.type] || selected.type) + ' · ' + selected.id
-            : (selectedEdge ? '连接 · ' + selectedEdge.source + ' → ' + selectedEdge.target : '选择节点配置')),
-          selected ? h('button', {
-            type: 'button',
-            class: 'link danger',
-            id: 'canvas-delete-node',
-            onClick: () => {
-              const removed = removeNode(nodes, edges, selected.id);
-              state.flowNodes = removed.nodes;
-              state.flowEdges = removed.edges;
-              state.selectedId = '';
-              rebuild(state);
-              state.status = '已删除节点 ' + selected.id + '；配对 join 的悬空来源已清理。';
-              state.statusKind = 'ok';
-            },
-          }, '删除节点') : null,
-        ]),
-        !selected && !selectedEdge
-          ? h('p', { class: 'hint' },
-              '点击节点配置、点击连线编辑端口。条件节点按端口分出各分支，普通节点多出口前必须由 join 声明 fork；'
-              + '只有 join 可以多入。Delete 删除选中的节点或连线。')
-          : h('div', { class: 'panel-fields' }, [
-              selected && selected.type === 'start' ? renderStartPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'python' ? renderPythonPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'agent' ? renderAgentPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'model' ? renderModelPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'retrieve' ? renderRetrievePanel(state.definition, state, selected) : null,
-              selected && selected.type === 'call_app' ? renderCallAppPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'condition' ? renderConditionPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'join' ? renderJoinPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'approval' ? renderApprovalPanel(state.definition, state, selected) : null,
-              selected && selected.type === 'end' ? renderEndPanel(state.definition, state, selected) : null,
-              selected && !NODE_TYPES.includes(selected.type)
-                ? [h('p', { class: 'hint' },
-                    '该节点类型（' + selected.type + '）不在本画布的创作面板内；定义会原样保存，'
-                    + '配置请用页面 JSON 视图编辑。')]
-                : null,
-              selectedEdge ? renderEdgePanel(state, selectedEdge, selectedEdgeIndex) : null,
-              selected ? [
-                h('h3', {}, '布局'),
-                h('p', { class: 'hint' },
-                  '位置保存在独立的 layout.positions，不进入执行定义，也不改变发布哈希。'),
-              ] : null,
-            ]),
-        h('div', {
-          id: 'canvas-status',
-          class: 'status ' + (state.statusKind || ''),
-          role: 'status',
-        }, state.status || '画布已就绪。'),
-        renderErrorList(state),
       ]),
+      renderConfigPanel(state, selected, selectedEdge, selectedEdgeIndex),
     ]),
   ]);
 }
@@ -2053,6 +2511,14 @@ function initialState(root, options) {
     caseValueDrafts: {},
     proposalDrafts: {},
     lastExportDropped: [],
+    // T4 workbench state: library search, viewport readout and undo history.
+    paletteQuery: '',
+    zoomPercent: 100,
+    history: [],
+    historyIndex: -1,
+    historyApplying: false,
+    lastHistoryAt: 0,
+    lastEmitSignature: '',
   };
 }
 
@@ -2063,6 +2529,7 @@ export function mount(root, options) {
   const state = reactive(initialState(root, options));
   const app = createApp({ render: () => renderApp(state) });
   app.mount(root);
+  syncInvalidNodes(state);
   emitChange(state);
   loadCatalogs(state);
   loadCallAppApplications(state);
@@ -2072,7 +2539,7 @@ export function mount(root, options) {
     if (['input', 'textarea', 'select'].includes(tag)) {
       return;
     }
-    if ((event.key === 'Delete' || event.key === 'Backspace')) {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
       if (state.selectedEdgeId) {
         state.flowEdges = state.flowEdges.filter((edge) => edge.id !== state.selectedEdgeId);
         state.selectedEdgeId = '';
@@ -2088,6 +2555,20 @@ export function mount(root, options) {
         rebuild(state);
         event.preventDefault();
       }
+      return;
+    }
+    const modifier = event.ctrlKey || event.metaKey;
+    const key = String(event.key || '').toLowerCase();
+    if (modifier && key === 'z') {
+      if (event.shiftKey) {
+        redo(state);
+      } else {
+        undo(state);
+      }
+      event.preventDefault();
+    } else if (modifier && key === 'y') {
+      redo(state);
+      event.preventDefault();
     }
   };
   window.addEventListener('keydown', onKeydown);
@@ -2113,6 +2594,15 @@ export function mount(root, options) {
       state.schemaText = {};
       state.status = '已加载服务器草稿。';
       state.statusKind = 'ok';
+      syncInvalidNodes(state);
+      // A reloaded draft starts a fresh history: undo never crosses the load.
+      state.history = [];
+      state.historyIndex = -1;
+      state.historyApplying = false;
+      state.lastHistoryAt = 0;
+      state.lastEmitSignature = '';
+      recordHistory(state);
+      notifyHistory(state);
       ensureCallAppForSelection(state, state.selectedId);
     },
     getDraft() {
@@ -2126,6 +2616,33 @@ export function mount(root, options) {
     },
     regionProblems() {
       return regionProblems(state.definition);
+    },
+    undo() {
+      return undo(state);
+    },
+    redo() {
+      return redo(state);
+    },
+    canUndo() {
+      return state.historyIndex > 0;
+    },
+    canRedo() {
+      return state.historyIndex < state.history.length - 1;
+    },
+    zoomIn() {
+      return zoomIn(state);
+    },
+    zoomOut() {
+      return zoomOut(state);
+    },
+    fitView() {
+      return fitView(state);
+    },
+    autoLayout() {
+      return autoLayout(state);
+    },
+    getZoom() {
+      return state.zoomPercent;
     },
     destroy() {
       window.removeEventListener('keydown', onKeydown);
