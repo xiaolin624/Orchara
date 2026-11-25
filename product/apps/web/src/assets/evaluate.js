@@ -162,8 +162,41 @@ function caseVerdictLabel(verdict) {
   }
 }
 
-function assertionText(outcome) {
-  const label = String(outcome.kind || '') === 'failure_reason'
+/** One duration in the platform's own milliseconds; never a rounded-up guess. */
+function describeDurationMS(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return '';
+  }
+  if (ms < 1000) {
+    return Math.round(ms) + ' ms';
+  }
+  const seconds = ms / 1000;
+  return seconds.toFixed(1) + ' s';
+}
+
+/**
+ * T7: the per-case duration the sealed report records in ``timings``.
+ *
+ * The report carries ``run_duration_ms`` and ``collect_duration_ms`` on the
+ * platform's own clock. When neither exists the page says ``未提供`` — it never
+ * derives a duration from polling cadence or wall-clock time.
+ */
+function caseDurationText(timings) {
+  const value = timings && typeof timings === 'object' ? timings : {};
+  const parts = [];
+  const run = describeDurationMS(value.run_duration_ms);
+  const collect = describeDurationMS(value.collect_duration_ms);
+  if (run) {
+    parts.push('运行 ' + run);
+  }
+  if (collect) {
+    parts.push('收集 ' + collect);
+  }
+  return parts.length === 0 ? '未提供' : parts.join(' · ');
+}
+
+function assertionText(outcome) {  const label = String(outcome.kind || '') === 'failure_reason'
     ? '失败原因'
     : String(outcome.kind || '');
   const target = outcome.pointer
@@ -216,6 +249,7 @@ function describeCase(caseResult) {
     caseId: String(caseResult.case_id || caseResult.id || ''),
     verdict: String(caseResult.verdict || ''),
     verdictLabel: caseVerdictLabel(caseResult.verdict),
+    durationText: caseDurationText(caseResult.timings),
     reasons: reasonParts,
     expectation: described.map((item) =>
       item.label + (item.target ? ' ' + item.target : '') + ' = ' + item.expected + '（期望）'),
@@ -241,6 +275,16 @@ function describeCases(payload) {
 function describeCaseSummary(payload) {
   const view = describeCases(payload);
   const summary = { total: view.cases.length, passed: 0, failed: 0, notRun: 0, blocked: 0 };
+  let runMS = 0;
+  const rawCases = Array.isArray(payload && payload.cases) ? payload.cases : [];
+  rawCases.forEach((caseResult) => {
+    const timings = caseResult && caseResult.timings ? caseResult.timings : {};
+    const value = Number(timings.run_duration_ms);
+    if (Number.isFinite(value) && value > 0) {
+      runMS += value;
+    }
+  });
+  summary.runDurationText = runMS > 0 ? describeDurationMS(runMS) : '未提供';
   view.cases.forEach((item) => {
     switch (item.verdict) {
       case 'passed':
