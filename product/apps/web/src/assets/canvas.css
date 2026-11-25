@@ -364,6 +364,7 @@
 
 /* src/canvas.css */
 .orchara-canvas {
+  --canvas-node-control: #7a5c2e;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -490,7 +491,7 @@
   background: var(--accent);
 }
 .palette-group[data-node-group=control] .palette-group-title::before {
-  background: #7a5c2e;
+  background: var(--canvas-node-control);
 }
 .palette-group[data-node-group=output] .palette-group-title::before {
   background: var(--muted);
@@ -542,7 +543,7 @@
 .palette-desc {
   overflow: hidden;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -582,7 +583,7 @@
 .node-library-foot .hint {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.6;
 }
 .node-icon {
@@ -616,7 +617,7 @@
 .orchara-node-join .node-icon,
 .orchara-node-approval .node-icon {
   background: var(--warning-soft);
-  color: #7a5c2e;
+  color: var(--canvas-node-control);
 }
 .node-type-end .node-icon,
 .orchara-node-end .node-icon {
@@ -665,7 +666,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   pointer-events: none;
 }
 .canvas-hint .ui-icon,
@@ -794,7 +795,7 @@
 .orchara-flow-node.orchara-node-condition::before,
 .orchara-flow-node.orchara-node-join::before,
 .orchara-flow-node.orchara-node-approval::before {
-  background: #7a5c2e;
+  background: var(--canvas-node-control);
 }
 .orchara-flow-node.orchara-node-end::before {
   background: var(--muted);
@@ -827,7 +828,7 @@
   overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -839,7 +840,7 @@
   grid-column: 1 / -1;
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--fs-11);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -872,9 +873,9 @@
   padding: 0 3px;
   transform: translateY(-50%);
   background: var(--surface);
-  color: #7a5c2e;
+  color: var(--canvas-node-control);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--fs-11);
   pointer-events: none;
 }
 .vue-flow__edge-path,
@@ -898,7 +899,7 @@
 .vue-flow__edge-text {
   fill: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 .vue-flow__edge-textbg {
   fill: var(--surface);
@@ -940,7 +941,7 @@
   overflow-wrap: anywhere;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   line-height: 1.5;
 }
 .panel-scroll {
@@ -1057,7 +1058,7 @@
   padding: 0;
   background: none;
   color: var(--text);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 #canvas-root .node-info-list dt,
 #canvas-root .node-info-list dd {
@@ -1125,7 +1126,7 @@ label.field-label {
   align-items: center;
   margin: 0;
   color: var(--text-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
   white-space: nowrap;
 }
 #canvas-root .config-panel button {
@@ -1189,11 +1190,11 @@ label.field-label {
   overflow-wrap: anywhere;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 .type-chip {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   white-space: nowrap;
 }
 .schema-preview pre {
@@ -1203,7 +1204,7 @@ label.field-label {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 .schema-json.readonly {
   background: var(--surface-2);
@@ -1230,7 +1231,7 @@ label.field-label {
 }
 .case-index {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
   text-align: center;
 }
 .port-preview {
@@ -1243,7 +1244,7 @@ label.field-label {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-2);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 .port-chip.connected {
   border-color: var(--success-line);
@@ -1331,7 +1332,7 @@ label.field-label {
   background: none;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-11);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -1354,7 +1355,7 @@ label.field-label {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--fs-11);
 }
 .panel-actions {
   display: flex;
