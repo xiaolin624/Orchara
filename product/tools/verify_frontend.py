@@ -544,7 +544,9 @@ def verify(out: Path) -> None:
                 page.wait_for_timeout(180)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
                 next(item for item in report['pages'] if item['page'] == name)['landscape'] = 'passed'
-            page.screenshot(path=str(screenshots / 'personal-data-landscape.png'), full_page=True)
+                # T10 (#174): keep one landscape screenshot per checked journey page,
+                # not only the personal-data one, so the evidence matches the check.
+                page.screenshot(path=str(screenshots / (name + '-landscape.png')), full_page=True)
             report['checks'].append('conversation, approval, run and personal-data layouts fit phone landscape')
             page.set_viewport_size({'width': 1440, 'height': 1000})
             page.goto(stack.base_url + '/chat')

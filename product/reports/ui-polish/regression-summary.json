@@ -1,0 +1,837 @@
+{
+  "generated_at": "2026-11-26",
+  "integration_tip": "2de56b1",
+  "sources": {
+    "f01-regression.xml": {
+      "tests": 36,
+      "failed": 0,
+      "skipped": 0
+    },
+    "pages-regression.xml": {
+      "tests": 244,
+      "failed": 0,
+      "skipped": 0
+    },
+    "page-contract.xml": {
+      "tests": 148,
+      "failed": 0,
+      "skipped": 0
+    },
+    "quick-regression.xml": {
+      "tests": 286,
+      "failed": 0,
+      "skipped": 0
+    },
+    "c6-04-repeat.xml": {
+      "tests": 16,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "distinct_tests": 642,
+  "files": [
+    {
+      "file": "tests/f01/test_f01_app_js.py",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.69,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_page_query_guard.py",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.0,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_t015_pages.py",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.74,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_t017_pages.py",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "time": 8.67,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_t019_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 7.71,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_t020_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 6.36,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f01/test_t021_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.4,
+      "sources": [
+        "f01-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f02a/test_t023_pages.py",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "time": 26.17,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f02a/test_t027_pages.py",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "time": 22.0,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f02b/test_t068_pages.py",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "time": 21.76,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t029_pages.py",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "time": 19.37,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t031_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 16.22,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t032_pages.py",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "time": 19.39,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t034_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 15.43,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t035_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 15.01,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t036_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 15.06,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f03/test_t038_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 15.45,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f04a/test_canvas_assets.py",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.37,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f04b/test_t083_runview.py",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "time": 27.38,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f05/test_t028_pages.py",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "time": 19.01,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f05/test_t030_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 15.88,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f05/test_t033_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.33,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f05/test_t037_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.34,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t039_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 16.17,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t041_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.49,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t042_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.62,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t043_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.56,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t044_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 8.38,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t045_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.57,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t046_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.52,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t047_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.61,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t048_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.46,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t049_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 8.5,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t050_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.72,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f06/test_t051_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.93,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f07/test_t075_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 10.61,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f07/test_t078_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 10.87,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_postreview_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.26,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t074_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 11.48,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t077_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 2.89,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t079_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 2.94,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t082_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 2.92,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t084_pages.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 2.99,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f08/test_t166_chat_workspace.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.13,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f09/test_t054_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.96,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f09/test_t058_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.72,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f10/test_t055_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.42,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f10/test_t059_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.69,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f10/test_t060_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.7,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f10/test_t061_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.55,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f10/test_t064_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.52,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f11/test_t069_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.58,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f11/test_t073_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 5.63,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_c6_01_dependency.py",
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "time": 18.68,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_c6_02_runstate_view.py",
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "time": 11.06,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_c6_03_runs_recovery.py",
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "time": 30.29,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_c6_04_page_contract.py",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "time": 24.86,
+      "sources": [
+        "c6-04-repeat.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t095_page_roles.py",
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "time": 1.2,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t095_role_entrypoints.py",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "time": 14.87,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t096_pages.py",
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "time": 1.16,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t096_review2.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.42,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t098_mobile_pages.py",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.62,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t098_review2.py",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.24,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t165_shell.py",
+      "tests": 131,
+      "passed": 131,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.14,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t167_pages.py",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.54,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t169_runs_approvals.py",
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.61,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t170_pages.py",
+      "tests": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.13,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t171_pages.py",
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.45,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t172_identity_status_admin_pages.py",
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.51,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t173_polish.py",
+      "tests": 66,
+      "passed": 66,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.03,
+      "sources": [
+        "quick-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/f12/test_t175_review_fixes.py",
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "time": 0.14,
+      "sources": [
+        "page-contract.xml"
+      ]
+    },
+    {
+      "file": "tests/f13a/test_t056_pages.py",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "time": 13.31,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    },
+    {
+      "file": "tests/t070/test_t070_pages.py",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "time": 16.19,
+      "sources": [
+        "pages-regression.xml"
+      ]
+    }
+  ]
+}

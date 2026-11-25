@@ -1,0 +1,222 @@
+{
+  "profile": "dev-stub",
+  "data": "generated UI review fixtures",
+  "pages": [
+    {
+      "page": "index",
+      "route": "/status",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "login",
+      "route": "/login",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "activate",
+      "route": "/activate",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "apps",
+      "route": "/apps",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "catalog",
+      "route": "/catalog",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "editor",
+      "route": "/apps/f97472a9-ddce-4adf-aedb-f2894bf2db0d/edit",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "debug",
+      "route": "/apps/f97472a9-ddce-4adf-aedb-f2894bf2db0d/debug",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "chat",
+      "route": "/chat",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "runs",
+      "route": "/runs",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "approvals",
+      "route": "/approvals",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "tools",
+      "route": "/tools",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "models",
+      "route": "/models",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "attachments",
+      "route": "/attachments",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "knowledge",
+      "route": "/knowledge",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "memories",
+      "route": "/memories",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "personal-data",
+      "route": "/personal-data",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed",
+      "landscape": "passed"
+    },
+    {
+      "page": "evaluate",
+      "route": "/apps/f97472a9-ddce-4adf-aedb-f2894bf2db0d/evaluate",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "evaluations",
+      "route": "/evaluations/eea73795-7071-4391-b876-8f10ecab7f17",
+      "desktop": "passed",
+      "state": "not-found error",
+      "mobile": "passed"
+    },
+    {
+      "page": "publish",
+      "route": "/apps/f97472a9-ddce-4adf-aedb-f2894bf2db0d/publish",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "reviews",
+      "route": "/reviews",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "versions",
+      "route": "/apps/f97472a9-ddce-4adf-aedb-f2894bf2db0d/versions",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    },
+    {
+      "page": "admin",
+      "route": "/admin",
+      "desktop": "passed",
+      "state": "real dev-stub API",
+      "mobile": "passed"
+    }
+  ],
+  "checks": [
+    "root redirects to /chat",
+    "real login enters /chat",
+    "text, secondary, muted, button, accent-ink and status soft pairs meet 4.5:1 contrast",
+    "editor keeps a single validate entry and saves from the inspector",
+    "create application and add a model node through real UI",
+    "concurrent server save shows actual conflict without overwriting local draft",
+    "segmented filters and row disclosures show a keyboard focus ring",
+    "application row ID disclosure aligns with the title indent without overflow",
+    "keyboard navigation begins with a visible skip-to-content link",
+    "conversation creation, composer and desktop sidebar toggle",
+    "all 22 pages fit a 375px viewport; tabbar pages keep the last block above the bar",
+    "mobile navigation opens; scrim and Escape close it, reset aria-expanded and keep the 44px drawer targets",
+    "phone context sheet opens from the header, shows run/queue/outputs/destination/handoff, and closes with Escape or the scrim",
+    "mobile tab bar shows a keyboard focus ring",
+    "reduced motion disables sidebar, button and skeleton transitions/animations",
+    "conversation, approval, run and personal-data layouts fit phone landscape",
+    "clicking logout SVG revokes the real session"
+  ],
+  "page_errors": [],
+  "tokens": {
+    "--bg": "#f7f4ee",
+    "--text": "#211d18",
+    "--text-2": "#57514a",
+    "--muted": "#6f685e",
+    "--accent": "#b4530a",
+    "--accent-ink": "#96430a",
+    "--accent-soft": "#fbe9db",
+    "--surface": "#fffdf9",
+    "--surface-2": "#f2ede4",
+    "--on-accent": "#ffffff",
+    "--success": "#2f6b3f",
+    "--success-soft": "#e8f2ea",
+    "--warning": "#8a5a00",
+    "--warning-soft": "#fbf0d9",
+    "--danger": "#a52a2a",
+    "--danger-soft": "#fbe9e7",
+    "--info": "#2f5d8a",
+    "--info-soft": "#e8eef5",
+    "--teal": "#0f6b66",
+    "--teal-soft": "#e4f1ef"
+  },
+  "contrast": {
+    "body text": 16.49,
+    "secondary text": 7.71,
+    "muted text": 5.41,
+    "muted on soft": 4.72,
+    "secondary on soft": 6.72,
+    "primary button": 5.02,
+    "accent ink on soft": 5.73,
+    "success on soft": 5.56,
+    "warning on soft": 5.24,
+    "danger on soft": 6.04,
+    "info on soft": 5.89,
+    "teal on soft": 5.47
+  },
+  "result": "passed",
+  "checked_at": "2026-11-25T22:21:33.394124+00:00"
+}
