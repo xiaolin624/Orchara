@@ -6,49 +6,96 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>平台状态 · Orchara</title>
 <style>
-    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-width: 60rem; }
-    .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
-    .value { font-size: 1.5rem; font-weight: 600; margin-top: .35rem; }
-    .ok { color: #15803d; }
-    .bad { color: #b91c1c; }
-    .warn { color: #a16207; }
+    /* Status page only: overview strip, health cards, dependency list. */
+    .status-overview { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: 16px; }
+    .overview-summary { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .overview-summary .pill { height: 28px; padding: 0 12px; font-size: var(--fs-13); font-weight: 650; }
+    .overview-copy { min-width: 0; }
+    .overview-label { display: block; color: var(--muted); font-size: var(--fs-11); }
+    .overview-hint { display: block; color: var(--text-2); font-size: var(--fs-12); line-height: 1.5; }
+    .status-overview .stat-row, .status-overview .overview-facts { margin: 0; }
+    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .health-grid .card { margin: 0; }
+    .health-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .health-head h2 { margin: 0; font-size: var(--fs-13); }
+    .health-head .pill { margin-left: auto; }
+    .health-icon { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--accent-ink); }
+    .health-icon .ui-icon { width: 14px; height: 14px; }
+    .health-card .health-facts { margin: 0; }
+    .health-card .health-facts dt, .health-card .health-facts dd { padding: 5px 0; }
+    .health-note { margin: 10px 0 0; color: var(--muted); font-size: var(--fs-11); line-height: 1.6; }
+    .page-content .check-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .page-content .check-list > li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; padding: 7px 9px; border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-12); }
+    .page-content .check-list > li::before { font-weight: 650; line-height: 1; }
+    .page-content .check-list > li[data-tone="success"] { border-left-color: var(--success); }
+    .page-content .check-list > li[data-tone="success"]::before { content: "✓"; color: var(--success); }
+    .page-content .check-list > li[data-tone="warning"] { border-left-color: var(--warning); }
+    .page-content .check-list > li[data-tone="warning"]::before { content: "—"; color: var(--warning); }
+    .page-content .check-list > li[data-tone="danger"] { border-left-color: var(--danger); }
+    .page-content .check-list > li[data-tone="danger"]::before { content: "!"; color: var(--danger); }
+    .check-detail { flex-basis: 100%; color: var(--muted); font-size: var(--fs-11); }
+    .page-content .limit-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .page-content .limit-list > li { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; }
+    .page-content .limit-list > li:nth-child(1) { border-left-color: var(--warning); }
+    .page-content .limit-list > li:nth-child(2) { border-left-color: var(--accent); }
+    .limit-list strong { display: block; color: var(--text); font-weight: 600; }
+    .kv-table { margin: 0; }
+    .kv-value { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 550; }
+    .kv-value[data-tone="warning"] { color: var(--warning); font-weight: 600; }
+    .kv-value[data-tone="success"] { color: var(--success); }
+    @media (max-width: 480px) {
+      .health-grid { grid-template-columns: 1fr; }
+      .status-overview { align-items: flex-start; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
 <body data-auth="optional" data-page="index"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
 <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/status">管理</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">平台状态</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="pulse">SYSTEM STATUS</p><h1>平台状态</h1><p class="page-description">查看平台进程、依赖与当前运行环境的实际状态。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>每 3 秒刷新</span><span>数据来源 /api/status 与 /health/live</span></p></header>
+<header class="page-heading"><div class="page-head-main"><p class="eyebrow" data-icon="pulse">SYSTEM STATUS</p><h1>平台状态</h1><p class="page-description">查看平台进程、依赖与当前运行环境的实际状态；未知项不会被写成正常。</p></div><div class="heading-actions"><button class="btn btn-secondary" data-refresh="" data-icon="refresh" type="button">重新检查</button><a class="btn btn-ghost" href="/chat">前往对话</a></div><p class="page-meta"><span>每 3 秒刷新</span><span>数据来源 /health/live 与 /api/status</span></p></header>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     这是 F00 骨架页面：显示真实进程与依赖状态，<strong>不是</strong>业务功能。
-    数据来自 <code>/api/status</code>，每 3 秒刷新。
+    存活来自 <code>/health/live</code>，就绪与依赖检查来自 <code>/api/status</code>，每 3 秒刷新。
+    本页只呈现接口已经返回的事实；接口没有提供的检查项会标成「未纳入检查」。
   </p></details><div class="page-sections">
-<div class="stat-row"><div class="stat-chip"><span class="stat-label">刷新间隔</span><span class="stat-value">3 秒</span></div><div class="stat-chip"><span class="stat-label">数据来源</span><span class="stat-value">/api/status</span></div></div>
-<div class="grid">
-<div class="card">
-<div class="label">存活 (liveness)</div>
-<div class="value" id="live">…</div>
-<div class="label" style="margin-top:.6rem">版本</div>
-<div id="version">…</div>
+<section class="card status-overview" aria-label="总体状态">
+<div class="overview-summary"><span class="pill" data-tone="muted" data-shape="ring" data-overall-status="">正在检查…</span><div class="overview-copy"><span class="overview-label">总体状态</span><span class="overview-hint" data-overall-hint="">正在读取 /health/live 与 /api/status</span></div></div>
+<div class="stat-row overview-facts"><div class="stat-chip"><span class="stat-label">检查时间</span><span class="stat-value" id="stamp">尚未检查</span></div><div class="stat-chip"><span class="stat-label">环境</span><span class="pill" data-tone="muted" data-shape="square" data-profile-badge="">正在读取</span></div><div class="stat-chip"><span class="stat-label">刷新</span><span class="stat-value">每 3 秒</span></div></div>
+</section>
+<div class="health-grid">
+<article class="card health-card" data-health="api">
+<div class="health-head"><span class="health-icon" data-icon="pulse"></span><h2>API 进程</h2><span class="pill" data-tone="muted" data-shape="ring" data-health-state="api">正在读取</span></div>
+<dl class="health-facts"><dt>存活 (liveness)</dt><dd><span class="kv-value" id="live">…</span></dd><dt>就绪 (readiness)</dt><dd><span class="kv-value" id="ready">…</span></dd></dl>
+<p class="health-note">存活与就绪分开判断：进程活着不代表依赖可用。</p>
+</article>
+<article class="card health-card" data-health="database">
+<div class="health-head"><span class="health-icon" data-icon="database"></span><h2>数据库与依赖检查</h2><span class="pill" data-tone="muted" data-shape="ring" data-health-state="database">正在读取</span></div>
+<ul class="check-list" id="checks"><li>正在读取依赖检查…</li></ul>
+<p class="health-note">逐项来自 <code>/api/status</code> 的 <code>checks</code>；当前接口返回的检查项列在此处。</p>
+</article>
+<article class="card health-card" data-health="maintenance">
+<div class="health-head"><span class="health-icon" data-icon="terminal"></span><h2>维护进程</h2><span class="pill" data-tone="muted" data-shape="dash" data-health-state="maintenance">未纳入检查</span></div>
+<p class="health-note">当前状态接口未暴露维护进程的检查结果。这里不会把它标成正常。</p>
+</article>
+<article class="card health-card" data-health="objects">
+<div class="health-head"><span class="health-icon" data-icon="layers"></span><h2>对象存储</h2><span class="pill" data-tone="muted" data-shape="dash" data-health-state="objects">未纳入检查</span></div>
+<p class="health-note">当前状态接口未暴露对象存储的检查结果。这里不会把它标成正常。</p>
+</article>
 </div>
 <div class="card">
-<div class="label">就绪 (readiness)</div>
-<div class="value" id="ready">…</div>
-<div class="label" style="margin-top:.6rem">已运行</div>
-<div id="uptime">…</div>
+<div class="card-head"><h2>已知限制</h2><span class="pill" data-tone="warning" data-shape="alert">不构成生产验收</span></div>
+<ul class="limit-list">
+<li><strong>dev-stub 结果不代表真实模型输出</strong><span>本页展示的 stub 结果只用于本地开发与链路验证，不代表真实模型质量。</span></li>
+<li><strong>本页不构成生产验收</strong><span>状态页只反映当前进程与已暴露的依赖检查，不能作为生产就绪的验收证据。</span></li>
+<li><strong>维护进程与对象存储未纳入检查</strong><span>状态接口没有这两项；页面把它们标成「未纳入检查」，而不是「正常」。</span></li>
+</ul>
 </div>
 <div class="card">
-<div class="label">依赖检查</div>
-<ul id="checks"><li>…</li></ul>
+<h2>环境与版本</h2>
+<dl class="kv-table"><dt>环境 profile</dt><dd><span class="kv-value" id="environment-profile">…</span></dd><dt>结果标记</dt><dd><span class="kv-value" id="environment-stub">…</span></dd><dt>版本</dt><dd><span class="kv-value" id="version">…</span></dd><dt>已运行</dt><dd><span class="kv-value" id="uptime">…</span></dd></dl>
+<p class="hint">profile 与结果标记来自 <code>/api/status</code>；版本与已运行来自 <code>/health/live</code>。</p>
 </div>
-<div class="card">
-<div class="label">环境 profile</div>
-<div class="value" id="environment-profile">…</div>
-<div class="label" style="margin-top:.6rem">结果标记</div>
-<div class="warn" id="environment-stub">…</div>
-</div>
-</div>
-<p class="sub" id="stamp" style="margin-top:1.5rem"></p>
 </div></main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
@@ -62,6 +109,23 @@
     const stampEl = document.getElementById('stamp');
     const profileEl = document.getElementById('environment-profile');
     const stubEl = document.getElementById('environment-stub');
+    const overallEl = document.querySelector('[data-overall-status]');
+    const overallHintEl = document.querySelector('[data-overall-hint]');
+    const profileBadgeEl = document.querySelector('[data-profile-badge]');
+    const refreshButton = document.querySelector('[data-refresh]');
+    const healthStates = {
+      api: document.querySelector('[data-health-state="api"]'),
+      database: document.querySelector('[data-health-state="database"]'),
+    };
+
+    // Label + shape per dependency result: the status language is never colour
+    // alone, and an unexpected value falls back to the raw server string.
+    const CHECK_LABELS = { ok: '正常', not_configured: '未配置', unavailable: '不可用' };
+    const CHECK_STATES = {
+      ok: { tone: 'success', shape: 'check' },
+      not_configured: { tone: 'warning', shape: 'dash' },
+      unavailable: { tone: 'danger', shape: 'alert' },
+    };
 
     function formatUptime(seconds) {
       if (typeof seconds !== 'number') return '…';
@@ -69,47 +133,119 @@
       return m > 0 ? `${m} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
     }
 
+    function setPill(element, tone, shape, label) {
+      if (!element) return;
+      element.setAttribute('data-tone', tone);
+      element.setAttribute('data-shape', shape);
+      element.textContent = label;
+    }
+
+    function setOverall(tone, shape, label, hint) {
+      if (overallEl) {
+        overallEl.setAttribute('data-tone', tone);
+        overallEl.setAttribute('data-shape', shape);
+        overallEl.textContent = label;
+      }
+      if (overallHintEl) overallHintEl.textContent = hint;
+    }
+
     async function refresh() {
+      if (refreshButton) refreshButton.disabled = true;
       try {
         // Liveness comes from its own endpoint: never assume the process is alive
         // just because this fetch reached the server.
         const live = await (await fetch('/health/live', { cache: 'no-store' })).json();
-        liveEl.textContent = live.status === 'alive' ? '运行中' : (live.status ?? '未知');
-        liveEl.className = 'value ' + (live.status === 'alive' ? 'ok' : 'bad');
+        const alive = live.status === 'alive';
+        liveEl.textContent = alive ? '运行中' : (live.status ?? '未知');
+        liveEl.setAttribute('data-tone', alive ? 'success' : 'danger');
         versionEl.textContent = live.version ?? '…';
         uptimeEl.textContent = formatUptime(live.uptime_seconds);
 
         const status = await (await fetch('/api/status', { cache: 'no-store' })).json();
         const ready = status.status === 'ready';
         readyEl.textContent = ready ? '就绪' : '未就绪';
-        readyEl.className = 'value ' + (ready ? 'ok' : 'bad');
+        readyEl.setAttribute('data-tone', ready ? 'success' : 'danger');
 
         // F15A/T057: a stub environment must be identifiable from the page itself,
         // not only from the report. Values come from /api/status; nothing is guessed.
         const profileName = status.profile ?? '';
         profileEl.textContent = profileName || '未声明';
-        profileEl.className = 'value ' + (profileName ? '' : 'warn');
+        profileEl.setAttribute('data-tone', profileName ? '' : 'warning');
         const stubResults = status.stub_results === true;
         stubEl.textContent = stubResults ? 'stub 结果（非真实模型）' : '真实结果';
-        stubEl.className = 'value ' + (stubResults ? 'warn' : 'ok');
+        stubEl.setAttribute('data-tone', stubResults ? 'warning' : 'success');
+        if (profileBadgeEl) {
+          profileBadgeEl.textContent = profileName || '未声明';
+          profileBadgeEl.setAttribute('data-tone', profileName === 'dev-stub' ? 'warning' : (profileName ? 'accent' : 'muted'));
+          profileBadgeEl.setAttribute('data-shape', profileName === 'dev-stub' ? 'alert' : 'square');
+        }
 
-        checksEl.innerHTML = '';
-        for (const [name, result] of Object.entries(status.checks ?? {})) {
+        checksEl.replaceChildren();
+        let failing = 0;
+        const entries = Object.entries(status.checks ?? {});
+        for (const [name, result] of entries) {
+          const state = CHECK_STATES[result.status] || { tone: 'danger', shape: 'alert' };
           const li = document.createElement('li');
-          li.textContent = `${name}: ${result.status}`;
-          li.className = result.status === 'ok' ? 'ok' : (result.status === 'not_configured' ? 'warn' : 'bad');
+          li.setAttribute('data-tone', state.tone);
+          const nameEl = document.createElement('code');
+          nameEl.textContent = name;
+          const stateEl = document.createElement('span');
+          stateEl.textContent = CHECK_LABELS[result.status] || String(result.status);
+          li.append(nameEl, stateEl);
+          if (result.detail) {
+            const detailEl = document.createElement('span');
+            detailEl.className = 'check-detail';
+            detailEl.textContent = result.detail;
+            li.append(detailEl);
+          }
+          if (result.status !== 'ok') failing += 1;
           checksEl.appendChild(li);
         }
+        if (entries.length === 0) {
+          const li = document.createElement('li');
+          li.setAttribute('data-tone', 'warning');
+          li.textContent = '状态接口本次没有返回依赖检查项';
+          checksEl.appendChild(li);
+        }
+
+        const database = status.checks && status.checks.database;
+        const databaseState = database && (CHECK_STATES[database.status] || { tone: 'danger', shape: 'alert' });
+        setPill(healthStates.database, databaseState ? databaseState.tone : 'warning',
+          databaseState ? databaseState.shape : 'dash',
+          database ? (CHECK_LABELS[database.status] || String(database.status)) : '未纳入检查');
+        setPill(healthStates.api, ready ? 'success' : 'danger', ready ? 'check' : 'alert', ready ? '就绪' : '未就绪');
+
+        // Overall: a missing or failing fact is never summarised as healthy.
+        if (!alive) {
+          setOverall('danger', 'alert', '不可用', '存活检查未通过，进程当前无法提供服务');
+        } else if (!ready || failing > 0) {
+          setOverall('warning', 'alert', '部分降级', '存在未通过的依赖检查，见下方逐项结果');
+        } else {
+          setOverall('success', 'check', '全部正常', '存活与就绪检查均通过');
+        }
+        checksEl.setAttribute('data-summary', failing > 0 ? 'failing' : 'ok');
         stampEl.textContent = '最后更新：' + new Date().toLocaleTimeString();
       } catch (err) {
+        // An unreachable status API is unknown, not healthy.
         liveEl.textContent = '无法连接';
-        liveEl.className = 'value bad';
+        liveEl.setAttribute('data-tone', 'danger');
         readyEl.textContent = '未知';
-        readyEl.className = 'value warn';
+        readyEl.setAttribute('data-tone', 'warning');
+        setPill(healthStates.api, 'danger', 'alert', '无法连接');
+        setPill(healthStates.database, 'muted', 'dash', '无法读取');
+        checksEl.replaceChildren();
+        const li = document.createElement('li');
+        li.setAttribute('data-tone', 'danger');
+        li.textContent = '无法读取依赖检查';
+        checksEl.appendChild(li);
+        setOverall('muted', 'ring', '未知（状态接口不可达）', '无法连接 /health/live 或 /api/status');
         stampEl.textContent = '请求失败：' + err;
+      } finally {
+        if (refreshButton) refreshButton.disabled = false;
       }
     }
 
+    if (refreshButton) refreshButton.addEventListener('click', refresh);
     refresh();
     setInterval(refresh, 3000);
   </script>
