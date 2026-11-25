@@ -32,7 +32,7 @@
     .approval-row-top, .approval-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
     .approval-row-run { padding: 0; background: none; color: var(--text-2); font-size: var(--fs-11); font-weight: 600; }
     .approval-row-meta { color: var(--muted); font-size: var(--fs-11); overflow-wrap: anywhere; }
-    .approval-row .pill { font-size: 10px; }
+    .approval-row .pill { font-size: var(--fs-11); }
     /* A still-decidable approval keeps the 2px warning rule on the row. */
     .approval-row-button:has(.approval-row-state[data-tone="warning"]) { box-shadow: inset 2px 0 0 var(--warning); }
 

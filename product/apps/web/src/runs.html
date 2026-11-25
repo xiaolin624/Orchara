@@ -39,7 +39,7 @@
     .run-row-top, .run-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
     .run-row-id { padding: 0; background: none; color: var(--text-2); font-size: var(--fs-11); font-weight: 600; letter-spacing: .02em; }
     .run-row-rest { min-width: 0; color: var(--muted); font-size: var(--fs-11); overflow-wrap: anywhere; }
-    .run-row .pill, .run-row-phase { font-size: 10px; }
+    .run-row .pill, .run-row-phase { font-size: var(--fs-11); }
     /* A waiting / needs-decision Run keeps the 2px warning rule on the row. */
     .run-row-button:has(.run-row-state[data-tone="warning"]) { box-shadow: inset 2px 0 0 var(--warning); }
 
