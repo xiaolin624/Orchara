@@ -160,7 +160,30 @@ def verify(out: Path) -> None:
                 page.locator('#main-content').wait_for()
                 if name not in ('login', 'activate'):
                     page.locator('nav[data-orchara-nav] .nav-label').first.wait_for()
-                    assert page.locator('nav[data-orchara-nav] a[aria-current="page"]').count() == 1, name
+                    # T11 (#175): aria-current="page" is unique per navigation
+                    # landmark, not per page: the sidebar nav, the breadcrumb and
+                    # the phone tab bar each mark the current page once. The old
+                    # check only counted the sidebar and hid that duplication.
+                    landmarks = page.evaluate(
+                        """() => [...document.querySelectorAll('nav, [role="navigation"]')]
+                            .map((el) => ({
+                                label: el.getAttribute('aria-label') || el.className
+                                    || el.tagName.toLowerCase(),
+                                current: el.querySelectorAll('[aria-current="page"]').length,
+                            }))"""
+                    )
+                    assert landmarks, (name, 'no navigation landmark')
+                    assert all(item['current'] <= 1 for item in landmarks), (name, landmarks)
+                    assert any(item['current'] == 1 for item in landmarks), (name, landmarks)
+                    # The original, stronger assertion is kept for the main nav.
+                    assert page.locator(
+                        'nav[data-orchara-nav] [aria-current="page"]').count() == 1, name
+                else:
+                    landmarks = page.evaluate(
+                        """() => [...document.querySelectorAll('nav, [role="navigation"]')]
+                            .map((el) => el.querySelectorAll('[aria-current="page"]').length)"""
+                    )
+                    assert landmarks and all(count <= 1 for count in landmarks), (name, landmarks)
                 page.wait_for_timeout(180)
                 assert page.locator('h1').count() == 1, name
                 assert page.locator('link[href="/assets/design.css"]').count() == 1, name
@@ -274,6 +297,31 @@ def verify(out: Path) -> None:
                 page.wait_for_timeout(150)
                 assert page.evaluate(
                     'document.documentElement.scrollWidth <= innerWidth + 2'), name
+                # T11 (#175): every control a phone user can reach keeps a 44px
+                # touch target on all 22 pages (WCAG 2.5.5). Text links reach it
+                # through padding/min-height; the only exemption is the
+                # focus-only skip link (off-screen until focused) and content
+                # that is display:none or inert (a closed drawer/sheet).
+                small = page.evaluate(
+                    """() => {
+                        const out = [];
+                        for (const el of document.querySelectorAll('a, button')) {
+                            if (el.closest('[hidden], [inert], .skip-link, .sr-only')) continue;
+                            const style = getComputedStyle(el);
+                            if (style.display === 'none' || style.visibility === 'hidden') continue;
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width <= 0 || rect.height <= 0) continue;
+                            if (rect.height + 0.5 >= 44) continue;
+                            out.push({tag: el.tagName.toLowerCase(),
+                                      cls: String(el.className || '').slice(0, 40),
+                                      id: el.id,
+                                      h: Math.round(rect.height * 10) / 10,
+                                      text: (el.textContent || '').trim().slice(0, 24)});
+                        }
+                        return out;
+                    }"""
+                )
+                assert not small, (name, small[:8])
                 if name in tabbar_pages:
                     # Scroll to the end and prove the last block still sits above
                     # the fixed tab bar (52px + safe area + 16px clearance).
@@ -374,9 +422,91 @@ def verify(out: Path) -> None:
             page.goto(stack.base_url + '/chat')
             page.locator('#sidebar-toggle').click()
             assert page.locator('#app-sidebar').evaluate('el => !el.inert')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'true'
+            # T11 (#175): the drawer navigation keeps its 44px phone targets.
+            drawer_small = page.evaluate(
+                """() => [...document.querySelectorAll('#app-sidebar a, #app-sidebar button')]
+                    .filter((el) => {
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0
+                            && getComputedStyle(el).display !== 'none';
+                    })
+                    .map((el) => ({label: (el.textContent || '').trim().slice(0, 16),
+                                   h: Math.round(el.getBoundingClientRect().height * 10) / 10}))
+                    .filter((item) => item.h + 0.5 < 44)"""
+            )
+            assert not drawer_small, drawer_small
+            page.locator('#nav-scrim').click(position={'x': 360, 'y': 700})
+            assert page.locator('#app-sidebar').evaluate('el => el.inert')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'false'
+            page.locator('#sidebar-toggle').click()
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'true'
             page.keyboard.press('Escape')
             assert page.locator('#app-sidebar').evaluate('el => el.inert')
-            report['checks'].append('mobile navigation opens and Escape closes it')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'false'
+            assert page.locator('#sidebar-toggle').evaluate(
+                'el => el === document.activeElement')
+            report['checks'].append(
+                'mobile navigation opens; scrim and Escape close it, reset aria-expanded '
+                'and keep the 44px drawer targets'
+            )
+            # T11 (#175): the phone context sheet reuses the existing rail DOM —
+            # the same request/queue/output/destination/handoff nodes the desktop
+            # rail renders — so no new request is needed to see them.
+            page.goto(stack.base_url + '/chat')
+            # Select a real conversation so the sheet carries real state: on a
+            # phone the list lives in the top drawer.
+            page.locator('[data-sessions-toggle]').click()
+            page.locator('#conversation-list button').first.wait_for()
+            page.locator('#conversation-list button').first.click()
+            page.wait_for_timeout(300)
+            assert page.locator('[data-context-toggle]').count() == 1
+            page.locator('[data-context-toggle]').click()
+            assert page.locator('body').evaluate(
+                "el => el.classList.contains('chat-context-open')")
+            assert page.locator('[data-context-toggle]').get_attribute('aria-expanded') == 'true'
+            assert page.locator('#chat-context').evaluate('el => !el.inert')
+            sheet = page.evaluate(
+                """() => {
+                    const aside = document.getElementById('chat-context');
+                    const rect = aside.getBoundingClientRect();
+                    const text = aside.textContent || '';
+                    return {
+                        visible: rect.width > 0 && rect.height > 0
+                            && rect.top < innerHeight && rect.bottom > 0,
+                        facts: ['当前运行', '会话队列', '本次产出', '数据去向', '可交接应用']
+                            .filter((label) => text.includes(label)),
+                        small: [...aside.querySelectorAll('a, button')]
+                            .filter((el) => {
+                                if (el.closest('[hidden]')) return false;
+                                const rect = el.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0
+                                    && rect.height + 0.5 < 44;
+                            })
+                            .map((el) => ({label: (el.textContent || '').trim().slice(0, 16),
+                                           h: Math.round(el.getBoundingClientRect().height * 10) / 10})),
+                    };
+                }"""
+            )
+            assert sheet['visible'], sheet
+            assert len(sheet['facts']) == 5, sheet
+            assert not sheet['small'], sheet['small']
+            page.screenshot(path=str(screenshots / 'chat-context-mobile.png'), full_page=False)
+            page.keyboard.press('Escape')
+            assert page.locator('body').evaluate(
+                "el => !el.classList.contains('chat-context-open')")
+            assert page.locator('#chat-context').evaluate('el => el.inert')
+            assert page.locator('[data-context-toggle]').get_attribute('aria-expanded') == 'false'
+            assert page.locator('[data-context-toggle]').evaluate(
+                'el => el === document.activeElement')
+            page.locator('[data-context-toggle]').click()
+            page.locator('.chat-context-scrim').click(position={'x': 8, 'y': 8})
+            assert page.locator('body').evaluate(
+                "el => !el.classList.contains('chat-context-open')")
+            report['checks'].append(
+                'phone context sheet opens from the header, shows run/queue/outputs/'
+                'destination/handoff, and closes with Escape or the scrim'
+            )
             focus_ring('.mobile-tabbar a[aria-current="page"]')
             report['checks'].append('mobile tab bar shows a keyboard focus ring')
             page.emulate_media(reduced_motion='reduce')

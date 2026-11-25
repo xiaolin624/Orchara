@@ -106,13 +106,17 @@ def test_the_six_tabbar_pages_reserve_the_bottom_safe_area(page: str) -> None:
     html = read_page(page)
     assert 'data-tabbar="true"' in html, page
     assert 'class="mobile-tabbar"' in html, page
-    css = (WEB / "assets" / "mobile.css").read_text(encoding="utf-8")
+    # T11 (#175): the shared shell (bar + clearance) lives once in design.css;
+    # mobile.css must not re-declare it.
+    css = (WEB / "assets" / "design.css").read_text(encoding="utf-8")
     match = re.search(
         r'body\[data-tabbar="true"\]\s+\.page-content\s*\{[^}]*padding-bottom:\s*'
         r"calc\(52px \+ env\(safe-area-inset-bottom[^}]*\)",
         css,
     )
-    assert match, "mobile.css no longer reserves 52px + safe-area for the tabbar"
+    assert match, "design.css no longer reserves 52px + safe-area for the tabbar"
+    mobile = (WEB / "assets" / "mobile.css").read_text(encoding="utf-8")
+    assert '.mobile-tabbar {' not in mobile, "mobile.css re-declares the shared tab bar"
 
 
 @pytest.mark.parametrize("page", FORM_LABEL_PAGES)

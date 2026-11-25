@@ -84,6 +84,9 @@ SHELL_IDS = {
     "main-content",
     "account-label",
     "account-role",
+    # T11 (#175): the phone context sheet is part of the shared phone shell, not
+    # a business fact; registering it keeps the business-id digest unchanged.
+    "chat-context",
 }
 
 REQUIRED_TOKENS = [
@@ -232,10 +235,15 @@ def test_the_component_vocabulary_is_defined() -> None:
         assert f'data-tone="{tone}"' in css, f"pill tone {tone} is not defined"
     for shape in ("dot", "ring", "check", "square", "alert", "dash"):
         assert f'data-shape="{shape}"' in css, f"pill shape {shape} is not defined"
+    # T11 (#175): the shared phone shell (tab bar, safe area, 44px targets) is
+    # declared once in design.css, which every page loads; mobile.css keeps the
+    # six-page legacy layout and its own 44px/16px rules.
+    shell = read_asset("design.css")
+    assert ".mobile-tabbar" in shell
+    assert "safe-area-inset-bottom" in shell
+    assert "44px" in shell
     mobile = read_asset("mobile.css")
-    assert ".mobile-tabbar" in mobile
-    assert "safe-area-inset-bottom" in mobile
-    assert "44px" in mobile
+    assert "min-height: 44px" in mobile
     assert "font-size: 16px" in mobile
 
 
