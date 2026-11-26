@@ -204,7 +204,7 @@ python tools/sync_spec.py --check -> no drift: spec copy and contract snapshot m
 
 ## 7. 参考
 
-- ADR：[0032 — F07/T081 waiting capacity](docs/adr/0032-f07-waiting-capacity.md)；前置 ADR 0025
+- ADR：[0032 — F07/T081 waiting capacity](../../docs/adr/0032-f07-waiting-capacity.md)；前置 ADR 0025
   （T078 child Runs）。
 - 规格：EXECUTION.md §7（:62-64 cancel/受控单元、:70 权限交集、:76 等待释放槽/独立槽/每父上限/
   公平、:78 fail-fast）；OPERATIONS.md:26/28；STATE-MACHINES.md:26-28/37；EVALUATION.md:49-50

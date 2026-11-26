@@ -3,7 +3,7 @@
 - 任务：F02B / GitHub Issue #71（票 `T070`，规划 ID F02B.04），分支
   `t/t070-version-revocation`（worktree `E:\orchara-worktrees\t070`，从 T068 发布分支
   `t/t068-publication-review` @ `b9acfa7` 切出）；父门禁 F02B；契约 operationId
-  `revokeVersion`；ADR [0022](../docs/adr/0022-f02b-version-revocation.md)。
+  `revokeVersion`；ADR [0022](../../docs/adr/0022-f02b-version-revocation.md)。
 - 状态：**`passed`**（本票范围：契约 `POST /api/v1/versions/{id}/revoke` 的管理员会话 + CSRF
   撤销、自然幂等、活动指针置空而**不**替换版本、撤销版本从 `Version` 读模型隐藏、权威
   `catalog.ResolveRunnableVersion`（陈旧索引只能给候选 id）、`stop_existing` 复用取消控制事实、

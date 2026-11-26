@@ -225,7 +225,7 @@ python tools/sync_spec.py --check -> no drift: spec copy and contract snapshot m
 
 ## 7. 参考
 
-- ADR：[0025 — F07/T078 child Runs, replay identity and non-contract reads](docs/adr/0025-f07-child-runs.md)
+- ADR：[0025 — F07/T078 child Runs, replay identity and non-contract reads](../../docs/adr/0025-f07-child-runs.md)
 - 契约：`spawnChild`（`contracts/openapi.json`）；EXECUTION.md §7（:70 权限交集/最小上下文、:72 幂等键与
   冲突、:74 task 工具经平台适配、:78 fail-fast）；OPERATIONS.md:28 子调用限制；STATE-MACHINES.md:28/66/78。
 - 依赖：T074 `ResolveRunnableVersionTx`/published run 形状；T075 `CheckChildDelegation`；T068 发布事务/

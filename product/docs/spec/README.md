@@ -40,7 +40,7 @@ Orchara 让业务团队把「一个想法」变成「一个可运行、可审计
 | **对话工作区**<br>会话、消息流、运行上下文、内联失败卡、附件与跨应用交接<br><img src="product/reports/ui-polish/screenshots/chat-desktop.png" width="440"> | **工作流编辑器**<br>节点库—画布—属性面板，整页工作台，校验错误可定位<br><img src="product/reports/ui-polish/screenshots/editor-desktop.png" width="440"> |
 | **应用与创作**<br>状态、版本、负责人、最近活动，内部 ID 按需展开<br><img src="product/reports/ui-polish/screenshots/apps-desktop.png" width="440"> | **运行与审批**<br>列表 + 详情，租约、快照、时间线、数据去向与决策<br><img src="product/reports/ui-polish/screenshots/runs-desktop.png" width="440"> |
 
-更多截图：[22 页桌面总览](product/reports/ui-polish/contact-sheet.png) · [22 页手机总览](product/reports/ui-polish/contact-sheet-mobile.png) · [全部 53 张](product/reports/ui-polish/screenshots/)。
+更多截图：[22 页桌面总览](https://github.com/xiaolin624/Orchara/blob/main/product/reports/ui-polish/contact-sheet.png) · [22 页手机总览](https://github.com/xiaolin624/Orchara/blob/main/product/reports/ui-polish/contact-sheet-mobile.png) · [全部 53 张](https://github.com/xiaolin624/Orchara/tree/main/product/reports/ui-polish/screenshots)。
 
 ## 现在能跑什么
 
@@ -95,7 +95,7 @@ python -X utf8 deploy\dev\bringup.py up --fresh
 ```
 
 停止：`Ctrl-C` 同时停止 API 与 maintenance，再 `python tools\pg_dev.py stop`。
-开发证书过期时删除 `product/.devstack/certs` 后重新启动即可。详见 [deploy/dev/README.md](product/deploy/dev/README.md)。
+开发证书过期时删除 `product/.devstack/certs` 后重新启动即可。详见 [deploy/dev/README.md](https://github.com/xiaolin624/Orchara/blob/main/product/deploy/dev/README.md)。
 
 ### 测试与验收
 
@@ -121,8 +121,8 @@ python -X utf8 tools\verify_frontend.py --out reports\ui-polish   # 真实 Chrom
 | 画布 | `npm.cmd run build` 成功，产物可由源码逐字节重建 |
 | 其他 | `go test ./internal/api ./cmd/api` ok；`sync_spec --check` no drift；16/16 JS 语法检查 |
 
-证据与截图：[product/reports/ui-polish/](product/reports/ui-polish/README.md)（上一轮：[ui-redesign](product/reports/ui-redesign/README.md)）。
-实现进度以 [product/PROGRESS.md](product/PROGRESS.md) 为权威。
+证据与截图：[product/reports/ui-polish/](https://github.com/xiaolin624/Orchara/blob/main/product/reports/ui-polish/README.md)（上一轮：[ui-redesign](https://github.com/xiaolin624/Orchara/blob/main/product/reports/ui-redesign/README.md)）。
+实现进度以 [product/PROGRESS.md](https://github.com/xiaolin624/Orchara/blob/main/product/PROGRESS.md) 为权威。
 
 ## 规格与文档
 
@@ -130,9 +130,9 @@ python -X utf8 tools\verify_frontend.py --out reports\ui-polish   # 真实 Chrom
 
 | 主题 | 文档 |
 |---|---|
-| 接手与实施顺序 | [HANDOFF.md](HANDOFF.md) · [BOOTSTRAP.md](BOOTSTRAP.md) · [IMPLEMENTATION-ORDER.md](IMPLEMENTATION-ORDER.md) · [DEVELOPMENT-PLAN.md](DEVELOPMENT-PLAN.md) |
+| 接手与实施顺序 | [HANDOFF.md](HANDOFF.md) · [BOOTSTRAP.md](BOOTSTRAP.md) · [IMPLEMENTATION-ORDER.md](IMPLEMENTATION-ORDER.md) |
 | 产品与体验 | [PRODUCT.md](PRODUCT.md) · [GLOSSARY.md](GLOSSARY.md) · [UX.md](UX.md) |
-| 架构与复用 | [ARCHITECTURE.md](ARCHITECTURE.md) · [OPEN-SOURCE-REUSE.md](OPEN-SOURCE-REUSE.md) · [COMPONENTS-AND-CLONE.md](COMPONENTS-AND-CLONE.md) |
+| 架构与契约 | [ARCHITECTURE.md](ARCHITECTURE.md) · [contracts/](contracts/) |
 | 工作流与执行 | [WORKFLOW-SPEC.md](WORKFLOW-SPEC.md) · [EXECUTION.md](EXECUTION.md) · [STATE-MACHINES.md](STATE-MACHINES.md) · [COMPILER-CONTRACT.md](COMPILER-CONTRACT.md) |
 | 数据与安全 | [DATA-MODEL.md](DATA-MODEL.md) · [API.md](API.md) · [SECURITY.md](SECURITY.md) · [DATA-POLICY.md](DATA-POLICY.md) |
 | 评测与运维 | [EVALUATION.md](EVALUATION.md) · [TESTING-AND-DATASETS.md](TESTING-AND-DATASETS.md) · [OPERATIONS.md](OPERATIONS.md) |
@@ -141,7 +141,7 @@ python -X utf8 tools\verify_frontend.py --out reports\ui-polish   # 真实 Chrom
 机器可读契约在 [contracts/](contracts)：SQL 基线、DSL JSON Schema、OpenAPI、事件 Schema；合法/非法样例在 [examples/](examples/)。
 静态一致性检查：`python tools/validate_contracts.py`（不启动平台，也不证明运行时行为）。
 
-**证据等级**：已确认需求来自 [DESIGN-SESSION.md](DESIGN-SESSION.md) Q1–Q46；推荐设计（表结构、内部协议、默认参数）是实施基线；
+**证据等级**：已确认需求来自设计访谈 Q1–Q46（原始记录已随本轮收口清理，结论固化在 [GLOSSARY.md](GLOSSARY.md) 与 [contracts/](contracts/)）；推荐设计（表结构、内部协议、默认参数）是实施基线；
 源码事实见 [research/](research) 的固定 commit；待验证项（外部服务行为、SLO、容量、模型效果）不得改写为已通过。
 
 ## 状态与限制
@@ -156,7 +156,7 @@ python -X utf8 tools\verify_frontend.py --out reports\ui-polish   # 真实 Chrom
 | 完整 v1 | 未完成：评测执行器、发布门禁、RAG/记忆、真实外部写入等 epic 仍在推进 |
 
 平台**不是**已上线的企业系统，也不把规格确认、stub 结果或静态校验写成生产验收。阻塞与解除条件的权威记录见
-[product/README.md](product/README.md#已登记阻塞d00t001-实测--后续补充) 与 [OPERATIONS.md](OPERATIONS.md)。
+[product/README.md](https://github.com/xiaolin624/Orchara/blob/main/product/README.md) 与 [OPERATIONS.md](OPERATIONS.md)。
 
 ## 目录
 
