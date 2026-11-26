@@ -49,7 +49,7 @@ flowchart LR
 
 ### v0.2组件细化
 
-完整分层与状态见 [OPEN-SOURCE-REUSE.md](OPEN-SOURCE-REUSE.md)。新增推荐：Element Plus提供基础UI；RAG优先评估LlamaIndex纯分块转换、Docling Native PDF解析；Agent质量优先验证DeepEval本地适配器。Mem0继续作为有门禁的对照后端。Promptfoo为通用质量替代，Ragas为RAG专项，不同时强制部署三套。
+完整分层与状态见本文档与 [contracts/](contracts/) 快照。新增推荐：Element Plus提供基础UI；RAG优先评估LlamaIndex纯分块转换、Docling Native PDF解析；Agent质量优先验证DeepEval本地适配器。Mem0继续作为有门禁的对照后端。Promptfoo为通用质量替代，Ragas为RAG专项，不同时强制部署三套。
 
 对象存储优先部署者已有S3；需要自部署再验证SeaweedFS。LiteLLM/MCP/Collector均为按需候选，不把组件清单当生产服务清单。整平台Coze/Dify/Flowise保持参考身份，避免引入第二个执行引擎/前端/数据权威。具体安装版本需P0锁定，不直接混装研究HEAD。
 

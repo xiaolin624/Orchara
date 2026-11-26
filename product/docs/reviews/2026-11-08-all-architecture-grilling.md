@@ -195,7 +195,7 @@ Q7/Q8 确认后已重新检查 ADR 条件：依赖失败展示策略与读取校
 
 本轮实际完成的是原报告归档、代码/ADR/测试静态核对、三个独立上下文的事实调查、全范围设计树和本文件。没有运行新业务验收，没有修改 C2–C6 的产品实现，没有创建或改变远端 Issue 状态。C1 既有测试结果不是本轮重跑。
 
-本轮遵循 [grilling skill](C:/Users/19677/.agents/skills/grilling/SKILL.md) 的要求：`Then wait for the user's answers before the next round.` 以及 `Do not act on it until the user confirms you have reached a shared understanding.` Q7/Q8 和共同理解汇总均已确认，该需求门禁已满足。
+本轮遵循 grilling skill（本机技能，未入库）的要求：`Then wait for the user's answers before the next round.` 以及 `Do not act on it until the user confirms you have reached a shared understanding.` Q7/Q8 和共同理解汇总均已确认，该需求门禁已满足。
 
 ## 共同理解汇总（已确认）
 

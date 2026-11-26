@@ -186,7 +186,7 @@ python tools/sync_spec.py --check -> no drift: spec copy and contract snapshot m
 
 ## 7. 参考
 
-- ADR：[0031 — F07/T080 并行子调用共享同一份父预算](docs/adr/0031-f07-parent-budget.md)
+- ADR：[0031 — F07/T080 并行子调用共享同一份父预算](../../docs/adr/0031-f07-parent-budget.md)
 - 契约：`spawnChild`（`contracts/openapi.json`）；`usage_ledger`（0028，`budget_root_run_id` 顶层祖先）；
   EXECUTION.md:66（每次模型调用预留/结算、多并发共享父预算）、:7（创建 Run 时同事务固定预算）、
   :72（父调用键幂等）；IMPLEMENTATION-DETAILS.md:69（恢复不能重新获得一整份预算/轮数）；

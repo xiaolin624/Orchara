@@ -22,7 +22,7 @@
 - 2026-11-05 复核调整：`test_t067_comparison.py` 的两种模式改为**成对取样**（每次先
   cache-on hit、再同一 query 走 cache-off 进程，同一测量窗口），计时断言降级为**粗回归护栏**
   （hit p50 ≤ miss p50 × 3）；keep/drop 仍以上述记录数字为准。原因与实测见
-  [ADR 0015 D5](docs/adr/0015-f10-retrieval-cache.md)（多套件并发下先后两相位会被宿主慢窗口翻转）。
+  [ADR 0015 D5](../../docs/adr/0015-f10-retrieval-cache.md)（多套件并发下先后两相位会被宿主慢窗口翻转）。
 
 ## 0. 工作记录（简短）
 
