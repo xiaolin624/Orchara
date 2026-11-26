@@ -6,50 +6,84 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>发布审核 · Orchara</title>
 <style>
-    input[type="text"], textarea, select { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
-    dl.facts dt { opacity: .7; }
-    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    ul.plain { margin: .2rem 0 .2rem 1.1rem; padding: 0; font-size: .86rem; }
-    .tag { display: inline-block; border: 1px solid rgba(128,128,128,.4); border-radius: 999px; padding: 0 .5rem; margin: 0 .25rem .25rem 0; font-size: .78rem; }
-    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    /* T7 (#171): the review queue, the frozen snapshot and the decision.
+       Scoped with body[data-page] because design.css is linked after this block. */
+    body[data-page="reviews"] .reviews-stack { display: grid; gap: 16px; }
+    body[data-page="reviews"] .mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
+    body[data-page="reviews"] td.mono-cell {
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      color: var(--text-2);
+      overflow-wrap: anywhere;
+      max-width: 18rem;
+    }
+    body[data-page="reviews"] .fact-group { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    body[data-page="reviews"] .fact-group:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+    body[data-page="reviews"] .fact-group > h3 { margin: 0 0 8px; color: var(--text); font-size: var(--fs-13); font-weight: 600; }
+    body[data-page="reviews"] dl.facts { grid-template-columns: minmax(96px, 148px) minmax(0, 1fr); margin: 0; }
+    body[data-page="reviews"] dl.facts dt { padding: 6px 0; }
+    body[data-page="reviews"] dl.facts dd {
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="reviews"] ul.plain { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-12); }
+    body[data-page="reviews"] ul.plain:empty::after { content: "未提供"; color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="reviews"] .evidence-line { margin: 0; }
+    body[data-page="reviews"] .decision-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
+    body[data-page="reviews"] .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    @media (max-width: 1200px) {
+      body[data-page="reviews"] .decision-layout { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 720px) {
+      body[data-page="reviews"] .reviews-stack { gap: 12px; }
+      body[data-page="reviews"] .reviews-stack .card { padding: 16px; }
+      body[data-page="reviews"] .decision-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      body[data-page="reviews"] dl.facts { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="reviews"] dl.facts dt { padding-bottom: 0; border-bottom: 0; }
+      body[data-page="reviews"] dl.facts dd { padding-top: 2px; }
+      body[data-page="reviews"] .card-head { gap: 8px; }
+      body[data-page="reviews"] .page-content table { min-width: 34rem; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-page="reviews"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>管理台</span><span class="separator">/</span><span>发布审核</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body data-page="reviews"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/admin">管理台</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">发布审核</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="check">PUBLICATION REVIEWS</p><h1>发布审核</h1><p class="page-description">审阅固定内容与权限范围，决定应用是否可以发布。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    管理员看到全部审核；创作者只看到自己提交或自己应用的审核。审核页展示冻结快照：用途卡、模型数据去向、
-    工具读写/联网、固定子版本、连接器策略和可信测试报告。审批只能针对<strong>冻结的同一 hash</strong>，
-    拒绝必须写明原因，拒绝后创作者回到草稿编辑。
-  </p><p class="hint">
-    本页调用正式契约：<code>GET /api/v1/reviews</code>（cursor/limit）、<code>GET /api/v1/reviews/{id}</code>、
-    <code>POST /api/v1/reviews/{id}/decision</code>（管理员，<code>Idempotency-Key</code> 必填）。
-    未知或他人审核一律 404，页面不会枚举 id。
-  </p></details><div class="page-sections">
+<header class="page-heading"><div class="page-head-main"><h1>发布审核</h1><p class="page-description">审阅固定内容与权限范围，决定应用是否可以发布。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>拒绝需要填写理由</span><span>发布决定不可撤销</span></p></header>
+<div class="page-sections">
+<div class="reviews-stack">
 <section class="card" id="reviews-list-card" data-auth-content="">
-<h2>审核队列</h2>
-<button id="reviews-refresh" type="button">刷新</button>
+<div class="card-head"><h2>审核队列</h2><div class="card-actions"><span class="toolbar-note" data-reviews-count>正在加载…</span><button class="btn btn-secondary btn-small" id="reviews-refresh" type="button">刷新</button></div></div>
+<p class="hint">待审排在最前，已决策的审核留在同一张表里作为历史；点「查看快照」进入详情。</p>
 <p class="status" id="reviews-status" aria-live="polite" role="status"></p>
-<div class="table-scroll" aria-label="发布审核数据表（可横向滚动）" role="region" tabindex="0"><table>
-<thead><tr><th>审核 id</th><th>应用</th><th>状态</th><th>manifest SHA-256</th><th></th></tr></thead>
+<div class="table-scroll" aria-label="发布审核队列（可横向滚动）" role="region" tabindex="0"><table class="table">
+<thead><tr><th>审核 ID</th><th>应用</th><th>状态</th><th>manifest SHA-256</th><th>操作</th></tr></thead>
 <tbody id="reviews-rows"></tbody>
 </table></div>
-<p id="reviews-more" hidden=""><button id="reviews-next" type="button">下一页</button></p>
+<div class="empty-state" data-reviews-empty hidden=""><span class="empty-mark" data-icon="check" aria-hidden="true"></span><strong>队列为空</strong><p class="empty-explain">没有等待审核或已决策的记录。创作者提交发布后会出现在这里，待审排在最前。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/apps">前往应用与创作</a><a class="btn btn-ghost btn-small" href="/catalog">查看应用目录</a></div></div>
+<p id="reviews-more" hidden=""><button class="btn btn-secondary btn-small" id="reviews-next" type="button">下一页</button></p>
 </section>
 <section class="card" id="review-detail-card" aria-live="polite" data-auth-content="" hidden="">
-<h2>冻结快照</h2>
+<div class="card-head"><h2>冻结快照</h2><span class="pill" data-tone="warning" data-shape="ring" data-review-state-pill>unknown</span></div>
+<p class="hint">下面每一块都来自提交时封存的快照；审核只针对冻结的同一 hash，批准后生成不可变版本。</p>
+<div class="fact-group">
+<h3>内容身份</h3>
 <dl class="facts">
-<dt>审核 id</dt><dd id="review-id"></dd>
+<dt>审核 ID</dt><dd id="review-id"></dd>
 <dt>状态</dt><dd id="review-state"></dd>
 <dt>manifest SHA-256</dt><dd id="review-hash"></dd>
 <dt>测试报告</dt><dd id="review-report"></dd>
 <dt>作者案例</dt><dd id="review-author-cases"></dd>
 </dl>
+</div>
+<div class="fact-group">
+<h3>证据</h3>
+<p class="hint evidence-line" data-review-evidence>证据来源：未读取；报告生成时间：未提供。</p>
+</div>
+<div class="fact-group">
 <h3>用途卡</h3>
 <dl class="facts">
 <dt>用途</dt><dd id="review-purpose"></dd>
@@ -59,41 +93,76 @@
 <dt>预期输出</dt><dd id="review-expected-outputs"></dd>
 <dt>示例需求</dt><dd id="review-examples"></dd>
 </dl>
+</div>
+<div class="fact-group">
 <h3>模型数据去向</h3>
+<p class="hint">这些是作者的模型/内容去向；审批对象里不包含任何使用者的会话、文件或正文。</p>
 <ul class="plain" id="review-model-destinations"></ul>
+</div>
+<div class="fact-group">
 <h3>工具读写 / 联网</h3>
-<div class="table-scroll" aria-label="发布审核数据表（可横向滚动）" role="region" tabindex="0"><table>
+<div class="table-scroll" aria-label="发布审核工具能力表（可横向滚动）" role="region" tabindex="0"><table class="table table-compact">
 <thead><tr><th>工具版本</th><th>风险</th><th>读取</th><th>写入</th><th>联网</th><th>镜像</th></tr></thead>
 <tbody id="review-tools"></tbody>
 </table></div>
+<p class="inline-note" data-tone="warning" id="review-write-warning" hidden="">该版本包含写入/联网工具：硬门禁不可豁免，审批前请确认用途卡与工具权限一致。</p>
+</div>
+<div class="fact-group">
 <h3>固定子版本 / 连接器</h3>
 <ul class="plain" id="review-subapps"></ul>
 <ul class="plain" id="review-connectors"></ul>
-<p class="hint" id="review-write-warning" hidden="">该版本包含写入/联网工具：硬门禁不可豁免，审批前请确认用途卡与工具权限一致。</p>
+</div>
+<div class="fact-group">
+<h3>审核历史</h3>
+<p class="hint" data-review-history>审核历史（谁在何时以何理由决定）不在 <code>GET /api/v1/reviews/{id}</code> 的返回里：本页只显示当前 state 与提交时冻结的快照，决策理由由服务端保存，页面不补造时间线（未提供）。</p>
+</div>
 </section>
 <section class="card" id="review-decision-card" hidden="">
-<h2>审核决定（仅管理员）</h2>
+<div class="card-head"><h2>审核决定（仅管理员）</h2><span class="pill" data-tone="danger" data-shape="alert">不可撤销</span></div>
+<p class="inline-note" data-tone="warning">批准会创建不可变版本并让应用可发布；拒绝会把创作者退回草稿编辑。两种决定都不可撤销，理由记录在审核历史里。</p>
+<div class="decision-layout">
 <form id="review-decision-form" method="post">
+<div class="field">
 <label for="review-decision">决定</label>
 <select id="review-decision" name="decision">
 <option value="approve">批准并创建不可变版本</option>
 <option value="reject">拒绝并退回编辑</option>
 </select>
-<label for="review-decision-hash">manifest_sha256（必须等于冻结 hash）</label>
+</div>
+<div class="field">
+<label for="review-decision-hash">哈希校验（必须等于冻结 hash）<span class="field-api">manifest_sha256</span></label>
 <input id="review-decision-hash" name="manifest_sha256" autocomplete="off" required="" spellcheck="false" type="text"/>
+<p class="field-help">hash 由页面在读取快照时自动填入；与冻结值不同会被服务端拒绝。</p>
+</div>
+<div class="field">
 <label for="review-decision-reason">原因（必填，记录在审核历史）</label>
 <textarea id="review-decision-reason" name="reason" required=""></textarea>
-<button id="review-decision-submit" type="submit">提交决定</button>
+<p class="field-help">拒绝时请写清缺项或风险；批准时也可记录依据。</p>
+</div>
+<div class="form-actions"><button id="review-decision-submit" type="submit">提交决定</button></div>
 <p class="status" id="review-decision-status" aria-live="polite" role="status"></p>
 </form>
 <div id="review-decision-result" hidden="">
 <dl class="facts">
 <dt>审核状态</dt><dd id="review-result-state"></dd>
-<dt>版本 id</dt><dd id="review-result-version"></dd>
+<dt>版本 ID</dt><dd id="review-result-version"></dd>
 </dl>
+<p class="hint">批准后版本不可变；拒绝后创作者可以继续编辑草稿并重新提交。</p>
+</div>
 </div>
 </section>
-</div></main>
+</div>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    管理员看到全部审核；创作者只看到自己提交或自己应用的审核。审核页展示冻结快照：用途卡、模型数据去向、
+    工具读写/联网、固定子版本、连接器策略和可信测试报告。审批只能针对<strong>冻结的同一 hash</strong>，
+    拒绝必须写明原因，拒绝后创作者回到草稿编辑。
+  </p><p class="hint">
+    本页调用正式契约：<code>GET /api/v1/reviews</code>（cursor/limit）、<code>GET /api/v1/reviews/{id}</code>、
+    <code>POST /api/v1/reviews/{id}/decision</code>（管理员，<code>Idempotency-Key</code> 必填）。
+    未知或他人审核一律 404，页面不会枚举 id。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

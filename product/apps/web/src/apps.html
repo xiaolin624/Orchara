@@ -6,15 +6,296 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>应用与创作 · Orchara</title>
 <style>
-</style>
+    /* T3 (#167): application workspace. Scoped with body[data-page="apps"] so these
+       rules outrank design.css's generic form/button/list rules without editing it. */
+    body[data-page="apps"] .apps-stats { margin-bottom: 14px; }
+    body[data-page="apps"] .apps-stats .stat-chip { align-items: center; }
+    body[data-page="apps"] .apps-stats .stat-chip[data-apps-stat="more"] { border-style: dashed; background: transparent; }
+    body[data-page="apps"] .apps-stats .stat-chip[data-apps-stat="more"] .stat-label { color: var(--text-2); font-size: var(--fs-11); }
+    body[data-page="apps"] .stat-unit { color: var(--muted); font-size: var(--fs-11); }
+
+    /* The create form is the primary action, kept as one compact strip instead of
+       a card that owns the first screen. */
+    body[data-page="apps"] .apps-create {
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+    }
+    body[data-page="apps"] .apps-create-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin: 0; }
+    body[data-page="apps"] .apps-create .field { flex: 1 1 260px; min-width: 180px; max-width: 420px; margin: 0; }
+    body[data-page="apps"] .apps-create .field-label { margin: 0 0 4px; color: var(--accent-ink); }
+    body[data-page="apps"] .apps-create input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+      margin: 0;
+      min-height: 32px;
+      background: var(--surface);
+      border-color: var(--accent-line);
+    }
+    body[data-page="apps"] .apps-create .btn { flex: 0 0 auto; }
+    body[data-page="apps"] .apps-create .status { margin: 8px 0 0; }
+
+    /* Toolbar: client-side search, status chips and sort over the loaded rows. */
+    body[data-page="apps"] .apps-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    body[data-page="apps"] .apps-toolbar input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+      flex: 1 1 220px;
+      max-width: 320px;
+      margin: 0;
+      min-height: 32px;
+      font-size: var(--fs-12);
+    }
+    body[data-page="apps"] .apps-toolbar .segmented button {
+      margin: 0;
+      height: 24px;
+      min-height: 24px;
+      padding: 0 9px;
+      font-size: var(--fs-11);
+    }
+    body[data-page="apps"] .apps-toolbar .segmented button[aria-pressed="true"] {
+      background: var(--surface);
+      color: var(--accent-ink);
+      box-shadow: var(--shadow-card);
+    }
+    body[data-page="apps"] .apps-sort { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+    body[data-page="apps"] .apps-sort select { width: auto; margin: 0; min-height: 32px; font-size: var(--fs-12); }
+    body[data-page="apps"] .apps-scope { margin: 8px 0 0; }
+
+    /* High-density rows: one scannable line per application, plus a visual
+       column reference above the list (the rows are a list, not a table).
+       The right-hand columns have deterministic widths so the header lines up:
+       the action links get one fixed width each, and the header reserves the same
+       block (3 links for a creator, 1 link for a read-only caller). */
+    body[data-page="apps"] {
+      --app-row-action-w: 68px;
+      --app-row-action-gap: 12px;
+    }
+    body[data-page="apps"] .apps-row-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      margin: 14px 0 0;
+      padding: 0 2px 8px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: var(--fs-11);
+      font-weight: 600;
+    }
+    body[data-page="apps"] .apps-row-head-avatar { flex: 0 0 26px; }
+    body[data-page="apps"] .apps-row-head-title { flex: 1 1 240px; min-width: 0; }
+    body[data-page="apps"] .apps-row-head-status { flex: 0 0 62px; }
+    body[data-page="apps"] .apps-row-head-version { flex: 0 0 104px; }
+    body[data-page="apps"] .apps-row-head-actions {
+      flex: 0 0 calc(var(--app-row-action-w) * 3 + var(--app-row-action-gap) * 2);
+      margin-left: auto;
+      text-align: right;
+    }
+    body[data-page="apps"][data-apps-can-write="false"] .apps-row-head-actions {
+      flex: 0 0 var(--app-row-action-w);
+    }
+    body[data-page="apps"] .page-content ul.app-rows {
+      display: block;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      margin: 0;
+      padding: 10px 2px;
+      border-top: 1px solid var(--border);
+      transition: background var(--dur-1) var(--ease);
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li:hover { background: var(--surface-hover); }
+    body[data-page="apps"] .page-content ul.app-rows > li:first-child { border-top: 0; }
+    body[data-page="apps"] .app-row-avatar { width: 26px; height: 26px; font-size: var(--fs-11); }
+    body[data-page="apps"] .app-row-title { display: block; flex: 1 1 240px; min-width: 0; }
+    body[data-page="apps"] .app-row-title strong {
+      display: block;
+      color: var(--text);
+      font-size: var(--fs-13);
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    /* Internal ids stay behind the disclosure, so the row line is just the name. */
+    body[data-page="apps"] .app-row-meta {
+      margin: 1px 0 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    body[data-page="apps"] .app-row-meta summary { color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="apps"] .app-row-meta[open] summary { margin-bottom: 3px; color: var(--accent-ink); }
+    body[data-page="apps"] .app-row-id {
+      display: block;
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="apps"] .app-row-id code { font-size: var(--fs-11); }
+    body[data-page="apps"] .app-row-status { flex: 0 0 auto; min-width: 62px; justify-content: center; }
+    body[data-page="apps"] .app-row-version {
+      flex: 0 0 auto;
+      min-width: 104px;
+      color: var(--text-2);
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      font-variant-numeric: tabular-nums;
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li > a {
+      display: inline-flex;
+      flex: 0 0 var(--app-row-action-w);
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin: 0;
+      padding: 3px 0;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-2);
+      font-size: var(--fs-11);
+      font-weight: 500;
+      text-decoration: none;
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li > a:hover {
+      border-color: var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      text-decoration: none;
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li > a:first-of-type { margin-left: auto; }
+    body[data-page="apps"] .page-content ul.app-rows > li.skeleton-row {
+      display: block;
+      padding: 14px 2px;
+      border-top: 1px solid var(--border);
+    }
+    body[data-page="apps"] .page-content ul.app-rows > li.skeleton-row:first-child { border-top: 0; }
+
+    /* Empty states and pager. */
+    body[data-page="apps"] .apps-empty-block { margin-top: 14px; }
+    body[data-page="apps"] .apps-filter-empty {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 16px 18px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+      color: var(--text-2);
+      font-size: var(--fs-12);
+    }
+    body[data-page="apps"] .apps-filter-empty[hidden] { display: none; }
+    body[data-page="apps"] .apps-filter-empty p { margin: 0; }
+    body[data-page="apps"] .apps-pager {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    body[data-page="apps"] .apps-pager .hint { margin: 0; }
+    body[data-page="apps"] .apps-pager button { margin: 0 0 0 auto; }
+
+    /* Template entry strip: one line, after the list. */
+    body[data-page="apps"] .apps-template {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin: 0;
+      padding: 14px 16px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+    }
+    body[data-page="apps"] .apps-template-mark {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+    }
+    body[data-page="apps"] .apps-template-mark .ui-icon { width: 18px; height: 18px; }
+    body[data-page="apps"] .apps-template-copy { flex: 1 1 260px; min-width: 0; }
+    body[data-page="apps"] .apps-template-copy h2 { margin: 0 0 3px; font-size: var(--fs-13); }
+    body[data-page="apps"] .apps-template-copy .hint { margin: 0; font-size: var(--fs-11); }
+    body[data-page="apps"] .apps-template .status { flex: 1 1 100%; margin: 0; }
+
+    @media (max-width: 720px) {
+      body[data-page="apps"] .apps-create { padding: 12px; }
+      body[data-page="apps"] .apps-toolbar input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) { max-width: none; flex-basis: 100%; }
+      /* Phones stack the row instead of pretending to be a table: no column
+         reference, name first, then status + version, then the actions. */
+      body[data-page="apps"] .apps-row-head { display: none; }
+      body[data-page="apps"] .app-row-title { flex: 1 1 calc(100% - 38px); }
+      body[data-page="apps"] .app-row-version { flex: 1 1 auto; min-width: 0; }
+      body[data-page="apps"] .app-row-status { flex: 0 0 auto; }
+      body[data-page="apps"] .page-content ul.app-rows > li > a { flex: 0 0 auto; padding: 3px 8px; }
+      body[data-page="apps"] .page-content ul.app-rows > li > a:first-of-type { margin-left: 0; }
+      body[data-page="apps"] .apps-pager button { margin: 0; }
+    }
+  </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-page="apps"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>应用与创作</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body data-page="apps"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">应用与创作</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="workflow">BUILD WITH ORCHARA</p><h1>应用与创作</h1><p class="page-description">将想法编排成工作流，创建、调试并维护你的 Agent 应用。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<header class="page-heading"><div class="page-head-main"><h1>应用与创作</h1><p class="page-description">将想法编排成工作流，创建、调试并维护你的应用。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>只显示你拥有的或已获授权的应用</span><span>创建与保存需要 creator 角色</span></p></header>
+<div class="page-sections">
+<div class="stat-row apps-stats" data-apps-stats>
+<span class="stat-chip" data-tone="accent"><span class="stat-label">已加载</span><span class="stat-value" data-apps-stat="loaded">—</span><span class="stat-unit">个应用</span></span>
+<span class="stat-chip"><span class="stat-label">已发布</span><span class="stat-value" data-apps-stat="published">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip"><span class="stat-label">草稿</span><span class="stat-value" data-apps-stat="draft">—</span><span class="stat-unit">个</span></span>
+<span class="stat-chip" data-apps-stat="more" hidden><span class="stat-label">还有下一页：统计只含已加载项</span></span>
+</div>
+<section class="apps-create" id="create-app-card" data-requires-role="creator" hidden="">
+<form class="apps-create-form" id="create-app-form" method="post">
+<div class="field"><label class="field-label" for="create-app-name">新建应用</label><input id="create-app-name" name="name" autocomplete="off" maxlength="200" placeholder="例如：销售数据分析助手" type="text"/></div>
+<button class="btn btn-primary" id="create-app-submit" data-icon="plus" type="submit">创建并进入编辑器</button>
+</form>
+<p class="status" id="create-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card apps-card">
+<div class="card-head"><h2>我的应用与已授权应用</h2><span class="toolbar-note" data-apps-count>正在加载…</span></div>
+<div class="apps-toolbar" role="search">
+<input aria-label="按应用名称或 ID 搜索已加载的应用" autocomplete="off" placeholder="搜索已加载的应用名称或 ID" type="search" data-apps-search=""/>
+<div class="segmented" role="group" aria-label="按状态筛选已加载的应用">
+<button type="button" data-apps-filter-value="all" aria-pressed="true">全部</button>
+<button type="button" data-apps-filter-value="published" aria-pressed="false">已发布</button>
+<button type="button" data-apps-filter-value="draft" aria-pressed="false">草稿</button>
+</div>
+<label class="apps-sort"><span class="sr-only">排序</span><select aria-label="排序已加载的应用" data-apps-sort=""><option value="default">默认顺序</option><option value="name">名称 A→Z</option><option value="name-desc">名称 Z→A</option><option value="published">已发布优先</option></select></label>
+</div>
+<p class="hint apps-scope" data-apps-scope="">搜索、状态筛选与排序只作用于已加载的应用，不会重新检索服务端。</p>
+<p class="status" id="apps-status" aria-live="polite" role="status">正在加载应用…</p>
+<div class="apps-row-head" data-apps-row-head="" aria-hidden="true"><span class="apps-row-head-avatar"></span><span class="apps-row-head-title">名称</span><span class="apps-row-head-status">状态</span><span class="apps-row-head-version">版本</span><span class="apps-row-head-actions">操作</span></div>
+<ul class="app-rows" id="apps-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<div class="apps-empty-block"><div class="empty-state" id="apps-empty" hidden=""><span class="empty-mark" data-icon="grid" aria-hidden="true"></span><strong>还没有可见的应用</strong><p class="empty-explain">你可以用上面的表单新建一个应用，或请应用所有者授予访问权限。创建与保存需要 creator 角色。</p><div class="empty-actions"><a class="btn btn-primary btn-small" data-requires-role="creator" href="#create-app-name">新建应用</a><a class="btn btn-ghost btn-small" href="/catalog">浏览应用目录</a></div></div></div>
+<div class="apps-filter-empty" data-apps-filter-empty="" hidden=""><p>已加载的应用里没有匹配当前搜索与筛选的条目。</p><button class="btn btn-small" type="button" data-apps-clear="">清除搜索与筛选</button></div>
+<div class="apps-pager"><span class="hint" data-apps-pager-note="">正在加载…</span><button class="btn btn-small" id="apps-next" hidden="" type="button">下一页</button></div>
+</section>
+<section class="apps-template" id="template-card" data-requires-role="creator" hidden="">
+<span class="apps-template-mark" data-icon="workflow" aria-hidden="true"></span>
+<div class="apps-template-copy"><h2>从销售模板创建</h2><p class="hint">从销售数据分析模板开始，配置自己的处理流程与报告要求。模板会创建仅供你编辑的草稿；组织共享需要经过发布审核。</p></div>
+<button class="btn btn-secondary" id="create-from-template" data-icon="spark" type="button">从销售模板创建</button>
+<p class="status" id="template-status" aria-live="polite" role="status"></p>
+</section>
+</div>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     列表来自 <code>GET /api/v1/applications</code>：只显示<strong>你拥有的</strong>或
     <strong>被授予未过期 read 权限</strong>的应用。管理员身份本身不会让人多看到什么，
@@ -24,31 +305,12 @@
     创建、保存、校验与调试是<strong>创作者（creator）</strong>操作：只有持有 creator 角色的账号
     才能写入，管理员也需要同时具备该角色（SECURITY §1）。缺少角色时服务器返回
     <code>403 creator_role_required</code>，本页会原样显示该错误码。
-  </p></details><div class="page-sections">
-<div class="create-layout"><section class="card" id="create-app-card" data-requires-role="creator" hidden="">
-<h2>新建应用</h2>
-<form id="create-app-form" method="post">
-<label for="create-app-name">应用名称</label>
-<input id="create-app-name" name="name" autocomplete="off" maxlength="200" placeholder="例如：销售数据分析助手" type="text"/>
-<button id="create-app-submit" data-icon="plus" type="submit">创建并进入编辑器</button>
-</form>
-<p class="status" id="create-status" aria-live="polite" role="status"></p>
-</section>
-<section class="card" id="template-card" data-requires-role="creator" hidden="">
-<h2>从销售模板创建</h2>
-<p class="hint">从销售数据分析模板开始，配置自己的处理流程与报告要求。模板会创建仅供你编辑的草稿；组织共享需要经过发布审核。</p>
-<button id="create-from-template" data-icon="spark" type="button">从销售模板创建</button>
-<p class="status" id="template-status" aria-live="polite" role="status"></p>
-</section>
-</div>
-<section class="card">
-<h2>我的应用与已授权应用</h2>
-<p class="status" id="apps-status" aria-live="polite" role="status">正在加载应用…</p>
-<ul class="app-cards" id="apps-list" data-auth-content=""></ul>
-<p class="empty-state" id="apps-empty" hidden="">还没有可见的应用。你可以创建应用，或请应用所有者授予访问权限。</p>
-<button id="apps-next" hidden="" type="button">下一页</button>
-</section>
-</div></main>
+  </p><p class="hint">
+    本页的统计、搜索、状态筛选与排序都只覆盖<strong>已经加载</strong>的条目：列表接口只返回
+    名称、ID 与生效版本（<code>active_version_id</code>），不返回负责人或最近活动，
+    因此本页不展示这两类信息。还有下一页时，统计会明确写出「已加载」，不会当作全量。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -61,9 +323,33 @@
     const createForm = document.getElementById('create-app-form');
     const createStatus = document.getElementById('create-status');
 
+    // T3 presentation hooks only: T1's business id inventory is a contract, so the
+    // new controls carry data-* hooks instead of new ids.
+    const statElements = {
+      loaded: document.querySelector('[data-apps-stat="loaded"]'),
+      published: document.querySelector('[data-apps-stat="published"]'),
+      draft: document.querySelector('[data-apps-stat="draft"]'),
+      more: document.querySelector('[data-apps-stat="more"]'),
+    };
+    const countElement = document.querySelector('[data-apps-count]');
+    const pagerNote = document.querySelector('[data-apps-pager-note]');
+    const filterEmptyElement = document.querySelector('[data-apps-filter-empty]');
+    const searchElement = document.querySelector('[data-apps-search]');
+    const sortElement = document.querySelector('[data-apps-sort]');
+    const filterElements = Array.from(document.querySelectorAll('[data-apps-filter-value]'));
+    const clearElement = document.querySelector('[data-apps-clear]');
+
     let nextCursor = null;
     let rendered = 0;
     let identityState = null;
+    // Every application loaded so far, in arrival order. Search, status filtering
+    // and sorting are views over this array; they never re-query the server, so
+    // the page must never imply a server-side search.
+    const loaded = [];
+    let loadState = 'loading';
+    let filterState = 'all';
+    let searchTerm = '';
+    let sortMode = 'default';
 
     // Writing to an application is a creator capability. The server checks the
     // role on every write (403 creator_role_required), so the page must not
@@ -84,28 +370,95 @@
       createStatus.className = 'status ' + (kind || '');
     }
 
+    function isPublished(application) {
+      return Boolean(application && application.active_version_id);
+    }
+
+    function initialOf(name) {
+      const text = String(name || '').trim();
+      return text ? Array.from(text)[0] : '?';
+    }
+
+    function compareByName(left, right) {
+      return String(left.name || '').localeCompare(String(right.name || ''), 'zh-Hans-CN');
+    }
+
     // Build every node with textContent: an application name is user data and
-    // must never be parsed as markup.
+    // must never be parsed as markup. The row links stay direct children of the
+    // list item so the row's action set is discoverable as a list of links.
     function renderItem(application) {
+      const published = isPublished(application);
       const item = document.createElement('li');
+      item.className = 'app-row';
+
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar app-row-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.setAttribute('title', '应用名称首字');
+      avatar.textContent = initialOf(application.name);
+      item.appendChild(avatar);
+
+      const title = document.createElement('span');
+      title.className = 'app-row-title';
       const name = document.createElement('strong');
       name.textContent = application.name;
-      const id = document.createElement('code');
-      id.textContent = application.id;
-      const version = document.createElement('span');
-      // F02B/T070: the contract's only availability signal is the active pointer.
-      // A revoked version is nulled, never silently replaced, so the catalog says
-      // the application is unavailable through the shared page helper. The raw
-      // active_version_id is also kept on the node for inspection (the contract
-      // field has no separate availability/state member).
-      version.dataset.activeVersionId = application.active_version_id || '';
-      version.textContent = describeCatalogAvailability(application);
-      const metadata = document.createElement('details');
-      metadata.className = 'record-meta';
+      // Internal ids are support data, not row content: they live behind an
+      // on-demand disclosure (the approved convention), never on the main line.
+      const meta = document.createElement('details');
+      meta.className = 'app-row-meta';
       const summary = document.createElement('summary');
-      summary.textContent = '应用详情';
-      metadata.append(summary, id);
-      item.append(name, ' ', version, metadata);
+      summary.textContent = '详情';
+      meta.appendChild(summary);
+      const idLine = document.createElement('span');
+      idLine.className = 'app-row-id';
+      const idLabel = document.createElement('span');
+      idLabel.className = 'app-row-id-label';
+      idLabel.textContent = '应用 ID';
+      const idCode = document.createElement('code');
+      idCode.textContent = String(application.id || '');
+      idLine.append(idLabel, idCode);
+      meta.appendChild(idLine);
+      if (application.active_version_id) {
+        const activeLine = document.createElement('span');
+        activeLine.className = 'app-row-id';
+        const activeLabel = document.createElement('span');
+        activeLabel.className = 'app-row-id-label';
+        activeLabel.textContent = '生效版本';
+        const activeCode = document.createElement('code');
+        activeCode.textContent = String(application.active_version_id);
+        activeLine.append(activeLabel, activeCode);
+        meta.appendChild(activeLine);
+      }
+      title.append(name, meta);
+      item.appendChild(title);
+
+      // F02B/T070: the contract's only availability signal is the active pointer.
+      // The raw active_version_id is kept on the node for inspection (the contract
+      // field has no separate availability/state member) and the shared helper
+      // supplies the wording, so the catalog and this page cannot disagree.
+      const status = document.createElement('span');
+      status.className = 'pill app-row-status';
+      status.setAttribute('data-tone', published ? 'success' : 'muted');
+      status.setAttribute('data-shape', published ? 'check' : 'square');
+      status.setAttribute('title', describeCatalogAvailability(application));
+      status.textContent = published ? '已发布' : '草稿';
+      item.appendChild(status);
+
+      const version = document.createElement('span');
+      version.className = 'app-row-version';
+      version.dataset.activeVersionId = application.active_version_id || '';
+      // The list response carries no version number, so the column states the one
+      // fact it owns (is there an active version?) in words instead of printing a
+      // raw pointer. The full pointer is in the row's 详情 disclosure.
+      if (published) {
+        version.title = '生效版本 ' + application.active_version_id;
+        version.textContent = '生效中';
+      } else {
+        version.title = '没有生效版本：未发布或已撤销';
+        version.textContent = '未发布';
+      }
+      item.appendChild(version);
+
       if (canWrite()) {
         const edit = document.createElement('a');
         edit.href = '/apps/' + encodeURIComponent(application.id) + '/edit';
@@ -113,13 +466,91 @@
         const debug = document.createElement('a');
         debug.href = '/apps/' + encodeURIComponent(application.id) + '/debug';
         debug.textContent = '调试';
-        item.append(' ', edit, ' ', debug);
+        item.append(edit, debug);
       }
       const versions = document.createElement('a');
       versions.href = '/apps/' + encodeURIComponent(application.id) + '/versions';
       versions.textContent = '版本与撤销';
-      item.append(' ', versions);
-      listElement.appendChild(item);
+      item.appendChild(versions);
+      return item;
+    }
+
+    function currentRows() {
+      const term = searchTerm.trim().toLowerCase();
+      let rows = loaded.filter((application) => {
+        if (filterState === 'published' && !isPublished(application)) {
+          return false;
+        }
+        if (filterState === 'draft' && isPublished(application)) {
+          return false;
+        }
+        if (!term) {
+          return true;
+        }
+        return (String(application.name || '') + ' ' + String(application.id || ''))
+          .toLowerCase()
+          .indexOf(term) !== -1;
+      });
+      if (sortMode === 'name') {
+        rows = rows.slice().sort(compareByName);
+      } else if (sortMode === 'name-desc') {
+        rows = rows.slice().sort(compareByName).reverse();
+      } else if (sortMode === 'published') {
+        rows = rows.slice().sort((left, right) => Number(isPublished(right)) - Number(isPublished(left)));
+      }
+      return rows;
+    }
+
+    function updateStats() {
+      const published = loaded.filter(isPublished).length;
+      if (statElements.loaded) {
+        statElements.loaded.textContent = String(loaded.length);
+      }
+      if (statElements.published) {
+        statElements.published.textContent = String(published);
+      }
+      if (statElements.draft) {
+        statElements.draft.textContent = String(loaded.length - published);
+      }
+      if (statElements.more) {
+        statElements.more.hidden = !nextCursor;
+      }
+    }
+
+    function updateCounts(visibleCount) {
+      const total = loaded.length;
+      if (countElement) {
+        countElement.textContent = visibleCount === total
+          ? '已加载 ' + total + ' 个'
+          : '显示 ' + visibleCount + ' / 已加载 ' + total + ' 个';
+      }
+      if (pagerNote) {
+        pagerNote.textContent = nextCursor
+          ? '分页：已加载 ' + total + ' 个；「下一页」从服务端继续加载。'
+          : '分页：本页已加载全部 ' + total + ' 个可见应用。';
+      }
+    }
+
+    function renderView() {
+      if (loadState !== 'ready') {
+        return;
+      }
+      // Tell the stylesheet which action block the rows carry, so the column
+      // reference above the list reserves exactly that width.
+      document.body.setAttribute('data-apps-can-write', canWrite() ? 'true' : 'false');
+      const rows = currentRows();
+      listElement.replaceChildren();
+      for (const application of rows) {
+        listElement.appendChild(renderItem(application));
+      }
+      // "No visible applications" and "nothing matches the filter" are different
+      // facts; the page must not report one as the other.
+      emptyElement.hidden = loaded.length !== 0;
+      if (filterEmptyElement) {
+        filterEmptyElement.hidden = loaded.length === 0 || rows.length !== 0;
+      }
+      updateStats();
+      updateCounts(rows.length);
     }
 
     async function loadPage(cursor) {
@@ -134,26 +565,41 @@
         const page = await api('/api/v1/applications' + query);
         const items = page.items || [];
         for (const application of items) {
-          renderItem(application);
+          loaded.push(application);
           rendered += 1;
         }
         nextCursor = page.next_cursor || null;
         nextButton.hidden = !nextCursor;
-        emptyElement.hidden = rendered !== 0;
+        loadState = 'ready';
+        renderView();
         setStatus(
-          rendered === 0
+          loaded.length === 0
             ? '没有可见的应用。'
-            : '共显示 ' + rendered + ' 个可见应用' + (nextCursor ? '，还有下一页。' : '。'),
+            : '已加载 ' + loaded.length + ' 个可见应用' + (nextCursor ? '，还有下一页。' : '。'),
           'ok',
         );
       } catch (error) {
         if (handleAuthFailure(error)) {
           // The shared handler has already emptied [data-auth-content]; keep the
           // status truthful instead of leaving a stale "loaded N applications".
+          loaded.length = 0;
+          rendered = 0;
+          loadState = 'failed';
+          listElement.replaceChildren();
           nextButton.hidden = true;
           emptyElement.hidden = true;
+          if (filterEmptyElement) {
+            filterEmptyElement.hidden = true;
+          }
           setStatus('身份已失效，请重新登录。', 'bad');
           return;
+        }
+        // A failed page must not freeze the view controls over rows that are
+        // already on screen: keep the local view usable when data exists.
+        loadState = loaded.length === 0 ? 'failed' : 'ready';
+        if (loaded.length === 0) {
+          // Do not leave the loading skeleton on screen after a real failure.
+          listElement.replaceChildren();
         }
         setStatus('加载失败 [' + error.code + '] ' + error.message, 'bad');
       }
@@ -179,6 +625,50 @@
         setCreateStatus('创建失败 [' + error.code + '] ' + error.message, 'bad');
       }
     });
+
+    function setFilter(value) {
+      filterState = value;
+      for (const button of filterElements) {
+        button.setAttribute('aria-pressed', String(button.getAttribute('data-apps-filter-value') === value));
+      }
+      renderView();
+    }
+
+    for (const button of filterElements) {
+      button.addEventListener('click', () => {
+        setFilter(button.getAttribute('data-apps-filter-value'));
+      });
+    }
+
+    if (searchElement) {
+      searchElement.addEventListener('input', () => {
+        searchTerm = String(searchElement.value || '');
+        renderView();
+      });
+    }
+
+    if (sortElement) {
+      sortElement.addEventListener('change', () => {
+        sortMode = String(sortElement.value || 'default');
+        renderView();
+      });
+    }
+
+    function clearFilters() {
+      searchTerm = '';
+      if (searchElement) {
+        searchElement.value = '';
+      }
+      if (sortElement) {
+        sortMode = 'default';
+        sortElement.value = 'default';
+      }
+      setFilter('all');
+    }
+
+    if (clearElement) {
+      clearElement.addEventListener('click', clearFilters);
+    }
 
     nextButton.addEventListener('click', () => {
       if (nextCursor) {

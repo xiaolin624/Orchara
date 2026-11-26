@@ -3235,3 +3235,52 @@ C1 复用票（#138–#141，逐票证据；证据单元格保留历史原文，
   如需合并/发布只用 `git merge --squash`（或 squash/cherry-pick 最终树）**，保留
   `reports/architecture/SECURITY-redaction-note.md`。`#138–#158` 的关闭与远端合并由 orchestrator
   在代码评审后执行；未闭环条件不得随 Issue 关闭而消失。
+
+## 前端精细化二期总验收（T1–T11 / #165–#175；#174，2026-11-26）
+
+状态：**passed，仅限本次 UI 精细化范围**（本地 `dev-stub` + 真实 PostgreSQL/编译 API + 真实 Chrome headless，
+不代表真实供应商模型或生产验收）。集成分支 `integration/ui-polish-20261126` 的验收 tip `2de56b1`；
+验收分支 `t/ui-polish.t10`，基线 `736b8db`（上一轮 #163 收口）。方向：A 精密工作台骨架 + C 暖色/状态语言。
+
+本轮 11 张子票全部合并：T1 `05b5fbe`、T2 `37b2b6f` + 修复 `acc2c98`、T3 `75a82ba`、T4 `ebc211d`、
+T5 `c27de4b`、T6 `794e5f8`（+ 断言修正 `2ad9742`）、T7 `7ee3568`、T8 `4726612`、T9 `a48aa7f`、
+T11 `d4a96b7`（规格同步 `fd4c6bb`、画布注释修复 `2de56b1`）；T10 为本次总验收与证据提交。
+
+实际执行（`product/`；Go/psql 用 `E:\orchara-toolchains`，`GOCACHE`/`GOMODCACHE` 指向用户态缓存）：
+
+| 命令 | 原始结果 |
+|---|---|
+| `python -X utf8 tools\verify_frontend.py --out reports\ui-polish` | **passed**，42.5s；22 桌面 + 22 手机 + 4 横屏截图；`page_errors=[]`；17 项检查；53 张截图 |
+| f01 批（5 个 `*_pages.py` + `test_page_query_guard.py` + `test_f01_app_js.py`） | **36 passed**，43.0s（f01 的 `from conftest import` 必须单独一批） |
+| 其余 51 个 `*_pages.py` | **244 passed**，505.3s（8m25s） |
+| 页面级契约组 11 文件（canvas assets、T095、C6.01–C6.04、T083、T096/T098 复核、T175） | **148 passed**，125.7s |
+| `test_c6_04_page_contract.py` 单独复跑（已知 flake） | **16 passed**，25.1s（本次契约组内亦通过，未复现；不宣称根治） |
+| 快速组 8 文件（T165/T173/T167/T170/T171/T172/T169/T166） | **286 passed**，4.0s |
+| `cd apps\web\canvas; npm.cmd ci; npm.cmd run build` | 成功；`canvas.js` 809.4kb、`canvas.css` 30.1kb；构建后画布资产 **无 diff**（源码可逐字节重建） |
+| `go test ./internal/api ./cmd/api` | **ok**：`internal/api` 0.990s，`cmd/api` 无测试文件（构建通过） |
+| `python -X utf8 product\tools\sync_spec.py --check`（仓库根） | **no drift**，exit 0 |
+| `node --check` 本轮改动 16 个 JS；`git diff --check`；`py_compile tools\verify_frontend.py` | 全部通过（16/16，exit 0） |
+| 额外：`pytest tests\tooling` | **148 passed**，171.2s |
+
+浏览器实测：22 页唯一 `<h1>`、每页恰好一个 `design.css`、每个导航地标内最多一个 `aria-current="page"`
+（侧栏主导航恰好一个）、22 页 375px 无横向溢出且可见 `a`/`button` ≥44px、6 个 tabbar 页最后区块在底栏之上、
+抽屉/上下文 sheet 的 scrim/Escape/焦点返回、键盘焦点环、减少动态效果、退出图标撤销真实会话（401）。
+对比度 12 对全部 ≥4.5:1：正文 16.49、次要 7.71、muted 5.41、muted/soft 4.72、次要/soft 6.72、主按钮 5.02、
+accent-ink/soft 5.73、success 5.56、warning 5.24、danger 6.04、info 5.89、teal 5.47。
+
+回归口径：五组共 730 次测试执行，按 `(模块, 用例名)` 去重后 **642 个用例，642 passed / 0 failed / 0 skipped**
+（73 个测试文件）。机器可读汇总、逐文件计数与各组原始 JUnit 见 `reports/ui-polish/`。
+失败历史如实保留：合并前集成轮 `f02a/test_t027_pages.py` 曾因文案调整 190 passed / 1 failed，`2ad9742` 改为
+断言 `#debug-entry` 锚点后通过；`test_c6_04` 的 `[runs-normal]` 并发 flake 隔离/重跑通过，本次两次执行均通过。
+
+证据：`reports/ui-polish/README.md`（范围、截图索引、逐项结果、与上一轮 `reports/ui-redesign/` 的对比、限制）、
+`browser-report.json`、`verify-frontend.log`、`screenshots/`（53 张）、`contact-sheet*.png`、
+`f01-regression.xml`、`pages-regression.xml`、`page-contract.xml`、`quick-regression.xml`、`c6-04-repeat.xml`、
+`combined-regression.xml`、`regression-summary.json`。T10 对验收脚本的唯一改动是把手机横屏截图从 1 张补到 4 张，
+只增加证据、不放宽断言；`--out reports\ui-polish` 是本轮唯一写仓库截图的一次运行。
+
+范围与限制：产品 profile 为 `dev-stub`，未接入真实模型供应商，不代表模型质量/正式隔离/v1 全量验收；浏览器仅
+Chrome 158.0.8127.88 headless（Playwright）；手机做了 22 页 375px 溢出 + 44px + 6 页 tabbar 净空 + 4 页横屏检查，
+未做真机/iOS 安全区/软键盘/屏幕阅读器/高对比度；完整画布编辑仍只承诺桌面。
+`not_run`：完整 `pytest tests`、其他浏览器、真实模型与 embedding、生产部署、真机移动端、远程文件系统。
+子票 #165–#175 与父票 #164 的关闭结果见各 Issue 评论与 GitHub 状态。

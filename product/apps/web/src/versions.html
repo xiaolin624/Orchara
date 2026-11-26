@@ -6,45 +6,106 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>版本管理 · Orchara</title>
 <style>
-</style>
+    /* T7 (#171): the version table, the availability statement and revocation.
+       Scoped with body[data-page] because design.css is linked after this block. */
+    body[data-page="versions"] .versions-stack { display: grid; gap: 16px; }
+    body[data-page="versions"] .availability-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 12px;
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font-size: var(--fs-13);
+    }
+    body[data-page="versions"] .availability-banner[data-availability="available"] {
+      border-color: var(--success-line);
+      background: var(--success-soft);
+    }
+    body[data-page="versions"] .availability-banner[data-availability="unavailable"] {
+      border-color: var(--warning-line);
+      background: var(--warning-soft);
+    }
+    body[data-page="versions"] .availability-banner .availability-label {
+      color: var(--muted);
+      font-size: var(--fs-11);
+      letter-spacing: .04em;
+    }
+    body[data-page="versions"] td code { font-size: var(--fs-11); }
+    body[data-page="versions"] td.version-created { color: var(--muted); font-size: var(--fs-11); white-space: nowrap; }
+    body[data-page="versions"] td.version-actions { white-space: nowrap; }
+    body[data-page="versions"] td.version-actions > a { margin-right: 10px; font-size: var(--fs-12); }
+    body[data-page="versions"] tr[data-version-active="true"] { background: var(--success-soft); }
+    body[data-page="versions"] tr[data-version-active="true"]:hover { background: var(--success-soft); }
+    body[data-page="versions"] .revoke-impact { margin: 0 0 14px; padding: 12px 14px; }
+    body[data-page="versions"] .revoke-impact dl { margin: 8px 0 0; }
+    body[data-page="versions"] .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    @media (max-width: 720px) {
+      body[data-page="versions"] .versions-stack { gap: 12px; }
+      body[data-page="versions"] .versions-stack .card { padding: 16px; }
+      body[data-page="versions"] .availability-banner { padding: 10px 12px; font-size: var(--fs-12); }
+      body[data-page="versions"] .page-content table { min-width: 42rem; }
+      body[data-page="versions"] td.version-actions { white-space: normal; }
+    }
+  </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body id="versions-page" data-page="versions"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>版本管理</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body id="versions-page" data-page="versions"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">版本管理</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="folder">VERSIONS & HISTORY</p><h1>版本管理</h1><p class="page-description">查看已发布的固定版本，管理可用性与版本撤销。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
-    <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
-    <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
-    生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
-  </p></details><div class="page-sections">
-<p class="status" id="application-availability" aria-live="polite" role="status">正在读取应用可用性…</p>
+<header class="page-heading"><div class="page-head-main"><h1>版本管理</h1><p class="page-description">查看已发布的固定版本，管理可用性与版本撤销。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>撤销后 active 指针为空</span><span>应用随即不可用</span></p></header>
+<div class="page-sections">
+<div class="versions-stack">
+<p class="status availability-banner" id="application-availability" aria-live="polite" role="status">正在读取应用可用性…</p>
 <section class="card">
-<h2>已发布版本</h2>
+<div class="card-head"><h2>已发布版本</h2><span class="toolbar-note" data-versions-count>正在加载…</span></div>
 <p class="status" id="versions-status" aria-live="polite" role="status">正在加载版本…</p>
-<ul id="versions-list" data-auth-content=""></ul>
-<button id="versions-next" hidden="" type="button">下一页</button>
+<p class="hint" data-version-legend><span class="pill" data-tone="success" data-shape="check">当前生效</span> 是 <code>Application.active_version_id</code> 指向的版本；<span class="pill" data-tone="muted" data-shape="dash">历史版本</span> 仍然可见，但不再是生效指针。</p>
+<div class="table-scroll" aria-label="已发布版本（可横向滚动）" role="region" tabindex="0"><table class="table">
+<thead><tr><th>版本</th><th>版本 ID</th><th>manifest SHA-256</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>
+<tbody id="versions-list" data-auth-content=""></tbody>
+</table></div>
+<div class="empty-state" data-versions-empty hidden=""><span class="empty-mark" data-icon="layers" aria-hidden="true"></span><strong>没有可见版本</strong><p class="empty-explain">这个应用还没有发布过版本，或已发布的版本都被撤销了。撤销后 active 指针为空，应用随即不可用。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/apps">返回应用与创作</a><a class="btn btn-ghost btn-small" href="/catalog">查看应用目录</a></div></div>
+<button class="btn btn-secondary btn-small" id="versions-next" hidden="" type="button">下一页</button>
 <p class="hint">
       已撤销的版本按契约从列表和详情中消失（<code>Version</code> 没有状态字段，因此用“不可见”表达不可用，
       详情返回 404）。版本详情：<code>GET /api/v1/versions/{id}</code>；运行入口校验：
       <code>GET /api/v1/versions/{id}/runnable</code>（撤销后返回 409 <code>version_revoked</code>）。
+      「创建时间」列显示<strong>未提供</strong>：<code>Version</code> 契约不携带时间戳，页面不猜一个。
     </p>
 </section>
 <section class="card">
-<h2>撤销版本（仅管理员）</h2>
+<div class="card-head"><h2>撤销版本（仅管理员）</h2><span class="pill" data-tone="warning" data-shape="alert" data-revoke-impact="application-unavailable">撤销后应用不可用</span></div>
+<div class="inline-note revoke-impact" data-tone="warning">
+<strong>撤销影响</strong>
+<dl>
+<dt>目录</dt><dd>应用从用途目录中消失（<code>active_version_id</code> 为空）。</dd>
+<dt>新运行</dt><dd>该版本不再接受新运行：<code>GET /api/v1/versions/{id}/runnable</code> 返回 409 <code>version_revoked</code>。</dd>
+<dt>既有运行</dt><dd>历史运行保留原版本引用；勾选「同时停止」只记录取消意图，由执行器完成终止。</dd>
+<dt>不会发生</dt><dd>不会自动替换为上一个或最新版本，也不会重写清单、哈希或制品。</dd>
+</dl>
+</div>
 <form id="revoke-form" method="post">
+<div class="field">
 <label for="revoke-version-id">要撤销的版本</label>
 <select id="revoke-version-id" name="version_id"></select>
+<p class="field-help">列表里点「选为撤销目标」可直接选中对应版本。</p>
+</div>
+<div class="field">
 <label for="revoke-reason">撤销原因（必填，最多 2000 字符）</label>
 <textarea id="revoke-reason" name="reason" autocomplete="off" maxlength="2000"></textarea>
+<p class="field-help">原因会写进撤销记录；服务端要求非空且不超过 2000 字符。</p>
+</div>
+<div class="field">
 <label for="revoke-stop-existing">
 <input id="revoke-stop-existing" name="stop_existing" type="checkbox"/>
         同时停止该版本正在进行的运行（记录取消意图，由执行器完成终止）
       </label>
-<button id="revoke-submit" type="submit">撤销这个版本</button>
+</div>
+<div class="form-actions"><button id="revoke-submit" type="submit">撤销这个版本</button></div>
 </form>
 <p class="status" id="revoke-status" aria-live="polite" role="status"></p>
 <p class="hint">
@@ -52,7 +113,15 @@
       <code>run.status</code> 事件（原因是 <code>version_revoked</code>），不会在撤销事务里直接写终态。
     </p>
 </section>
-</div></main>
+</div>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    列表来自 <code>GET /api/v1/applications/{id}/versions</code>。撤销调用
+    <code>POST /api/v1/versions/{id}/revoke</code>（管理员会话 + CSRF），请求体恰好是
+    <code>{reason, stop_existing}</code>。撤销只改版本状态列，<strong>不重写</strong>清单、哈希或制品；
+    生效版本指针变为空，<strong>不会自动替换</strong>为上一个或最新版本。历史运行保留原版本引用。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -71,6 +140,7 @@
 
     let versionItems = [];
     let nextCursor = null;
+    let activeVersionID = null;
 
     function setVersionStatus(message, kind) {
       versionsStatus.textContent = message;
@@ -80,6 +150,80 @@
     function setRevokeStatus(message, kind) {
       revokeStatus.textContent = message;
       revokeStatus.className = 'status ' + (kind || '');
+    }
+
+    function renderAvailability(application) {
+      const active = Boolean(application && application.active_version_id);
+      availability.textContent = describeCatalogAvailability(application);
+      availability.className = 'status availability-banner ' + (active ? 'ok' : 'warn');
+      availability.setAttribute('data-availability', active ? 'available' : 'unavailable');
+    }
+
+    function versionStatePill(row) {
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.setAttribute('data-tone', row.active ? 'success' : 'muted');
+      pill.setAttribute('data-shape', row.active ? 'check' : 'dash');
+      pill.textContent = row.stateLabel;
+      return pill;
+    }
+
+    function versionRow(version) {
+      const row = describeVersionRow(version, activeVersionID);
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-version-id', row.id);
+      tr.setAttribute('data-version-active', row.active ? 'true' : 'false');
+
+      const numberCell = document.createElement('td');
+      const number = document.createElement('strong');
+      number.textContent = 'v' + row.versionNo;
+      numberCell.appendChild(number);
+      tr.appendChild(numberCell);
+
+      const idCell = document.createElement('td');
+      const id = document.createElement('code');
+      id.textContent = row.id;
+      idCell.appendChild(id);
+      tr.appendChild(idCell);
+
+      const hashCell = document.createElement('td');
+      const hash = document.createElement('code');
+      hash.textContent = row.manifestSha256;
+      hashCell.appendChild(hash);
+      tr.appendChild(hashCell);
+
+      const createdCell = document.createElement('td');
+      createdCell.className = 'version-created';
+      createdCell.textContent = row.createdAtText;
+      tr.appendChild(createdCell);
+
+      const stateCell = document.createElement('td');
+      stateCell.appendChild(versionStatePill(row));
+      tr.appendChild(stateCell);
+
+      const actionCell = document.createElement('td');
+      actionCell.className = 'version-actions';
+      const link = document.createElement('a');
+      link.href = versionPath(row.id);
+      link.textContent = '版本详情';
+      actionCell.appendChild(link);
+      if (!row.active) {
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'btn btn-small btn-secondary';
+        pick.setAttribute('data-select-version', row.id);
+        pick.textContent = '选为撤销目标';
+        pick.addEventListener('click', () => {
+          versionSelect.value = row.id;
+          setRevokeStatus('已选择 v' + row.versionNo + '（' + row.id + '）作为撤销目标。', 'pending');
+          if (typeof revokeForm.scrollIntoView === 'function') {
+            revokeForm.scrollIntoView({ block: 'nearest' });
+          }
+        });
+        actionCell.appendChild(pick);
+      }
+      tr.appendChild(actionCell);
+      return tr;
     }
 
     function renderVersions(versions) {
@@ -92,17 +236,24 @@
         element.textContent = option.label;
         versionSelect.appendChild(element);
       }
+      if (options.length === 0) {
+        const element = document.createElement('option');
+        element.value = '';
+        element.textContent = '（没有可见版本）';
+        versionSelect.appendChild(element);
+      }
       for (const version of versions) {
-        const item = document.createElement('li');
-        const label = document.createElement('strong');
-        label.textContent = describeVersion(version);
-        const id = document.createElement('code');
-        id.textContent = version.id;
-        const link = document.createElement('a');
-        link.href = versionPath(version.id);
-        link.textContent = '版本详情';
-        item.append(label, ' ', id, ' ', link);
-        versionsList.appendChild(item);
+        versionsList.appendChild(versionRow(version));
+      }
+      const count = document.querySelector('[data-versions-count]');
+      if (count) {
+        count.textContent = versions.length === 0
+          ? '没有可见版本'
+          : '共 ' + versions.length + ' 个可见版本' + (nextCursor ? '（还有下一页）' : '');
+      }
+      const empty = document.querySelector('[data-versions-empty]');
+      if (empty) {
+        empty.hidden = versions.length !== 0;
       }
       if (versions.length === 0) {
         setVersionStatus('这个应用还没有可见的已发布版本（未发布或已全部撤销）。', '');
@@ -143,8 +294,8 @@
         const current = await identity();
         revokeForm.hidden = !canRevokeVersion(current);
         const application = await api(applicationPath(applicationId));
-        availability.textContent = describeCatalogAvailability(application);
-        availability.className = 'status ' + (application.active_version_id ? 'ok' : '');
+        activeVersionID = application.active_version_id || null;
+        renderAvailability(application);
         await loadVersions();
       } catch (error) {
         if (handleAuthFailure(error)) {
@@ -182,7 +333,8 @@
         });
         setRevokeStatus(describeRevokeResult(result), 'ok');
         const application = await api(applicationPath(applicationId));
-        availability.textContent = describeCatalogAvailability(application);
+        activeVersionID = application.active_version_id || null;
+        renderAvailability(application);
         await loadVersions();
       } catch (error) {
         if (handleAuthFailure(error)) {

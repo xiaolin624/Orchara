@@ -520,9 +520,15 @@ function editorStatus(message, kind) {
 }
 
 function editorSetRevision(etag) {
+  const label = draftRevisionLabel(etag);
   const revision = document.getElementById('draft-revision');
   if (revision) {
-    revision.textContent = draftRevisionLabel(etag);
+    revision.textContent = label;
+  }
+  // The status line mirrors the toolbar revision; the toolbar keeps the id.
+  const mirror = document.querySelector('[data-editor-revision]');
+  if (mirror) {
+    mirror.textContent = label;
   }
   const execution = document.getElementById('draft-execution-revision');
   if (execution) {
@@ -535,9 +541,288 @@ function editorSetRevision(etag) {
 // so the ETag/412/428 behaviour above is unchanged.
 let canvasApi = null;
 
+// ---------------------------------------------------------------------------
+// T4 (#168): workbench wiring
+// ---------------------------------------------------------------------------
+//
+// The page owns the toolbar and the status line; the canvas app owns the graph,
+// the node library and the inspector. The toolbar therefore delegates to the
+// canvas API (validate/export/undo/redo/zoom/layout) and only reads back the
+// state the canvas reports. No save/validate request shape changes here.
+
+const editorWorkbench = {
+  canvas: null,
+  lastValidation: null,
+  readOnly: false,
+  // The exact definition/layout text last loaded (or saved). A canvas change
+  // that reproduces it is not an edit — Vue Flow emits measurement changes on
+  // first paint, and they must not make a fresh draft look dirty.
+  baseline: '',
+};
+
+/**
+ * Refine the read-only state from the identity the page already loaded: a
+ * reader sees the canvas and JSON but no save/validate affordance (the server
+ * remains the authority; this only stops offering an action that will 403).
+ */
+function editorApplyReadOnly(identity) {
+  const nav = window.OrcharaNav;
+  const isCreator = Boolean(nav && typeof nav.hasRole === 'function'
+    ? nav.hasRole(identity, 'creator')
+    : false);
+  editorWorkbench.readOnly = !isCreator;
+  const banner = document.querySelector('[data-editor-readonly]');
+  if (banner && editorWorkbench.readOnly) {
+    banner.hidden = false;
+  }
+  const validate = document.querySelector('[data-editor-action="validate"]');
+  if (validate) {
+    // T9 (#173): the toolbar is now the single validate entry, and it keeps the
+    // historical DOM id. The page's static id inventory is a pinned contract,
+    // so the id is attached at runtime instead of being written into the HTML.
+    if (!validate.id) {
+      validate.id = 'canvas-validate';
+    }
+    if (editorWorkbench.readOnly) {
+      validate.hidden = true;
+    }
+  }
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.keys(value).sort().forEach((key) => {
+      out[key] = canonicalValue(value[key]);
+    });
+    return out;
+  }
+  return value;
+}
+
+function edgeSortKey(edge) {
+  const item = edge && typeof edge === 'object' ? edge : {};
+  return [item.source, item.target, item.port || item.sourceHandle || ''].join('→');
+}
+
+// The JSON textareas are pretty-printed JSON, and the server stores jsonb
+// (which does not preserve key order). Compare the draft semantically so a
+// re-serialisation by the canvas never looks like an unsaved edit.
+function editorDraftSignature() {
+  const definitionField = document.getElementById('draft-definition');
+  const layoutField = document.getElementById('draft-layout');
+  const definitionText = definitionField ? definitionField.value : '';
+  const layoutText = layoutField ? layoutField.value : '';
+  try {
+    const definition = canonicalValue(JSON.parse(definitionText));
+    const layout = canonicalValue(JSON.parse(layoutText));
+    if (definition && Array.isArray(definition.nodes)) {
+      definition.nodes = definition.nodes
+        .slice()
+        .sort((left, right) => String(left && left.id).localeCompare(String(right && right.id)));
+    }
+    if (definition && Array.isArray(definition.edges)) {
+      definition.edges = definition.edges
+        .slice()
+        .sort((left, right) => edgeSortKey(left).localeCompare(edgeSortKey(right)));
+    }
+    return JSON.stringify([definition, layout]);
+  } catch (error) {
+    return 'raw:' + definitionText + '\n' + layoutText;
+  }
+}
+
+function editorCaptureBaseline() {
+  editorWorkbench.baseline = editorDraftSignature();
+}
+
+function editorSetText(selector, text) {
+  const element = document.querySelector(selector);
+  if (element) {
+    element.textContent = text;
+  }
+}
+
+function editorDefinitionState(kind, text) {
+  const wrap = document.querySelector('[data-editor-definition]');
+  if (!wrap) {
+    return;
+  }
+  wrap.setAttribute('data-tone', kind || 'idle');
+  const value = wrap.querySelector('[data-editor-definition-value]');
+  if (value) {
+    value.textContent = text;
+  }
+  const icon = wrap.querySelector('.editor-state-icon');
+  if (icon) {
+    icon.setAttribute('data-shape', kind === 'ok' ? 'check' : kind === 'bad' ? 'alert' : 'ring');
+  }
+}
+
+function editorLayoutState(text, tone) {
+  const wrap = document.querySelector('[data-editor-layout]');
+  if (wrap && tone) {
+    wrap.setAttribute('data-tone', tone);
+  }
+  editorSetText('[data-editor-layout-state]', text);
+}
+
+function editorZoomLabel(percent) {
+  const value = Number(percent);
+  editorSetText('[data-editor-zoom-value]', (Number.isFinite(value) ? Math.round(value) : 100) + '%');
+}
+
+function editorHistoryState(change) {
+  const undo = document.querySelector('[data-editor-action="undo"]');
+  const redo = document.querySelector('[data-editor-action="redo"]');
+  if (undo) {
+    undo.disabled = !(change && change.canUndo);
+  }
+  if (redo) {
+    redo.disabled = !(change && change.canRedo);
+  }
+}
+
+function editorCanvasReady(ready) {
+  document.querySelectorAll('[data-editor-canvas-only]').forEach((element) => {
+    element.disabled = !ready;
+  });
+}
+
+/** The six capability-card fields read without triggering validation. */
+function editorCardLines() {
+  const lines = (id) => {
+    const element = document.getElementById(id);
+    return element ? splitLines(element.value) : [];
+  };
+  const purpose = document.getElementById('card-purpose');
+  return {
+    purpose: purpose ? String(purpose.value || '').trim() : '',
+    includes: lines('card-includes'),
+    excludes: lines('card-excludes'),
+    required_inputs: lines('card-required-inputs'),
+    expected_outputs: lines('card-expected-outputs'),
+    examples: lines('card-examples'),
+  };
+}
+
+/**
+ * The pre-publish checklist this page can honestly compute: the capability
+ * card fields the save path already owns, plus the last service validation.
+ * The publish page remains the authority on the full check.
+ */
+function editorPreflightItems() {
+  const card = editorCardLines();
+  const items = [];
+  if (card.purpose === '') {
+    items.push('用途说明未填写');
+  }
+  if (card.includes.length === 0) {
+    items.push('「包含」未说明');
+  }
+  if (card.excludes.length === 0) {
+    items.push('「不包含」未说明');
+  }
+  if (card.required_inputs.length === 0) {
+    items.push('必需输入未声明');
+  }
+  if (card.expected_outputs.length === 0) {
+    items.push('预期输出未声明');
+  }
+  if (card.examples.length < 2) {
+    items.push('示例少于 2 个（当前 ' + card.examples.length + ' 个，发布要求至少 2 个）');
+  }
+  if (editorWorkbench.lastValidation && !editorWorkbench.lastValidation.valid) {
+    items.push('definition 校验未通过（' + (editorWorkbench.lastValidation.errors || 0) + ' 个定位错误）');
+  }
+  return items;
+}
+
+function editorRenderPreflight() {
+  const items = editorPreflightItems();
+  const details = document.querySelector('[data-editor-preflight]');
+  if (details) {
+    details.setAttribute('data-tone', items.length ? 'warning' : 'ok');
+  }
+  editorSetText('[data-editor-preflight-count]', items.length ? items.length + ' 项待补' : '已就绪');
+  editorSetText('[data-editor-preflight-count-body]', String(items.length));
+  const list = document.querySelector('[data-editor-preflight-list]');
+  if (!list) {
+    return;
+  }
+  list.replaceChildren();
+  if (items.length === 0) {
+    const done = document.createElement('li');
+    done.textContent = '本页未发现缺项；发布页会再次确认测试证据。';
+    list.appendChild(done);
+    return;
+  }
+  for (const item of items) {
+    const entry = document.createElement('li');
+    entry.textContent = item;
+    list.appendChild(entry);
+  }
+}
+
+function editorRunCanvasAction(action) {
+  if (action === 'validate') {
+    editorValidateCanvas();
+    return;
+  }
+  if (!canvasApi) {
+    editorStatus('画布尚未就绪，请稍后再试。', 'pending');
+    return;
+  }
+  if (action === 'undo') {
+    canvasApi.undo();
+  } else if (action === 'redo') {
+    canvasApi.redo();
+  } else if (action === 'zoom-in') {
+    canvasApi.zoomIn();
+  } else if (action === 'zoom-out') {
+    canvasApi.zoomOut();
+  } else if (action === 'fit-view') {
+    canvasApi.fitView();
+  } else if (action === 'auto-layout') {
+    canvasApi.autoLayout();
+  } else if (action === 'export') {
+    canvasApi.exportDraft();
+  }
+}
+
+async function editorValidateCanvas() {
+  if (!canvasApi) {
+    editorStatus('画布尚未就绪，无法校验。', 'pending');
+    return;
+  }
+  editorDefinitionState('pending', '校验中…');
+  editorStatus('正在请求服务端校验草稿…', 'pending');
+  await canvasApi.validate();
+}
+
+function editorWireWorkbench() {
+  document.querySelectorAll('[data-editor-action]').forEach((element) => {
+    const action = element.getAttribute('data-editor-action');
+    if (!action) {
+      return;
+    }
+    element.addEventListener('click', () => editorRunCanvasAction(action));
+  });
+  const form = document.getElementById('draft-form');
+  if (form) {
+    form.addEventListener('input', editorRenderPreflight);
+  }
+  editorCanvasReady(false);
+  editorHistoryState({ canUndo: false, canRedo: false });
+}
+
 function editorMountCanvas(applicationId, draft) {
   const root = document.getElementById('canvas-root');
   if (!root || !window.OrcharaCanvas || typeof window.OrcharaCanvas.mount !== 'function') {
+    editorStatus('画布组件未加载；JSON 视图仍可保存草稿。', 'pending');
     return null;
   }
   const definition = draft && draft.definition && typeof draft.definition === 'object'
@@ -546,12 +831,16 @@ function editorMountCanvas(applicationId, draft) {
   const layout = draft && draft.layout && typeof draft.layout === 'object' ? draft.layout : {};
   if (canvasApi) {
     canvasApi.setDraft(definition, layout);
+    editorWorkbench.lastValidation = null;
+    editorDefinitionState('idle', '未校验');
+    editorRenderPreflight();
     return canvasApi;
   }
   canvasApi = window.OrcharaCanvas.mount(root, {
     applicationId,
     definition,
     layout,
+    readOnly: editorWorkbench.readOnly,
     onChange(nextDefinition, nextLayout) {
       const definitionField = document.getElementById('draft-definition');
       const layoutField = document.getElementById('draft-layout');
@@ -561,10 +850,54 @@ function editorMountCanvas(applicationId, draft) {
       if (layoutField) {
         layoutField.value = JSON.stringify(nextLayout, null, 2);
       }
+      if (editorWorkbench.baseline !== '' && editorDraftSignature() === editorWorkbench.baseline) {
+        editorLayoutState('已同步到表单', 'ok');
+      } else {
+        editorLayoutState('已同步到表单（未保存）', 'pending');
+      }
+      if (editorWorkbench.lastValidation) {
+        editorWorkbench.lastValidation = null;
+        editorDefinitionState('idle', '未校验（草稿已修改）');
+        editorRenderPreflight();
+      }
+    },
+    onValidation(outcome) {
+      editorWorkbench.lastValidation = outcome || { valid: false, errors: 0 };
+      if (outcome && outcome.valid) {
+        const local = Number(outcome.localProblems) || 0;
+        editorDefinitionState('ok', local ? '通过 · ' + local + ' 条本地提示' : '通过');
+        editorStatus('服务端校验通过'
+          + (outcome.manifestHash ? '，manifest SHA256 ' + String(outcome.manifestHash).slice(0, 12) + '…' : '')
+          + '。', 'ok');
+      } else if (outcome && Number(outcome.errors) > 0) {
+        editorDefinitionState('bad', outcome.errors + ' 个定位错误');
+        editorStatus('服务端校验发现 ' + outcome.errors + ' 个定位错误，已在右侧面板列出。', 'bad');
+      } else {
+        editorDefinitionState('bad', '未通过');
+        editorStatus((outcome && outcome.message) || '校验未通过。', 'bad');
+      }
+      editorRenderPreflight();
+    },
+    onHistory(change) {
+      editorHistoryState(change);
+    },
+    onViewport(viewport) {
+      if (viewport && Number.isFinite(Number(viewport.zoom))) {
+        editorZoomLabel(viewport.zoom);
+      }
     },
   });
+  editorWorkbench.canvas = canvasApi;
+  editorCanvasReady(true);
+  editorHistoryState({
+    canUndo: typeof canvasApi.canUndo === 'function' ? canvasApi.canUndo() : false,
+    canRedo: typeof canvasApi.canRedo === 'function' ? canvasApi.canRedo() : false,
+  });
+  editorZoomLabel(typeof canvasApi.getZoom === 'function' ? canvasApi.getZoom() : 100);
+  editorLayoutState('已同步到表单', 'ok');
   return canvasApi;
 }
+
 
 function editorFillForm(draft) {
   document.getElementById('draft-definition').value = JSON.stringify(draft.definition || {}, null, 2);
@@ -937,6 +1270,14 @@ function initEditor() {
     editorStatus('这个地址没有指向一个应用编辑器（应为 /apps/<application id>/edit）。', 'bad');
     return;
   }
+  editorWireWorkbench();
+  // The page shows the application it edits from the path; the draft endpoint
+  // does not carry the name, and this page deliberately adds no extra request.
+  const appRef = document.querySelector('[data-editor-app-ref]');
+  if (appRef) {
+    appRef.textContent = '应用 ' + applicationId.slice(0, 8) + '…';
+    appRef.title = '应用 id：' + applicationId;
+  }
   // The debug entry is per application, so it is built from the path segment
   // instead of putting an id in a query string. The link is inert until the
   // page knows which application it edits.
@@ -951,13 +1292,19 @@ function initEditor() {
     editorStatus('正在加载草稿…', 'pending');
     editorShowConflict(false, '');
     try {
-      await requireLogin();
-      const loaded = await loadDraftRequest(applicationId);
-      etag = loaded.etag;
+      const identity = await requireLogin();
+      editorApplyReadOnly(identity);
+      const loaded = await loadDraftRequest(applicationId);      etag = loaded.etag;
       editorFillForm(loaded.draft);
+      editorCaptureBaseline();
       editorSetRevision(etag);
+      editorWorkbench.lastValidation = null;
+      editorDefinitionState('idle', '未校验');
+      editorLayoutState('已同步到表单', 'ok');
+      editorZoomLabel(100);
       callAppPanelState.lastErrors = [];
       callAppRenderNodes(loaded.draft.definition || {}, []);
+      editorRenderPreflight();
       await editorInitCallAppPanel();
       editorStatus('已加载服务器上的草稿（revision ' + draftRevisionLabel(etag) + '）。', 'ok');
     } catch (error) {
@@ -987,6 +1334,8 @@ function initEditor() {
       }
       editorShowConflict(false, '');
       editorStatus('已保存（revision ' + draftRevisionLabel(etag) + '）。刷新页面会加载这份草稿。', 'ok');
+      editorCaptureBaseline();
+      editorLayoutState('已保存', 'ok');
       return true;
     } catch (error) {
       if (isPreconditionConflict(error)) {

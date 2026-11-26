@@ -89,6 +89,32 @@ function describeVersionOptions(versions) {
   }));
 }
 
+/**
+ * One row of the version table (T7).
+ *
+ * The Version contract has no state and no timestamp: the only availability fact
+ * the API exposes is `Application.active_version_id`. So the row reports "当前生效"
+ * for the version that pointer names, "历史版本" for the others, and says
+ * "未提供" for a creation time instead of inventing one.
+ */
+function describeVersionRow(version, activeVersionID) {
+  const value = version || {};
+  const id = String(value.id || '');
+  const active = Boolean(activeVersionID) && id === String(activeVersionID);
+  return {
+    id: id,
+    versionNo: value.version_no === undefined || value.version_no === null
+      ? '?'
+      : String(value.version_no),
+    label: describeVersion(value),
+    manifestSha256: String(value.manifest_sha256 || ''),
+    createdAtText: '未提供',
+    active: active,
+    state: active ? 'active' : 'history',
+    stateLabel: active ? '当前生效' : '历史版本',
+  };
+}
+
 /** The catalog's only availability signal: the active version pointer. */
 function describeCatalogAvailability(application) {
   if (!application) {

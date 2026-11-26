@@ -376,13 +376,76 @@ function errorText(error) {
 // ---------------------------------------------------------------------------
 // browser wiring (skipped when the helper is executed without a page)
 // ---------------------------------------------------------------------------
+
+/**
+ * A presentation hook owned by T6 (#170).
+ *
+ * The business id inventory is a T1 contract (tests/f12/test_t165_shell.py), so
+ * the stat row, the count note and the search control carry data-* hooks instead
+ * of new ids. The lookup is lazy and null-safe because the Node page harnesses
+ * shim only the document surface they need.
+ */
+function presentationNode(selector) {
+  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') {
+    return null;
+  }
+  return document.querySelector(selector) || null;
+}
+
+function setStat(key, value) {
+  const node = presentationNode('[data-t6-stat="' + key + '"]');
+  if (node) {
+    node.textContent = String(value);
+  }
+}
+
+function setNote(selector, text) {
+  const node = presentationNode(selector);
+  if (node) {
+    node.textContent = String(text);
+  }
+}
+
 const PAGE_STATE = {
-  candidates: { cursor: null },
-  memories: { cursor: null },
+  candidates: { cursor: null, loaded: 0, pending: 0 },
+  memories: { cursor: null, loaded: 0, shown: 0, search: '' },
   // Set when a save hits a 412: the user's text and the server's current ETag,
   // kept only in this page so an explicit retry can adopt the new revision.
   pendingConflict: null,
 };
+
+const CANDIDATE_TONES = {
+  pending: ['warning', 'ring'],
+  confirmed: ['success', 'check'],
+  rejected: ['danger', 'alert'],
+  expired: ['muted', 'dash'],
+};
+
+/** Shape + text first, colour third: the state language of the redesign. */
+function statePill(text, tone, shape) {
+  const pill = document.createElement('span');
+  pill.className = 'pill';
+  pill.setAttribute('data-tone', tone);
+  pill.setAttribute('data-shape', shape);
+  pill.textContent = String(text);
+  return pill;
+}
+
+function candidatePill(state, stateText) {
+  const pair = CANDIDATE_TONES[String(state || '')] || ['muted', 'dot'];
+  return statePill(stateText, pair[0], pair[1]);
+}
+
+function nodeWith(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+  return node;
+}
 
 function memoryPageReady() {
   return typeof document !== 'undefined'
@@ -399,33 +462,56 @@ function setStatus(elementId, text, kind) {
   element.className = 'status' + (kind ? ' ' + kind : '');
 }
 
+/** One labelled fact inside a record card; the label column stays a grid. */
 function addFieldRow(item, label, value) {
   const row = document.createElement('div');
-  row.className = 'row';
+  row.className = 'mem-field';
   const name = document.createElement('span');
-  name.className = 'label';
+  name.className = 'mem-label';
   name.textContent = label;
   const text = document.createElement('span');
-  text.className = 'value';
+  text.className = 'mem-value';
   text.textContent = value;
   row.appendChild(name);
   row.appendChild(text);
   item.appendChild(row);
 }
 
+/** The same fact shape as a definition list, for the record cards. */
+function addFact(list, label, value) {
+  const term = nodeWith('dt', '', label);
+  const detail = nodeWith('dd', '', value);
+  list.appendChild(term);
+  list.appendChild(detail);
+}
+
+function factList() {
+  const list = document.createElement('dl');
+  list.className = 't6-facts';
+  return list;
+}
+
+function recordHead(pill, idText) {
+  const head = document.createElement('div');
+  head.className = 'mem-card-head';
+  head.appendChild(pill);
+  head.appendChild(nodeWith('span', 'mem-card-id', idText));
+  return head;
+}
+
 function decisionButtons(candidate) {
   const actions = document.createElement('div');
-  actions.className = 'decision-buttons';
+  actions.className = 'mem-actions';
   const confirm = document.createElement('button');
   confirm.type = 'button';
-  confirm.className = 'confirm-button';
+  confirm.className = 'btn btn-primary btn-small';
   confirm.textContent = '确认并保存为记忆';
   confirm.addEventListener('click', () => {
     decideCandidate(candidate, 'confirm').then(loadCandidates).catch(showError);
   });
   const reject = document.createElement('button');
   reject.type = 'button';
-  reject.className = 'reject-button';
+  reject.className = 'btn btn-secondary btn-small';
   reject.textContent = '拒绝';
   reject.addEventListener('click', () => {
     decideCandidate(candidate, 'reject').then(loadCandidates).catch(showError);
@@ -471,23 +557,25 @@ async function decideCandidate(candidate, decision) {
 // ---------------------------------------------------------------------------
 function memoryEditor(memory) {
   const editor = document.createElement('div');
-  editor.className = 'memory-editor';
+  editor.className = 'mem-editor';
   const textarea = document.createElement('textarea');
-  textarea.className = 'memory-text';
+  textarea.className = 'mem-text';
   textarea.rows = 3;
   textarea.value = String(memory.text || '');
   const actions = document.createElement('div');
-  actions.className = 'decision-buttons';
+  actions.className = 'mem-actions';
   const save = document.createElement('button');
   save.type = 'button';
-  save.className = 'save-button';
+  save.className = 'btn btn-secondary btn-small';
   save.textContent = '保存修改';
   save.addEventListener('click', () => {
     saveMemory(memory, textarea.value).catch(showError);
   });
+  // The destructive control lives in the same row but is styled as a danger
+  // action and asks for confirmation; there is no "skip the check" path.
   const remove = document.createElement('button');
   remove.type = 'button';
-  remove.className = 'delete-button';
+  remove.className = 'btn btn-danger btn-small';
   remove.textContent = '删除这条记忆';
   remove.addEventListener('click', () => {
     deleteMemory(memory).catch(showError);
@@ -606,6 +694,7 @@ function renderDeletion(job) {
   if (card) {
     card.hidden = false;
   }
+  setStat('delete', view.stateText);
 }
 
 function renderCandidate(item, candidate) {
@@ -613,14 +702,21 @@ function renderCandidate(item, candidate) {
   // F12/T098: the candidate is never pre-decided. The card carries no checked
   // control and no batch "select all"; the user confirms/rejects one candidate.
   item.dataset.selection = view.defaultDecision;
-  addFieldRow(item, '来源', view.sourceText);
-  addFieldRow(item, '交互（Run）', view.interactionText);
-  addFieldRow(item, '保存范围', view.saveScopeText);
-  addFieldRow(item, '应用范围', view.applicationText);
-  addFieldRow(item, '状态', view.stateText);
-  addFieldRow(item, '过期时间', view.expiresAt);
-  addFieldRow(item, '候选内容', view.text);
-  addFieldRow(item, '候选 id', view.id);
+  item.dataset.state = view.state;
+  item.className = 'mem-card';
+  item.appendChild(recordHead(
+    candidatePill(view.state, view.stateText),
+    '候选 ' + view.idShort,
+  ));
+  item.appendChild(nodeWith('p', 'mem-card-text', view.text));
+  const facts = factList();
+  addFact(facts, '来源', view.sourceText);
+  addFact(facts, '交互（Run）', view.interactionText);
+  addFact(facts, '保存范围', view.saveScopeText);
+  addFact(facts, '应用范围', view.applicationText);
+  addFact(facts, '过期时间', view.expiresAt || '—');
+  addFact(facts, '候选 id', view.id);
+  item.appendChild(facts);
   if (view.isPending) {
     item.appendChild(decisionButtons(candidate));
   }
@@ -628,12 +724,54 @@ function renderCandidate(item, candidate) {
 
 function renderMemory(item, memory) {
   const view = describeMemory(memory);
-  addFieldRow(item, '来源', view.sourceText);
-  addFieldRow(item, '应用范围', view.applicationText);
-  addFieldRow(item, '版本', view.revisionText);
-  addFieldRow(item, '内容', view.text);
-  addFieldRow(item, '记忆 id', view.id);
+  item.className = 'mem-card';
+  item.appendChild(recordHead(
+    statePill(view.revisionText, 'accent', 'square'),
+    '记忆 ' + view.idShort,
+  ));
+  item.appendChild(nodeWith('p', 'mem-card-text', view.text));
+  const facts = factList();
+  addFact(facts, '来源', view.sourceText);
+  addFact(facts, '应用范围', view.applicationText);
+  addFact(facts, '版本', view.revisionText);
+  addFact(facts, '记忆 id', view.id);
+  item.appendChild(facts);
   item.appendChild(memoryEditor(memory));
+}
+
+/** Client-side search over the already loaded rows; never a second request. */
+function applyMemoryFilter() {
+  const list = document.getElementById('memories-list');
+  if (!list || !list.children) {
+    return;
+  }
+  const term = String(PAGE_STATE.memories.search || '').trim().toLowerCase();
+  let shown = 0;
+  for (const row of list.children) {
+    const text = String((row && row.textContent) || '').toLowerCase();
+    const match = term === '' || text.indexOf(term) >= 0;
+    row.hidden = !match;
+    if (match) {
+      shown += 1;
+    }
+  }
+  PAGE_STATE.memories.shown = shown;
+  const total = PAGE_STATE.memories.loaded;
+  setNote('[data-t6-count]', term === ''
+    ? '已加载 ' + total + ' 条记忆' + (PAGE_STATE.memories.cursorTruncated ? '（可翻页）' : '')
+    : '已加载 ' + total + ' 条记忆 · 匹配 ' + shown + ' 条');
+  setStat('memories', total);
+}
+
+function bindMemorySearch() {
+  const input = presentationNode('[data-t6-search]');
+  if (!input || typeof input.addEventListener !== 'function') {
+    return;
+  }
+  input.addEventListener('input', () => {
+    PAGE_STATE.memories.search = String(input.value || '');
+    applyMemoryFilter();
+  });
 }
 
 async function loadCandidates() {
@@ -641,11 +779,17 @@ async function loadCandidates() {
   setStatus('candidates-status', '正在加载候选…');
   const page = await api(candidatesListPath({ cursor: PAGE_STATE.candidates.cursor }));
   list.replaceChildren();
+  let pending = 0;
   for (const candidate of page.items) {
     const item = document.createElement('li');
     renderCandidate(item, candidate);
     list.appendChild(item);
+    if (candidate && candidate.state === 'pending') {
+      pending += 1;
+    }
   }
+  PAGE_STATE.candidates.loaded = page.items.length;
+  PAGE_STATE.candidates.pending = pending;
   document.getElementById('candidates-empty').hidden = page.items.length !== 0;
   const next = document.getElementById('candidates-next');
   next.hidden = !page.next_cursor;
@@ -653,9 +797,14 @@ async function loadCandidates() {
     PAGE_STATE.candidates.cursor = page.next_cursor;
     loadCandidates().catch(showError);
   };
+  setStat('candidates', pending);
+  setNote('[data-t6-candidates-note]',
+    page.items.length === 0
+      ? '没有待处理候选'
+      : '已加载 ' + page.items.length + ' 条候选 · ' + pending + ' 条待确认');
   setStatus(
     'candidates-status',
-    page.items.length === 0 ? '当前没有候选（确认前不会成为记忆）。' : '本页 ' + page.items.length + ' 条候选。',
+    page.items.length === 0 ? '当前没有候选。' : '本页 ' + page.items.length + ' 条候选。',
     page.items.length === 0 ? '' : 'ok',
   );
 }
@@ -670,6 +819,8 @@ async function loadMemories() {
     renderMemory(item, memory);
     list.appendChild(item);
   }
+  PAGE_STATE.memories.loaded = page.items.length;
+  PAGE_STATE.memories.cursorTruncated = Boolean(page.next_cursor);
   document.getElementById('memories-empty').hidden = page.items.length !== 0;
   const next = document.getElementById('memories-next');
   next.hidden = !page.next_cursor;
@@ -677,15 +828,17 @@ async function loadMemories() {
     PAGE_STATE.memories.cursor = page.next_cursor;
     loadMemories().catch(showError);
   };
+  applyMemoryFilter();
   setStatus(
     'memories-status',
-    page.items.length === 0 ? '还没有已确认的个人记忆。' : '本页 ' + page.items.length + ' 条记忆。',
+    page.items.length === 0 ? '当前没有记忆。' : '本页 ' + page.items.length + ' 条记忆。',
     page.items.length === 0 ? '' : 'ok',
   );
 }
 
 async function refresh() {
   await requireLogin();
+  bindMemorySearch();
   await loadCandidates();
   await loadMemories();
 }

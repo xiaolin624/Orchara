@@ -6,19 +6,247 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>运行记录 · Orchara</title>
 <style>
-    dl.run { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
-    dl.run dt { opacity: .7; }
-    dl.run dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    /* T5 (#169): a 380px run list + the observation column. The page keeps its
+       own rules here; shared components still come from design.css. */
+    [hidden] { display: none !important; }
+
+    .runs-layout { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .runs-list-card { position: sticky; top: calc(var(--topbar) + 12px); }
+    .runs-list-card .card-head { margin-bottom: 10px; }
+    .runs-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+    .runs-toolbar .runs-filter { flex: 1 1 130px; min-width: 0; margin: 0; }
+    .runs-toolbar select { width: 100%; height: 28px; padding: 0 26px 0 9px; font-size: var(--fs-12); }
+    .runs-scope { margin: 0 0 8px; }
+    .runs-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+    .runs-pager .hint { margin: 0; }
+    .runs-filter-empty { padding: 12px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--muted); font-size: var(--fs-12); }
+    .runs-filter-empty p { margin: 0; }
+    .page-content #runs-empty { display: block; }
+
+    /* One row = one focus stop; the whole row opens the run. */
+    .page-content #runs-list { margin: 0; }
+    .page-content #runs-list > li.run-row { margin: 0; padding: 0; border-top: 0; border-bottom: 1px solid var(--border); }
+    .page-content #runs-list > li.run-row:last-child { border-bottom: 0; }
+    .run-row-button {
+      display: flex; flex-direction: column; gap: 5px; align-items: stretch;
+      width: 100%; margin: 0; padding: 10px 6px; border: 0; border-radius: var(--radius-sm);
+      background: transparent; color: var(--text); text-align: left; cursor: pointer;
+    }
+    .run-row-button:hover { background: var(--surface-2); }
+    .run-row-button[aria-current="true"] {
+      background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .run-row-top, .run-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+    .run-row-id { padding: 0; background: none; color: var(--text-2); font-size: var(--fs-11); font-weight: 600; letter-spacing: .02em; }
+    .run-row-rest { min-width: 0; color: var(--muted); font-size: var(--fs-11); overflow-wrap: anywhere; }
+    .run-row .pill, .run-row-phase { font-size: var(--fs-11); }
+    /* A waiting / needs-decision Run keeps the 2px warning rule on the row. */
+    .run-row-button:has(.run-row-state[data-tone="warning"]) { box-shadow: inset 2px 0 0 var(--warning); }
+
+    /* Detail: one card, named sections, no card inside a card. */
+    .runs-detail { margin: 0; }
+    .runs-detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; }
+    .runs-detail-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+    .runs-detail-eyebrow { color: var(--muted); font-size: var(--fs-11); letter-spacing: .06em; text-transform: uppercase; }
+    .runs-detail-id { padding: 0; background: none; color: var(--text); font-size: var(--fs-12); font-weight: 600; overflow-wrap: anywhere; }
+    .runs-detail-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .runs-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+    .runs-lifecycle { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.6; overflow-wrap: anywhere; }
+    .runs-lifecycle:empty { display: none; }
+    .runs-note { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-12); }
+    .runs-detail #detail-cancel-status { margin: 8px 0 0; }
+
+    .run-sections { margin-top: 16px; border-top: 1px solid var(--border); }
+    .run-section { margin: 0; padding: 14px 0 0; border-top: 1px solid var(--border); }
+    .run-sections > .run-section:first-child { border-top: 0; }
+    .run-section > h3, .run-section > summary { margin: 0 0 8px; color: var(--text); font-size: var(--fs-13); font-weight: 650; }
+    .run-section > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .run-section > h4 { margin: 12px 0 6px; color: var(--text-2); font-size: var(--fs-12); font-weight: 600; }
+    .run-section .hint { margin: 6px 0 0; }
+    .run-facts { grid-template-columns: minmax(84px, 138px) minmax(0, 1fr); margin: 0; }
+    .run-facts dt, .run-facts dd { padding: 6px 0; }
+    .run-timeline { margin: 6px 0 0; padding-left: 18px; }
+    .run-timeline > li { overflow-wrap: anywhere; }
+
+    @media (max-width: 1200px) {
+      .runs-layout { grid-template-columns: 320px minmax(0, 1fr); }
+    }
+    @media (max-width: 900px) {
+      .runs-layout { display: block; }
+      .runs-list-card { position: static; margin-bottom: 14px; }
+    }
+    @media (max-width: 720px) {
+      .runs-layout { display: block; }
+      .runs-list-card { margin-bottom: 14px; }
+      .page-content .run-facts { grid-template-columns: 1fr; }
+      .run-row-button { min-height: 44px; }
+      .runs-detail-actions { margin-left: 0; width: 100%; }
+      .runs-detail-actions .btn { width: 100%; }
+    }
   </style>
 <link href="/assets/mobile.css" rel="stylesheet"/>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body class="page-runs" data-page="runs"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>对话</span><span class="separator">/</span><span>运行记录</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body class="page-runs" data-page="runs" data-tabbar="true"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/chat">对话</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">运行记录</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="run">ACTIVITY & RESULTS</p><h1>运行记录</h1><p class="page-description">跟进任务进度，查看执行过程、等待原因与可下载的结果。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<header class="page-heading"><div class="page-head-main"><h1>运行记录</h1><p class="page-description">找到一次运行，判断它现在怎样、为什么，以及还能做什么。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>运行状态来自共享 Run 状态模块</span><span>无租约不伪造进度</span><span>详情轮询到终态为止</span></p></header>
+<div class="page-sections">
+<!-- C6.01 (#155): shared run-state dependency banner; normal path leaves it
+       hidden. The run list stays readable; the detail observation is paused. -->
+<p class="status bad" id="runstate-status" hidden="" role="alert"></p>
+<p class="inline-note mobile-scope" data-tone="info" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
+<div class="runs-layout">
+<section class="card runs-list-card" aria-label="我的 Run 列表">
+<div class="card-head"><h2>我的 Run</h2><span class="toolbar-note" data-runs-count>正在加载…</span></div><div class="runs-toolbar" role="search">
+<label class="select-wrap runs-filter"><span class="sr-only">按状态筛选已加载的 Run</span><select aria-label="按状态筛选已加载的 Run" data-runs-filter-state=""><option value="all">全部状态</option><option value="active">进行中</option><option value="waiting">等待</option><option value="attention">需人工核对</option><option value="terminal">已结束</option></select></label>
+<label class="select-wrap runs-filter"><span class="sr-only">按种类筛选已加载的 Run</span><select aria-label="按种类筛选已加载的 Run" data-runs-filter-kind=""><option value="all">全部种类</option></select></label>
+</div>
+<p class="hint runs-scope" data-runs-scope="">筛选只作用于已加载的 Run：运行列表接口不返回应用名与开始时间/耗时，本页不伪造这两类列。</p>
+<p class="status" id="runs-status" aria-live="polite" role="status">正在加载运行…</p>
+<ul id="runs-list" data-auth-content=""><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span></li><li class="skeleton-row" aria-hidden="true"><span class="skeleton skeleton-line w-2"></span><span class="skeleton skeleton-line w-3"></span></li></ul>
+<div class="empty-state" id="runs-empty" hidden=""><span class="empty-mark" data-icon="run" aria-hidden="true"></span><strong>还没有属于你的运行</strong><p class="empty-explain">在应用调试页提交一次测试输入，就会创建一个排队中的运行；运行状态与详情会出现在这里。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="/apps">选择应用开始调试</a><a class="btn btn-ghost btn-small" href="/chat">前往对话</a></div></div>
+<div class="runs-filter-empty" data-runs-filter-empty="" hidden=""><p>已加载的 Run 里没有匹配当前筛选的条目。</p></div>
+<div class="runs-pager"><span class="hint" data-runs-pager-note=""></span><button class="btn btn-small" id="runs-next" hidden="" type="button">下一页</button></div>
+</section>
+<section class="card runs-detail" id="run-detail" aria-live="polite" data-auth-content="" hidden="">
+<div class="runs-detail-head">
+<div class="runs-detail-title"><span class="runs-detail-eyebrow">Run</span><code class="runs-detail-id" id="detail-id"></code><span class="runs-detail-badges"><span class="pill" data-runs-detail-state="" data-tone="muted" data-shape="ring" hidden=""></span><span class="pill" data-runs-detail-phase="" data-tone="muted" data-shape="square" hidden=""></span></span></div>
+<div class="runs-detail-actions"><button class="btn btn-danger btn-small" id="detail-cancel-button" data-runstate-paused="true" hidden="" type="button">取消 Run</button></div>
+</div>
+<p class="runs-lifecycle" id="detail-lifecycle"></p>
+<p class="status" id="detail-cancel-status" aria-live="polite" role="status"></p>
+<p class="hint runs-note" id="detail-note"></p>
+<div class="run-sections">
+<section class="run-section" aria-label="租约与截止">
+<h3>租约与截止</h3>
+<dl class="run-facts">
+<dt>领取 / 租约</dt><dd id="detail-lease"></dd>
+<dt>累计活跃 / 上限</dt><dd id="detail-active"></dd>
+<dt>超时原因</dt><dd id="detail-deadline"></dd>
+</dl>
+</section>
+<section class="run-section" aria-label="等待、恢复与取消">
+<h3>等待、恢复与取消</h3>
+<dl class="run-facts">
+<dt>等待条件</dt><dd id="detail-waiting"></dd>
+<dt>恢复任务</dt><dd id="detail-resume"></dd>
+<dt>恢复（recovery_pending）</dt><dd id="detail-recovery"></dd>
+<dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
+</dl>
+</section>
+<section class="run-section" aria-label="状态、阶段与快照">
+<h3>状态、阶段与快照</h3>
+<dl class="run-facts">
+<dt>state</dt><dd id="detail-state"></dd>
+<dt>phase</dt><dd id="detail-phase"></dd>
+<dt>kind</dt><dd id="detail-kind"></dd>
+<dt>revision（Run 自身）</dt><dd id="detail-revision"></dd>
+<dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
+<dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
+</dl>
+</section>
+<section class="run-section" aria-label="持久时间线">
+<h3>持久时间线</h3>
+<p class="status" id="detail-timeline-status" aria-live="polite" role="status">未连接</p>
+<ul class="run-timeline" id="detail-timeline" aria-live="polite"></ul>
+</section>
+<section class="run-section" id="sandbox-panel" aria-label="沙箱与产出" hidden="">
+<h3>沙箱工具调试与产出</h3>
+<dl class="run-facts">
+<dt>执行单元</dt><dd id="sandbox-unit"></dd>
+<dt>尝试 / 租约</dt><dd id="sandbox-attempt"></dd>
+<dt>沙箱状态</dt><dd id="sandbox-status"></dd>
+<dt>退出状态</dt><dd id="sandbox-exit"></dd>
+<dt>停止状态</dt><dd id="sandbox-stop"></dd>
+</dl>
+<p class="hint" id="sandbox-cancel-note"></p>
+<h4>可下载产物</h4>
+<ul id="sandbox-artifacts" aria-live="polite"></ul>
+<p class="hint" id="sandbox-artifacts-status" aria-live="polite" role="status">正在加载产物…</p>
+</section>
+<details class="run-section" id="node-results-panel">
+<summary>节点结果（F04A/T042：data / 文件 / 日志）</summary>
+<p class="status" id="node-results-status" aria-live="polite" role="status">正在加载节点结果…</p>
+<div id="node-results-nodes"></div>
+<p class="hint">
+        每个节点分别列出结构化 data、可下载文件与受限日志；日志不是数据，也不会出现在可下载产物列表里。
+        已进入终态却没有结果的节点显示“无结果”，执行失败的节点显示“失败”，两者不会混为一谈；
+        原始 output.json 不会成为可下载产物，只有服务端校验并登记后的 data/文件/日志才会出现在这里。
+      </p>
+</details>
+<details class="run-section" id="agent-node-panel">
+<summary>Agent 节点（F04A/T043：最终输出 / 轮次 / 工具调用）</summary>
+<p class="status" id="agent-node-status" aria-live="polite" role="status">正在加载 Agent 节点摘要…</p>
+<div id="agent-node-body"></div>
+<h4>上下文跟踪</h4>
+<p class="status" id="agent-context-status" aria-live="polite" role="status">正在加载上下文跟踪…</p>
+<div id="agent-context-trace"></div>
+<p class="hint">
+        只显示服务端已登记并校验的 Agent 最终 data、工具产生的文件，以及受控调用账本中的
+        模型轮次、工具调用 id/name 与每次工具操作的状态；不显示提示词、工具参数、回执正文或原始
+        提供方载荷。最终输出未通过 output_schema 时显示 node_output_invalid 与节点 id，具体
+        JSON Pointer 见 supervisor 运行报告。
+      </p>
+</details>
+<details class="run-section" id="capability-panel">
+<summary>受控调用账本与预算（F06/T041、T046）</summary>
+<p class="status" id="capability-status" aria-live="polite" role="status">正在加载受控调用账本…</p>
+<p class="status" id="budget-status" aria-live="polite" role="status">正在加载预算…</p>
+<div class="table-scroll" aria-label="受控调用账本（可横向滚动）" role="region" tabindex="0">
+<table>
+<thead>
+<tr>
+<th scope="col">能力</th>
+<th scope="col">版本</th>
+<th scope="col">状态</th>
+<th scope="col">物理尝试</th>
+<th scope="col">目标</th>
+<th scope="col">结构化输出</th>
+<th scope="col">工具调用</th>
+<th scope="col">来源</th>
+</tr>
+</thead>
+<tbody id="capability-rows"></tbody>
+</table>
+</div>
+<p class="hint">
+        只显示账本投影（状态、尝试次数、工具调用 id/名称、结构化输出键与 stub 标记），
+        不显示参数、工具参数或回执正文；隐藏重试与工具越权不会出现在这里，因为服务端会拒绝它们。
+        F06/T045 起还显示物理尝试的合计费用/令牌，以及「已切换到某备用模型，原因：…」，
+        所以用了备用模型的调用不会看起来像一次无缝的主模型成功。
+        F06/T046 起同一账本给出十进制预算投影：已结算、预留中、剩余；超支时明确标出，
+        运行不会被呈现成干净的成功。
+        F06/T048 起连接器操作显示安全目标（管理员登记的 origin + 允许的 path 前缀）与风险
+        类别；不显示参数、查询值、响应正文或凭据，待审批的操作显示为「待审批」。
+        F06/T051 起结果未知的外部写显示为「结果未知」而不是失败，并披露连接器是否缺少幂等键/查询回执能力；
+        owner/审批人可提交证据 artifact 核对成功/未发送/失败。核对只结算原 operation，不重发；完成后页面显示
+        「真实写次数仍为 N（未增加）」。
+      </p>
+</details>
+<details class="run-section" id="children-panel" open="">
+<summary>独立子运行（F07/T078：委派、结果与重放）</summary>
+<p class="status" id="children-status" aria-live="polite" role="status">正在加载子运行…</p>
+<ul id="children-list" aria-live="polite"></ul>
+<p class="hint">
+        子运行是独立 Run：有自己的 id、attempt、checkpoint thread 和结构化结果；点击“查看”打开它的详情。
+        本页只显示服务端返回的 Run/结果，未进入终态的子运行不会显示为成功。
+        同一父调用键重放会复用原 child；不同 invocation key 的并发调用是两个独立 Run，
+        不会按应用 ID 合并。子运行使用父 Run 的 owner 执行；父版本未固定的子版本不可调用。
+      </p>
+</details>
+<section class="run-section" aria-label="临时模型流式预览">
+<h3>临时模型流式预览（F06/T044）</h3>
+<p class="hint" id="detail-preview" data-preview="not_run">
+      临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
+      operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
+      不执行。预览不持久，最终以持久 Run 快照/事件为准。
+    </p>
+</section>
+</div>
+</section>
+</div>
+</div>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     列表来自 <code>GET /api/v1/runs</code>：只显示<strong>你拥有的</strong> Run（管理员没有超级用户读权限，
     同样只看到自己的）。详情来自 <code>GET /api/v1/runs/{id}</code>。运行中的 Run 显示服务器返回的
@@ -66,130 +294,9 @@
     恢复事实由非契约响应头 <code>X-Run-Recovery-Reason</code> /
     <code>X-Run-Recovery-Since</code> / <code>X-Run-Recovery-Evidence-At</code> /
     <code>X-Run-Recovery-Evidence-SHA256</code> 提供；终态不会因恢复证据而改变。
-  </p></details><div class="page-sections">
-<!-- C6.01 (#155): shared run-state dependency banner; normal path leaves it
-       hidden. The run list stays readable; the detail observation is paused. -->
-<p class="status bad" id="runstate-status" hidden="" role="alert"></p>
-<p class="hint mobile-scope" data-mobile-scope="no-full-canvas-editing">手机支持对话、审批和查看结果；完整画布编辑不承诺在手机上可用，请使用桌面浏览器。</p>
-<section class="card">
-<h2>我的 Run</h2>
-<p class="status" id="runs-status" aria-live="polite" role="status">正在加载运行…</p>
-<ul id="runs-list" data-auth-content=""></ul>
-<p class="hint" id="runs-empty" hidden="">当前没有属于你的 Run。调试提交（/apps/{id}/debug）会创建一个 queued Run。</p>
-<button id="runs-next" hidden="" type="button">下一页</button>
-</section>
-<section class="card" id="run-detail" aria-live="polite" data-auth-content="" hidden="">
-<h2>Run 详情</h2>
-<dl class="run">
-<dt>id</dt><dd id="detail-id"></dd>
-<dt>state</dt><dd id="detail-state"></dd>
-<dt>phase</dt><dd id="detail-phase"></dd>
-<dt>kind</dt><dd id="detail-kind"></dd>
-<dt>执行阶段</dt><dd id="detail-lifecycle"></dd>
-<dt>revision（Run 自身）</dt><dd id="detail-revision"></dd>
-<dt>execution_snapshot_id</dt><dd id="detail-snapshot"></dd>
-<dt>manifest_sha256</dt><dd id="detail-manifest"></dd>
-<dt>领取 / 租约</dt><dd id="detail-lease"></dd>
-<dt>累计活跃 / 上限</dt><dd id="detail-active"></dd>
-<dt>超时原因</dt><dd id="detail-deadline"></dd>
-<dt>等待条件</dt><dd id="detail-waiting"></dd>
-<dt>恢复任务</dt><dd id="detail-resume"></dd>
-<dt>恢复（recovery_pending）</dt><dd id="detail-recovery"></dd>
-<dt>取消 / 终态原因</dt><dd id="detail-cancel"></dd>
-<dt>持久时间线</dt><dd id="detail-timeline-status" aria-live="polite" role="status">未连接</dd>
-</dl>
-<button id="detail-cancel-button" data-runstate-paused="true" hidden="" type="button">取消 Run</button>
-<p class="status" id="detail-cancel-status" aria-live="polite" role="status"></p>
-<ul id="detail-timeline" aria-live="polite"></ul>
-<section class="card" id="sandbox-panel" aria-live="polite" hidden="">
-<h2>沙箱工具调试</h2>
-<dl class="run">
-<dt>执行单元</dt><dd id="sandbox-unit"></dd>
-<dt>尝试 / 租约</dt><dd id="sandbox-attempt"></dd>
-<dt>沙箱状态</dt><dd id="sandbox-status"></dd>
-<dt>退出状态</dt><dd id="sandbox-exit"></dd>
-<dt>停止状态</dt><dd id="sandbox-stop"></dd>
-</dl>
-<p class="hint" id="sandbox-cancel-note"></p>
-<h3>可下载产物</h3>
-<ul id="sandbox-artifacts" aria-live="polite"></ul>
-<p class="hint" id="sandbox-artifacts-status" aria-live="polite" role="status">正在加载产物…</p>
-</section>
-<details class="card" id="node-results-panel">
-<summary>节点结果（F04A/T042：data / 文件 / 日志）</summary>
-<p class="status" id="node-results-status" aria-live="polite" role="status">正在加载节点结果…</p>
-<div id="node-results-nodes"></div>
-<p class="hint">
-        每个节点分别列出结构化 data、可下载文件与受限日志；日志不是数据，也不会出现在可下载产物列表里。
-        已进入终态却没有结果的节点显示“无结果”，执行失败的节点显示“失败”，两者不会混为一谈；
-        原始 output.json 不会成为可下载产物，只有服务端校验并登记后的 data/文件/日志才会出现在这里。
-      </p>
-</details>
-<details class="card" id="agent-node-panel">
-<summary>Agent 节点（F04A/T043：最终输出 / 轮次 / 工具调用）</summary>
-<p class="status" id="agent-node-status" aria-live="polite" role="status">正在加载 Agent 节点摘要…</p>
-<div id="agent-node-body"></div>
-<h3>上下文跟踪</h3>
-<p class="status" id="agent-context-status" aria-live="polite" role="status">正在加载上下文跟踪…</p>
-<div id="agent-context-trace"></div>
-<p class="hint">
-        只显示服务端已登记并校验的 Agent 最终 data、工具产生的文件，以及受控调用账本中的
-        模型轮次、工具调用 id/name 与每次工具操作的状态；不显示提示词、工具参数、回执正文或原始
-        提供方载荷。最终输出未通过 output_schema 时显示 node_output_invalid 与节点 id，具体
-        JSON Pointer 见 supervisor 运行报告。
-      </p>
-</details>
-<details class="card" id="capability-panel">
-<summary>受控调用账本（F06/T041）</summary>
-<p class="status" id="capability-status" aria-live="polite" role="status">正在加载受控调用账本…</p>
-<p class="status" id="budget-status" aria-live="polite" role="status">正在加载预算…</p>
-<div class="table-scroll" aria-label="受控调用账本（可横向滚动）" role="region" tabindex="0">
-<table>
-<thead>
-<tr>
-<th scope="col">能力</th>
-<th scope="col">版本</th>
-<th scope="col">状态</th>
-<th scope="col">物理尝试</th>
-<th scope="col">目标</th>
-<th scope="col">结构化输出</th>
-<th scope="col">工具调用</th>
-<th scope="col">来源</th>
-</tr>
-</thead>
-<tbody id="capability-rows"></tbody>
-</table>
-</div>
-<p class="hint">
-        只显示账本投影（状态、尝试次数、工具调用 id/名称、结构化输出键与 stub 标记），
-        不显示参数、工具参数或回执正文；隐藏重试与工具越权不会出现在这里，因为服务端会拒绝它们。
-        F06/T045 起还显示物理尝试的合计费用/令牌，以及「已切换到某备用模型，原因：…」，
-        所以用了备用模型的调用不会看起来像一次无缝的主模型成功。
-        F06/T046 起同一账本给出十进制预算投影：已结算、预留中、剩余；超支时明确标出，
-        运行不会被呈现成干净的成功。
-        F06/T048 起连接器操作显示安全目标（管理员登记的 origin + 允许的 path 前缀）与风险
-        类别；不显示参数、查询值、响应正文或凭据，待审批的操作显示为「待审批」。`n        F06/T051 起结果未知的外部写显示为「结果未知」而不是失败，并披露连接器是否缺少幂等键/查询回执能力；`n        owner/审批人可提交证据 artifact 核对成功/未发送/失败。核对只结算原 operation，不重发；完成后页面显示`n        「真实写次数仍为 N（未增加）」。
-      </p>
-</details>
-<details class="card" id="children-panel" open="">
-<summary>独立子运行（F07/T078：委派、结果与重放）</summary>
-<p class="status" id="children-status" aria-live="polite" role="status">正在加载子运行…</p>
-<ul id="children-list" aria-live="polite"></ul>
-<p class="hint">
-        子运行是独立 Run：有自己的 id、attempt、checkpoint thread 和结构化结果；点击“查看”打开它的详情。
-        本页只显示服务端返回的 Run/结果，未进入终态的子运行不会显示为成功。
-        同一父调用键重放会复用原 child；不同 invocation key 的并发调用是两个独立 Run，
-        不会按应用 ID 合并。子运行使用父 Run 的 owner 执行；父版本未固定的子版本不可调用。
-      </p>
-</details>
-<p class="hint" id="detail-note"></p>
-<p class="hint" id="detail-preview" data-preview="not_run">
-      临时模型流式预览（F06/T044）：等待当前 generation 的临时 delta。每帧带
-      operation/generation；半流失败后旧草稿整体丢弃并由新代次替换；工具片段只显示“待定”，
-      不执行。预览不持久，最终以持久 Run 快照/事件为准。
-    </p>
-</section>
-</div></main>
+  </p></details>
+</main>
+<div class="mobile-tabbar" role="navigation" aria-label="手机主导航"><a href="/chat"><span data-icon="chat"></span><span>会话</span></a><a href="/apps"><span data-icon="workflow"></span><span>应用</span></a><a href="/runs" aria-current="page"><span data-icon="run"></span><span>运行</span></a><a href="/approvals"><span data-icon="shield"></span><span>审批</span></a><a href="/personal-data"><span data-icon="database"></span><span>我的</span></a></div>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

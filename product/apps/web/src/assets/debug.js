@@ -182,16 +182,47 @@ function manifestSHAFromHeaders(headers) {
 }
 
 /**
+ * A duration the server measured, in milliseconds. The value comes from the
+ * platform's own header; when the header is absent the page says 未提供 instead
+ * of estimating from its own polling cadence (T7).
+ */
+function describeElapsedMS(value) {
+  if (value === null || value === undefined || value === '') {
+    return '未提供';
+  }
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms < 0) {
+    return '未提供';
+  }
+  if (ms < 1000) {
+    return Math.round(ms) + ' ms';
+  }
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return minutes + ' 分 ' + seconds + ' 秒';
+  }
+  return (ms / 1000).toFixed(1) + ' s';
+}
+
+/**
  * The real claim/lease facts F03 attaches to a run detail while an attempt is
  * live. They are non-secret timestamps; the attempt token is never exposed.
+ * `X-Run-Active-Elapsed-Ms` is the server's active-elapsed measurement (T7).
  */
 function leaseFactsFromHeaders(headers) {
   if (!headers || typeof headers.get !== 'function') {
-    return { startedAt: '', leaseDeadline: '' };
+    return { startedAt: '', leaseDeadline: '', activeElapsedMS: null };
   }
+  const elapsed = headers.get('X-Run-Active-Elapsed-Ms');
+  const parsed = elapsed === null || elapsed === undefined || elapsed === ''
+    ? NaN
+    : Number(elapsed);
   return {
     startedAt: headers.get('X-Run-Attempt-Started-At') || '',
     leaseDeadline: headers.get('X-Run-Lease-Deadline') || '',
+    activeElapsedMS: Number.isFinite(parsed) && parsed >= 0 ? parsed : null,
   };
 }
 
@@ -264,10 +295,41 @@ function debugShowRun(run, manifestSHA256, note, frozenRevision, lease) {
   document.getElementById('run-snapshot').textContent = summary.executionSnapshotID;
   document.getElementById('run-manifest').textContent = manifestSHA256 || '（响应头未提供）';
   const facts = lease || {};
+  const leaseParts = [];
+  if (facts.startedAt) {
+    leaseParts.push('started_at ' + facts.startedAt);
+  }
+  if (facts.leaseDeadline) {
+    leaseParts.push('lease_deadline ' + facts.leaseDeadline);
+  }
+  if (facts.activeElapsedMS !== null && facts.activeElapsedMS !== undefined) {
+    leaseParts.push('已运行 ' + describeElapsedMS(facts.activeElapsedMS));
+  }
   document.getElementById('run-lease').textContent =
     summary.state === 'running' && facts.leaseDeadline
-      ? 'started_at ' + (facts.startedAt || '（未提供）') + ' / lease_deadline ' + facts.leaseDeadline
+      ? leaseParts.join(' / ')
       : '（没有可显示的租约事实）';
+  const statePill = document.querySelector('[data-run-panel-state]');
+  if (statePill) {
+    const terminal = OrcharaRunState.isTerminal(summary.state);
+    const tone = summary.state === 'succeeded'
+      ? 'success'
+      : summary.state === 'failed'
+        ? 'danger'
+        : terminal
+          ? 'muted'
+          : 'accent';
+    const shape = summary.state === 'succeeded'
+      ? 'check'
+      : summary.state === 'failed'
+        ? 'alert'
+        : terminal
+          ? 'dash'
+          : 'dot';
+    statePill.setAttribute('data-tone', tone);
+    statePill.setAttribute('data-shape', shape);
+    statePill.textContent = summary.state;
+  }
   if (frozenRevision !== undefined && frozenRevision !== null && frozenRevision !== '') {
     // The frozen draft revision is a submission fact: the contract Run schema
     // does not expose the snapshot's draft_revision (there is no snapshot read

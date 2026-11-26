@@ -428,8 +428,43 @@ function diagnosticGrantSummaryText(grant) {
 }
 
 // ---------------------------------------------------------------------------
-// DOM wiring (never executed by the Node helper test; the pure functions are)
+// DOM wiring (the pure helpers above are what the Node tests execute)
 // ---------------------------------------------------------------------------
+
+/**
+ * A T6 (#170) presentation hook. The business id inventory is a T1 contract
+ * (tests/f12/test_t165_shell.py), so the stat row carries data-* hooks. The
+ * lookup is lazy and null-safe because the Node harnesses shim only part of the
+ * document surface.
+ */
+function presentationNode(selector) {
+  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') {
+    return null;
+  }
+  return document.querySelector(selector) || null;
+}
+
+function setStat(key, value) {
+  var node = presentationNode('[data-t6-stat="' + key + '"]');
+  if (node) {
+    node.textContent = String(value);
+  }
+}
+
+function setNote(count, documents, grants) {
+  var node = presentationNode('[data-t6-count]');
+  if (node) {
+    node.textContent = '已加载 ' + String(count) + ' 条记忆 · ' + String(documents)
+      + ' 篇文档 · ' + String(grants) + ' 条授权';
+  }
+}
+
+var loadedCounts = { memories: 0, documents: 0, grants: 0 };
+
+function refreshCountNote() {
+  setNote(loadedCounts.memories, loadedCounts.documents, loadedCounts.grants);
+}
+
 function setText(id, value) {
   var element = document.getElementById(id);
   if (element) {
@@ -446,17 +481,65 @@ function setStatus(id, message, kind) {
   element.className = 'status' + (kind ? ' ' + kind : '');
 }
 
+function line(tag, className, text) {
+  var node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+  return node;
+}
+
+/** Shape + text first, colour third: the redesign's status language. */
+function pill(text, tone, shape) {
+  var node = line('span', 'pill', text);
+  node.setAttribute('data-tone', tone);
+  node.setAttribute('data-shape', shape);
+  return node;
+}
+
+var DOCUMENT_TONES = {
+  ready: ['success', 'check'],
+  failed: ['danger', 'alert'],
+  uploaded: ['accent', 'dot'],
+  scanning: ['accent', 'dot'],
+  indexing: ['accent', 'dot'],
+  deleting: ['muted', 'dash'],
+  deleted: ['muted', 'dash'],
+};
+
+var GRANT_TONES = {
+  active: ['success', 'check'],
+  expired: ['muted', 'dash'],
+  revoked: ['muted', 'dash'],
+};
+
+function recordHead(pills, idText) {
+  var head = line('div', 'pd-card-head');
+  for (var index = 0; index < pills.length; index += 1) {
+    head.appendChild(pills[index]);
+  }
+  head.appendChild(line('span', 'pd-card-id', idText));
+  return head;
+}
+
+function factList() {
+  var list = document.createElement('dl');
+  list.className = 't6-facts';
+  return list;
+}
+
+function addFact(list, label, value) {
+  list.appendChild(line('dt', '', label));
+  list.appendChild(line('dd', '', value));
+}
+
 function addFieldRow(container, label, value) {
-  var row = document.createElement('div');
-  row.className = 'row';
-  var name = document.createElement('span');
-  name.className = 'label';
-  name.textContent = label;
-  var content = document.createElement('span');
-  content.className = 'value';
-  content.textContent = value;
-  row.appendChild(name);
-  row.appendChild(content);
+  var row = line('div', 'pd-row');
+  row.appendChild(line('span', 'pd-label', label));
+  row.appendChild(line('span', 'pd-value', value));
   container.appendChild(row);
 }
 
@@ -529,7 +612,7 @@ async function deleteItem(resourceType, resourceID, afterDelete) {
   } catch (error) {
     var message = error && error.code === 'resource_in_use'
       ? '该文件仍被应用配置或可恢复的运行引用，服务端拒绝删除（resource_in_use）。'
-      : (error.message || String(error));
+      : (error.code ? '[' + error.code + '] ' : '') + (error.message || String(error));
     setStatus('action-status', message, 'bad');
     return null;
   }
@@ -589,18 +672,29 @@ async function loadMemories() {
   try {
     var memories = await collectAllPages('/api/v1/memories');
     renderItemList('memories-list', 'memories-empty', memories, function (memory, entry) {
-      addFieldRow(entry, '记忆 id', memory.id);
-      addFieldRow(entry, '应用范围', memory.application_id);
-      addFieldRow(entry, '版本', String(memory.revision));
-      addFieldRow(entry, '正文', memory.text);
-      var button = document.createElement('button');
+      entry.className = 'pd-card';
+      entry.appendChild(recordHead(
+        [pill('记忆', 'accent', 'square')],
+        '记忆 ' + String(memory.id || '').slice(0, 8)
+      ));
+      entry.appendChild(line('p', 'pd-card-text', memory.text));
+      var facts = factList();
+      addFact(facts, '应用范围', memory.application_id);
+      addFact(facts, '版本', 'revision ' + String(memory.revision));
+      addFact(facts, '记忆 id', memory.id);
+      entry.appendChild(facts);
+      var actions = line('div', 'pd-actions');
+      var button = line('button', 'btn btn-danger btn-small', '删除这条记忆');
       button.type = 'button';
-      button.textContent = '删除这条记忆';
       button.addEventListener('click', function () {
         deleteItem('memory', memory.id, loadMemories);
       });
-      entry.appendChild(button);
+      actions.appendChild(button);
+      entry.appendChild(actions);
     });
+    loadedCounts.memories = memories.length;
+    setStat('memories', memories.length);
+    refreshCountNote();
     setStatus('memories-status', '已加载 ' + String(memories.length) + ' 条记忆。', 'ok');
   } catch (error) {
     setStatus('memories-status', error.message || String(error), 'bad');
@@ -646,29 +740,40 @@ async function loadDocuments() {
     renderItemList('documents-list', 'documents-empty', documents, function (documentItem, entry) {
       var view = documentReadout(documentItem);
       entry.dataset.documentState = view.state;
-      addFieldRow(entry, '文档 id', documentItem.id);
-      addFieldRow(entry, '知识库', documentItem.knowledge_base_name || documentItem.knowledge_base_id);
-      addFieldRow(entry, '状态', view.stateText);
-      addFieldRow(entry, '说明', view.note);
+      entry.className = 'pd-card';
+      var tones = DOCUMENT_TONES[view.state] || ['muted', 'dot'];
+      entry.appendChild(recordHead(
+        [pill(view.stateText, tones[0], tones[1])],
+        '文档 ' + String(documentItem.id || '').slice(0, 8)
+      ));
+      var facts = factList();
+      addFact(facts, '知识库', documentItem.knowledge_base_name || documentItem.knowledge_base_id);
+      addFact(facts, '文档 id', documentItem.id);
+      addFact(facts, '说明', view.note);
       if (view.nextStep) {
-        addFieldRow(entry, '下一步', view.nextStep);
+        addFact(facts, '下一步', view.nextStep);
       }
-      addFieldRow(entry, '版本', String(documentItem.revision));
+      addFact(facts, '版本', 'revision ' + String(documentItem.revision));
       if (view.errorCode) {
-        addFieldRow(entry, '失败码', view.errorCode + '（' + view.errorText + '）');
+        addFact(facts, '失败码', view.errorCode + '（' + view.errorText + '）');
       } else if (documentItem.diagnostics_error) {
-        addFieldRow(entry, '失败码', '诊断不可用：' + documentItem.diagnostics_error);
+        addFact(facts, '失败码', '诊断不可用：' + documentItem.diagnostics_error);
       }
+      entry.appendChild(facts);
       if (view.canDelete) {
-        var button = document.createElement('button');
+        var actions = line('div', 'pd-actions');
+        var button = line('button', 'btn btn-danger btn-small', '删除这个文档');
         button.type = 'button';
-        button.textContent = '删除这个文档';
         button.addEventListener('click', function () {
           deleteItem('knowledge_document', documentItem.id, loadDocuments);
         });
-        entry.appendChild(button);
+        actions.appendChild(button);
+        entry.appendChild(actions);
       }
     });
+    loadedCounts.documents = documents.length;
+    setStat('documents', documents.length);
+    refreshCountNote();
     setStatus('documents-status', '已加载 ' + String(documents.length) + ' 个文档。', 'ok');
   } catch (error) {
     setStatus('documents-status', error.message || String(error), 'bad');
@@ -752,23 +857,31 @@ async function loadGrantObjects() {
 function renderDiagnosticGrants(items) {
   renderItemList('grants-list', 'grants-empty', items, function (grant, entry) {
     var view = describeDiagnosticGrant(grant);
-    addFieldRow(entry, '授权 id', view.id);
-    addFieldRow(entry, '状态', view.stateText);
-    addFieldRow(entry, '运行', view.runID);
-    addFieldRow(entry, '用途', view.purposeText);
-    addFieldRow(entry, '对象', view.objectText);
-    addFieldRow(entry, '到期', view.expiresAt);
+    entry.className = 'pd-card';
+    var tones = GRANT_TONES[view.state] || ['muted', 'dot'];
+    entry.appendChild(recordHead(
+      [pill(view.stateText, tones[0], tones[1])],
+      '诊断授权 ' + view.id.slice(0, 8)
+    ));
+    var facts = factList();
+    addFact(facts, '运行', view.runID);
+    addFact(facts, '用途', view.purposeText);
+    addFact(facts, '对象', view.objectText);
+    addFact(facts, '到期', view.expiresAt);
     if (view.revokedAt) {
-      addFieldRow(entry, '撤销于', view.revokedAt);
+      addFact(facts, '撤销于', view.revokedAt);
     }
+    addFact(facts, '授权 id', view.id);
+    entry.appendChild(facts);
     if (view.isActive) {
-      var button = document.createElement('button');
+      var actions = line('div', 'pd-actions');
+      var button = line('button', 'btn btn-danger btn-small', '撤销这条授权');
       button.type = 'button';
-      button.textContent = '撤销这条授权';
       button.addEventListener('click', function () {
         revokeDiagnosticGrant(view.id);
       });
-      entry.appendChild(button);
+      actions.appendChild(button);
+      entry.appendChild(actions);
     }
   });
 }
@@ -778,8 +891,11 @@ async function loadDiagnosticGrants() {
     var payload = await api(DIAGNOSTIC_GRANTS_PATH);
     var items = payload.items || [];
     renderDiagnosticGrants(items);
+    loadedCounts.grants = items.length;
+    setStat('grants', items.length);
+    refreshCountNote();
     if (items.length === 0) {
-      setStatus('grant-status', '还没有诊断授权。', '');
+      setStatus('grant-status', '已加载 0 条诊断授权。', '');
     }
   } catch (error) {
     setStatus('grant-status', error.message || String(error), 'bad');

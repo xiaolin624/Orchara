@@ -6,20 +6,148 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>文件与附件 · Orchara</title>
 <style>
-    select, input[type="file"] { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .35rem .45rem; }
-    dl.artifact { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
-    dl.artifact dt { opacity: .7; }
-    dl.artifact dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    .quarantine { border-left: 3px solid #b91c1c; padding: .4rem .7rem; margin: .8rem 0 0; font-size: .88rem; }
+    /* T6 (#170): upload → sealed artifact → tool bridge. The page shows the one
+       artifact it just handled; there is no artifact-list endpoint to page. */
+    body[data-page="attachments"] .upload-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px 14px;
+      margin: 12px 0 0;
+    }
+    body[data-page="attachments"] .upload-fields .field { margin: 0; }
+    body[data-page="attachments"] .upload-fields .field-label { display: block; margin: 0 0 4px; }
+    body[data-page="attachments"] .upload-fields select { width: 100%; margin: 0; min-height: 32px; }
+    body[data-page="attachments"] .upload-submit-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0 0;
+    }
+    body[data-page="attachments"] .upload-submit-row .status { margin: 0; flex: 1 1 240px; }
+    body[data-page="attachments"] .page-content dl.artifact,
+    body[data-page="attachments"] .page-content dl.tool-facts { margin: 8px 0 0; }
+    body[data-page="attachments"] .artifact-quarantine {
+      margin: 10px 0 0;
+      padding: 9px 12px;
+      border: 1px solid var(--danger-line);
+      border-left: 3px solid var(--danger);
+      border-radius: var(--radius-sm);
+      background: var(--danger-soft);
+      color: var(--text-2);
+      font-size: var(--fs-12);
+    }
+    body[data-page="attachments"] .artifact-note { margin: 8px 0 0; }
+    body[data-page="attachments"] .artifact-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+    body[data-page="attachments"] .artifact-actions .btn { margin: 0; }
+    body[data-page="attachments"] .tool-bridge { margin: 0 0 8px; }
+    body[data-page="attachments"] .tool-bridge .field { margin: 10px 0; max-width: 460px; }
+    body[data-page="attachments"] .tool-bridge .btn { margin: 0; }
+    body[data-page="attachments"] dl.tool-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 10px 0 0;
+    }
+    body[data-page="attachments"] .tool-total {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+    }
+    body[data-page="attachments"] .tool-total dt { margin: 0; padding: 0; border: 0; color: var(--muted); font-size: var(--fs-11); }
+    body[data-page="attachments"] .tool-total dd { margin: 2px 0 0; padding: 0; border: 0; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-14); font-variant-numeric: tabular-nums; }
+    body[data-page="attachments"] .page-content ul.tool-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+    body[data-page="attachments"] .page-content ul.tool-downloads > li { margin: 0; }
+    @media (max-width: 720px) {
+      body[data-page="attachments"] .upload-fields { grid-template-columns: 1fr; }
+      body[data-page="attachments"] .upload-submit-row { display: grid; grid-template-columns: 1fr; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-page="attachments"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>个人数据</span><span class="separator">/</span><span>文件与附件</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body data-page="attachments"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/personal-data">个人数据</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">文件与附件</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="file">FILES & ARTIFACTS</p><h1>文件与附件</h1><p class="page-description">上传任务资料，查看处理状态并获取已就绪的文件。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<header class="page-heading"><div class="page-head-main"><h1>文件与附件</h1><p class="page-description">上传任务资料，查看封存与解析状态，并获取已就绪的文件。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/personal-data">个人数据与删除</a><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>文件存放在对象存储</span><span>解析状态来自服务端</span><span>本页只显示本次上传的附件</span></p></header>
+<div class="page-sections">
+<div class="stat-row t6-stats" data-t6-stats="attachments">
+<span class="stat-chip" data-tone="accent"><span class="stat-label">上传状态</span><span class="stat-value" data-t6-stat="upload">—</span><span class="stat-unit">本次</span></span>
+<span class="stat-chip"><span class="stat-label">附件大小</span><span class="stat-value" data-t6-stat="size">—</span><span class="stat-unit">字节</span></span>
+<span class="stat-chip"><span class="stat-label">预置工具任务</span><span class="stat-value" data-t6-stat="tool">—</span><span class="stat-unit">状态</span></span>
+<span class="stat-chip" data-t6-stat-note=""><span class="stat-label">只描述本次会话里处理的那一个附件</span></span>
+</div>
+<form id="upload-form" method="post">
+<section class="card">
+<div class="card-head"><h2>选择要封存的附件</h2><span class="pill" data-shape="dash" data-t6-upload-pill="" data-tone="muted" hidden="">—</span></div>
+<div class="t6-upload" data-t6-upload="">
+<span aria-hidden="true" data-icon="upload"></span>
+<span class="t6-upload-label">把文件拖到这里，或直接选择文件</span>
+<p class="hint">支持 1 字节至 20 MiB 的 text/plain、text/csv、application/json 与 .xlsx；上传后由服务端做格式准入。</p>
+<input id="upload-file" name="file" required="" type="file"/>
+</div>
+<div class="upload-fields">
+<div class="field"><label class="field-label" for="upload-media-type">声明媒体类型<span class="field-api">media_type</span></label><select id="upload-media-type" name="media_type"><option value="text/plain">text/plain</option><option value="text/csv">text/csv</option><option value="application/json">application/json</option><option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">xlsx</option></select></div>
+<div class="field"><label class="field-label" for="upload-purpose">用途<span class="field-api">purpose</span></label><select id="upload-purpose" name="purpose"><option value="task_input">任务输入（task_input）</option><option value="tool_source">工具源包（tool_source）</option><option value="knowledge">知识资料（knowledge）</option><option value="evaluation_dataset">评测数据集（evaluation_dataset）</option></select></div>
+</div>
+<p class="hint">上传按钮负责：计算 SHA-256 → 预分配 → PUT 暂存 → complete → 轮询状态；每一步的实时状态显示在下面。</p>
+<div class="upload-submit-row"><button class="btn btn-primary" id="upload-submit" data-icon="upload" type="submit">上传并开始校验</button><p class="status" id="upload-status" aria-live="polite" role="status"></p></div>
+</section>
+</form>
+<div class="empty-state" data-t6-artifact-empty=""><span class="empty-mark" data-icon="file" aria-hidden="true"></span><strong>本次会话还没有上传附件</strong><p class="empty-explain">在上面的选择区选好文件并点击“上传并开始校验”；封存与解析状态、可下载入口会在下方出现。CSV/XLSX 封存就绪后，可以直接用下面的预置销售统计工具处理它。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#upload-file">选择文件</a><a class="btn btn-ghost btn-small" href="#upload-form">查看上传说明</a></div></div>
+<section class="card" id="artifact-panel" aria-live="polite" data-auth-content="" hidden="">
+<div class="card-head"><h2>附件状态</h2><span class="pill" data-shape="dot" data-t6-artifact-pill="" data-tone="muted" hidden="">—</span></div>
+<dl class="artifact t6-facts">
+<dt>附件 ID</dt><dd id="artifact-id"></dd>
+<dt>状态</dt><dd id="artifact-state"></dd>
+<dt>media_type</dt><dd id="artifact-media-type"></dd>
+<dt>大小（字节）</dt><dd id="artifact-size"></dd>
+</dl>
+<p class="hint artifact-note" id="artifact-note"></p>
+<div class="artifact-quarantine" id="artifact-quarantine" hidden="">隔离原因：<code id="artifact-quarantine-reason"></code></div>
+<div class="artifact-actions"><button class="btn btn-secondary" id="artifact-download" data-icon="download" hidden="" type="button">下载已封存内容</button></div>
+<p class="status" id="artifact-download-status" aria-live="polite" role="status"></p>
+</section>
+<section class="card" id="tool-panel" aria-live="polite">
+<div class="card-head"><h2>预置销售统计工具</h2><span class="pill" data-shape="dot" data-t6-tool-pill="" data-tone="muted" hidden="">—</span></div>
+<p class="hint">
+      对一个<strong>已就绪</strong>的 CSV/XLSX 附件运行平台预置的销售统计工具：
+      服务器在后台任务里用受限子进程执行固定脚本，校验 <code>output.json</code> 与产物，
+      再用 <code>Decimal</code> 字符串返回总额、地区金额与订单数，并可下载
+      <code>summary.csv</code> 与 <code>summary.json</code>。金额从不经过浮点数。
+      失败时只显示安全的错误码、修复建议和诊断附件，不展示脚本 stdout 作为正文。
+    </p>
+<div class="tool-bridge">
+<div class="field"><label class="field-label" for="tool-artifact-id">要统计的附件 ID<span class="field-api">artifact_id</span></label><input id="tool-artifact-id" autocomplete="off" placeholder="上传成功后会自动填入" spellcheck="false" type="text"/></div>
+<button class="btn btn-secondary" id="tool-run-submit" data-icon="play" type="button">运行销售统计</button>
+</div>
+<p class="status" id="tool-run-status" aria-live="polite" role="status"></p>
+<dl class="tool-facts t6-facts">
+<dt>任务 ID</dt><dd id="tool-run-id"></dd>
+<dt>状态</dt><dd id="tool-run-state"></dd>
+<dt>错误码</dt><dd id="tool-run-error-code"></dd>
+</dl>
+<div id="tool-summary" hidden="">
+<h3>统计结果（Decimal 字符串）</h3>
+<p class="hint" data-t6-tool-skeleton="" hidden=""><span class="skeleton skeleton-line w-1"></span><span class="skeleton skeleton-line w-2"></span></p>
+<dl class="tool-summary-grid"><div class="tool-total"><dt>总额</dt><dd id="tool-summary-total"></dd></div><div class="tool-total"><dt>订单数</dt><dd id="tool-summary-count"></dd></div></dl>
+<div class="table-scroll" aria-label="预置销售统计工具的地区金额表（可横向滚动）" role="region" tabindex="0"><table id="tool-summary-regions">
+<thead><tr><th>地区</th><th>金额</th></tr></thead>
+<tbody id="tool-summary-region-rows"></tbody>
+</table></div>
+</div>
+<div class="artifact-quarantine" id="tool-diagnostics" hidden="">
+<p>错误码：<code id="tool-diagnostics-code"></code></p>
+<p>说明：<span id="tool-diagnostics-message"></span></p>
+<p>修复建议：<span id="tool-diagnostics-fix"></span></p>
+<p class="hint" id="tool-diagnostics-location"></p>
+</div>
+<h3>可下载结果</h3>
+<ul class="tool-downloads" id="tool-downloads"></ul>
+<p class="hint" id="tool-log-note"></p>
+</section>
+<p class="hint" data-t6-no-list="">本页只显示当前上传/查看的这一个附件：服务端没有“我的附件列表”读接口，所以这里不列历史文件，也不显示虚构的文件总数。要按 id 删除文件请到<a href="/personal-data">个人数据页</a>；每个附件的封存状态以服务端返回为准。</p>
+</div>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     选择文件后，本页调用 <code>POST /api/v1/artifacts/uploads</code> 预分配<strong>暂存 key</strong>和
     <strong>封存 key</strong>，把字节 PUT 到短时签名 URL，再调用
@@ -32,86 +160,11 @@
     首版准入支持 text/plain、text/csv、application/json 与 .xlsx；拒绝宏、路径穿越、超解压/超条目、
     类型不一致和非法 JSON/CSV/编码的内容。被隔离的附件不可下载，只显示安全的隔离原因代码。
     上传成功时页面只在内存里计算 SHA-256，不把凭据或签名 URL 写入 URL 或浏览器存储。
-  </p></details><div class="page-sections">
-<form id="upload-form" method="post">
-<section class="card">
-<h2>选择要封存的附件</h2>
-<label for="upload-file">文件（1 字节至 20 MiB）</label>
-<input id="upload-file" name="file" required="" type="file"/>
-<label for="upload-media-type">声明媒体类型（media_type）</label>
-<select id="upload-media-type" name="media_type">
-<option value="text/plain">text/plain</option>
-<option value="text/csv">text/csv</option>
-<option value="application/json">application/json</option>
-<option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">xlsx</option>
-</select>
-<label for="upload-purpose">用途（purpose）</label>
-<select id="upload-purpose" name="purpose">
-<option value="task_input">task_input（任务输入）</option>
-<option value="tool_source">tool_source（工具源码）</option>
-<option value="knowledge">knowledge（知识资料）</option>
-<option value="evaluation_dataset">evaluation_dataset（评测数据）</option>
-</select>
-<p class="hint">上传按钮负责：计算 SHA-256 → 预分配 → PUT 暂存 → complete → 轮询状态。</p>
-<button id="upload-submit" type="submit">上传并开始校验</button>
-<p class="status" id="upload-status" aria-live="polite" role="status"></p>
-</section>
-</form>
-<section class="card" id="artifact-panel" aria-live="polite" data-auth-content="" hidden="">
-<h2>附件状态</h2>
-<dl class="artifact">
-<dt>artifact id</dt><dd id="artifact-id"></dd>
-<dt>状态</dt><dd id="artifact-state"></dd>
-<dt>media_type</dt><dd id="artifact-media-type"></dd>
-<dt>大小（字节）</dt><dd id="artifact-size"></dd>
-</dl>
-<p class="hint" id="artifact-note"></p>
-<div class="quarantine" id="artifact-quarantine" hidden="">
-      隔离原因：<code id="artifact-quarantine-reason"></code>
-</div>
-<button id="artifact-download" hidden="" type="button">下载已封存内容</button>
-<p class="status" id="artifact-download-status" aria-live="polite" role="status"></p>
-</section>
-<section class="card" id="tool-panel" aria-live="polite">
-<h2>预置销售统计工具</h2>
-<p class="hint">
-      对一个<strong>已就绪</strong>的 CSV/XLSX 附件运行平台预置的销售统计工具：
-      服务器在后台任务里用受限子进程执行固定脚本，校验 <code>output.json</code> 与产物，
-      再用 <code>Decimal</code> 字符串返回总额、地区金额与订单数，并可下载
-      <code>summary.csv</code> 与 <code>summary.json</code>。金额从不经过浮点数。
-      失败时只显示安全的错误码、修复建议和诊断附件，不展示脚本 stdout 作为正文。
-    </p>
-<label for="tool-artifact-id">要统计的附件 artifact id</label>
-<input id="tool-artifact-id" autocomplete="off" placeholder="上传成功后会自动填入" spellcheck="false" type="text"/>
-<button id="tool-run-submit" type="button">运行销售统计</button>
-<p class="status" id="tool-run-status" aria-live="polite" role="status"></p>
-<dl class="artifact">
-<dt>任务 id</dt><dd id="tool-run-id"></dd>
-<dt>状态</dt><dd id="tool-run-state"></dd>
-<dt>错误码</dt><dd id="tool-run-error-code"></dd>
-</dl>
-<div id="tool-summary" hidden="">
-<h3>统计结果（Decimal 字符串）</h3>
-<dl class="artifact">
-<dt>总额</dt><dd id="tool-summary-total"></dd>
-<dt>订单数</dt><dd id="tool-summary-count"></dd>
-</dl>
-<div class="table-scroll" aria-label="文件与附件数据表（可横向滚动）" role="region" tabindex="0"><table id="tool-summary-regions">
-<thead><tr><th>地区</th><th>金额</th></tr></thead>
-<tbody id="tool-summary-region-rows"></tbody>
-</table></div>
-</div>
-<div class="quarantine" id="tool-diagnostics" hidden="">
-<p>错误码：<code id="tool-diagnostics-code"></code></p>
-<p>说明：<span id="tool-diagnostics-message"></span></p>
-<p>修复建议：<span id="tool-diagnostics-fix"></span></p>
-<p class="hint" id="tool-diagnostics-location"></p>
-</div>
-<h3>可下载结果</h3>
-<ul id="tool-downloads"></ul>
-<p class="hint" id="tool-log-note"></p>
-</section>
-</div></main>
+  </p><p class="hint">
+    服务端没有“我的附件列表”读接口（只有按 id 读取单个附件），因此本页不列举历史文件：
+    上面是本次上传的附件，下面是对它运行预置工具的结果。要按 id 删除文件请到个人数据页。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>

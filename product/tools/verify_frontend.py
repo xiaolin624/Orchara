@@ -30,6 +30,13 @@ def contrast(first: str, second: str) -> float:
     return (light + .05) / (dark + .05)
 
 
+def css_color(color: str) -> str:
+    """Translate a #rrggbb design token into the browser's computed rgb() form."""
+    value = color.strip().lstrip('#')
+    assert len(value) == 6, f"the design token is not a 6-digit hex colour: {color}"
+    return 'rgb({}, {}, {})'.format(*(int(value[i:i + 2], 16) for i in (0, 2, 4)))
+
+
 def verify(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     screenshots = out / 'screenshots'
@@ -59,11 +66,37 @@ def verify(out: Path) -> None:
             page.wait_for_url('**/chat')
             page.locator('#account-label').filter(has_text='我的工作空间').wait_for()
             report['checks'].append('real login enters /chat')
-            colors = page.evaluate("Object.fromEntries(['--text','--muted','--primary','--surface'].map(k => [k, getComputedStyle(document.documentElement).getPropertyValue(k).trim()]))")
-            pairs = {'body text': (colors['--text'], colors['--surface']), 'secondary text': (colors['--muted'], colors['--surface']), 'primary button': ('#ffffff', colors['--primary'])}
+            tokens = page.evaluate(
+                "Object.fromEntries("
+                "['--bg','--text','--text-2','--muted','--accent','--accent-ink','--accent-soft',"
+                "'--surface','--surface-2','--on-accent','--success','--success-soft',"
+                "'--warning','--warning-soft','--danger','--danger-soft','--info','--info-soft',"
+                "'--teal','--teal-soft']"
+                ".map(k => [k, getComputedStyle(document.documentElement).getPropertyValue(k).trim()]))"
+            )
+            pairs = {
+                'body text': (tokens['--text'], tokens['--surface']),
+                'secondary text': (tokens['--text-2'], tokens['--surface']),
+                'muted text': (tokens['--muted'], tokens['--surface']),
+                'muted on soft': (tokens['--muted'], tokens['--surface-2']),
+                'secondary on soft': (tokens['--text-2'], tokens['--surface-2']),
+                'primary button': (tokens['--on-accent'], tokens['--accent']),
+                'accent ink on soft': (tokens['--accent-ink'], tokens['--accent-soft']),
+                'success on soft': (tokens['--success'], tokens['--success-soft']),
+                'warning on soft': (tokens['--warning'], tokens['--warning-soft']),
+                'danger on soft': (tokens['--danger'], tokens['--danger-soft']),
+                'info on soft': (tokens['--info'], tokens['--info-soft']),
+                'teal on soft': (tokens['--teal'], tokens['--teal-soft']),
+            }
+            report['tokens'] = tokens
             report['contrast'] = {name: round(contrast(*pair), 2) for name, pair in pairs.items()}
             assert min(report['contrast'].values()) >= 4.5, report['contrast']
-            report['checks'].append('primary, secondary and button text meet 4.5:1 contrast')
+            report['checks'].append(
+                'text, secondary, muted, button, accent-ink and status soft pairs meet 4.5:1 contrast'
+            )
+            # The shell background is whatever --bg says; the page must not
+            # hard-code a colour that drifts from the token.
+            expected_background = css_color(tokens['--bg'])
             me = context.request.get(stack.base_url + '/api/v1/auth/me').json()
             csrf = me['csrf_token']
             # Bootstrap intentionally grants admin, not creator. Grant the
@@ -82,6 +115,16 @@ def verify(out: Path) -> None:
             page.locator('.node-library').wait_for()
             page.locator('[data-node-type="model"]').click()
             page.locator('.config-panel').filter(has_text='模型').wait_for()
+            # T9 (#173): one validate entry (toolbar, keeping #canvas-validate at
+            # runtime) and one save action in the inspector footer.
+            assert page.locator('#canvas-validate').count() == 1
+            assert page.locator('.page-heading #canvas-validate').count() == 1
+            assert page.locator('.config-panel #canvas-validate').count() == 0
+            assert page.locator('.config-panel #canvas-save-draft').count() == 1
+            assert page.locator('.page-heading #draft-save').count() == 1
+            report['checks'].append(
+                'editor keeps a single validate entry and saves from the inspector'
+            )
             report['checks'].append('create application and add a model node through real UI')
             # A real concurrent save must keep the local draft and offer resolution.
             draft_response = context.request.get(stack.base_url + '/api/v1/applications/' + app_id + '/draft')
@@ -117,15 +160,120 @@ def verify(out: Path) -> None:
                 page.locator('#main-content').wait_for()
                 if name not in ('login', 'activate'):
                     page.locator('nav[data-orchara-nav] .nav-label').first.wait_for()
-                    assert page.locator('nav[data-orchara-nav] a[aria-current="page"]').count() == 1, name
+                    # T11 (#175): aria-current="page" is unique per navigation
+                    # landmark, not per page: the sidebar nav, the breadcrumb and
+                    # the phone tab bar each mark the current page once. The old
+                    # check only counted the sidebar and hid that duplication.
+                    landmarks = page.evaluate(
+                        """() => [...document.querySelectorAll('nav, [role="navigation"]')]
+                            .map((el) => ({
+                                label: el.getAttribute('aria-label') || el.className
+                                    || el.tagName.toLowerCase(),
+                                current: el.querySelectorAll('[aria-current="page"]').length,
+                            }))"""
+                    )
+                    assert landmarks, (name, 'no navigation landmark')
+                    assert all(item['current'] <= 1 for item in landmarks), (name, landmarks)
+                    assert any(item['current'] == 1 for item in landmarks), (name, landmarks)
+                    # The original, stronger assertion is kept for the main nav.
+                    assert page.locator(
+                        'nav[data-orchara-nav] [aria-current="page"]').count() == 1, name
+                else:
+                    landmarks = page.evaluate(
+                        """() => [...document.querySelectorAll('nav, [role="navigation"]')]
+                            .map((el) => el.querySelectorAll('[aria-current="page"]').length)"""
+                    )
+                    assert landmarks and all(count <= 1 for count in landmarks), (name, landmarks)
                 page.wait_for_timeout(180)
                 assert page.locator('h1').count() == 1, name
                 assert page.locator('link[href="/assets/design.css"]').count() == 1, name
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
-                assert page.locator('body').evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(246, 247, 251)', name
+                assert page.locator('body').evaluate("el => getComputedStyle(el).backgroundColor") == expected_background, (name, expected_background)
+                # T9 (#173): the technical notes are one flat disclosure at the
+                # very end of the page, never a card between header and content.
+                usage = page.locator('details.usage-notes')
+                if name in ('chat', 'editor'):
+                    assert usage.count() == 0, name
+                else:
+                    assert usage.count() == 1, name
+                    assert page.evaluate(
+                        """() => {
+                            const details = document.querySelector('details.usage-notes');
+                            const main = document.querySelector('main.page-content');
+                            return Boolean(details && main && details.parentElement === main
+                                && main.lastElementChild === details);
+                        }"""
+                    ), (name, 'usage notes are not the last block of main')
+                    assert page.locator('details.usage-notes').evaluate(
+                        "el => getComputedStyle(el).borderStyle") != 'dashed', name
+                    assert page.locator('details.usage-notes').evaluate(
+                        "el => parseFloat(getComputedStyle(el).paddingLeft)") == 0, name
+                # T9 (#173): the topbar "new application" action has no context on
+                # the admin console or the platform status page.
+                topbar_new = page.locator('.topbar-new')
+                if name in ('admin', 'index'):
+                    assert topbar_new.count() == 1, name
+                    assert topbar_new.evaluate(
+                        "el => getComputedStyle(el).display") == 'none', name
+                elif name not in ('login', 'activate'):
+                    assert topbar_new.count() == 1, name
+                    assert topbar_new.evaluate(
+                        "el => getComputedStyle(el).display") != 'none', name
                 page.screenshot(path=str(screenshots / (name + '-desktop.png')), full_page=True)
                 report['pages'].append({'page': name, 'route': route, 'desktop': 'passed', 'state': 'not-found error' if name == 'evaluations' else 'real dev-stub API'})
                 print('[ui] desktop ' + name, flush=True)
+            page.goto(stack.base_url + '/apps')
+            page.locator('#apps-list .app-row').first.wait_for()
+
+            def focus_ring(selector: str) -> None:
+                # A keyboard event first: programmatic focus only matches
+                # :focus-visible while the last input modality is the keyboard.
+                page.keyboard.press('Tab')
+                page.evaluate(
+                    "sel => { const el = document.querySelector(sel);"
+                    " if (!el) throw new Error('missing ' + sel);"
+                    " el.focus({ preventScroll: true }); }",
+                    selector,
+                )
+                state = page.evaluate(
+                    """sel => {
+                        const el = document.querySelector(sel);
+                        const style = getComputedStyle(el);
+                        return {visible: el.matches(':focus-visible'),
+                                outline: style.outlineStyle,
+                                width: parseFloat(style.outlineWidth)};
+                    }""",
+                    selector,
+                )
+                assert state['visible'], (selector, state)
+                assert state['outline'] != 'none' and state['width'] >= 2, (selector, state)
+
+            focus_ring('[data-apps-filter-value="draft"]')
+            focus_ring('#apps-list .app-row summary')
+            report['checks'].append(
+                'segmented filters and row disclosures show a keyboard focus ring'
+            )
+            # The row's ID disclosure wraps at the title indent, not under the
+            # disclosure marker, and never overflows the row.
+            page.locator('#apps-list .app-row summary').first.click()
+            layout = page.locator('#apps-list .app-row .app-row-id').first.evaluate(
+                """el => {
+                    const label = el.querySelector('.app-row-id-label').getBoundingClientRect();
+                    const code = el.querySelector('code').getBoundingClientRect();
+                    const box = el.getBoundingClientRect();
+                    return {idLeft: box.left, labelLeft: label.left,
+                            codeLeft: code.left, scrollWidth: el.scrollWidth,
+                            clientWidth: el.clientWidth};
+                }"""
+            )
+            assert abs(layout['codeLeft'] - layout['idLeft']) < 1, layout
+            assert layout['scrollWidth'] <= layout['clientWidth'] + 1, layout
+            page.screenshot(
+                path=str(screenshots / 'apps-row-expanded-desktop.png'), full_page=True
+            )
+            report['checks'].append(
+                'application row ID disclosure aligns with the title indent without overflow'
+            )
             # Main conversation journey and both sidebar modes.
             page.goto(stack.base_url + '/chat')
             page.keyboard.press('Tab')
@@ -141,29 +289,264 @@ def verify(out: Path) -> None:
             page.locator('#sidebar-toggle').click()
             report['checks'].append('conversation creation, composer and desktop sidebar toggle')
             page.set_viewport_size({'width': 375, 'height': 812})
-            for name in ('chat', 'approvals', 'runs', 'personal-data', 'memories', 'knowledge', 'apps', 'login', 'activate'):
-                page.goto(stack.base_url + routes[name])
-                page.wait_for_timeout(180)
-                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
-                page.screenshot(path=str(screenshots / (name + '-mobile.png')), full_page=True)
+            tabbar_pages = (
+                'chat', 'approvals', 'runs', 'personal-data', 'memories', 'knowledge',
+            )
+            for name, route in routes.items():
+                page.goto(stack.base_url + route)
+                page.wait_for_timeout(150)
+                assert page.evaluate(
+                    'document.documentElement.scrollWidth <= innerWidth + 2'), name
+                # T11 (#175): every control a phone user can reach keeps a 44px
+                # touch target on all 22 pages (WCAG 2.5.5). Text links reach it
+                # through padding/min-height; the only exemption is the
+                # focus-only skip link (off-screen until focused) and content
+                # that is display:none or inert (a closed drawer/sheet).
+                small = page.evaluate(
+                    """() => {
+                        const out = [];
+                        for (const el of document.querySelectorAll('a, button')) {
+                            if (el.closest('[hidden], [inert], .skip-link, .sr-only')) continue;
+                            const style = getComputedStyle(el);
+                            if (style.display === 'none' || style.visibility === 'hidden') continue;
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width <= 0 || rect.height <= 0) continue;
+                            if (rect.height + 0.5 >= 44) continue;
+                            out.push({tag: el.tagName.toLowerCase(),
+                                      cls: String(el.className || '').slice(0, 40),
+                                      id: el.id,
+                                      h: Math.round(rect.height * 10) / 10,
+                                      text: (el.textContent || '').trim().slice(0, 24)});
+                        }
+                        return out;
+                    }"""
+                )
+                assert not small, (name, small[:8])
+                if name in tabbar_pages:
+                    # Scroll to the end and prove the last block still sits above
+                    # the fixed tab bar (52px + safe area + 16px clearance).
+                    clearance = page.evaluate(
+                        """() => {
+                            const bar = document.querySelector('.mobile-tabbar');
+                            if (!bar) return { tabbar: false };
+                            // The shared stylesheet scrolls smoothly; turn that
+                            // off for the measurement so the scroll is final.
+                            const root = document.documentElement;
+                            const previous = root.style.scrollBehavior;
+                            root.style.scrollBehavior = 'auto';
+                            window.scrollTo(0, root.scrollHeight);
+                            const barTop = bar.getBoundingClientRect().top;
+                            let lastBottom = 0;
+                            for (const el of document.querySelectorAll(
+                                    'main.page-content > *')) {
+                                const rect = el.getBoundingClientRect();
+                                if (rect.height > 0) {
+                                    lastBottom = Math.max(lastBottom, rect.bottom);
+                                }
+                            }
+                            root.style.scrollBehavior = previous;
+                            return { tabbar: true, barTop: barTop,
+                                     lastBottom: lastBottom,
+                                     ok: lastBottom <= barTop + 1 };
+                        }"""
+                    )
+                    assert clearance['tabbar'], name
+                    assert clearance['ok'], (name, clearance)
+                    # Primary actions a phone user must tap keep a 44px target.
+                    heights = page.evaluate(
+                        """() => {
+                            const out = {};
+                            const selectors = ['.mobile-tabbar a', '.segmented button',
+                                '#chat-submit', '#chat-cancel', '#approve-button',
+                                '#reject-button', '#upload-submit', '#chat-message'];
+                            for (const sel of selectors) {
+                                const el = document.querySelector(sel);
+                                if (!el || el.closest('[hidden]')) continue;
+                                const rect = el.getBoundingClientRect();
+                                if (rect.height > 0) out[sel] = rect.height;
+                            }
+                            return out;
+                        }"""
+                    )
+                    for selector, height in heights.items():
+                        assert height >= 44, (name, selector, height)
+                    if name == 'chat':
+                        # The start screen is taller than a phone; its internal
+                        # column must scroll and the last step must end above the
+                        # fixed bar once scrolled.
+                        start = page.evaluate(
+                            """() => {
+                                const el = document.querySelector('.chat-workspace');
+                                const flow = document.querySelector('.chat-empty__flow');
+                                if (!el || !flow) return null;
+                                el.scrollTop = el.scrollHeight;
+                                return {overflowY: getComputedStyle(el).overflowY,
+                                        flowBottom: flow.getBoundingClientRect().bottom,
+                                        barTop: document.querySelector('.mobile-tabbar')
+                                            .getBoundingClientRect().top};
+                            }"""
+                        )
+                        assert start, 'chat start screen is missing'
+                        assert start['overflowY'] in ('auto', 'scroll'), start
+                        assert start['flowBottom'] <= start['barTop'] + 1, start
+                        page.evaluate(
+                            "const el = document.querySelector('.chat-workspace');"
+                            " if (el) el.scrollTop = 0;"
+                        )
+                    page.evaluate('window.scrollTo(0, 0)')
+                page.screenshot(path=str(screenshots / (name + '-mobile.png')), full_page=False)
                 next(item for item in report['pages'] if item['page'] == name)['mobile'] = 'passed'
                 print('[ui] mobile ' + name, flush=True)
+            report['checks'].append(
+                'all 22 pages fit a 375px viewport; tabbar pages keep the last block above the bar'
+            )
+            # Evidence for the tabbar clearance itself.
+            page.goto(stack.base_url + '/chat')
+            page.wait_for_timeout(150)
+            page.evaluate(
+                """() => {
+                    const root = document.documentElement;
+                    root.style.scrollBehavior = 'auto';
+                    const scrollers = [root, document.scrollingElement,
+                        document.querySelector('.chat-workspace'),
+                        document.querySelector('.chat-columns')];
+                    for (const el of scrollers) {
+                        if (el && el.scrollHeight > el.clientHeight) {
+                            el.scrollTop = el.scrollHeight;
+                        }
+                    }
+                }"""
+            )
+            page.screenshot(path=str(screenshots / 'chat-bottom-mobile.png'), full_page=False)
+            page.evaluate('window.scrollTo(0, 0)')
             page.goto(stack.base_url + '/chat')
             page.locator('#sidebar-toggle').click()
             assert page.locator('#app-sidebar').evaluate('el => !el.inert')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'true'
+            # T11 (#175): the drawer navigation keeps its 44px phone targets.
+            drawer_small = page.evaluate(
+                """() => [...document.querySelectorAll('#app-sidebar a, #app-sidebar button')]
+                    .filter((el) => {
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0
+                            && getComputedStyle(el).display !== 'none';
+                    })
+                    .map((el) => ({label: (el.textContent || '').trim().slice(0, 16),
+                                   h: Math.round(el.getBoundingClientRect().height * 10) / 10}))
+                    .filter((item) => item.h + 0.5 < 44)"""
+            )
+            assert not drawer_small, drawer_small
+            page.locator('#nav-scrim').click(position={'x': 360, 'y': 700})
+            assert page.locator('#app-sidebar').evaluate('el => el.inert')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'false'
+            page.locator('#sidebar-toggle').click()
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'true'
             page.keyboard.press('Escape')
             assert page.locator('#app-sidebar').evaluate('el => el.inert')
-            report['checks'].append('mobile navigation opens and Escape closes it')
+            assert page.locator('#sidebar-toggle').get_attribute('aria-expanded') == 'false'
+            assert page.locator('#sidebar-toggle').evaluate(
+                'el => el === document.activeElement')
+            report['checks'].append(
+                'mobile navigation opens; scrim and Escape close it, reset aria-expanded '
+                'and keep the 44px drawer targets'
+            )
+            # T11 (#175): the phone context sheet reuses the existing rail DOM —
+            # the same request/queue/output/destination/handoff nodes the desktop
+            # rail renders — so no new request is needed to see them.
+            page.goto(stack.base_url + '/chat')
+            # Select a real conversation so the sheet carries real state: on a
+            # phone the list lives in the top drawer.
+            page.locator('[data-sessions-toggle]').click()
+            page.locator('#conversation-list button').first.wait_for()
+            page.locator('#conversation-list button').first.click()
+            page.wait_for_timeout(300)
+            assert page.locator('[data-context-toggle]').count() == 1
+            page.locator('[data-context-toggle]').click()
+            assert page.locator('body').evaluate(
+                "el => el.classList.contains('chat-context-open')")
+            assert page.locator('[data-context-toggle]').get_attribute('aria-expanded') == 'true'
+            assert page.locator('#chat-context').evaluate('el => !el.inert')
+            sheet = page.evaluate(
+                """() => {
+                    const aside = document.getElementById('chat-context');
+                    const rect = aside.getBoundingClientRect();
+                    const text = aside.textContent || '';
+                    return {
+                        visible: rect.width > 0 && rect.height > 0
+                            && rect.top < innerHeight && rect.bottom > 0,
+                        facts: ['当前运行', '会话队列', '本次产出', '数据去向', '可交接应用']
+                            .filter((label) => text.includes(label)),
+                        small: [...aside.querySelectorAll('a, button')]
+                            .filter((el) => {
+                                if (el.closest('[hidden]')) return false;
+                                const rect = el.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0
+                                    && rect.height + 0.5 < 44;
+                            })
+                            .map((el) => ({label: (el.textContent || '').trim().slice(0, 16),
+                                           h: Math.round(el.getBoundingClientRect().height * 10) / 10})),
+                    };
+                }"""
+            )
+            assert sheet['visible'], sheet
+            assert len(sheet['facts']) == 5, sheet
+            assert not sheet['small'], sheet['small']
+            page.screenshot(path=str(screenshots / 'chat-context-mobile.png'), full_page=False)
+            page.keyboard.press('Escape')
+            assert page.locator('body').evaluate(
+                "el => !el.classList.contains('chat-context-open')")
+            assert page.locator('#chat-context').evaluate('el => el.inert')
+            assert page.locator('[data-context-toggle]').get_attribute('aria-expanded') == 'false'
+            assert page.locator('[data-context-toggle]').evaluate(
+                'el => el === document.activeElement')
+            page.locator('[data-context-toggle]').click()
+            page.locator('.chat-context-scrim').click(position={'x': 8, 'y': 8})
+            assert page.locator('body').evaluate(
+                "el => !el.classList.contains('chat-context-open')")
+            report['checks'].append(
+                'phone context sheet opens from the header, shows run/queue/outputs/'
+                'destination/handoff, and closes with Escape or the scrim'
+            )
+            focus_ring('.mobile-tabbar a[aria-current="page"]')
+            report['checks'].append('mobile tab bar shows a keyboard focus ring')
             page.emulate_media(reduced_motion='reduce')
-            assert page.locator('#app-sidebar').evaluate("el => getComputedStyle(el).transitionDuration") == '0s'
-            report['checks'].append('reduced motion disables sidebar transitions')
+            page.evaluate(
+                """() => {
+                    const probe = document.createElement('div');
+                    probe.className = 'skeleton';
+                    probe.id = 't9-motion-probe';
+                    document.body.appendChild(probe);
+                }"""
+            )
+            motion = page.evaluate(
+                """() => {
+                    const read = (sel) => {
+                        const el = document.querySelector(sel);
+                        const style = getComputedStyle(el);
+                        return {transition: style.transitionDuration,
+                                animation: style.animationDuration};
+                    };
+                    return {sidebar: read('#app-sidebar'),
+                            button: read('.page-content button'),
+                            skeleton: read('#t9-motion-probe')};
+                }"""
+            )
+            for part, values in motion.items():
+                assert values['transition'] == '0s', (part, values)
+                assert values['animation'] == '0s', (part, values)
+            page.evaluate("document.getElementById('t9-motion-probe').remove()")
+            report['checks'].append(
+                'reduced motion disables sidebar, button and skeleton transitions/animations'
+            )
             page.set_viewport_size({'width': 844, 'height': 390})
             for name in ('chat', 'approvals', 'runs', 'personal-data'):
                 page.goto(stack.base_url + routes[name])
                 page.wait_for_timeout(180)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), name
                 next(item for item in report['pages'] if item['page'] == name)['landscape'] = 'passed'
-            page.screenshot(path=str(screenshots / 'personal-data-landscape.png'), full_page=True)
+                # T10 (#174): keep one landscape screenshot per checked journey page,
+                # not only the personal-data one, so the evidence matches the check.
+                page.screenshot(path=str(screenshots / (name + '-landscape.png')), full_page=True)
             report['checks'].append('conversation, approval, run and personal-data layouts fit phone landscape')
             page.set_viewport_size({'width': 1440, 'height': 1000})
             page.goto(stack.base_url + '/chat')

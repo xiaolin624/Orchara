@@ -6,25 +6,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>应用评测 · Orchara</title>
 <style>
-    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem; font-size: .86rem; margin: .4rem 0 0; }
-    dl.facts dt { opacity: .7; }
-    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    td ul { margin: 0; padding-left: 1.05rem; }
-    td li { margin: .12rem 0; }
-    .verdict-passed { color: #15803d; font-weight: 600; }
-    .verdict-failed { color: #b91c1c; font-weight: 600; }
-    .verdict-blocked { color: #a16207; font-weight: 600; }
-    .verdict-not_run { color: #6b7280; font-weight: 600; }
-    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
+    /* T7 (#171): upload -> run -> per-case results. Scoped with body[data-page]
+       because design.css is linked after this block. */
+    body[data-page="evaluate"] .evaluate-stack { display: grid; gap: 16px; }
+    body[data-page="evaluate"] .evaluate-columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    body[data-page="evaluate"] .step-label { color: var(--muted); font-size: var(--fs-11); margin: 0 0 8px; }
+    body[data-page="evaluate"] .fact-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    body[data-page="evaluate"] dl.facts { grid-template-columns: minmax(96px, 150px) minmax(0, 1fr); margin: 0; }
+    body[data-page="evaluate"] dl.facts dt { padding: 6px 0; }
+    body[data-page="evaluate"] dl.facts dd {
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="evaluate"] .mono { font-family: var(--font-mono); font-size: var(--fs-11); overflow-wrap: anywhere; }
+    body[data-page="evaluate"] td ul { margin: 0; padding-left: 16px; }
+    body[data-page="evaluate"] td li { margin: 2px 0; font-size: var(--fs-11); }
+    body[data-page="evaluate"] td.verdict-cell { white-space: nowrap; }
+    body[data-page="evaluate"] td.duration-cell { color: var(--text-2); font-size: var(--fs-11); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    body[data-page="evaluate"] .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    @media (max-width: 1200px) {
+      body[data-page="evaluate"] .evaluate-columns { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 720px) {
+      body[data-page="evaluate"] .evaluate-stack { gap: 12px; }
+      body[data-page="evaluate"] .evaluate-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      body[data-page="evaluate"] .evaluate-stack .card { padding: 16px; }
+      body[data-page="evaluate"] dl.facts { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="evaluate"] dl.facts dt { padding-bottom: 0; border-bottom: 0; }
+      body[data-page="evaluate"] dl.facts dd { padding-top: 2px; }
+      body[data-page="evaluate"] .page-content table { min-width: 40rem; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-page="evaluate"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>应用评测</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body data-page="evaluate"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">应用评测</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="check">EVALUATE & IMPROVE</p><h1>应用评测</h1><p class="page-description">使用独立预期验证应用，逐例比较实际结果并定位问题。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
+<header class="page-heading"><div class="page-head-main"><h1>应用评测</h1><p class="page-description">使用独立预期验证应用，逐例比较实际结果并定位问题。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>评测绑定版本、数据与时间</span><span>stub 结果不冒充真实模型质量</span></p></header>
+<div class="page-sections">
+<div class="evaluate-stack">
+<div class="evaluate-columns">
+<section class="card">
+<div class="card-head"><h2>1. 上传评估数据集与案例输入</h2></div>
+<p class="step-label">先封存数据：数据集是案例数组的 JSON，案例输入按内容 SHA-256 绑定</p>
+<form id="evaluate-form" method="post">
+<div class="field">
+<label for="evaluate-dataset-file">评估数据集（JSON，案例数组；服务端会严格校验）</label>
+<input id="evaluate-dataset-file" name="dataset" accept=".json,application/json" required="" type="file"/>
+<p class="field-help">上限 4 MiB；上传后服务端封存，页面轮询 artifact 状态直到 ready。</p>
+</div>
+<div class="field">
+<label for="evaluate-fixture-file">案例输入文件（可选；数据集按内容 SHA-256 引用的 CSV/XLSX）</label>
+<input id="evaluate-fixture-file" name="fixture" accept=".csv,.xlsx" type="file"/>
+<p class="field-help">只接受 .csv / .xlsx；附件下载在点击时才向服务器换取短时签名链接。</p>
+</div>
+<div class="form-actions"><button id="evaluate-upload-submit" type="submit">上传并封存</button></div>
+<p class="status" id="evaluate-upload-status" aria-live="polite" role="status"></p>
+</form>
+<div id="evaluate-artifact-panel" aria-live="polite" hidden="">
+<h3>封存状态</h3>
+<dl class="facts">
+<dt>数据集附件 ID</dt><dd id="evaluate-dataset-id"></dd>
+<dt>数据集状态</dt><dd id="evaluate-dataset-state"></dd>
+<dt>案例输入附件 ID</dt><dd id="evaluate-fixture-id"></dd>
+<dt>案例输入状态</dt><dd id="evaluate-fixture-state"></dd>
+</dl>
+<p class="hint">状态来自 <code>GET /api/v1/artifacts/{id}</code>；只有 <code>ready</code> 才能提交评测。</p>
+</div>
+</section>
+<section class="card" data-requires-role="creator" hidden="">
+<div class="card-head"><h2>2. 开始评测并等待报告</h2></div>
+<p class="step-label">再冻结版本：评测绑定草稿 revision、数据集与提交时间</p>
+<p class="hint">
+      提交评测需要 <code>creator</code> 角色且提交者本人是该应用的所有者；服务端不满足时返回
+      <code>403 creator_role_required</code>（或 <code>403 forbidden</code>），因此没有该角色时本区域不显示。
+    </p>
+<form id="evaluation-submit-form" method="post">
+<div class="field">
+<label for="evaluation-draft-revision">草稿版本（提交时冻结该版本）<span class="field-api">draft_revision</span></label>
+<input id="evaluation-draft-revision" min="1" step="1" type="number" value="1"/>
+<p class="field-help">页面从 <code>GET /api/v1/applications/{id}/draft</code> 的 ETag 读取当前 revision。</p>
+</div>
+<div class="field">
+<label for="evaluation-dataset-artifact">数据集附件 ID（上传成功后自动填入）<span class="field-api">dataset_artifact_id</span></label>
+<input id="evaluation-dataset-artifact" autocomplete="off" spellcheck="false" type="text"/>
+</div>
+<div class="form-actions"><button id="evaluation-submit" type="submit">提交评测</button></div>
+<p class="status" id="evaluation-status" aria-live="polite" role="status"></p>
+</form>
+<div id="evaluation-panel" class="fact-group" aria-live="polite" hidden="">
+<div class="card-head"><h3>评测任务</h3><span class="pill" data-tone="muted" data-shape="ring" data-evaluation-state-pill>未提交</span></div>
+<dl class="facts">
+<dt>评测 ID</dt><dd id="evaluation-id"></dd>
+<dt>状态</dt><dd id="evaluation-state"></dd>
+<dt>冻结的草稿 revision</dt><dd data-evaluation-draft-revision>未提供</dd>
+<dt>报告 ID</dt><dd id="evaluation-report-id"></dd>
+</dl>
+<p class="hint">轮询 <code>GET /api/v1/evaluations/{id}</code> 直到出现 <code>report_id</code>；报告出现后逐例结果按只读报告展示。</p>
+</div>
+</section>
+</div>
+<section class="card">
+<div class="card-head"><h2>3. 逐例结果（只读报告）</h2><span class="toolbar-note" data-case-report-note>等待报告</span></div>
+<p class="step-label">最后看证据：用例 / 结果 / 原因 / 耗时；stub 结果不冒充真实模型质量</p>
+<p class="status" id="evaluation-summary" aria-live="polite" role="status"></p>
+<p class="inline-note" data-tone="info" data-case-waiting>提交评测并等报告封存后，这里才会出现逐例结果与耗时；在此之前保持为空，页面不预填任何通过率。</p>
+<div class="stat-row" data-case-stats></div>
+<p class="hint">耗时只来自封存报告里的 <code>timings</code>（服务端时钟的 <code>run_duration_ms</code> / <code>collect_duration_ms</code>）；没有该字段时显示<strong>未提供</strong>，页面不按轮询节奏估算。</p>
+<div class="empty-state" id="case-empty" hidden=""><span class="empty-mark" data-icon="check" aria-hidden="true"></span><strong>报告还没有逐例结果</strong><p class="empty-explain">提交评测并等报告封存后，逐例结果、失败原因与耗时会显示在这里；页面不预填任何通过率。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#evaluate-form">查看上传步骤</a><a class="btn btn-ghost btn-small" href="/apps">返回应用与创作</a></div></div>
+<div class="table-scroll" aria-label="应用评测逐例结果（可横向滚动）" role="region" tabindex="0"><table class="table" id="case-table" hidden="">
+<thead>
+<tr>
+<th>案例</th>
+<th>结果</th>
+<th>期望</th>
+<th>实际</th>
+<th>失败原因</th>
+<th>耗时</th>
+<th>实际附件</th>
+</tr>
+</thead>
+<tbody id="case-rows" data-auth-content=""></tbody>
+</table></div>
+</section>
+</div>
+</div>
 <details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
     本页走正式的 <code>evaluateDraft</code> 路径：先上传一个冻结的评估数据集
     （<code>purpose=evaluation_dataset</code>，JSON），并可选择上传案例引用的 CSV/XLSX 案例输入
@@ -35,69 +148,8 @@
     逐例结果的期望/实际/失败原因来自封存的只读报告（<code>GET /evaluation-reports/{id}/cases</code>，
     ADR 0013），页面不重新计算任何金额；金额按报告里的十进制字符串原样展示。附件下载在点击时才向服务器换取
     短时签名链接，页面不把链接写入浏览器存储。只有评测所有者或管理员能读到报告（其他人 404）。
-  </p></details><div class="page-sections">
-<section class="card">
-<h2>1. 上传评估数据集与案例输入</h2>
-<form id="evaluate-form" method="post">
-<label for="evaluate-dataset-file">评估数据集（JSON，案例数组；服务端会严格校验）</label>
-<input id="evaluate-dataset-file" name="dataset" accept=".json,application/json" required="" type="file"/>
-<label for="evaluate-fixture-file">案例输入文件（可选；数据集按内容 SHA-256 引用的 CSV/XLSX）</label>
-<input id="evaluate-fixture-file" name="fixture" accept=".csv,.xlsx" type="file"/>
-<button id="evaluate-upload-submit" type="submit">上传并封存</button>
-<p class="status" id="evaluate-upload-status" aria-live="polite" role="status"></p>
-</form>
-<div id="evaluate-artifact-panel" aria-live="polite" hidden="">
-<h3>封存状态</h3>
-<dl class="facts">
-<dt>数据集 artifact id</dt><dd id="evaluate-dataset-id"></dd>
-<dt>数据集状态</dt><dd id="evaluate-dataset-state"></dd>
-<dt>案例输入 artifact id</dt><dd id="evaluate-fixture-id"></dd>
-<dt>案例输入状态</dt><dd id="evaluate-fixture-state"></dd>
-</dl>
-</div>
-</section>
-<section class="card" data-requires-role="creator" hidden="">
-<h2>2. 开始评测并等待报告</h2>
-<p class="hint">
-      提交评测需要 <code>creator</code> 角色且提交者本人是该应用的所有者；服务端不满足时返回
-      <code>403 creator_role_required</code>（或 <code>403 forbidden</code>），因此没有该角色时本区域不显示。
-    </p>
-<form id="evaluation-submit-form" method="post">
-<label for="evaluation-draft-revision">草稿 revision（提交时冻结该版本）</label>
-<input id="evaluation-draft-revision" min="1" step="1" type="number" value="1"/>
-<label for="evaluation-dataset-artifact">数据集 artifact id（上传成功后自动填入）</label>
-<input id="evaluation-dataset-artifact" autocomplete="off" spellcheck="false" type="text"/>
-<button id="evaluation-submit" type="submit">提交评测</button>
-<p class="status" id="evaluation-status" aria-live="polite" role="status"></p>
-</form>
-<div id="evaluation-panel" aria-live="polite" hidden="">
-<h3>评测任务</h3>
-<dl class="facts">
-<dt>evaluation id</dt><dd id="evaluation-id"></dd>
-<dt>状态</dt><dd id="evaluation-state"></dd>
-<dt>报告 id</dt><dd id="evaluation-report-id"></dd>
-</dl>
-</div>
-</section>
-<section class="card">
-<h2>3. 逐例结果（只读报告）</h2>
-<p class="status" id="evaluation-summary" aria-live="polite" role="status"></p>
-<p class="hint" id="case-empty" hidden="">报告还没有逐例结果。</p>
-<div class="table-scroll" aria-label="应用评测数据表（可横向滚动）" role="region" tabindex="0"><table id="case-table" hidden="">
-<thead>
-<tr>
-<th>案例</th>
-<th>判决</th>
-<th>期望</th>
-<th>实际</th>
-<th>失败原因</th>
-<th>实际附件</th>
-</tr>
-</thead>
-<tbody id="case-rows" data-auth-content=""></tbody>
-</table></div>
-</section>
-</div></main>
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -212,8 +264,19 @@
         tr.appendChild(idCell);
 
         const verdictCell = document.createElement('td');
-        verdictCell.className = 'verdict-' + item.verdict;
-        verdictCell.textContent = item.verdictLabel;
+        verdictCell.className = 'verdict-cell';
+        const verdictPill = document.createElement('span');
+        verdictPill.className = 'pill';
+        const tones = {
+          passed: 'success', failed: 'danger', blocked: 'warning', not_run: 'muted',
+        };
+        const shapes = {
+          passed: 'check', failed: 'alert', blocked: 'ring', not_run: 'dash',
+        };
+        verdictPill.setAttribute('data-tone', tones[item.verdict] || 'muted');
+        verdictPill.setAttribute('data-shape', shapes[item.verdict] || 'dash');
+        verdictPill.textContent = item.verdictLabel;
+        verdictCell.appendChild(verdictPill);
         tr.appendChild(verdictCell);
 
         const expectationCell = document.createElement('td');
@@ -247,6 +310,11 @@
         reasonCell.appendChild(reasonList);
         tr.appendChild(reasonCell);
 
+        const durationCell = document.createElement('td');
+        durationCell.className = 'duration-cell';
+        durationCell.textContent = item.durationText;
+        tr.appendChild(durationCell);
+
         const attachmentCell = document.createElement('td');
         const attachmentList = document.createElement('ul');
         if (item.attachments.length === 0) {
@@ -258,6 +326,7 @@
           const li = document.createElement('li');
           const button = document.createElement('button');
           button.type = 'button';
+          button.className = 'btn btn-small btn-secondary';
           button.textContent = '下载 ' + attachment.label;
           // attachment.downloadPath is built by caseArtifactDownloadPath(id): the
           // page only ever holds an artifact id until the click exchanges it for
@@ -280,12 +349,64 @@
         return tr;
       }
 
+      const STAT_DEFS = [
+        ['total', '总案例', 'accent'],
+        ['passed', '通过', 'success'],
+        ['failed', '失败', 'danger'],
+        ['notRun', '未运行', 'muted'],
+        ['blocked', '阻塞', 'warning'],
+      ];
+
+      function renderCaseStats(summary) {
+        const host = document.querySelector('[data-case-stats]');
+        if (!host) {
+          return;
+        }
+        host.textContent = '';
+        STAT_DEFS.forEach(([key, label, tone]) => {
+          const chip = document.createElement('span');
+          chip.className = 'stat-chip';
+          chip.setAttribute('data-tone', tone);
+          const labelNode = document.createElement('span');
+          labelNode.className = 'stat-label';
+          labelNode.textContent = label;
+          const valueNode = document.createElement('span');
+          valueNode.className = 'stat-value';
+          valueNode.textContent = String(summary[key]);
+          chip.append(labelNode, valueNode);
+          host.appendChild(chip);
+        });
+        const duration = document.createElement('span');
+        duration.className = 'stat-chip';
+        duration.setAttribute('data-tone', 'muted');
+        const durationLabel = document.createElement('span');
+        durationLabel.className = 'stat-label';
+        durationLabel.textContent = '运行耗时合计';
+        const durationValue = document.createElement('span');
+        durationValue.className = 'stat-value';
+        durationValue.textContent = summary.runDurationText;
+        duration.append(durationLabel, durationValue);
+        host.appendChild(duration);
+      }
+
       function renderCases(payload) {
         const view = describeCases(payload);
         const summary = describeCaseSummary(payload);
         setStatus(el('evaluation-summary'), summary.text, 'ok');
+        renderCaseStats(summary);
+        const note = document.querySelector('[data-case-report-note]');
+        if (note) {
+          note.textContent = '报告 ' + (view.reportId || '未提供')
+            + ' · 状态 ' + (view.status || '未提供');
+        }
         const rows = el('case-rows');
         clear(rows);
+        const waiting = document.querySelector('[data-case-waiting]');
+        if (waiting) {
+          // renderCases only runs once a sealed report exists, so the "waiting
+          // for a report" note is no longer the truth from here on.
+          waiting.hidden = true;
+        }
         el('case-table').hidden = view.cases.length === 0;
         el('case-empty').hidden = view.cases.length !== 0;
         view.cases.forEach((item) => rows.appendChild(renderCaseRow(item)));
@@ -296,10 +417,32 @@
         renderCases(payload);
       }
 
+      function setEvaluationPill(state) {
+        const pill = document.querySelector('[data-evaluation-state-pill]');
+        if (!pill) {
+          return;
+        }
+        const running = state === 'queued' || state === 'running';
+        const succeeded = state === 'succeeded';
+        pill.setAttribute('data-tone', succeeded ? 'success' : running ? 'accent' : 'danger');
+        pill.setAttribute('data-shape', succeeded ? 'check' : running ? 'dot' : 'alert');
+        pill.textContent = evaluationStateLabel(state);
+      }
+
+      function setPanelDraftRevision(revision) {
+        const node = document.querySelector('[data-evaluation-draft-revision]');
+        if (node) {
+          node.textContent = revision === undefined || revision === null || revision === ''
+            ? '未提供'
+            : String(revision);
+        }
+      }
+
       async function pollEvaluation(evaluationId) {
         const evaluation = await api(evaluationPath(evaluationId));
         el('evaluation-id').textContent = String(evaluation.id || '');
         el('evaluation-state').textContent = evaluationStateLabel(evaluation.state);
+        setEvaluationPill(evaluation.state);
         if (evaluation.report_id) {
           el('evaluation-report-id').textContent = String(evaluation.report_id);
         }
@@ -392,6 +535,8 @@
           el('evaluation-panel').hidden = false;
           el('evaluation-id').textContent = String(accepted.id || '');
           el('evaluation-state').textContent = evaluationStateLabel(accepted.state);
+          setEvaluationPill(accepted.state);
+          setPanelDraftRevision(el('evaluation-draft-revision').value);
           setStatus(status, '已排队（' + evaluationStateLabel(accepted.state) + '），轮询中…', 'pending');
           pollTimer = setTimeout(() => pollEvaluation(accepted.id), 500);
         } catch (error) {

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 
 <html lang="zh-CN">
 <head>
@@ -6,38 +6,75 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>评测进度 · Orchara</title>
 <style>
-    dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; font-size: .88rem; margin: .4rem 0 0; }
-    dl.facts dt { opacity: .7; }
-    dl.facts dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; word-break: break-all; }
-    .explain { font-size: .88rem; margin: .55rem 0 0; }
-    .explain strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    /* T7 (#171): progress -> the three truths -> the immutable report.
+       Scoped with body[data-page] because design.css is linked after this block. */
+    body[data-page="evaluations"] .evaluations-stack { display: grid; gap: 16px; }
+    body[data-page="evaluations"] .progress-steps { margin: 0 0 14px; }
+    body[data-page="evaluations"] .progress-steps .step { font-size: var(--fs-12); }
+    body[data-page="evaluations"] .fact-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    body[data-page="evaluations"] dl.facts { grid-template-columns: minmax(96px, 150px) minmax(0, 1fr); margin: 0; }
+    body[data-page="evaluations"] dl.facts dt { padding: 6px 0; }
+    body[data-page="evaluations"] dl.facts dd {
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-11);
+      overflow-wrap: anywhere;
+    }
+    body[data-page="evaluations"] .explain { margin: 0; font-size: var(--fs-13); line-height: 1.7; color: var(--text-2); }
+    body[data-page="evaluations"] .explain strong { color: var(--text); }
+    body[data-page="evaluations"] .truth-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    body[data-page="evaluations"] .truth {
+      min-width: 0;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+    body[data-page="evaluations"] .truth[data-tone="business"] { border-left-color: var(--warning); }
+    body[data-page="evaluations"] .truth[data-tone="infrastructure"] { border-left-color: var(--danger); }
+    body[data-page="evaluations"] .truth[data-tone="not-run"] { border-left-color: var(--muted); }
+    body[data-page="evaluations"] .explain code { font-size: var(--fs-11); }
+    body[data-page="evaluations"] .report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    @media (max-width: 720px) {
+      body[data-page="evaluations"] .evaluations-stack { gap: 12px; }
+      body[data-page="evaluations"] .evaluations-stack .card { padding: 16px; }
+      body[data-page="evaluations"] .truth-grid { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="evaluations"] dl.facts { grid-template-columns: minmax(0, 1fr); }
+      body[data-page="evaluations"] dl.facts dt { padding-bottom: 0; border-bottom: 0; }
+      body[data-page="evaluations"] dl.facts dd { padding-top: 2px; }
+      body[data-page="evaluations"] .progress-steps { display: grid; gap: 6px; }
+      body[data-page="evaluations"] .progress-steps .step + .step::before { display: none; }
+    }
   </style>
 <link href="/assets/design.css" rel="stylesheet"/>
 </head>
-<body data-page="evaluations"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-label"><span class="workspace-dot"></span>团队工作空间</div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav>
-<div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span></div>
-</aside>
-<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="icon-button" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="panel" type="button"></button><div class="breadcrumb"><span>创作台</span><span class="separator">/</span><span>评测进度</span></div><span class="workspace-note">ORCHARA WORKSPACE</span></div>
+<body data-page="evaluations"><a class="skip-link" href="#main-content">跳转到主要内容</a><aside class="app-sidebar" id="app-sidebar" aria-label="工作空间导航"><a class="brand" aria-label="Orchara 对话工作区" href="/chat"><span class="brand-mark"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M7 4h10l5 8-5 8H7l-5-8 5-8Z" stroke="currentColor" stroke-width="1.8"></path><path d="m7 4 5 8-5 8m10-16-5 8 5 8M2 12h20" stroke="currentColor" stroke-width="1.5"></path></svg></span><span class="brand-name">Orchara</span></a><div class="workspace-switch"><span class="workspace-dot" aria-hidden="true"></span><span class="workspace-name">团队工作空间</span><a class="workspace-status" href="/status">状态</a></div><nav aria-label="主导航" data-orchara-nav="true"><a href="/chat">会话</a><a href="/login">登录</a></nav><div class="sidebar-hint">按 <kbd>Esc</kbd> 关闭菜单</div><div class="sidebar-footer"><span class="account-avatar" data-icon="user"></span><span class="account-copy"><span id="account-label">正在读取身份</span><small id="account-role">Orchara Workspace</small></span><button class="btn btn-icon btn-ghost" id="sidebar-collapse" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="chevron-left" type="button"></button></div></aside>
+<button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" type="button"></button><div class="app-workspace"><div class="workspace-bar"><button class="btn btn-icon btn-ghost" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true" aria-label="收起侧边导航" data-icon="menu" type="button"></button><div class="breadcrumb" role="navigation" aria-label="面包屑"><a href="/apps">创作与资源</a><span class="separator" aria-hidden="true">/</span><span aria-current="page">评测进度</span></div><a class="topbar-search" href="/catalog" data-requires-kind="user" hidden=""><span data-icon="search"></span><span class="topbar-search-label">搜索应用与用途</span><span class="topbar-search-note">目录</span></a><div class="topbar-actions"><a class="todo-pill" href="/approvals" data-requires-kind="user" hidden=""><span data-icon="shield"></span>审批</a><a class="btn btn-primary btn-small topbar-new" href="/apps" data-requires-role="creator" hidden="">新建应用</a><a class="topbar-account" href="/personal-data" aria-label="账号与个人数据" data-requires-kind="user" hidden=""><span class="account-avatar" data-icon="user"></span></a></div></div>
 <main class="page-content" id="main-content" tabindex="-1">
-<header class="page-heading"><div><p class="eyebrow" data-icon="pulse">EVALUATION PROGRESS</p><h1>评测进度</h1><p class="page-description">跟进评测任务的执行状态，查看报告与实际产物。</p></div><div class="heading-actions"><a href="/chat">前往对话</a></div></header>
-<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
-    本页是非契约的评测进展视图（ADR 0019）：轮询
-    <code>GET /api/v1/evaluations/{id}/progress</code> 显示<strong>已持久化的逐例计数</strong>，
-    再从契约读 <code>GET /api/v1/evaluation-reports/{id}</code> 显示不可变报告。
-    刷新不会丢状态：评测 id 在 URL 路径里，页面重新读取同一份服务端事实。
-    页面<strong>不把 state 换算成百分比</strong>，也不伪造进度条：数字只来自 runner
-    在每例结束时写入的判定。
-  </p></details><div class="page-sections">
+<header class="page-heading"><div class="page-head-main"><h1>评测进度</h1><p class="page-description">跟进评测任务的执行状态，查看报告与实际产物。</p></div><div class="heading-actions"><a class="btn btn-secondary" href="/chat">前往对话</a></div><p class="page-meta"><span>通过 / 失败 / 未运行三态可区分</span><span>评测报告不可修改</span></p></header>
+<div class="page-sections">
+<div class="evaluations-stack">
 <p class="status" id="evaluation-status" aria-live="polite" role="status">正在读取评测进展…</p>
 <section class="card" id="progress-panel" aria-live="polite" data-auth-content="" hidden="">
-<h2>评测进展</h2>
+<div class="card-head"><h2>评测进展</h2><span class="pill" data-tone="muted" data-shape="ring" data-progress-state>读取中</span></div>
+<ol class="steps progress-steps" data-progress-steps>
+<li class="step" data-step="queue"><span class="step-dot" aria-hidden="true"></span>排队</li>
+<li class="step" data-step="run"><span class="step-dot" aria-hidden="true"></span>逐例运行</li>
+<li class="step" data-step="report"><span class="step-dot" aria-hidden="true"></span>封存报告</li>
+</ol>
+<div class="stat-row">
+<span class="stat-chip" data-tone="accent"><span class="stat-label">总案例</span><span class="stat-value" id="p-total">—</span></span>
+<span class="stat-chip"><span class="stat-label">已处理</span><span class="stat-value" id="p-completed">—</span></span>
+<span class="stat-chip"><span class="stat-label">失败</span><span class="stat-value" id="p-failed">—</span></span>
+</div>
+<p class="hint" id="p-counts">—</p>
+<p class="explain" id="p-note" aria-live="polite"></p>
+<div class="fact-group">
+<h3>任务与报告</h3>
 <dl class="facts">
-<dt>evaluation id</dt><dd id="p-evaluation"></dd>
+<dt>评测 ID</dt><dd id="p-evaluation"></dd>
 <dt>任务状态</dt><dd id="p-state"></dd>
-<dt>案例计数</dt><dd id="p-counts"></dd>
-<dt>总案例数</dt><dd id="p-total"></dd>
-<dt>已处理案例</dt><dd id="p-completed"></dd>
-<dt>失败案例</dt><dd id="p-failed"></dd>
 <dt>report_id</dt><dd id="p-report-id"></dd>
 <dt>报告状态</dt><dd id="p-report-status"></dd>
 <dt>失败分类</dt><dd id="p-failure-class"></dd>
@@ -45,35 +82,44 @@
 <dt>created_at</dt><dd id="p-created-at"></dd>
 <dt>finished_at</dt><dd id="p-finished-at"></dd>
 </dl>
-<p class="explain" id="p-note" aria-live="polite"></p>
+<p class="hint">三个步骤点只表示服务端已有证据的阶段（排队 → 逐例 → 报告），不换算成百分比；计数来自 runner 每例结束时写入的判定。</p>
+</div>
 </section>
 <section class="card" id="failure-class-explanation">
-<h2>“报告失败”与“任务失败”是两件事</h2>
+<div class="card-head"><h2>“报告失败”与“任务失败”是两件事</h2></div>
+<div class="truth-grid">
+<div class="truth" data-tone="business">
 <p class="explain" id="business-sentence">
 <strong>业务失败（报告 failed，任务 succeeded）：</strong>
       平台完成了评测，密封报告给出的是对<strong>被评测应用</strong>的判定。
       这表示应用的某些案例没有通过，或者案例没有被判为通过；它不是平台故障，
       报告仍然可读、不可变。
     </p>
+</div>
+<div class="truth" data-tone="infrastructure">
 <p class="explain" id="infrastructure-sentence">
 <strong>设施失败（任务 failed，没有报告）：</strong>
       评测任务没有执行完，平台没有产出任何报告，所以 <code>report_id</code> 为空。
       这属于任务/平台侧失败，不能当成应用判定；原因码来自任务的 error_code。
     </p>
+</div>
+<div class="truth" data-tone="not-run">
 <p class="explain" id="not-run-sentence">
 <strong><code>not_run</code> 是报告状态，不是任务状态：</strong>
       一份 <code>not_run</code> 报告表示没有任何一例产出可判定结论（例如目标类型在本构建不可执行）。
       对应的评测任务仍然是 <code>succeeded</code>，任务失败只会表现为 <code>failed</code> 且没有报告。
     </p>
+</div>
+</div>
 <p class="hint">
       页面只展示服务端事实：<code>failure_class=business</code> 当且仅当存在报告且报告不是 passed；
       <code>failure_class=infrastructure</code> 当且仅当任务失败且没有报告。
     </p>
 </section>
 <section class="card" id="report-panel" aria-live="polite" hidden="">
-<h2>不可变报告</h2>
+<div class="card-head"><h2>不可变报告</h2><span class="pill" data-tone="muted" data-shape="dash" data-report-state-pill>未知</span></div>
 <dl class="facts">
-<dt>report id</dt><dd id="report-id"></dd>
+<dt>报告 ID</dt><dd id="report-id"></dd>
 <dt>报告状态</dt><dd id="report-status"></dd>
 <dt>manifest_sha256</dt><dd id="report-manifest"></dd>
 <dt>result_artifact_id</dt><dd id="report-artifact"></dd>
@@ -83,14 +129,24 @@
       报告创建后字节与 sha256 不再变化。再次读取同一个 report_id 必须显示完全相同的
       id/status/manifest_sha256/result_artifact_id；页面比较两次快照，不会重写历史。
     </p>
-<button id="report-refresh" type="button">重新读取报告（验证不可变）</button>
+<div class="report-actions"><button class="btn btn-secondary btn-small" id="report-refresh" type="button">重新读取报告（验证不可变）</button></div>
 <p class="status" id="report-refresh-status" aria-live="polite" role="status"></p>
 </section>
 <section class="card" id="report-empty" hidden="">
-<h2>报告</h2>
-<p class="explain">尚无报告（report_id 为空）。任务结束后报告才会存在；设施失败不会生成报告。</p>
+<div class="card-head"><h2>报告</h2></div>
+<div class="empty-state"><span class="empty-mark" data-icon="file" aria-hidden="true"></span><strong>尚无报告</strong><p class="empty-explain">report_id 为空：任务结束后报告才会存在；设施失败不会生成报告。报告一旦生成即为只读证据。</p><div class="empty-actions"><a class="btn btn-primary btn-small" href="#progress-panel">查看评测进度</a><a class="btn btn-ghost btn-small" href="/apps">返回应用与创作</a></div></div>
 </section>
-</div></main>
+</div>
+</div>
+<details class="usage-notes"><summary>使用说明与技术详情</summary><p class="sub">
+    本页是非契约的评测进展视图（ADR 0019）：轮询
+    <code>GET /api/v1/evaluations/{id}/progress</code> 显示<strong>已持久化的逐例计数</strong>，
+    再从契约读 <code>GET /api/v1/evaluation-reports/{id}</code> 显示不可变报告。
+    刷新不会丢状态：评测 id 在 URL 路径里，页面重新读取同一份服务端事实。
+    页面<strong>不把 state 换算成百分比</strong>，也不伪造进度条：数字只来自 runner
+    在每例结束时写入的判定。
+  </p></details>
+</main>
 </div><script src="/assets/ui.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/nav.js"></script>
@@ -116,6 +172,63 @@
         }
       }
 
+      function renderProgressSteps(progress, view) {
+        const kind = view.failureKind;
+        const state = String(progress.state || '');
+        const reached = { queue: '', run: '', report: '' };
+        if (state === 'queued') {
+          reached.queue = 'now';
+        } else if (state === 'running') {
+          reached.queue = 'done';
+          reached.run = 'now';
+        } else if (state === 'succeeded') {
+          reached.queue = 'done';
+          reached.run = 'done';
+          reached.report = progress.report_id ? 'done' : 'now';
+        } else if (kind === 'infrastructure' || kind === 'cancelled') {
+          // A failed/cancelled job proves nothing about the later stages: the
+          // steps stay unreached instead of claiming progress that did not happen.
+          reached.queue = kind === 'infrastructure' ? 'done' : '';
+        }
+        for (const key of Object.keys(reached)) {
+          const node = document.querySelector('[data-step="' + key + '"]');
+          if (!node) {
+            continue;
+          }
+          node.className = 'step' + (reached[key] ? ' is-' + reached[key] : '');
+        }
+        const pill = document.querySelector('[data-progress-state]');
+        if (pill) {
+          const tones = {
+            pending: 'accent',
+            passed: 'success',
+            business: 'warning',
+            business_not_run: 'warning',
+            infrastructure: 'danger',
+            cancelled: 'muted',
+          };
+          const shapes = {
+            pending: 'dot',
+            passed: 'check',
+            business: 'alert',
+            business_not_run: 'dash',
+            infrastructure: 'alert',
+            cancelled: 'dash',
+          };
+          const labels = {
+            pending: state === 'queued' ? '排队中' : state === 'running' ? '运行中' : '等待结果',
+            passed: '报告 passed',
+            business: '报告 failed（业务判定）',
+            business_not_run: '报告 not_run',
+            infrastructure: '设施失败（无报告）',
+            cancelled: '已取消',
+          };
+          pill.setAttribute('data-tone', tones[kind] || 'accent');
+          pill.setAttribute('data-shape', shapes[kind] || 'dot');
+          pill.textContent = labels[kind] || '等待结果';
+        }
+      }
+
       function renderProgress(progress) {
         var view = describeProgress(progress);
         document.getElementById('progress-panel').hidden = false;
@@ -132,6 +245,7 @@
         setText('p-created-at', progress.created_at);
         setText('p-finished-at', progress.finished_at || '（任务尚未结束）');
         document.getElementById('p-note').textContent = view.failureSentence;
+        renderProgressSteps(progress, view);
         setStatus(view.stateText + '；' + view.countsText, shouldPollEvaluationProgress(progress) ? 'pending' : 'ok');
       }
 
@@ -143,6 +257,15 @@
         setText('report-manifest', report.manifest_sha256);
         setText('report-artifact', report.result_artifact_id);
         setText('report-read-at', new Date().toISOString());
+        var reportPill = document.querySelector('[data-report-state-pill]');
+        if (reportPill) {
+          var status = String(report.status || '');
+          reportPill.setAttribute('data-tone',
+            status === 'passed' ? 'success' : status === 'failed' ? 'warning' : 'muted');
+          reportPill.setAttribute('data-shape',
+            status === 'passed' ? 'check' : status === 'failed' ? 'alert' : 'dash');
+          reportPill.textContent = status || '未提供';
+        }
         var note = document.getElementById('report-immutable-note');
         note.textContent = describeReport(report) + '。报告创建后不可变：重新读取只显示同一份内容。';
       }
@@ -189,7 +312,20 @@
             pollTimer = setTimeout(refreshProgress, evaluationPollDelayMS(progress));
           }
         } catch (error) {
-          setStatus('读取评测进展失败：' + (error.code || error.message), 'bad');
+          var code = (error && (error.code || error.status)) || 'error';
+          // A missing or unauthorised id is an explicit error state: the page
+          // names the id it could not read and where a valid link comes from.
+          setStatus(
+            '评测 ' + evaluationID + ' 不存在或无权查看 [' + code
+              + ']。请从评测提交结果或调试页的「评测进展入口」重新打开。',
+            'bad',
+          );
+          var pill = document.querySelector('[data-progress-state]');
+          if (pill) {
+            pill.setAttribute('data-tone', 'danger');
+            pill.setAttribute('data-shape', 'alert');
+            pill.textContent = '读取失败';
+          }
         }
       }
 

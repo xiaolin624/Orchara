@@ -23,6 +23,11 @@
  * The touch target is 44x44 CSS px (WCAG 2.5.5) on everything a phone must tap:
  * navigation links, buttons, and the wide-table scroll region stays focusable.
  *
+ * T11 (#175): the shared phone shell (drawer sizes, bottom tab bar, safe-area
+ * clearance, 44px targets, 16px inputs) now lives once in design.css, which
+ * every page loads. This file keeps only the legacy page-level phone layout for
+ * the six journeys above; it no longer re-declares the shell.
+ *
  * Honest boundary: no browser is available in this build, so the committed
  * rules below are asserted statically and the DOM structure is executed under
  * Node; the real reflow is `not_run` (see reports/f12/T098-*.md).
@@ -246,12 +251,6 @@ body.page-chat {
 /* 3. Phone layout shared by every page that links this file.                */
 /* ------------------------------------------------------------------------- */
 @media (max-width: 720px) {
-  /* The page-local styles use 2rem padding and a fixed max-width; a phone must
-     use the width it has. The !important is scoped to this breakpoint. */
-  body {
-    padding: 0.9rem !important;
-    max-width: none !important;
-  }
 
   body > nav {
     display: flex;
@@ -375,9 +374,6 @@ body.page-chat {
 }
 
 @media (max-width: 480px) {
-  body {
-    padding: 0.7rem !important;
-  }
 
   .card,
   .panel {

@@ -91,6 +91,120 @@ def test_the_editor_page_hosts_the_canvas_and_keeps_the_save_path() -> None:
     assert not re.search(r"<script(?![^>]*\bsrc\s*=)[^>]*>", html)
 
 
+# T4 (GitHub #168): the page is a workbench, not a card stack. These markers are
+# the page-level seam between the editor chrome (owned by editor.html/editor.js)
+# and the canvas app (owned by apps/web/canvas/src): the toolbar and the status
+# line live on the page, while the node library, stage and inspector stay inside
+# the committed canvas bundle. No new business ids are introduced (t165 pins the
+# editor id inventory), so the controls are addressed by data attributes.
+EDITOR_WORKBENCH_MARKERS = (
+    # the T1 shell slots stay: one heading, one metadata/status line, one sections block
+    'class="page-heading"',
+    'class="page-meta"',
+    'class="page-sections"',
+    # the workbench chrome
+    'data-editor-workbench',
+    'data-editor-statusbar',
+    'data-editor-app-ref',
+    'data-editor-definition-value',
+    'data-editor-layout-state',
+    'data-editor-preflight',
+    'data-editor-zoom-value',
+    'data-editor-action="undo"',
+    'data-editor-action="redo"',
+    'data-editor-action="zoom-out"',
+    'data-editor-action="zoom-in"',
+    'data-editor-action="auto-layout"',
+    'data-editor-action="export"',
+    'data-editor-action="validate"',
+)
+
+
+def test_the_editor_page_is_a_full_height_workbench() -> None:
+    html = EDITOR.read_text(encoding="utf-8")
+    missing = [marker for marker in EDITOR_WORKBENCH_MARKERS if marker not in html]
+    assert not missing, missing
+    # One page keeps exactly one h1 and one form; the toolbar actions never add
+    # a competing form or a second save path.
+    assert html.count("<h1") == 1
+    assert html.count("<form") == 1
+    # The canvas is still hosted directly by the page, but no longer wrapped in
+    # a page-level card that would cap its height.
+    assert '<div id="canvas-root"></div>' in html
+    assert 'class="card canvas-card"' not in html
+    assert "<h2>工作流画布</h2>" not in html
+    # The phone boundary note survives verbatim (t098 / t165 contract).
+    note = html[html.index('data-mobile-scope="no-full-canvas-editing"'):]
+    note = note[: note.index("</p>")]
+    assert "画布" in note and "不承诺" in note
+
+
+def test_the_committed_canvas_stylesheet_defines_the_workbench() -> None:
+    css = (ASSETS / "canvas.css").read_text(encoding="utf-8")
+    for marker in (
+        # three columns: a 232px library, the stage, a 320px inspector
+        ".canvas-body",
+        "grid-template-columns: 232px minmax(0, 1fr) 320px",
+        "height: 100%",
+        # grouped, searchable library and a fixed-bottom inspector action bar
+        ".node-library-search",
+        ".palette-group",
+        ".config-panel",
+        ".panel-actions",
+        ".node-info",
+        ".orchara-flow-id",
+        # node type colour bars consume the shared tokens, never re-declare them
+        ".orchara-flow-node.orchara-node-start::before",
+        ".orchara-flow-node.orchara-node-model::before",
+        ".orchara-flow-node.orchara-node-end::before",
+        "var(--teal)",
+        "var(--accent)",
+        "var(--muted)",
+        "#7a5c2e",
+        # selection and invalid states are double-encoded, not colour-only
+        ".vue-flow__node.orchara-node.selected",
+        "[data-invalid",
+        # floating viewport tools
+        ".canvas-float",
+    ):
+        assert marker in css, marker
+
+
+def test_the_committed_canvas_bundle_renders_the_grouped_library_and_inspector() -> None:
+    js = (ASSETS / "canvas.js").read_text(encoding="utf-8")
+    for marker in (
+        "node-library",
+        "node-library-search",
+        "palette-group",
+        "orchara-flow-id",
+        "panel-actions",
+        "canvas-float",
+        "搜索节点",
+        "节点库",
+        "发布前检查",
+        "onPaneReady",
+        "MarkerType",
+    ):
+        assert marker in js, marker
+
+
+def test_the_editor_wiring_delegates_canvas_actions_to_the_canvas_api() -> None:
+    source = (ASSETS / "editor.js").read_text(encoding="utf-8")
+    for marker in (
+        "data-editor-action",
+        "canvasApi.validate()",
+        "canvasApi.exportDraft()",
+        "onValidation",
+        "onHistory",
+        "data-editor-preflight",
+    ):
+        assert marker in source, marker
+    # The save/validate/conflict request surface is unchanged: the only write
+    # path stays PUT draft with If-Match, and validation stays POST /validate.
+    assert "'If-Match': etag" in source
+    assert "/draft" in source and "/validate" in source
+
+
 def test_the_canvas_pure_modules_pass_under_node(node_binary: str) -> None:
     completed = subprocess.run([node_binary, str(MODULE_TEST)],
                                capture_output=True, text=True, cwd=PRODUCT, timeout=120)
