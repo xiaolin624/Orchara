@@ -123,6 +123,8 @@ go run ./cmd/admin bootstrap --login admin --display-name "Platform Admin"
 可复现的浏览器检查：`python tools/verify_frontend.py`（需本地开发工具链、Python Playwright
 与 Chrome），使用独立临时命名数据库和内存中的随机账号密码，将 22 页桌面截图、手机截图及
 真实登录/创建/草稿冲突/退出结果写入 `reports/ui-redesign/`；运行结束停止测试服务。
+新一轮验收请显式指定 `--out reports\ui-polish`（本轮证据目录），避免覆盖历史截图：
+`python -X utf8 tools\verify_frontend.py --out reports\ui-polish`。
 
 健康检查同时提供契约路径 `/health/live`、`/health/ready`（`contracts/openapi.json`
 的 operationId `liveness`/`readiness`）与惯用别名 `/healthz`、`/readyz`。页面每 3 秒读
